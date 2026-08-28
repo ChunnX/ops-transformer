@@ -70,7 +70,12 @@ constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 constexpr uint32_t META_INFO_SIZE = 8U;
+// GroupedMatmul 模式全集（原 GENERAL/A8W4/A4W4 定义在 workspace.h，为让 peermem.h 的
+// wire 布局谓词可见而归拢到本文件；两处不可同时定义，workspace.h 侧已删除）。
+constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
+constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
+constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 
 constexpr uint32_t L1_TILE_M_256 = 256U;

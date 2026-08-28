@@ -234,9 +234,12 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
                                  tilingData->topkWeightsPrefetch == 1);
     int64_t quantTokenScaleSize = ops::CeilAlign(
         static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tokenScaleBytes, static_cast<int64_t>(ALIGN_512));
-    // 非量化 combine 每个 hidden 元素存一个 BF16（2 字节）。
+    // 非量化 combine 每个 hidden 元素存一个 BF16（2 字节）；wire 布局按 W=B*512 stride 记录。
     int64_t combineTokenBytes =
         CalcCombineTokenBytes(static_cast<int64_t>(tilingData->h), 2, tilingData->combineQuantMode != COMBINE_NO_QUANT);
+    if (UseWireCombineLayout(tilingData)) {
+        combineTokenBytes = CalcCombineWireRowBytes(combineTokenBytes);
+    }
     int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
     OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", PEERMEM_DATA_OFFSET);
@@ -637,10 +640,18 @@ static ge::graphStatus CheckQuantAttrs(const gert::TilingContext *context, MegaM
  * 校验这会儿还不知道激活是什么 dtype，elemsPerByte 取 1 是保守上界，与既有校验口径一致。
  * 后四个标量形参要与下面聚合初始化的字段顺序对齐，类型都一样，写反了编译器不会报。
  */
+static uint8_t CalcGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config);
+
 static int64_t CalcLeastCclBufferSize(const gert::TilingContext *context, MegaMoeConfig &config,
                                       const MegaMoeAttrShapeContext &shape, int64_t numMaxTokensPerRank,
                                       int64_t epWorldSize, int64_t moeExpertPerRank, bool topkWeightsPrefetch)
 {
+    // wire combine 布局（A8W8 MTE Wave）下 combine 区按 W=B*512 stride 扩容；此时 tilingData
+    // 尚未填 groupedMatmulMode，用同一判定函数从 context 推导，保证与 device 谓词一致。
+    auto topoTypePtr = context->GetAttrs()->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    uint8_t groupedMatmulMode = CalcGroupedMatmulMode(context, config);
+    bool wireCombine = *topoTypePtr == TOPO_TYPE_MTE && (groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                         groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     PeermemSizeParams peermemSizeParams{static_cast<int64_t>(numMaxTokensPerRank),
                                         static_cast<int64_t>(shape.topK),
                                         static_cast<int64_t>(shape.h),
@@ -649,10 +660,10 @@ static int64_t CalcLeastCclBufferSize(const gert::TilingContext *context, MegaMo
                                         static_cast<int64_t>(shape.yDtypeSize),
                                         1U,
                                         topkWeightsPrefetch,
-                                        GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT};
+                                        GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT,
+                                        wireCombine};
     int64_t leastCclBufferSize = CalcPeermemLeastSize(peermemSizeParams);
     // MTE 路径会在 peermem 头部单独留一段异常 dump 区，窗口下限要把这段一起算进去。
-    auto topoTypePtr = context->GetAttrs()->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
     if (*topoTypePtr == TOPO_TYPE_MTE) {
         leastCclBufferSize += EXCEPTION_DUMP_REGION_SIZE;
     }
@@ -834,33 +845,39 @@ static void SetActivationAttrParams(const gert::TilingContext *context, MegaMoeC
 
 /*
  * 按 weight1 的 dtype、格式与 dispatch 量化模式判定 GMM 模式。
+ * 抽成纯函数：SetGroupedMatmulMode 落库使用；CalcLeastCclBufferSize 在 tilingData 尚未
+ * 填充 groupedMatmulMode 的校验阶段也要用同一判定推导 wire combine 布局。
  */
-static void SetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config,
-                                 MegaMoeTilingData *tilingData)
+static uint8_t CalcGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config)
 {
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
         // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
-        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
-    } else if (opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
-               weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
-               static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) ==
-                   ge::FORMAT_FRACTAL_NZ) {
+        return GROUPED_MATMUL_MODE_A8W4;
+    }
+    if (opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+        weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
+        static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
         // A8W8_NZ: fp8_e4m3fn activation × fp8_e4m3fn weight in NZ format (E5M2 not supported)
-        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
-    } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
+        return GROUPED_MATMUL_MODE_A8W8_NZ;
+    }
+    if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
         // A4W4: weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
         // NZ format: weight1 为 FRACTAL_NZ → A4W4_NZ；否则为 A4W4（ND 格式）。
         if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4_NZ;
-        } else {
-            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
+            return GROUPED_MATMUL_MODE_A4W4_NZ;
         }
-    } else {
-        // Generic: fp8 activation × fp8 weight in ND format
-        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
+        return GROUPED_MATMUL_MODE_A4W4;
     }
+    // Generic: fp8 activation × fp8 weight in ND format
+    return GROUPED_MATMUL_MODE_GENERAL;
+}
+
+static void SetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config,
+                                 MegaMoeTilingData *tilingData)
+{
+    tilingData->groupedMatmulMode = CalcGroupedMatmulMode(context, config);
 }
 
 /*
@@ -1138,6 +1155,17 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
         return bufferConfig;
     }
 
+    // wire combine（A8W8 MTE Wave）下 Unpermute 末尾追加 flag gather 区 + 同尺寸 reduce tmp + 32B
+    // 结果槽（kernel CreateTokenUnpermuteBuffers 同式），先从 UB 预算里扣掉。
+    if (UseWireCombineLayout(tilingData)) {
+        int64_t payloadBytes = CalcCombineTokenBytes(static_cast<int64_t>(tilingData->h), 2,
+                                                     tilingData->combineQuantMode != COMBINE_NO_QUANT);
+        int64_t flagScanBytes = ops::CeilAlign(
+            static_cast<int64_t>(tilingData->topK) * CalcCombineWireBlockCount(payloadBytes) * ALIGN_32, ALIGN_32);
+        uint32_t wireReserveBytes = static_cast<uint32_t>(flagScanBytes * 3 + ALIGN_32);
+        availableUbBytes = availableUbBytes > wireReserveBytes ? availableUbBytes - wireReserveBytes : 0U;
+    }
+
     uint32_t dataSlotBytes = 0U;
     uint32_t scaleBytes = 0U;
     CalcUnpermuteSlotAndScaleBytes(tilingData, bufferConfig, dataSlotBytes, scaleBytes);
@@ -1161,9 +1189,10 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
     bufferConfig.inputBufferCount = std::max(bufferConfig.inputBufferCount, MIN_UNPERMUTE_INPUT_BUFFER_COUNT);
 
     // 第二步：ring 深度已定，UB 还有富余就把 weight batch 撑大。
-    if (baseTokensPerBatch < coreTokenCount) {
-        // fixedBytes 包含 scale、一个累加/输出 slot 和已经选中的所有输入 slot。
-        uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
+    // wire 预留扣减后预算可能已不足以覆盖 fixedBytes，减法必须先判溢出（下溢会回绕成天量预算）。
+    uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
+    if (baseTokensPerBatch < coreTokenCount &&
+        availableUbBytes > fixedBytes + UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES) {
         // weightBudgetBytes 是 FP32 weight 及可选转换中转区可使用的 UB。
         uint32_t weightBudgetBytes = availableUbBytes - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
         uint32_t weightBytesPerToken =
@@ -1176,6 +1205,43 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
         }
     }
     return bufferConfig;
+}
+
+/*
+ * device CreateTokenUnpermuteBuffers 的排布终点（含 wire flag scratch）。用于 host 侧可行性
+ * 校验：wire 预留是新增占用，极端形状（如 topK=32、h=8192）可能把既有紧凑布局挤出 UB，
+ * 此时必须显式报错而不是让 kernel 越界。
+ */
+static uint32_t CalcUnpermuteLayoutEndBytes(const MegaMoeTilingData *tilingData,
+                                            const MegaMoeUnpermuteBufferConfig &bufferConfig)
+{
+    if (bufferConfig.tokensPerBatch == 0) {
+        return 0U;
+    }
+    uint32_t dataSlotBytes = bufferConfig.bf16SlotElementCount * static_cast<uint32_t>(sizeof(uint16_t)) +
+                             bufferConfig.fp32SlotElementCount * static_cast<uint32_t>(sizeof(float));
+    uint32_t scaleBytes = 0U;
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t scaleElementCount = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+        scaleBytes = static_cast<uint32_t>(ops::CeilAlign(
+                         static_cast<uint64_t>(scaleElementCount) * sizeof(uint16_t) * DEQUANT_BF16_SCALE_EXPANSION,
+                         static_cast<uint64_t>(ALIGN_32))) +
+                     static_cast<uint32_t>(
+                         ops::CeilAlign(static_cast<uint64_t>(scaleElementCount) * sizeof(float) *
+                                            DEQUANT_FP32_SCALE_EXPANSION,
+                                        static_cast<uint64_t>(ALIGN_32)));
+    }
+    uint32_t totalBytes = (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes +
+                          bufferConfig.topKWeightsBufferBytes + bufferConfig.topKWeightsConversionBufferBytes +
+                          scaleBytes;
+    if (UseWireCombineLayout(tilingData)) {
+        int64_t payloadBytes = CalcCombineTokenBytes(static_cast<int64_t>(tilingData->h), 2,
+                                                     tilingData->combineQuantMode != COMBINE_NO_QUANT);
+        int64_t flagScanBytes = ops::CeilAlign(
+            static_cast<int64_t>(tilingData->topK) * CalcCombineWireBlockCount(payloadBytes) * ALIGN_32, ALIGN_32);
+        totalBytes += static_cast<uint32_t>(flagScanBytes * 3 + ALIGN_32);
+    }
+    return totalBytes;
 }
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
@@ -1294,8 +1360,8 @@ static void SetSendMaskBufferConfigs(MegaMoeTilingData *tilingData, uint32_t act
 /*
  * 设置 Unpermute 的完整 chunk 与 tail chunk 两套 UB 配置，并记录完整 chunk 对应的 core 数。
  */
-static void SetUnpermuteBufferConfigs(MegaMoeTilingData *tilingData, ge::DataType topKWeightsDataType,
-                                      uint32_t availableUbBytes)
+static ge::graphStatus SetUnpermuteBufferConfigs(MegaMoeTilingData *tilingData, ge::DataType topKWeightsDataType,
+                                                 uint32_t availableUbBytes)
 {
     /*
      * 与 kernel Unpermute 开头的 TilingByCore(m_, ..., align=1) 一一对应。TilingByCore 使用：
@@ -1321,6 +1387,14 @@ static void SetUnpermuteBufferConfigs(MegaMoeTilingData *tilingData, ge::DataTyp
         tailIsFullTokenChunk ? MegaMoeUnpermuteBufferConfig{} :
                                CalcUnpermuteBufferConfig(tilingData, tailTokenChunkSize,
                                                          topKWeightsConversionElementBytes, availableUbBytes);
+    // wire flag scratch 是预算的新增占用：装不下必须显式失败（MIN_UNPERMUTE_INPUT_BUFFER_COUNT
+    // 强抬 ring 深度后 device 排布可能超出 UB，静默放行等于 kernel 越界）。
+    uint32_t fullLayoutEnd = CalcUnpermuteLayoutEndBytes(tilingData, tilingData->unpermuteConfigForFullTokenChunk);
+    uint32_t tailLayoutEnd = CalcUnpermuteLayoutEndBytes(tilingData, tilingData->unpermuteConfigForTailTokenChunk);
+    if (fullLayoutEnd > availableUbBytes || tailLayoutEnd > availableUbBytes) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoeConfig &config,
@@ -1345,7 +1419,11 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
-    SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
+    OP_TILING_CHECK(SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(),
+                            "unpermute UB layout (with wire combine flag scratch) exceeds UB capacity; "
+                            "this h/topK combination is not supported on the wire combine path."),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

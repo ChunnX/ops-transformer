@@ -285,6 +285,13 @@ struct WaveCombineBufferConfig {
     uint32_t quantRowStorageBytes = 0;
     uint32_t slotStrideBytes = 0;
     uint32_t quantTempElements = 0;
+    // ==== wire combine（data-with-flag）扩展，wireBlockCount==0 表示 wire 关闭走旧路径 ====
+    uint32_t wirePayloadBytes = 0;    // P：一条记录的真实 payload 字节数（NO_QUANT=rowBytes，quant=quantRowStorageBytes）
+    uint32_t wireBlockCount = 0;      // B = ceil(P / 480)
+    uint32_t wireRowBytes = 0;        // W = B * 512，通信区与 slot 内 wire 区的 stride
+    uint32_t wireSlotByteOffset = 0;  // wire 发送区在 slot 内的字节偏移（NO_QUANT 为 0，quant 在 bf16+quant 区之后）
+    uint32_t rowBufferCount = 0;      // wire 生效时的 ring 深度（W 大时可低于默认值；0 = 用编译期默认）
+    int32_t epoch = 0;                // READY flag 值（本轮第一次全卡同步计数）
 };
 
 struct WaveCombineScratch {
@@ -296,6 +303,8 @@ struct WaveCombineScratch {
 constexpr uint32_t WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM = 6U;
 constexpr uint32_t WAVE_COMBINE_QUANT_ROW_BUFFER_NUM = 2U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
+// Combine ring 可用的 UB 区间为 [64KB, 160KB)（见 wave 模板 UB 布局注释），wire 模式按此收缩 ring 深度。
+constexpr uint32_t WAVE_COMBINE_UB_CAPACITY_BYTES = 96U * 1024U;
 constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
 /*
@@ -317,11 +326,13 @@ __aicore__ inline QuantCombineBufferConfig CreateQuantCombineBufferConfig(uint32
 }
 
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
+// slotCountOverride!=0 时使用运行时 ring 深度（wire 模式下 W 变大可能低于编译期默认值）。
 template <uint8_t CombineMode>
-__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount)
+__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount, uint32_t slotCountOverride = 0U)
 {
-    constexpr uint32_t rowBufferCount =
+    constexpr uint32_t defaultRowBufferCount =
         CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
+    uint32_t rowBufferCount = slotCountOverride != 0U ? slotCountOverride : defaultRowBufferCount;
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
     for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
         WaitFlag<HardEvent::MTE3_MTE2>(
@@ -344,6 +355,99 @@ __aicore__ inline void PreloadWaveCombineMetaInfo(const Params &params, WaveComb
     WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
 }
 
+/*
+ * 把 slot 内已就绪的 wire 记录（480B payload + 32B epoch flag 交错，共 W 字节）发到目标行。
+ * 按 512B 块逐描述符发送：与旧路径 SendCombineTokenRow 的分片粒度一致——512B 是跨卡互联
+ * 多描述符流水的实测调优值（整行单发实测 combine 慢 ~3 倍）；且逐块单描述符使「块内 payload
+ * 先于块尾 flag 可见」的序保证落在单descriptor内，比整行单发更强。
+ */
+__aicore__ inline void SendCombineTokenRowWire(const WaveCombineBufferConfig &bufferConfig,
+                                               uint64_t gmRemoteBaseOffset, LocalTensor<int32_t> &tokenMetaInfo,
+                                               LocalTensor<uint8_t> &wireUb, const Params &params)
+{
+    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(tokenMetaInfo, 0U);
+    // 远端写与旧路径同型（bfloat16_t）：b8 GlobalTensor 的跨 die MTE3 写实测不落地（探针坐实
+    // 发送端地址/内容全对而窗口无字节）；wire 布局各偏移均为 512 的倍数，元素化无损。
+    AscendC::GlobalTensor<bfloat16_t> gmRemoteD;
+    gmRemoteD.SetGlobalBuffer(
+        reinterpret_cast<__gm__ bfloat16_t *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
+    LocalTensor<bfloat16_t> wireUbBf16 = wireUb.template ReinterpretCast<bfloat16_t>();
+    uint64_t gmDstByteOffset = CombineImpl::GetCombineDstRowIndex(route, params) * bufferConfig.wireRowBytes;
+    constexpr uint32_t wireBlockBytes = static_cast<uint32_t>(COMBINE_WIRE_BLOCK_BYTES);
+    AscendC::DataCopyExtParams blockParams{1U, wireBlockBytes, 0U, 0U, 0U};
+    for (uint32_t blockIdx = 0U; blockIdx < bufferConfig.wireBlockCount; ++blockIdx) {
+        uint32_t blockByteOffset = blockIdx * wireBlockBytes;
+        AscendC::DataCopyPad(gmRemoteD[(gmDstByteOffset + blockByteOffset) / sizeof(bfloat16_t)],
+                             wireUbBf16[blockByteOffset / sizeof(bfloat16_t)], blockParams);
+    }
+}
+
+/*
+ * wire 版单 token 发送。slot 内 wire 区的 flag 槽位（每 512B 块尾 32B）已在
+ * InitCombineBuffers 按本轮 epoch 预填，本函数只写各块的 480B payload 段后整条发出：
+ * NO_QUANT 直接以带 gap 的 MTE2 把 GMM2 输出行搬成 wire 布局；quant 先按旧流程量化出
+ * 连续记录，再用向量 Copy（dst 步长 16、src 步长 15 个 32B 块）展开进 wire 区。
+ */
+template <uint8_t CombineMode, bool IsBufferReuse>
+__aicore__ inline void SendWaveCombineTokenWire(const MoeStageCommonConfig &common,
+                                                const WaveCombineBufferConfig &bufferConfig,
+                                                WaveCombineScratch &scratch, const Params &params,
+                                                GlobalTensor<bfloat16_t> &gmm2OutGm, uint64_t gmRemoteBaseOffset,
+                                                uint32_t tokenLocal, LocalTensor<int32_t> &tokenMetaInfo, uint32_t slot)
+{
+    TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
+    if constexpr (IsBufferReuse) {
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+    }
+    uint32_t slotByteBase = slot * bufferConfig.slotStrideBytes;
+    LocalTensor<uint8_t> wireUb =
+        scratch.rowBufferTensor.template ReinterpretCast<uint8_t>()[slotByteBase + bufferConfig.wireSlotByteOffset];
+    constexpr uint32_t wireDataBytes = static_cast<uint32_t>(COMBINE_WIRE_BLOCK_DATA_BYTES);
+    constexpr uint32_t wireBlockBytes = static_cast<uint32_t>(COMBINE_WIRE_BLOCK_BYTES);
+    uint32_t fullBlockCount = bufferConfig.wireBlockCount - 1U;
+    uint32_t tailBytes = bufferConfig.wirePayloadBytes - fullBlockCount * wireDataBytes;
+    if constexpr (CombineMode == COMBINE_NO_QUANT) {
+        // GM 连续行 → UB wire 布局：每 480B 一块，UB 侧留 32B flag gap（dstStride 单位 32B）。
+        LocalTensor<bfloat16_t> wireUbBf16 = wireUb.template ReinterpretCast<bfloat16_t>();
+        uint64_t srcElemBase = static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim;
+        DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
+        if (fullBlockCount > 0U) {
+            DataCopyExtParams fullParams{static_cast<uint16_t>(fullBlockCount), wireDataBytes, 0U, 1U, 0U};
+            DataCopyPad(wireUbBf16, gmm2OutGm[srcElemBase], fullParams, gm2UbPad);
+        }
+        DataCopyExtParams tailParams{1U, tailBytes, 0U, 0U, 0U};
+        DataCopyPad(wireUbBf16[fullBlockCount * wireBlockBytes / sizeof(bfloat16_t)],
+                    gmm2OutGm[srcElemBase + fullBlockCount * wireDataBytes / sizeof(bfloat16_t)], tailParams, gm2UbPad);
+        SetFlag<HardEvent::MTE2_MTE3>(eventId);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+    } else {
+        // 旧流程：整行 bf16 搬入 → 量化出连续记录；再展开进 wire 区。
+        LocalTensor<bfloat16_t> rowUb = scratch.rowBufferTensor[slotByteBase / sizeof(bfloat16_t)];
+        LocalTensor<bfloat16_t> quantUb =
+            scratch.rowBufferTensor[(slotByteBase + bufferConfig.rowStrideBytes) / sizeof(bfloat16_t)];
+        DataCopyExtParams gm2UbParams{1U, bufferConfig.rowBytes, 0U, 0U, 0U};
+        DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
+        DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim], gm2UbParams, gm2UbPad);
+        SetFlag<HardEvent::MTE2_V>(eventId);
+        WaitFlag<HardEvent::MTE2_V>(eventId);
+        Mxfp8::QuantMxFp8<CombineMode, bfloat16_t>(quantUb, rowUb, scratch.quantTempTensor, common.tokenHiddenDim);
+        PipeBarrier<PIPE_V>();
+        // 连续量化记录 → wire 布局：每次迭代搬 256B/224B，dst 前进 512B、src 前进 480B。
+        LocalTensor<int32_t> quantInt32 = quantUb.template ReinterpretCast<int32_t>();
+        LocalTensor<int32_t> wireInt32 = wireUb.template ReinterpretCast<int32_t>();
+        constexpr uint32_t INT32_PER_256 = 64U;
+        constexpr uint32_t INT32_PER_224 = 56U;
+        uint8_t repeatCount = static_cast<uint8_t>(bufferConfig.wireBlockCount);
+        Copy(wireInt32, quantInt32, static_cast<uint64_t>(INT32_PER_256), repeatCount, {1, 1, 16, 15});
+        Copy(wireInt32[INT32_PER_256], quantInt32[INT32_PER_256], static_cast<uint64_t>(INT32_PER_224), repeatCount,
+             {1, 1, 16, 15});
+        SetFlag<HardEvent::V_MTE3>(eventId);
+        WaitFlag<HardEvent::V_MTE3>(eventId);
+    }
+    SendCombineTokenRowWire(bufferConfig, gmRemoteBaseOffset, tokenMetaInfo, wireUb, params);
+    SetFlag<HardEvent::MTE3_MTE2>(eventId);
+}
+
 // 搬运并按需量化一个 wave Combine token 后发送；函数内部不包含 GMM2-ready 依赖。
 template <uint8_t CombineMode, bool IsBufferReuse>
 __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
@@ -352,6 +456,11 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
                                             uint64_t gmRemoteBaseOffset, uint32_t tokenLocal,
                                             LocalTensor<int32_t> &tokenMetaInfo, uint32_t slot)
 {
+    if (bufferConfig.wireBlockCount != 0U) {
+        SendWaveCombineTokenWire<CombineMode, IsBufferReuse>(common, bufferConfig, scratch, params, gmm2OutGm,
+                                                             gmRemoteBaseOffset, tokenLocal, tokenMetaInfo, slot);
+        return;
+    }
     TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
     if constexpr (IsBufferReuse) {
         WaitFlag<HardEvent::MTE3_MTE2>(eventId);
@@ -402,8 +511,9 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmm2OutGlobal));
     uint64_t gmRemoteBaseOffset =
         static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
-    constexpr uint32_t rowBufferCount =
+    constexpr uint32_t defaultRowBufferCount =
         CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
+    uint32_t rowBufferCount = bufferConfig.rowBufferCount != 0U ? bufferConfig.rowBufferCount : defaultRowBufferCount;
     uint32_t tokenIdxInSlice = 0U;
     uint32_t firstUseCount = rowSequence < rowBufferCount ? rowBufferCount - rowSequence : 0U;
     firstUseCount = firstUseCount < tokenCount ? firstUseCount : tokenCount;

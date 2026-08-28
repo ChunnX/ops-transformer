@@ -96,6 +96,48 @@ HOST_DEVICE int64_t CalcCombineTokenBytes(int64_t h, int64_t yDtypeSize, bool is
     return Ops::Base::CeilAlign(tokenStorageBytes + storedScaleBytes, ALIGN_32);
 }
 
+// ==================== wire combine 布局（data-with-flag，A8W8 MTE Wave 专用） ====================
+// 每 512B wire 块 = 480B payload + 32B READY flag（8×int32，全部写 epoch）。
+// 发送端把 flag 与数据打进同一条 W 字节记录一次发出；接收端只认块尾 flag 与本轮 epoch 相等。
+// 依赖的传输序：512B 块内 payload 先于块尾 flag 可见；块与块之间不保序（参考
+// moe_distribute_dispatch_v2 arch22 full-mesh 同款布局）。
+constexpr int64_t COMBINE_WIRE_BLOCK_DATA_BYTES = 480;
+constexpr int64_t COMBINE_WIRE_BLOCK_BYTES = 512;
+
+// B = ceil(P / 480)：一条 combine 记录需要的 wire 块数。
+HOST_DEVICE int64_t CalcCombineWireBlockCount(int64_t payloadBytes)
+{
+    return Ops::Base::CeilDiv(payloadBytes, COMBINE_WIRE_BLOCK_DATA_BYTES);
+}
+
+// W = B * 512：通信区中一条 combine 记录的实际 stride。
+HOST_DEVICE int64_t CalcCombineWireRowBytes(int64_t payloadBytes)
+{
+    return CalcCombineWireBlockCount(payloadBytes) * COMBINE_WIRE_BLOCK_BYTES;
+}
+
+/*
+ * wire 布局是否生效：仅 MTE 拓扑的 A8W8 Wave 路径（GENERAL / A8W8_NZ）。
+ * A8W4/A4W4 的 NO_QUANT combine 走列 tile 分片发送，与行粒度 flag 布局天然错位，保持旧布局。
+ * 本谓词只由 tilingData 静态字段决定，host 校验与 device 寻址天然一致；
+ * 去同步（删全核/全卡同步）是否生效由 kernel 在 wire 基础上再叠加无丢弃判定（见 wave 模板）。
+ */
+HOST_DEVICE bool UseWireCombineLayout(const MegaMoeTilingData *tilingData)
+{
+    return tilingData->topoType == TOPO_TYPE_MTE &&
+           (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+}
+
+// 无丢弃时 maxOutputSize 的上界：每 token 至多 min(topK, 本卡专家数) 条路由落到同一 rank。
+// dispatch 的容量 clamp 只有在 maxOutputSize 低于该上界时才可能触发（丢 token → 行永不到达）。
+HOST_DEVICE int64_t CalcNoDropMaxOutputSize(int64_t numMaxTokensPerRank, int64_t epWorldSize, int64_t topK,
+                                            int64_t moeExpertPerRank)
+{
+    int64_t routesPerToken = topK < moeExpertPerRank ? topK : moeExpertPerRank;
+    return numMaxTokensPerRank * epWorldSize * routesPerToken;
+}
+
 // 计算窗口总大小的入参（供 host 侧 tiling 校验 cclBufferSize 使用）。
 struct PeermemSizeParams {
     int64_t numMaxTokensPerRank;
@@ -107,6 +149,8 @@ struct PeermemSizeParams {
     uint32_t elemsPerByte;
     bool topkWeightsPrefetch;
     bool isQuantCombine;
+    // A8W8 MTE Wave 的 wire combine 布局：combine 区按 W=B*512 stride 扩容（含块尾 flag）。
+    bool wireCombine;
 };
 
 /*
@@ -122,6 +166,9 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
         CalcQuantTokenScaleBytes(params.h, params.elemsPerByte, params.topK, params.topkWeightsPrefetch);
     int64_t quantTokenScaleSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * tokenScaleBytes, ALIGN_512);
     int64_t combineTokenBytes = CalcCombineTokenBytes(params.h, params.yDtypeSize, params.isQuantCombine);
+    if (params.wireCombine) {
+        combineTokenBytes = CalcCombineWireRowBytes(combineTokenBytes);
+    }
     int64_t combineSendSize =
         Ops::Base::CeilAlign(params.numMaxTokensPerRank * params.topK * combineTokenBytes, ALIGN_512);
     return PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;

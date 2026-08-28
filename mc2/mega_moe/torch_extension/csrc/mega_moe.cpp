@@ -240,7 +240,11 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
 
     // combine_send_size
-    int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
+    // A8W8 MTE Wave 的 wire combine 布局按每 480B payload 附 32B flag 扩为 512B 块
+    // （单条记录 stride = ceil(P/480)*512，P = hidden*2 为各 combine 模式的 payload 上界）。
+    // 此处统一按 wire 上界申请：非 wire 模式只是少量过配，精确下限由 host tiling 校验把关。
+    int64_t combineWireRowBytes = (hidden * 2 + 479) / 480 * 512;
+    int64_t combineOut = CeilAlign(numMaxTokensPerRank * numTopk * combineWireRowBytes, 512);
 
     int64_t totalBytes =
         EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineOut;
