@@ -204,10 +204,10 @@ private:
     FragScaleA tailFragScaleA_{};
     FragTensorC tailFragC_{};
 
-    // ---- Address bookkeeping ----
-    GM_ADDR cFragAddrs_[16]{};
-    GM_ADDR winDataRankBase_[16]{};
-    GM_ADDR winScaleRankBase_[16]{};
+    static constexpr uint32_t MAX_RANK_SIZE = 16U; // 与 tiling rank_size 上限一致
+    GM_ADDR cFragAddrs_[MAX_RANK_SIZE]{};
+    GM_ADDR winDataRankBase_[MAX_RANK_SIZE]{};
+    GM_ADDR winScaleRankBase_[MAX_RANK_SIZE]{};
 
     static constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
     GM_ADDR headAddrListA_[MAX_FRAG]{};
@@ -341,8 +341,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), MakeLayoutScaleB{}(scaleKLen, Ni));
     __gm__ float *biasNull = nullptr;
     __gm__ float *biasPtr = params.isBias ? biasGmAddr_ : biasNull;
-    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasPtr),
-                                 Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
+    auto gmBias =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasPtr), Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
 
     const auto &mTailTile = mmT.mTailTile;
     const auto &nTailTile = mmT.nTailTile;

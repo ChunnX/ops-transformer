@@ -13,7 +13,9 @@ from cann_ops_transformer.op_builder import OpBuilder
 
 class CommChannelBuilderManagerOpBuilder(OpBuilder):
     def __init__(self):
-        super(CommChannelBuilderManagerOpBuilder, self).__init__("comm_channel_builder_manager", category="mc2")
+        super(CommChannelBuilderManagerOpBuilder, self).__init__(
+            "comm_channel_builder_manager", category="mc2"
+        )
 
     def sources(self):
         return ["csrc/mc2/comm_channel_builder_manager.cpp"]
@@ -29,15 +31,15 @@ class CommChannelBuilderManagerOpBuilder(OpBuilder):
         candidate_paths = [
             os.path.join(
                 self._cann_path,
-                "opp/vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common"
+                "opp/vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common",
             ),
             os.path.join(
                 self._cann_path,
-                "vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common"
+                "vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common",
             ),
             os.path.join(
                 self._cann_path,
-                "opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer/ascendc/common"
+                "opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer/ascendc/common",
             ),
         ]
         for path in candidate_paths:
@@ -69,5 +71,7 @@ class _LazyClassProxy:
 
 def __getattr__(name):
     if name == "CommChannelBuilderManager":
-        return _LazyClassProxy("CommChannelBuilderManager", comm_channel_builder_manager_op_builder)
+        return _LazyClassProxy(
+            "CommChannelBuilderManager", comm_channel_builder_manager_op_builder
+        )
     raise AttributeError(f"module '{__name__}' has no attribute {name}")
