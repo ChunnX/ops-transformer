@@ -1555,7 +1555,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::InitBase(
     }
 
     int32_t expertGroupAlign = groupCount_ * perGroupExpertCountAlign_;
-    pipe_->InitBuffer(biasBuf_, expertGroupAlign * sizeof(T));
+    pipe_->InitBuffer(biasBuf_, expertGroupAlign * sizeof(float) * (sizeof(float) / sizeof(T)));
     pipe_->InitBuffer(xSigmoidBuf_, expertGroupAlign * sizeof(float));
     pipe_->InitBuffer(xBiasBuf_, expertGroupAlign * sizeof(float));
     pipe_->InitBuffer(indexBuffer_, expertGroupAlign * sizeof(int32_t));

@@ -82,7 +82,6 @@ private:
     using MoeGatingTopKRegbase<T, U1, U2>::outFlag_;
     using MoeGatingTopKRegbase<T, U1, U2>::groupSelectMode_;
     using MoeGatingTopKRegbase<T, U1, U2>::tilingData_;
-    using MoeGatingTopKRegbase<T, U1, U2>::CopyInBias;
     using MoeGatingTopKRegbase<T, U1, U2>::CopyOutXNorm;
     using MoeGatingTopKRegbase<T, U1, U2>::TopKComputeCore;
     using MoeGatingTopKRegbase<T, U1, U2>::HashComputeCore;
@@ -90,6 +89,7 @@ private:
     using MoeGatingTopKRegbase<T, U1, U2>::PadWithMinFp32;
 
     __aicore__ inline void CopyInXBatch(int64_t batchIdx, int64_t rowsInBatch);
+    __aicore__ inline void CopyInBias();
     __aicore__ inline void ComputeNormForTop1(LocalTensor<float> xInTensor, int64_t rowInBatch);
     __aicore__ inline void CopyOutXNormTop1(int64_t globalRow);
     __aicore__ inline void ComputeXForBatchRow(LocalTensor<float> xInTensor, int64_t rowOffset);
@@ -117,6 +117,36 @@ private:
     int64_t batchRows_ = 0;
     int64_t kStride_ = 0;
 };
+
+template <typename T, typename U1, typename U2>
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T, U1, U2>::CopyInBias()
+{
+    if (!hasBias_) {
+        return;
+    }
+    LocalTensor<float> biasTensor = biasBuf_.template Get<float>();
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = static_cast<uint16_t>(groupCount_);
+    dataCopyParams.blockLen = static_cast<uint32_t>(perGroupExpertCount_ * sizeof(T));
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = static_cast<uint32_t>((perGroupExpertCountAlign_ - perGroupExpertCount_) * sizeof(T) / BLOCK_BYTES);
+    DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
+    if constexpr (IsSameType<T, float>::value) {
+        DataCopyPad(biasTensor, biasGm_, dataCopyParams, dataCopyPadParams);
+        event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+    } else {
+        DataCopyPad(biasTensor[expertCountAlign_].template ReinterpretCast<T>(), biasGm_, dataCopyParams,
+                    dataCopyPadParams);
+        event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        Cast(biasTensor, biasTensor[expertCountAlign_].template ReinterpretCast<T>(), RoundMode::CAST_NONE,
+             expertCountAlign_);
+        PipeBarrier<PIPE_V>();
+    }
+}
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T, U1, U2>::CopyInXBatch(int64_t batchIdx, int64_t rowsInBatch)
@@ -879,7 +909,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T, U1, U2>::Init(GM_ADDR
 
     int64_t batchExpertAlign = batchRows_ * expertCountAlign_;
     pipe_->InitBuffer(xInQueue_, WG_CONSTANT_TWO, batchExpertAlign * sizeof(float) * (sizeof(float) / sizeof(T)));
-    pipe_->InitBuffer(yOutQueue_, 1, batchRows_ * kStride_ * sizeof(T));
+    pipe_->InitBuffer(yOutQueue_, 1, batchRows_ * kStride_ * sizeof(float));
     pipe_->InitBuffer(expertIdxOutQueue_, 1, batchRows_ * kStride_ * sizeof(int32_t));
     pipe_->InitBuffer(outOutQueue_, 1, expertCountAlign_ * sizeof(float));
 
