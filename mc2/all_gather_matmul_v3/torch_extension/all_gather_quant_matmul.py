@@ -138,6 +138,110 @@ def _npu_all_gather_quant_matmul(
     return result
 
 
+def _check_params(
+    x1,
+    x2,
+    x1_scale,
+    x2_scale,
+    x1_dtype,
+    x2_dtype,
+    x1_scale_dtype,
+    x2_scale_dtype,
+    comm_mode,
+):
+    """Validate input parameters."""
+    torch._check(
+        comm_mode == "urma",
+        lambda: f"comm_mode only supports 'urma', but got '{comm_mode}'. "
+        f"Please pass comm_mode='urma' explicitly.",
+    )
+    fp4_dtype_enums = (296,)
+    if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
+        torch._check(
+            False,
+            lambda: f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} "
+            f"is not a valid fp4 enum. Please pass x1_dtype=296 (fp4_e2m1).",
+        )
+    if x2.dtype == torch.uint8 and x2_dtype not in fp4_dtype_enums:
+        torch._check(
+            False,
+            lambda: f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} "
+            f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1).",
+        )
+    fp8_e8m0_dtype_enum = 293
+    if (
+        x1_scale is not None
+        and x1_scale.dtype == torch.uint8
+        and x1_scale_dtype != fp8_e8m0_dtype_enum
+    ):
+        torch._check(
+            False,
+            lambda: f"x1_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
+            f"x1_scale_dtype={x1_scale_dtype} is not 293 (fp8_e8m0). "
+            f"Please pass x1_scale_dtype=293.",
+        )
+    if (
+        x2_scale is not None
+        and x2_scale.dtype == torch.uint8
+        and x2_scale_dtype != fp8_e8m0_dtype_enum
+    ):
+        torch._check(
+            False,
+            lambda: f"x2_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
+            f"x2_scale_dtype={x2_scale_dtype} is not 293 (fp8_e8m0). "
+            f"Please pass x2_scale_dtype=293.",
+        )
+
+
+def _prepare_comm_context(group):
+    """Create communication context, return context/buffer/rank info."""
+    rank_id = torch.distributed.get_rank(group)
+    rank_size = torch.distributed.get_world_size(group)
+    if rank_size <= 0:
+        rank_size = torch.distributed.get_rank_size()
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
+    channel_builder = CommChannelBuilderManager(group_name)
+    ctx_tag = group_name + "all_gather_matmul"
+    context = channel_builder.create_context(ctx_tag)
+    hccl_buffer_size = channel_builder.get_hccl_buffer_size()
+    return context, hccl_buffer_size, rank_id, rank_size, group_name
+
+
+def _check_hccl_buffer(x1, x1_scale, rank_size, hccl_buffer_size):
+    """Check comm data + 2MB reserved <= hccl_buffer_size."""
+    hccl_buffer_reserved_bytes = 2 * 1024 * 1024
+    m_per_rank = x1.size(0)
+    k = x1.size(1)
+    x1_data_bytes = rank_size * m_per_rank * k * x1.element_size()
+    scale_k_groups = (k + 63) // 64
+    x1_scale_bytes = 0
+    if x1_scale is not None:
+        x1_scale_bytes = (
+            rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
+        )
+    comm_data_bytes = x1_data_bytes + x1_scale_bytes
+    need_bytes = comm_data_bytes + hccl_buffer_reserved_bytes
+    _logger.info(
+        "hccl_buffer_size=%s bytes (%.2f MB), comm_data_bytes=%s bytes (%.2f MB) "
+        "= data %s + scale %s, need (with 2MB reserved)=%s",
+        hccl_buffer_size,
+        hccl_buffer_size / 1024 / 1024,
+        comm_data_bytes,
+        comm_data_bytes / 1024 / 1024,
+        x1_data_bytes,
+        x1_scale_bytes,
+        need_bytes,
+    )
+    torch._check(
+        need_bytes <= hccl_buffer_size,
+        lambda: f"Communication data size + 2MB reserved ({need_bytes} bytes = "
+        f"data {x1_data_bytes} + scale {x1_scale_bytes} + reserved "
+        f"{hccl_buffer_reserved_bytes}) exceeds hccl_buffer_size "
+        f"({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
+        f"Please increase HCCL_BUFFSIZE environment variable.",
+    )
+
+
 def all_gather_quant_matmul(
     x1: torch.Tensor,
     x2: torch.Tensor,
@@ -191,96 +295,21 @@ def all_gather_quant_matmul(
     """
     if group_sizes is None:
         group_sizes = []
-    # 拦截：当前仅支持 urma；缺省值 ai_cpu 不支持，用户不传 comm_mode 时在此拦下并提示
-    torch._check(
-        comm_mode == "urma",
-        lambda: f"comm_mode only supports 'urma', but got '{comm_mode}'. "
-        f"Please pass comm_mode='urma' explicitly.",
+    _check_params(
+        x1,
+        x2,
+        x1_scale,
+        x2_scale,
+        x1_dtype,
+        x2_dtype,
+        x1_scale_dtype,
+        x2_scale_dtype,
+        comm_mode,
     )
-
-    # 拦截：uint8 tensor 只能搭配 fp4_e2m1 dtype enum（296）传入
-    fp4_dtype_enums = (296,)
-    if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
-        torch._check(
-            False,
-            lambda: f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} "
-            f"is not a valid fp4 enum. Please pass x1_dtype=296 (fp4_e2m1).",
-        )
-    if x2.dtype == torch.uint8 and x2_dtype not in fp4_dtype_enums:
-        torch._check(
-            False,
-            lambda: f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} "
-            f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1).",
-        )
-
-    # 拦截：uint8 scale tensor 必须搭配 fp8_e8m0 枚举（293）传入
-    fp8_e8m0_dtype_enum = 293
-    if (
-        x1_scale is not None
-        and x1_scale.dtype == torch.uint8
-        and x1_scale_dtype != fp8_e8m0_dtype_enum
-    ):
-        torch._check(
-            False,
-            lambda: f"x1_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
-            f"x1_scale_dtype={x1_scale_dtype} is not 293 (fp8_e8m0). "
-            f"Please pass x1_scale_dtype=293.",
-        )
-    if (
-        x2_scale is not None
-        and x2_scale.dtype == torch.uint8
-        and x2_scale_dtype != fp8_e8m0_dtype_enum
-    ):
-        torch._check(
-            False,
-            lambda: f"x2_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
-            f"x2_scale_dtype={x2_scale_dtype} is not 293 (fp8_e8m0). "
-            f"Please pass x2_scale_dtype=293.",
-        )
-    rank_id = torch.distributed.get_rank(group)
-    rank_size = torch.distributed.get_world_size(group)
-    if rank_size <= 0:
-        rank_size = torch.distributed.get_rank_size()
-    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
-
-    channel_builder = CommChannelBuilderManager(group_name)
-    ctx_tag = group_name + "all_gather_matmul"
-    context = channel_builder.create_context(ctx_tag)
-    hccl_buffer_size = channel_builder.get_hccl_buffer_size()
-
-    # 拦截：通信数据总量（x1 data + x1_scale）+ 2MB 预留 不能超过 hccl_buffer_size
-    hccl_buffer_reserved_bytes = 2 * 1024 * 1024
-    m_per_rank = x1.size(0)
-    k = x1.size(1)
-    x1_data_bytes = rank_size * m_per_rank * k * x1.element_size()
-    scale_k_groups = (k + 63) // 64
-    x1_scale_bytes = 0
-    if x1_scale is not None:
-        x1_scale_bytes = (
-            rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
-        )
-    comm_data_bytes = x1_data_bytes + x1_scale_bytes
-    need_bytes = comm_data_bytes + hccl_buffer_reserved_bytes
-    _logger.info(
-        "hccl_buffer_size=%s bytes (%.2f MB), comm_data_bytes=%s bytes (%.2f MB) "
-        "= data %s + scale %s, need (with 2MB reserved)=%s",
-        hccl_buffer_size,
-        hccl_buffer_size / 1024 / 1024,
-        comm_data_bytes,
-        comm_data_bytes / 1024 / 1024,
-        x1_data_bytes,
-        x1_scale_bytes,
-        need_bytes,
+    context, hccl_buffer_size, rank_id, rank_size, group_name = _prepare_comm_context(
+        group
     )
-    torch._check(
-        need_bytes <= hccl_buffer_size,
-        lambda: f"Communication data size + 2MB reserved ({need_bytes} bytes = "
-        f"data {x1_data_bytes} + scale {x1_scale_bytes} + reserved "
-        f"{hccl_buffer_reserved_bytes}) exceeds hccl_buffer_size "
-        f"({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
-        f"Please increase HCCL_BUFFSIZE environment variable.",
-    )
-
+    _check_hccl_buffer(x1, x1_scale, rank_size, hccl_buffer_size)
     _logger.info(
         "rank=%s, rank_size=%s, comm_mode=%s, calling npu_all_gather_quant_matmul ...",
         rank_id,
