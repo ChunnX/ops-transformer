@@ -42,14 +42,20 @@ __aicore__ inline void GmmWeightQuantSampleMxKernel(GM_ADDR x, GM_ADDR weight, G
     recipeTiling.secondTailBlockCount = gmmBaseParams->secondTailBlockCount;
     recipeTiling.baseM = mmTilingData->baseM;
     recipeTiling.groupListType = gmmBaseParams->groupListType;
+    recipeTiling.singleWeight = gmmBaseParams->singleWeight;
 
     GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
-    GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
-    GM_ADDR scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
+    // The recipe consumes a raw base in single-weight mode and resolves each tensor-list entry in multi-weight mode.
+    GM_ADDR weightAddr = weight;
+    GM_ADDR scaleBAddr = antiquantScale;
+    if (gmmBaseParams->singleWeight != 0) {
+        weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
+        scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
+    }
     GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
 
-    Blaze::Gemm::Kernel::RunWeightQuantGroupedMatmulMxfp8Fp4Recipe(xAddr, weightAddr, perTokenScale, scaleBAddr,
-                                                                   groupList, yAddr, recipeTiling);
+    Blaze::Gemm::Kernel::RunWeightQuantGroupedMatmulMxfp8Fp4Recipe<WeightType, YType>(
+        xAddr, weightAddr, perTokenScale, scaleBAddr, groupList, yAddr, recipeTiling);
 }
 
 } // namespace GROUPED_MATMUL
