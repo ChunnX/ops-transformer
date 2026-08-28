@@ -597,14 +597,14 @@ h2 {{ margin:0 0 14px; font-size:17px; }}
 .card,.panel {{ background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:0 1px 2px #1018280d; }}
 .card {{ padding:13px 15px; }} .card b {{ display:block; margin-top:3px; font-size:19px; }}
 .panel {{ padding:16px; margin:14px 0; overflow:hidden; }}
-.controls {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }}
+.controls {{ position:relative; display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }}
 select,button {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text); }}
 button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
-.event-picker {{ position:relative; }}
+.event-picker {{ position:static; }}
 .event-picker summary {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff;
                          cursor:pointer; list-style:none; }}
 .event-picker summary::-webkit-details-marker {{ display:none; }}
-.event-picker-menu {{ position:absolute; z-index:20; top:38px; left:0; width:min(720px,85vw); max-height:520px;
+.event-picker-menu {{ position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:min(720px,100%); max-width:100%; max-height:520px;
                       overflow:auto; padding:12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
                       box-shadow:0 8px 24px #10182824; }}
 .event-picker-actions {{ display:flex; gap:8px; margin-bottom:10px; }}
@@ -624,6 +624,9 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
                    overflow:hidden; border-right:1px solid var(--line); background:#fff; pointer-events:auto; }}
 .timeline-label.block {{ background:#eef2f6; color:var(--muted); font-size:11px; font-weight:700; }}
 .timeline-label.section {{ background:#fffbeb; color:#92400e; font-size:11px; font-weight:700; }}
+.timeline-label.fixed-pinned {{ z-index:2; }}
+.timeline-pinned-divider {{ position:absolute; left:0; z-index:3; width:142px; height:2px; background:#f59e0b;
+                            pointer-events:none; }}
 .timeline-label.lane-label {{ font-weight:600; }}
 .timeline-label.lane-label small {{ display:block; overflow:hidden; color:var(--muted); font-size:9px; font-weight:400;
                                     text-overflow:ellipsis; white-space:nowrap; }}
@@ -632,11 +635,13 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
                font-size:13px; line-height:22px; }}
 .pin-button.active {{ border-color:#f59e0b; background:#fffbeb; color:#b45309; }}
 .canvas-tooltip {{ display:none; position:fixed; z-index:100; max-width:min(620px,calc(100vw - 24px)); padding:8px 10px;
-                   border:1px solid #94a3b8; border-radius:6px; background:#0f172a; color:#f8fafc;
-                   box-shadow:0 8px 24px #0f172a33; font:11px/1.45 monospace; pointer-events:none; }}
+                   border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text);
+                   box-shadow:0 8px 24px #10182824; font:11px/1.45 monospace; pointer-events:none; }}
 .event-detail {{ min-height:54px; margin-top:12px; padding:10px 12px; background:#f8fafc; border:1px solid #e5e7eb;
                  border-radius:6px; color:var(--muted); }}
 .event-detail b {{ color:var(--text); }}
+.stats-heading {{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }}
+.stats-heading h2 {{ margin:0; }}
 .empty {{ padding:30px; text-align:center; color:var(--muted); }}
 table {{ border-collapse:collapse; width:100%; font-size:12px; }}
 th,td {{ padding:7px 8px; border-bottom:1px solid #e5e7eb; text-align:right; white-space:nowrap; }}
@@ -670,7 +675,6 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <h2>流水时间线</h2>
   <div class="controls">
     <label>显示 Block <select id="coreSelect"></select></label>
-    <label>统计 Block <select id="statsCoreSelect"></select></label>
     <label>Wave <select id="waveSelect"><option value="all">全部</option></select></label>
     <label>等待筛选 <select id="waitFilter">
       <option value="all">全部</option><option value="with-wait">存在等待</option>
@@ -720,7 +724,10 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <div id="canvasTooltip" class="canvas-tooltip"></div>
 </section>
 <section class="panel">
-  <h2>选中阶段/事件统计</h2>
+  <div class="stats-heading">
+    <h2>选中阶段/事件统计</h2>
+    <label>统计 Block <select id="statsCoreSelect"></select></label>
+  </div>
   <div class="muted"><span id="statsSelectionSummary"></span>。统计 Block 与显示 Block 独立；统计不受显示 Top N 限制，
   但随 Wave、等待和阶段/事件筛选联动。累计值按事件区间求和；父阶段和子等待
   可能重叠，因此不等同于墙钟耗时。覆盖 Span 是选中区间最早 begin 到最晚 end 的时间范围。</div>
@@ -998,6 +1005,8 @@ function signedCycleDelta(cycle) {{
 const allEventsInTableOrder=trace.records.flatMap(record=>record.events).sort((a,b)=>
   a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.begin_cycle-b.begin_cycle);
 const durationText=cycles=>cyclesPerUs?`${{cycles.toLocaleString()}} cycles (${{(cycles/cyclesPerUs).toFixed(3)}} μs)`:`${{cycles.toLocaleString()}} cycles`;
+const compactDurationValue=cycles=>cyclesPerUs?(cycles/cyclesPerUs).toFixed(1):cycles.toLocaleString();
+const compactDurationUnit=cyclesPerUs?'μs':'cycles';
 const cycleDelta=(begin,end)=>end-begin;
 function withLaneMetrics(record) {{
   const stageEvents=record.events.filter(e=>!e.is_wait_event);
@@ -1144,37 +1153,41 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const rows=[];
   let rowTop=axisHeight;
   const appendRow=row=>{{ row.top=rowTop; rows.push(row); rowTop+=row.height; }};
-  const appendBlock=(group,pinned=false)=>{{
-    appendRow({{type:'block',core:group.core,pinned,height:blockHeight}});
-    for(const record of group.records) appendRow({{type:'lane',record,pinned,height:laneHeight}});
+  const appendBlock=(group,pinned=false,fixed=false)=>{{
+    appendRow({{type:'block',core:group.core,pinned,fixed,height:blockHeight}});
+    for(const record of group.records) appendRow({{type:'lane',record,pinned,fixed,height:laneHeight}});
   }};
   if(pinnedBlockGroups.length||pinnedLaneRecords.length) {{
-    appendRow({{type:'section',label:'固定对比',height:sectionHeight}});
-    for(const group of pinnedBlockGroups) appendBlock(group,true);
+    appendRow({{type:'section',label:'固定对比',fixed:true,height:sectionHeight}});
+    for(const group of pinnedBlockGroups) appendBlock(group,true,true);
     for(const record of pinnedLaneRecords) {{
-      appendRow({{type:'block',core:record.core,pinned:true,height:blockHeight}});
-      appendRow({{type:'lane',record,pinned:true,height:laneHeight}});
+      appendRow({{type:'block',core:record.core,pinned:true,fixed:true,height:blockHeight}});
+      appendRow({{type:'lane',record,pinned:true,fixed:true,height:laneHeight}});
     }}
   }}
+  const pinnedBottom=rowTop;
+  const hasPinnedPartition=pinnedBottom>axisHeight;
   for(const group of blockGroups) appendBlock(group,false);
   const contentHeight=Math.max(rowTop,140);
   const viewportHeight=Math.min(Math.max(contentHeight,140),650);
   const labels=rows.map(row=>{{
-    if(row.type==='section') return `<div class="timeline-label section" style="top:${{row.top}}px;height:${{row.height}}px">${{row.label}}</div>`;
+    const fixedClass=row.fixed?' fixed-pinned':'';
+    if(row.type==='section') return `<div class="timeline-label section${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px">${{row.label}}</div>`;
     if(row.type==='block') {{
       const active=pinnedBlocks.has(row.core);
-      return `<div class="timeline-label block" style="top:${{row.top}}px;height:${{row.height}}px"><span>Block ${{row.core}}</span>`
+      return `<div class="timeline-label block${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px"><span>Block ${{row.core}}</span>`
         +`<button class="pin-button${{active?' active':''}}" data-pin-block="${{row.core}}" title="${{active?'取消固定':'固定整个 Block'}}">📌</button></div>`;
     }}
     const record=row.record,metrics=record.laneMetrics,key=laneKey(record.core,record.role),active=pinnedLanes.has(key);
     const last=metrics.lastEvent;
     const tip=`Process begin=${{record.process_begin_cycle}} end=${{record.process_end_cycle}} total=${{record.process_duration_cycles}} cycles | event span=${{metrics.eventSpanCycles}} | wait=${{metrics.waitCycles}} | last=${{last?last.event:'none'}}@${{last?last.end_cycle:'—'}} | tail=${{metrics.tailCycles}}`;
-    return `<div class="timeline-label lane-label" style="top:${{row.top}}px;height:${{row.height}}px" title="${{esc(tip)}}">`
+    return `<div class="timeline-label lane-label${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px" title="${{esc(tip)}}">`
       +`<button class="pin-button${{active?' active':''}}" data-pin-lane="${{key}}" title="${{active?'取消固定':'固定该泳道'}}">📌</button>`
-      +`<span>${{record.role}}<small>P/W ${{durationText(record.process_duration_cycles)}} / ${{durationText(metrics.waitCycles)}}</small></span></div>`;
+      +`<span>${{record.role}}<small>Span/W ${{compactDurationValue(metrics.eventSpanCycles)}}/${{compactDurationValue(metrics.waitCycles)}} ${{compactDurationUnit}}</small></span></div>`;
   }}).join('');
+  const pinnedDivider=hasPinnedPartition?`<div class="timeline-pinned-divider" style="top:${{pinnedBottom-2}}px"></div>`:'';
   root.innerHTML=`<div class="timeline-viewport" style="height:${{viewportHeight}}px"><div class="timeline-content" style="height:${{contentHeight}}px">`
-    +`<div class="timeline-label-layer">${{labels}}</div><canvas class="timeline-canvas"></canvas></div></div>`;
+    +`<div class="timeline-label-layer">${{labels}}${{pinnedDivider}}</div><canvas class="timeline-canvas"></canvas></div></div>`;
   const viewport=root.querySelector('.timeline-viewport'),content=root.querySelector('.timeline-content');
   const labelLayer=root.querySelector('.timeline-label-layer'),canvas=root.querySelector('.timeline-canvas');
   const eventTooltipHtml=(event,record)=>{{
@@ -1222,30 +1235,43 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
     context.clearRect(0,0,width,height);
     hitBoxes=[];
     const scrollTop=viewport.scrollTop;
-    for(const row of rows) {{
-      const y=row.top-scrollTop;
-      if(y+row.height<axisHeight||y>height) continue;
-      if(row.type==='block'||row.type==='section') {{
-        context.fillStyle=row.type==='section'?'#fffbeb':'#eef2f6'; context.fillRect(0,y,width,row.height-1); continue;
+    for(let fixedPass=0;fixedPass<2;fixedPass++) {{
+      const drawFixed=Boolean(fixedPass);
+      context.save();
+      if(!drawFixed) {{
+        context.beginPath(); context.rect(0,hasPinnedPartition?pinnedBottom:axisHeight,width,
+          Math.max(0,height-(hasPinnedPartition?pinnedBottom:axisHeight))); context.clip();
       }}
-      context.fillStyle=row.pinned?'#fffbeb':'#f8fafc'; context.fillRect(0,y+2,width,row.height-4);
-      context.strokeStyle=row.pinned?'#f59e0b':'#e5e7eb'; context.strokeRect(.5,y+2.5,width-1,row.height-5);
-      for(let waitPass=0;waitPass<2;waitPass++) {{
-        for(const event of row.record.events) {{
-          if(Number(event.is_wait_event)!==waitPass) continue;
-          const left=relativeCycle(event.begin_cycle)/domainSpan*width;
-          const visualWidth=Math.max(1,event.duration_cycles/domainSpan*width),top=y+7,eventHeight=row.height-14;
-          context.globalAlpha=event.is_wait_event?.95:.9;
-          context.fillStyle=colors[event.event]||'#64748b';
-          context.fillRect(left,top,visualWidth,eventHeight);
-          if(event.is_wait_event) {{
-            context.globalAlpha=1; context.strokeStyle='#94a3b8'; context.lineWidth=1;
-            context.strokeRect(left+.5,top+.5,Math.max(0,visualWidth-1),Math.max(0,eventHeight-1));
+      const visibleTop=drawFixed?axisHeight:(hasPinnedPartition?pinnedBottom:axisHeight);
+      for(const row of rows) {{
+        if(Boolean(row.fixed)!==drawFixed) continue;
+        const y=row.fixed?row.top:row.top-scrollTop;
+        if(y+row.height<visibleTop||y>height) continue;
+        if(row.type==='block'||row.type==='section') {{
+          context.fillStyle=row.type==='section'?'#fffbeb':'#eef2f6'; context.fillRect(0,y,width,row.height-1); continue;
+        }}
+        context.fillStyle=row.pinned?'#fffbeb':'#f8fafc'; context.fillRect(0,y+2,width,row.height-4);
+        context.strokeStyle=row.pinned?'#f59e0b':'#e5e7eb'; context.strokeRect(.5,y+2.5,width-1,row.height-5);
+        for(let waitPass=0;waitPass<2;waitPass++) {{
+          for(const event of row.record.events) {{
+            if(Number(event.is_wait_event)!==waitPass) continue;
+            const left=relativeCycle(event.begin_cycle)/domainSpan*width;
+            const visualWidth=Math.max(1,event.duration_cycles/domainSpan*width),top=y+7,eventHeight=row.height-14;
+            context.globalAlpha=event.is_wait_event?.95:.9;
+            context.fillStyle=colors[event.event]||'#64748b';
+            context.fillRect(left,top,visualWidth,eventHeight);
+            if(event.is_wait_event) {{
+              context.globalAlpha=1; context.strokeStyle='#94a3b8'; context.lineWidth=1;
+              context.strokeRect(left+.5,top+.5,Math.max(0,visualWidth-1),Math.max(0,eventHeight-1));
+            }}
+            const hitTop=Math.max(top,visibleTop),hitBottom=Math.min(top+eventHeight,height);
+            if(hitBottom>hitTop) hitBoxes.push({{left,right:left+visualWidth,top:hitTop,bottom:hitBottom,event,record:row.record}});
           }}
-          hitBoxes.push({{left,right:left+visualWidth,top,bottom:top+eventHeight,event,record:row.record}});
         }}
       }}
+      context.restore();
     }}
+    if(hasPinnedPartition) {{ context.fillStyle='#f59e0b'; context.fillRect(0,pinnedBottom-2,width,2); }}
     context.globalAlpha=1;
     const selectedBox=hitBoxes.find(box=>box.event===selectedTimelineEvent);
     if(selectedBox) emphasizeEvent(context,selectedBox,true);
@@ -1298,11 +1324,17 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const syncViewport=()=>{{
     canvas.style.transform=`translateY(${{viewport.scrollTop}}px)`;
     labelLayer.style.transform=`translateX(${{viewport.scrollLeft}}px)`;
+    labelLayer.querySelectorAll('.fixed-pinned,.timeline-pinned-divider').forEach(label=>{{
+      label.style.transform=`translateY(${{viewport.scrollTop}}px)`;
+    }});
     drawCanvas();
   }};
   viewport.addEventListener('scroll',()=>{{
     canvas.style.transform=`translateY(${{viewport.scrollTop}}px)`;
     labelLayer.style.transform=`translateX(${{viewport.scrollLeft}}px)`;
+    labelLayer.querySelectorAll('.fixed-pinned,.timeline-pinned-divider').forEach(label=>{{
+      label.style.transform=`translateY(${{viewport.scrollTop}}px)`;
+    }});
     if(scrollFrame!==null) return;
     scrollFrame=requestAnimationFrame(()=>{{ scrollFrame=null; drawCanvas(); }});
   }});
@@ -1862,6 +1894,9 @@ def run_synthetic_tests() -> int:
         assert 'id="eventTableScroll"' in rank_page
         assert 'id="waveTableScroll"' in rank_page
         assert "const drawCanvas=()=>" in rank_page
+        assert 'class="timeline-pinned-divider"' in rank_page
+        assert "const y=row.fixed?row.top:row.top-scrollTop" in rank_page
+        assert "label.style.transform=`translateY(" in rank_page
         assert "new ResizeObserver" in rank_page
         assert "virtualEventRows.slice(first,last)" in rank_page
         assert "virtualWaveRows.slice(first,last)" in rank_page
