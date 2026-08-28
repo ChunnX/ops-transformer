@@ -55,7 +55,8 @@ enum MegaMoeWaveTs : int32_t {
     TS_AIV_WAIT_CUBE = 16,      // 累加：WaitForCube 硬等待（AIV 等 AIC 的 mmad 结果）
     TS_EPILOGUE_TILE = 17,      // 累加：AIV0 单 tile epilogue 本体（swiglu+MX 量化+GM 写）
     TS_MMAD_TILE = 18,          // 累加：AIC 单 tile mmad 本体（含 B 加载与 FIXP UB 写）
-    TS_WAVE_SLOT_END = 19,      // 哨兵
+    TS_DISPATCH_THROTTLE = 19,  // 累加：AIV1 节流空转（dispatch 领先额度用尽且无就绪 combine）
+    TS_WAVE_SLOT_END = 20,      // 哨兵
 };
 
 } // namespace Mc2Kernel
