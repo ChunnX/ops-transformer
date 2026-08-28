@@ -28,13 +28,31 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/hccl/hccl.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 
 constexpr uint32_t MAX_RANK_NUM = 64U; // 最大卡数
 constexpr uint32_t MAX_OP_NUM = 8U;    // MC2最大通信算子数
 constexpr uint32_t WRITE_SQE_SIZE = 64U;
 constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
-constexpr uint64_t WIN_STATE_OFFSET = 350U * 1024U;
+// EP window 前 1MB(STATE_SIZE) meta 布局（arch35 D/C 隔离，支持单跑与联跑多轮）:
+//   [0, 256KB)      D status bank0 (D_S=0)
+//   [256KB, 512KB)  D status bank1 (D_S=1)
+//   [512KB, 640KB)  C status bank0 (C_S=0)
+//   [640KB, 768KB)  C status bank1 (C_S=1)
+//   [768KB, 950KB)  D staging（本卡打包 status，再 WriteNbi）
+//   [950KB, 1MB)    per-aiv 512B 控制：D_S@0, C_S@32, C flag@64
+// token 数据在 1MB 之后（totalWinSize），D/C 固定半区 + 区内 totalWin/4 乒乓:
+//   D: [0, totalWin/2)           offset = D_S * (totalWin/4)
+//   C: [totalWin/2, totalWin)    offset = totalWin/2 + C_S * (totalWin/4)
+constexpr uint64_t DISPATCH_STATE_OFFSET = 256U * 1024U;
+constexpr uint64_t WIN_STATE_OFFSET = DISPATCH_STATE_OFFSET; // dispatch 状态 bank 间距
+constexpr uint64_t COMBINE_STATUS_BASE = 512U * 1024U;
+constexpr uint64_t COMBINE_STATE_BANK_STRIDE = 128U * 1024U;
+constexpr uint64_t DISPATCH_STAGING_OFFSET = 768U * 1024U;
 constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U;
+constexpr uint64_t CTRL_DISPATCH_STATE_OFFSET = 0U;
+constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 32U; // 与 D_S 错开，避免同一 cacheline
+constexpr uint64_t CTRL_COMBINE_FLAG_OFFSET = 64U;  // 与 C_S(+32) 错开，避免同一 cacheline
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;
 constexpr uint32_t NORMAL_CQE_SIZE = 64U;
@@ -163,6 +181,7 @@ struct HcclCombinOpParam {
     HcclAiRMACQ cqs[MAX_RANK_NUM];
 };
 
+#if 0
 // URMA通信接口
 __aicore__ inline GM_ADDR GetURMASqInfoGMAddr(GM_ADDR hcclContext, uint32_t dstRankId)
 {
@@ -514,7 +533,7 @@ __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor,
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -530,7 +549,7 @@ __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTens
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -539,5 +558,6 @@ __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTens
     AscendC::DataCopyParams copyParams = {1U, 1U, 0U, 0U};
     AscendC::DataCopy(piCiGlobalTensor, piCiTensor, copyParams);
 }
+#endif
 
 #endif // MOE_DISTRIBUTE_BASE_H
