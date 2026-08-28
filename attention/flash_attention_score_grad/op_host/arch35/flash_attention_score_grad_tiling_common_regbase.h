@@ -457,6 +457,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
 
     DtypeEnum inputDtype;
     bool isDeterministic = false;
+    bool tndSparseDeter = true;
     uint32_t deterSparseType;
     uint8_t sparseType;
     bool isS1S2Same = false;
