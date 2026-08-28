@@ -549,10 +549,11 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .pinned-title {{ margin-bottom:4px; color:#92400e; font-size:12px; font-weight:700; }}
 .pinned-lanes {{ display:grid; gap:5px; }}
 .pinned-lane {{ padding:4px 7px 7px; border:1px solid #fbbf24; border-radius:7px; background:#fff; }}
-.lane {{ position:relative; height:32px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:5px; }}
-.bar {{ position:absolute; top:5px; height:20px; min-width:2px; border-radius:3px; opacity:.9; cursor:pointer; }}
-.bar.wait-bar {{ top:5px; height:20px; border:1px solid #94a3b8; opacity:.95; z-index:2; }}
-.bar:hover {{ opacity:1; outline:2px solid #11182755; z-index:2; }}
+.lane {{ position:relative; height:32px; overflow:hidden; background:#f8fafc; border:1px solid #e5e7eb; border-radius:5px; }}
+.lane-canvas {{ display:block; width:100%; height:30px; cursor:crosshair; }}
+.canvas-tooltip {{ display:none; position:fixed; z-index:100; max-width:min(620px,calc(100vw - 24px)); padding:8px 10px;
+                   border:1px solid #94a3b8; border-radius:6px; background:#0f172a; color:#f8fafc;
+                   box-shadow:0 8px 24px #0f172a33; font:11px/1.45 monospace; pointer-events:none; }}
 .event-detail {{ min-height:54px; margin-top:12px; padding:10px 12px; background:#f8fafc; border:1px solid #e5e7eb;
                  border-radius:6px; color:var(--muted); }}
 .event-detail b {{ color:var(--text); }}
@@ -562,6 +563,8 @@ th,td {{ padding:7px 8px; border-bottom:1px solid #e5e7eb; text-align:right; whi
 th:first-child,td:first-child,th:nth-child(2),td:nth-child(2) {{ text-align:left; }}
 thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 .table-scroll {{ max-height:470px; overflow:auto; border:1px solid #e5e7eb; border-radius:6px; }}
+#eventTable tbody tr:not(.virtual-spacer) {{ height:32px; }}
+#eventTable .virtual-spacer td {{ height:0; padding:0; border:0; }}
 .lane-summary-row {{ cursor:pointer; }}
 .lane-summary-row:hover {{ background:#f1f5f9; }}
 .block-summary-row {{ background:#f8fafc; font-weight:600; }}
@@ -632,6 +635,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
+  <div id="canvasTooltip" class="canvas-tooltip"></div>
 </section>
 <section class="panel">
   <h2>选中阶段/事件统计</h2>
@@ -667,7 +671,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 </section>
 <section class="panel">
   <h2>事件明细</h2>
-  <div class="table-scroll"><table id="eventTable"><thead><tr>
+  <div class="table-scroll" id="eventTableScroll"><table id="eventTable"><thead><tr>
     <th>AI Block</th><th>角色</th><th>事件</th><th>父阶段</th><th>Wave</th><th>Expert</th><th>Token 范围</th><th>Work count</th>
     <th>Begin cycle</th><th>End cycle</th><th>总 cycles</th><th>Active cycles</th><th>Wait cycles</th><th>Wait 占比</th>
     <th>总耗时 (μs)</th><th>Begin 打点</th><th>End 打点</th>
@@ -676,6 +680,9 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <script id="traceData" type="application/json">{payload}</script>
 <script>
 const trace = JSON.parse(document.getElementById('traceData').textContent);
+for(const record of trace.records) {{
+  for(const event of record.events) {{ event.role=record.role; event.core=record.core; }}
+}}
 const colors = {{OP_PRE_MOE:'#64748b',DISPATCH_WORK:'#06b6d4',WAIT_FOR_DISPATCH:'#cbd5e1',GMM1_PROLOGUE:'#a855f7',GMM1_COMPUTE:'#2563eb',WAIT_FOR_GMM1:'#cbd5e1',ACTIVATION_WORK:'#22c55e',WAIT_FOR_ACTIVATION:'#cbd5e1',GMM2_PROLOGUE:'#c084fc',GMM2_COMPUTE:'#ef4444',WAIT_FOR_GMM2:'#cbd5e1',COMBINE_WORK:'#f97316',FINAL_COMBINE_OR_DRAIN:'#fb923c',COUNT_EXPORT:'#14b8a6',UNPERMUTE:'#0ea5e9',OP_POST_MOE:'#475569',CROSS_RANK_INPUT_SYNC:'#94a3b8',CROSS_RANK_OUTPUT_SYNC:'#94a3b8',SHARED_GMM1_ACTIVATION:'#84cc16',SHARED_GMM2:'#eab308'}};
 const legendColors = colors;
 const eventGroups = {{
@@ -709,9 +716,16 @@ const laneSort = document.getElementById('laneSort');
 const laneLimit = document.getElementById('laneLimit');
 const phasePreset = document.getElementById('phasePreset');
 const eventGroupsRoot = document.getElementById('eventGroups');
+const canvasTooltip = document.getElementById('canvasTooltip');
+const eventTableScroll = document.getElementById('eventTableScroll');
 const pinnedBlocks = new Set();
 const pinnedLanes = new Set();
 let currentBlockGroups=[];
+let timelineResizeObserver=null;
+let virtualEventRows=[];
+let virtualEventFrame=null;
+const eventRowHeight=32;
+const eventRowOverscan=12;
 const availableEvents = new Set(trace.records.flatMap(record=>record.events.map(event=>event.event)));
 const selectedEvents = new Set(availableEvents);
 coreSelect.add(new Option('全部','all'));
@@ -851,7 +865,7 @@ function esc(value) {{ return String(value).replace(/[&<>"']/g,c=>({{'&':'&amp;'
 function renderStatistics() {{
   const statsBlockGroups=selectedBlockGroups(currentBlockGroups,statsCoreSelect.value,false);
   const statsRecords=statsBlockGroups.flatMap(group=>group.records);
-  const statsEvents=statsRecords.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
+  const statsEvents=statsRecords.flatMap(r=>r.events);
   const statsBlockText=statsCoreSelect.value==='all'?'全部可见 Block':`Block ${{statsCoreSelect.value}}`;
   document.getElementById('statsSelectionSummary').textContent=`统计 ${{statsBlockText}}：${{statsBlockGroups.length}} 个 Block · ${{statsEvents.length}} 个事件`;
   renderSelectionStats(statsEvents);
@@ -860,7 +874,7 @@ function render() {{
   currentBlockGroups=allBlockGroupsForWave();
   const blockGroups=selectedBlockGroups(currentBlockGroups,coreSelect.value,true);
   const records=blockGroups.flatMap(group=>group.records);
-  const events=records.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
+  const events=records.flatMap(r=>r.events);
   document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件 · ${{selectedEvents.size}} 种事件`;
   document.getElementById('legend').innerHTML = Object.entries(legendColors)
     .filter(([name])=>selectedEvents.has(name))
@@ -870,6 +884,8 @@ function render() {{
 }}
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
+  canvasTooltip.style.display='none';
+  if(timelineResizeObserver) {{ timelineResizeObserver.disconnect(); timelineResizeObserver=null; }}
   const pinnedBlockGroups=pinSourceGroups.filter(group=>pinnedBlocks.has(group.core));
   const pinnedLaneRecords=pinSourceGroups.flatMap(group=>group.records)
     .filter(record=>pinnedLanes.has(laneKey(record.core,record.role))&&!pinnedBlocks.has(record.core));
@@ -888,7 +904,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const domainSpan=Math.max(domainEnd-domainStart,1);
   const relativeCycle=cycle=>signedCycleDelta(cycle)-domainStart;
   const absoluteCycle=offset=>cycleAnchor+domainStart+offset;
-  const visibleEvents=[];
+  const laneModels=[];
   let out='<div class="axis">';
   for(let i=0;i<=5;i++) {{
     const x=i*20, offset=Math.round(domainSpan*i/5), cycle=Math.round(absoluteCycle(offset));
@@ -902,22 +918,14 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
     const key=laneKey(record.core,record.role);
     const lanePinned=pinnedLanes.has(key);
     const laneTip=`Process begin=${{record.process_begin_cycle}} end=${{record.process_end_cycle}} total=${{record.process_duration_cycles}} cycles | event span=${{metrics.eventSpanCycles}} | wait=${{metrics.waitCycles}} | last=${{lastEvent?lastEvent.event:'none'}}@${{lastEvent?lastEvent.end_cycle:'—'}} | tail=${{metrics.tailCycles}}`;
+    const laneEvents=[...record.events].sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
+    const laneIndex=laneModels.push({{record,events:laneEvents,hitBoxes:[]}})-1;
     let laneOut=`<div class="lane-wrap${{highlightPinned&&lanePinned?' lane-pinned':''}}"><div class="lane-name" title="${{esc(laneTip)}}">`
       +`<button class="pin-button${{lanePinned?' active':''}}" data-pin-lane="${{key}}" title="${{lanePinned?'取消固定':'固定该泳道'}}">📌</button>`
       +`<span class="lane-name-text">${{record.role}}`
       +`<small>P/W ${{durationText(record.process_duration_cycles)}} / ${{durationText(metrics.waitCycles)}}</small>`
-      +`</span></div><div class="lane">`;
-    const laneEvents=[...record.events].sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
-    for(const e of laneEvents) {{
-        const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
-        const waitKnown=e.wait_cycles!==null;
-        const waitText=waitKnown?durationText(e.wait_cycles):'未拆分';
-        const parentText=e.parent_event?` | parent=${{e.parent_event}}`:'';
-        const tip=`${{e.event}}${{parentText}} | begin=${{e.begin_cycle}} end=${{e.end_cycle}} total=${{durationText(e.duration_cycles)}} | active=${{e.active_cycles}} cycles | wait=${{waitText}} | wave=${{e.wave}} expert=${{e.expert}} tile=${{e.tile}} | tokens=[${{e.token_start_in_expert}},${{e.token_start_in_expert+e.token_count}}) | completion=${{e.completion}} trace-only=${{e.trace_only_completion}} | begin point=${{e.begin_trace_point}} | end point=${{e.end_trace_point}}`;
-        const eventIndex=visibleEvents.push({{event:e,record}})-1;
-        laneOut+=`<div class="bar ${{e.is_wait_event?'wait-bar':''}}" data-event-index="${{eventIndex}}" title="${{esc(tip)}}" style="left:${{left}}%;width:${{width}}%;background:${{colors[e.event]||'#64748b'}}"></div>`;
-    }}
-    return laneOut+'</div></div>';
+      +`</span></div><div class="lane"><canvas class="lane-canvas" data-lane-index="${{laneIndex}}"></canvas></div></div>`;
+    return laneOut;
   }};
   const renderBlockGroup=(group,highlightPinned=false)=>{{
     const blockPinned=pinnedBlocks.has(group.core);
@@ -937,7 +945,73 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   }}
   out+=blockGroups.map(group=>renderBlockGroup(group,false)).join('');
   root.innerHTML=out;
-  root.querySelectorAll('.bar').forEach(bar=>bar.addEventListener('click',()=>showEventDetail(visibleEvents[Number(bar.dataset.eventIndex)])));
+  const eventTooltipHtml=(event,record)=>{{
+    const waitText=event.wait_cycles===null?'未拆分':durationText(event.wait_cycles);
+    const parentText=event.parent_event?` · parent=${{esc(event.parent_event)}}`:'';
+    return `<b>Block ${{record.core}} · ${{record.role}} · ${{esc(event.event)}}</b>${{parentText}}<br>`
+      +`begin=${{event.begin_cycle}} · end=${{event.end_cycle}} · total=${{durationText(event.duration_cycles)}}<br>`
+      +`active=${{event.active_cycles}} cycles · wait=${{waitText}}<br>`
+      +`wave=${{event.wave}} · expert=${{event.expert}} · tile=${{event.tile}} · tokens=[${{event.token_start_in_expert}},${{event.token_start_in_expert+event.token_count}})<br>`
+      +`completion=${{esc(event.completion)}} · trace-only=${{event.trace_only_completion}}<br>`
+      +`begin point=${{esc(event.begin_trace_point)}}<br>end point=${{esc(event.end_trace_point)}}`;
+  }};
+  const drawCanvases=()=>{{
+    for(const canvas of root.querySelectorAll('.lane-canvas')) {{
+      const model=laneModels[Number(canvas.dataset.laneIndex)];
+      const width=Math.max(1,canvas.clientWidth),height=30,dpr=window.devicePixelRatio||1;
+      const pixelWidth=Math.max(1,Math.round(width*dpr)),pixelHeight=Math.max(1,Math.round(height*dpr));
+      if(canvas.width!==pixelWidth||canvas.height!==pixelHeight) {{ canvas.width=pixelWidth; canvas.height=pixelHeight; }}
+      const context=canvas.getContext('2d');
+      context.setTransform(dpr,0,0,dpr,0,0);
+      context.clearRect(0,0,width,height);
+      model.hitBoxes=[];
+      for(const event of model.events) {{
+        const left=relativeCycle(event.begin_cycle)/domainSpan*width;
+        const visualWidth=Math.max(1,event.duration_cycles/domainSpan*width);
+        context.globalAlpha=event.is_wait_event?.95:.9;
+        context.fillStyle=colors[event.event]||'#64748b';
+        context.fillRect(left,5,visualWidth,20);
+        if(event.is_wait_event) {{
+          context.globalAlpha=1; context.strokeStyle='#94a3b8'; context.lineWidth=1;
+          context.strokeRect(left+.5,5.5,Math.max(0,visualWidth-1),19);
+        }}
+        model.hitBoxes.push({{left,right:left+visualWidth,event}});
+      }}
+      context.globalAlpha=1;
+    }}
+  }};
+  const moveTooltip=(mouseEvent,model)=>{{
+    const bounds=mouseEvent.currentTarget.getBoundingClientRect();
+    const x=mouseEvent.clientX-bounds.left;
+    let hit=null;
+    for(let index=model.hitBoxes.length-1;index>=0;index--) {{
+      const box=model.hitBoxes[index];
+      if(x>=box.left&&x<=box.right) {{ hit=box.event; break; }}
+    }}
+    if(!hit) {{ canvasTooltip.style.display='none'; return; }}
+    canvasTooltip.innerHTML=eventTooltipHtml(hit,model.record);
+    canvasTooltip.style.display='block';
+    const tooltipWidth=canvasTooltip.offsetWidth,tooltipHeight=canvasTooltip.offsetHeight;
+    canvasTooltip.style.left=`${{Math.max(8,Math.min(mouseEvent.clientX+12,window.innerWidth-tooltipWidth-8))}}px`;
+    canvasTooltip.style.top=`${{Math.max(8,Math.min(mouseEvent.clientY+12,window.innerHeight-tooltipHeight-8))}}px`;
+  }};
+  root.querySelectorAll('.lane-canvas').forEach(canvas=>{{
+    const model=laneModels[Number(canvas.dataset.laneIndex)];
+    canvas.addEventListener('mousemove',event=>moveTooltip(event,model));
+    canvas.addEventListener('mouseleave',()=>{{ canvasTooltip.style.display='none'; }});
+    canvas.addEventListener('click',event=>{{
+      const bounds=canvas.getBoundingClientRect(),x=event.clientX-bounds.left;
+      for(let index=model.hitBoxes.length-1;index>=0;index--) {{
+        const box=model.hitBoxes[index];
+        if(x>=box.left&&x<=box.right) {{ showEventDetail({{event:box.event,record:model.record}}); break; }}
+      }}
+    }});
+  }});
+  requestAnimationFrame(drawCanvases);
+  if('ResizeObserver' in window) {{
+    timelineResizeObserver=new ResizeObserver(()=>requestAnimationFrame(drawCanvases));
+    timelineResizeObserver.observe(root);
+  }}
   root.querySelectorAll('[data-pin-block]').forEach(button=>button.addEventListener('click',()=>{{
     const core=Number(button.dataset.pinBlock);
     if(pinnedBlocks.has(core)) pinnedBlocks.delete(core); else pinnedBlocks.add(core);
@@ -1064,15 +1138,33 @@ function renderWaveTable(events) {{
     return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{durationText(g.cycles)}}</td><td>${{durationText(g.active)}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{durationText(g.max)}}</td></tr>`;
   }}).join('');
 }}
-function renderEventTable(events) {{
-  const rows=[...events].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||signedCycleDelta(a.begin_cycle)-signedCycleDelta(b.begin_cycle));
-  document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>{{
+function eventTableRow(e) {{
     const wait=e.wait_cycles===null?'—':e.wait_cycles.toLocaleString();
     const waitPercent=e.wait_cycles!==null&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
     const converted=cyclesPerUs?(e.duration_cycles/cyclesPerUs).toFixed(3):'—';
     return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.work_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{converted}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
-  }}).join('');
 }}
+function renderVirtualEventRows() {{
+  const tbody=document.querySelector('#eventTable tbody');
+  if(!virtualEventRows.length) {{ tbody.innerHTML='<tr><td colspan="17" class="empty">当前筛选条件下没有事件</td></tr>'; return; }}
+  const viewportHeight=Math.max(eventTableScroll.clientHeight,470);
+  const first=Math.max(0,Math.floor(eventTableScroll.scrollTop/eventRowHeight)-eventRowOverscan);
+  const last=Math.min(virtualEventRows.length,Math.ceil((eventTableScroll.scrollTop+viewportHeight)/eventRowHeight)+eventRowOverscan);
+  const topHeight=first*eventRowHeight,bottomHeight=(virtualEventRows.length-last)*eventRowHeight;
+  const top=`<tr class="virtual-spacer"><td colspan="17" style="height:${{topHeight}}px"></td></tr>`;
+  const rows=virtualEventRows.slice(first,last).map(eventTableRow).join('');
+  const bottom=`<tr class="virtual-spacer"><td colspan="17" style="height:${{bottomHeight}}px"></td></tr>`;
+  tbody.innerHTML=top+rows+bottom;
+}}
+function renderEventTable(events) {{
+  virtualEventRows=[...events].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||signedCycleDelta(a.begin_cycle)-signedCycleDelta(b.begin_cycle));
+  eventTableScroll.scrollTop=0;
+  renderVirtualEventRows();
+}}
+eventTableScroll.addEventListener('scroll',()=>{{
+  if(virtualEventFrame!==null) return;
+  virtualEventFrame=requestAnimationFrame(()=>{{ virtualEventFrame=null; renderVirtualEventRows(); }});
+}});
 statsCoreSelect.addEventListener('change',renderStatistics);
 for(const control of [coreSelect,waveSelect,waitFilter,laneSort,laneLimit]) control.addEventListener('change',render);
 render();
@@ -1398,6 +1490,12 @@ def run_synthetic_tests() -> int:
         assert '<option value="all" selected>全部 Block</option>' in rank_page
         assert 'id="timelineEventLimit"' not in rank_page
         assert 'id="eventTableLimit"' not in rank_page
+        assert 'class="lane-canvas"' in rank_page
+        assert 'id="eventTableScroll"' in rank_page
+        assert "const drawCanvases=()=>" in rank_page
+        assert "new ResizeObserver" in rank_page
+        assert "virtualEventRows.slice(first,last)" in rank_page
+        assert '<div class="bar ' not in rank_page
         assert (
             "selectedBlockGroups(currentBlockGroups,statsCoreSelect.value,false)"
             in rank_page

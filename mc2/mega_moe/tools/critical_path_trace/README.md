@@ -67,9 +67,11 @@ The display Block selector controls the timeline, lane overview, Wave summary an
 statistics Block selector controls only the selection statistics, making it possible to display one Block while
 aggregating another Block or all Blocks. Display Top-N limits do not truncate the statistics selection.
 
-The report renders every event and event-detail row in the selected display scope. Lossless interaction optimizations
-remain enabled: Statistics-Block changes refresh only the statistics panel, and all display consumers reuse one
-filtered Block model per interaction.
+The report retains every event and event-detail row in the selected display scope. The timeline batch-draws all
+events on one Canvas per lane, while the detail table keeps the complete sorted row set and materializes only the
+visible scroll window. These are lossless interaction optimizations, not event limits: scrolling, hit-testing,
+filtering and statistics still use the full selected data. Statistics-Block changes refresh only the statistics
+panel, and all display consumers reuse one filtered Block model per interaction.
 
 High-level presets provide one-click views for `PRE_MOE`, the MoE main pipeline (event IDs 2 through 13),
 `COUNT_EXPORT`, `UNPERMUTE`, `POST_MOE`, shared experts and cross-rank synchronization. Selecting individual events
