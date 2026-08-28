@@ -385,20 +385,15 @@ private:
 
         RegTensor<half> hmVreg;
 
+        RegTensor<half> interleaveVreg0;
+        RegTensor<half> interleaveVreg1;
+
         RegTensor<float> pVregFloat0;
         RegTensor<float> pVregFloat1;
-        RegTensor<float> pVregFloat2;
-        RegTensor<float> pVregFloat3;
         
         RegTensor<fp8_e4m3fn_t> pVregFP80;
         RegTensor<fp8_e4m3fn_t> pVregFP81;
-        RegTensor<fp8_e4m3fn_t> pVregFP82;
-        RegTensor<fp8_e4m3fn_t> pVregFP83;
-
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg0;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg1;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg2;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg3;
+        RegTensor<uint16_t> packedVreg;
 
         RegTensor<half> sumVreg0;
         RegTensor<half> sumVreg1;
@@ -434,8 +429,8 @@ private:
             AscendC::RoundMode::CAST_RINT,
         };
 
-        constexpr static CastTrait castTraitTwoRINT = {
-            RegLayout::TWO,
+        constexpr static CastTrait castTraitOneRINT = {
+            RegLayout::ONE,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
             AscendC::RoundMode::CAST_RINT,
@@ -463,26 +458,23 @@ private:
             Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
             Muls(pVregScaleMaxValue1, pVreg1, maxValueFP8, maskReg16TailN);
 
-            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16ALL);
-            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16ALL);
-            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat2, pVregScaleMaxValue1, maskReg16ALL);
-            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat3, pVregScaleMaxValue1, maskReg16ALL);
+            Interleave(interleaveVreg0, interleaveVreg1, pVregScaleMaxValue0, pVregScaleMaxValue1);
+            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16ALL);
+            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, interleaveVreg0, maskReg16ALL);
 
             Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP82, pVregFloat2, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP83, pVregFloat3, maskReg32ALL);
+            Cast<fp8_e4m3fn_t, float, castTraitOneRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
 
             Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81, maskReg8All);
-            Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83, maskReg8All);
-
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVregFP82, pVregFP82);
+            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(
+                packedVreg, (RegTensor<uint32_t> &)pVregFP80);
+            DeInterleave((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
+                (RegTensor<uint8_t> &)packedVreg, (RegTensor<uint8_t> &)packedVreg);
 
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
+                pUb0, pVregFP80, mRound + 1, 1, maskReg8VL64);
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb1, deInterleaveVreg2, mRound + 1, 1, maskReg8VL64);
+                pUb1, pVregFP81, mRound + 1, 1, maskReg8VL64);
 
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
@@ -503,19 +495,16 @@ private:
 
                 Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
 
-                Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16ALL);
-                Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16ALL);
-
+                Interleave(interleaveVreg0, interleaveVreg1, pVregScaleMaxValue0, pVregScaleMaxValue0);
+                Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16ALL);
                 Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
-                Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
-
-                Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
-                   maskReg8All);
-
-                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
+                Pack<uint16_t, uint32_t, HighLowPart::LOWEST>(
+                    packedVreg, (RegTensor<uint32_t> &)pVregFP80);
+                Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                    (RegTensor<uint8_t> &)pVregFP80, packedVreg);
 
                 StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
+                    pUb0, pVregFP80, mRound + 1, 1, maskReg8VL64);
 
                 if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
