@@ -46,7 +46,7 @@ private:
     __aicore__ inline void CopyInXBatch(int64_t batchIdx, int64_t rowsInBatch);
     __aicore__ inline void ComputeNorm(LocalTensor<float> xInTensor, int64_t rowInBatch);
     __aicore__ inline void CopyOutXNorm(int64_t globalRow);
-    __aicore__ inline void SelectTop1AndScore(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
+    __aicore__ inline void SelectTopKAndScore(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
                                               int64_t rowInBatch);
     __aicore__ inline void CopyOutBatch(int64_t globalBaseRow, int64_t rowsInBatch);
 
@@ -55,6 +55,10 @@ private:
     __aicore__ inline void SelectTop1AndScoreNoNorm(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
                                                     int64_t rowInBatch);
     __aicore__ inline void SelectTop1AndScoreWithNorm(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
+                                                      int64_t rowInBatch);
+    __aicore__ inline void SelectTopKAndScoreNoNorm(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
+                                                    int64_t rowInBatch);
+    __aicore__ inline void SelectTopKAndScoreWithNorm(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
                                                       int64_t rowInBatch);
 
     __aicore__ inline void ProcessSingleExpertSigmoid(int64_t batchSize, int64_t numBatches);
@@ -74,6 +78,7 @@ private:
     TBuf<TPosition::VECCALC> xNormWithBiasBuf_;
     TBuf<TPosition::VECCALC> sortedBuf_;
     TBuf<TPosition::VECCALC> calcTmpBuf_;
+    TBuf<TPosition::VECCALC> indexBuf_;
 
     GlobalTensor<T> xGm_;
     GlobalTensor<T> biasGm_;
@@ -384,14 +389,82 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreWi
 }
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScore(LocalTensor<T> yOutTensor,
-                                                                               LocalTensor<int32_t> expertIdxOut,
-                                                                               int64_t rowInBatch)
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTopKAndScoreNoNorm(LocalTensor<T> yOutTensor,
+                                                                                     LocalTensor<int32_t> expertIdxOut,
+                                                                                     int64_t rowInBatch)
 {
-    if (noNorm_) {
-        SelectTop1AndScoreNoNorm(yOutTensor, expertIdxOut, rowInBatch);
+    LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
+    LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
+    LocalTensor<float> sortedScore = sortedBuf_.Get<float>();
+    LocalTensor<uint32_t> indexTensor = indexBuf_.Get<uint32_t>();
+    LocalTensor<float> sortTmp = calcTmpBuf_.Get<float>();
+
+    PipeBarrier<PIPE_V>();
+    Sort<float, true>(sortedScore, xNormWithBiasTensor, indexTensor, sortTmp,
+                      expertCountAlign_ / ONE_REPEAT_SORT_NUM);
+
+    __ubuf__ float *xNormAddr = (__ubuf__ float *)xNormTensor.GetPhyAddr();
+    __ubuf__ uint32_t *sortedAddr = (__ubuf__ uint32_t *)sortedScore.ReinterpretCast<uint32_t>().GetPhyAddr();
+    __ubuf__ T *outputAddr = (__ubuf__ T *)yOutTensor.GetPhyAddr() + rowInBatch * kStride_;
+    __ubuf__ uint32_t *expertIdxAddr =
+        (__ubuf__ uint32_t *)expertIdxOut.GetPhyAddr() + rowInBatch * kStride_;
+    uint32_t kU32 = static_cast<uint32_t>(k_);
+
+    if (k_ <= static_cast<int64_t>(WG_VL_FLOAT_SIZE)) {
+        SmallKAlignEVFNoNorm<T>(xNormAddr, sortedAddr, outputAddr, expertIdxAddr, kU32, routedScalingFactor_);
     } else {
-        SelectTop1AndScoreWithNorm(yOutTensor, expertIdxOut, rowInBatch);
+        LargeKAlignEVFNoNorm<T>(xNormAddr, sortedAddr, outputAddr, expertIdxAddr, kU32, routedScalingFactor_);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTopKAndScoreWithNorm(LocalTensor<T> yOutTensor,
+                                                                                       LocalTensor<int32_t> expertIdxOut,
+                                                                                       int64_t rowInBatch)
+{
+    LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
+    LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
+    LocalTensor<float> sortedScore = sortedBuf_.Get<float>();
+    LocalTensor<uint32_t> indexTensor = indexBuf_.Get<uint32_t>();
+    LocalTensor<float> sortTmp = calcTmpBuf_.Get<float>();
+
+    PipeBarrier<PIPE_V>();
+    Sort<float, true>(sortedScore, xNormWithBiasTensor, indexTensor, sortTmp,
+                      expertCountAlign_ / ONE_REPEAT_SORT_NUM);
+
+    __ubuf__ float *xNormAddr = (__ubuf__ float *)xNormTensor.GetPhyAddr();
+    __ubuf__ uint32_t *sortedAddr = (__ubuf__ uint32_t *)sortedScore.ReinterpretCast<uint32_t>().GetPhyAddr();
+    __ubuf__ T *outputAddr = (__ubuf__ T *)yOutTensor.GetPhyAddr() + rowInBatch * kStride_;
+    __ubuf__ uint32_t *expertIdxAddr =
+        (__ubuf__ uint32_t *)expertIdxOut.GetPhyAddr() + rowInBatch * kStride_;
+    uint32_t kU32 = static_cast<uint32_t>(k_);
+
+    if (k_ <= static_cast<int64_t>(WG_VL_FLOAT_SIZE)) {
+        SmallKAlignEVFWithNorm<T>(xNormAddr, sortedAddr, outputAddr, expertIdxAddr, kU32, eps_,
+                                  routedScalingFactor_);
+    } else {
+        LargeKAlignEVFWithNorm<T>(xNormAddr, sortedAddr, outputAddr, expertIdxAddr, kU32, eps_,
+                                  routedScalingFactor_);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTopKAndScore(LocalTensor<T> yOutTensor,
+                                                                              LocalTensor<int32_t> expertIdxOut,
+                                                                              int64_t rowInBatch)
+{
+    if (k_ == 1) {
+        if (noNorm_) {
+            SelectTop1AndScoreNoNorm(yOutTensor, expertIdxOut, rowInBatch);
+        } else {
+            SelectTop1AndScoreWithNorm(yOutTensor, expertIdxOut, rowInBatch);
+        }
+    } else {
+        if (noNorm_) {
+            SelectTopKAndScoreNoNorm(yOutTensor, expertIdxOut, rowInBatch);
+        } else {
+            SelectTopKAndScoreWithNorm(yOutTensor, expertIdxOut, rowInBatch);
+        }
     }
 }
 
@@ -792,6 +865,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Init(GM_ADDR x, GM_A
     pipe_->InitBuffer(xNormWithBiasBuf_, expertCountAlign_ * sizeof(float));
     pipe_->InitBuffer(sortedBuf_, expertCountAlign_ * sizeof(float) * WG_CONSTANT_TWO);
     pipe_->InitBuffer(calcTmpBuf_, expertCountAlign_ * sizeof(float) * WG_CONSTANT_TEN);
+    pipe_->InitBuffer(indexBuf_, expertCountAlign_ * sizeof(uint32_t));
 }
 
 template <typename T>
@@ -803,6 +877,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Process()
     }
 
     CopyInBias();
+
+    LocalTensor<int32_t> indexTensor = indexBuf_.Get<int32_t>();
+    ArithProgression(indexTensor, static_cast<int32_t>(0), static_cast<int32_t>(1), expertCountAlign_);
 
     int64_t numBatches = CeilDiv(curCoreRowCount_, batchRows_);
 
@@ -819,7 +896,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Process()
             if (outFlag_) {
                 CopyOutXNorm(globalRow);
             }
-            SelectTop1AndScore(yOutTensor, expertIdxOut, r);
+            SelectTopKAndScore(yOutTensor, expertIdxOut, r);
         }
         yOutQueue_.EnQue<T>(yOutTensor);
         expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);

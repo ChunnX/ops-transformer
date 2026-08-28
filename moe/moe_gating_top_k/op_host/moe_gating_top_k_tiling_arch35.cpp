@@ -663,10 +663,28 @@ void MoeGatingTopKTilingRegbase::SplitRows()
         maxBatchByUb = maxBatchByUb * 4 / 5;
         batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SINGLE_EXPERT_BATCH_ROWS);
     } else {
-        int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
-        if (perRowUbSize > 0) {
-            int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
-            batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+        bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
+        if (isSimplifiedPath && !hashFlag_) {
+            // without_group path: batchRows scales xIn/yOut/expertIdx, fixed buffers occupy UB too
+            int64_t dtypeRatio = sizeof(float) / inputDtypeSize_;
+            int64_t blockElements = 32 / inputDtypeSize_;
+            int64_t kStride = Ops::Base::CeilAlign(k_, blockElements);
+            // fixed: outOutQueue + biasBuf + xNormBuf + xNormWithBiasBuf + sortedBuf + calcTmpBuf + indexBuf
+            int64_t fixedUb = expertCountAlign * sizeof(float) * (16 + dtypeRatio);
+            // per-row: xInQueue + yOutQueue + expertIdxOutQueue
+            int64_t perRowUb =
+                expertCountAlign * sizeof(float) * dtypeRatio + kStride * sizeof(float) + kStride * sizeof(int32_t);
+            int64_t availableUb = static_cast<int64_t>(aicoreParams_.ubSize) - fixedUb;
+            if (perRowUb > 0 && availableUb > 0) {
+                int64_t maxBatchByUb = availableUb / perRowUb;
+                batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+            }
+        } else {
+            int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
+            if (perRowUbSize > 0) {
+                int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
+                batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+            }
         }
     }
     moeGatingTopKTilingData_.set_batchRows(batchRows);
