@@ -42,7 +42,36 @@ TEST_PARAMS = {
         "weights_datarange":[[-123,123]],
         "cmp_ratio":[1],
         "return_value": [0],
-        "max_seqlen_q": [-1]
+        "max_seqlen_q": [1]
+    },
+    "test_2":{
+        "batch_size": [1],
+        "q_seq": [4],
+        "k_seq": [256],
+        "q_t_size":[4],
+        "k_t_size":[256],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [512], # 取16的整数倍，最多支持到1024
+        "block_num":[8],
+        "qk_dtype": [torch.float16],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_k": [None],
+        "seqused_q": [[4]],
+        "seqused_k": [[256]],
+        "cmp_residual_k": [None],
+        "output_idx_offset": [None],
+        "layout_q": ["BSND"],
+        "layout_k":["PA_BBND"],
+        "topk": [128],
+        "mask_mode": [0],
+        "query_datarange":[[-448,448]],
+        "key_datarange":[[-20,20]],
+        "weights_datarange":[[-123,123]],
+        "cmp_ratio":[1],
+        "return_value": [0],
+        "max_seqlen_q": [4]
     },
 }
 

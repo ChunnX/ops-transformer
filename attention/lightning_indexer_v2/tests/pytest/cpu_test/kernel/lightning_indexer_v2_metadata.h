@@ -20,9 +20,11 @@
 
 namespace optiling {
 
-// Constants - cpu_test仿真用64核
-inline constexpr uint32_t AIC_CORE_MAX_NUM = 64;
-inline constexpr uint32_t AIV_CORE_MAX_NUM = 64;
+// Constants - 布局必须与 NPU kernel (op_kernel/lightning_indexer_v2_metadata.h) 一致
+// AIC_CORE_MAX_NUM 仅用于 metadata buffer 布局（GetAttrAbsIndex 偏移计算），
+// 实际分核数由配置项 aic_core_num / aiv_core_num 运行期传入，不使用此常量。
+inline constexpr uint32_t AIC_CORE_MAX_NUM = 80;
+inline constexpr uint32_t AIV_CORE_MAX_NUM = 80;
 constexpr uint32_t LI_V2_METADATA_TOTAL_SIZE = 2048;
 using LI_V2_METADATA_T = int32_t;
 

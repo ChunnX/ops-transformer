@@ -914,6 +914,10 @@ def _load_metadata_from_cpu(batch_size, cu_seqlens_q, cu_seqlens_k,
     # --- Detect soc_version ---
     soc_version = os.environ.get("SOC_VERSION", "Ascend950")
 
+    # --- 实际分核数（运行期参数，默认64；metadata 布局仍按 AIC_CORE_MAX_NUM=80 预留） ---
+    aic_core_num = int(os.environ.get("AIC_CORE_NUM", "64"))
+    aiv_core_num = int(os.environ.get("AIV_CORE_NUM", "64"))
+
     # --- Prepare tensor data as Python lists ---
     if cu_seqlens_q is not None:
         cu_sq = [int(x) for x in cu_seqlens_q]
@@ -934,6 +938,8 @@ def _load_metadata_from_cpu(batch_size, cu_seqlens_q, cu_seqlens_k,
                                      dir=pytest_dir) as f:
         config_path = f.name
         f.write(f"soc_version = {soc_version}\n")
+        f.write(f"aic_core_num = {aic_core_num}\n")
+        f.write(f"aiv_core_num = {aiv_core_num}\n")
         f.write(f"batch_size = {batch_size}\n")
         f.write(f"max_seqlen_q = {int(max_seqlen_q)}\n")
         f.write(f"max_seqlen_k = {int(max_seqlen_k)}\n")
