@@ -35,6 +35,7 @@ const static size_t Y_OUTPUT_DIMS = 2;
 const static size_t EXPERT_IDX_OUTPUY_DIMS = 2;
 const static size_t OUT_OUTPUT_DIMS = 2;
 const static int64_t MAX_EXPERT_COUNT = 2048;
+const static int64_t MAX_K_FOR_HASH = 64;
 
 const static int64_t X_INPUT_INDEX = 0;
 const static int64_t BIAS_INPUT_INDEX = 1;
@@ -182,6 +183,10 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
     moeGatingTopKTilingData_.set_hashFlag(hashFlag_);
 
     if (hashFlag_ == 1) {
+        OP_CHECK_IF(k_ > MAX_K_FOR_HASH,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "k", std::to_string(k_),
+                                              "less than or equal to 64 for hash mode"),
+                    return ge::GRAPH_FAILED);
         if (tid2eidShape_->GetDim(1) != k_) {
             std::string reasonMsg =
                 "The 1st axis of input tid2eid must be equal to the value of attribute k, "
@@ -254,6 +259,13 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckAttr()
                                                       "expert_count must be divisible by group_count"),
                 return ge::GRAPH_FAILED);
     perGroupExpertCount_ = expertCount_ / groupCount_;
+
+    bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
+    OP_CHECK_IF(hashFlag_ == 1 && !isSimplifiedPath,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "hash mode", "hash mode only supports simplified path",
+                    "k_group must equal group_count or group_count must equal expert_count"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(perGroupExpertCount_ < 1,
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "group_expert_count",
