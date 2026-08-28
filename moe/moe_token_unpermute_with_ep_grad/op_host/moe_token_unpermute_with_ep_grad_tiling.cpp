@@ -412,10 +412,17 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
     tiling.set_tokensNum(tokensNum);
     tiling.set_topK(topK);
     tiling.set_hiddenSize(hiddenSize);
-    OP_CHECK_IF(
-        tokensNum == 0 || topK == 0 || hiddenSize == 0 || numOutTokens == 0,
-        OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] input shape has 0."),
-        return ge::GRAPH_FAILED);
+    if (tokensNum == 0 || topK == 0 || hiddenSize == 0 || numOutTokens == 0) {
+        OP_LOGD(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] input shape has 0, skip tiling.");
+        const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+        uint32_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
+        context->SetBlockDim(totalCoreNum);
+        tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+        context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+        size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+        currentWorkspace[0] = 0;
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(
         topK > 512,
         OP_LOGE(
