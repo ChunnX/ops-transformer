@@ -482,6 +482,7 @@ class MoeContextBuilder : public HcclContextBuilderBase {
 public:
     at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize, uint32_t &rankSizePerServer)
     {
+        ASCEND_LOGI("start build");
         InitHcclEngineCtxFunctions();
 
         HcclComm hcclComm = nullptr;
@@ -541,6 +542,7 @@ private:
 
     void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
     {
+        ASCEND_LOGI("start GetCommProtocol");
         uint32_t layerNum = 0;
         uint32_t *layerList = nullptr;
         GetNetLayers(commHandle, layerList, layerNum);
@@ -571,6 +573,7 @@ private:
     void CheckProtocolSupport(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
                               const CommProtocol &protocol)
     {
+        ASCEND_LOGI("start CheckProtocolSupport");
         uint32_t srcRankId = 0;
         uint32_t rankSize = 0;
         GetRankInfo(commHandle, srcRankId, rankSize);
@@ -585,7 +588,8 @@ private:
         rankNumPerUbDomain_ = static_cast<uint32_t>(ubDomain.ranks.size());
         ASCEND_LOGI("Layer %u is current rank's UB domain, rankNumPerUbDomain_: %u", ubDomain.layer,
                     rankNumPerUbDomain_);
-
+        
+        ASCEND_LOGI("complete FindUbDomain");
         if (IsSingleUbDomain(ubDomain, rankSize)) {
             return;
         }
