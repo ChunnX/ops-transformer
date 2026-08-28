@@ -628,20 +628,24 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
 
     LocalTensor<P> hPost = vecInQueue1_.DeQue<P>();
     vecInQueue0_.DeQue<P>(gradHPost);
+
+    // 利用 q0 的第二个缓冲提前搬入 grad_h_res，使 MTE2 搬运与 grad_h_post 向量计算重叠。
+    AscendC::LocalTensor<P> gradHResBuf;
+    vecInQueue0_.AllocTensor<P>(gradHResBuf);
+    dataCopyParams.blockLen = buffers.stepLength * N_ * sizeof(P);
+    DataCopyPad(gradHResBuf, gradHResGm_[runBSStart * N_ * N_], dataCopyParams, dataCopyPadParams);
+    vecInQueue0_.EnQue(gradHResBuf);
+
     VFDoV0ProcessGradHPost((__ubuf__ P *)hPost.GetPhyAddr(), (__ubuf__ P *)gradHPost.GetPhyAddr(),
                            (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr(), buffers.stepLength);
     vecInQueue1_.FreeTensor(hPost);
     vecInQueue0_.FreeTensor(gradHPost);
 
-    fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    dataCopyParams.blockLen = buffers.stepLength * N_ * sizeof(P);
-    DataCopyPad(fp32InputBuf, gradHResGm_[runBSStart * N_ * N_], dataCopyParams, dataCopyPadParams);
-    vecInQueue1_.EnQue(fp32InputBuf);
-    LocalTensor<P> gradHResBuf = vecInQueue1_.DeQue<P>();
+    vecInQueue0_.DeQue<P>(gradHResBuf);
 
     Muls(buffers.hResBufS1, gradHResBuf, ONE, buffers.stepLength * N_);
     PipeBarrier<PIPE_V>();
-    vecInQueue1_.FreeTensor(gradHResBuf);
+    vecInQueue0_.FreeTensor(gradHResBuf);
 
     uint32_t currentDealBsNum = runBSEnd - runBSStart;
     AIV02Process(buffers, hMixGradBuf, currentDealBsNum, alphaPre, alphaPost, alphaComb);
