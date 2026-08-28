@@ -32,7 +32,7 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMlaPrologV3V1GetWorkspaceSize(
+extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
     const aclTensor *ropeSin, const aclTensor *ropeCos, aclTensor *kvCacheRef, aclTensor *krCacheRef,
@@ -47,8 +47,8 @@ extern aclnnStatus aclnnInnerMlaPrologV3V1GetWorkspaceSize(
     const aclTensor *queryRopeOut, const aclTensor *dequantScaleQNopeOut, const aclTensor *queryNormOut,
     const aclTensor *dequantScaleQNormOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-extern aclnnStatus aclnnInnerMlaPrologV3V1(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           const aclrtStream stream);
+extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                         const aclrtStream stream);
 
 #ifdef __cplusplus
 }
@@ -93,7 +93,10 @@ public:
         return true;
     }
 
-    bool IsTensorNotNull() const { return inner_ == nullptr; }
+    bool IsTensorNotNull() const
+    {
+        return inner_ == nullptr;
+    }
 
 private:
     const aclTensor *inner_;
@@ -122,10 +125,6 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
             }
             supportedStr += std::to_string(mode);
             idx++;
-        }
-        if (!supportedStr.empty()) {
-            supportedStr.pop_back();
-            supportedStr.pop_back();
         }
         OP_LOGE_FOR_INVALID_VALUE("aclnnMlaPrologV4", "weightQuantMode", std::to_string(weightQuantMode), supportedStr);
         return false;
@@ -167,10 +166,6 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             }
             supportedStr += std::to_string(mode);
             idx++;
-        }
-        if (!supportedStr.empty()) {
-            supportedStr.pop_back();
-            supportedStr.pop_back();
         }
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "aclnnMlaPrologV4", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
@@ -231,19 +226,20 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     };
 
-    // do_rope 开关关闭时 ropeSin/ropeCos 必须同时为空（null 或 shapeSize==0 的空 tensor）；
-    // 关闭且为空时，利用 TensorHolder 将 null 转为空 tensor 传入 inner，规避 inner 空 tensor 校验。
+    // do_rope 作为 attr 透传 inner，tiling 通过 do_rope attr 判断 RoPE 开关；
+    // doRope=true 时 ropeSin/ropeCos 不允许为空（null 或空 tensor）；
+    // doRope=false 时 ropeSin/ropeCos 必须同时为空，并利用 TensorHolder 将 null 转为空 tensor 传入 inner，
     std::unique_ptr<TensorHolder> ropeSinHolder;
     std::unique_ptr<TensorHolder> ropeCosHolder;
     auto IsRopeInputEmpty = [](const aclTensor *rope) {
         return rope == nullptr || rope->GetViewShape().GetShapeSize() == 0;
     };
     if (doRope) {
-        if (ropeSin == nullptr) {
+        if (IsRopeInputEmpty(ropeSin)) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
             return ge::GRAPH_FAILED;
         }
-        if (ropeCos == nullptr) {
+        if (IsRopeInputEmpty(ropeCos)) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeCos");
             return ge::GRAPH_FAILED;
         }
@@ -302,7 +298,7 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
 
-    return aclnnInnerMlaPrologV3V1GetWorkspaceSize(
+    return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
         kvCacheRef, krCacheRef, cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional,
         dequantScaleWUqQrOptional, dequantScaleWDkvKrOptional, quantScaleCkvOptional, quantScaleCkrOptional,
@@ -315,7 +311,7 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
 aclnnStatus aclnnMlaPrologV4WeightNz(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                      const aclrtStream stream)
 {
-    return aclnnInnerMlaPrologV3V1(workspace, workspaceSize, executor, stream);
+    return aclnnInnerMlaPrologV3(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

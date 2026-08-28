@@ -313,11 +313,11 @@ def generate_input_tensors(params):
     ]
     raw = {}
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to("npu")
+        raw[key] = generate_tensor_data.gen_tensor_data(params, key)
 
     sinks = None
     if params.get("use_sinks", False):
-        sinks = generate_tensor_data.gen_tensor_data(params, "sinks").to("npu")
+        sinks = generate_tensor_data.gen_tensor_data(params, "sinks")
 
     result = {
         "query": raw["query"],
@@ -502,13 +502,11 @@ def _generate_sparse_indices(
             layoutQuery,
             fa_param["actualSeqLengths_q"],
         )
-        input_tensor_dict["sparse_indices"] = sparse_indices_tensor_tnd.to(
-            torch.int32
-        ).to("npu")
+        input_tensor_dict["sparse_indices"] = sparse_indices_tensor_tnd.to(torch.int32)
     else:
-        input_tensor_dict["sparse_indices"] = (
-            sparse_indices_tensor.permute(0, 2, 1, 3).contiguous().to("npu")
-        )
+        input_tensor_dict["sparse_indices"] = sparse_indices_tensor.permute(
+            0, 2, 1, 3
+        ).contiguous()
 
     fa_param["sparse_indices_bnsd_tensor"] = sparse_indices_tensor
 
@@ -545,7 +543,7 @@ def _generate_block_table_and_cache(
                 block_idx += 1
             block_table_batch_idx += 1
         fa_param["block_table"] = block_table
-        input_tensor_dict["block_table"] = block_table.to("npu")
+        input_tensor_dict["block_table"] = block_table
         k_dtype = params.get("dtype_input", {}).get("key", "unknown")
         v_dtype = params.get("dtype_input", {}).get("value", "unknown")
         print(f"[PageAtten]Input Kdtype:{k_dtype} Vdtype:{v_dtype}")
@@ -666,6 +664,26 @@ def softmax(x, sinks=None):
     return ans, x_max, x_sum
 
 
+def bmm1(q_curr, k_sparse, calc_dtype):
+    # 极值输入（如 key_rope=BF16 上界）下 bmm1 真值可能超出 fp32 表示范围，
+    # 此时采用 NPU matmul 结果
+    # 其他场景保持 CPU matmul
+    cpu_matmul = torch.matmul(q_curr.float(), k_sparse.float().T)
+    if calc_dtype is not torch.bfloat16:
+        return cpu_matmul
+    try:
+        if not (hasattr(torch, "npu") and torch.npu.is_available()):
+            return cpu_matmul
+        device = torch.device("npu")
+        q_dev = q_curr.to(device=device, dtype=torch.bfloat16)
+        k_dev = k_sparse.to(device=device, dtype=torch.bfloat16)
+        npu_matmul = torch.matmul(q_dev, k_dev.T).float().cpu()
+        keep = torch.isfinite(npu_matmul) & torch.isfinite(cpu_matmul)
+        return torch.where(keep, cpu_matmul, npu_matmul)
+    except Exception:
+        return cpu_matmul
+
+
 def _t_increattention_bnsd(fa_param):
     batch_size = fa_param["b"]
     numheads = fa_param["numHeads"]
@@ -746,19 +764,24 @@ def _t_increattention_bnsd(fa_param):
                             torch.ones_like(cur_sinks),
                         )
                     continue
-                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
+                bmm1Res = bmm1(
+                    q_curr,
+                    k_sparse,
+                    torch.bfloat16
+                    if fa_param["q_dtype"] == "bfloat16"
+                    else torch.float16,
+                )
                 scaleRes = bmm1Res * scaleValue
-                softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
+                _, x_max, x_sum = softmax(scaleRes, cur_sinks)
+                # 与算子softmax的数值链对齐: 未归一化 exp(x-max) 先量化为 P 的计算精度,bmm2 用 fp32 累加,最后除以fp32的sum
+                exp_unnorm = torch.exp(scaleRes - x_max)
                 if fa_param["q_dtype"] == "float16":
-                    bmm2Res = torch.matmul(
-                        softmax_res.to(torch.float16).float(), v_sparse.float()
-                    )
+                    exp_quantized = exp_unnorm.to(torch.float16).float()
                 elif fa_param["q_dtype"] == "bfloat16":
-                    bmm2Res = torch.matmul(
-                        softmax_res.to(torch.bfloat16).float(), v_sparse.float()
-                    )
+                    exp_quantized = exp_unnorm.to(torch.bfloat16).float()
                 else:
-                    bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
+                    exp_quantized = exp_unnorm
+                bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
                 y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
                 set_softmax_lse(
                     batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0]
@@ -850,38 +873,43 @@ def kv_pa_preprocessing(input_tensor_dict, fa_param, params):
         k_dtype,
     )
 
-    input_tensor_dict["key_cache"] = k_cache_base.to("npu")
-    input_tensor_dict["value_cache"] = k_cache_base.to("npu")
-    input_tensor_dict["key_rope_cache"] = k_cache_rope.to("npu")
+    input_tensor_dict["key_cache"] = k_cache_base
+    input_tensor_dict["value_cache"] = k_cache_base
+    input_tensor_dict["key_rope_cache"] = k_cache_rope
 
     # kv_cache 0轴非连续
-    properties = torch.npu.get_device_properties()
-    if "Ascend950" in properties.name:
-        key_stride = 10  # 0轴非连续增加stride
+    key_stride = params.get("key_stride", 0)  # 0轴非连续增加stride
+    if key_stride != 0:
         block_num = params["block_num"]
         base_kv = k_cache_base
         blocksize_with_stride = blockSize + key_stride
-        blockFusion = torch.zeros((block_num, blocksize_with_stride * N * D), dtype=k_dtype)
+        blockFusion = torch.zeros(
+            (block_num, blocksize_with_stride * N * D), dtype=k_dtype
+        )
         base_flat = base_kv.reshape(block_num, blockSize * N * D)
         blockFusion[:, : blockSize * N * D] = base_flat
-        blockFusion = blockFusion.npu()
-        base_kv_nc = blockFusion[:, : blockSize * N * D].view(block_num, blockSize, N, D)
+        base_kv_nc = blockFusion[:, : blockSize * N * D].view(
+            block_num, blockSize, N, D
+        )
         input_tensor_dict["key_cache"] = base_kv_nc
         input_tensor_dict["value_cache"] = base_kv_nc
 
         base_rope = k_cache_rope
-        blockFusion_rope = torch.zeros((block_num, blocksize_with_stride * N * rope_head_dim), dtype=k_dtype)
+        blockFusion_rope = torch.zeros(
+            (block_num, blocksize_with_stride * N * rope_head_dim), dtype=k_dtype
+        )
         rope_flat = base_rope.reshape(block_num, blockSize * N * rope_head_dim)
         blockFusion_rope[:, : blockSize * N * rope_head_dim] = rope_flat
-        blockFusion_rope = blockFusion_rope.npu()
-        base_kvrope_nc = blockFusion_rope[:, : blockSize * N * rope_head_dim].view(block_num, blockSize, N, rope_head_dim)
+        base_kvrope_nc = blockFusion_rope[:, : blockSize * N * rope_head_dim].view(
+            block_num, blockSize, N, rope_head_dim
+        )
         input_tensor_dict["key_rope_cache"] = base_kvrope_nc
 
 
 def kv_nopa_preprocessing(input_tensor_dict, fa_param):
-    input_tensor_dict["key_cache"] = fa_param["_raw_key"].contiguous().to("npu")
-    input_tensor_dict["value_cache"] = fa_param["_raw_key"].contiguous().to("npu")
-    input_tensor_dict["key_rope_cache"] = fa_param["_raw_key_rope"].to("npu")
+    input_tensor_dict["key_cache"] = fa_param["_raw_key"].contiguous()
+    input_tensor_dict["value_cache"] = fa_param["_raw_key"].contiguous()
+    input_tensor_dict["key_rope_cache"] = fa_param["_raw_key_rope"]
 
 
 def qtensor_seqlength(q_shape, inputLayout):

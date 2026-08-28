@@ -15,6 +15,7 @@
 
 #include "quant_flash_attn_tiling_mxfp8.h"
 #include "../quant_flash_attn_tiling.h"
+#include "../qfa_adjust_sinner_souter.h"
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -118,13 +119,10 @@ void QuantFlashAttnTilingImpl::InitImplParam()
 
 void QuantFlashAttnTilingImpl::SplitPolicy()
 {
-    if (qfaInfo_->qkHeadDim == DSIZE_256) {
-        sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_256;
-    } else {
-        sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_512;
-    }
+    qfa_tiling_util::AdjustSinnerAndSouter(qfaInfo_->vHeadDim, qfaInfo_->maxSeqQ, qfaInfo_->maxSeqKv,
+                                           static_cast<int32_t>(qfaInfo_->maskMode), qfaInfo_->winLeft,
+                                           qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
+                                           static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
 }
@@ -334,6 +332,21 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
         maxBlockNumPerBatch = qfaInfo_->maxBlockNumPerBatch;
     }
     tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+    if (qfaInfo_->hasStride) {
+        tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.bnStride = qfaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.n2Stride = qfaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.bnStride = qfaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.n2Stride = qfaInfo_->valueStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.bnStride =
+            qfaInfo_->kDescaleStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride =
+            qfaInfo_->kDescaleStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride =
+            qfaInfo_->vDescaleStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride =
+            qfaInfo_->vDescaleStrides->GetStride(1);
+    }
 }
 
 bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
