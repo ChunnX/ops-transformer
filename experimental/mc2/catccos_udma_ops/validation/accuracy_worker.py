@@ -330,7 +330,7 @@ def _failure_scope(reports):
 
 def _run_case(
     case, rank, world_size, device, output_root, memory_options,
-    mssanitizer_options,
+    mssanitizer_options, diagnostic_options,
 ):
     shape = case["shape"]
     m, n, k = shape["m"], shape["n"], shape["k"]
@@ -346,6 +346,18 @@ def _run_case(
     )
     memory_enabled = memory_options["enabled"]
     mssanitizer_enabled = mssanitizer_options["enabled"]
+    automatic_only = diagnostic_options["automatic_only"]
+    max_failure_dumps_per_role = diagnostic_options[
+        "max_failure_dumps_per_role"
+    ]
+    if automatic_only and (
+        case["operator"] != "all_to_allv_grouped_mat_mul"
+        or not case["output_all_to_allv"]
+    ):
+        raise ValueError(
+            "automatic-only diagnostics require all_to_allv_grouped_mat_mul "
+            "with output_all_to_allv enabled"
+        )
     memory_report = None
     if memory_enabled:
         memory_report = {
@@ -432,6 +444,10 @@ def _run_case(
     segments_override = None
     additional_reports = []
     launch_records = []
+    failure_dump_counts = {
+        "operator_output": 0,
+        "all_to_allv_export": 0,
+    }
     diagnostic_fingerprint_elements = memory_options["fingerprint_elements"]
     input_fingerprints_before = {}
     if not mssanitizer_enabled:
@@ -463,6 +479,9 @@ def _run_case(
                 allocation_mode == "caller_provided" and export_output is not None
             ),
             "synchronized_control": synchronized_control,
+            "sync_diagnostic_mode": os.environ.get(
+                "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
+            ),
             "output_prefill": output_prefill,
             "output": _tensor_metadata(output),
             "all_to_allv_output": (
@@ -470,6 +489,27 @@ def _run_case(
                 if export_output is not None else None
             ),
         })
+
+    def reserve_failure_dump(output_role, report):
+        if not case["accuracy"]["dump_on_failure"] or report["passed"]:
+            return False
+        current = failure_dump_counts[output_role]
+        if (
+            max_failure_dumps_per_role >= 0
+            and current >= max_failure_dumps_per_role
+        ):
+            report["failure_dump"] = {
+                "written": False,
+                "reason": "per-role dump limit reached",
+                "limit": max_failure_dumps_per_role,
+            }
+            return False
+        failure_dump_counts[output_role] = current + 1
+        report["failure_dump"] = {
+            "written": True,
+            "limit": max_failure_dumps_per_role,
+        }
+        return True
     if case["operator"] == "grouped_mat_mul_all_to_allv":
         expected = _grouped_mat_mul_all_to_allv_golden(
             x, weight, route_matrix, rank, world_size, expert_num
@@ -578,7 +618,7 @@ def _run_case(
                 padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
             )
             dump = None
-            if case["accuracy"]["dump_on_failure"] and not report["passed"]:
+            if reserve_failure_dump("all_to_allv_export", report):
                 selected_rows = sorted({
                     int(item["row"])
                     for item in report.get("top_mismatches", [])
@@ -682,7 +722,10 @@ def _run_case(
             # A Gloo control-plane barrier changes only cross-rank launch skew.
             # Its result distinguishes an inter-rank invocation race from a
             # local AIC/AIV stage lifecycle problem.
-            if case["accuracy"]["synchronized_control"]:
+            if (
+                case["accuracy"]["synchronized_control"]
+                and not automatic_only
+            ):
                 path = "synchronized_control"
                 dist.barrier()
                 if memory_enabled:
@@ -725,26 +768,31 @@ def _run_case(
 
             reusable_guard = None
             reusable_export_guard = None
-            if memory_enabled:
-                reusable_guard = _guarded_tensor(
-                    ordinary.shape, torch.bfloat16, device, "a2av_gmm_out",
-                    memory_options, output=True,
-                )
-                reusable_out = reusable_guard.tensor
-                if export_enabled:
-                    reusable_export_guard = _guarded_tensor(
-                        expected_all_to_allv.shape, torch.bfloat16, device,
-                        "all_to_allv_export", memory_options, output=True,
+            reusable_out = None
+            reusable_all_to_allv_out = None
+            if not automatic_only:
+                if memory_enabled:
+                    reusable_guard = _guarded_tensor(
+                        ordinary.shape, torch.bfloat16, device, "a2av_gmm_out",
+                        memory_options, output=True,
                     )
-                    reusable_all_to_allv_out = reusable_export_guard.tensor
+                    reusable_out = reusable_guard.tensor
+                    if export_enabled:
+                        reusable_export_guard = _guarded_tensor(
+                            expected_all_to_allv.shape, torch.bfloat16, device,
+                            "all_to_allv_export", memory_options, output=True,
+                        )
+                        reusable_all_to_allv_out = reusable_export_guard.tensor
                 else:
-                    reusable_all_to_allv_out = None
-            else:
-                reusable_out = torch.zeros_like(ordinary)
-                reusable_all_to_allv_out = (
-                    torch.empty_like(expected_all_to_allv) if export_enabled else None
-                )
-            for repeat in range(case["accuracy"]["repeats"]):
+                    reusable_out = torch.zeros_like(ordinary)
+                    reusable_all_to_allv_out = (
+                        torch.empty_like(expected_all_to_allv)
+                        if export_enabled else None
+                    )
+            caller_repeats = (
+                0 if automatic_only else case["accuracy"]["repeats"]
+            )
+            for repeat in range(caller_repeats):
                 path = "out_repeat_{}".format(repeat)
                 if memory_enabled:
                     launch_guards = [reusable_guard]
@@ -991,7 +1039,7 @@ def _run_case(
         )
         add_memory_result(report, name)
         dump = None
-        if case["accuracy"]["dump_on_failure"] and not report["passed"]:
+        if reserve_failure_dump("operator_output", report):
             dump = {
                 "case": case,
                 "rank": rank,
@@ -1078,6 +1126,14 @@ def _run_case(
             "target_launches_per_rank": 1 if mssanitizer_enabled else None,
             "caller_provided_out": False if mssanitizer_enabled else None,
         },
+        "sync_diagnosis": {
+            "mode": os.environ.get(
+                "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
+            ),
+            "automatic_only": automatic_only,
+            "max_failure_dumps_per_role": max_failure_dumps_per_role,
+            "failure_dumps_written": failure_dump_counts,
+        },
     }
     write_json(case_root / "summary.json", summary)
     print(
@@ -1136,9 +1192,17 @@ def main():
     parser.add_argument("--hbm-poison-chunk-bytes", type=int, default=256 << 20)
     parser.add_argument("--guard-bytes", type=int, default=16 << 20)
     parser.add_argument("--fingerprint-elements", type=int, default=1 << 20)
+    parser.add_argument("--automatic-only", action="store_true")
+    parser.add_argument("--max-failure-dumps-per-role", type=int, default=-1)
     args = parser.parse_args()
     if args.memory_safety and args.mssanitizer:
         raise ValueError("--memory-safety and --mssanitizer are mutually exclusive")
+    if args.automatic_only and (args.memory_safety or args.mssanitizer):
+        raise ValueError(
+            "--automatic-only cannot be combined with memory-safety or mssanitizer"
+        )
+    if args.max_failure_dumps_per_role < -1:
+        raise ValueError("--max-failure-dumps-per-role must be -1 or non-negative")
     memory_options = {
         "enabled": args.memory_safety,
         "hbm_reserve_bytes": args.hbm_reserve_bytes,
@@ -1149,6 +1213,10 @@ def main():
     mssanitizer_options = {
         "enabled": args.mssanitizer,
         "route_input": args.mssanitizer_route_input,
+    }
+    diagnostic_options = {
+        "automatic_only": args.automatic_only,
+        "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
     }
     cases = read_resolved_cases(args.resolved_cases)
     rank = int(os.environ["RANK"])
@@ -1184,7 +1252,7 @@ def main():
         for case in cases:
             summary = _run_case(
                 case, rank, world_size, device, output_root, memory_options,
-                mssanitizer_options,
+                mssanitizer_options, diagnostic_options,
             )
             dist.barrier()
             if rank == 0:

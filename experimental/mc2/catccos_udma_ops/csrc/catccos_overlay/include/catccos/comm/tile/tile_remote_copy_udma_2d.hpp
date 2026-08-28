@@ -64,7 +64,6 @@ public:
         if (rows == 0 || columns == 0) {
             return;
         }
-
         uint64_t bytesPerRow = static_cast<uint64_t>(columns) * sizeof(ElementSrc);
         uint64_t srcStride = srcLayout.stride(0);
         uint64_t dstStride = dstLayout.stride(0);
@@ -78,6 +77,45 @@ public:
                 Submit(dstRow, srcRow, bytesPerRow, peerIdx);
             }
         }
+    }
+
+    /// Submit the optimized contiguous PUT and publish a 64-bit generation in
+    /// the same WRITE_WITH_NOTIFY WQE.  The fused AllToAllV scheduler passes a
+    /// complete peer slice whose source and destination layouts are both
+    /// tightly packed, so one WQE is sufficient and the notification is a hard
+    /// data-before-ready edge.
+    CATLASS_DEVICE
+    void PutContiguousWithSignal(
+        AscendC::GlobalTensor<ElementDst> const &dstTensor,
+        LayoutDst const &dstLayout,
+        AscendC::GlobalTensor<ElementSrc> const &srcTensor,
+        LayoutSrc const &srcLayout,
+        Catlass::MatrixCoord const &copyShape,
+        __gm__ uint64_t *signalAddress,
+        uint64_t signalValue,
+        uint32_t peerIdx)
+    {
+        static_assert(CopyDirect_ == detail::CopyDirect::Put,
+            "UDMA write-with-notify is valid only for PUT tiles");
+        uint32_t rows = copyShape.row();
+        uint32_t columns = copyShape.column();
+        if (rows == 0 || columns == 0) {
+            return;
+        }
+        (void)dstLayout;
+        (void)srcLayout;
+
+        // A final-row notification would be unsafe for a strided transfer:
+        // v1.6 UDMA WQEs deliberately carry no inter-submission ordering.
+        // The only caller is the peer-serial AllToAllV schedule, which passes
+        // one tightly packed [rows, K] peer slice. Do not silently skip a
+        // transfer here: that would also omit its notification and deadlock
+        // the receiver. The caller owns this contiguous-layout precondition.
+        uint64_t messageLen =
+            static_cast<uint64_t>(rows) * columns * sizeof(ElementSrc);
+        SubmitWithSignal(
+            dstTensor, srcTensor, messageLen,
+            signalAddress, signalValue, peerIdx);
     }
 
     CATLASS_DEVICE
@@ -121,6 +159,26 @@ private:
                 unusedScratch,
                 elementCount, peerIdx, SYNC_ID);
         }
+    }
+
+    CATLASS_DEVICE
+    static void SubmitWithSignal(
+        AscendC::GlobalTensor<ElementDst> const &dstTensor,
+        AscendC::GlobalTensor<ElementSrc> const &srcTensor,
+        uint64_t messageLen,
+        __gm__ uint64_t *signalAddress,
+        uint64_t signalValue,
+        uint32_t peerIdx)
+    {
+        auto dstAddr = reinterpret_cast<__gm__ uint8_t *>(
+            const_cast<__gm__ ElementDst *>(dstTensor.GetPhyAddr()));
+        auto srcAddr = reinterpret_cast<__gm__ uint8_t *>(
+            const_cast<__gm__ ElementSrc *>(srcTensor.GetPhyAddr()));
+        auto unusedScratch = static_cast<__ubuf__ uint8_t *>(nullptr);
+        aclshmemx_udma_put_signal_nbi<uint8_t, PIPE_S>(
+            dstAddr, srcAddr, static_cast<uint32_t>(messageLen),
+            signalAddress, signalValue, peerIdx,
+            unusedScratch, SYNC_ID);
     }
 };
 

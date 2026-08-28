@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
@@ -74,6 +75,7 @@ void UdmaRuntime::Initialize(int32_t rank, int32_t worldSize, const std::string 
                     " bytes of symmetric UDMA workspace");
     }
     fftsAddress_ = shmemx_get_ffts_config();
+    allToAllVGroupedMatMulEpoch_ = 0;
 
     rank_ = rank;
     worldSize_ = worldSize;
@@ -181,7 +183,18 @@ void UdmaRuntime::Finalize(aclrtStream stream)
     workspace_ = nullptr;
     lastStream_ = nullptr;
     fftsAddress_ = 0;
+    allToAllVGroupedMatMulEpoch_ = 0;
     TORCH_CHECK(status == ACLSHMEM_SUCCESS, "shmem_finalize failed: ", status);
+}
+
+uint64_t UdmaRuntime::NextAllToAllVGroupedMatMulEpoch()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    EnsureInitialized();
+    TORCH_CHECK(
+        allToAllVGroupedMatMulEpoch_ != std::numeric_limits<uint32_t>::max(),
+        "AllToAllVGroupedMatMul launch epoch exhausted");
+    return ++allToAllVGroupedMatMulEpoch_;
 }
 
 uint8_t *UdmaRuntime::Workspace() const

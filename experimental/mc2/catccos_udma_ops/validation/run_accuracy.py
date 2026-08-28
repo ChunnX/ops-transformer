@@ -46,6 +46,21 @@ def main():
     parser.add_argument("--hbm-poison-chunk-mib", type=int, default=256)
     parser.add_argument("--guard-mib", type=int, default=16)
     parser.add_argument("--fingerprint-elements", type=int, default=1 << 20)
+    parser.add_argument(
+        "--automatic-only", action="store_true",
+        help=(
+            "run only automatically allocated consecutive launches; skip the "
+            "Gloo control and caller-provided out paths"
+        ),
+    )
+    parser.add_argument(
+        "--auto-repeats", type=int,
+        help="override accuracy.auto_repeats for every selected case",
+    )
+    parser.add_argument(
+        "--max-failure-dumps-per-role", type=int, default=-1,
+        help="cap large failure dumps per rank and output role (-1: unlimited)",
+    )
     args = parser.parse_args()
     cases = select_cases(
         load_case_manifest(args.cases), mode="accuracy",
@@ -53,6 +68,26 @@ def main():
     )
     if args.memory_safety and args.mssanitizer:
         raise ValueError("--memory-safety and --mssanitizer are mutually exclusive")
+    if args.automatic_only and (args.memory_safety or args.mssanitizer):
+        raise ValueError(
+            "--automatic-only cannot be combined with memory-safety or mssanitizer"
+        )
+    if args.automatic_only and any(
+        case["operator"] != "all_to_allv_grouped_mat_mul"
+        or not case["output_all_to_allv"]
+        for case in cases
+    ):
+        raise ValueError(
+            "--automatic-only diagnostics require all_to_allv_grouped_mat_mul "
+            "cases with output_all_to_allv: true"
+        )
+    if args.auto_repeats is not None:
+        if args.auto_repeats < 0:
+            raise ValueError("--auto-repeats must be non-negative")
+        for case in cases:
+            case["accuracy"]["auto_repeats"] = args.auto_repeats
+    if args.max_failure_dumps_per_role < -1:
+        raise ValueError("--max-failure-dumps-per-role must be -1 or non-negative")
     if args.mssanitizer and len(cases) != 1:
         raise ValueError(
             "--mssanitizer requires exactly one selected case; pass one --case-id"
@@ -85,6 +120,12 @@ def main():
             "--nproc-per-node={}".format(world_size), str(HERE / "accuracy_worker.py"),
             "--resolved-cases", str(resolved), "--output-dir", str(output_root),
         ]
+        if args.automatic_only:
+            command.append("--automatic-only")
+        command.extend([
+            "--max-failure-dumps-per-role",
+            str(args.max_failure_dumps_per_role),
+        ])
         if args.memory_safety:
             if args.hbm_reserve_gib < 0:
                 raise ValueError("--hbm-reserve-gib must be non-negative")
@@ -114,6 +155,11 @@ def main():
             "udma_master_addr": environment["UDMA_MASTER_ADDR"],
             "udma_master_port": udma_port,
             "udma_heap_size": environment.get("UDMA_HEAP_SIZE", "default"),
+            "sync_diagnostic_mode": environment.get(
+                "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
+            ),
+            "automatic_only": args.automatic_only,
+            "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
             "console_log": launch_log.name,
         })
         print("+ " + " ".join(command), flush=True)
@@ -168,6 +214,11 @@ def main():
     write_json(output_root / "summary.json", {
         "passed": bool(overall), "failed_launches": failed_launches,
         "case_count": len(cases), "results": rows,
+        "sync_diagnostic_mode": os.environ.get(
+            "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
+        ),
+        "automatic_only": args.automatic_only,
+        "auto_repeats_override": args.auto_repeats,
     })
     print("accuracy results: {}".format(output_root), flush=True)
     return 0 if overall else 1

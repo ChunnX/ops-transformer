@@ -134,6 +134,10 @@ public:
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     static constexpr bool USE_UDMA_PEER_SERIAL_SCHEDULE = USE_UDMA_PEER_SERIAL_SCHEDULE_;
     static constexpr bool EXPORT_ALLTOALLV = EXPORT_ALLTOALLV_;
+    static constexpr uint32_t COMPLETION_MODE_LEGACY = 0;
+    static constexpr uint32_t COMPLETION_MODE_STRONG_READY = 1;
+    static constexpr uint32_t COMPLETION_MODE_STRONG_READY_CACHE_SAFE = 2;
+    static constexpr uint32_t READY_SLOT_RANKS = 8;
     static_assert(!EXPORT_ALLTOALLV || WORKSPACE_STAGES >= 2,
         "Pipelined AllToAllV export requires at least two staging buffers");
     static_assert(!EXPORT_ALLTOALLV || USE_UDMA_PEER_SERIAL_SCHEDULE,
@@ -160,6 +164,9 @@ public:
         GM_ADDR ptrSymmetric;
         GM_ADDR syncMmadFinish;
         GM_ADDR syncCommFinish;
+        GM_ADDR syncCommReady;
+        uint64_t launchEpoch;
+        uint32_t completionMode;
         uint32_t exportCoreCount;
         uint32_t selfCopyCores;
         BlockCommParams blockCommParams;
@@ -176,6 +183,7 @@ public:
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             LayoutTagA layoutTagA_, LayoutTagB layoutTagB_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
+            GM_ADDR syncCommReady_, uint64_t launchEpoch_, uint32_t completionMode_,
             BlockCommParams const &allToAllVGmmParams_,
             GM_ADDR ptrAllToAllVOutput_ = nullptr,
             GM_ADDR ptrRouteMetadata_ = nullptr,
@@ -190,6 +198,7 @@ public:
             ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)), layoutC(layoutC_),
             layoutTagA(layoutTagA_), layoutTagB(layoutTagB_),
             ptrSymmetric(ptrSymmetric_), syncMmadFinish(syncMmadFinish_), syncCommFinish(syncCommFinish_),
+            syncCommReady(syncCommReady_), launchEpoch(launchEpoch_), completionMode(completionMode_),
             exportCoreCount(exportCoreCount_), selfCopyCores(selfCopyCores_),
             blockCommParams(allToAllVGmmParams_)
         {
@@ -219,6 +228,8 @@ public:
         uint32_t stageRows{0};
         uint32_t exportCoreCount{0};
         uint32_t selfCopyCores{0};
+        uint64_t launchEpoch{0};
+        uint32_t completionMode{COMPLETION_MODE_LEGACY};
     };
 
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr) {
@@ -246,6 +257,8 @@ public:
         auto syncMmadFinish = args.ptrSymmetric + symmetricOffset;
         symmetricOffset += SYNC_UNIT_SIZE;
         auto syncCommFinish = args.ptrSymmetric + symmetricOffset;
+        symmetricOffset += SYNC_UNIT_SIZE;
+        auto syncCommReady = args.ptrSymmetric + symmetricOffset;
 
         return Params(
             problemShape,
@@ -255,6 +268,7 @@ public:
             args.ptrC, layoutC,
             tagA, tagB,
             gmSymmetric, syncMmadFinish, syncCommFinish,
+            syncCommReady, args.launchEpoch, args.completionMode,
             blockCommParams,
             args.ptrAllToAllVOutput,
             args.ptrRouteMetadata,
@@ -313,6 +327,9 @@ public:
 
         AscendC::GlobalTensor<ElementA> gmSymmetric;
         gmSymmetric.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.ptrSymmetric));
+        if (params.completionMode == COMPLETION_MODE_STRONG_READY_CACHE_SAFE) {
+            gmSymmetric.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        }
         AscendC::GlobalTensor<ElementB> gmB;
         gmB.SetGlobalBuffer(params.ptrB);
         AscendC::GlobalTensor<ElementC> gmC;
@@ -418,10 +435,18 @@ public:
         auto ptrSymmetric = reinterpret_cast<__gm__ ElementA *>(params.ptrSymmetric);
         for (int stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
             gmSymmetricList[stageIdx].SetGlobalBuffer(ptrSymmetric + stageIdx * layout::Capacity(layoutTagSymmetric));
+            if (params.completionMode == COMPLETION_MODE_STRONG_READY_CACHE_SAFE) {
+                gmSymmetricList[stageIdx].SetL2CacheHint(
+                    AscendC::CacheMode::CACHE_MODE_DISABLE);
+            }
         }
 
         auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(params.syncMmadFinish);
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
+        auto syncCommReady = reinterpret_cast<__gm__ uint64_t *>(params.syncCommReady);
+        bool useStrongReady =
+            params.completionMode == COMPLETION_MODE_STRONG_READY ||
+            params.completionMode == COMPLETION_MODE_STRONG_READY_CACHE_SAFE;
 
         uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
         uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -438,6 +463,14 @@ public:
             (aicoreIdx < rankSize ||
              (aicoreIdx >= rankSize &&
               aicoreIdx < rankSize + selfCopyCores - 1));
+
+        // Strong diagnostic modes close the previous invocation on every PE
+        // before legacy MMAD gates are reset.  Ready slots themselves are not
+        // reset: their 64-bit launch generation makes delayed notifications
+        // distinguishable from the current launch.
+        if (useStrongReady) {
+            aclshmemx_barrier_all_vec();
+        }
 
         // 选择唯一的 aicore，对当前 rank 的信号地址进行初始化
         bool isRootCore = (AscendC::GetBlockIdx() == 0);
@@ -594,14 +627,29 @@ public:
                                 auto layoutCommSrc = layoutA.GetTileLayout(actualCommShape);
                                 auto layoutCommDst = layoutTagSymmetric.GetTileLayout(actualCommShape);
 
-                                blockRemoteCopy(
-                                    gmCommSrc, layoutCommSrc,
-                                    gmCommDst, layoutCommDst,
-                                    actualCommShape, dstRankIdx
-                                );
+                                if (useStrongReady) {
+                                    auto readyAddress = syncCommReady +
+                                        stageIdx * READY_SLOT_RANKS + rankIdx;
+                                    uint64_t readyGeneration =
+                                        (params.launchEpoch << 32) |
+                                        static_cast<uint64_t>(commIdx + 1);
+                                    blockRemoteCopy.PutRemoteContiguousWithSignal(
+                                        gmCommSrc, layoutCommSrc,
+                                        gmCommDst, layoutCommDst,
+                                        actualCommShape,
+                                        readyAddress, readyGeneration, dstRankIdx);
+                                } else {
+                                    blockRemoteCopy(
+                                        gmCommSrc, layoutCommSrc,
+                                        gmCommDst, layoutCommDst,
+                                        actualCommShape, dstRankIdx
+                                    );
+                                }
                                 auto peerCompletedBlocks = static_cast<int32_t>(
                                     Numel(CeilDiv(actualCommShape, blockShape)));
-                                if constexpr (EXPORT_ALLTOALLV) {
+                                if (useStrongReady) {
+                                    // Completion is carried by the data WQE.
+                                } else if constexpr (EXPORT_ALLTOALLV) {
                                     completedBlocks = peerCompletedBlocks;
                                 } else {
                                     aclshmem_fence();
@@ -622,7 +670,7 @@ public:
                     if (isCommWorker) {
                         blockRemoteCopy.FinalizeBlockLoop();
                     }
-                    if (completedBlocks > 0) {
+                    if (!useStrongReady && completedBlocks > 0) {
                         aclshmemx_signal_op(
                             syncCommFinish, completedBlocks,
                             ACLSHMEM_SIGNAL_ADD, completionPeerIdx);
@@ -665,7 +713,28 @@ public:
 
             // 等待当前 commIdx 下，所有写到当前 rank symmetric 上的数据都写完
             if (isRootCore) {
-                aclshmem_signal_wait_until(syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
+                if (useStrongReady) {
+                    uint64_t readyGeneration =
+                        (params.launchEpoch << 32) |
+                        static_cast<uint64_t>(commIdx + 1);
+                    for (uint32_t srcRankIdx = 0;
+                         srcRankIdx < rankSize; ++srcRankIdx) {
+                        // The local MTE copy is joined by the AIV inter-block
+                        // barrier below.  Only remote sources need WWN slots.
+                        if (srcRankIdx == rankIdx ||
+                            scheduler.GetActualReceiveRows(
+                                commIdx, srcRankIdx) == 0) {
+                            continue;
+                        }
+                        auto readyAddress = syncCommReady +
+                            stageIdx * READY_SLOT_RANKS + srcRankIdx;
+                        aclshmemi_signal_wait_until_eq<uint64_t>(
+                            readyAddress, readyGeneration);
+                    }
+                } else {
+                    aclshmem_signal_wait_until(
+                        syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
+                }
             }
             // 等待当前通信轮次下数据接收完成后，所有的 aic 通知 aiv 开始计算本轮的
             if constexpr (EXPORT_ALLTOALLV) {

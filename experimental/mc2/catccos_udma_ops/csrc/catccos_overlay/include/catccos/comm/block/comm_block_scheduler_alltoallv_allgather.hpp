@@ -86,14 +86,25 @@ struct BlockCommSchedulerAllToAllVAllGather {
     CATLASS_DEVICE
     uint32_t GetActualReceiveAccum(uint32_t commIdx) const
     {
-        auto commTokens = commShape.row();
         int64_t actualReceivedAccum = 0;
         for (uint32_t rankIdx = 0; rankIdx < problemShape.rankSize(); ++rankIdx) {
-            auto actualTokens = Min(commTokens, ClipSub(outputSplitList[rankIdx], commIdx * commTokens));
+            auto actualTokens = GetActualReceiveRows(commIdx, rankIdx);
             MatrixCoord actualReceiveShape{actualTokens, problemShape.k()};
             actualReceivedAccum += Numel(CeilDiv(actualReceiveShape, blockShape));
         }
         return actualReceivedAccum;
+    }
+
+    /// Number of rows expected from one source rank in this communication
+    /// window.  Completion protocols use this to wait only for sources that
+    /// really own payload in an imbalanced AllToAllV route.
+    CATLASS_DEVICE
+    uint32_t GetActualReceiveRows(uint32_t commIdx, uint32_t srcRankIdx) const
+    {
+        auto commTokens = commShape.row();
+        return Min(
+            commTokens,
+            ClipSub(outputSplitList[srcRankIdx], commIdx * commTokens));
     }
 
     CATLASS_DEVICE

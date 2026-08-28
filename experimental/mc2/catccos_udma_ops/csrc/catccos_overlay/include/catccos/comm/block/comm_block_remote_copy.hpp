@@ -358,6 +358,35 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
         }
     }
 
+    CATLASS_DEVICE
+    void PutContiguousWithSignal(
+        AscendC::GlobalTensor<ElementSrc> const &gmSrc,
+        LayoutSrc const &layoutSrc,
+        AscendC::GlobalTensor<ElementDst> const &gmDst,
+        LayoutDst const &layoutDst,
+        MatrixCoord const &actualCommBlockShape,
+        __gm__ uint64_t *signalAddress,
+        uint64_t signalValue,
+        uint32_t rankIdx)
+    {
+        if (actualCommBlockShape.row() == 0) {
+            return;
+        }
+        if constexpr (TileRemoteCopy::DEFER_QUIET) {
+            if (hasPendingCopy && activePeerIdx != rankIdx) {
+                tileRemoteCopy.Finalize(activePeerIdx);
+                hasPendingCopy = false;
+            }
+        }
+        tileRemoteCopy.PutContiguousWithSignal(
+            gmDst, layoutDst, gmSrc, layoutSrc, actualCommBlockShape,
+            signalAddress, signalValue, rankIdx);
+        if constexpr (TileRemoteCopy::DEFER_QUIET) {
+            activePeerIdx = rankIdx;
+            hasPendingCopy = true;
+        }
+    }
+
    private:
     AscendC::LocalTensor<ElementDst> ubSList[UB_STAGES];
     uint32_t copyEventIdList[UB_STAGES];
