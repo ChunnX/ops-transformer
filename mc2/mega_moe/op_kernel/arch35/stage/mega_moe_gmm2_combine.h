@@ -1099,6 +1099,24 @@ __aicore__ inline void PublishGmm2WaveProgress(const AivJobContext &job, const P
     }
 }
 
+// 非阻塞探测：全部 AIC 的 GMM2 wave 计数是否已达 targetWaves（单趟标量 min 扫描）。
+__aicore__ inline bool ProbeGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
+{
+    if constexpr (g_coreType == AIC) {
+        return false;
+    }
+    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
+        return false;
+    }
+    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
+    for (uint32_t aicIdx = 0U; aicIdx < job.totalJobs; ++aicIdx) {
+        if (AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE) < targetWaves) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // AIV1 自旋等待全部 AIC 的 GMM2 wave 计数到达 targetWaves（标量 min 扫描，绕 DCache）。
 __aicore__ inline void WaitGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
 {
