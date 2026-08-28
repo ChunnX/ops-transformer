@@ -487,12 +487,7 @@ public:
         HcclComm hcclComm = nullptr;
         AcquireHcclHandle(groupName, hcclComm);
 
-        // MoE kernels issue Hcomm URMA WQEs (Hcomm<UBC_CTP>).  UB_MEM is only
-        // the generic comm_context default and its AIV channel does not
-        // provide the URMA data-plane operations used by MoE dispatch/combine.
-        // Keep UBC_CTP as the direct/single-layer default; CheckProtocolSupport
-        // upgrades only cross-UB peers to UBG when that topology is present.
-        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         GetCommProtocol(hcclComm, protocol);
 
         MoeCommContext context;
