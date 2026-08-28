@@ -263,8 +263,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.scaleKaSize =
         CeilDiv(baseParams_.axisKa, Blaze::Gemm::MXFP_DIVISOR_SIZE) * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
 
-    // 计算地址偏移所需的参数
-    baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
+    // 计算地址偏移所需的参数（static_cast<uint64_t> 提升首操作数，避免中间溢出）
+    baseParams_.rankDataBytes =
+        static_cast<uint64_t>(baseParams_.axisM) * static_cast<uint64_t>(baseParams_.axisKa) * sizeof(AType);
     if constexpr (IsFp4<AType>()) {
         // MXFP4 打包存储(2 个 fp4 占 1 字节)，A 矩阵通信字节数减半
         baseParams_.rankDataBytes >>= 1;

@@ -31,6 +31,10 @@ using Ops::Transformer::OpTiling::TilingRegistryArch;
 static ge::graphStatus AlltoAllMatmulV2TilingFunc(gert::TilingContext *context)
 {
     auto platformInfo = context->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "[platform] platformInfo is nullptr");
+        return ge::GRAPH_FAILED;
+    }
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
     if (npuArch != NpuArch::DAV_3510) {

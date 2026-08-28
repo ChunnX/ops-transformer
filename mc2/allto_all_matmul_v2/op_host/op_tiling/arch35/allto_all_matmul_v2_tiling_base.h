@@ -102,6 +102,10 @@ protected:
     ge::graphStatus CheckTensorAttrs()
     {
         const char *opName = context_->GetNodeName();
+        if (context_->GetAttrs() == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "attrs");
+            return ge::GRAPH_FAILED;
+        }
         if (!CheckInputDescs(opName) || !CheckWorldSizeAttr(opName) || !CheckGroupAttr(opName) ||
             !CheckTensorFormats(opName) || !CheckTensorDtypes(opName) || !CheckQuantAndYDtypeAttr(opName) ||
             !CheckOtherAttrs(opName)) {
@@ -617,7 +621,12 @@ protected:
 
         {
             auto *x1sh = context_->GetInputShape(IDX_INPUT_X1);
-            auto x1Dtype = context_->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+            auto *x1Desc = context_->GetInputDesc(IDX_INPUT_X1);
+            if (x1Desc == nullptr) {
+                OP_LOGE_WITH_INVALID_INPUT(opName, "x1 desc");
+                return ge::GRAPH_FAILED;
+            }
+            auto x1Dtype = x1Desc->GetDataType();
             uint64_t mTotal = x1sh ? x1sh->GetStorageShape().GetDim(0U) : 0;
             uint64_t kPerRank = k_; // Ka = per-rank K（AlltoAll 通信 x1 的 K 维是 Ka，非 K_total）
             double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
@@ -638,8 +647,12 @@ protected:
         }
 
         auto *rt = context_->GetRawTilingData();
+        if (rt == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "rawTilingData");
+            return ge::GRAPH_FAILED;
+        }
         auto cap = rt->GetCapacity();
-        if (!rt || cap < sizeof(allToAllMatmulTilingData)) {
+        if (cap < sizeof(allToAllMatmulTilingData)) {
             OP_LOGE_WITH_INVALID_INPUT(opName, "rawTilingData");
             return ge::GRAPH_FAILED;
         }
@@ -649,7 +662,12 @@ protected:
 
         // MXFP4 使用打包存储(2 个 fp4 占 1 字节)，tiling 引擎需要按 fp4 数据类型
         // 推导 baseK 块大小(256 vs 128)与 L1 布局，其余 dtype 均按 fp8 处理。
-        auto x1Dtype = context_->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+        auto *x1DescTiling = context_->GetInputDesc(IDX_INPUT_X1);
+        if (x1DescTiling == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "x1 desc");
+            return ge::GRAPH_FAILED;
+        }
+        auto x1Dtype = x1DescTiling->GetDataType();
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
@@ -719,7 +737,12 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
+        auto *platformInfo = context_->GetPlatformInfo();
+        if (platformInfo == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platformInfo");
+            return ge::GRAPH_FAILED;
+        }
+        platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
         workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {

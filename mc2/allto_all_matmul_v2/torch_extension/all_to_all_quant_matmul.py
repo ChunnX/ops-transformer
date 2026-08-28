@@ -148,6 +148,10 @@ def _prepare_comm_context(group, rank_id):
     world_size = torch.distributed.get_world_size(group)
     if world_size <= 0:
         world_size = torch.distributed.get_world_size()  # fallback to default group
+    if world_size <= 0:
+        raise ValueError(
+            f"world_size should be greater than 0, got {world_size}."
+        )
     group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
     channel_builder = CommChannelBuilderManager(group_name)
     context = channel_builder.create_context(group_name + "allto_all_matmul")

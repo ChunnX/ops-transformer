@@ -62,7 +62,10 @@ static aclTensor *TransX2Tensor(const aclTensor *x2)
     viewDim[0] = x2->GetViewShape().GetDim(1);
     viewDim[1] = x2->GetViewShape().GetDim(0);
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(x2, &dataType);
+    if (aclGetDataType(x2, &dataType) != ACL_SUCCESS) {
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllMatmulV2", "x2 dtype");
+        return nullptr;
+    }
     std::vector<int64_t> stride(viewShapeDimNum);
     auto transStride = x2->GetViewStrides();
     stride = std::vector<int64_t>(transStride.begin(), transStride.end());
@@ -134,7 +137,10 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
     // y_dtype 从 output 的 tensor dtype 推导（acl 枚举与 ge 枚举一致），
     // 未显式指定 BF16/FP16（默认 fp32）时由 tiling 侧校验拒绝。
     aclDataType outputAclDtype = ACL_DT_UNDEFINED;
-    (void)aclGetDataType(output, &outputAclDtype);
+    if (aclGetDataType(output, &outputAclDtype) != ACL_SUCCESS) {
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllMatmulV2", "output dtype");
+        return ACLNN_ERR_INNER;
+    }
     int64_t yDtype = static_cast<int64_t>(outputAclDtype);
 
     constexpr int64_t kDefaultX1QuantDtype = 28; // ge::DT_UNDEFINED
@@ -159,7 +165,9 @@ extern "C" aclnnStatus AlltoAllMatmulV2(void *workspace, uint64_t workspaceSize,
 {
     OP_LOGD("AlltoAllMatmulV2 start");
 
-    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    if (NnopbaseSetHcclServerType != nullptr) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     aclnnStatus ret = aclnnInnerAlltoAllMatmulV2(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulV2 failed, ret=%d", ret);

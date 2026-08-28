@@ -304,6 +304,11 @@ private:
 
     void HalveBaseMForPipeline()
     {
+        // baseM/baseN may still be zero at this point (CHECK_COND runs later in
+        // CalcBasicBlock), so guard against divide-by-zero in the CeilDiv below.
+        if (runInfo_.baseM == 0UL || runInfo_.baseN == 0UL) {
+            return;
+        }
         uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
         uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
         if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM % (NUM_TWO * baseMAlignNum) == 0UL &&
