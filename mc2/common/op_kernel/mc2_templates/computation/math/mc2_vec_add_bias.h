@@ -95,11 +95,13 @@ protected:
     LocalTensor<BiasDataType> biasTile_[BUFFER_NUM];
     LocalTensor<float> matmulFp32_;
     LocalTensor<MatmulDataType> matmulOut_[BUFFER_NUM];
-    AscendC::TEventID copyInEvent_[BUFFER_NUM];
-    AscendC::TEventID computeEvent_[BUFFER_NUM];
-    AscendC::TEventID copyOutDoneEvent_[BUFFER_NUM]; // CopyOut 完成 → CastBack(next) Wait (释放 matmulOut_)
-    AscendC::TEventID castDoneEvent_[BUFFER_NUM]; // Cast(half→float) 完成 → CopyIn(next) Wait (释放 matmulTile_)
-    AscendC::TEventID biasInEvent_[BUFFER_NUM];
+    AscendC::TEventID copyInEvent_;  // MTE2_S: CopyIn 完成 → Compute Wait (同 tile, 共享)
+    AscendC::TEventID computeEvent_; // V_MTE3: Compute 完成 → CopyOut Wait (同 tile, 共享)
+    AscendC::TEventID
+        copyOutDoneEvent_[BUFFER_NUM]; // MTE3_S: CopyOut 完成 → CastBack(next) Wait (释放 matmulOut_, 双缓冲)
+    AscendC::TEventID castDoneEvent_[BUFFER_NUM]; // V_MTE2: Cast 完成 → CopyIn(next) Wait (释放 matmulTile_, 双缓冲)
+    AscendC::TEventID biasInEvent_;               // MTE2_S: LoadBias 完成 → PrepareBias Wait (共享)
+    AscendC::TEventID biasCastDoneEvent_; // V_MTE2: PrepareBias Cast 完成 → LoadBias(next) Wait (释放 biasTile_, 共享)
 
     // M_SPLIT / N_SPLIT: 数据维度分区范围 [start, end)
     uint32_t myMStart_ = 0, myMEnd_ = 0;
@@ -184,9 +186,11 @@ protected:
 
     __aicore__ inline void LoadBias(uint32_t nStart, uint32_t len, uint32_t bufIdx)
     {
+        // 等上一轮 PrepareBias 的 Cast 读完 biasTile_ 后, 才允许覆写
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_);
         DataCopyExtParams params{1, static_cast<uint32_t>(len * sizeof(BiasDataType)), 0, 0, 0};
         DataCopyPad(biasTile_[bufIdx], biasGm_[nStart], params, PadParams<BiasDataType>());
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_[bufIdx]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_);
     }
 
     __aicore__ inline void LoadBiasTile(uint32_t nTile, uint32_t bufIdx)
@@ -203,6 +207,8 @@ protected:
         if constexpr (NEED_BIAS_CAST) {
             LocalTensor<float> biasFp32 = biasFp32Buf_.template Get<float>();
             Cast(biasFp32, biasTile_[biasBufIdx], RoundMode::CAST_NONE, (int32_t)curTileN);
+            // Cast 完成 → biasTile_ 释放, 下一轮 LoadBias 可覆写
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_);
             return biasFp32;
         } else {
             return biasTile_[biasBufIdx].template ReinterpretCast<float>();
@@ -211,11 +217,11 @@ protected:
 
     // --- MTE2 / V / MTE3 三级流水 ---
 
-    // CopyIn: FP32 路径等 castDoneEvent (Cast 完成释放 matmulTile_); 直连路径等 copyOutEvent
+    // CopyIn: FP32 路径等 castDoneEvent (Cast 完成释放 matmulTile_); 直连路径等 copyOutDoneEvent
     __aicore__ inline void CopyIn(uint64_t offset, uint32_t curTileM, uint32_t curTileN, uint32_t bufIdx)
     {
         if constexpr (NEED_FP32_COMPUTE) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(castDoneEvent_[bufIdx]);
         } else {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[bufIdx]);
         }
@@ -223,31 +229,28 @@ protected:
         DataCopyExtParams params{static_cast<uint16_t>(curTileM), blockLen,
                                  static_cast<int64_t>((context_.N - curTileN) * sizeof(MatmulDataType)), 0, 0};
         DataCopyPad(matmulTile_[bufIdx], matmulGm_[offset], params, PadParams<MatmulDataType>());
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_[bufIdx]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_);
     }
 
-    // ubRowStride: UB 中每行实际占用的元素数 (含 32B padding), 用于行偏移计算
     __aicore__ inline void Compute(const LocalTensor<float> &bias, uint32_t curTileM, uint32_t curTileN,
                                    uint32_t ubRowStride, uint32_t bufIdx)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_);
         if constexpr (NEED_FP32_COMPUTE) {
             ComputeFp32(bias, curTileM, curTileN, ubRowStride, bufIdx);
         } else {
             ComputeDirect(bias, curTileM, curTileN, ubRowStride, bufIdx);
         }
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(computeEvent_);
     }
 
-    // FP32 路径: Cast↑(matmul→float) → [Set castDone: matmulTile_ 释放] → Add<float> → [Wait copyOutDone: matmulOut_
-    // 释放] → Cast↓(float→matmulOut_)
+    // FP32 路径: Cast↑(matmul→float) → Set castDone → Add<float> → Wait copyOutDone → Cast↓(float→matmulOut_)
     __aicore__ inline void ComputeFp32(const LocalTensor<float> &bias, uint32_t curTileM, uint32_t curTileN,
                                        uint32_t ubRowStride, uint32_t bufIdx)
     {
         uint32_t ubRowStrideFp32 = Ceil(curTileN, FP32_ELEMS_PER_BLOCK) * FP32_ELEMS_PER_BLOCK;
         bool rowContiguous = (ubRowStride == curTileN);
 
-        // Step 1: Cast half→float (matmulFp32_ 单缓冲, V in-order 保证上轮 CastBack 已完成读取)
         if (rowContiguous) {
             Cast<float, MatmulDataType>(matmulFp32_, matmulTile_[bufIdx], RoundMode::CAST_NONE,
                                         (int32_t)(curTileM * curTileN));
@@ -257,10 +260,10 @@ protected:
                                             RoundMode::CAST_NONE, (int32_t)curTileN);
             }
         }
-        // Cast 完成 → matmulTile_ 释放, 下一轮 CopyIn 可开始 (等 castDoneEvent)
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
+        // Cast 完成 → matmulTile_ 释放, 下一轮 CopyIn 可开始
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(castDoneEvent_[bufIdx]);
 
-        // Step 2: Add<float> 广播 (V pipe in-order, 无需 Wait)
+        // Add<float> 广播 (V pipe in-order, 与 Cast 和 CastBack 保序)
         uint32_t segCnt = Ceil(curTileN, FP32_ELEMS_PER_REPEAT);
         uint8_t repStrideFp32 = static_cast<uint8_t>(ubRowStrideFp32 / FP32_ELEMS_PER_BLOCK);
         for (uint32_t s = 0; s < segCnt; s++) {
@@ -277,7 +280,7 @@ protected:
             }
         }
 
-        // Step 3: Cast float→half, 写入 matmulOut_[bufIdx] (需等上上轮 CopyOut 释放)
+        // Cast float→half, 写入 matmulOut_[bufIdx] (等上上轮 CopyOut 释放)
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[bufIdx]);
         if (rowContiguous) {
             Cast<MatmulDataType, float>(matmulOut_[bufIdx], matmulFp32_, RoundMode::CAST_ROUND,
@@ -290,11 +293,9 @@ protected:
         }
     }
 
-    // float 路径: 直接 Add<float> (matmul 已是 float, 无需 Cast)
     __aicore__ inline void ComputeDirect(const LocalTensor<float> &bias, uint32_t curTileM, uint32_t curTileN,
                                          uint32_t ubRowStride, uint32_t bufIdx)
     {
-        // MatmulDataType == float 时 matmulTile_ 即为 float tensor
         LocalTensor<float> matmulFp32 = matmulTile_[bufIdx].template ReinterpretCast<float>();
         uint32_t segCnt = Ceil(curTileN, FP32_ELEMS_PER_REPEAT);
         uint8_t repStride = static_cast<uint8_t>(ubRowStride / FP32_ELEMS_PER_BLOCK);
@@ -315,7 +316,7 @@ protected:
 
     __aicore__ inline void CopyOut(uint64_t offset, uint32_t curTileM, uint32_t curTileN, uint32_t bufIdx)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(computeEvent_);
         uint32_t blockLen = curTileN * sizeof(MatmulDataType);
         DataCopyExtParams params{static_cast<uint16_t>(curTileM), blockLen, 0,
                                  static_cast<int64_t>((context_.N - curTileN) * sizeof(MatmulDataType)), 0};
@@ -339,12 +340,14 @@ protected:
 
     __aicore__ inline void ProcessNTile(uint32_t nTile, uint32_t biasBufIdx, uint32_t nextBiasBufIdx)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_[biasBufIdx]);
-        if (nTile + 1 < nTileEnd_) {
-            LoadBiasTile(nTile + 1, nextBiasBufIdx);
-        }
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_);
         uint32_t curTileN = TileSize(nTile, tileNCnt_, tailN_, TILE_N);
         LocalTensor<float> bias = PrepareBias(biasBufIdx, curTileN);
+        if constexpr (NEED_BIAS_CAST) {
+            if (nTile + 1 < nTileEnd_) {
+                LoadBiasTile(nTile + 1, nextBiasBufIdx);
+            }
+        }
         uint32_t ubRowStride = Ceil(curTileN, ELEMS_PER_BLOCK) * ELEMS_PER_BLOCK;
         TileRange mr = GetMRange(nTile);
         uint32_t matmulBufIdx = 0;
@@ -358,6 +361,12 @@ protected:
                 static_cast<uint64_t>(mTile) * TILE_M * context_.N + static_cast<uint64_t>(nTile) * TILE_N;
             ProcessMTile(offset, curTileM, curTileN, ubRowStride, bias, matmulBufIdx);
             matmulBufIdx ^= 1;
+        }
+        if constexpr (!NEED_BIAS_CAST) {
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_);
+            if (nTile + 1 < nTileEnd_) {
+                LoadBiasTile(nTile + 1, nextBiasBufIdx);
+            }
         }
     }
 
@@ -373,15 +382,16 @@ protected:
             uint32_t curTileN = (nPos + TILE_N > myNEnd_) ? (myNEnd_ - nPos) : TILE_N;
             uint32_t nextBiasBufIdx = biasBufIdx ^ 1;
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_[biasBufIdx]);
-
-            uint32_t nextNPos = nPos + TILE_N;
-            if (nextNPos < myNEnd_) {
-                uint32_t nextLen = (nextNPos + TILE_N > myNEnd_) ? (myNEnd_ - nextNPos) : TILE_N;
-                LoadBias(nextNPos, nextLen, nextBiasBufIdx);
-            }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(biasInEvent_);
 
             LocalTensor<float> bias = PrepareBias(biasBufIdx, curTileN);
+            uint32_t nextNPos = nPos + TILE_N;
+            if constexpr (NEED_BIAS_CAST) {
+                if (nextNPos < myNEnd_) {
+                    uint32_t nextLen = (nextNPos + TILE_N > myNEnd_) ? (myNEnd_ - nextNPos) : TILE_N;
+                    LoadBias(nextNPos, nextLen, nextBiasBufIdx);
+                }
+            }
             uint32_t ubRowStride = Ceil(curTileN, ELEMS_PER_BLOCK) * ELEMS_PER_BLOCK;
 
             uint32_t matmulBufIdx = 0;
@@ -390,6 +400,13 @@ protected:
                 uint64_t offset = static_cast<uint64_t>(mPos) * context_.N + nPos;
                 ProcessMTile(offset, curTileM, curTileN, ubRowStride, bias, matmulBufIdx);
                 matmulBufIdx ^= 1;
+            }
+            if constexpr (!NEED_BIAS_CAST) {
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_);
+                if (nextNPos < myNEnd_) {
+                    uint32_t nextLen = (nextNPos + TILE_N > myNEnd_) ? (myNEnd_ - nextNPos) : TILE_N;
+                    LoadBias(nextNPos, nextLen, nextBiasBufIdx);
+                }
             }
 
             biasBufIdx = nextBiasBufIdx;
@@ -451,19 +468,21 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
         return;
     }
 
+    copyInEvent_ = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
+    computeEvent_ = tPipe_->template AllocEventID<AscendC::HardEvent::V_MTE3>();
+    biasInEvent_ = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
+    biasCastDoneEvent_ = tPipe_->template AllocEventID<AscendC::HardEvent::V_MTE2>();
     for (uint32_t i = 0; i < BUFFER_NUM; i++) {
-        copyInEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
-        computeEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::V_S>();
         copyOutDoneEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE3_S>();
-        castDoneEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::V_S>();
-        biasInEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
+        castDoneEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::V_MTE2>();
         if constexpr (NEED_FP32_COMPUTE) {
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(castDoneEvent_[i]);       // CopyIn 首轮通过
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(castDoneEvent_[i]);    // CopyIn 首轮通过
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]); // CastBack 首轮通过
         } else {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]); // CopyIn 首轮通过
         }
     }
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_); // LoadBias 首轮通过
 
     if constexpr (MODE == SplitMode::MN_SPLIT) {
         if (nTileStart_ < nTileEnd_) {
@@ -483,17 +502,19 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
 
     for (uint32_t i = 0; i < BUFFER_NUM; i++) {
         if constexpr (NEED_FP32_COMPUTE) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(castDoneEvent_[i]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(castDoneEvent_[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]);
         } else {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]);
         }
-        tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(copyInEvent_[i]);
-        tPipe_->template ReleaseEventID<AscendC::HardEvent::V_S>(computeEvent_[i]);
         tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]);
-        tPipe_->template ReleaseEventID<AscendC::HardEvent::V_S>(castDoneEvent_[i]);
-        tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(biasInEvent_[i]);
+        tPipe_->template ReleaseEventID<AscendC::HardEvent::V_MTE2>(castDoneEvent_[i]);
     }
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_);
+    tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(copyInEvent_);
+    tPipe_->template ReleaseEventID<AscendC::HardEvent::V_MTE3>(computeEvent_);
+    tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(biasInEvent_);
+    tPipe_->template ReleaseEventID<AscendC::HardEvent::V_MTE2>(biasCastDoneEvent_);
 }
 
 template <typename MatmulDataType, typename BiasDataType, uint32_t SplitModeVal>
