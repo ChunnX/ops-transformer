@@ -149,7 +149,7 @@ struct MoeStageCommonConfig {
 // GMM1/GMM2 共用的执行方式：当前 block 的任务分工、矩阵模板模式和专家权重布局。
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
-    int32_t groupedMatmulMode;
+    MegaMoeGmmMode gmmMode;
     bool isPerExpertWeightTensor;
 };
 

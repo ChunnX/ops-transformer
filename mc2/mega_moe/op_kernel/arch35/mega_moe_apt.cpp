@@ -88,8 +88,9 @@ class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, DISPATCH_
 } // namespace MegaMoeImpl
 #endif
 
-template <uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType,
-          bool TopkWeightsPrefetch>
+template <uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t SharedQuantOutType, typename MoeWeight1Type,
+          int32_t MoeWeight1Format, typename SharedWeight1Type, int32_t SharedWeight1Format,
+          uint8_t CombineQuantOutType, uint8_t CommModeType, bool TopkWeightsPrefetch>
 __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
                                     GM_ADDR weight2, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1,
                                     GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedWeight1,

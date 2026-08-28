@@ -171,7 +171,8 @@ struct MegaMoeTilingData {
     uint32_t blockAivNum;
     int64_t combineQuantMode;
     float clampLimit;
-    uint8_t groupedMatmulMode;
+    uint8_t moeGmmMode;
+    uint8_t sharedGmmMode;
     int64_t topoType;
     uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
 
@@ -190,7 +191,7 @@ struct MegaMoeTilingData {
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
     MegaMoeUnpermuteBufferConfig unpermuteConfigForTailTokenChunk;
     uint32_t unpermuteFullTokenChunkCoreCount;
-    // 调度扩展字段统一追加在末尾，保持已有字段偏移不变。
+    // 调度扩展字段。
     int32_t topkWeightsPrefetch;
     uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的容量，按交织调度的完整 N 上界预留
     uint8_t actMode;            // MegaMoeImpl::MegaMoeActMode 的底层协议值

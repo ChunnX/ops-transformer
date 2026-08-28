@@ -203,7 +203,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitGmmConfigs()
 {
     gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-                           .groupedMatmulMode = params_.tilingData->groupedMatmulMode,
+                           .gmmMode = static_cast<MegaMoeGmmMode>(params_.tilingData->moeGmmMode),
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
     constexpr bool pairedAivCombine = ENABLE_A8W4 || ENABLE_A4W4;
     quantCombineConfig_ = {.job = {.jobIndex = pairedAivCombine ? blockIdx_ : aivCoreIdx_,

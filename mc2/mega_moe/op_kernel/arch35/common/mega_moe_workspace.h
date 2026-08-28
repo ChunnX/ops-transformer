@@ -17,6 +17,7 @@
 #define MEGA_MOE_WORKSPACE_H
 
 // peermem 窗口的布局与尺寸（含 HOST_DEVICE / GM_ADDR 宏与基础 include）。
+#include "mega_moe_constants.h"
 #include "mega_moe_peermem.h"
 
 namespace MegaMoeImpl {
@@ -25,12 +26,6 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL; // 异常dump区
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
-// GroupedMatmul 模式。
-constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
-constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
-// a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。GMM2 需要 gmm2MmadResPtr workspace。
-constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
-
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
@@ -110,9 +105,8 @@ struct WorkspaceInfo {
 
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
-        bool useMteA8W8Wave =
-            tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                                                      tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+        bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && (tilingData->moeGmmMode == GMM_MODE_A8W8_ND ||
+                                                                        tilingData->moeGmmMode == GMM_MODE_A8W8_NZ);
         bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA ||
                                     (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
 
@@ -138,9 +132,7 @@ struct WorkspaceInfo {
 
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
@@ -177,9 +169,8 @@ struct WorkspaceInfo {
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;
         bool usePersistentDispatchCumsum =
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-            (tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-                                                       tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ));
+            tilingData->moeGmmMode == GMM_MODE_A8W4_NZ ||
+            (tilingData->topoType == TOPO_TYPE_MTE && tilingData->moeGmmMode == GMM_MODE_A4W4_NZ);
         if (usePersistentDispatchCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             cumsumInfoPtr = base + workspaceSize;
@@ -188,16 +179,14 @@ struct WorkspaceInfo {
                                                   ALIGN_32) *
                              tilingData->aicNum;
         }
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || tilingData->topkWeightsPrefetch == 1) {
+        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->topkWeightsPrefetch == 1) {
             // gmm1MmadRes：GMM1 matmul 输出，布局为 maxOutputSize × hiddenDim 个 BF16。
             gmm1MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
         }
         // gmm2MmadRes：GMM2 matmul 输出，布局为 maxOutputSize × h 个 BF16；
         // A8W4 GMM1、A4W4 混合路径、A4W4_NZ 和 Combine 量化路径需要该区域。
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
+        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ ||
             tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
             useMteA8W8Wave) {
             if (useMteA8W8Wave) {

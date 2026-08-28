@@ -198,7 +198,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitGmm
     int32_t dispatchFlagSlotsPerExpert)
 {
     gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-                           .groupedMatmulMode = params_.tilingData->groupedMatmulMode,
+                           .gmmMode = static_cast<MegaMoeGmmMode>(params_.tilingData->moeGmmMode),
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
     countWorkspace_ = {.blockIdx = blockIdx_, .blockNum = params_.tilingData->aicNum};
     syncWorkspaceLayout_ = {.dispatchFlagSlotCountPerExpert = dispatchFlagSlotsPerExpert,

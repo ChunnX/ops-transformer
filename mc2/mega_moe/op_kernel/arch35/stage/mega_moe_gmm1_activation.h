@@ -1040,8 +1040,7 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
                                                     void *persistentBlockMmadContext = nullptr,
                                                     bool allowWeightL2Bypass = false)
 {
-    if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-        gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+    if (gmmConfig.gmmMode == MegaMoeGmmMode::A8W8_NZ || gmmConfig.gmmMode == MegaMoeGmmMode::A4W4_NZ) {
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,

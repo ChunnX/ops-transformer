@@ -27,6 +27,18 @@ enum class MegaMoeActSubMode : uint8_t {
     LINEAR = 1U,
 };
 
+enum class MegaMoeGmmMode : uint8_t {
+    A8W8_ND = 0U,
+    A8W8_NZ = 2U,
+    A8W4_NZ = 1U,
+    A4W4_NZ = 4U,
+};
+
+constexpr uint8_t GMM_MODE_A8W8_ND = static_cast<uint8_t>(MegaMoeGmmMode::A8W8_ND);
+constexpr uint8_t GMM_MODE_A8W8_NZ = static_cast<uint8_t>(MegaMoeGmmMode::A8W8_NZ);
+constexpr uint8_t GMM_MODE_A8W4_NZ = static_cast<uint8_t>(MegaMoeGmmMode::A8W4_NZ);
+constexpr uint8_t GMM_MODE_A4W4_NZ = static_cast<uint8_t>(MegaMoeGmmMode::A4W4_NZ);
+
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
@@ -70,8 +82,6 @@ constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 constexpr uint32_t META_INFO_SIZE = 8U;
-constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
-constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 
 constexpr uint32_t L1_TILE_M_256 = 256U;
 constexpr uint32_t L1_TILE_M_128 = 128U;

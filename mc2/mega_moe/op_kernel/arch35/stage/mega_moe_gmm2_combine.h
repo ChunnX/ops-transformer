@@ -983,8 +983,7 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
                     TopkWeightsPrefetch, IsShared>(params, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                                                    runtimeState.gmTileSequence, gmmConfig.blockJob,
                                                    static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
-    } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-               gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+    } else if (gmmConfig.gmmMode == MegaMoeGmmMode::A8W8_NZ || gmmConfig.gmmMode == MegaMoeGmmMode::A4W4_NZ) {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
             problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
