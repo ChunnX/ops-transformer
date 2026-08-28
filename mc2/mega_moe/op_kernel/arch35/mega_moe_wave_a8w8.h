@@ -133,6 +133,7 @@ private:
     __aicore__ inline bool TryCombineNextWave(WaveCombineCursor &cursor, bool blocking, ExpertLoopState &combineState,
                                               GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig);
     __aicore__ inline bool TryDispatchNextWave(WaveReplayState &dispatchReplay);
+    __aicore__ inline bool CachedGmm2ProgressAtLeast(int32_t *cachedWaves, int32_t targetWaves);
     __aicore__ inline void DispatchWaveSegment(const ExpertTokenPosition &segBegin, const ExpertTokenPosition &segEnd,
                                                uint64_t segBeginPrefix);
     __aicore__ inline void DispatchAndCombineInterleaved(ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
@@ -731,6 +732,28 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     }
 }
 
+/*
+ * 缓存增量式进度探测：GMM2 wave 计数单调不减，已达标核不再重读 GM。
+ * 直裸轮询（每次 28 路 ReadGmByPassDCache 绕 cache 直读）在空转循环里会形成
+ * GM 读风暴——实测拖慢 AIC 的 mte2 权重流、放大 GMM1 等数据（timing6 分诊）。
+ */
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::CachedGmm2ProgressAtLeast(int32_t *cachedWaves,
+                                                                                                   int32_t targetWaves)
+{
+    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2ReadyPtr);
+    for (uint32_t aicIdx = 0U; aicIdx < waveCombineJob_.totalJobs; ++aicIdx) {
+        if (cachedWaves[aicIdx] >= targetWaves) {
+            continue;
+        }
+        cachedWaves[aicIdx] = AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE);
+        if (cachedWaves[aicIdx] < targetWaves) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // dispatch 一个 wave（重放推进 + 段搬运）；无剩余返回 false。
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::TryDispatchNextWave(
@@ -765,16 +788,19 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig)
 {
     constexpr int32_t DISPATCH_LOOKAHEAD_CAP = 3;
+    // 空转退避：过短会形成 GM 读风暴（探测走绕 cache 直读，实测拖慢 AIC mte2 权重流）。
+    constexpr int64_t IDLE_BACKOFF_CYCLES = 3000;
     WaveReplayState dispatchReplay{};
     WaveCombineCursor cursor{};
     int32_t dispatchedWaves = 0;
     bool dispatchDone = moeExpertPerRank_ == 0U;
+    int32_t cachedWaves[MAX_AICORE_NUM] = {0};
 
     MC2_TS_START(TS_DISPATCH_ALL);
     while (!dispatchDone) {
         bool didWork = false;
         // 节流放行：counter 最小值 ≥ dispatchedWaves − CAP + 1 即允许再取一个 wave。
-        if (ProbeGmm2WaveProgress(waveCombineJob_, params_, dispatchedWaves - DISPATCH_LOOKAHEAD_CAP + 1)) {
+        if (CachedGmm2ProgressAtLeast(cachedWaves, dispatchedWaves - DISPATCH_LOOKAHEAD_CAP + 1)) {
             MC2_TS_START(TS_DISPATCH_EXPERT);
             if (TryDispatchNextWave(dispatchReplay)) {
                 ++dispatchedWaves;
@@ -785,7 +811,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
             didWork = true;
         }
         bool combined = false;
-        while (TryCombineNextWave(cursor, false, combineState, combineAddrInfo, bufferConfig)) {
+        while (cursor.replay.pos.expertIdx < moeExpertPerRank_ &&
+               CachedGmm2ProgressAtLeast(cachedWaves, cursor.waveIdx + 1) &&
+               TryCombineNextWave(cursor, true, combineState, combineAddrInfo, bufferConfig)) {
             combined = true;
         }
         if (combined) {
@@ -794,10 +822,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
             didWork = true;
         }
         if (!didWork) {
-            // 领先额度用尽且无就绪 combine：等 GMM 推进（领导要求的「数据没准备好」诊断位）。
+            // 领先额度用尽且无就绪 combine：等 GMM 推进（「数据没准备好」诊断位）。
             MC2_TS_START(TS_DISPATCH_THROTTLE);
             int64_t waitStart = GetSystemCycle();
-            while (GetSystemCycle() - waitStart < 100) {
+            while (GetSystemCycle() - waitStart < IDLE_BACKOFF_CYCLES) {
             }
             MC2_TS_STOP(TS_DISPATCH_THROTTLE);
         }
