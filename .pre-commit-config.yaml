@@ -47,7 +47,7 @@ repos:
     rev: v0.14.14
     hooks:
       - id: ruff-check
-        args: ["--output-format", "github", "--fix", "--ignore", "F841,F821,E741,E712,F403,F405,F601,E721,E731,F811,E711,E722,E402,F401"]
+        args: ["--output-format", "github", "--fix"]
         types: [python]
       - id: ruff-format
         types: [python]

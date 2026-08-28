@@ -25,7 +25,7 @@
 using namespace ge;
 namespace ops {
 
-static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
+static std::set<std::string> GmmDavidSupportSoc = {"Ascend950", "Ascend350"};
 
 enum class PlatformID : std::uint8_t {
     UNKNOWN,
@@ -819,7 +819,8 @@ static ge::graphStatus CheckFunctionParamsForShape(gert::InferShapeContext* cont
         return GRAPH_SUCCESS;
     } else {
         paramsInfo.platform = (optionalInfo.soc_version.find("310P") != std::string::npos) ?
-                                PlatformID::ASCEND310P : (optionalInfo.soc_version.find("950") != std::string::npos) ?
+                                PlatformID::ASCEND310P : (optionalInfo.soc_version.find("950") != std::string::npos ||
+                                optionalInfo.soc_version.find("350") != std::string::npos) ?
                                 PlatformID::ASCEND950 : PlatformID::ASCEND910B;
     }
     OP_CHECK_IF(CheckQuantParams(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
@@ -1696,7 +1697,8 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* conte
         return GRAPH_SUCCESS;
     } else {
         platform = (optionalInfo.soc_version.find("310P") != std::string::npos) ?
-                    PlatformID::ASCEND310P : (optionalInfo.soc_version.find("950") != std::string::npos) ?
+                    PlatformID::ASCEND310P : (optionalInfo.soc_version.find("950") != std::string::npos ||
+                    optionalInfo.soc_version.find("350") != std::string::npos) ?
                     PlatformID::ASCEND950 : PlatformID::ASCEND910B;
     }
     DataType xDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_X, 0);

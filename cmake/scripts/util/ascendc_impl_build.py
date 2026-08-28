@@ -606,10 +606,6 @@ class AdpBuilder(opdesc_parser.OpDesc):
             attrval = self.attr_val.get(attr).get("defaultValue")
             if attrval is not None:
                 optional = True
-                if type == "bool":
-                    attrval = attrval.capitalize()
-                elif type == "str":
-                    attrval = '"' + attrval + '"'
                 self.argsdefv.append(attrval)
                 continue
             if optional:
@@ -745,7 +741,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
             arch_version = ""
             if compute_unit == "ascend310p":
                 arch_version = "arch31"
-            elif compute_unit == "ascend950":
+            elif compute_unit in ("ascend950", "ascend350"):
                 arch_version = "arch35"
             else:
                 arch_version = "arch22"
