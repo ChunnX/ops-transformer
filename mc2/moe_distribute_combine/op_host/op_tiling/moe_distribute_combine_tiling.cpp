@@ -544,16 +544,9 @@ ge::graphStatus MoeDistributeCombineTilingBase::CheckWinSize(const gert::TilingC
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.epWorldSize);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->moeDistributeCombineInfo.globalBs) / epWorldSize;
     uint64_t actualSize = epWorldSize * maxBs * h * 2UL * 2UL * static_cast<uint64_t>(localMoeExpertNum);
-    if (actualSize > maxWindowSizeEp) {
-        OP_LOGE_WITHOUT_REPORT(
-            nodeName,
-            "HCCL_BUFFSIZE is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu, localMoeExpertNum = %u,"
-            "ep_worldsize * maxBs * h * 2 * 2 * localMoeExpertNum = %luMB, HCCL_BUFFSIZE=%luMB.",
-            maxBs, h, epWorldSize, localMoeExpertNum, actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE);
-        return ge::GRAPH_FAILED;
-    }
-    tilingData->moeDistributeCombineInfo.totalWinSizeEp = maxWindowSizeEp;
-    OP_LOGD(nodeName, "EpwindowSize = %lu", maxWindowSizeEp);
+    tilingData->moeDistributeCombineInfo.totalWinSizeEp = actualSize + MB_SIZE;
+    OP_LOGD(nodeName, "EpwindowSize = %lu, actualSize = %lu", maxWindowSizeEp, actualSize + MB_SIZE);
+    OP_LOGD(nodeName, "check actualSize in kernel.");
 
     return ge::GRAPH_SUCCESS;
 }
@@ -610,7 +603,10 @@ ge::graphStatus TilingParseForMoeDistributeCombine(gert::TilingParseContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineTilingBase::DoOpTiling() { return MoeDistributeCombineTilingFunc(context_); }
+ge::graphStatus MoeDistributeCombineTilingBase::DoOpTiling()
+{
+    return MoeDistributeCombineTilingFunc(context_);
+}
 
 ge::graphStatus MoeDistributeCombineTiling(gert::TilingContext *context)
 {
@@ -626,7 +622,10 @@ uint64_t MoeDistributeCombineTilingBase::GetTilingKey() const
     return tilingKey;
 }
 
-bool MoeDistributeCombineTilingBase::IsCapable() { return true; }
+bool MoeDistributeCombineTilingBase::IsCapable()
+{
+    return true;
+}
 
 IMPL_OP_OPTILING(MoeDistributeCombine)
     .Tiling(MoeDistributeCombineTiling)
