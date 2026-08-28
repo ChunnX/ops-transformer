@@ -37,9 +37,16 @@ constexpr uint32_t MM_L0C_ADDR = 0;
 
 constexpr uint32_t FLAG_ZERO = 0;
 
-enum class BSource { Copy, SameAsA, Reuse };
+enum class BSource {
+    Copy,
+    SameAsA,
+    Reuse
+};
 
-__aicore__ inline uint32_t MmAlign(uint32_t value, uint32_t align) { return (value + align - 1) / align * align; }
+__aicore__ inline uint32_t MmAlign(uint32_t value, uint32_t align)
+{
+    return (value + align - 1) / align * align;
+}
 
 class CGDRMatmulBasic {
 public:
@@ -55,10 +62,12 @@ public:
         SetFlag<HardEvent::FIX_MTE2>(FLAG_ZERO);
     }
 
-    __aicore__ inline void End() { WaitFlag<HardEvent::FIX_MTE2>(FLAG_ZERO); }
+    __aicore__ inline void End()
+    {
+        WaitFlag<HardEvent::FIX_MTE2>(FLAG_ZERO);
+    }
 
-    template <bool transA, bool transB, bool accum, typename dstType = bfloat16_t,
-              BSource bSrc = BSource::Copy>
+    template <bool transA, bool transB, bool accum, typename dstType = bfloat16_t, BSource bSrc = BSource::Copy>
     __aicore__ inline void Execute(GlobalTensor<bfloat16_t> aGm, GlobalTensor<bfloat16_t> bGm,
                                    GlobalTensor<dstType> cGm, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t aGmRowStride = 0, uint32_t bGmRowStride = 0, uint32_t cGmRowStride = 0)

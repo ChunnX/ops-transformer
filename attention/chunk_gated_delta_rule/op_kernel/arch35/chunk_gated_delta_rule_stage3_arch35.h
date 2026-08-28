@@ -118,8 +118,7 @@ public:
                 mmBasic_.Execute<false, false, true, bfloat16_t>(tmpGM_[coreId_ * chunkSize_ * chunkSize_],
                                                                  sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
                                                                  sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_],
-                                                                 curChunkSize_, Dv_, curChunkSize_, 0, 0,
-                                                                 Nv_ * Dv_);
+                                                                 curChunkSize_, Dv_, curChunkSize_, 0, 0, Nv_ * Dv_);
                 CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);
             }
         }

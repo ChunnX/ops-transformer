@@ -294,8 +294,8 @@ private:
         // query @ key.transpose(-1,-2)   stage1 out
         for (uint32_t i = 0; i < curParaNum; ++i) {
             mmBasic_.Execute<false, true, false, bfloat16_t>(queryConGm_[i * ckOffset_], keyConGm_[i * ckOffset_],
-                                                             outQkGm_[chunkRowBase_[i] * chunkSize_],
-                                                             validLenBatch_[i], validLenBatch_[i], dk_);
+                                                             outQkGm_[chunkRowBase_[i] * chunkSize_], validLenBatch_[i],
+                                                             validLenBatch_[i], dk_);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // 同步5
 
@@ -309,8 +309,8 @@ private:
         for (uint32_t i = 0; i < curParaNum; ++i) {
             AscendC::CrossCoreWaitFlag(0x6); // 同步3
             mmBasic_.Execute<false, false, false, bfloat16_t>(attnWsGm_[i * ccOffset_], gBKWsGm_[i * ckOffset_],
-                                                              outKCumdecayGm_[chunkRowBase_[i] * dk_], chunkSize_,
-                                                              dk_, chunkSize_);
+                                                              outKCumdecayGm_[chunkRowBase_[i] * dk_], chunkSize_, dk_,
+                                                              chunkSize_);
         }
 
         // attn @ v_beta    stage1 out
@@ -744,9 +744,9 @@ private:
         uint64_t leftDown = offset + chunkSize_ * INVERSE_SHAPE;
         uint64_t rightDown = leftDown + INVERSE_SHAPE;
         // 右矩阵左下角 @ 右矩阵左上角 -> 右矩阵左下角
-        mmBasic_.Execute<false, false, false, bfloat16_t>(attnWsGm_[leftDown], attnWsGm_[offset],
-                                                          attnWsGm_[leftDown], INVERSE_SHAPE, INVERSE_SHAPE,
-                                                          INVERSE_SHAPE, chunkSize_, chunkSize_, chunkSize_);
+        mmBasic_.Execute<false, false, false, bfloat16_t>(attnWsGm_[leftDown], attnWsGm_[offset], attnWsGm_[leftDown],
+                                                          INVERSE_SHAPE, INVERSE_SHAPE, INVERSE_SHAPE, chunkSize_,
+                                                          chunkSize_, chunkSize_);
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::FIX_MTE2));
         SetFlag<HardEvent::FIX_MTE2>(eventID);
         WaitFlag<HardEvent::FIX_MTE2>(eventID);

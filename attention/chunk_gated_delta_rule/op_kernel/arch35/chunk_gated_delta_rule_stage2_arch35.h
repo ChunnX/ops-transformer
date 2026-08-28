@@ -269,8 +269,8 @@ public:
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime, GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
-        mmBasic_.Execute<false, true, false, bfloat16_t, BSource::Reuse>(qPrime, state, out, curChunkSize_, Dv_, Dk_,
-                                                                          0, 0, Nv_ * Dv_);
+        mmBasic_.Execute<false, true, false, bfloat16_t, BSource::Reuse>(qPrime, state, out, curChunkSize_, Dv_, Dk_, 0,
+                                                                         0, Nv_ * Dv_);
     }
 
     template <typename vInnerType>
