@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """Host-side tiling checks for MinimaxSparseAttentionSplitKv.
 
 Mirrors op_host/minimax_sparse_attention_split_kv_tiling.cpp:
@@ -47,8 +56,15 @@ def tiling_key(inner_precise: int) -> int:
     return TILING_KEY_MIXED
 
 
-def workspace_bytes(total_q: int, kv_heads: int, top_k: int, group_size: int,
-                    d: int, inner_precise: int, libapi: int = 0) -> int:
+def workspace_bytes(
+    total_q: int,
+    kv_heads: int,
+    top_k: int,
+    group_size: int,
+    d: int,
+    inner_precise: int,
+    libapi: int = 0,
+) -> int:
     slot_o = group_size * d
     slot_stat = group_size
     task_slots = total_q * kv_heads * top_k
@@ -58,8 +74,14 @@ def workspace_bytes(total_q: int, kv_heads: int, top_k: int, group_size: int,
     return libapi + accum_out * o_width + lse_stat * 2 * 4
 
 
-def check_tiling(d: int, block_size: int, num_heads: int, kv_heads: int,
-                 inner_precise: int, ub_size: int = UB_SIZE_950) -> tuple[bool, str]:
+def check_tiling(
+    d: int,
+    block_size: int,
+    num_heads: int,
+    kv_heads: int,
+    inner_precise: int,
+    ub_size: int = UB_SIZE_950,
+) -> tuple[bool, str]:
     if inner_precise not in (0, 1, 4):
         return False, "innerPrecise"
     if d != HEAD_SIZE:
@@ -89,8 +111,12 @@ def check_tiling(d: int, block_size: int, num_heads: int, kv_heads: int,
     if inner_precise != 0:
         return True, "ok"
 
-    ub_need = (HIGH_PREC_S_BYTES + HIGH_PREC_P_BYTES + HIGH_PREC_TMP_BYTES
-               + 2 * SM_ROW_MAX_ELEM * 4 * UB_S_STAGES * 2)
+    ub_need = (
+        HIGH_PREC_S_BYTES
+        + HIGH_PREC_P_BYTES
+        + HIGH_PREC_TMP_BYTES
+        + 2 * SM_ROW_MAX_ELEM * 4 * UB_S_STAGES * 2
+    )
     if ub_size > 0 and ub_need > ub_size:
         return False, "ubSize"
     # AIV0-only: shrink groups until the FULL tile fits tmp and stats.

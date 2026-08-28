@@ -20,11 +20,7 @@ using namespace tla;
 
 namespace MinimaxSaSplitKvKernelArch35 {
 
-template <
-    class BlockMmadQK,
-    class EpilogueOnlineSoftmax,
-    class BlockMmadPV,
-    class EpilogueRescaleO>
+template <class BlockMmadQK, class EpilogueOnlineSoftmax, class BlockMmadPV, class EpilogueRescaleO>
 class MinimaxSparseAttentionSplitKvKernelArch35 {
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
@@ -57,35 +53,32 @@ public:
     // slots not written by Phase1 are treated as invalid by Phase2 combine.
     static constexpr float WS_ROWMAX_INIT = -3.4028235e38f;
     static constexpr float WS_ROWSUM_INIT = 0.0f;
-    static constexpr uint32_t WS_INIT_EVT = 5U;          // free V_MTE3/MTE3_V id on VEC
-    static constexpr uint32_t WS_INIT_CHUNK = 4096U;      // fp32 elems per chunk (multiple of 8)
+    static constexpr uint32_t WS_INIT_EVT = 5U;      // free V_MTE3/MTE3_V id on VEC
+    static constexpr uint32_t WS_INIT_CHUNK = 4096U; // fp32 elems per chunk (multiple of 8)
 
     // gmUb/glUb are 2-deep by ubSBufId inside the prefill softmax epilogue (bf16:
     // reg_low_prec_bf16.hpp; fp32: reg_high_prec.hpp). Both ctors keep stats at
     // 7*32KB so this offset stays valid. CopyPartialStatsToGm (MTE3) reads
     // gmUb[ubSBufId]/glUb[ubSBufId] right after each softmax.
-    static constexpr uint32_t SM_UB_BLOCK = 32768U;  // UB_UINT8_BLOCK_SIZE
-    static constexpr uint32_t SM_UB_GM_OFFSET = 7U * SM_UB_BLOCK;                       // 229376 rowMax base
-    static constexpr uint32_t SM_UB_GL_OFFSET = SM_UB_GM_OFFSET + 2U * 64U * sizeof(float);  // 229888 rowSum base
-    static constexpr uint32_t SM_UB_STAGE_BYTES = 64U * sizeof(float);  // 256, per-stage stride
+    static constexpr uint32_t SM_UB_BLOCK = 32768U;                                         // UB_UINT8_BLOCK_SIZE
+    static constexpr uint32_t SM_UB_GM_OFFSET = 7U * SM_UB_BLOCK;                           // 229376 rowMax base
+    static constexpr uint32_t SM_UB_GL_OFFSET = SM_UB_GM_OFFSET + 2U * 64U * sizeof(float); // 229888 rowSum base
+    static constexpr uint32_t SM_UB_STAGE_BYTES = 64U * sizeof(float);                      // 256, per-stage stride
 
     static constexpr uint32_t COPY_GRANULARITY = 2;
 
-    __aicore__ inline
-    uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
+    __aicore__ inline uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
     {
         return static_cast<uint64_t>(qToken) * kvHeads_ + kvHeadIdx;
     }
 
-    __aicore__ inline
-    uint64_t SlotStatOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK) const
+    __aicore__ inline uint64_t SlotStatOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK) const
     {
-        return TaskLinearIdx(qToken, kvHeadIdx) * topK_ * slotStatElems_
-            + static_cast<uint64_t>(slotK) * slotStatElems_;
+        return TaskLinearIdx(qToken, kvHeadIdx) * topK_ * slotStatElems_ +
+               static_cast<uint64_t>(slotK) * slotStatElems_;
     }
 
-    __aicore__ inline
-    void InitSyncFlags()
+    __aicore__ inline void InitSyncFlags()
     {
 #ifdef __DAV_CUBE__
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -123,8 +116,7 @@ public:
 #endif
     }
 
-    __aicore__ inline
-    void ReleaseSyncFlags()
+    __aicore__ inline void ReleaseSyncFlags()
     {
 #ifdef __DAV_CUBE__
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -162,15 +154,13 @@ public:
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 
-    __aicore__ inline
-    static uint32_t VecRowSplit(uint32_t groupSize)
+    __aicore__ inline static uint32_t VecRowSplit(uint32_t groupSize)
     {
         uint32_t half = RoundUp(groupSize, 8U) / 2U;
         return (half > groupSize) ? groupSize : half;
     }
 
-    __aicore__ inline
-    static uint32_t VecNumRows(uint32_t groupSize)
+    __aicore__ inline static uint32_t VecNumRows(uint32_t groupSize)
     {
         if (groupSize <= 1U) {
             return (AscendC::GetSubBlockIdx() == 0U) ? groupSize : 0U;
@@ -179,17 +169,14 @@ public:
         return (AscendC::GetSubBlockIdx() == 0U) ? split : (groupSize - split);
     }
 
-    __aicore__ inline
-    static uint32_t VecGlobalRowOffset(uint32_t groupSize)
+    __aicore__ inline static uint32_t VecGlobalRowOffset(uint32_t groupSize)
     {
         return (AscendC::GetSubBlockIdx() == 0U) ? 0U : VecRowSplit(groupSize);
     }
 
-    __aicore__ inline
-    MinimaxSparseAttentionSplitKvKernelArch35() {}
+    __aicore__ inline MinimaxSparseAttentionSplitKvKernelArch35() {}
 
-    __aicore__ inline
-    void operator()(MinimaxSaSplitKvKernelParamsArch35 const &params)
+    __aicore__ inline void operator()(MinimaxSaSplitKvKernelParamsArch35 const &params)
     {
         __gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData *tilingData =
             reinterpret_cast<__gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData *>(params.tiling);
@@ -246,9 +233,8 @@ public:
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
 #endif
-        Phase1KvCentricCompute(
-            coreIdx, coreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices,
-            gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
+        Phase1KvCentricCompute(coreIdx, coreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices, gK2qSlotIndices, gBlockTable,
+                               gAccumOut, gSoftmaxMax, gSoftmaxSum);
         AscendC::SyncAll<false>();
 #ifdef __DAV_VEC__
         Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum, gSoftmaxLse);
@@ -257,8 +243,7 @@ public:
     }
 
 private:
-    __aicore__ inline
-    void FetchBaseShapeInfo(
+    __aicore__ inline void FetchBaseShapeInfo(
         __gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData *tilingData)
     {
         batch_ = tilingData->batch;
@@ -289,9 +274,8 @@ private:
     // WS_INIT_CHUNK blocks (tail chunk uses remainder length). UB filled once
     // per buffer; one loop writes both GM regions per chunk. Work split across
     // VEC sub-blocks by chunk index.
-    __aicore__ inline
-    void InitWorkspaceStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
-                            AscendC::GlobalTensor<float> &gSoftmaxSum)
+    __aicore__ inline void InitWorkspaceStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
+                                              AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
         if (lseStatSize_ == 0U) {
             return;
@@ -305,8 +289,8 @@ private:
         uint32_t totalChunks = numFullChunks + (tailElems > 0U ? 1U : 0U);
 
         AscendC::LocalTensor<float> ubMax = resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::LocalTensor<float> ubSum = resource.ubBuf.template GetBufferByByte<float>(
-            WS_INIT_CHUNK * sizeof(float));
+        AscendC::LocalTensor<float> ubSum =
+            resource.ubBuf.template GetBufferByByte<float>(WS_INIT_CHUNK * sizeof(float));
         AscendC::Duplicate(ubMax, WS_ROWMAX_INIT, WS_INIT_CHUNK);
         AscendC::Duplicate(ubSum, WS_ROWSUM_INIT, WS_INIT_CHUNK);
         AscendC::PipeBarrier<PIPE_V>();
@@ -333,15 +317,13 @@ private:
     // rows. InitPackedRowCoord skips leading empty batches (packedRow 0 is the first
     // non-empty batch at blk 0, not unconditionally (0,0)). Advance skips holes in the
     // middle the same way. totalKvRows_==0 (all padding) never enters the decode loop.
-    __aicore__ inline
-    uint32_t KvRowsPerBatch(uint32_t batchIdx)
+    __aicore__ inline uint32_t KvRowsPerBatch(uint32_t batchIdx)
     {
         return CeilDiv(static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx)), blockSize_);
     }
 
     // Advance past batches with no row at this kvBlockIdx (kv_len=0 => 0 rows).
-    __aicore__ inline
-    void SkipEmptyAtCurrentBlk(uint32_t &batchIdx, uint32_t kvBlockIdx)
+    __aicore__ inline void SkipEmptyAtCurrentBlk(uint32_t &batchIdx, uint32_t kvBlockIdx)
     {
         while (batchIdx < batch_ && kvBlockIdx >= KvRowsPerBatch(batchIdx)) {
             batchIdx++;
@@ -350,16 +332,14 @@ private:
 
     // packedRow 0 coordinate. Does not wrap to blk 1: that row only exists if some
     // batch has kv_len>0 (then it sits at blk 0). All-empty is totalKvRows_==0.
-    __aicore__ inline
-    void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    __aicore__ inline void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
     {
         batchIdx = 0;
         kvBlockIdx = 0;
         SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
     }
 
-    __aicore__ inline
-    void AdvancePackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    __aicore__ inline void AdvancePackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
     {
         batchIdx++;
         SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
@@ -378,9 +358,8 @@ private:
     // (batchIdx+1) qseqlen GetValues per task (1 each for batch_=1). Replaces the old
     // FindBatchAndLocalQ scan (redundant: Q/KV same batch) + the per-cvl kv/qseqlen
     // re-fetches.
-    __aicore__ inline
-    void ResolveBatchQSide(uint32_t batchIdx, uint32_t &kvSeqlenBatch, uint32_t &numBlocksB,
-                          uint32_t &cumQStart, uint32_t &qSeqlenBatch, uint32_t &cumKvStart)
+    __aicore__ inline void ResolveBatchQSide(uint32_t batchIdx, uint32_t &kvSeqlenBatch, uint32_t &numBlocksB,
+                                             uint32_t &cumQStart, uint32_t &qSeqlenBatch, uint32_t &cumKvStart)
     {
         kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
         numBlocksB = CeilDiv(kvSeqlenBatch, blockSize_);
@@ -399,8 +378,7 @@ private:
 
     // kvSeqlenBatch + numBlocksB are pre-fetched by ResolveBatchQSide for the batch
     // resolved by the state machine (avoids a redundant gActualKvseqlen_ GetValue here).
-    __aicore__ inline
-    uint32_t CalcKvBlockValidSize(uint32_t kvSeqlenBatch, uint32_t numBlocksB, uint32_t localBlockIdx)
+    __aicore__ inline uint32_t CalcKvBlockValidSize(uint32_t kvSeqlenBatch, uint32_t numBlocksB, uint32_t localBlockIdx)
     {
         // kv_len=0 => numBlocksB=0; unsigned (numBlocksB-1) would wrap and look like a tail block.
         if (numBlocksB == 0U || localBlockIdx >= numBlocksB) {
@@ -416,18 +394,16 @@ private:
     // pre-fetched by ResolveBatchQSide (state machine resolved batchIdx) -> pure compute,
     // 0 GM GetValue in the cvl loop.
     // BNSD/BSND CSR qToken is padded flatten b * S + t; TND qToken is packed flatten.
-    __aicore__ inline
-    uint32_t CalcCausalValidLen(
-        uint32_t qToken, uint32_t validSize, uint32_t kvStartPos,
-        uint32_t cumQStart, uint32_t qSeqlenBatch, uint32_t kvSeqlenBatch)
+    __aicore__ inline uint32_t CalcCausalValidLen(uint32_t qToken, uint32_t validSize, uint32_t kvStartPos,
+                                                  uint32_t cumQStart, uint32_t qSeqlenBatch, uint32_t kvSeqlenBatch)
     {
         // Padding request: q_len=kv_len=0 (or either side empty) has no causal overlap.
         if (qSeqlenBatch == 0U || kvSeqlenBatch == 0U) {
             return 0U;
         }
         uint32_t localQIdx;
-        if ((layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD ||
-             layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) && qSeqLen_ > 0U) {
+        if ((layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD || layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) &&
+            qSeqLen_ > 0U) {
             localQIdx = qToken % qSeqLen_;
             if (localQIdx >= qSeqlenBatch) {
                 return 0U;
@@ -447,11 +423,9 @@ private:
     // tokens t>=q_len are intra-seq padding). TND is packed, so q_len=0 batches add
     // no qTokens; q_len>0 && kv_len=0 still has packed qTokens and must be skipped in
     // Phase2 so O/LSE stay zero (ComputeScaleValue would otherwise write -inf LSE).
-    __aicore__ inline
-    bool IsPaddingQToken(uint32_t qToken) const
+    __aicore__ inline bool IsPaddingQToken(uint32_t qToken) const
     {
-        if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD ||
-            layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) {
+        if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD || layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) {
             if (qSeqLen_ == 0U) {
                 return false;
             }
@@ -476,17 +450,15 @@ private:
     // GM offset of query[qToken, qHeadStart, 0:D).
     // TND/BSND: token-major, consecutive heads of one token are D apart.
     // BNSD: head-major S, consecutive heads of one token are S*D apart.
-    __aicore__ inline
-    uint64_t QTokenHeadOffset(uint32_t qToken, uint32_t qHeadStart) const
+    __aicore__ inline uint64_t QTokenHeadOffset(uint32_t qToken, uint32_t qHeadStart) const
     {
         if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD && qSeqLen_ > 0U) {
             uint32_t b = qToken / qSeqLen_;
             uint32_t t = qToken - b * qSeqLen_;
-            return (static_cast<uint64_t>(b) * qHeads_ + qHeadStart) * qSeqLen_ * embed_
-                + static_cast<uint64_t>(t) * embed_;
+            return (static_cast<uint64_t>(b) * qHeads_ + qHeadStart) * qSeqLen_ * embed_ +
+                   static_cast<uint64_t>(t) * embed_;
         }
-        return static_cast<uint64_t>(qToken) * qHeads_ * embed_
-            + static_cast<uint64_t>(qHeadStart) * embed_;
+        return static_cast<uint64_t>(qToken) * qHeads_ * embed_ + static_cast<uint64_t>(qHeadStart) * embed_;
     }
 
     // Copies rowMax + rowSum for 1 or 2 groups (PAIR) from UB to GM in one DataCopyPad each
@@ -496,32 +468,24 @@ private:
     // actual (qToken, slotK) lseOff -- no uniform-stride assumption (ndNum=2 needs only
     // the one inter-pair gap, computed per pair). Falls back to blockCount=1 (single group)
     // at the caller when the pair's gaps aren't 32B-aligned or exceed the uint16 stride.
-    __aicore__ inline
-    void CopyPartialStatsToGm(AscendC::GlobalTensor<float> &gSoftmaxMax,
-                              AscendC::GlobalTensor<float> &gSoftmaxSum,
-                              const AscendC::LocalTensor<float> &rowMaxLocal,
-                              const AscendC::LocalTensor<float> &rowSumLocal,
-                              uint64_t lseOffset,
-                              uint32_t rowCount,
-                              uint16_t blockCount,
-                              uint32_t srcStride,
-                              uint32_t dstStride)
+    __aicore__ inline void CopyPartialStatsToGm(AscendC::GlobalTensor<float> &gSoftmaxMax,
+                                                AscendC::GlobalTensor<float> &gSoftmaxSum,
+                                                const AscendC::LocalTensor<float> &rowMaxLocal,
+                                                const AscendC::LocalTensor<float> &rowSumLocal, uint64_t lseOffset,
+                                                uint32_t rowCount, uint16_t blockCount, uint32_t srcStride,
+                                                uint32_t dstStride)
     {
         if (rowCount == 0U) {
             return;
         }
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
-        AscendC::DataCopyPad(
-            gSoftmaxMax[lseOffset], rowMaxLocal,
-            AscendC::DataCopyExtParams{
-                blockCount, static_cast<uint16_t>(rowCount * sizeof(float)),
-                srcStride, dstStride, 0});
-        AscendC::DataCopyPad(
-            gSoftmaxSum[lseOffset], rowSumLocal,
-            AscendC::DataCopyExtParams{
-                blockCount, static_cast<uint16_t>(rowCount * sizeof(float)),
-                srcStride, dstStride, 0});
+        AscendC::DataCopyPad(gSoftmaxMax[lseOffset], rowMaxLocal,
+                             AscendC::DataCopyExtParams{blockCount, static_cast<uint16_t>(rowCount * sizeof(float)),
+                                                        srcStride, dstStride, 0});
+        AscendC::DataCopyPad(gSoftmaxSum[lseOffset], rowSumLocal,
+                             AscendC::DataCopyExtParams{blockCount, static_cast<uint16_t>(rowCount * sizeof(float)),
+                                                        srcStride, dstStride, 0});
     }
 
     // Batched stats scatter: the softmax wrote this AIV's rowMax/rowSum into gmUb/glUb
@@ -534,12 +498,10 @@ private:
     // 8-float-aligned stride (matches the softmax epilogue's statsOff): CopyPartialStatsToGm's
     // DataCopyPad needs a 32B-aligned source; groupRows<8 (local groupSize=4) would otherwise
     // misalign it. No-op for groupRows>=8 (production groupSize=16).
-    __aicore__ inline
-    void ScatterBatchStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
-                           AscendC::GlobalTensor<float> &gSoftmaxSum,
-                           uint32_t ubSBufId, uint32_t batchM, uint32_t groupRows,
-                           const uint32_t *qTokens, const uint32_t *slotKs,
-                           uint32_t kvHeadIdx, uint32_t groupCount)
+    __aicore__ inline void ScatterBatchStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
+                                             AscendC::GlobalTensor<float> &gSoftmaxSum, uint32_t ubSBufId,
+                                             uint32_t batchM, uint32_t groupRows, const uint32_t *qTokens,
+                                             const uint32_t *slotKs, uint32_t kvHeadIdx, uint32_t groupCount)
     {
         // AIV0-only for fp32 S (innerPrecise=0): matches QK NoQuant Fixpipe and high-prec
         // softmax. AIV1 returns immediately (no stats to scatter).
@@ -569,10 +531,10 @@ private:
         // DataCopyPad source must be 32B-aligned). No-op for groupRows>=8 (production 16).
         uint32_t grpStride = RoundUp(groupRows, 8U);
         // Bind once to the stage base (loop-invariant); per-group offset via [localOff].
-        AscendC::LocalTensor<float> gmUbAlias = resource.ubBuf.template GetBufferByByte<float>(
-            SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
-        AscendC::LocalTensor<float> glUbAlias = resource.ubBuf.template GetBufferByByte<float>(
-            SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
+        AscendC::LocalTensor<float> gmUbAlias =
+            resource.ubBuf.template GetBufferByByte<float>(SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
+        AscendC::LocalTensor<float> glUbAlias =
+            resource.ubBuf.template GetBufferByByte<float>(SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
 
         for (uint32_t g = gLo; g < gHi; g += COPY_GRANULARITY) {
             uint32_t localOff0 = (g - gLo) * grpStride;
@@ -590,9 +552,8 @@ private:
                 }
                 blockCount = COPY_GRANULARITY;
             }
-            CopyPartialStatsToGm(gSoftmaxMax, gSoftmaxSum,
-                                 gmUbAlias[localOff0], glUbAlias[localOff0],
-                                 lseOff0, groupRows, blockCount, srcStride, dstStride);
+            CopyPartialStatsToGm(gSoftmaxMax, gSoftmaxSum, gmUbAlias[localOff0], glUbAlias[localOff0], lseOff0,
+                                 groupRows, blockCount, srcStride, dstStride);
         }
     }
 
@@ -609,12 +570,9 @@ private:
     // (degenerate totalNnz<activeCores) keeps rowHi=totalTasks -> empty slice,
     // matching the old trailing-core fill. Deterministic -> every core derives
     // the same two values it would have read from the array -> no cross-core sync.
-    __aicore__ inline
-    void ComputeCoreBounds(
-        uint32_t coreIdx, uint32_t activeCores, uint32_t batchGroupsMax,
-        AscendC::GlobalTensor<int32_t> const &gK2qRowPtr,
-        uint32_t &rowLo, uint32_t &offLo,
-        uint32_t &rowHi, uint32_t &offHi)
+    __aicore__ inline void ComputeCoreBounds(uint32_t coreIdx, uint32_t activeCores, uint32_t batchGroupsMax,
+                                             AscendC::GlobalTensor<int32_t> const &gK2qRowPtr, uint32_t &rowLo,
+                                             uint32_t &offLo, uint32_t &rowHi, uint32_t &offHi)
     {
         uint32_t totalTasks = totalKvRows_ * kvHeads_;
         uint32_t headStride = totalKvRows_ + 1U;
@@ -622,11 +580,11 @@ private:
         // totalNnz = sum of each head's last-column (per-head cumsum terminal).
         uint64_t totalNnz = 0U;
         for (uint32_t h = 0U; h < kvHeads_; h++) {
-            totalNnz += static_cast<uint32_t>(
-                gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + totalKvRows_));
+            totalNnz +=
+                static_cast<uint32_t>(gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + totalKvRows_));
         }
 
-        uint64_t targetLo = static_cast<uint64_t>(coreIdx)      * totalNnz / activeCores;
+        uint64_t targetLo = static_cast<uint64_t>(coreIdx) * totalNnz / activeCores;
         uint64_t targetHi = static_cast<uint64_t>(coreIdx + 1U) * totalNnz / activeCores;
 
         // Defaults: core 0 starts at task 0 offset 0; an unfound hi boundary
@@ -639,20 +597,19 @@ private:
         bool loFound = (coreIdx == 0U);
         bool hiFound = false;
 
-        uint64_t cum = 0U;  // cumulative nnz before the current (h,r)
+        uint64_t cum = 0U; // cumulative nnz before the current (h,r)
         for (uint32_t h = 0U; h < kvHeads_ && !(loFound && hiFound); h++) {
             for (uint32_t r = 0U; r < totalKvRows_ && !(loFound && hiFound); r++) {
-                uint32_t rs = static_cast<uint32_t>(
-                    gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + r));
-                uint32_t re = static_cast<uint32_t>(
-                    gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + r + 1U));
+                uint32_t rs = static_cast<uint32_t>(gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + r));
+                uint32_t re =
+                    static_cast<uint32_t>(gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + r + 1U));
                 uint32_t rowNnz = (re > rs) ? (re - rs) : 0U;
                 uint64_t rowEndG = cum + rowNnz;
                 if (!loFound && targetLo < rowEndG) {
-                    uint64_t intra = targetLo - cum;  // targetLo >= cum (head-outer monotone)
+                    uint64_t intra = targetLo - cum; // targetLo >= cum (head-outer monotone)
                     uint32_t intra8 = RoundUp(static_cast<uint32_t>(intra), batchGroupsMax);
                     if (intra8 > rowNnz) {
-                        intra8 = rowNnz;  // row too small to split at batchGroupsMax -> no split
+                        intra8 = rowNnz; // row too small to split at batchGroupsMax -> no split
                     }
                     rowLo = h * totalKvRows_ + r;
                     offLo = intra8;
@@ -674,18 +631,12 @@ private:
     }
 
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax).
-    __aicore__ inline
-    void Phase1KvCentricCompute(
-        uint32_t coreIdx, uint32_t coreNum,
-        AscendC::GlobalTensor<ElementQ> const &gQ,
-        AscendC::GlobalTensor<ElementK> const &gK,
-        AscendC::GlobalTensor<ElementV> const &gV,
-        AscendC::GlobalTensor<int32_t> const &gK2qRowPtr,
-        AscendC::GlobalTensor<int32_t> const &gK2qQIndices,
-        AscendC::GlobalTensor<int32_t> const &gK2qSlotIndices,
-        AscendC::GlobalTensor<int32_t> const &gBlockTable,
-        AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
-        AscendC::GlobalTensor<float> &gSoftmaxMax,
+    __aicore__ inline void Phase1KvCentricCompute(
+        uint32_t coreIdx, uint32_t coreNum, AscendC::GlobalTensor<ElementQ> const &gQ,
+        AscendC::GlobalTensor<ElementK> const &gK, AscendC::GlobalTensor<ElementV> const &gV,
+        AscendC::GlobalTensor<int32_t> const &gK2qRowPtr, AscendC::GlobalTensor<int32_t> const &gK2qQIndices,
+        AscendC::GlobalTensor<int32_t> const &gK2qSlotIndices, AscendC::GlobalTensor<int32_t> const &gBlockTable,
+        AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut, AscendC::GlobalTensor<float> &gSoftmaxMax,
         AscendC::GlobalTensor<float> &gSoftmaxSum)
     {
         // Batched QK/softmax/PV: BATCH_GROUPS qTokens per batch -> M = groupCount*groupSize_
@@ -723,8 +674,7 @@ private:
         BlockMmadPV blockMmadPV;
 
         blockMmadQK.Init(resource, blockSize_, embed_);
-        uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
-            + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
+        uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK) + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         // PV P L1 stage must hold the batched P [L0_TILE_M, blockSize_] (max batchM, K=validSize<=blockSize).
         blockMmadPV.Init(resource, qkL1Used, blockSize_, embed_, BlockMmadQK::L0_TILE_M);
 
@@ -732,30 +682,26 @@ private:
         // MAX_UB_S_ELEM_NUM * sizeof(ElementS) per stage), shared cross-core with VEC softmax.
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
         for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-                EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM * sizeof(ElementS) * i);
+            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(EpilogueOnlineSoftmax::MAX_UB_S_ELEM_NUM *
+                                                                             sizeof(ElementS) * i);
         }
 
-        int64_t strideKVRow = (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD)
-            ? static_cast<int64_t>(embed_)
-            : static_cast<int64_t>(kvHeads_) * embed_;
-        uint32_t qGmRowStride = (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD && qSeqLen_ > 0U)
-            ? (qSeqLen_ * embed_)
-            : embed_;
+        int64_t strideKVRow = (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD) ? static_cast<int64_t>(embed_) :
+                                                                               static_cast<int64_t>(kvHeads_) * embed_;
+        uint32_t qGmRowStride =
+            (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD && qSeqLen_ > 0U) ? (qSeqLen_ * embed_) : embed_;
 #endif
 #ifdef __DAV_VEC__
         // Softmax self-allocates UB (lsUb/lpUb/gmUb/glUb; high-prec also tmpUb).
         // Stats offsets must match SM_UB_GM_OFFSET / SM_UB_GL_OFFSET above.
         EpilogueOnlineSoftmax epilogueSoftmax(resource, scaleValue_);
 
-        uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK)
-            + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
+        uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK) + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         uint32_t vBufBytes = blockSize_ * embed_ * sizeof(ElementV);
         uint32_t l1PStageBytes = RoundUp(BlockMmadQK::L0_TILE_M, 16U) * RoundUp(blockSize_, 16U) * sizeof(ElementP);
         AscendC::LocalTensor<ElementP> l1PBuf[P_L1_BUF_NUM];
         for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
-            l1PBuf[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
-                qkL1Used + vBufBytes + l1PStageBytes * i);
+            l1PBuf[i] = resource.l1Buf.template GetBufferByByte<ElementP>(qkL1Used + vBufBytes + l1PStageBytes * i);
         }
 #endif
 
@@ -774,7 +720,7 @@ private:
         // 33-boundary array on every core. Deterministic -> no cross-core sync.
         uint32_t totalTasks = totalKvRows_ * kvHeads_;
         if (totalKvRows_ == 0U) {
-            return;  // all requests padded (q_len=kv_len=0): no packed rows
+            return; // all requests padded (q_len=kv_len=0): no packed rows
         }
         uint32_t headStride = totalKvRows_ + 1U;
         uint32_t activeCores = coreNum;
@@ -782,8 +728,7 @@ private:
         uint32_t offLo;
         uint32_t rowHi;
         uint32_t offHi;
-        ComputeCoreBounds(coreIdx, activeCores, batchGroupsMax, gK2qRowPtr,
-                          rowLo, offLo, rowHi, offHi);
+        ComputeCoreBounds(coreIdx, activeCores, batchGroupsMax, gK2qRowPtr, rowLo, offLo, rowHi, offHi);
 
         // Walker seed state (incremental round-robin packedRow -> (batchIdx, kvBlockIdx)).
         // Head-outer: packedRow = taskIdx % totalKvRows is per-head row r, which RESETS to 0 at
@@ -821,8 +766,7 @@ private:
             }
             // Fetch per-batch scalars for the resolved batchIdx (Q/KV same batch ->
             // qBatch==batchIdx). cvl loop reuses these -> 0 GM GetValue per (bi,g).
-            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch,
-                              cumKvStart);
+            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch, cumKvStart);
             if (numBlocksB == 0U) {
                 continue;
             }
@@ -833,10 +777,8 @@ private:
             (void)gBlockTable;
 
             uint64_t rowPtrBase = static_cast<uint64_t>(kvHeadIdx) * headStride;
-            uint32_t csrStart = static_cast<uint32_t>(
-                gK2qRowPtr.GetValue(rowPtrBase + packedRow));
-            uint32_t csrEnd = static_cast<uint32_t>(
-                gK2qRowPtr.GetValue(rowPtrBase + packedRow + 1U));
+            uint32_t csrStart = static_cast<uint32_t>(gK2qRowPtr.GetValue(rowPtrBase + packedRow));
+            uint32_t csrEnd = static_cast<uint32_t>(gK2qRowPtr.GetValue(rowPtrBase + packedRow + 1U));
             // Per-row q-token clip at the core's [offLo, offHi) boundary (v2 split-row
             // semantics): first row (taskIdx==rowLo) starts at csrStart+offLo, last row
             // (taskIdx==rowHi) ends at csrStart+offHi, middle rows full [csrStart, csrEnd).
@@ -847,7 +789,7 @@ private:
             uint32_t localEnd = (taskIdx == rowHi) ? (csrStart + offHi) : csrEnd;
             uint32_t myNumQ = (localEnd > localStart) ? (localEnd - localStart) : 0U;
             if (validSize == 0U || myNumQ == 0U) {
-                continue;  // empty KV block / no q-tokens in this core's slice -> skip
+                continue; // empty KV block / no q-tokens in this core's slice -> skip
             }
             uint32_t myCsrStart = localStart;
 
@@ -861,26 +803,22 @@ private:
             // BSND contiguous: [B, S, kvHeads, D], same intra-block stride as TND (kvHeads*D).
             uint64_t kvBlockBase;
             if (isPageAttention_ == 1U) {
-                int64_t btOffset =
-                    static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
+                int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
                 int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
-                kvBlockBase =
-                    static_cast<uint64_t>(physicalBlockId) * blockSize_ * kvHeads_ * embed_
-                    + static_cast<uint64_t>(kvHeadIdx) * embed_;
+                kvBlockBase = static_cast<uint64_t>(physicalBlockId) * blockSize_ * kvHeads_ * embed_ +
+                              static_cast<uint64_t>(kvHeadIdx) * embed_;
             } else if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD) {
-                kvBlockBase =
-                    (static_cast<uint64_t>(batchIdx) * kvHeads_ + kvHeadIdx) * kvSeqLen_ * embed_
-                    + static_cast<uint64_t>(localBlockIdx) * blockSize_ * embed_;
+                kvBlockBase = (static_cast<uint64_t>(batchIdx) * kvHeads_ + kvHeadIdx) * kvSeqLen_ * embed_ +
+                              static_cast<uint64_t>(localBlockIdx) * blockSize_ * embed_;
             } else if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) {
                 kvBlockBase =
-                    (static_cast<uint64_t>(batchIdx) * kvSeqLen_
-                     + static_cast<uint64_t>(localBlockIdx) * blockSize_) * kvHeads_ * embed_
-                    + static_cast<uint64_t>(kvHeadIdx) * embed_;
+                    (static_cast<uint64_t>(batchIdx) * kvSeqLen_ + static_cast<uint64_t>(localBlockIdx) * blockSize_) *
+                        kvHeads_ * embed_ +
+                    static_cast<uint64_t>(kvHeadIdx) * embed_;
             } else {
-                kvBlockBase =
-                    (static_cast<uint64_t>(cumKvStart) +
-                     static_cast<uint64_t>(localBlockIdx) * blockSize_) * kvHeads_ * embed_
-                    + static_cast<uint64_t>(kvHeadIdx) * embed_;
+                kvBlockBase = (static_cast<uint64_t>(cumKvStart) + static_cast<uint64_t>(localBlockIdx) * blockSize_) *
+                                  kvHeads_ * embed_ +
+                              static_cast<uint64_t>(kvHeadIdx) * embed_;
             }
 
             auto gmKLayout = tla::MakeLayout<ElementK, LayoutK>(strideKVRow, blockSize_);
@@ -935,16 +873,14 @@ private:
 #endif
                     for (uint32_t g = 0U; g < batchGroupCount; g++) {
                         uint32_t csrIdx = myCsrStart + bi * batchGroupsMax + g;
-                        batchQToken[stage][g] = static_cast<uint32_t>(
-                            gK2qQIndices.GetValue(csrDataBase + csrIdx));
-                        batchSlotK[stage][g] = static_cast<uint32_t>(
-                            gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+                        batchQToken[stage][g] = static_cast<uint32_t>(gK2qQIndices.GetValue(csrDataBase + csrIdx));
+                        batchSlotK[stage][g] = static_cast<uint32_t>(gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
 #ifdef __DAV_CUBE__
                         batchQBase[g] = QTokenHeadOffset(batchQToken[stage][g], qHeadStart);
 #endif
 #ifdef __DAV_VEC__
-                        cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos,
-                                                       cumQStart, qSeqlenBatch, kvSeqlenBatch);
+                        cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos, cumQStart,
+                                                       qSeqlenBatch, kvSeqlenBatch);
 #endif
                     }
 
@@ -966,9 +902,8 @@ private:
                     }
                     auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mLayoutB, RoundUp(validSize, 16U));
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
-                    blockMmadQK(gQ, batchQBase, batchGroupCount, groupSize_,
-                                ubSTensorTla, validSize, embed_, qGmRowStride,
-                                numBatches, bi, mm1ToSmFlag);
+                    blockMmadQK(gQ, batchQBase, batchGroupCount, groupSize_, ubSTensorTla, validSize, embed_,
+                                qGmRowStride, numBatches, bi, mm1ToSmFlag);
 #endif
 #ifdef __DAV_VEC__
                     // P L1 layout extent = validSize (uniform batch K). softmax writes the
@@ -977,22 +912,13 @@ private:
                     auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(batchM, validSize);
                     auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
                     // cvlArr filled above alongside the qToken/slotK gather.
-                    epilogueSoftmax(
-                        l1PTensor,
-                        GemmCoord{batchM, validSize, embed_},
-                        ubSBufId,
-                        l1PBufId,
-                        mm1ToSmFlag,
-                        smToMm2Flag,
-                        cvlArr,
-                        batchGroupCount,
-                        groupSize_);
+                    epilogueSoftmax(l1PTensor, GemmCoord{batchM, validSize, embed_}, ubSBufId, l1PBufId, mm1ToSmFlag,
+                                    smToMm2Flag, cvlArr, batchGroupCount, groupSize_);
                     // softmax wrote this AIV's rowMax/rowSum into 2-deep gmUb/glUb[ubSBufId];
                     // scatter to per-qToken GM stat slots (per-AIV group ownership may straddle).
                     // lseOff computed on demand inside ScatterBatchStats from qToken/slotK.
-                    ScatterBatchStats(gSoftmaxMax, gSoftmaxSum, ubSBufId, batchM, groupSize_,
-                                      batchQToken[stage], batchSlotK[stage], kvHeadIdx,
-                                      batchGroupCount);
+                    ScatterBatchStats(gSoftmaxMax, gSoftmaxSum, ubSBufId, batchM, groupSize_, batchQToken[stage],
+                                      batchSlotK[stage], kvHeadIdx, batchGroupCount);
 #endif
                 }
 
@@ -1011,9 +937,8 @@ private:
                         uint32_t pvRem = myNumQ - bDe * batchGroupsMax;
                         uint32_t pvGrpCnt = (pvRem < batchGroupsMax) ? pvRem : batchGroupsMax;
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
-                        blockMmadPV(gAccumOut, batchQToken[stageDe], batchSlotK[stageDe], pvGrpCnt,
-                                    groupSize_, embed_, perQTokenStride, kvHeadBase, slotOElems_,
-                                    numBatches, bDe, smToMm2Flag);
+                        blockMmadPV(gAccumOut, batchQToken[stageDe], batchSlotK[stageDe], pvGrpCnt, groupSize_, embed_,
+                                    perQTokenStride, kvHeadBase, slotOElems_, numBatches, bDe, smToMm2Flag);
 #endif
                     }
                 }
@@ -1026,21 +951,18 @@ private:
     }
 
     // Phase 2: FlashDecode-style combine (IFA FlashDecodeCompute / CombineSplitKVRes).
-    __aicore__ inline
-    void Phase2CombineScale(
-        AscendC::GlobalTensor<ElementO> &gO,
-        AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
-        AscendC::GlobalTensor<float> &gSoftmaxMax,
-        AscendC::GlobalTensor<float> &gSoftmaxSum,
-        AscendC::GlobalTensor<float> &gSoftmaxLse)
+    __aicore__ inline void Phase2CombineScale(AscendC::GlobalTensor<ElementO> &gO,
+                                              AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
+                                              AscendC::GlobalTensor<float> &gSoftmaxMax,
+                                              AscendC::GlobalTensor<float> &gSoftmaxSum,
+                                              AscendC::GlobalTensor<float> &gSoftmaxLse)
     {
 #ifdef __DAV_VEC__
-        AscendC::LocalTensor<float> ubBase =
-            resource.ubBuf.template GetBufferByByte<float>(0);
+        AscendC::LocalTensor<float> ubBase = resource.ubBuf.template GetBufferByByte<float>(0);
 
         EpilogueRescaleO epilogueRescaleO;
-        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_, softmaxLseFlag_,
-                                       layoutType_, qSeqLen_, qHeads_);
+        epilogueRescaleO.InitFDBuffers(ubBase, embed_, groupSize_, topK_, kvHeads_, softmaxLseFlag_, layoutType_,
+                                       qSeqLen_, qHeads_);
         // VEC: GetBlockIdx() is the linear AIV id in [0, GetBlockNum()*GetSubBlockNum());
         // GetBlockNum() is the AIC block count (half of AIV count). Stride must cover
         // all AIV sub-blocks, not blockNum alone.
@@ -1052,12 +974,10 @@ private:
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP2_; taskIdx += coreNum) {
             uint32_t qToken = taskIdx / kvHeads_;
             if (IsPaddingQToken(qToken)) {
-                continue;  // dummy request (q_len=kv_len=0) or t>=q_len: leave O/LSE unwritten
+                continue; // dummy request (q_len=kv_len=0) or t>=q_len: leave O/LSE unwritten
             }
-            epilogueRescaleO.FlashDecodeCompute(
-                taskIdx, totalTaskNumP2_,
-                gO, gAccumOut, gSoftmaxMax, gSoftmaxSum, gSoftmaxLse,
-                qHeads_, kvHeads_);
+            epilogueRescaleO.FlashDecodeCompute(taskIdx, totalTaskNumP2_, gO, gAccumOut, gSoftmaxMax, gSoftmaxSum,
+                                                gSoftmaxLse, qHeads_, kvHeads_);
         }
 #endif
     }
@@ -1092,6 +1012,6 @@ private:
     AscendC::GlobalTensor<int32_t> gActualKvseqlen_;
 };
 
-}  // namespace MinimaxSaSplitKvKernelArch35
+} // namespace MinimaxSaSplitKvKernelArch35
 
-#endif  // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_ARCH35_H
+#endif // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_ARCH35_H

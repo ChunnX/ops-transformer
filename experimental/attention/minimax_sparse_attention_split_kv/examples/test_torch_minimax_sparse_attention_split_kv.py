@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """MiniMax sparse attention split-KV torch 调用 demo（训练连续 BNSD）。
 
 运行前：
@@ -32,9 +40,15 @@ def main():
     scale_value = 1.0 / math.sqrt(head_dim)
 
     # BNSD 连续 KV，不要传 block_table
-    query = torch.randn(batch, q_heads, s_q, head_dim, dtype=torch.bfloat16, device="npu")
-    key = torch.randn(batch, kv_heads, s_kv, head_dim, dtype=torch.bfloat16, device="npu")
-    value = torch.randn(batch, kv_heads, s_kv, head_dim, dtype=torch.bfloat16, device="npu")
+    query = torch.randn(
+        batch, q_heads, s_q, head_dim, dtype=torch.bfloat16, device="npu"
+    )
+    key = torch.randn(
+        batch, kv_heads, s_kv, head_dim, dtype=torch.bfloat16, device="npu"
+    )
+    value = torch.randn(
+        batch, kv_heads, s_kv, head_dim, dtype=torch.bfloat16, device="npu"
+    )
 
     actual_seq_lengths = torch.tensor([32, 24], dtype=torch.int32, device="npu")
     actual_seq_lengths_kv = torch.tensor([256, 192], dtype=torch.int32, device="npu")
@@ -44,7 +58,9 @@ def main():
     # 真实训练把下面 fake 换成 indexer 的 select_idx 即可
     n_blocks_0 = (256 + block_size - 1) // block_size  # 2
     n_blocks_1 = (192 + block_size - 1) // block_size  # 2
-    select_idx = torch.full((kv_heads, batch, s_q, top_k), -1, dtype=torch.int32, device="npu")
+    select_idx = torch.full(
+        (kv_heads, batch, s_q, top_k), -1, dtype=torch.int32, device="npu"
+    )
     select_idx[:, 0, :, 0] = 0
     select_idx[:, 0, :, 1] = min(1, n_blocks_0 - 1)
     select_idx[:, 1, :, 0] = 0
@@ -73,8 +89,8 @@ def main():
         scale_value,
         block_size,
         top_k,
-        inner_precise=4,          # 4=默认 bf16 softmax；0=fp32 softmax
-        softmax_lse_flag=False,   # True 时 softmax_lse 为 [B, N, S, 1] fp32
+        inner_precise=4,  # 4=默认 bf16 softmax；0=fp32 softmax
+        softmax_lse_flag=False,  # True 时 softmax_lse 为 [B, N, S, 1] fp32
         input_layout="BNSD",
     )
     torch.npu.synchronize()

@@ -26,6 +26,6 @@ struct EpilogueRescaleOSplitKvArch35 {
     using ArchTag = Arch::AtlasA5;
 };
 
-}  // namespace NpuArch::Epilogue
+} // namespace NpuArch::Epilogue
 
-#endif  // EPILOGUE_DISPATCH_POLICY_HPP
+#endif // EPILOGUE_DISPATCH_POLICY_HPP

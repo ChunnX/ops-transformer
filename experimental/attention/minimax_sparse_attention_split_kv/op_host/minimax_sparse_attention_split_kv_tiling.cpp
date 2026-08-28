@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "minimax_sparse_attention_split_kv_tiling.h"
 #include <cmath>
 #include <cstring>
@@ -58,8 +57,7 @@ static int RequiredInstanceIndex(gert::TilingContext *context, int irIndex)
 
 static const gert::StorageShape *GetIrRequiredShape(gert::TilingContext *context, int irIndex)
 {
-    const gert::StorageShape *shape =
-        context->GetRequiredInputShape(static_cast<size_t>(irIndex));
+    const gert::StorageShape *shape = context->GetRequiredInputShape(static_cast<size_t>(irIndex));
     if (shape != nullptr) {
         return shape;
     }
@@ -68,8 +66,7 @@ static const gert::StorageShape *GetIrRequiredShape(gert::TilingContext *context
 
 static const gert::CompileTimeTensorDesc *GetIrRequiredDesc(gert::TilingContext *context, int irIndex)
 {
-    const gert::CompileTimeTensorDesc *desc =
-        context->GetRequiredInputDesc(static_cast<size_t>(irIndex));
+    const gert::CompileTimeTensorDesc *desc = context->GetRequiredInputDesc(static_cast<size_t>(irIndex));
     if (desc != nullptr) {
         return desc;
     }
@@ -127,14 +124,14 @@ constexpr uint32_t KERNEL_HIGH_PREC_S_BYTES =
 constexpr uint32_t KERNEL_HIGH_PREC_P_BYTES =
     KERNEL_UB_S_STAGES * KERNEL_MAX_UB_S_ELEM * static_cast<uint32_t>(sizeof(uint16_t));
 constexpr uint32_t KERNEL_HIGH_PREC_TMP_BYTES = KERNEL_UB_BLOCK;
-constexpr uint32_t KERNEL_HIGH_PREC_TMP_FLOATS =
-    KERNEL_HIGH_PREC_TMP_BYTES / static_cast<uint32_t>(sizeof(float));
+constexpr uint32_t KERNEL_HIGH_PREC_TMP_FLOATS = KERNEL_HIGH_PREC_TMP_BYTES / static_cast<uint32_t>(sizeof(float));
 
 namespace optiling {
 
 static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
 {
-    if (n1 == 0) return 0;
+    if (n1 == 0)
+        return 0;
     return (n2 != 0) ? ((n1 + n2 - 1) / n2) : n1;
 }
 
@@ -173,13 +170,10 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseAttrs(gert::TilingCont
     } else if (strcmp(layoutStr, "BSND") == 0) {
         layoutType_ = LAYOUT_BSND;
     } else {
-        OP_LOGE(context->GetNodeName(),
-                "inputLayout must be TND, BNSD or BSND, got %s.",
-                layoutStr);
+        OP_LOGE(context->GetNodeName(), "inputLayout must be TND, BNSD or BSND, got %s.", layoutStr);
         return ge::GRAPH_FAILED;
     }
-    if (innerPrecise_ != INNER_PRECISE_ALL_HIGH &&
-        innerPrecise_ != INNER_PRECISE_ALL_LOW &&
+    if (innerPrecise_ != INNER_PRECISE_ALL_HIGH && innerPrecise_ != INNER_PRECISE_ALL_LOW &&
         innerPrecise_ != INNER_PRECISE_MIXED) {
         OP_LOGE(context->GetNodeName(),
                 "innerPrecise must be 0 (fp32 softmax), 1 (bf16 softmax + bf16 O_partial) "
@@ -200,8 +194,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
     const size_t qDimNum = qShape->GetStorageShape().GetDimNum();
     if (layoutType_ == LAYOUT_TND) {
         if (qDimNum != 3U) {
-            OP_LOGE(context->GetNodeName(),
-                    "inputLayout TND requires query [T, N, D] rank 3, got dimNum=%zu.",
+            OP_LOGE(context->GetNodeName(), "inputLayout TND requires query [T, N, D] rank 3, got dimNum=%zu.",
                     qDimNum);
             return ge::GRAPH_FAILED;
         }
@@ -211,8 +204,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         qSeqLen_ = 0U;
     } else if (layoutType_ == LAYOUT_BNSD) {
         if (qDimNum != 4U) {
-            OP_LOGE(context->GetNodeName(),
-                    "inputLayout BNSD requires query [B, N, S, D] rank 4, got dimNum=%zu.",
+            OP_LOGE(context->GetNodeName(), "inputLayout BNSD requires query [B, N, S, D] rank 4, got dimNum=%zu.",
                     qDimNum);
             return ge::GRAPH_FAILED;
         }
@@ -221,17 +213,15 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         qSeqLen_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BNSD_DIM_S));
         embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BNSD_DIM_D));
         if (batch_ == 0U || qSeqLen_ == 0U) {
-            OP_LOGE(context->GetNodeName(),
-                    "BNSD query [B, N, S, D] requires B>0 and S>0, got B=%u S=%u.",
-                    batch_, qSeqLen_);
+            OP_LOGE(context->GetNodeName(), "BNSD query [B, N, S, D] requires B>0 and S>0, got B=%u S=%u.", batch_,
+                    qSeqLen_);
             return ge::GRAPH_FAILED;
         }
         totalQTokens_ = batch_ * qSeqLen_;
     } else {
         // BSND [B, S, N, D]
         if (qDimNum != 4U) {
-            OP_LOGE(context->GetNodeName(),
-                    "inputLayout BSND requires query [B, S, N, D] rank 4, got dimNum=%zu.",
+            OP_LOGE(context->GetNodeName(), "inputLayout BSND requires query [B, S, N, D] rank 4, got dimNum=%zu.",
                     qDimNum);
             return ge::GRAPH_FAILED;
         }
@@ -240,9 +230,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BSND_DIM_N));
         embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(BSND_DIM_D));
         if (batch_ == 0U || qSeqLen_ == 0U) {
-            OP_LOGE(context->GetNodeName(),
-                    "BSND query [B, S, N, D] requires B>0 and S>0, got B=%u S=%u.",
-                    batch_, qSeqLen_);
+            OP_LOGE(context->GetNodeName(), "BSND query [B, S, N, D] requires B>0 and S>0, got B=%u S=%u.", batch_,
+                    qSeqLen_);
             return ge::GRAPH_FAILED;
         }
         totalQTokens_ = batch_ * qSeqLen_;
@@ -257,8 +246,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
     const size_t kDimNum = kShape->GetStorageShape().GetDimNum();
     const size_t vDimNum = vShape->GetStorageShape().GetDimNum();
     if (kDimNum != vDimNum) {
-        OP_LOGE(context->GetNodeName(),
-                "key dimNum (%zu) must equal value dimNum (%zu).", kDimNum, vDimNum);
+        OP_LOGE(context->GetNodeName(), "key dimNum (%zu) must equal value dimNum (%zu).", kDimNum, vDimNum);
         return ge::GRAPH_FAILED;
     }
 
@@ -268,9 +256,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
 
     if (isPageAttention_ == 1U) {
         if (layoutType_ != LAYOUT_TND) {
-            OP_LOGE(context->GetNodeName(),
-                    "paged KV cache requires TND query; do not pass block_table "
-                    "with BNSD/BSND.");
+            OP_LOGE(context->GetNodeName(), "paged KV cache requires TND query; do not pass block_table "
+                                            "with BNSD/BSND.");
             return ge::GRAPH_FAILED;
         }
         if (kDimNum != 4U) {
@@ -281,12 +268,10 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
             return ge::GRAPH_FAILED;
         }
         if (kvHeads_ == 0U) {
-            kvHeads_ = static_cast<uint32_t>(
-                kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
+            kvHeads_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
         }
         if (btShape->GetStorageShape().GetDimNum() != 2U) {
-            OP_LOGE(context->GetNodeName(),
-                    "block_table must be [batch, maxBlocksPerBatch], got dimNum=%zu.",
+            OP_LOGE(context->GetNodeName(), "block_table must be [batch, maxBlocksPerBatch], got dimNum=%zu.",
                     btShape->GetStorageShape().GetDimNum());
             return ge::GRAPH_FAILED;
         }
@@ -296,10 +281,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
     } else if (layoutType_ == LAYOUT_BNSD || layoutType_ == LAYOUT_BSND) {
         // Training contiguous: key/value rank 4 matching query layout.
         if (kDimNum != 4U) {
-            OP_LOGE(context->GetNodeName(),
-                    "%s query requires key/value rank 4, got rank %zu.",
-                    (layoutType_ == LAYOUT_BNSD) ? "BNSD" : "BSND",
-                    kDimNum);
+            OP_LOGE(context->GetNodeName(), "%s query requires key/value rank 4, got rank %zu.",
+                    (layoutType_ == LAYOUT_BNSD) ? "BNSD" : "BSND", kDimNum);
             return ge::GRAPH_FAILED;
         }
         uint32_t keyB;
@@ -336,29 +319,25 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
             OP_LOGE(context->GetNodeName(),
                     "%s key must match query B=%u kvHeads=%u embeddingSize=%u with S>0, "
                     "got B=%u N=%u S=%u D=%u.",
-                    layoutName, batch_, kvHeads_, embeddingSize_,
-                    keyB, keyHeads, kvSeqLen_, keyD);
+                    layoutName, batch_, kvHeads_, embeddingSize_, keyB, keyHeads, kvSeqLen_, keyD);
             return ge::GRAPH_FAILED;
         }
         if (valueB != keyB || valueHeads != keyHeads || valueS != kvSeqLen_ || valueD != keyD) {
-            OP_LOGE(context->GetNodeName(),
-                    "%s value must match key shape.", layoutName);
+            OP_LOGE(context->GetNodeName(), "%s value must match key shape.", layoutName);
             return ge::GRAPH_FAILED;
         }
         auto seqQShape = GetIrRequiredShape(context, ACTUAL_SEQ_LENGTHS_INDEX);
         auto seqKvShape = GetIrRequiredShape(context, ACTUAL_SEQ_LENGTHS_KV_INDEX);
         if (seqQShape == nullptr || seqKvShape == nullptr) {
-            OP_LOGE(context->GetNodeName(),
-                    "actual_seq_lengths and actual_seq_lengths_kv are required for %s.",
+            OP_LOGE(context->GetNodeName(), "actual_seq_lengths and actual_seq_lengths_kv are required for %s.",
                     layoutName);
             return ge::GRAPH_FAILED;
         }
         uint32_t seqQBatch = static_cast<uint32_t>(seqQShape->GetStorageShape().GetShapeSize());
         uint32_t seqKvBatch = static_cast<uint32_t>(seqKvShape->GetStorageShape().GetShapeSize());
         if (seqQBatch != batch_ || seqKvBatch != batch_) {
-            OP_LOGE(context->GetNodeName(),
-                    "%s actual_seq_lengths length (%u, %u) must equal query B=%u.",
-                    layoutName, seqQBatch, seqKvBatch, batch_);
+            OP_LOGE(context->GetNodeName(), "%s actual_seq_lengths length (%u, %u) must equal query B=%u.", layoutName,
+                    seqQBatch, seqKvBatch, batch_);
             return ge::GRAPH_FAILED;
         }
         maxBlocksPerBatch_ = 0U;
@@ -380,21 +359,18 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         uint32_t valueHeads = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(TND_DIM_N));
         uint32_t valueD = static_cast<uint32_t>(vShape->GetStorageShape().GetDim(TND_DIM_D));
         if (keyHeads != kvHeads_ || keyD != embeddingSize_) {
-            OP_LOGE(context->GetNodeName(),
-                    "TND key shape [T, %u, %u] must match kvHeads=%u embeddingSize=%u.",
+            OP_LOGE(context->GetNodeName(), "TND key shape [T, %u, %u] must match kvHeads=%u embeddingSize=%u.",
                     keyHeads, keyD, kvHeads_, embeddingSize_);
             return ge::GRAPH_FAILED;
         }
         if (valueHeads != keyHeads || valueD != keyD) {
-            OP_LOGE(context->GetNodeName(),
-                    "TND value shape [T, %u, %u] must match key [T, %u, %u].",
-                    valueHeads, valueD, keyHeads, keyD);
+            OP_LOGE(context->GetNodeName(), "TND value shape [T, %u, %u] must match key [T, %u, %u].", valueHeads,
+                    valueD, keyHeads, keyD);
             return ge::GRAPH_FAILED;
         }
         auto seqKvShape = GetIrRequiredShape(context, ACTUAL_SEQ_LENGTHS_KV_INDEX);
         if (seqKvShape == nullptr) {
-            OP_LOGE(context->GetNodeName(),
-                    "actual_seq_lengths_kv is required for contiguous TND input.");
+            OP_LOGE(context->GetNodeName(), "actual_seq_lengths_kv is required for contiguous TND input.");
             return ge::GRAPH_FAILED;
         }
         batch_ = static_cast<uint32_t>(seqKvShape->GetStorageShape().GetShapeSize());
@@ -415,24 +391,20 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CheckTilingConstraints(gert::TilingContext *context)
 {
     if (embeddingSize_ != KERNEL_HEAD_SIZE) {
-        OP_LOGE(context->GetNodeName(),
-                "Only D=%u is supported, got embeddingSize=%u.",
-                KERNEL_HEAD_SIZE, embeddingSize_);
+        OP_LOGE(context->GetNodeName(), "Only D=%u is supported, got embeddingSize=%u.", KERNEL_HEAD_SIZE,
+                embeddingSize_);
         return ge::GRAPH_FAILED;
     }
     if (blockSize_ == 0U || blockSize_ > KERNEL_L0_TILE_N) {
-        OP_LOGE(context->GetNodeName(),
-                "blockSize must be in (0, %u], got %u.", KERNEL_L0_TILE_N, blockSize_);
+        OP_LOGE(context->GetNodeName(), "blockSize must be in (0, %u], got %u.", KERNEL_L0_TILE_N, blockSize_);
         return ge::GRAPH_FAILED;
     }
     if (kvHeads_ == 0U || numHeads_ % kvHeads_ != 0U) {
-        OP_LOGE(context->GetNodeName(),
-                "numHeads (%u) must be divisible by kvHeads (%u).", numHeads_, kvHeads_);
+        OP_LOGE(context->GetNodeName(), "numHeads (%u) must be divisible by kvHeads (%u).", numHeads_, kvHeads_);
         return ge::GRAPH_FAILED;
     }
     if (groupSize_ == 0U || groupSize_ > KERNEL_L0_TILE_M) {
-        OP_LOGE(context->GetNodeName(),
-                "groupSize must be in (0, %u], got %u.", KERNEL_L0_TILE_M, groupSize_);
+        OP_LOGE(context->GetNodeName(), "groupSize must be in (0, %u], got %u.", KERNEL_L0_TILE_M, groupSize_);
         return ge::GRAPH_FAILED;
     }
 
@@ -473,14 +445,13 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CheckTilingConstraints(gert
     //   stats at 224KB (7*32KB), must match kernel SM_UB_GM_OFFSET
     // AIV0-only softmax (NoQuant cannot split to AIV1): shrink batchGroupsMax until
     // the FULL tile fits tmp (8192 fp32) and stats (64).
-    uint64_t ubNeed = static_cast<uint64_t>(KERNEL_HIGH_PREC_S_BYTES) +
-        KERNEL_HIGH_PREC_P_BYTES + KERNEL_HIGH_PREC_TMP_BYTES +
-        2ULL * KERNEL_SM_ROW_MAX_ELEM * sizeof(float) * KERNEL_UB_S_STAGES * 2ULL;
+    uint64_t ubNeed = static_cast<uint64_t>(KERNEL_HIGH_PREC_S_BYTES) + KERNEL_HIGH_PREC_P_BYTES +
+                      KERNEL_HIGH_PREC_TMP_BYTES +
+                      2ULL * KERNEL_SM_ROW_MAX_ELEM * sizeof(float) * KERNEL_UB_S_STAGES * 2ULL;
     if (ubSize_ > 0U && ubNeed > ubSize_) {
         OP_LOGE(context->GetNodeName(),
                 "innerPrecise=0 needs %lluB UB (fp32 S ping-pong + P + tmp + stats), platform UB is %lluB.",
-                static_cast<unsigned long long>(ubNeed),
-                static_cast<unsigned long long>(ubSize_));
+                static_cast<unsigned long long>(ubNeed), static_cast<unsigned long long>(ubSize_));
         return ge::GRAPH_FAILED;
     }
     uint32_t gFit = batchGroupsMax;
@@ -491,8 +462,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CheckTilingConstraints(gert
         }
         uint64_t se = static_cast<uint64_t>(AlignUp(static_cast<uint64_t>(bm), 16ULL)) * nAlign;
         uint32_t st = gFit * grpStride;
-        if (se <= KERNEL_HIGH_PREC_TMP_FLOATS && se <= KERNEL_MAX_UB_S_ELEM &&
-            st <= KERNEL_SM_ROW_MAX_ELEM) {
+        if (se <= KERNEL_HIGH_PREC_TMP_FLOATS && se <= KERNEL_MAX_UB_S_ELEM && st <= KERNEL_SM_ROW_MAX_ELEM) {
             break;
         }
         gFit--;
@@ -521,8 +491,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseSeqlens(gert::TilingCo
     // row-major so the linear layout is identical). flatSize = total element count; derive
     // totalRows = flatSize / kvHeads - 1. Shape-only: no host value-read.
     int64_t flatSize = k2qRowPtrShape->GetStorageShape().GetShapeSize();
-    if (flatSize <= 0 || kvHeads_ == 0U ||
-        static_cast<uint64_t>(flatSize) % static_cast<uint64_t>(kvHeads_) != 0U) {
+    if (flatSize <= 0 || kvHeads_ == 0U || static_cast<uint64_t>(flatSize) % static_cast<uint64_t>(kvHeads_) != 0U) {
         printf("[MinimaxSparseAttentionSplitKvTiling] k2qRowPtr flat size %lld not divisible by kvHeads %u!\n",
                static_cast<long long>(flatSize), kvHeads_);
         return ge::GRAPH_FAILED;
@@ -566,8 +535,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateTaskSplit(gert::Ti
     // walk overhead the IntArray/const-fold path added). The kernel derives coreNum from
     // GetBlockNum(); no per-core boundary arrays are serialized.
     (void)context;
-    uint32_t totalTasks = numKvBlocks_ * kvHeads_;        // Phase1 row-outer task count
-    uint32_t totalTaskP2 = totalQTokens_ * kvHeads_;     // Phase2 strided task count
+    uint32_t totalTasks = numKvBlocks_ * kvHeads_;   // Phase1 row-outer task count
+    uint32_t totalTaskP2 = totalQTokens_ * kvHeads_; // Phase2 strided task count
     // blockDim covers BOTH phases (strided): cores with no task simply skip the loop.
     uint32_t totalTaskMax = std::max(totalTasks, totalTaskP2);
     blockDim_ = (totalTaskMax == 0U) ? 1U : std::min(totalTaskMax, aicNum_);
@@ -589,8 +558,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateWorkSpace(gert::Ti
     lseStatSize_ = taskSlots * slotStatElems;
     // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); 0 and 4 keep fp32.
     // lse stats stay fp32 for all modes.
-    uint64_t accumOutBytes = accumOutSize_ *
-        (innerPrecise_ == 1U ? sizeof(uint16_t) : sizeof(float));
+    uint64_t accumOutBytes = accumOutSize_ * (innerPrecise_ == 1U ? sizeof(uint16_t) : sizeof(float));
     uint64_t userWorkspaceSize = accumOutBytes + (lseStatSize_ * 2U) * sizeof(float);
     workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
@@ -634,42 +602,51 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
 }
 
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::GetTiling(gert::TilingContext *context,
-    MinimaxSparseAttentionSplitKvTilingData &tilingData)
+                                                               MinimaxSparseAttentionSplitKvTilingData &tilingData)
 {
     tilingData_ = &tilingData;
 
     auto ret = GetNpuInfo(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = ParseAttrs(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = ParseInputTensors(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CheckTilingConstraints(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = ParseSeqlens(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CalculateReverseIndexMeta(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CalculateTaskSplit(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = CalculateWorkSpace(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     ret = FillTilingData(context);
-    if (ret != ge::GRAPH_SUCCESS) return ret;
+    if (ret != ge::GRAPH_SUCCESS)
+        return ret;
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::SetTilingData(gert::TilingContext *context,
-    MinimaxSparseAttentionSplitKvTilingData &tilingData)
+                                                                   MinimaxSparseAttentionSplitKvTilingData &tilingData)
 {
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
@@ -682,14 +659,13 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::SetTilingData(gert::TilingC
     workspaces[0] = static_cast<size_t>(workSpaceSize_);
 
     // Set tiling data
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(),
-                            context->GetRawTilingData()->GetCapacity());
+    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     return ge::GRAPH_SUCCESS;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::TilingContext* context)
+ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::TilingContext *context)
 {
     // printf("[MinimaxSparseAttentionSplitKvTiling] ===== TilingMinimaxSparseAttentionSplitKv ENTER =====\n");
     if (context == nullptr) {
@@ -709,7 +685,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::Tilin
     return ge::GRAPH_FAILED;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMinimaxSparseAttentionSplitKv(gert::TilingParseContext* context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMinimaxSparseAttentionSplitKv(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -719,4 +695,4 @@ IMPL_OP_OPTILING(MinimaxSparseAttentionSplitKv)
     .Tiling(TilingMinimaxSparseAttentionSplitKv)
     .TilingParse<MinimaxSparseAttentionSplitKvCompileInfo>(TilingPrepareForMinimaxSparseAttentionSplitKv);
 
-}  // namespace optiling
+} // namespace optiling

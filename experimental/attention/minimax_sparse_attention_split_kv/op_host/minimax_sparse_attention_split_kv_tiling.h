@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #ifndef MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H
 #define MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H
 
@@ -77,10 +76,8 @@ public:
     MinimaxSparseAttentionSplitKvTiling() = default;
     ~MinimaxSparseAttentionSplitKvTiling() = default;
 
-    ge::graphStatus GetTiling(gert::TilingContext *context,
-                              MinimaxSparseAttentionSplitKvTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context,
-                                  MinimaxSparseAttentionSplitKvTilingData &tilingData);
+    ge::graphStatus GetTiling(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
 
 private:
     ge::graphStatus GetNpuInfo(gert::TilingContext *context);
@@ -132,6 +129,6 @@ private:
     MinimaxSparseAttentionSplitKvTilingData *tilingData_ = nullptr;
 };
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H
+#endif // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H

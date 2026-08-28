@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "aclnn_minimax_sparse_attention_split_kv.h"
 
 #include "minimax_sparse_attention_split_kv.h"
@@ -32,15 +31,10 @@ extern "C" {
 
 namespace {
 
-static aclnnStatus MakeContiguous(const aclTensor *&query,
-                                  const aclTensor *&key,
-                                  const aclTensor *&value,
-                                  const aclTensor *&blockTable,
-                                  const aclTensor *&k2qRowPtr,
-                                  const aclTensor *&k2qQIndices,
-                                  const aclTensor *&k2qSlotIndices,
-                                  const aclTensor *&actualSeqLengths,
-                                  const aclTensor *&actualSeqLengthsKv,
+static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&key, const aclTensor *&value,
+                                  const aclTensor *&blockTable, const aclTensor *&k2qRowPtr,
+                                  const aclTensor *&k2qQIndices, const aclTensor *&k2qSlotIndices,
+                                  const aclTensor *&actualSeqLengths, const aclTensor *&actualSeqLengthsKv,
                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
@@ -78,26 +72,11 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 } // namespace
 
 __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *blockTable,
-    const aclTensor *k2qRowPtr,
-    const aclTensor *k2qQIndices,
-    const aclTensor *k2qSlotIndices,
-    const aclTensor *actualSeqLengths,
-    const aclTensor *actualSeqLengthsKv,
-    int64_t numKeyValueHeads,
-    double scaleValue,
-    int64_t blockSize,
-    int64_t topK,
-    int64_t innerPrecise,
-    bool softmaxLseFlag,
-    const char *inputLayout,
-    aclTensor *attentionOut,
-    aclTensor *softmaxLse,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *blockTable,
+    const aclTensor *k2qRowPtr, const aclTensor *k2qQIndices, const aclTensor *k2qSlotIndices,
+    const aclTensor *actualSeqLengths, const aclTensor *actualSeqLengthsKv, int64_t numKeyValueHeads, double scaleValue,
+    int64_t blockSize, int64_t topK, int64_t innerPrecise, bool softmaxLseFlag, const char *inputLayout,
+    aclTensor *attentionOut, aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -114,33 +93,27 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
         CHECK_RET(softmaxLse != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
     if (innerPrecise != 0 && innerPrecise != 1 && innerPrecise != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "innerPrecise must be 0, 1 or 4, got %ld.", innerPrecise);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 0, 1 or 4, got %ld.", innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
     const char *layout = (inputLayout == nullptr || inputLayout[0] == '\0') ? "TND" : inputLayout;
     if (strcmp(layout, "TND") != 0 && strcmp(layout, "BNSD") != 0 && strcmp(layout, "BSND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "inputLayout must be TND, BNSD or BSND, got %s.", layout);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "inputLayout must be TND, BNSD or BSND, got %s.", layout);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    L2_DFX_PHASE_1(aclnnMinimaxSparseAttentionSplitKv,
-                   DFX_IN(query, key, value, blockTable,
-                          k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                          actualSeqLengths, actualSeqLengthsKv,
-                          numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
-                          softmaxLseFlag, layout),
-                   DFX_OUT(attentionOut, softmaxLse));
+    L2_DFX_PHASE_1(
+        aclnnMinimaxSparseAttentionSplitKv,
+        DFX_IN(query, key, value, blockTable, k2qRowPtr, k2qQIndices, k2qSlotIndices, actualSeqLengths,
+               actualSeqLengthsKv, numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag, layout),
+        DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
 
-    aclnnStatus ret = MakeContiguous(query, key, value, blockTable,
-                                     k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                                     actualSeqLengths, actualSeqLengthsKv,
-                                     executorImpl);
+    aclnnStatus ret = MakeContiguous(query, key, value, blockTable, k2qRowPtr, k2qQIndices, k2qSlotIndices,
+                                     actualSeqLengths, actualSeqLengthsKv, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -162,19 +135,16 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     }
 
     auto outputs = l0op::MinimaxSparseAttentionSplitKv(
-        query, key, value, blockTable,
-        k2qRowPtr, k2qQIndices, k2qSlotIndices,
-        actualSeqLengths, actualSeqLengthsKv,
-        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag, layout,
-        attentionOut, lsePlaceHolder, executorImpl);
+        query, key, value, blockTable, k2qRowPtr, k2qQIndices, k2qSlotIndices, actualSeqLengths, actualSeqLengthsKv,
+        numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise, softmaxLseFlag, layout, attentionOut,
+        lsePlaceHolder, executorImpl);
     auto output = std::get<0>(outputs);
     auto lseOut = std::get<1>(outputs);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(const_cast<aclTensor *>(tempTensor));
     }
     if (output == nullptr || lseOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                "MinimaxSparseAttentionSplitKv returned nullptr output.");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MinimaxSparseAttentionSplitKv returned nullptr output.");
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
@@ -190,11 +160,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKv(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKv(void *workspace,
+                                                                                      uint64_t workspaceSize,
+                                                                                      aclOpExecutor *executor,
+                                                                                      aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMinimaxSparseAttentionSplitKv);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

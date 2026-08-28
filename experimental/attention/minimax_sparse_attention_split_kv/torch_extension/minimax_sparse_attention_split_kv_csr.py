@@ -52,7 +52,9 @@ def _packed_row_map(
         if total_rows is None:
             total_rows = total_rows_i
     if max_rows == 0:
-        return torch.empty((batch, 0), dtype=torch.int32, device=device), int(total_rows)
+        return torch.empty((batch, 0), dtype=torch.int32, device=device), int(
+            total_rows
+        )
 
     # Fast path: single batch → packed row id == local block id.
     if batch == 1:
@@ -172,7 +174,9 @@ def _mask_padding_tokens(
     batch_ids = torch.searchsorted(q_offs[1:], q_ids, right=True)
     local_t = q_ids - q_offs[batch_ids]
     keep = local_t < actual_q.to(device=device, dtype=torch.int64)[batch_ids]
-    return torch.where(keep.view(1, q_tokens, 1), select_idx, torch.full_like(select_idx, -1))
+    return torch.where(
+        keep.view(1, q_tokens, 1), select_idx, torch.full_like(select_idx, -1)
+    )
 
 
 def _build_csr_from_q2k(
@@ -212,7 +216,9 @@ def _build_csr_from_q2k(
         rows_per_batch, max_rows=max_rows, total_rows=total_rows
     )
     nnz_upper = total_q * top_k
-    k2q_row_ptr = torch.zeros((kv_heads, total_rows + 1), dtype=torch.int32, device=device)
+    k2q_row_ptr = torch.zeros(
+        (kv_heads, total_rows + 1), dtype=torch.int32, device=device
+    )
     if total_rows == 0 or total_q == 0 or top_k == 0:
         empty = torch.empty((kv_heads, 0), dtype=torch.int32, device=device)
         return k2q_row_ptr, empty, empty
@@ -271,9 +277,8 @@ def _build_csr_from_q2k(
     sort_idx = row_keys.to(torch.float32).argsort(dim=1, stable=False)
     sorted_q = q_flat.gather(1, sort_idx)
     sorted_slot = slot_flat.gather(1, sort_idx)
-    keep = (
-        torch.arange(nnz_upper, device=device).unsqueeze(0)
-        < valid_flat.sum(dim=1, keepdim=True)
+    keep = torch.arange(nnz_upper, device=device).unsqueeze(0) < valid_flat.sum(
+        dim=1, keepdim=True
     )
     neg = torch.full((), -1, dtype=torch.int32, device=device)
     k2q_q_indices = torch.where(keep, sorted_q, neg)
@@ -324,17 +329,23 @@ def build_k2q_csr(
     if not isinstance(select_idx, torch.Tensor):
         select_idx = torch.as_tensor(select_idx, dtype=torch.int32)
     if index_mode not in ("batch_local", "global"):
-        raise ValueError(f"index_mode must be 'batch_local' or 'global', got {index_mode!r}")
+        raise ValueError(
+            f"index_mode must be 'batch_local' or 'global', got {index_mode!r}"
+        )
     layout = input_layout.upper()
     if layout not in ("TND", "BNSD", "BSND"):
-        raise ValueError(f"input_layout must be TND, BNSD or BSND, got {input_layout!r}")
+        raise ValueError(
+            f"input_layout must be TND, BNSD or BSND, got {input_layout!r}"
+        )
 
     actual_q = _as_int32_1d(actual_seq_lengths, "actual_seq_lengths", select_idx.device)
     actual_kv = _as_int32_1d(
         actual_seq_lengths_kv, "actual_seq_lengths_kv", select_idx.device
     )
     if actual_q.numel() != actual_kv.numel():
-        raise ValueError("actual_seq_lengths and actual_seq_lengths_kv must have the same [B]")
+        raise ValueError(
+            "actual_seq_lengths and actual_seq_lengths_kv must have the same [B]"
+        )
 
     select_idx, stride = _normalize_select_idx(
         select_idx, layout, int(actual_q.numel()), q_seq_pad
@@ -350,7 +361,9 @@ def build_k2q_csr(
         select_idx = _mask_padding_tokens(select_idx, q_token_lens, actual_q)
 
     if index_mode == "global":
-        select_idx = _global_to_batch_local(select_idx, q_token_lens, actual_kv, block_size)
+        select_idx = _global_to_batch_local(
+            select_idx, q_token_lens, actual_kv, block_size
+        )
 
     return _build_csr_from_q2k(
         select_idx, q_token_lens, actual_kv, block_size, q_id_stride

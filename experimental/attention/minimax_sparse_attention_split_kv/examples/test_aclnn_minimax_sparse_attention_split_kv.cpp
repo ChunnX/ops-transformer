@@ -1,5 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ *
  * On-device smoke + golden check for MinimaxSparseAttentionSplitKv (innerPrecise=0/4).
  * Paged KV cache, TND / BNSD / BSND contiguous. Dense local-block CSR, causal prefill.
  * softmaxLseFlag=false for the main suite; a smaller LSE suite checks fp32 lse.
@@ -18,14 +25,14 @@
 #include "aclnnop/aclnn_minimax_sparse_attention_split_kv.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)     \
-    do {                            \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
@@ -35,7 +42,11 @@ constexpr int64_t kHeadDim = 128;
 constexpr float kAbsTol = 2e-2f;
 constexpr float kRelTol = 2e-2f;
 
-enum class LayoutKind { TND, BNSD, BSND };
+enum class LayoutKind {
+    TND,
+    BNSD,
+    BSND
+};
 
 struct CaseSpec {
     int64_t seq;
@@ -166,8 +177,8 @@ size_t LseElem(const CaseSpec &spec, int64_t t, int64_t h)
 // pagedKv: K/V stored as [1, blockSize, kvHeads, D]; else TND [seq, kvHeads, D],
 // BNSD [1, kvHeads, seq, D], or BSND [1, seq, kvHeads, D].
 void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::vector<uint16_t> &k,
-               const std::vector<uint16_t> &v, std::vector<float> &outFp32, std::vector<float> &lseFp32,
-               float scale, bool roundPToBf16)
+               const std::vector<uint16_t> &v, std::vector<float> &outFp32, std::vector<float> &lseFp32, float scale,
+               bool roundPToBf16)
 {
     const int64_t groupSize = spec.numHeads / spec.kvHeads;
     outFp32.assign(static_cast<size_t>(spec.seq * spec.numHeads * kHeadDim), 0.0f);
@@ -274,8 +285,7 @@ int CompareOut(const CaseSpec &spec, const std::vector<uint16_t> &got, const std
     return (mismatch == 0 && nanCount == 0) ? 0 : 1;
 }
 
-int CompareLse(const CaseSpec &spec, const std::vector<float> &got, const std::vector<float> &golden,
-               const char *tag)
+int CompareLse(const CaseSpec &spec, const std::vector<float> &got, const std::vector<float> &golden, const char *tag)
 {
     int64_t n = spec.seq * spec.numHeads;
     int64_t mismatch = 0;
@@ -293,13 +303,12 @@ int CompareLse(const CaseSpec &spec, const std::vector<float> &got, const std::v
         if (!CloseEnough(g, golden[static_cast<size_t>(i)])) {
             ++mismatch;
             if (mismatch <= 8) {
-                LOG_PRINT("  lse mismatch[%ld] got=%f golden=%f abs=%f\n", i, g,
-                          golden[static_cast<size_t>(i)], diff);
+                LOG_PRINT("  lse mismatch[%ld] got=%f golden=%f abs=%f\n", i, g, golden[static_cast<size_t>(i)], diff);
             }
         }
     }
-    LOG_PRINT("[%s] lse elems=%ld mismatch=%ld nan/inf=%ld maxAbsErr=%f first3=[%f, %f, %f]\n", tag, n,
-              mismatch, nanCount, maxAbs, got[0], got[1], got[2]);
+    LOG_PRINT("[%s] lse elems=%ld mismatch=%ld nan/inf=%ld maxAbsErr=%f first3=[%f, %f, %f]\n", tag, n, mismatch,
+              nanCount, maxAbs, got[0], got[1], got[2]);
     return (mismatch == 0 && nanCount == 0) ? 0 : 1;
 }
 
@@ -476,16 +485,18 @@ int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPr
     ret = aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
         c.query, c.key, c.value, c.blockTable, c.k2qRowPtr, c.k2qQIndices, c.k2qSlotIndices, c.actualSeqQ,
         c.actualSeqKv, spec.kvHeads, static_cast<double>(scale), spec.blockSize, spec.topK, innerPrecise,
-        softmaxLseFlag, LayoutStr(spec), c.attentionOut, softmaxLseFlag ? c.softmaxLse : nullptr, &c.workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("[%s] GetWorkspaceSize failed. ERROR: %d\n", tag, ret); DestroyCase(c); return ret);
+        softmaxLseFlag, LayoutStr(spec), c.attentionOut, softmaxLseFlag ? c.softmaxLse : nullptr, &c.workspaceSize,
+        &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[%s] GetWorkspaceSize failed. ERROR: %d\n", tag, ret); DestroyCase(c);
+              return ret);
     LOG_PRINT("[%s] workspaceSize=%llu T=%ld BS=%ld Hq/Hkv=%ld/%ld lse=%d\n", tag,
               static_cast<unsigned long long>(c.workspaceSize), spec.seq, spec.blockSize, spec.numHeads, spec.kvHeads,
               softmaxLseFlag ? 1 : 0);
 
     if (c.workspaceSize > 0) {
         ret = aclrtMalloc(&c.workspaceAddr, c.workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); DestroyCase(c); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); DestroyCase(c);
+                  return ret);
     }
 
     ret = aclnnMinimaxSparseAttentionSplitKv(c.workspaceAddr, c.workspaceSize, executor, stream);
@@ -511,7 +522,7 @@ int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPr
     return cmp;
 }
 
-}  // namespace
+} // namespace
 
 int main()
 {

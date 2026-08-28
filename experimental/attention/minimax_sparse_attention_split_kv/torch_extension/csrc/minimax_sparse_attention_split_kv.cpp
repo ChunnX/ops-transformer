@@ -40,8 +40,8 @@ std::tuple<at::Tensor, at::Tensor> minimax_sparse_attention_split_kv(
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.numel() > 0, "Tensor key is empty.");
     TORCH_CHECK(value.numel() > 0, "Tensor value is empty.");
-    TORCH_CHECK(inner_precise == 0 || inner_precise == 1 || inner_precise == 4,
-                "inner_precise must be 0, 1 or 4, got ", inner_precise);
+    TORCH_CHECK(inner_precise == 0 || inner_precise == 1 || inner_precise == 4, "inner_precise must be 0, 1 or 4, got ",
+                inner_precise);
     TORCH_CHECK(input_layout == "TND" || input_layout == "BNSD" || input_layout == "BSND",
                 "input_layout must be TND, BNSD or BSND, got ", input_layout);
     TORCH_CHECK(num_key_value_heads > 0, "num_key_value_heads must be > 0, got ", num_key_value_heads);
@@ -74,11 +74,11 @@ std::tuple<at::Tensor, at::Tensor> minimax_sparse_attention_split_kv(
             if (input_layout == "TND") {
                 softmax_lse = at::zeros({query.size(0), query.size(1), 1}, query.options().dtype(at::kFloat));
             } else if (input_layout == "BNSD") {
-                softmax_lse = at::zeros({query.size(0), query.size(1), query.size(2), 1},
-                                        query.options().dtype(at::kFloat));
+                softmax_lse =
+                    at::zeros({query.size(0), query.size(1), query.size(2), 1}, query.options().dtype(at::kFloat));
             } else {
-                softmax_lse = at::zeros({query.size(0), query.size(1), query.size(2), 1},
-                                        query.options().dtype(at::kFloat));
+                softmax_lse =
+                    at::zeros({query.size(0), query.size(1), query.size(2), 1}, query.options().dtype(at::kFloat));
             }
         } else {
             softmax_lse = at::empty({0}, query.options().dtype(at::kFloat));

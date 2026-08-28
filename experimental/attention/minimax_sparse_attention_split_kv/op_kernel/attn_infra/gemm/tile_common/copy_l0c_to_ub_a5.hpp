@@ -25,12 +25,9 @@ namespace NpuArch::Gemm::Tile {
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    NpuArch::Arch::AtlasA5,
-    TensorSrc_,
+    NpuArch::Arch::AtlasA5, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    CopyL0CToUBMode::NO_SPLIT,
-    ScaleGranularity::NO_QUANT,
-    ReluEnable_,
+    CopyL0CToUBMode::NO_SPLIT, ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = NpuArch::Arch::AtlasA5;
     using ElementDst = ElementDst_;
@@ -43,10 +40,9 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -65,18 +61,18 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
-    
+
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId, uint8_t unitFlag = 0)
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId,
+                                      uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -108,19 +104,16 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    NpuArch::Arch::AtlasA5,
-    TensorSrc_,
+    NpuArch::Arch::AtlasA5, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    CopyL0CToUBMode::SPLIT_M,
-    ScaleGranularity::NO_QUANT,
-    ReluEnable_,
+    CopyL0CToUBMode::SPLIT_M, ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = NpuArch::Arch::AtlasA5;
     using ElementDst = ElementDst_;
@@ -133,10 +126,9 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -163,19 +155,16 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    NpuArch::Arch::AtlasA5,
-    TensorSrc_,
+    NpuArch::Arch::AtlasA5, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    CopyL0CToUBMode::SPLIT_N,
-    ScaleGranularity::NO_QUANT,
-    ReluEnable_,
+    CopyL0CToUBMode::SPLIT_N, ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = NpuArch::Arch::AtlasA5;
     using ElementDst = ElementDst_;
@@ -188,10 +177,9 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -211,19 +199,16 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    NpuArch::Arch::AtlasA5,
-    TensorSrc_,
+    NpuArch::Arch::AtlasA5, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    CopyL0CToUBMode::NO_SPLIT,
-    ScaleGranularity::PER_TENSOR,
-    ReluEnable_,
+    CopyL0CToUBMode::NO_SPLIT, ScaleGranularity::PER_TENSOR, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = NpuArch::Arch::AtlasA5;
     using ElementDst = ElementDst_;
@@ -237,10 +222,9 @@ struct CopyL0CToUBTla<
                                       bool subBlockId, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -262,8 +246,8 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
     }
 };
 

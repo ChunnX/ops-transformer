@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 #include <cstring>
@@ -85,23 +84,18 @@ static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeC
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     uint32_t layoutType = LAYOUT_TND;
     if (!ParseInputLayout(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX), layoutType)) {
-        OP_LOGE(context->GetNodeName(),
-                "inputLayout must be TND, BNSD or BSND.");
+        OP_LOGE(context->GetNodeName(), "inputLayout must be TND, BNSD or BSND.");
         return ge::GRAPH_FAILED;
     }
 
     const size_t qDimNum = queryShape->GetDimNum();
     if (layoutType == LAYOUT_TND) {
         if (qDimNum != TND_DIM_NUM) {
-            OP_LOGE(context->GetNodeName(),
-                    "inputLayout TND requires query rank 3 [T, N, D], got %zu.",
-                    qDimNum);
+            OP_LOGE(context->GetNodeName(), "inputLayout TND requires query rank 3 [T, N, D], got %zu.", qDimNum);
             return ge::GRAPH_FAILED;
         }
     } else if (qDimNum != RANK4_DIM_NUM) {
-        OP_LOGE(context->GetNodeName(),
-                "inputLayout BNSD/BSND requires query rank 4, got %zu.",
-                qDimNum);
+        OP_LOGE(context->GetNodeName(), "inputLayout BNSD/BSND requires query rank 4, got %zu.", qDimNum);
         return ge::GRAPH_FAILED;
     }
 
@@ -113,13 +107,11 @@ static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeC
         if (layoutType == LAYOUT_BNSD) {
             // BNSD LSE [B, N, S, 1] fp32.
             softmaxLseShape->SetDimNum(LSE_RANK4_DIM_NUM);
-            *softmaxLseShape = {queryShape->GetDim(0), queryShape->GetDim(1),
-                                queryShape->GetDim(2), NUM_1};
+            *softmaxLseShape = {queryShape->GetDim(0), queryShape->GetDim(1), queryShape->GetDim(2), NUM_1};
         } else if (layoutType == LAYOUT_BSND) {
             // BSND LSE [B, S, N, 1] fp32.
             softmaxLseShape->SetDimNum(LSE_RANK4_DIM_NUM);
-            *softmaxLseShape = {queryShape->GetDim(0), queryShape->GetDim(1),
-                                queryShape->GetDim(2), NUM_1};
+            *softmaxLseShape = {queryShape->GetDim(0), queryShape->GetDim(1), queryShape->GetDim(2), NUM_1};
         } else {
             // TND LSE, same as FIA: [T, N, 1] fp32.
             softmaxLseShape->SetDimNum(LSE_DIM_NUM);
@@ -147,4 +139,4 @@ IMPL_OP_INFERSHAPE(MinimaxSparseAttentionSplitKv)
     .InferShape(InferShapeMinimaxSparseAttentionSplitKv)
     .InferDataType(InferDataTypeMinimaxSparseAttentionSplitKv);
 
-}  // namespace ops
+} // namespace ops

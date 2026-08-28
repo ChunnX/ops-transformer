@@ -25,14 +25,8 @@
 
 namespace NpuArch::Epilogue::Block {
 
-template <
-    class OutputType_,
-    class LayoutS_>
-class BlockEpilogue<
-    EpilogueOnlineSoftmaxBsa,
-    OutputType_,
-    Gemm::GemmType<float, LayoutS_>>
-{
+template <class OutputType_, class LayoutS_>
+class BlockEpilogue<EpilogueOnlineSoftmaxBsa, OutputType_, Gemm::GemmType<float, LayoutS_>> {
 public:
     using DispatchPolicy = EpilogueOnlineSoftmaxBsa;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -54,16 +48,15 @@ public:
     static constexpr uint32_t SM_UB_STAGES = 2;
     static constexpr float NEG_INF = -3.402823466e+38f;
 
-    __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
     {
         // fp32 S is 2x the bf16 footprint: 2 stages * 16384 * 4B = 128KB at offset 0.
         // bf16 P zN sits after S; stats stay at 7*32KB so kernel SM_UB_GM_OFFSET matches.
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
-        constexpr uint32_t LP_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;   // 131072
-        constexpr uint32_t TMP_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE;  // 196608, 32KB scratch
+        constexpr uint32_t LP_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;  // 131072
+        constexpr uint32_t TMP_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE; // 196608, 32KB scratch
         constexpr uint32_t STATS_UB_STAGE_BYTES = SM_ROW_MAX_ELEM_NUM * sizeof(float);
-        constexpr uint32_t GM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE;   // 229376
+        constexpr uint32_t GM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE; // 229376
         constexpr uint32_t GL_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 2 * STATS_UB_STAGE_BYTES;
 
         subBlockIdx_ = AscendC::GetSubBlockIdx();
@@ -74,21 +67,17 @@ public:
         tmpUbTensor = resource.ubBuf.template GetBufferByByte<float>(TMP_UB_TENSOR_OFFSET);
         ndPUbTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(TMP_UB_TENSOR_OFFSET);
         for (uint32_t i = 0; i < SM_UB_STAGES; i++) {
-            gmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
-                GM_UB_TENSOR_OFFSET + i * STATS_UB_STAGE_BYTES);
-            glUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
-                GL_UB_TENSOR_OFFSET + i * STATS_UB_STAGE_BYTES);
+            gmUbTensor[i] =
+                resource.ubBuf.template GetBufferByByte<float>(GM_UB_TENSOR_OFFSET + i * STATS_UB_STAGE_BYTES);
+            glUbTensor[i] =
+                resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET + i * STATS_UB_STAGE_BYTES);
         }
     }
 
-    __aicore__ inline
-    ~BlockEpilogue()
-    {
-    }
+    __aicore__ inline ~BlockEpilogue() {}
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline
-    void CopyPUbToPL1(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m)
+    __aicore__ inline void CopyPUbToPL1(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m)
     {
         const uint32_t blockCount = tla::get<1, 1>(srcTensor.shape());
         AscendC::DataCopyParams repeatParams;
@@ -103,8 +92,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         if constexpr (MODE == 4U) {
             Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
@@ -112,8 +100,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         if constexpr (MODE == 4U) {
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
@@ -121,11 +108,10 @@ public:
     }
 
     template <class TensorP>
-    __aicore__ inline
-    void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
-        uint32_t ubSBufId, uint32_t l1PBufId,
-        Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
-        const uint32_t *causalValidLens, uint32_t groupCount, uint32_t groupRows)
+    __aicore__ inline void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape, uint32_t ubSBufId,
+                                      uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
+                                      Arch::CrossCoreFlag smToMm2Flag, const uint32_t *causalValidLens,
+                                      uint32_t groupCount, uint32_t groupRows)
     {
         (void)l1PBufId;
         uint32_t M = actualBlockShape.m();
@@ -204,10 +190,8 @@ public:
             uint16_t mR = RoundUp(rows, C0_NUM_PER_FRACTAL);
             auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mR, nRound);
             auto ubPTensorTla = tla::MakeTensor(pZnBase[znPacked], ubPLayoutTla, Arch::PositionUB{});
-            auto ubPTensorTlaTile = GetTile(ubPTensorTla,
-                    tla::MakeCoord(0, 0), tla::MakeShape(rows, n));
-            auto l1PTensorTlaTile = GetTile(l1PTensorTla,
-                    tla::MakeCoord(row0, 0), tla::MakeShape(rows, n));
+            auto ubPTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(rows, n));
+            auto l1PTensorTlaTile = GetTile(l1PTensorTla, tla::MakeCoord(row0, 0), tla::MakeShape(rows, n));
             CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, rows);
             znPacked += static_cast<uint32_t>(mR) * nRound;
         }
@@ -226,10 +210,9 @@ private:
     AscendC::LocalTensor<float> glUbTensor[SM_UB_STAGES];
     uint32_t subBlockIdx_;
 
-    __aicore__ inline
-    void CopyPNdToNz(const AscendC::LocalTensor<ElementOutput> &zn,
-                     const AscendC::LocalTensor<ElementOutput> &nd,
-                     uint32_t m, uint32_t mRound, uint32_t nRound)
+    __aicore__ inline void CopyPNdToNz(const AscendC::LocalTensor<ElementOutput> &zn,
+                                       const AscendC::LocalTensor<ElementOutput> &nd, uint32_t m, uint32_t mRound,
+                                       uint32_t nRound)
     {
         // 1D UB2UB copies only (16 bf16 = 32B). A5 traps on 2D UB gather
         // (blockCount=m, srcStride=nC0-1: drops 2 rows) and on 2D UB scatter
@@ -240,17 +223,15 @@ private:
         const uint32_t nC0 = nRound / ELE_NUM_PER_C0;
         for (uint32_t i = 0; i < m; ++i) {
             for (uint32_t k = 0; k < nC0; ++k) {
-                AscendC::DataCopy(
-                    zn[k * mRound * ELE_NUM_PER_C0 + i * ELE_NUM_PER_C0],
-                    nd[i * nRound + k * ELE_NUM_PER_C0],
-                    ELE_NUM_PER_C0);
+                AscendC::DataCopy(zn[k * mRound * ELE_NUM_PER_C0 + i * ELE_NUM_PER_C0],
+                                  nd[i * nRound + k * ELE_NUM_PER_C0], ELE_NUM_PER_C0);
             }
             AscendC::PipeBarrier<PIPE_V>();
         }
     }
 
-    __aicore__ inline
-    void MaskCausalTail(const AscendC::LocalTensor<float> &sLocal, uint32_t rows, uint32_t nRound, uint32_t tailN)
+    __aicore__ inline void MaskCausalTail(const AscendC::LocalTensor<float> &sLocal, uint32_t rows, uint32_t nRound,
+                                          uint32_t tailN)
     {
         if (tailN >= nRound) {
             return;
@@ -293,9 +274,8 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void RowReduceMax(const AscendC::LocalTensor<float> &dst, AscendC::LocalTensor<float> src,
-                      uint32_t rows, uint32_t columnCount)
+    __aicore__ inline void RowReduceMax(const AscendC::LocalTensor<float> &dst, AscendC::LocalTensor<float> src,
+                                        uint32_t rows, uint32_t columnCount)
     {
         uint32_t dtypeMask = FLOAT_VECTOR_SIZE;
         uint32_t blockCount = columnCount / dtypeMask;
@@ -314,8 +294,8 @@ private:
         for (uint32_t loopCount = blockCount / 2U; loopCount > 0; loopCount = blockCount / 2U) {
             blockCount = (blockCount + 1U) / 2U;
             for (uint32_t j = 0; j < loopCount; j++) {
-                AscendC::Max(src[j * dtypeMask], src[j * dtypeMask], src[(j + blockCount) * dtypeMask],
-                             dtypeMask, rows, rp);
+                AscendC::Max(src[j * dtypeMask], src[j * dtypeMask], src[(j + blockCount) * dtypeMask], dtypeMask, rows,
+                             rp);
             }
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -324,9 +304,8 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void RowReduceSum(const AscendC::LocalTensor<float> &dst, AscendC::LocalTensor<float> src,
-                      uint32_t rows, uint32_t columnCount)
+    __aicore__ inline void RowReduceSum(const AscendC::LocalTensor<float> &dst, AscendC::LocalTensor<float> src,
+                                        uint32_t rows, uint32_t columnCount)
     {
         uint32_t dtypeMask = FLOAT_VECTOR_SIZE;
         uint32_t blockCount = columnCount / dtypeMask;
@@ -345,8 +324,8 @@ private:
         for (uint32_t loopCount = blockCount / 2U; loopCount > 0; loopCount = blockCount / 2U) {
             blockCount = (blockCount + 1U) / 2U;
             for (uint32_t j = 0; j < loopCount; j++) {
-                AscendC::Add(src[j * dtypeMask], src[j * dtypeMask], src[(j + blockCount) * dtypeMask],
-                             dtypeMask, rows, rp);
+                AscendC::Add(src[j * dtypeMask], src[j * dtypeMask], src[(j + blockCount) * dtypeMask], dtypeMask, rows,
+                             rp);
             }
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -355,10 +334,8 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void SubBroadcastMax(const AscendC::LocalTensor<float> &sLocal,
-                         const AscendC::LocalTensor<float> &maxLocal,
-                         uint32_t rows, uint32_t nRound)
+    __aicore__ inline void SubBroadcastMax(const AscendC::LocalTensor<float> &sLocal,
+                                           const AscendC::LocalTensor<float> &maxLocal, uint32_t rows, uint32_t nRound)
     {
         AscendC::Brcb(tmpUbTensor, maxLocal, static_cast<uint8_t>((rows + FLOAT_BLOCK_SIZE - 1) / FLOAT_BLOCK_SIZE),
                       {1, 8});
@@ -381,11 +358,10 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void ComputeLocalSoftmax(const AscendC::LocalTensor<float> &sLocal,
-                             const AscendC::LocalTensor<float> &maxLocal,
-                             const AscendC::LocalTensor<float> &sumLocal,
-                             uint32_t rows, uint32_t nRound, uint32_t tailN)
+    __aicore__ inline void ComputeLocalSoftmax(const AscendC::LocalTensor<float> &sLocal,
+                                               const AscendC::LocalTensor<float> &maxLocal,
+                                               const AscendC::LocalTensor<float> &sumLocal, uint32_t rows,
+                                               uint32_t nRound, uint32_t tailN)
     {
         uint32_t elemNum = rows * nRound;
         uint32_t statsAlign = RoundUp(rows, FLOAT_BLOCK_SIZE);
@@ -414,6 +390,6 @@ private:
     }
 };
 
-}  // namespace NpuArch::Epilogue::Block
+} // namespace NpuArch::Epilogue::Block
 
-#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_HIGH_PREC_HPP
+#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_HIGH_PREC_HPP
