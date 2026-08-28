@@ -34,4 +34,5 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
                          ASCENDC_TPL_TILING_STRUCT_SEL(FFNToAttentionV2TilingData)));
 } // namespace Mc2Tiling
+} // namespace Mc2Tiling
 #endif
