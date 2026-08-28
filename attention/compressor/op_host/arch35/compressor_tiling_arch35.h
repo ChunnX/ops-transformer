@@ -192,8 +192,8 @@ enum class LayoutType {
 };
 
 enum class TemplateId : uint8_t {
-    EMPTY_X = 0,
-    NORMAL = 1,
+    NORMAL = 0,
+    EMPTY_X = 1,
     FULL_LOAD = 2
 };
 
@@ -264,7 +264,7 @@ public:
     ge::graphStatus RunBigKernelTiling(CompressorTilingData *tilingData);
 
 private:
-    static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context, CompressorContext &compressorContext);
+    static void ConvertRequiredParams(gert::TilingContext &context, CompressorContext &compressorContext);
 
     static void ConvertOptionalParams(gert::TilingContext &context, CompressorContext &compressorContext);
     ge::graphStatus GetNpuInfo();

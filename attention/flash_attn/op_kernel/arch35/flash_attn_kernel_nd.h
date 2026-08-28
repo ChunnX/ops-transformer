@@ -34,8 +34,9 @@
 using namespace AscendC;
 using namespace optiling;
 using namespace AscendC::Impl::Detail;
+using namespace regbaseutil;
 
-namespace FlashAttnKernel {
+namespace BaseApi {
 template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernelNd {
 public:
@@ -51,14 +52,15 @@ public:
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
-    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfo slot，换取消除内层循环的取模scalar bound。
+    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfoX slot，换取消除内层循环的取模scalar bound。
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
     static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1, "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
-    ConstInfo_t constInfo_;
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    ConstInfoX constInfo_;
 
     SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool_;
     SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool_;
@@ -84,7 +86,7 @@ public:
     uint32_t s2OEnd_;
     uint32_t coreFirstTmpOutWsPos_;
     // fd metadata
-    FDparams fdParams_;
+    FDparamsX fdParams_;
 
     // schduler params
     uint64_t actSeqLensKv_ = 0;
@@ -196,7 +198,7 @@ public:
         // LSE
         constInfo_.isSoftmaxLseEnable = tilingData_->flashAttnBaseParams.isSoftMaxLseEnable;
 
-        constInfo_.dBasicBlock = BaseApi::Align64Func((uint16_t)constInfo_.dSizeV);
+        constInfo_.dBasicBlock = Align64Func((uint16_t)constInfo_.dSizeV);
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -217,7 +219,7 @@ public:
         }
 
         GetFASectionInfo(sectionIdx);
-        RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
         // Reset pipeline state for each section to avoid cross-section deadlock
         uint32_t createdTaskCount = 0;
@@ -419,9 +421,9 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfo &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
@@ -431,7 +433,7 @@ public:
             }
         }
         if (loop >= PRELOAD_N) {
-            RunInfo &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
+            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -443,35 +445,23 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
-    {
-        cubeBlock_.IterateBmm1(runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock_.IterateBmm1(runInfo); }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
-    {
-        cubeBlock_.IterateBmm2(runInfo);
-    }
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo) { cubeBlock_.IterateBmm2(runInfo); }
 
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
-    {
-        vecFaBlock_.ProcessVec1(runInfo);
-    }
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo) { vecFaBlock_.ProcessVec1(runInfo); }
 
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
-    {
-        vecFaBlock_.ProcessVec2(runInfo);
-    }
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo) { vecFaBlock_.ProcessVec2(runInfo); }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfo &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
     {
         info.loop = loop;
         info.mloop = mloop_;
@@ -638,6 +628,6 @@ public:
     }
 }; // FlashAttentionNoQuantGqaKernelNd
 
-} // namespace FlashAttnKernel
+} // namespace BaseApi
 
 #endif // FLASH_ATTN_KERNEL_ND_H_
