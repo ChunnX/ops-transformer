@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <limits>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -43,6 +44,7 @@ using namespace Mc2Tiling;
 
 namespace MC2Tiling {
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
+constexpr size_t URMA_FLAG_WORKSPACE_ALIGN = 32U;
 
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
@@ -83,7 +85,16 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
                     return ge::GRAPH_FAILED);
-    workSpaces[0] += static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum) * URMA_FLAG_SLOT_SIZE;
+    const size_t flagWorkspaceSize =
+        static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum) * URMA_FLAG_SLOT_SIZE;
+    OP_TILING_CHECK(workSpaces[0] > std::numeric_limits<size_t>::max() - (URMA_FLAG_WORKSPACE_ALIGN - 1U),
+                    OP_LOGE(context->GetNodeName(), "workspace alignment overflow"), return ge::GRAPH_FAILED);
+    const size_t flagWorkspaceOffset =
+        (workSpaces[0] + URMA_FLAG_WORKSPACE_ALIGN - 1U) / URMA_FLAG_WORKSPACE_ALIGN * URMA_FLAG_WORKSPACE_ALIGN;
+    OP_TILING_CHECK(flagWorkspaceOffset > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
+                    OP_LOGE(context->GetNodeName(), "workspace size overflow"), return ge::GRAPH_FAILED);
+    tilingData->ffnToAttentionV2Info.urmaFlagWorkspaceOffset = static_cast<uint64_t>(flagWorkspaceOffset);
+    workSpaces[0] = flagWorkspaceOffset + flagWorkspaceSize;
 
     // FFNToAttentionV2 on A5 uses the URMA communication implementation.
     bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;

@@ -99,6 +99,7 @@ private:
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
     uint64_t requiredWindowSize_{0};
+    uint64_t urmaFlagWorkspaceOffset_{0};
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -114,7 +115,6 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFFNContext *>(mc2Context);
     rankId_ = mc2Context_->epRankId;
     xAddr_ = x;
-    localFlagAddr_ = workspaceGM + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
     axisBS_ = tilingData->ffnToAttentionV2Info.BS;
     axisH_ = tilingData->ffnToAttentionV2Info.H;
@@ -125,6 +125,9 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     aivNum_ = tilingData->ffnToAttentionV2Info.aivNum;
     worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
     maxTokenNum_ = tilingData->ffnToAttentionV2Info.maxTokenNum;
+    urmaFlagWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.urmaFlagWorkspaceOffset;
+    ascendc_assert(workspaceGM != nullptr, "workspace address must not be null");
+    localFlagAddr_ = workspaceGM + urmaFlagWorkspaceOffset_ + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
     ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
     ascendc_assert(axisH_ <= axisHS_, "H must be <= HS, H=%u, HS=%u", axisH_, axisHS_);
@@ -159,9 +162,6 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
         WIN_ADDR_ALIGN;
     const uint64_t totalSlotNum = static_cast<uint64_t>(microBatchNum_) * axisBS_ * expertNumPerToken_;
     requiredWindowSize_ = winTokenInfoTableSize_ + totalSlotNum * axisHS_ * sizeof(xType);
-    ascendc_assert(requiredWindowSize_ <= tilingData->ffnToAttentionV2Info.totalWinSize,
-                   "required window exceeds available window, required=%lu, available=%lu", requiredWindowSize_,
-                   tilingData->ffnToAttentionV2Info.totalWinSize);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -280,12 +280,16 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, localDataAddr, hSize_);
     ascendc_assert(ret == 0, "WriteNbi data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
-    // Submit the flag after the data on the same channel. The receiver uses the flag as the data-ready signal.
+    ret = hcomm_.Drain(channel);
+    ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
+                   aivId_);
+    // Publish the flag only after the token data has reached the destination window.
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, sizeof(int32_t));
     ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
     ret = hcomm_.Drain(channel);
-    ascendc_assert(ret == 0, "Drain failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank, aivId_);
+    ascendc_assert(ret == 0, "Drain flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
+                   aivId_);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>

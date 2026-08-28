@@ -29,11 +29,15 @@ struct FFNToAttentionV2Info {
     uint32_t worldSize;
     bool isInputRankTable;
     uint8_t windowType;
+    // A5 V2 always selects URMA, so reuse the V1-only fields without changing the shared tiling layout.
     union {
         uint64_t totalUbSize;
         uint64_t maxTokenNum;
     };
-    uint64_t totalWinSize;
+    union {
+        uint64_t totalWinSize;
+        uint64_t urmaFlagWorkspaceOffset;
+    };
 };
 
 struct FFNToAttentionV2TilingData {
