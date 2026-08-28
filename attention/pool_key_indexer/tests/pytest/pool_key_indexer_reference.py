@@ -10,40 +10,51 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-PoolKeyIndexer 独立 CPU 标杆实现(golden reference)。
+PoolKeyIndexer 统一标杆实现(CPU 金标 + NPU 组合标杆, 按输入设备自动选择)。
 
-标杆与算子 aclnnPoolKeyIndexer(非量化路径, quantMode=-1)的计算过程一致:
+统一入口 ``pool_key_indexer_reference(...)``:
+  - 输入 tensor 在 CPU  -> CPU 金标实现(逐 batch 精确计算, 全布局能力, 速度慢,
+    作为精度基准);
+  - 输入 tensor 在 NPU  -> NPU 组合标杆实现(纯 torch 标准算子向量化, 无 Python
+    逐行循环, 作为自定义算子的性能对比基线)。
+
+两种实现接口能力一致(支持 BSND/TND query, BSND/TND/PA_BBND key, 不等长 batch、
+0 池/0 长度 batch、PA 0 轴非连续 key、BSND 可选 actual_seq 等), 计算语义一致:
 
   1. 池级分数计算(逐 batch, float32):
         dot[i, n, j] = dot(query[i, n, :], pool_key[j, :]) / sqrt(headDim)  # 缩放点积
         score[i, j]  = sum_n weights[i, n] * relu(dot[i, n, j])             # 多头加权聚合
-      说明: 算子 cube 侧 mm 输出经 ReLU(Fixpipe reluPre)后, vector 侧按头乘
-      weights 再跨头求和(DoScale + DoReduce), 全程 float32;
-      点积按算子文档公式乘 1/sqrt(headDim) 缩放(缩放为正数, 与 ReLU/加权
-      求和可交换, 算子在聚合后统一乘缩放系数, 数值等价)。
-
+     分数通道全程 fp32(q/k/weights 上转 fp32 计算), 与算子 cube 侧 fp16 输入
+     fp32 累加 + vector 侧 fp32 加权求和的精度管线对齐; 若用 fp16 分数会引入
+     ~1e-3 舍入, 近并列分数翻转 TopK 选择, 导致与算子输出不可比。
   2. 因果可见池数(mask_mode=3, rightDownCausal 右对齐因果):
-       L          = 池数 * pool_size + pool_tail_k[b]            # 原始 token 总数
-       valid[i]   = clamp(floor((L - S1 + i + 1) / pool_size), 0, 池数)
+        L          = 池数 * pool_size + pool_tail_k[b]            # 原始 token 总数
+        valid[i]   = clamp(floor((L - S1 + i + 1) / pool_size), 0, 池数)
      即 query 第 i 行只能看到前 valid[i] 个池; mask_mode=0 时所有池可见。
-
   3. 池级 TopK: 取 k = topk // pool_size 个池, 分数降序选取
      (标杆在同分时按下标升序取; NPU 并列分数取舍可能不同, 由集合比对吸收)。
-
   4. 索引展开: 选中池 p 展开为 token 索引
-       p * pool_size, p * pool_size + 1, ..., p * pool_size + pool_size - 1
-
+        p * pool_size, p * pool_size + 1, ..., p * pool_size + pool_size - 1
   5. 尾块追加(输出 topk 位置起, 容量 pool_size - 1):
-       mask_mode=0: visible = pool_tail_k
-       mask_mode=3: visible = max(0, min(pool_tail_k, gpos - topk + 1))
-                     其中 gpos = L - S1 + i (query 行的全局 token 位置)
-       第 t 个可见尾 token 的索引为 L - pool_tail_k + t
-
+        mask_mode=0: visible = pool_tail_k
+        mask_mode=3: visible = max(0, min(pool_tail_k, gpos - topk + 1))
+                      其中 gpos = L - S1 + i (query 行的全局 token 位置)
+        第 t 个可见尾 token 的索引为 L - pool_tail_k + t
   6. 输出:
-       indices: (B, S1, topk+pool_size-1) 或 (T1, topk+pool_size-1), int32, 无效 -1
-       values:  (B, S1, topk//pool_size)   或 (T1, topk//pool_size),  float32, 无效 -inf
+        indices: (B, S1, topk+pool_size-1) 或 (T1, topk+pool_size-1), int32, 无效 -1
+        values:  (B, S1, topk//pool_size)   或 (T1, topk//pool_size),  float32, 无效 -inf
 
-可直接运行本文件做最小自验:  python pool_key_indexer_reference.py
+NPU 实现说明:
+  - 不等长 batch 通过"归一化到等长稠密布局 + 有效性掩码"向量化完成:
+    query 按批 gather 填充到 (B, S1max), pool_key 归一化到 (B, Pmax)
+    (TND gather / PA 经 block_table gather), 无效行/列以 -inf 分数掩蔽,
+    输出按有效性反填充(unpad);
+  - TopK 并列分数取舍与 CPU 标杆可能不同, 由集合比对策略吸收(同既有套件)。
+
+可直接运行本文件做自验(需 NPU):  python pool_key_indexer_reference.py
+  1. CPU 实现自验(密集/PA 布局输出 shape/取值范围/交叉一致性);
+  2. NPU 实现 vs CPU 实现一致性自验(等长 + 不等长 + 0 池 + PA 非连续 +
+     BSND actual_seq 等, indices 集合比对 + values 参考比对)。
 """
 
 import math
@@ -77,8 +88,37 @@ def _prefix_to_counts(prefix):
     return [p[0]] + [p[i] - p[i - 1] for i in range(1, len(p))]
 
 
+def _topk_desc(scores, k):
+    """降序 TopK; NPU topk 不可用时回退到 sort。"""
+    try:
+        return torch.topk(scores, k, dim=-1, sorted=True)
+    except Exception:
+        sorted_vals, sorted_idx = torch.sort(scores, dim=-1, descending=True)
+        return sorted_vals[..., :k], sorted_idx[..., :k]
+
+
+def _validate_args(query, pool_key, layout_q, layout_k, topk, pool_size, mask_mode):
+    """公共参数校验(两种实现共用)。"""
+    if layout_q not in ("BSND", "TND"):
+        raise ValueError(f"unsupported layout_q: {layout_q}")
+    if layout_k not in ("BSND", "TND", "PA_BBND"):
+        raise ValueError(f"unsupported layout_k: {layout_k}")
+    if mask_mode not in (0, 3):
+        raise ValueError(f"unsupported mask_mode: {mask_mode}")
+    if pool_size < 1:
+        raise ValueError(f"pool_size must be >= 1, got {pool_size}")
+    if topk % pool_size != 0:
+        raise ValueError(f"topk({topk}) must be divisible by pool_size({pool_size})")
+    if pool_key.shape[-2] != 1:
+        raise ValueError(f"pool_key N2 must be 1, got {pool_key.shape[-2]}")
+    if query.shape[-1] != pool_key.shape[-1]:
+        raise ValueError(
+            f"headDim mismatch: query {query.shape[-1]} vs pool_key {pool_key.shape[-1]}"
+        )
+
+
 # ---------------------------------------------------------------------------
-# 布局归一化: 逐 batch 拆分输入
+# CPU 金标实现(逐 batch 精确计算)
 # ---------------------------------------------------------------------------
 
 
@@ -120,7 +160,7 @@ def _split_key(pool_key, layout_k, actual_seq_k, block_table):
     - PA_BBND: pool_key (blockNum, blockSize, N2, D), 块内每行一个池,
                需 block_table(B, maxBlocks) 与 actual_seq_k(每 batch 池数, 非前缀和);
                逻辑池 p 属于物理块 block_table[b][p // blockSize] 的第 p % blockSize 行,
-               空槽(-1)跳过。
+               空槽(-1)跳过; 支持 0 轴非连续(strided view)。
     """
     if layout_k == "BSND":
         batch, s2, n2, d = pool_key.shape
@@ -168,11 +208,6 @@ def _split_key(pool_key, layout_k, actual_seq_k, block_table):
                 keys.append(pool_key.new_zeros((0, d)).to(torch.float32))
         return keys
     raise ValueError(f"unsupported layout_k: {layout_k}")
-
-
-# ---------------------------------------------------------------------------
-# 逐 batch 核心计算
-# ---------------------------------------------------------------------------
 
 
 def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode):
@@ -238,12 +273,7 @@ def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode):
     return token_idx, pool_val
 
 
-# ---------------------------------------------------------------------------
-# 对外接口
-# ---------------------------------------------------------------------------
-
-
-def pool_key_indexer_reference(
+def _reference_cpu(
     query,
     pool_key,
     weights,
@@ -255,66 +285,11 @@ def pool_key_indexer_reference(
     layout_q="BSND",
     layout_k="BSND",
     topk=128,
-    pool_size=16,
+    pool_size=1,
     mask_mode=0,
     return_value=False,
 ):
-    """PoolKeyIndexer CPU 标杆实现(与算子非量化路径计算过程一致)。
-
-    入参说明:
-      query: Query 张量, dtype float16/bfloat16/float32(内部统一转 float32 计算)。
-        - layout_q="BSND": shape (B, S1, N1, D);
-        - layout_q="TND":  shape (T1, N1, D), T1 为所有 batch 的 query token 总和。
-      pool_key: 池级 Key 张量(每行一个 pool 的 key), dtype 与 query 一致:
-        - layout_k="BSND":    shape (B, S2, N2, D), S2 为每 batch 池数;
-        - layout_k="TND":     shape (T2, N2, D), T2 为所有 batch 池数总和;
-        - layout_k="PA_BBND": shape (blockNum, blockSize, N2, D), 块内每行一个池,
-          需同时传入 block_table 与 actual_seq_k; 支持 0 轴非连续(strided view)。
-      weights: 多头权重, shape (B, S1, N1)(BSND) 或 (T1, N1)(TND)。
-      pool_tail_k: 每 batch 尾部不完整 pool 的有效 token 数, shape (B,), int64,
-        取值范围 [0, pool_size-1]。
-      actual_seq_q: 可选, 每 batch query 有效 token 数:
-        - layout_q="TND":  必传, 前缀和形式(长度 B, 末项等于 T1);
-        - layout_q="BSND": 可传, 每 batch 有效数(非前缀和); None 表示全部有效。
-      actual_seq_k: 可选, 每 batch 有效池数:
-        - layout_k="TND":     必传, 前缀和形式(末项等于 T2);
-        - layout_k="PA_BBND": 必传, 每 batch 池数(非前缀和);
-        - layout_k="BSND":    可传, 每 batch 池数(非前缀和); None 表示全部有效。
-      block_table: layout_k="PA_BBND" 时必传, shape (B, maxBlockNumPerSeq), int32,
-        元素为物理块编号, 无效槽位 -1。
-      layout_q: query 布局, "BSND" 或 "TND"。
-      layout_k: pool_key 布局, "BSND"、"TND" 或 "PA_BBND"。
-      topk: 展开后保留的 token 数, 需满足 topk % pool_size == 0。
-      pool_size: 每个 pool 包含的 token 数, 取值 [1, 128]。
-      mask_mode: 0 = defaultMask(无掩码); 3 = rightDownCausal(右对齐因果)。
-      return_value: True 时输出 values; False 时 values 为空 tensor。
-
-    返回值:
-      (indices, values):
-        indices: int32; BSND 时 (B, S1, topk+pool_size-1), TND 时
-          (T1, topk+pool_size-1); 无效位置填 -1。
-        values: float32; return_value=True 时 BSND 为 (B, S1, topk//pool_size),
-          TND 为 (T1, topk//pool_size), 无效位置填 -inf; return_value=False 时
-          为空 tensor (0,)。
-    """
-    # ---- 参数校验 ----
-    if layout_q not in ("BSND", "TND"):
-        raise ValueError(f"unsupported layout_q: {layout_q}")
-    if layout_k not in ("BSND", "TND", "PA_BBND"):
-        raise ValueError(f"unsupported layout_k: {layout_k}")
-    if mask_mode not in (0, 3):
-        raise ValueError(f"unsupported mask_mode: {mask_mode}")
-    if pool_size < 1:
-        raise ValueError(f"pool_size must be >= 1, got {pool_size}")
-    if topk % pool_size != 0:
-        raise ValueError(f"topk({topk}) must be divisible by pool_size({pool_size})")
-    if pool_key.shape[-2] != 1:
-        raise ValueError(f"pool_key N2 must be 1, got {pool_key.shape[-2]}")
-    if query.shape[-1] != pool_key.shape[-1]:
-        raise ValueError(
-            f"headDim mismatch: query {query.shape[-1]} vs pool_key {pool_key.shape[-1]}"
-        )
-
+    """CPU 金标实现(逐 batch Python 循环, 精确语义, 全布局能力)。"""
     # ---- 布局归一化: 逐 batch 拆分 ----
     q_list, w_list, q_counts, batch, s1_dim = _split_query(
         query, weights, layout_q, actual_seq_q
@@ -365,7 +340,362 @@ def pool_key_indexer_reference(
 
 
 # ---------------------------------------------------------------------------
-# 独立运行入口: 最小自验
+# NPU 组合标杆实现(向量化, 支持不等长 batch)
+# ---------------------------------------------------------------------------
+
+
+def _gather_rows(src, index_2d):
+    """按 (B, L) 索引矩阵 gather 首维: src (T, ...) -> (B, L, ...)。"""
+    flat = src[index_2d.reshape(-1)]
+    return flat.reshape(index_2d.shape[0], index_2d.shape[1], *src.shape[1:])
+
+
+def _normalize_query_npu(query, weights, actual_seq_q, layout_q, device):
+    """query/weights 归一化为等长稠密布局。
+
+    返回 (q, w, q_counts_t, row_valid):
+      - q: (B, S1m, N1, D); w: (B, S1m, N1) —— TND 时按批 gather 填充,
+        BSND 时原样(仅记录行有效性);
+      - q_counts_t: (B,) 每 batch 有效 query 行数(int64, device);
+      - row_valid: (B, S1m) 有效行掩码(填充行 False)。
+    """
+    if layout_q == "BSND":
+        b, s1m, n1, d = query.shape
+        if actual_seq_q is not None:
+            counts = _as_int_list(actual_seq_q)  # 非前缀和
+            if len(counts) != b:
+                raise ValueError(f"actual_seq_q length {len(counts)} != batch {b}")
+        else:
+            counts = [s1m] * b
+        q_counts_t = torch.tensor(counts, dtype=torch.int64, device=device)
+        row_valid = torch.arange(s1m, device=device)[None, :] < q_counts_t[:, None]
+        return query, weights, q_counts_t, row_valid
+
+    # TND: 前缀和 -> 逐批 gather 填充到 (B, S1m)
+    counts = _prefix_to_counts(actual_seq_q)
+    b = len(counts)
+    t1, n1, d = query.shape
+    if t1 != sum(counts):
+        raise ValueError(f"actual_seq_q 总和({sum(counts)}) != T1({t1})")
+    q_counts_t = torch.tensor(counts, dtype=torch.int64, device=device)
+    s1m = max(counts) if counts else 0
+    if s1m == 0:  # 全空 query: 上层直接短路返回空输出
+        return (
+            query.new_zeros((b, 0, n1, d)),
+            weights.new_zeros((b, 0, n1)),
+            q_counts_t,
+            torch.zeros((b, 0), dtype=torch.bool, device=device),
+        )
+    row = torch.arange(s1m, device=device)
+    starts = q_counts_t.cumsum(0) - q_counts_t
+    gather_idx = starts[:, None] + row[None, :]  # (B, S1m)
+    row_valid = row[None, :] < q_counts_t[:, None]
+    safe_idx = gather_idx.masked_fill(~row_valid, 0).clamp(0, t1 - 1)
+    q = _gather_rows(query, safe_idx)
+    w = _gather_rows(weights, safe_idx)
+    return q, w, q_counts_t, row_valid
+
+
+def _normalize_key_npu(pool_key, actual_seq_k, block_table, layout_k, device):
+    """pool_key 归一化为等长稠密布局 (B, Pm, D)。
+
+    返回 (k, k_counts_t, pool_valid):
+      - k: (B, Pm, D) —— TND 按批 gather 填充, PA 经 block_table gather,
+        BSND 原样(仅记录列有效性);
+      - k_counts_t: (B,) 每 batch 有效池数(int64, device);
+      - pool_valid: (B, Pm) 有效池掩码。
+    """
+    if layout_k == "BSND":
+        b, s2, n2, d = pool_key.shape
+        if actual_seq_k is not None:
+            counts = _as_int_list(actual_seq_k)  # 非前缀和
+            if len(counts) != b:
+                raise ValueError(f"actual_seq_k length {len(counts)} != batch {b}")
+        else:
+            counts = [s2] * b
+        k_counts_t = torch.tensor(counts, dtype=torch.int64, device=device)
+        pool_valid = torch.arange(s2, device=device)[None, :] < k_counts_t[:, None]
+        return pool_key[:, :, 0, :], k_counts_t, pool_valid
+
+    if layout_k == "TND":
+        counts = _prefix_to_counts(actual_seq_k)
+        b = len(counts)
+        t2, n2, d = pool_key.shape
+        if t2 != sum(counts):
+            raise ValueError(f"actual_seq_k 总和({sum(counts)}) != T2({t2})")
+        k_counts_t = torch.tensor(counts, dtype=torch.int64, device=device)
+        pm = max(counts) if counts else 0
+        if pm == 0:  # 全部 batch 0 池
+            k = pool_key.new_zeros((b, 0, d))
+            return k, k_counts_t, torch.zeros((b, 0), dtype=torch.bool, device=device)
+        col = torch.arange(pm, device=device)
+        starts = k_counts_t.cumsum(0) - k_counts_t
+        gather_idx = starts[:, None] + col[None, :]  # (B, Pm)
+        pool_valid = col[None, :] < k_counts_t[:, None]
+        safe_idx = gather_idx.masked_fill(~pool_valid, 0).clamp(0, t2 - 1)
+        k = _gather_rows(pool_key[:, 0, :], safe_idx)  # (B, Pm, D)
+        return k, k_counts_t, pool_valid
+
+    # PA_BBND: 经 block_table gather 归一化(块内每行 = 1 个池, LIV2 语义)
+    counts = _as_int_list(actual_seq_k)  # 非前缀和(每 batch 池数)
+    b = len(counts)
+    block_num, block_size, n2, d = pool_key.shape
+    k_counts_t = torch.tensor(counts, dtype=torch.int64, device=device)
+    pm = max(counts) if counts else 0
+    if pm == 0 or block_num == 0:  # 全部 batch 0 池
+        k = pool_key.new_zeros((b, 0, d))
+        return k, k_counts_t, torch.zeros((b, 0), dtype=torch.bool, device=device)
+    if block_table is None:
+        raise ValueError("layout_k='PA_BBND' requires block_table")
+    p_idx = torch.arange(pm, device=device)
+    blk_col = (p_idx // block_size).clamp(0, block_table.shape[1] - 1)  # (Pm,)
+    blk = block_table[:, blk_col].long()  # (B, Pm), 空槽 -1
+    pool_valid = p_idx[None, :] < k_counts_t[:, None]
+    blk_safe = blk.clamp(min=0)  # 无效槽位指向物理块 0, 数据由掩码丢弃
+    rows = blk_safe * block_size + (p_idx % block_size)[None, :]  # (B, Pm)
+    # 0 轴非连续 key: reshape 在视图不可用时自动拷贝, 数据语义不变
+    flat = pool_key[:, :, 0, :].reshape(block_num * block_size, d)
+    k = flat[rows.reshape(-1)].reshape(b, pm, d)
+    return k, k_counts_t, pool_valid
+
+
+def _reference_npu(
+    query,
+    pool_key,
+    weights,
+    pool_tail_k,
+    *,
+    actual_seq_q=None,
+    actual_seq_k=None,
+    block_table=None,
+    layout_q="BSND",
+    layout_k="BSND",
+    topk=128,
+    pool_size=1,
+    mask_mode=0,
+    return_value=False,
+):
+    """NPU 组合标杆实现(torch 标准算子向量化, 输入/输出不跨设备)。"""
+    device = query.device
+    sparse = topk // pool_size
+    out_len = topk + pool_size - 1
+
+    # ---- query 归一化: (B, S1m, N1, D) + 行有效性 ----
+    q, w, q_counts_t, row_valid = _normalize_query_npu(
+        query, weights, actual_seq_q, layout_q, device
+    )
+    b, s1m, n1, d = q.shape
+    if layout_q == "TND" and s1m == 0:  # 全空 query: 直接返回空输出
+        indices = torch.zeros((0, out_len), dtype=torch.int32, device=device)
+        if return_value:
+            values = torch.full(
+                (0, sparse), _NEG_INF, dtype=torch.float32, device=device
+            )
+        else:
+            values = torch.empty(0, dtype=torch.float32, device=device)
+        return indices, values
+
+    # ---- key 归一化: (B, Pm, D) + 池有效性 ----
+    k, k_counts_t, pool_valid = _normalize_key_npu(
+        pool_key, actual_seq_k, block_table, layout_k, device
+    )
+    if k_counts_t.shape[0] != b:
+        raise ValueError(f"batch mismatch: query {b} vs pool_key {k_counts_t.shape[0]}")
+    pm = k.shape[1]
+    tail = pool_tail_k.detach().to(device=device, dtype=torch.int64).reshape(b)
+    lens = k_counts_t * pool_size + tail  # 每 batch 原始 token 总数
+
+    # ---- 步骤 1: 池级分数(fp32 通道), 无效池列置 -inf ----
+    if pm > 0:
+        dot = torch.relu(
+            torch.matmul(q.float(), k.transpose(-1, -2).unsqueeze(1).float())
+        )  # (B, S1m, N1, Pm)
+        scores = torch.matmul(w.unsqueeze(2).float(), dot).squeeze(2) * (
+            d**-0.5
+        )  # (B, S1m, Pm)
+        scores = scores.masked_fill(~pool_valid.unsqueeze(1), _NEG_INF)
+
+        # ---- 步骤 2: 因果可见池数(右对齐因果; 上界由池有效性掩码覆盖) ----
+        if mask_mode == 3:
+            row = torch.arange(s1m, device=device)
+            valid = torch.div(
+                lens[:, None] - q_counts_t[:, None] + row[None, :] + 1,
+                pool_size,
+                rounding_mode="floor",
+            ).clamp(min=0)  # (B, S1m)
+            col = torch.arange(pm, device=device)
+            scores = scores.masked_fill(
+                col[None, None, :] >= valid[:, :, None], _NEG_INF
+            )
+
+        # ---- 步骤 3: 池级 TopK(分数降序) ----
+        k_sel = min(sparse, pm)
+        vals, pool_idx = _topk_desc(scores, k_sel)  # (B, S1m, k_sel)
+    else:  # 全部 batch 0 池: 无池可选
+        k_sel = 0
+        vals = torch.full((b, s1m, 0), _NEG_INF, dtype=torch.float32, device=device)
+        pool_idx = torch.zeros((b, s1m, 0), dtype=torch.int64, device=device)
+
+    # ---- 步骤 4: 选中池展开为 token 索引, 无效位置 -1 ----
+    if pool_size > 1:
+        off = torch.arange(pool_size, device=device)
+        expanded = (pool_idx.unsqueeze(-1) * pool_size + off).reshape(
+            b, s1m, k_sel * pool_size
+        )
+        fin = (
+            torch.isfinite(vals)
+            .unsqueeze(-1)
+            .expand(b, s1m, k_sel, pool_size)
+            .reshape(b, s1m, k_sel * pool_size)
+        )
+    else:
+        expanded = pool_idx
+        fin = torch.isfinite(vals)
+    token_idx = torch.where(fin, expanded, -1)  # (B, S1m, k_sel*ps)
+    if token_idx.shape[-1] < out_len:
+        token_idx = torch.nn.functional.pad(
+            token_idx, (0, out_len - token_idx.shape[-1]), value=-1
+        )
+
+    # ---- 步骤 5: 尾块追加(输出 topk 位置起, 容量 pool_size - 1) ----
+    if pool_size > 1:
+        t = torch.arange(pool_size - 1, device=device)
+        if mask_mode == 3:
+            row = torch.arange(s1m, device=device)
+            gpos = lens[:, None] - q_counts_t[:, None] + row[None, :]
+            vis = torch.clamp(torch.minimum(tail[:, None], gpos - topk + 1), min=0)
+        else:
+            vis = tail[:, None].expand(b, s1m)
+        base = (lens - tail)[:, None, None] + t[None, None, :]
+        tail_blk = torch.where(t[None, None, :] < vis[:, :, None], base, -1)
+        token_idx = torch.cat(
+            [token_idx[..., :topk], tail_blk.to(token_idx.dtype)], dim=-1
+        )
+
+    # ---- 步骤 6: 组装输出(dtype: int32 / float32) ----
+    if layout_q == "BSND" and actual_seq_q is not None:
+        # BSND + actual_seq_q: 有效长度外的行填 -1 / -inf
+        token_idx = token_idx.masked_fill(~row_valid.unsqueeze(-1), -1)
+        if return_value:
+            vals = vals.masked_fill(~row_valid.unsqueeze(-1), _NEG_INF)
+
+    if return_value:
+        values = vals.to(torch.float32)
+        if k_sel < sparse:
+            values = torch.nn.functional.pad(
+                values, (0, sparse - k_sel), value=_NEG_INF
+            )
+    else:
+        values = torch.empty(0, dtype=torch.float32, device=device)
+
+    if layout_q == "TND":
+        # 反填充: 按行有效性取回全局行序(批内行序 = 前缀和顺序)
+        token_idx = token_idx[row_valid]
+        if return_value:
+            values = values[row_valid]
+    return token_idx.to(torch.int32), values
+
+
+# ---------------------------------------------------------------------------
+# 对外统一入口
+# ---------------------------------------------------------------------------
+
+
+def pool_key_indexer_reference(
+    query,
+    pool_key,
+    weights,
+    pool_tail_k,
+    *,
+    actual_seq_q=None,
+    actual_seq_k=None,
+    block_table=None,
+    layout_q="BSND",
+    layout_k="BSND",
+    topk=128,
+    pool_size=1,
+    mask_mode=0,
+    return_value=False,
+):
+    """PoolKeyIndexer 统一标杆(按输入设备自动选择 CPU/NPU 实现)。
+
+    入参说明:
+      query: Query 张量, dtype float16/bfloat16/float32(内部统一转 float32 计算)。
+        - layout_q="BSND": shape (B, S1, N1, D);
+        - layout_q="TND":  shape (T1, N1, D), T1 为所有 batch 的 query token 总和。
+      pool_key: 池级 Key 张量(每行一个 pool 的 key), dtype 与 query 一致:
+        - layout_k="BSND":    shape (B, S2, N2, D), S2 为每 batch 池数;
+        - layout_k="TND":     shape (T2, N2, D), T2 为所有 batch 池数总和;
+        - layout_k="PA_BBND": shape (blockNum, blockSize, N2, D), 块内每行一个池,
+          需同时传入 block_table 与 actual_seq_k; 支持 0 轴非连续(strided view)。
+      weights: 多头权重, shape (B, S1, N1)(BSND) 或 (T1, N1)(TND)。
+      pool_tail_k: 每 batch 尾部不完整 pool 的有效 token 数, shape (B,), int64,
+        取值范围 [0, pool_size-1]。
+      actual_seq_q: 可选, 每 batch query 有效 token 数:
+        - layout_q="TND":  必传, 前缀和形式(长度 B, 末项等于 T1);
+        - layout_q="BSND": 可传, 每 batch 有效数(非前缀和); None 表示全部有效。
+      actual_seq_k: 可选, 每 batch 有效池数:
+        - layout_k="TND":     必传, 前缀和形式(末项等于 T2);
+        - layout_k="PA_BBND": 必传, 每 batch 池数(非前缀和);
+        - layout_k="BSND":    可传, 每 batch 池数(非前缀和); None 表示全部有效。
+      block_table: layout_k="PA_BBND" 时必传, shape (B, maxBlockNumPerSeq), int32,
+        元素为物理块编号, 无效槽位 -1。
+      layout_q: query 布局, "BSND" 或 "TND"。
+      layout_k: pool_key 布局, "BSND"、"TND" 或 "PA_BBND"。
+      topk: 展开后保留的 token 数, 需满足 topk % pool_size == 0。
+      pool_size: 每个 pool 包含的 token 数, 取值 [1, 128]。
+      mask_mode: 0 = defaultMask(无掩码); 3 = rightDownCausal(右对齐因果)。
+      return_value: True 时输出 values; False 时 values 为空 tensor。
+
+    返回值:
+      (indices, values):
+        indices: int32; BSND 时 (B, S1, topk+pool_size-1), TND 时
+          (T1, topk+pool_size-1); 无效位置填 -1。
+        values: float32; return_value=True 时 BSND 为 (B, S1, topk//pool_size),
+          TND 为 (T1, topk//pool_size), 无效位置填 -inf; return_value=False 时
+          为空 tensor (0,)。
+
+    设备选择:
+      - 输入 tensor 在 CPU -> CPU 金标实现(精度基准);
+      - 输入 tensor 在 NPU -> NPU 组合标杆实现(性能基线);
+      - 输出与输入同设备。两种实现接口能力与计算语义一致(见模块 docstring)。
+    """
+    _validate_args(query, pool_key, layout_q, layout_k, topk, pool_size, mask_mode)
+    if query.device.type == "cpu":
+        return _reference_cpu(
+            query,
+            pool_key,
+            weights,
+            pool_tail_k,
+            actual_seq_q=actual_seq_q,
+            actual_seq_k=actual_seq_k,
+            block_table=block_table,
+            layout_q=layout_q,
+            layout_k=layout_k,
+            topk=topk,
+            pool_size=pool_size,
+            mask_mode=mask_mode,
+            return_value=return_value,
+        )
+    return _reference_npu(
+        query,
+        pool_key,
+        weights,
+        pool_tail_k,
+        actual_seq_q=actual_seq_q,
+        actual_seq_k=actual_seq_k,
+        block_table=block_table,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        topk=topk,
+        pool_size=pool_size,
+        mask_mode=mask_mode,
+        return_value=return_value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 独立运行入口: 自验(CPU demo + NPU vs CPU 一致性)
 # ---------------------------------------------------------------------------
 
 
@@ -461,7 +791,7 @@ def _check_demo_output(indices, values, exp_idx_shape, exp_val_shape, max_token,
 
 
 # ---------------------------------------------------------------------------
-# demo 场景: 密集布局 / PA 布局
+# demo 场景: 密集布局 / PA 布局(CPU 实现自验)
 # ---------------------------------------------------------------------------
 
 
@@ -583,12 +913,314 @@ def _demo_pa():
                     assert torch.equal(values, val_b), "PA values != BSND values"
 
 
+# ---------------------------------------------------------------------------
+# NPU 实现 vs CPU 实现一致性自验(需 NPU)
+# ---------------------------------------------------------------------------
+
+
+def _selftest_build_inputs(
+    lq,
+    lk,
+    *,
+    q_lens,
+    k_pools,
+    ps,
+    topk,
+    tail,
+    dtype,
+    pa_block_size=16,
+    seed=7,
+    key_non_contig=False,
+):
+    """构造一致性自验输入(支持不等长/0 池/PA 非连续)。"""
+    torch.manual_seed(seed)
+    b = len(q_lens)
+    n1, d, n2 = 8, 128, 1
+    asq = ask = bt = None
+    if lq == "BSND":
+        query = torch.randn(b, q_lens[0], n1, d, dtype=dtype)
+        weights = torch.randn(b, q_lens[0], n1, dtype=dtype)
+    else:
+        query = torch.randn(sum(q_lens), n1, d, dtype=dtype)
+        weights = torch.randn(sum(q_lens), n1, dtype=dtype)
+        asq = torch.tensor(q_lens, dtype=torch.int64).cumsum(0)
+    if lk == "BSND":
+        pool_key = torch.randn(b, k_pools[0], n2, d, dtype=dtype)
+        ask = torch.tensor(k_pools, dtype=torch.int64)  # 非前缀和(CPU 标杆语义)
+    elif lk == "TND":
+        pool_key = torch.randn(sum(k_pools), n2, d, dtype=dtype)
+        ask = torch.tensor(k_pools, dtype=torch.int64).cumsum(0)
+    else:  # PA_BBND
+        logical = torch.randn(sum(k_pools), n2, d, dtype=dtype)
+        pool_key, bt = _pack_pa_demo_key(logical, k_pools, pa_block_size)
+        ask = torch.tensor(k_pools, dtype=torch.int64)  # 非前缀和
+        if key_non_contig:
+            block_num, block_size = pool_key.shape[0], pool_key.shape[1]
+            big = torch.zeros(2 * block_num, block_size, n2, d, dtype=dtype)
+            big[0::2] = pool_key
+            pool_key = big[::2]  # 0 轴非连续视图
+    ptk = torch.tensor(tail, dtype=torch.int64)
+    return dict(
+        query=query,
+        pool_key=pool_key,
+        weights=weights,
+        pool_tail_k=ptk,
+        actual_seq_q=asq,
+        actual_seq_k=ask,
+        block_table=bt,
+    )
+
+
+def _selftest_npu_vs_cpu(dev="npu:0"):
+    """NPU 组合标杆 vs CPU 金标一致性自验(等长 + 不等长 + 0 池 + PA 非连续)。"""
+    from result_compare import compare_indices, compare_values
+
+    fp16, bf16 = torch.float16, torch.bfloat16
+    cases = []
+    # 1) 等长基础矩阵: 4 布局 x ps{1,16} x mask{0,3}
+    for ps in (1, 16):
+        topk = 128 if ps == 16 else 64
+        tail = [ps - 1, min(ps - 1, 7)] if ps > 1 else [0, 0]
+        for lq, lk in (
+            ("BSND", "BSND"),
+            ("TND", "TND"),
+            ("BSND", "PA_BBND"),
+            ("TND", "PA_BBND"),
+        ):
+            for mask in (0, 3):
+                cases.append(
+                    dict(
+                        tag=f"equal_ps{ps}_{lq}_{lk}_m{mask}",
+                        lq=lq,
+                        lk=lk,
+                        q_lens=[64, 64],
+                        k_pools=[8, 8],
+                        ps=ps,
+                        topk=topk,
+                        tail=tail,
+                        dtype=fp16,
+                        mask=mask,
+                    )
+                )
+    # 2) 不等长 query / 不等长池 / 0 长度 / 0 池(TND/PA)
+    cases += [
+        dict(
+            tag="tnd_unequal_q",
+            lq="TND",
+            lk="TND",
+            q_lens=[32, 48, 0, 16],
+            k_pools=[16, 24, 8, 4],
+            ps=16,
+            topk=128,
+            tail=[3, 15, 0, 7],
+            dtype=bf16,
+            mask=3,
+        ),
+        dict(
+            tag="tnd_unequal_pools",
+            lq="TND",
+            lk="TND",
+            q_lens=[32, 32],
+            k_pools=[40, 6],
+            ps=16,
+            topk=128,
+            tail=[5, 15],
+            dtype=fp16,
+            mask=0,
+        ),
+        dict(
+            tag="tnd_zero_pool_batch",
+            lq="TND",
+            lk="TND",
+            q_lens=[16, 8, 8],
+            k_pools=[16, 0, 33],
+            ps=16,
+            topk=128,
+            tail=[0, 0, 12],
+            dtype=fp16,
+            mask=3,
+        ),
+        dict(
+            tag="pa_unequal_pools",
+            lq="BSND",
+            lk="PA_BBND",
+            q_lens=[32, 32, 32],
+            k_pools=[16, 0, 33],
+            ps=16,
+            topk=128,
+            tail=[2, 0, 15],
+            dtype=fp16,
+            mask=0,
+        ),
+        dict(
+            tag="pa_unequal_pools_tnd",
+            lq="TND",
+            lk="PA_BBND",
+            q_lens=[16, 0, 8],
+            k_pools=[16, 8, 40],
+            ps=8,
+            topk=64,
+            tail=[7, 3, 0],
+            dtype=bf16,
+            mask=3,
+        ),
+        dict(
+            tag="pa_noncontig",
+            lq="BSND",
+            lk="PA_BBND",
+            q_lens=[32, 32],
+            k_pools=[16, 16],
+            ps=16,
+            topk=128,
+            tail=[5, 13],
+            dtype=fp16,
+            mask=0,
+            key_non_contig=True,
+        ),
+        dict(
+            tag="pa_blocksize32",
+            lq="TND",
+            lk="PA_BBND",
+            q_lens=[16, 16],
+            k_pools=[20, 12],
+            ps=16,
+            topk=128,
+            tail=[0, 15],
+            dtype=fp16,
+            mask=3,
+            pa_block_size=32,
+        ),
+        dict(
+            tag="pools_lt_sparse",
+            lq="BSND",
+            lk="BSND",
+            q_lens=[16, 16],
+            k_pools=[2, 2],
+            ps=16,
+            topk=224,
+            tail=[5, 13],
+            dtype=fp16,
+            mask=0,
+        ),
+        dict(
+            tag="ps1_s1_1",
+            lq="BSND",
+            lk="BSND",
+            q_lens=[1],
+            k_pools=[32],
+            ps=1,
+            topk=32,
+            tail=[0],
+            dtype=fp16,
+            mask=3,
+        ),
+        dict(
+            tag="ps127_tail126",
+            lq="BSND",
+            lk="BSND",
+            q_lens=[8],
+            k_pools=[20],
+            ps=127,
+            topk=254,
+            tail=[126],
+            dtype=fp16,
+            mask=3,
+        ),
+        dict(
+            tag="bsnd_actual_seq",
+            lq="BSND",
+            lk="BSND",
+            q_lens=[32, 32],
+            k_pools=[16, 16],
+            ps=16,
+            topk=128,
+            tail=[3, 15],
+            dtype=fp16,
+            mask=3,
+            bsnd_actual_seq=True,
+        ),
+    ]
+
+    n_pass = 0
+    for c in cases:
+        inp = _selftest_build_inputs(
+            c["lq"],
+            c["lk"],
+            q_lens=c["q_lens"],
+            k_pools=c["k_pools"],
+            ps=c["ps"],
+            topk=c["topk"],
+            tail=c["tail"],
+            dtype=c["dtype"],
+            pa_block_size=c.get("pa_block_size", 16),
+            key_non_contig=c.get("key_non_contig", False),
+        )
+        # BSND + actual_seq(CPU 标杆能力, 算子本身不支持): 有效长度 < S1/S2
+        if c.get("bsnd_actual_seq"):
+            inp["actual_seq_q"] = torch.tensor([20, 32], dtype=torch.int64)
+            inp["actual_seq_k"] = torch.tensor([16, 10], dtype=torch.int64)
+
+        kwargs = dict(
+            actual_seq_q=inp["actual_seq_q"],
+            actual_seq_k=inp["actual_seq_k"],
+            block_table=inp["block_table"],
+            layout_q=c["lq"],
+            layout_k=c["lk"],
+            topk=c["topk"],
+            pool_size=c["ps"],
+            mask_mode=c["mask"],
+            return_value=True,
+        )
+
+        g_idx, g_val = pool_key_indexer_reference(
+            inp["query"], inp["pool_key"], inp["weights"], inp["pool_tail_k"], **kwargs
+        )
+        n_idx, n_val = pool_key_indexer_reference(
+            inp["query"].to(dev),
+            inp["pool_key"].to(dev),
+            inp["weights"].to(dev),
+            inp["pool_tail_k"].to(dev),
+            actual_seq_q=(
+                inp["actual_seq_q"].to(dev) if inp["actual_seq_q"] is not None else None
+            ),
+            actual_seq_k=(
+                inp["actual_seq_k"].to(dev) if inp["actual_seq_k"] is not None else None
+            ),
+            block_table=(
+                inp["block_table"].to(dev) if inp["block_table"] is not None else None
+            ),
+            layout_q=c["lq"],
+            layout_k=c["lk"],
+            topk=c["topk"],
+            pool_size=c["ps"],
+            mask_mode=c["mask"],
+            return_value=True,
+        )
+        n_idx, n_val = n_idx.cpu(), n_val.cpu()
+
+        ok = compare_indices(g_idx, n_idx)
+        compare_values(g_val, n_val, c["dtype"], label=f"selftest-{c['tag']}")
+        print(f"[selftest] {c['tag']}: {'PASS' if ok else 'FAIL'}")
+        assert ok, c["tag"]
+        n_pass += 1
+    print(f"pool_key_indexer_reference NPU-vs-CPU selftest passed ({n_pass} cases).")
+
+
 def _demo():
     """构造随机输入自验标杆, 验证输出 shape / 取值范围 / 布局一致性。"""
     _demo_dense()
     print("pool_key_indexer_reference dense demo passed.")
     _demo_pa()
     print("pool_key_indexer_reference PA demo passed.")
+    try:
+        import torch_npu  # noqa: F401
+
+        if torch.npu.is_available():
+            _selftest_npu_vs_cpu()
+        else:
+            print("NPU not available, skip NPU-vs-CPU selftest.")
+    except ImportError:
+        print("torch_npu not installed, skip NPU-vs-CPU selftest.")
 
 
 if __name__ == "__main__":

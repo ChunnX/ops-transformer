@@ -9,10 +9,91 @@
  */
 
 #include <torch/extension.h>
+#include <mutex>
+#include <string>
+#include <unordered_map>
 #include "aclnn_common.h"
 
 namespace op_api {
 using namespace at_npu::native;
+
+// ACLNN_CMD 宏将 GetWorkspaceSize 函数名绑定为 "<api>GetWorkspaceSize"(字符串拼接),
+// 无法覆盖 GWS 与 run 函数名不同前缀的场景: aclnnPoolKeyIndexerTensorGetWorkspaceSize
+// (Tensor 变体, ValueDepend 输入为 aclTensor*) 与 run 函数共享 aclnnPoolKeyIndexer。
+// 本辅助函数按显式函数名调用, 执行语义与 ACLNN_CMD 一致。
+// 函数地址经名称缓存(线程安全), 避免每次调用重复 dlsym。
+static void *CachedOpApiFuncAddr(const char *apiName)
+{
+    static std::mutex mu;
+    static std::unordered_map<std::string, void *> cache;
+    std::lock_guard<std::mutex> guard(mu);
+    auto it = cache.find(apiName);
+    if (it != cache.end()) {
+        return it->second;
+    }
+    void *addr = GetOpApiFuncAddr(apiName);
+    cache.emplace(apiName, addr);
+    return addr;
+}
+
+template <typename... Ts>
+static void AclnnCallNamed(const char *gwsApiName, const char *runApiName, Ts &...args)
+{
+    auto device = DecodeDevice(args...);
+    const c10::OptionalDeviceGuard device_guard(device);
+    const auto getWorkspaceSizeFuncAddr = CachedOpApiFuncAddr(gwsApiName);
+    const auto opApiFuncAddr = CachedOpApiFuncAddr(runApiName);
+    const auto initMemAddr = CachedOpApiFuncAddr("InitHugeMemThreadLocal");
+    const auto unInitMemAddr = CachedOpApiFuncAddr("UnInitHugeMemThreadLocal");
+    const auto releaseMemAddr = CachedOpApiFuncAddr("ReleaseHugeMem");
+    TORCH_CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr, gwsApiName,
+                " or ", runApiName, " not in opapi lib.");
+    auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);
+    uint64_t workspace_size = 0;
+    uint64_t *workspace_size_addr = &workspace_size;
+    aclOpExecutor *executor = nullptr;
+    aclOpExecutor **executor_addr = &executor;
+    InitHugeMemThreadLocal initMemFunc = reinterpret_cast<InitHugeMemThreadLocal>(initMemAddr);
+    UnInitHugeMemThreadLocal unInitMemFunc = reinterpret_cast<UnInitHugeMemThreadLocal>(unInitMemAddr);
+    if (initMemFunc) {
+        initMemFunc(nullptr, false);
+    }
+    ApplyDeterministicConfig();
+    auto converted_params = ConvertTypes(args..., workspace_size_addr, executor_addr);
+    auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);
+    auto workspace_status = call(getWorkspaceSizeFunc, converted_params);
+    if (workspace_status != 0) {
+        ReleaseConvertTypes(converted_params);
+        TORCH_CHECK(false, "call ", gwsApiName, " failed, detail:", aclGetRecentErrMsg());
+    }
+    at::Tensor workspace_tensor;
+    void *workspace_addr = nullptr;
+    if (workspace_size != 0) {
+        at::TensorOptions options = at::TensorOptions(torch_npu::utils::get_npu_device_type());
+        workspace_tensor = at::empty({workspace_size}, options.dtype(at::kByte));
+        workspace_addr = const_cast<void *>(workspace_tensor.storage().data());
+    }
+    ReleaseHugeMem releaseMemFunc = reinterpret_cast<ReleaseHugeMem>(releaseMemAddr);
+    auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor,
+                     opApiFuncAddr, releaseMemFunc, runApiName]() -> int {
+        typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, const aclrtStream);
+        OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);
+        auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream);
+        ReleaseConvertTypes(converted_params);
+        if (releaseMemFunc) {
+            releaseMemFunc(nullptr, false);
+        }
+        TORCH_CHECK(api_ret == 0, "call ", runApiName, " failed, detail:", aclGetRecentErrMsg());
+        return api_ret;
+    };
+    at_npu::native::OpCommand cmd;
+    cmd.Name(runApiName);
+    cmd.SetCustomHandler(acl_call);
+    cmd.Run();
+    if (unInitMemFunc) {
+        unInitMemFunc(nullptr, false);
+    }
+}
 
 const int SIZE = 8;
 const int DIM_0 = 0;
@@ -135,33 +216,76 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
         }
     }
 
-    // pool_tail_k / actual_seq_q / actual_seq_k are ValueDepend(OPTIONAL) in the op
-    // definition, so the auto-generated aclnn API expects aclIntArray* (not aclTensor*).
-    // Convert 1-D int64 tensors to at::IntArrayRef so ConvertType produces aclIntArray*.
-    at::Tensor poolTailKCpu = poolTailK.to(at::kLong).cpu().contiguous();
-    at::IntArrayRef poolTailKArr(poolTailKCpu.data_ptr<int64_t>(), poolTailKCpu.numel());
+    // pool_tail_k / actual_seq_q / actual_seq_k 为 ValueDepend(OPTIONAL) 输入,
+    // 生成的 aclnn API 有两个变体, 按输入设备分流:
+    //   - aclnnPoolKeyIndexerGetWorkspaceSize (aclIntArray*, host 值):
+    //     全部值输入在 CPU 时使用。tiling 期可读 host 值做校验(前缀和单调性 /
+    //     tail 范围), 无任何拷贝; aclgraph 捕获期无 D2H, 值烘焙为图常量
+    //     (捕获后改 CPU 值不生效, 需重新捕获)。
+    //   - aclnnPoolKeyIndexerTensorGetWorkspaceSize (aclTensor*, run 函数共享
+    //     aclnnPoolKeyIndexer): 任一值输入在 NPU 时使用。无阻塞 D2H —— 消除
+    //     eager 每次调用的同步点, 并使 NPUGraph/aclgraph 捕获成为可能
+    //     (device 输入为图输入, 捕获后修改 buffer 内容 replay 自动生效)。
+    //     代价: tiling 跳过这些输入的 host 值校验(与 GE 图模式口径一致),
+    //     kernel 运行期从 GM 读值。混布输入(CPU+NPU)统一搬至计算设备,
+    //     host->device 拷贝仅 eager 可用(捕获期内禁止)。
+    const bool actualSeqQDefined = actualSeqQ.has_value() && actualSeqQ.value().defined();
+    const bool actualSeqKDefined = actualSeqK.has_value() && actualSeqK.value().defined();
+    const bool valueInputsAllHost =
+        poolTailK.is_cpu()
+        && (!actualSeqQDefined || actualSeqQ.value().is_cpu())
+        && (!actualSeqKDefined || actualSeqK.value().is_cpu());
 
-    at::Tensor actualSeqQCpu;
-    c10::optional<at::IntArrayRef> actualSeqQArr = c10::nullopt;
-    if (actualSeqQ.has_value() && actualSeqQ.value().defined()) {
-        actualSeqQCpu = actualSeqQ.value().to(at::kLong).cpu().contiguous();
-        actualSeqQArr = at::IntArrayRef(actualSeqQCpu.data_ptr<int64_t>(), actualSeqQCpu.numel());
+    if (valueInputsAllHost) {
+        // Convert 1-D int64 tensors to at::IntArrayRef so ConvertType produces aclIntArray*.
+        at::Tensor poolTailKCpu = poolTailK.to(at::kLong).cpu().contiguous();
+        at::IntArrayRef poolTailKArr(poolTailKCpu.data_ptr<int64_t>(), poolTailKCpu.numel());
+
+        at::Tensor actualSeqQCpu;
+        c10::optional<at::IntArrayRef> actualSeqQArr = c10::nullopt;
+        if (actualSeqQDefined) {
+            actualSeqQCpu = actualSeqQ.value().to(at::kLong).cpu().contiguous();
+            actualSeqQArr = at::IntArrayRef(actualSeqQCpu.data_ptr<int64_t>(), actualSeqQCpu.numel());
+        }
+
+        at::Tensor actualSeqKCpu;
+        c10::optional<at::IntArrayRef> actualSeqKArr = c10::nullopt;
+        if (actualSeqKDefined) {
+            actualSeqKCpu = actualSeqK.value().to(at::kLong).cpu().contiguous();
+            actualSeqKArr = at::IntArrayRef(actualSeqKCpu.data_ptr<int64_t>(), actualSeqKCpu.numel());
+        }
+
+        ACLNN_CMD(aclnnPoolKeyIndexer,
+                  query, poolKey, weights, poolTailKArr,
+                  actualSeqQArr, actualSeqKArr, blockTable,
+                  qDescale, kDescale,
+                  topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+                  maskMode, quantMode, returnValue, keyStride0,
+                  sparseIndicesOut, sparseValuesOut);
+
+        return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
     }
 
-    at::Tensor actualSeqKCpu;
-    c10::optional<at::IntArrayRef> actualSeqKArr = c10::nullopt;
-    if (actualSeqK.has_value() && actualSeqK.value().defined()) {
-        actualSeqKCpu = actualSeqK.value().to(at::kLong).cpu().contiguous();
-        actualSeqKArr = at::IntArrayRef(actualSeqKCpu.data_ptr<int64_t>(), actualSeqKCpu.numel());
+    // Tensor 变体: 值输入统一为计算设备上的 int64 连续 tensor。
+    // (NPU 上的 dtype 转换/连续化为异步算子, 可被图捕获; CPU 输入的 H2D 仅 eager。)
+    const at::Device computeDevice = query.device();
+    at::Tensor poolTailKT = poolTailK.to(at::kLong).to(computeDevice).contiguous();
+    c10::optional<at::Tensor> actualSeqQT = c10::nullopt;
+    if (actualSeqQDefined) {
+        actualSeqQT = actualSeqQ.value().to(at::kLong).to(computeDevice).contiguous();
+    }
+    c10::optional<at::Tensor> actualSeqKT = c10::nullopt;
+    if (actualSeqKDefined) {
+        actualSeqKT = actualSeqK.value().to(at::kLong).to(computeDevice).contiguous();
     }
 
-    ACLNN_CMD(aclnnPoolKeyIndexer,
-              query, poolKey, weights, poolTailKArr,
-              actualSeqQArr, actualSeqKArr, blockTable,
-              qDescale, kDescale,
-              topk, poolSize, queryLayoutPtr, keyLayoutPtr,
-              maskMode, quantMode, returnValue, keyStride0,
-              sparseIndicesOut, sparseValuesOut);
+    AclnnCallNamed("aclnnPoolKeyIndexerTensorGetWorkspaceSize", "aclnnPoolKeyIndexer",
+                   query, poolKey, weights, poolTailKT,
+                   actualSeqQT, actualSeqKT, blockTable,
+                   qDescale, kDescale,
+                   topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+                   maskMode, quantMode, returnValue, keyStride0,
+                   sparseIndicesOut, sparseValuesOut);
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
