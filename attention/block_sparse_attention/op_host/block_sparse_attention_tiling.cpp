@@ -856,11 +856,19 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
     return curQSTileNum;
 }
 
+bool BSATiling::IsFp8DnEnabled() const
+{
+    return dataType_ == ge::DT_FLOAT8_E4M3FN &&
+           innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED &&
+           embeddingSize_ <= D_SIZE_128 &&
+           blockShapeY_ % TILE_SIZE_512 == 0 &&
+           maskType_ == 0;
+}
+
 void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN &&
-        innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
+    if (IsFp8DnEnabled()) {
         kvBaseTile_ = TILE_SIZE_512;
     } else if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
         kvBaseTile_ = TILE_SIZE_256;
@@ -871,20 +879,14 @@ void BSATiling::CalcBaseTileTilingParams950()
 
 void BSATiling::TransposedMatmulConfig950()
 {
-    transposedMm1_ = true;
+    if (IsFp8DnEnabled() ||
+        (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0)) {
+        transposedMm1_ = true;
+    } else {
+        transposedMm1_ = false;
+    }
     transposedMm2_ = false;
 }
-
-
-// void BSATiling::TransposedMatmulConfig950()
-// {
-//     if (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0) {
-//         transposedMm1_ = true;
-//     } else {
-//         transposedMm1_ = false;
-//     }
-//     transposedMm2_ = false;
-// }
 
 void BSATiling::CalcSplitCoreTilingParams950()
 {
@@ -1015,10 +1017,9 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         mm1L1TileKRight_ = TILE_SIZE_128;
         kL1BufNum_ = DUO_BUF;
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发。
-        // FP8 low-high mixed路径将kvBaseTile_扩展到512，并保留V双缓冲；其他路径保持原256配置。
+        // FP8 DN路径将kvBaseTile_扩展到512，并保留V双缓冲；其他路径保持原256配置。
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ =
-            (dataType_ == ge::DT_FLOAT8_E4M3FN && kvBaseTile_ == TILE_SIZE_512) ? TILE_SIZE_512 : TILE_SIZE_256;
+        mm2L1TileKLeft_ = IsFp8DnEnabled() ? TILE_SIZE_512 : TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
