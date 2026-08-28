@@ -250,6 +250,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetWorkspaceSize()
 
 void MatmulReduceScatterTilingBase::BuildWorkspaceLayout()
 {
+    workspaceLayout_ = {};
     uint64_t offset = 0;
     uint32_t idx = 0;
 
@@ -267,6 +268,14 @@ void MatmulReduceScatterTilingBase::BuildWorkspaceLayout()
         offset += mmResultLen_;
     }
 
+    // Keep each RuntimeInfoPerCore slot aligned relative to kernel workspaceGM.
+    const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - (offset - libApiWorkSpaceSize_) % alignment) % alignment;
+    if (padding != 0U) {
+        workspaceLayout_.segments[idx++] = {offset, padding,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
+        offset += padding;
+    }
     // Runtime Info 段 (64KB)
     workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};

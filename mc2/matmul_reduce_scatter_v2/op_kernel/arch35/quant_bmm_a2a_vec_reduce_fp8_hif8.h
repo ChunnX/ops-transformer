@@ -53,12 +53,6 @@ public:
     __aicore__ inline void Process();
 
 private:
-    // position 枚举 (MatmulReduceScatter A2A 专用)
-    static constexpr uint8_t POS_COMM_BEFORE        = 0U;  // AlltoAll 前
-    static constexpr uint8_t POS_COMP_MATMUL_BEFORE = 1U;  // matmul 计算前
-    static constexpr uint8_t POS_REDUCE_BEFORE      = 2U;  // ReduceSum 前
-    static constexpr uint8_t POS_FINALIZE_BEFORE    = 3U;  // PostProcess 前
-
     __aicore__ inline void InnerProcess();
     __aicore__ inline void MatMulReduceScatterSerial();
     __aicore__ inline void MatMulComputReduceScatter(GM_ADDR aGM, GM_ADDR recvGM, GM_ADDR x1ScaleGM,
@@ -111,7 +105,6 @@ private:
     uint64_t tailMN_{0};
     uint64_t tileOffset_{0};
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
-    uint8_t execTurn_ = 0;
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -123,11 +116,13 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     auto &&cfg = tilingData_->param;
     auto &&tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
 
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum, Mc2Tiling::RT_PHASE_RESERVED);
     // 初始化 HCCL
     const void *hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_INIT);
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
@@ -147,11 +142,9 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     }
 
     // all2all 通信相关参数, 划分workspace
-        sendBuf_ = workspaceGM;                    // [0, fullMN)
-    recvBuf_ = sendBuf_ + cfg.cToFloatLen;     // [fullMN, 2*fullMN)
-    workspaceGM_ = recvBuf_ + cfg.cToFloatLen; // [2*fullMN, 3*fullMN)
-    // 初始化运行时信息
-    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
+    sendBuf_ = workspaceGM;                  // MM_RESULT: cfg.cToFloatLen bytes
+    recvBuf_ = sendBuf_ + cfg.cToFloatLen;    // RECV_BUF: cfg.cToFloatLen bytes
+    workspaceGM_ = recvBuf_ + cfg.cToFloatLen; // MM_WORKSPACE; runtime info follows the full scratch region
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -169,8 +162,9 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
         // 等待 All2All 通信执行完成
         if (GetBlockIdx() == 0) {
             for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
+                runtimeInfo_.WritePositionByPassDCache(i + 1, POS_COMM_BEFORE);
                 hccl_.Wait(handles_[i]);
-                runtimeInfo_.IncWaitCount();
+                runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
             }
         }
 
@@ -199,6 +193,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
 
         // 处理主轮的数据
         for (uint32_t i = 0; i < cfg.tileCnt; i++) {
+            runtimeInfo_.WritePositionByPassDCache(i + 1, POS_REDUCE_BEFORE);
             tPipe_->Reset();
             reduceSum_.Init(tileElemCount, 0, cfg.rankDim, aivNum_, curSrcPtr, curOutPtr, tPipe_);
             reduceSum_.ExecuteReduceSum(); // AIV执行 reduce_sum
@@ -211,6 +206,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
 
         // 处理尾轮的数据
         for (uint32_t i = 0; i < cfg.tailCnt; i++) {
+            runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + i + 1, POS_REDUCE_BEFORE);
             tPipe_->Reset();
             reduceSum_.Init(tailElemCount, 0, cfg.rankDim, aivNum_, curSrcPtr, curOutPtr, tPipe_);
             reduceSum_.ExecuteReduceSum(); // AIV执行 reduce_sum
@@ -224,7 +220,10 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
 
     // 等待执行完成后，最后终止hcclserver
     if (GetBlockIdx() == 0) {
+        const auto &cfg = tilingData_->param;
+        runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();
+        runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
     }
 }
 
@@ -232,9 +231,6 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess(); // 核心计算+通信
-    execTurn_++;
-    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_FINALIZE_BEFORE,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     PostProcess();  // 等待计算与通信完成, 终止hcclserver
 }
 
@@ -254,6 +250,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
     uint64_t stride = 0;
     uint8_t repeat = 1;
 
+    runtimeInfo_.WritePositionByPassDCache(1, POS_COMP_MATMUL_BEFORE);
     this->tPipe_->Destroy();
     this->tPipe_->Init();
 
@@ -268,11 +265,11 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
 
     // V核发起 All2All 通信
     if ASCEND_IS_AIV {
-        execTurn_++;
-        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(1, POS_COMM_BEFORE);
         handles_[0] = hccl_.template AlltoAll<true>(sendBuffer, recvBuffer, recvCount, dataType_, stride, repeat);
-        runtimeInfo_.IncCommitCount();
+        if (GetBlockIdx() == 0) {
+            runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        }
     }
 }
 
@@ -364,13 +361,13 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
         mmv3;
 
     // 初始化Matmul
+    const uint32_t turnShift = isTail ? cfg.tileCnt : 0;
+    runtimeInfo_.WritePositionByPassDCache(turnShift + 1, POS_COMP_MATMUL_BEFORE);
     mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, sendBuf_, workspaceGM_, &qBmmTiling, GetTPipePtr(), cfg,
               isTail, false, preCoreNum_);
 
     for (uint32_t i = 0; i < count; i++) {
-        execTurn_++;
-        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_MATMUL_BEFORE,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(turnShift + i + 1, POS_COMP_MATMUL_BEFORE);
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
 
@@ -411,13 +408,14 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     GM_ADDR currentOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
 
     // --- Prologue: 启动第 0 轮通信 ---
+    runtimeInfo_.WritePositionByPassDCache(handleShift + 1, POS_COMP_MATMUL_BEFORE);
     VecWaitCube(); // 确保依赖的 MatMul 已完成
-    execTurn_++;
-    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    runtimeInfo_.WritePositionByPassDCache(handleShift + 1, POS_COMM_BEFORE);
     handles_[0 + handleShift] =
         hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
-    runtimeInfo_.IncCommitCount();
+    if (GetBlockIdx() == 0) {
+        runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+    }
 
     // 移动指针准备下一轮
     currentSendPtr += rankSliceBytes;
@@ -427,23 +425,25 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
     for (uint32_t i = 0; i < count - 1; i++) {
         // 1. 等待上一轮 (i) 通信结束
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 1, POS_COMM_BEFORE);
         if (GetBlockIdx() == 0) {
             hccl_.Wait(handles_[i + handleShift]);
-            runtimeInfo_.IncWaitCount();
+            runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
         }
         SyncAll<true>(); // V 同步确保数据到达
 
         // 2. 启动下一轮 (i+1) 通信
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 2, POS_COMP_MATMUL_BEFORE);
         VecWaitCube();
-        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 2, POS_COMM_BEFORE);
         handles_[i + 1 + handleShift] =
             hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
-        runtimeInfo_.IncCommitCount();
+        if (GetBlockIdx() == 0) {
+            runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        }
 
         // 3. 执行上一轮 (i) 数据的 ReduceSum
-        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_REDUCE_BEFORE,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 1, POS_REDUCE_BEFORE);
         // 计算地址 = 当前指针 - 一步偏移
         GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
         GM_ADDR calculateOutPtr = currentOutPtr - rankSliceBytes;
@@ -462,13 +462,15 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     uint32_t lastIndex = count - 1;
 
     // 等待最后一轮通信结束
+    runtimeInfo_.WritePositionByPassDCache(handleShift + lastIndex + 1, POS_COMM_BEFORE);
     if (GetBlockIdx() == 0) {
         hccl_.Wait(handles_[lastIndex + handleShift]);
-        runtimeInfo_.IncWaitCount();
+        runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
     }
     SyncAll<true>();
 
     // 执行最后一轮数据的 reduceSum
+    runtimeInfo_.WritePositionByPassDCache(handleShift + lastIndex + 1, POS_REDUCE_BEFORE);
     // 此时的计算地址同样是 "当前指针 - 偏移量"
     GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
     GM_ADDR calculateOutPtr = currentOutPtr - rankSliceBytes;
@@ -531,6 +533,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
 
     // 按切分轮次循环. 先 MM + All2All
     for (uint32_t i = 0; i < count; i++) {
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 1, POS_COMP_MATMUL_BEFORE);
         tPipe_->Destroy();
         tPipe_->Init();
 
@@ -546,9 +549,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
 
         // All2All 通信, AIV 发起
         if ASCEND_IS_AIV {
-            execTurn_++;
-            runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                             static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+            runtimeInfo_.WritePositionByPassDCache(handleShift + i + 1, POS_COMM_BEFORE);
             handles_[i + handleShift] = hccl_.template AlltoAll<true>(currSendPtr, // 发送缓冲区
                                                                        currRecvPtr, // 接收缓冲区
                                                                        recvCount,   // 元素数量
@@ -556,7 +557,9 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
                                                                        stride,      // 步长
                                                                        repeat       // 重复次数
             );
-            runtimeInfo_.IncCommitCount();
+            if (GetBlockIdx() == 0) {
+                runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+            }
         }
 
         // A 矩阵指针偏移

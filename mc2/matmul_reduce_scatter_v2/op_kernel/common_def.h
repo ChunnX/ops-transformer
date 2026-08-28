@@ -28,6 +28,12 @@ constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr uint64_t BLOCK_SIZE = 128;
 
+// MMRS-specific tags; keep in sync with parse_matmul_reduce_scatter_v2_tiling.py.
+constexpr uint8_t POS_COMM_BEFORE = 0;
+constexpr uint8_t POS_COMP_MATMUL_BEFORE = 1;
+constexpr uint8_t POS_REDUCE_BEFORE = 2;
+constexpr uint8_t POS_FINALIZE_BEFORE = 3;
+
 constexpr int CCU_COMM_MODE = 0;
 constexpr int AICPU_COMM_MODE = 1;
 

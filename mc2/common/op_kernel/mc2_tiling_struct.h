@@ -190,7 +190,7 @@ enum WorkspaceSegType : uint8_t {
 
 // 单个段描述 (24 bytes)
 struct WorkspaceSegInfo {
-    uint64_t offset;      // 相对 workspace 基地址的偏移 (字节)
+    uint64_t offset;      // 相对完整 workspace 的偏移，含 LIB_API；用户地址需减 LIB_API.size
     uint64_t size;        // 该段大小 (字节)
     uint8_t  type;        // WorkspaceSegType
     uint8_t  reserved[7]; // 对齐
@@ -198,7 +198,7 @@ struct WorkspaceSegInfo {
 
 // Workspace 布局信息 (208 bytes)
 struct WorkspaceLayoutInfo {
-    uint64_t totalSize;                                // workspace 总大小
+    uint64_t totalSize;                                // workspace 总大小，含 LIB_API
     uint32_t segCount;                                 // 实际段数
     uint32_t reserved;                                 // 对齐
     WorkspaceSegInfo segments[MAX_WORKSPACE_SEGMENTS]; // 段数组 (按 offset 升序)
@@ -225,12 +225,11 @@ enum RuntimePhase : uint8_t {
 struct alignas(512) RuntimeInfoPerCore {
     uint32_t magicNum;        // 4B  魔数 0x5A5A5A5A
     uint16_t coreId;          // 2B  core ID (C核: 0~aicCoreNum-1, V核: aicCoreNum~total-1)
-    uint8_t  execTurn;        // 1B  执行轮次: scale=1轮, 每 tile=1轮, 连续递增 (0=pipeline未启动)
-    uint8_t  execPosition;    // 1B  position tag: 0=COMM_BEFORE, 1=SCALE_COMM_BEFORE,
-                              //     2=COMP_CUBE_MATMUL_BEFORE, 3=COMP_VEC_PERMUTE_BEFORE
-    uint8_t  commPhase;       // 1B  当前通信阶段 (RuntimePhase, 仅 HCCL 五态)
-    uint8_t  commCommitCount; // 1B  HCCL Commit 次数 (B层 communicator 递增)
-    uint8_t  commWaitCount;   // 1B  HCCL Wait 次数 (B层 communicator 递增)
+    uint8_t  execTurn;        // 1B  当前轮次，0=尚未进入；是否包含 scale 轮次由算子定义
+    uint8_t  execPosition;    // 1B  算子专属 position tag，需使用对应算子的解析脚本
+    uint8_t  commPhase;       // 1B  RuntimePhase；MMRS 用 RESERVED 表示初始化尚未返回
+    uint8_t  commCommitCount; // 1B  通信控制核记录 Commit 次数
+    uint8_t  commWaitCount;   // 1B  通信控制核记录 Wait 次数
     uint8_t  reserved[501];   // 501B 预留
 }; // 512 bytes
 

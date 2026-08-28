@@ -61,7 +61,7 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-        typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE]; // 最大支持64个handleId
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 };
@@ -73,10 +73,12 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 {
     tilingData_ = tilingData;
     auto &&cfg = tilingData_->param;
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum, Mc2Tiling::RT_PHASE_RESERVED);
     const void *hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_INIT);
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
@@ -87,10 +89,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     biasGM_ = biasGM;
     rankId_ = context_->rankId;
 
-        // 划分workspace
+    // 划分workspace
     gmToFloat_ = workspaceGM;
-    // 初始化运行时信息
-    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
@@ -100,10 +100,14 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     // 等待reducescatter执行完成
     if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
+            runtimeInfo_.WritePositionByPassDCache(i + 1, POS_COMM_BEFORE);
             hccl_.Wait(handles_[i]);
+            runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
         }
         // 终止hcclserver
+        runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();
+        runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
     }
 }
 
@@ -111,8 +115,6 @@ template <typename AType, typename BType, typename BiasType, typename CType, int
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Process()
 {
     InnerProcess();
-    runtimeInfo_.WriteGmByPassDCache(0, 3,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     PostProcess();
 }
 
@@ -144,7 +146,10 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     }
 
     if (block_idx >= tiling.tCubeTiling.usedCoreNum) {
+        const uint32_t turnShift = isTail ? tilingData_->param.tileCnt : 0;
         for (uint32_t i = 0; i < count; i++) {
+            // Idle AICs still join the Matmul barrier for this tile.
+            runtimeInfo_.WritePositionByPassDCache(turnShift + i + 1, POS_COMP_MATMUL_BEFORE);
             AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
             AscendC::CrossCoreWaitFlag(3);
         }
@@ -163,30 +168,33 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
+    auto shift = isTail ? cfg.tileCnt : 0;
+    runtimeInfo_.WritePositionByPassDCache(shift + 1, POS_COMP_MATMUL_BEFORE);
     mmv3.Init(aGM_, bGM_, tempGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
     uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
     auto recvCount = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);
     auto cOffset = recvCount * sizeof(cDataType);
     auto cWork = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat;
     auto recvBuffer = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? gmToFloat : cGM;
-    auto shift = isTail ? cfg.tileCnt : 0;
     uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
     uint8_t repeat = 1;
-        for (uint32_t i = 0; i < count; i++) {
-        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 1,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    for (uint32_t i = 0; i < count; i++) {
+        runtimeInfo_.WritePositionByPassDCache(shift + i + 1, POS_COMP_MATMUL_BEFORE);
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (count - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
-        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 0,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(shift + i + 1, POS_COMM_BEFORE);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        if (GetBlockIdx() == 0) {
+            runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        }
         cWork += cOffset;
         recvBuffer += cOffset;
     }
+    runtimeInfo_.WritePositionByPassDCache(shift + count, POS_COMP_MATMUL_BEFORE);
     mmv3.End();
 }
 } // namespace MatmulReduceScatterV2Impl

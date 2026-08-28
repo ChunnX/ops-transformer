@@ -82,8 +82,7 @@ private:
     GM_ADDR recvBuf_;                         // 存放 All2All 接收的 slices（内容为
                                               // [slice_r_from_rank0][slice_r_from_rank1]...[slice_r_from_rankR-1]）
     uint32_t rankId_{0};
-        uint64_t aivNum_{0};
-    uint64_t fullMN_{0};
+    uint64_t aivNum_{0};
     uint64_t tileOffset_{0};
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 };
@@ -96,11 +95,14 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     tilingData_ = tilingData;
     auto &&cfg = tilingData_->param;
 
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum, Mc2Tiling::RT_PHASE_RESERVED);
+
     // 初始化 HCCL
     const void *hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_INIT);
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
@@ -115,11 +117,9 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     aivNum_ = cfg.aicCoreNum * GetTaskRation(); // 启用的AIV 数量, 此模板会全启用
 
     // all2all 通信相关参数, 划分workspace
-    fullMN_ = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankN); // M * N
-        sendBuf_ = workspaceGM;                                                        // [0, fullMN)
-    recvBuf_ = sendBuf_ + fullMN_ * sizeof(C_DTYPE);                               // [fullMN, 2*fullMN)
-    // 初始化运行时信息
-    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
+    sendBuf_ = workspaceGM;
+    // Match the aligned MM_RESULT/RECV_BUF boundaries recorded by host tiling.
+    recvBuf_ = sendBuf_ + cfg.cToFloatLen;
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -127,7 +127,10 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::PostPro
 {
     // 等待执行完成后，最后终止hcclserver
     if ((GetBlockIdx() == 0) && (g_coreType == AIV)) {
+        const auto &cfg = tilingData_->param;
+        runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();
+        runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
     }
 }
 
@@ -135,8 +138,6 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess(); // 核心计算+通信
-    runtimeInfo_.WriteGmByPassDCache(0, 3,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     PostProcess();  // 等待计算与通信完成, 终止hcclserver
 }
 
@@ -182,11 +183,12 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 
     // 初始化Matmul
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
+    const uint32_t turnShift = isTail ? cfg.tileCnt : 0;
+    runtimeInfo_.WritePositionByPassDCache(turnShift + 1, POS_COMP_MATMUL_BEFORE);
     mmv3.Init(aGM_, bGM_, sendBuf_, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
 
-        for (uint32_t i = 0; i < count; i++) {
-        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 1,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    for (uint32_t i = 0; i < count; i++) {
+        runtimeInfo_.WritePositionByPassDCache(turnShift + i + 1, POS_COMP_MATMUL_BEFORE);
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
 
@@ -226,11 +228,14 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     GM_ADDR currOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
 
     // --- Prologue: 启动第 0 轮通信 ---
+    runtimeInfo_.WritePositionByPassDCache(handleShift + 1, POS_COMP_MATMUL_BEFORE);
     VecWaitCube(); // 确保依赖的 MatMul 已完成
-    runtimeInfo_.WriteGmByPassDCache(0, 0,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    runtimeInfo_.WritePositionByPassDCache(handleShift + 1, POS_COMM_BEFORE);
     handles_[0 + handleShift] =
         hccl_.template AlltoAll<true>(currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat);
+    if (GetBlockIdx() == 0) {
+        runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+    }
 
     // 移动指针准备下一轮
     currSendPtr += rankSliceBytes;
@@ -240,21 +245,25 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
     for (uint32_t i = 0; i < count - 1; i++) {
         // 1. 等待上一轮 (i) 通信结束
-        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 0,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 1, POS_COMM_BEFORE);
         if (GetBlockIdx() == 0) {
             hccl_.Wait(handles_[i + handleShift]);
+            runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
         }
         SyncAll<true>();
 
         // 2. 启动下一轮 (i+1) 通信
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 2, POS_COMP_MATMUL_BEFORE);
         VecWaitCube();
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 2, POS_COMM_BEFORE);
         handles_[i + 1 + handleShift] =
             hccl_.template AlltoAll<true>(currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat);
+        if (GetBlockIdx() == 0) {
+            runtimeInfo_.IncCommitCount(Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        }
 
         // 3. 执行上一轮 (i) 数据的 ReduceSum
-        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 2,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePositionByPassDCache(handleShift + i + 1, POS_REDUCE_BEFORE);
         // 计算地址 = 当前指针 - 一步偏移
         GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
         GM_ADDR calcOutPtr = currOutPtr - rankSliceBytes;
@@ -273,12 +282,15 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     uint32_t lastIdx = count - 1;
 
     // 等待最后一轮通信结束
+    runtimeInfo_.WritePositionByPassDCache(handleShift + lastIdx + 1, POS_COMM_BEFORE);
     if (GetBlockIdx() == 0) {
         hccl_.Wait(handles_[lastIdx + handleShift]);
+        runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
     }
     SyncAll<true>();
 
     // 执行最后一轮数据的 reduceSum
+    runtimeInfo_.WritePositionByPassDCache(handleShift + lastIdx + 1, POS_REDUCE_BEFORE);
     // 此时的计算地址同样是 "当前指针 - 偏移量"
     GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
     GM_ADDR calcOutPtr = currOutPtr - rankSliceBytes;

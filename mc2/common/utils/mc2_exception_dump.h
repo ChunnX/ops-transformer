@@ -33,6 +33,12 @@
 #include <dlfcn.h>
 #include <cstring>
 #include <mutex>
+#include <algorithm>
+#include <cctype>
+#include <memory>
+#include <new>
+#include <limits>
+#include <unistd.h>
 #include "./mc2_hcom_topo_info.h"
 #include "../op_kernel/mc2_exception_dump.h"
 
@@ -92,15 +98,19 @@ typedef const char *(*acldumpGetPath_t)(acldumpType dumpType);
 inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
 {
     static aclrtGetArgsFromExceptionInfo_t func = nullptr;
-    static bool initialized = false;
-    if (!initialized) {
-        initialized = true;
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (func == nullptr) {
+        func = reinterpret_cast<aclrtGetArgsFromExceptionInfo_t>(dlsym(RTLD_DEFAULT, "aclrtGetArgsFromExceptionInfo"));
+    }
+    if (func == nullptr) {
         // 直接从 libacl_rt.so 加载符号
         void *handle = dlopen("libacl_rt.so", RTLD_NOLOAD | RTLD_LAZY);
         if (handle != nullptr) {
             func = (aclrtGetArgsFromExceptionInfo_t)dlsym(handle, "aclrtGetArgsFromExceptionInfo");
             if (func == nullptr) {
                 OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
+                dlclose(handle);
             }
         } else {
             OP_LOGE(OP_NAME, "dlopen failed: %s", dlerror());
@@ -113,15 +123,20 @@ inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
 inline acldumpGetPath_t GetAcldumpGetPathFunc()
 {
     static acldumpGetPath_t func = nullptr;
-    static bool initialized = false;
-    if (!initialized) {
-        initialized = true;
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (func == nullptr) {
+        func = reinterpret_cast<acldumpGetPath_t>(dlsym(RTLD_DEFAULT, "acldumpGetPath"));
+    }
+    // Do not cache a failed lookup: the dump library may be loaded after an earlier lookup.
+    if (func == nullptr) {
         // 尝试加载ascend_dump.so
         void *handle = dlopen("libascend_dump.so", RTLD_NOLOAD | RTLD_LAZY);
         if (handle != nullptr) {
             func = (acldumpGetPath_t)dlsym(handle, "acldumpGetPath");
             if (func == nullptr) {
                 OP_LOGE(OP_NAME, "dlsym acldumpGetPath failed: %s", dlerror());
+                dlclose(handle);
             } else {
                 OP_LOGD(OP_NAME, "Successfully loaded acldumpGetPath function");
             }
@@ -216,34 +231,139 @@ inline std::string GenDumpFileNameWithPrefix(aclrtExceptionInfo *args, const cha
     return ss.str();
 }
 
-inline int DumpToFileWithSize(std::string dir, std::string name, uint32_t id, void *buf, uint32_t size)
+inline bool EnsureDumpDirectory(const std::string &dir)
+{
+    // The exception callback can run before RTS creates the per-device directory.
+    for (size_t end = 1; end <= dir.size(); ++end) {
+        if (end != dir.size() && dir[end] != '/') {
+            continue;
+        }
+        const std::string part = dir.substr(0, end);
+        if (mkdir(part.c_str(), S_IRWXU | S_IRGRP | S_IXGRP) != 0) {
+            const int err = errno;
+            struct stat info {};
+            if (err != EEXIST || stat(part.c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) {
+                OP_LOGE(OP_NAME, "Cannot create dump directory %s, errno=%d(%s).",
+                        part.c_str(), err, strerror(err));
+                return false;
+            }
+        }
+    }
+    return !dir.empty();
+}
+
+inline int OpenDumpFile(const std::string &dir, const std::string &name, uint32_t id)
 {
     if (IsStrEmpty(dir) || IsStrEmpty(name)) {
-        OP_LOGE(OP_NAME, "Dump path or buf is null.");
+        OP_LOGE(OP_NAME, "Dump directory or file name is empty.");
         return -1;
     }
-
-    std::string rankPath = dir + "/" + std::to_string(id) + "/";
-    std::string path = rankPath + name;
-    OP_LOGE(OP_NAME, "Start to dump file. The dump path is %s", path.c_str());
-
-    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, FILE_MODE);
+    const std::string rankPath = dir + "/" + std::to_string(id);
+    if (!EnsureDumpDirectory(rankPath)) {
+        return -1;
+    }
+    const std::string path = rankPath + "/" + name;
+    const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, FILE_MODE);
     if (fd < 0) {
-        int openErrno = errno;
-        OP_LOGE(OP_NAME, "Failed to open a dump file. errno=%d(%s)", openErrno, strerror(openErrno));
+        const int err = errno;
+        OP_LOGE(OP_NAME, "Failed to open dump file %s, errno=%d(%s).", path.c_str(), err, strerror(err));
+    } else {
+        OP_LOGE(OP_NAME, "Start to dump file. The dump path is %s", path.c_str());
+    }
+    return fd;
+}
+
+inline bool WriteDumpBytes(int fd, const void *buf, size_t size)
+{
+    const auto *data = static_cast<const uint8_t *>(buf);
+    size_t written = 0;
+    while (written < size) {
+        const size_t chunkSize = std::min<size_t>(size - written, WIN_SIZE);
+        const ssize_t ret = write(fd, data + written, chunkSize);
+        if (ret < 0 && errno == EINTR) {
+            continue;
+        }
+        if (ret <= 0) {
+            const int err = ret < 0 ? errno : EIO;
+            OP_LOGE(OP_NAME, "Dump write failed after %zu/%zu bytes, errno=%d(%s).",
+                    written, size, err, strerror(err));
+            return false;
+        }
+        written += static_cast<size_t>(ret);
+    }
+    return true;
+}
+
+inline int DumpToFileWithSize(const std::string &dir, const std::string &name, uint32_t id,
+                              const void *buf, size_t size)
+{
+    if (buf == nullptr && size != 0) {
         return -1;
     }
-
-    ssize_t ret = write(fd, buf, size);
-    if (ret < 0) {
-        int writeErrno = errno;
-        OP_LOGE(OP_NAME, "Failed to write a dump file. errno=%d(%s)", writeErrno, strerror(writeErrno));
+    const int fd = OpenDumpFile(dir, name, id);
+    if (fd < 0) {
+        return -1;
+    }
+    if (!WriteDumpBytes(fd, buf, size)) {
         close(fd);
         return -1;
     }
+    if (close(fd) != 0) {
+        OP_LOGE(OP_NAME, "Failed to close dump file %s, errno=%d.", name.c_str(), errno);
+        return -1;
+    }
+    OP_LOGE(OP_NAME, "Dump to file %s done, size=%zu.", name.c_str(), size);
+    return 0;
+}
 
-    close(fd);
-    OP_LOGE(OP_NAME, "Dump to file %s done.", path.c_str());
+inline int DumpDeviceMemoryToFile(const std::string &dir, const std::string &name, uint32_t id,
+                                  uint64_t srcAddr, uint64_t size)
+{
+    if (srcAddr == 0 || size == 0 || size > std::numeric_limits<uint64_t>::max() - srcAddr) {
+        OP_LOGE(OP_NAME, "Invalid device dump range: addr=0x%llx, size=%llu.",
+                static_cast<unsigned long long>(srcAddr), static_cast<unsigned long long>(size));
+        return -1;
+    }
+    // A matrix segment can exceed 4 GiB. Bound host memory and keep the length 64-bit.
+    const size_t bufferSize = static_cast<size_t>(std::min<uint64_t>(size, WIN_SIZE));
+    std::unique_ptr<uint8_t[]> buffer(new (std::nothrow) uint8_t[bufferSize]);
+    if (buffer == nullptr) {
+        OP_LOGE(OP_NAME, "Cannot allocate %zu bytes for device dump.", bufferSize);
+        return -1;
+    }
+    int fd = -1;
+    for (uint64_t offset = 0; offset < size;) {
+        const size_t chunkSize = static_cast<size_t>(std::min<uint64_t>(size - offset, bufferSize));
+        const aclError ret = aclrtMemcpy(buffer.get(), bufferSize, reinterpret_cast<void *>(srcAddr + offset),
+                                         chunkSize, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "D2H dump failed: file=%s, device=%u, addr=0x%llx, offset=%llu, size=%zu, ret=%d. "
+                    "Any existing file contains only the preceding chunks.", name.c_str(), id,
+                    static_cast<unsigned long long>(srcAddr + offset), static_cast<unsigned long long>(offset),
+                    chunkSize, ret);
+            if (fd >= 0) {
+                close(fd);
+            }
+            return -1;
+        }
+        // Do not create an empty "successful" dump when the first D2H copy fails.
+        if (fd < 0) {
+            fd = OpenDumpFile(dir, name, id);
+            if (fd < 0) {
+                return -1;
+            }
+        }
+        if (!WriteDumpBytes(fd, buffer.get(), chunkSize)) {
+            close(fd);
+            return -1;
+        }
+        offset += chunkSize;
+    }
+    if (close(fd) != 0) {
+        OP_LOGE(OP_NAME, "Failed to close device dump %s, errno=%d.", name.c_str(), errno);
+        return -1;
+    }
+    OP_LOGE(OP_NAME, "Dump to file %s done, size=%llu.", name.c_str(), static_cast<unsigned long long>(size));
     return 0;
 }
 
@@ -753,204 +873,215 @@ inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const 
     }
 }
 
+inline uint32_t Mc2DumpWorkspaceSegments(aclrtExceptionInfo *args, const char *op, const std::string &dumpDir,
+                                         uint32_t deviceId, uint64_t workspaceGM,
+                                         const Mc2Tiling::WorkspaceLayoutInfo &wsLayout)
+{
+    if (wsLayout.totalSize == 0 || wsLayout.segCount == 0 ||
+        wsLayout.segCount > Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
+        OP_LOGE(OP_NAME, "wsLayout invalid: totalSize=%llu, segCount=%u; rebuild matching host/kernel DFX code.",
+                static_cast<unsigned long long>(wsLayout.totalSize), wsLayout.segCount);
+        return 0;
+    }
+    // Both the kernel and this callback receive the user base, after LIB_API.
+    uint64_t libApiSize = 0;
+    bool hasLibApi = false;
+    for (uint32_t i = 0; i < wsLayout.segCount; ++i) {
+        const auto &seg = wsLayout.segments[i];
+        if (seg.type == Mc2Tiling::WS_SEG_LIB_API) {
+            if (hasLibApi || seg.offset != 0 || seg.size > wsLayout.totalSize) {
+                OP_LOGE(OP_NAME, "Invalid or duplicate LIB_API segment at index %u.", i);
+                return 0;
+            }
+            hasLibApi = true;
+            libApiSize = seg.size;
+        }
+    }
+    OP_LOGE(OP_NAME, "workspace user base=0x%llx, libApiSize=%llu, userSize=%llu, segCount=%u",
+            static_cast<unsigned long long>(workspaceGM), static_cast<unsigned long long>(libApiSize),
+            static_cast<unsigned long long>(wsLayout.totalSize - libApiSize), wsLayout.segCount);
+
+    uint32_t dumpedSegments = 0;
+    bool runtimeFound = false;
+    // Save the 64KB fault record before potentially multi-GB matrix buffers.
+    for (uint32_t pass = 0; pass < 2; ++pass) {
+        for (uint32_t i = 0; i < wsLayout.segCount; ++i) {
+            const auto &seg = wsLayout.segments[i];
+            const bool isRuntime = seg.type == Mc2Tiling::WS_SEG_RUNTIME_INFO;
+            if ((pass == 0) != isRuntime || seg.type == Mc2Tiling::WS_SEG_LIB_API ||
+                seg.type == Mc2Tiling::WS_SEG_RESERVED || seg.size == 0) {
+                continue;
+            }
+            runtimeFound = runtimeFound || isRuntime;
+            if (seg.offset < libApiSize || seg.offset > wsLayout.totalSize ||
+                seg.size > wsLayout.totalSize - seg.offset ||
+                (isRuntime && seg.size != Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE)) {
+                OP_LOGE(OP_NAME, "Invalid workspace seg[%u]: type=%u, offset=%llu, size=%llu.",
+                        i, seg.type, static_cast<unsigned long long>(seg.offset),
+                        static_cast<unsigned long long>(seg.size));
+                continue;
+            }
+            const uint64_t userOffset = seg.offset - libApiSize;
+            if (userOffset > std::numeric_limits<uint64_t>::max() - workspaceGM) {
+                OP_LOGE(OP_NAME, "Workspace address overflows for seg[%u].", i);
+                continue;
+            }
+            const uint64_t srcAddr = workspaceGM + userOffset;
+            OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%llu, userOffset=%llu, size=%llu, srcAddr=0x%llx",
+                    i, seg.type, static_cast<unsigned long long>(seg.offset),
+                    static_cast<unsigned long long>(userOffset), static_cast<unsigned long long>(seg.size),
+                    static_cast<unsigned long long>(srcAddr));
+            const std::string prefix = "workspace_seg" + std::to_string(i) + "_type" +
+                                       std::to_string(seg.type) + "_";
+            const std::string name = GenDumpFileNameWithPrefix(args, op, prefix.c_str());
+            if (DumpDeviceMemoryToFile(dumpDir, name, deviceId, srcAddr, seg.size) == 0) {
+                ++dumpedSegments;
+            } else {
+                OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u], type=%u; continuing other segments.",
+                        i, seg.type);
+            }
+        }
+    }
+    if (!runtimeFound) {
+        OP_LOGE(OP_NAME, "No RUNTIME_INFO segment: the running host tiling has not populated the DFX layout.");
+    }
+    OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u, dumpedSegments=%u.",
+            op, deviceId, dumpedSegments);
+    return dumpedSegments;
+}
+
 inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
                               uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U,
                               uint32_t quantModeOffset = 0U,
                               uint32_t wsLayoutOffsetNonQuant = 0U,
-                              uint32_t wsLayoutOffsetQuant = 0U)
+                              uint32_t wsLayoutOffsetQuant = 0U,
+                              uint32_t tilingSizeNonQuant = 2048U,
+                              uint32_t tilingSizeQuant = 2048U)
 {
     if (args == nullptr || op == nullptr) {
         return;
     }
-
     auto getArgsFunc = GetAclrtGetArgsFromExceptionInfoFunc();
     if (getArgsFunc == nullptr) {
         OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
         return;
     }
-
     void *devArgsPtr = nullptr;
-    uint32_t devArgsLen = 0U;
-    if (getArgsFunc(args, &devArgsPtr, &devArgsLen) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed.");
+    uint32_t devArgsLen = 0;
+    const aclError argsRet = getArgsFunc(args, &devArgsPtr, &devArgsLen);
+    if (argsRet != ACL_SUCCESS || devArgsPtr == nullptr || devArgsLen == 0) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed: ret=%d, ptr=%p, size=%u.",
+                argsRet, devArgsPtr, devArgsLen);
         return;
     }
-
-    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    const uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
     OP_LOGE(OP_NAME, "Tiling dump start: op=%s, devArgsPtr=%p, devArgsLen=%u, tilingGmArgIdx=%u, argsOffset=%u",
             op, devArgsPtr, devArgsLen, tilingGmArgIdx, argsOffset);
-
-    uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
-    if (tilingGmOffset + sizeof(uint64_t) > devArgsLen) {
-        OP_LOGE(OP_NAME, "tilingGmOffset=%u + 8 > devArgsLen=%u, args too short.", tilingGmOffset, devArgsLen);
-        return;
-    }
-
     constexpr uint32_t argsDumpSize = 256U;
-    uint32_t actualArgsDumpSize = std::min(devArgsLen, argsDumpSize);
+    const uint32_t actualArgsDumpSize = std::min(devArgsLen, argsDumpSize);
     std::vector<uint8_t> argsBuf(actualArgsDumpSize, 0);
-    if (aclrtMemcpy(argsBuf.data(), actualArgsDumpSize, devArgsPtr, actualArgsDumpSize,
-                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy args buffer failed.");
+    const aclError copyRet = aclrtMemcpy(argsBuf.data(), actualArgsDumpSize, devArgsPtr,
+                                         actualArgsDumpSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (copyRet != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy args buffer failed: ret=%d.", copyRet);
         return;
     }
-
-    // for (uint32_t i = 0; i < actualArgsDumpSize / sizeof(uint64_t); i++) {
-    //     uint64_t val = *reinterpret_cast<uint64_t *>(argsBuf.data() + i * sizeof(uint64_t));
-    //     OP_LOGE(OP_NAME, "args[%u] = 0x%lx (offset=%u)", i, val, i * sizeof(uint64_t));
-    // }
+    // Read both pointers from the same args snapshot, before any tiling/layout failure.
+    auto readArg = [&](uint32_t index, uint64_t &address) {
+        const uint64_t offset = static_cast<uint64_t>(argsOffset) + index * sizeof(uint64_t);
+        if (offset + sizeof(uint64_t) > argsBuf.size()) {
+            OP_LOGE(OP_NAME, "args[%u] at offset=%llu exceeds args snapshot size=%zu.",
+                    index, static_cast<unsigned long long>(offset), argsBuf.size());
+            return false;
+        }
+        memcpy(&address, argsBuf.data() + offset, sizeof(address));
+        return true;
+    };
+    uint64_t tilingGM = 0;
+    uint64_t workspaceGM = 0;
+    const bool hasTiling = readArg(tilingGmArgIdx, tilingGM) && tilingGM != 0;
+    if (workspaceGmArgIdx != 0) {
+        readArg(workspaceGmArgIdx, workspaceGM);
+    }
+    OP_LOGE(OP_NAME, "tilingGM=0x%llx (args[%u]), workspaceGM=0x%llx (args[%u])",
+            static_cast<unsigned long long>(tilingGM), tilingGmArgIdx,
+            static_cast<unsigned long long>(workspaceGM), workspaceGmArgIdx);
 
     auto dumpPathFunc = GetAcldumpGetPathFunc();
-    if (dumpPathFunc == nullptr) {
-        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
+    const char *dumpPath = dumpPathFunc == nullptr ? nullptr : dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr || IsStrEmpty(dumpPath)) {
+        OP_LOGE(OP_NAME, "No exception dump path for op=%s; check exception-dump configuration and dump library.", op);
         return;
     }
-    const char *dumpPath = dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
-    if (dumpPath == nullptr) {
-        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL.");
-        return;
+    const std::string dumpDir(dumpPath);
+    OP_LOGE(OP_NAME, "DFX dump directory=%s, deviceId=%u.", dumpDir.c_str(), deviceId);
+    if (DumpToFileWithSize(dumpDir, GenDumpFileNameWithPrefix(args, op, "args_info_"), deviceId,
+                           argsBuf.data(), argsBuf.size()) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump args info; continuing tiling/workspace.");
     }
-
-    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "args_info_"), deviceId,
-                           argsBuf.data(), actualArgsDumpSize) != 0) {
-        OP_LOGE(OP_NAME, "Failed to dump args info.");
-    }
-
-    uint64_t tilingGM = 0U;
-    if (aclrtMemcpy(&tilingGM, sizeof(uint64_t), reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
-                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy tilingGM pointer failed, offset=%u.", tilingGmOffset);
-        return;
-    }
-    OP_LOGE(OP_NAME, "tilingGM=0x%lx (offset=%u)", tilingGM, tilingGmOffset);
-    if (tilingGM == 0U) {
-        OP_LOGE(OP_NAME, "tilingGM is 0, skip tiling data dump.");
+    if (!hasTiling) {
+        OP_LOGE(OP_NAME, "No tiling pointer; cannot locate workspace layout.");
         return;
     }
 
-    constexpr uint32_t tilingDumpSize = 2048U;
-    std::vector<uint8_t> tilingBuf(tilingDumpSize, 0);
-    if (aclrtMemcpy(tilingBuf.data(), tilingDumpSize, reinterpret_cast<void *>(tilingGM), tilingDumpSize,
-                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy tiling data failed.");
-        return;
-    }
-    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "tiling_data_"), deviceId,
-                           tilingBuf.data(), tilingDumpSize) != 0) {
-        OP_LOGE(OP_NAME, "Failed to dump tiling data.");
-    }
-    OP_LOGE(OP_NAME, "Tiling dump done: op=%s, deviceId=%u.", op, deviceId);
-
-    // ====== Workspace dump（workspaceGmArgIdx != 0 时执行）======
-    if (workspaceGmArgIdx == 0U) {
-        return;
-    }
-
-    OP_LOGE(OP_NAME, "Workspace dump start: op=%s, wsGmArgIdx=%u, quantModeOffset=%u, "
-            "wsLayoutOffsetNonQuant=%u, wsLayoutOffsetQuant=%u",
-            op, workspaceGmArgIdx, quantModeOffset, wsLayoutOffsetNonQuant, wsLayoutOffsetQuant);
-
-    // Log the kernel's user-workspace pointer even when the tiling layout is invalid.
-    uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);
-    if (wsGmOffset + sizeof(uint64_t) > devArgsLen) {
-        OP_LOGE(OP_NAME, "wsGmOffset=%u + 8 > devArgsLen=%u, args too short.", wsGmOffset, devArgsLen);
-        return;
-    }
-    uint64_t workspaceGM = 0U;
-    if (aclrtMemcpy(&workspaceGM, sizeof(uint64_t),
-                    reinterpret_cast<uint8_t *>(devArgsPtr) + wsGmOffset,
-                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy workspaceGM pointer failed, offset=%u.", wsGmOffset);
-        return;
-    }
-    OP_LOGE(OP_NAME, "workspaceGM=0x%lx (offset=%u)", workspaceGM, wsGmOffset);
-    if (workspaceGM == 0U) {
-        OP_LOGE(OP_NAME, "workspaceGM is 0, skip workspace dump.");
-        return;
-    }
-
-    // 1. 选择 wsLayoutOffset
     uint32_t wsLayoutOffset = wsLayoutOffsetNonQuant;
-    if (wsLayoutOffsetNonQuant != wsLayoutOffsetQuant) {
-        // 量化/非量化结构体不同，通过 x1QuantMode 判断
-        uint32_t x1QuantMode = 0U;
-        if (quantModeOffset + sizeof(uint32_t) <= tilingDumpSize) {
-            memcpy(&x1QuantMode, tilingBuf.data() + quantModeOffset, sizeof(uint32_t));
-        }
-        if (x1QuantMode != 0U) {
-            wsLayoutOffset = wsLayoutOffsetQuant;
-        }
-        OP_LOGE(OP_NAME, "Quant mode detect: x1QuantMode=%u, wsLayoutOffset=%u", x1QuantMode, wsLayoutOffset);
-    }
-
-    // 2. 解析 WorkspaceLayoutInfo
-    constexpr uint32_t wsLayoutInfoSize = sizeof(Mc2Tiling::WorkspaceLayoutInfo);
-    if (wsLayoutOffset == 0U || wsLayoutOffset + wsLayoutInfoSize > tilingDumpSize) {
-        OP_LOGE(OP_NAME, "wsLayoutOffset=%u invalid or out of range.", wsLayoutOffset);
-        return;
-    }
-    Mc2Tiling::WorkspaceLayoutInfo wsLayout;
-    memcpy(&wsLayout, tilingBuf.data() + wsLayoutOffset, wsLayoutInfoSize);
-    if (wsLayout.totalSize == 0 || wsLayout.segCount == 0 ||
-        wsLayout.segCount > Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
-        OP_LOGE(OP_NAME, "wsLayout invalid: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
-        return;
-    }
-    OP_LOGE(OP_NAME, "wsLayout: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
-
-    // Layout offsets include LIB_API, but the kernel argument already skips it.
-    // Match Mc2RuntimeInfo::Init. Do not access framework-owned LIB_API memory.
-    uint64_t libApiSize = 0U;
-    for (uint32_t i = 0; i < wsLayout.segCount; ++i) {
-        const auto &seg = wsLayout.segments[i];
-        if (seg.offset > wsLayout.totalSize || seg.size > wsLayout.totalSize - seg.offset) {
-            OP_LOGE(OP_NAME, "workspace seg[%u] is outside totalSize, offset=%lu, size=%lu.",
-                    i, seg.offset, seg.size);
+    uint32_t tilingDumpSize = tilingSizeNonQuant;
+    if (wsLayoutOffsetNonQuant != wsLayoutOffsetQuant || tilingSizeNonQuant != tilingSizeQuant) {
+        uint32_t quantMode = 0;
+        if (static_cast<uint64_t>(quantModeOffset) + sizeof(quantMode) >
+            std::min(tilingSizeNonQuant, tilingSizeQuant)) {
+            OP_LOGE(OP_NAME, "quantModeOffset=%u is outside the tiling header.", quantModeOffset);
             return;
         }
-        if (seg.type == Mc2Tiling::WS_SEG_LIB_API) {
-            if (seg.offset != 0U) {
-                OP_LOGE(OP_NAME, "LIB_API must start at offset 0, got %lu.", seg.offset);
-                return;
-            }
-            libApiSize = seg.size;
+        const aclError ret = aclrtMemcpy(&quantMode, sizeof(quantMode),
+                                         reinterpret_cast<void *>(tilingGM + quantModeOffset),
+                                         sizeof(quantMode), ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "Cannot read quantMode at offset=%u, ret=%d; cannot select workspace layout.",
+                    quantModeOffset, ret);
+            return;
         }
+        if (quantMode != 0) {
+            wsLayoutOffset = wsLayoutOffsetQuant;
+            tilingDumpSize = tilingSizeQuant;
+        }
+        OP_LOGE(OP_NAME, "Quant mode detect: quantMode=%u, wsLayoutOffset=%u, tilingSize=%u.",
+                quantMode, wsLayoutOffset, tilingDumpSize);
     }
-    OP_LOGE(OP_NAME, "workspace user base=0x%lx, libApiSize=%lu, userSize=%lu",
-            workspaceGM, libApiSize, wsLayout.totalSize - libApiSize);
 
-    // 4. 逐段 D2H 拷贝并落盘
-    uint32_t dumpedSegments = 0U;
-    for (uint32_t i = 0; i < wsLayout.segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
-        auto &seg = wsLayout.segments[i];
-        if (seg.size == 0 || seg.type == Mc2Tiling::WS_SEG_LIB_API) {
-            continue;
-        }
-        if (seg.offset < libApiSize) {
-            OP_LOGE(OP_NAME, "workspace seg[%u] overlaps LIB_API, offset=%lu.", i, seg.offset);
-            continue;
-        }
-        uint64_t dumpSize = seg.size;
-        std::vector<uint8_t> segBuf(dumpSize, 0);
-        const uint64_t userOffset = seg.offset - libApiSize;
-        void *srcAddr = reinterpret_cast<void *>(workspaceGM + userOffset);
-        OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, userOffset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
-                i, seg.type, seg.offset, userOffset, seg.size, dumpSize,
-                static_cast<uint64_t>(reinterpret_cast<uintptr_t>(srcAddr)));
-        if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
-                        ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-            OP_LOGE(OP_NAME, "aclrtMemcpy workspace seg[%u] failed, offset=%lu, size=%lu.", i, seg.offset, dumpSize);
-            continue;
-        }
-        std::string segPrefix = "workspace_seg" + std::to_string(i) + "_type" + std::to_string(seg.type) + "_";
-        std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
-        if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId, segBuf.data(), dumpSize) != 0) {
-            OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u].", i);
+    // Read the segment table independently. A failed full tiling copy/file must not suppress workspace.
+    Mc2Tiling::WorkspaceLayoutInfo wsLayout {};
+    bool hasLayout = false;
+    if (workspaceGmArgIdx != 0 && workspaceGM != 0) {
+        OP_LOGE(OP_NAME, "Workspace dump start: op=%s, wsGmArgIdx=%u, wsLayoutOffset=%u.",
+                op, workspaceGmArgIdx, wsLayoutOffset);
+        if (wsLayoutOffset != 0 &&
+            static_cast<uint64_t>(wsLayoutOffset) + sizeof(wsLayout) <= tilingDumpSize) {
+            const aclError ret = aclrtMemcpy(&wsLayout, sizeof(wsLayout),
+                                             reinterpret_cast<void *>(tilingGM + wsLayoutOffset),
+                                             sizeof(wsLayout), ACL_MEMCPY_DEVICE_TO_HOST);
+            hasLayout = ret == ACL_SUCCESS;
+            if (!hasLayout) {
+                OP_LOGE(OP_NAME, "Cannot read workspace layout: offset=%u, size=%zu, ret=%d.",
+                        wsLayoutOffset, sizeof(wsLayout), ret);
+            }
         } else {
-            ++dumpedSegments;
+            OP_LOGE(OP_NAME, "wsLayoutOffset=%u is outside tilingSize=%u.", wsLayoutOffset, tilingDumpSize);
         }
     }
-    OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u, dumpedSegments=%u.", op, deviceId, dumpedSegments);
+
+    if (DumpDeviceMemoryToFile(dumpDir, GenDumpFileNameWithPrefix(args, op, "tiling_data_"),
+                               deviceId, tilingGM, tilingDumpSize) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump tiling data; continuing independently-read workspace layout.");
+    }
+    if (workspaceGmArgIdx != 0) {
+        if (workspaceGM == 0 || !hasLayout) {
+            OP_LOGE(OP_NAME, "Workspace dump unavailable: workspaceGM=0x%llx, layoutReadable=%d.",
+                    static_cast<unsigned long long>(workspaceGM), static_cast<int>(hasLayout));
+        } else {
+            Mc2DumpWorkspaceSegments(args, op, dumpDir, deviceId, workspaceGM, wsLayout);
+        }
+    }
 }
 
 } // namespace Mc2Exception

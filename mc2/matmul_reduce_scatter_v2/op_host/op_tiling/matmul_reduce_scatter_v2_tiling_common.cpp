@@ -15,10 +15,11 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
+#include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
 #include "platform/platform_infos_def.h"
 #include "matmul_reduce_scatter_v2_tiling_common.h"
-#include "mc2_exception_dump.h"
+#include "../../../common/utils/mc2_exception_dump.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
 #include <cstddef>
 #include <cstring>
@@ -40,18 +41,29 @@ IMPL_OP_OPTILING(MatmulReduceScatterV2)
 inline void MatmulReduceScatterV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
     const char* socName = aclrtGetSocName();
-    if (std::strstr(socName, "Ascend950") == nullptr) {
+    OP_LOGE("MatmulReduceScatterV2", "DFX callback begin: soc=%s, nonQuantSize=%zu, quantSize=%zu.",
+            socName == nullptr ? "null" : socName, sizeof(Mc2Tiling::MatmulReduceScatterV2TilingData),
+            sizeof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData));
+    if (args == nullptr || socName == nullptr || std::strstr(socName, "Ascend950") == nullptr) {
+        OP_LOGE("MatmulReduceScatterV2", "DFX callback skipped: null exception info or unsupported SoC.");
         return;
     }
-    Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "MatmulReduceScatterV2");
-
+    static_assert(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode) ==
+                  offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, quantMode),
+                  "MMRS quant/non-quant tiling must share the quantMode header offset");
+    // Save operator evidence before accessing the potentially-faulting CCU context.
+    // The hidden HCCL context is args[0], so workspace/tiling are args[9]/args[10].
     Mc2Exception::Mc2DumpTilingData(args, "MatmulReduceScatterV2",
         10U,   // tilingGmArgIdx
         0U,    // argsOffset
         9U,    // workspaceGmArgIdx
         offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode),                   // quantModeOffset
         offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout),             // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout));  // wsLayoutOffsetQuant
+        offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout),  // wsLayoutOffsetQuant
+        sizeof(Mc2Tiling::MatmulReduceScatterV2TilingData),
+        sizeof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData));
+    Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "MatmulReduceScatterV2");
+    OP_LOGE("MatmulReduceScatterV2", "DFX callback end.");
 }
 
 __attribute__((constructor)) void RegisterMatmulReduceScatterV2ExceptionFunc()
