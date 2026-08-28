@@ -14,7 +14,6 @@
 #include "opdev/framework_op.h"
 #include "cannbotdsl_provider_adapter.h"
 #include "cannbotdsl_provider_registry.h"
-#include "flash_kda_variant_policy.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_dfx.h"
@@ -81,9 +80,8 @@ bool CheckTensorContract(
     const int64_t batch = Dim(v, 0U);
     const int64_t heads = Dim(v, 1U);
     const int64_t sequence = Dim(v, 2U);
-    if (cannbotdsl::generated::MatchFlashKdaVariantPolicy(
-            batch, heads, sequence) == nullptr ||
-        Dim(v, 3U) != kHeadDim) {
+    if (batch <= 0 || heads <= 0 || sequence <= 0 ||
+        sequence % 64 != 0 || Dim(v, 3U) != kHeadDim) {
         return false;
     }
     if (!HasShape(k, {batch, heads, sequence, kHeadDim}) ||
@@ -136,13 +134,6 @@ aclnnStatus FlashKda(
 
     const int64_t batch = Dim(v, 0U);
     const int64_t heads = Dim(v, 1U);
-    const int64_t sequence = Dim(v, 2U);
-    const auto* deliveryPolicy =
-        cannbotdsl::generated::MatchFlashKdaVariantPolicy(
-            batch, heads, sequence);
-    if (deliveryPolicy == nullptr) {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     if (batch <= 0 || heads <= 0 ||
         batch > std::numeric_limits<int64_t>::max() / heads) {
         return ACLNN_ERR_PARAM_INVALID;
@@ -160,9 +151,6 @@ aclnnStatus FlashKda(
     entryArguments.lower_bound = lowerBound;
     entryArguments.o = out;
     entryArguments.st_out = finalState;
-    entryArguments.group = deliveryPolicy->group;
-    entryArguments.dv_base = deliveryPolicy->dvBase;
-    entryArguments.block_num = deliveryPolicy->blockNum;
     cannbotdsl::generated::FlashKdaProviderArguments providerArguments;
     aclnnStatus status =
         cannbotdsl::generated::PrepareFlashKdaProviderArguments(

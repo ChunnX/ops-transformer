@@ -29,7 +29,7 @@ PUBLIC_PARAMETERS = [
     "o",
     "st_out",
 ]
-INTERNAL_PARAMETERS = ["group", "dv_base", "block_num"]
+GENERATED_INTERNAL_PARAMETERS = ["dv_base", "group"]
 OUTPUT_PARAMETERS = ["o", "st_out"]
 REQUIRED_PUBLIC_HEADERS = [
     "aclnn_custom_flash_kda.h",
@@ -165,18 +165,53 @@ def _verify_provider_package(
         )
 
     provider_binaries: set[pathlib.Path] = set()
+    entry_identity: str | None = None
     for index, artifact in enumerate(artifacts):
         if not isinstance(artifact, dict):
             raise AssertionError(f"artifact {index} is not an object")
         entry = artifact.get("entry")
-        if not isinstance(entry, dict) or entry.get("schema_version") != 3:
-            raise AssertionError(f"artifact {index} does not carry entry schema v3")
+        if not isinstance(entry, dict) or entry.get("schema_version") != 4:
+            raise AssertionError(f"artifact {index} does not carry entry schema v4")
         if entry.get("public_parameters") != PUBLIC_PARAMETERS:
             raise AssertionError(f"artifact {index} public L0 parameters drifted")
-        if entry.get("internal_parameters") != INTERNAL_PARAMETERS:
-            raise AssertionError(f"artifact {index} internal parameters drifted")
+        if "internal_parameters" in entry:
+            raise AssertionError(f"artifact {index} exposes internal parameters")
+        if (
+            entry.get("generated_internal_parameters")
+            != GENERATED_INTERNAL_PARAMETERS
+        ):
+            raise AssertionError(
+                f"artifact {index} generated internal parameters drifted"
+            )
         if entry.get("output_parameters") != OUTPUT_PARAMETERS:
             raise AssertionError(f"artifact {index} output parameters drifted")
+        dispatch = entry.get("dispatch_plan")
+        if (
+            not isinstance(dispatch, dict)
+            or dispatch.get("kind") != "cannbotdsl-aot-dispatch-plan"
+            or dispatch.get("public_contract_digest") != entry.get("support_digest")
+            or dispatch.get("proof")
+            != {
+                "coverage_status": "proven",
+                "overlap_status": "proven-disjoint",
+                "method": "finite-domain-exhaustion-v1",
+            }
+        ):
+            raise AssertionError(f"artifact {index} dispatch proof drifted")
+        generated_ids = {
+            item.get("generated_id")
+            for item in dispatch.get("specializations", [])
+            if isinstance(item, dict)
+        }
+        if artifact.get("variant") not in generated_ids:
+            raise AssertionError(
+                f"artifact {index} variant is absent from its dispatch plan"
+            )
+        canonical_entry = json.dumps(entry, sort_keys=True, separators=(",", ":"))
+        if entry_identity is None:
+            entry_identity = canonical_entry
+        elif entry_identity != canonical_entry:
+            raise AssertionError("Provider artifacts carry different Entry plans")
         binary = _resolve_relative(manifest_path.parent, artifact["binary"])
         sidecar = _resolve_relative(manifest_path.parent, artifact["sidecar"])
         if _sha256(binary) != artifact.get("binary_sha256"):

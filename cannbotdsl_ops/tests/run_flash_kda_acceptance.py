@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -19,11 +20,8 @@ from typing import Any
 
 
 _TEST_DIR = Path(__file__).resolve().parent
-_POLICY_DIR = _TEST_DIR.parent / "attention" / "flash_kda"
 sys.path.insert(0, str(_TEST_DIR))
-sys.path.insert(0, str(_POLICY_DIR))
 
-from flash_kda_variant_policy import FLASH_KDA_VARIANT_POLICIES  # noqa: E402
 from verify_mixed_run import verify_run_package  # noqa: E402
 
 
@@ -46,6 +44,56 @@ _NATIVE_PATTERN = re.compile(
     r"(?P<aclnn_output>[0-9.eE+-]+); state max_abs="
     r"(?P<aclnn_state>[0-9.eE+-]+)"
 )
+
+
+@dataclass(frozen=True)
+class DeliveryRegion:
+    variant_id: str
+    batch: int
+    heads: int
+    sequence_min: int
+
+
+def _delivery_regions(vendor_root: Path) -> tuple[DeliveryRegion, ...]:
+    root = vendor_root / "op_impl/cannbotdsl"
+    registry = json.loads((root / "registry.json").read_text(encoding="utf-8"))
+    package = registry["packages"]["ops-transformer-flash-kda"]
+    active = package["active"]
+    manifest_path = (root / package["versions"][active]["manifest"]).resolve()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise ValueError("FlashKDA manifest has no Provider artifacts")
+    entry = artifacts[0].get("entry")
+    dispatch = entry.get("dispatch_plan") if isinstance(entry, dict) else None
+    records = dispatch.get("specializations") if isinstance(dispatch, dict) else None
+    if not isinstance(records, list):
+        raise ValueError("FlashKDA manifest has no generated dispatch plan")
+    regions = []
+    for record in records:
+        predicate = record.get("predicate") if isinstance(record, dict) else None
+        tensors = predicate.get("tensors") if isinstance(predicate, dict) else None
+        v = tensors.get("V") if isinstance(tensors, dict) else None
+        shape = v.get("shape") if isinstance(v, dict) else None
+        if not isinstance(shape, list) or len(shape) != 4:
+            raise ValueError("FlashKDA dispatch V predicate is malformed")
+        batch = shape[0].get("equal") if isinstance(shape[0], dict) else None
+        heads = shape[1].get("equal") if isinstance(shape[1], dict) else None
+        sequence_min = (
+            shape[2].get("equal", shape[2].get("min"))
+            if isinstance(shape[2], dict)
+            else None
+        )
+        variant_id = record.get("generated_id")
+        if not all(type(value) is int for value in (batch, heads, sequence_min)):
+            raise ValueError("FlashKDA dispatch region has non-static B/N/min-S")
+        if not isinstance(variant_id, str):
+            raise ValueError("FlashKDA dispatch region has no generated id")
+        regions.append(DeliveryRegion(variant_id, batch, heads, sequence_min))
+    result = tuple(sorted(regions, key=lambda item: item.variant_id))
+    if len(result) != len(artifacts):
+        raise ValueError("FlashKDA dispatch/artifact counts differ")
+    return result
 
 
 def _sha256(path: Path) -> str:
@@ -293,7 +341,7 @@ def main() -> int:
             verified_run = verify_run_package(
                 run_file,
                 extract_root,
-                expected_provider_count=len(FLASH_KDA_VARIANT_POLICIES),
+                expected_provider_count=6,
                 expected_traditional_kernel_count=(
                     arguments.expected_traditional_kernel_count
                 ),
@@ -336,8 +384,9 @@ def main() -> int:
                 expected_waves=1,
             )
 
+            delivery_regions = _delivery_regions(verified_run.vendor_root)
             variants = []
-            for policy in FLASH_KDA_VARIANT_POLICIES:
+            for policy in delivery_regions:
                 dump_dir = work_root / f"dump-{policy.variant_id}"
                 dump_dir.mkdir()
                 smoke_output = _run(

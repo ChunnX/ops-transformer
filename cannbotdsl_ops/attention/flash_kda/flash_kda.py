@@ -30,8 +30,6 @@ from cannbotdsl.delay_line import DelayLineGroup
 from cannbotdsl.jit_function import jit
 from cannbotdsl.kernel_launcher import kernel
 from cannbotdsl.math import cast, cumsum, matmul
-from cannbotdsl.package import PackageVariant
-from flash_kda_variant_policy import FLASH_KDA_VARIANT_POLICIES
 from cannbotdsl.raw_reg import (
     PackMode,
     UnpackMode,
@@ -1998,10 +1996,67 @@ def flash_kda_provider(
     )
 
 
+def _flash_kda_support_case(
+    *,
+    batch: int,
+    heads: int,
+    sequence_min: int,
+    sequence_max: int,
+) -> cannbotdsl.PublicSupportDomain:
+    sequence = cannbotdsl.Dim(
+        "S", min=sequence_min, max=sequence_max, multiple_of=CHUNK_SIZE
+    )
+    tensor = cannbotdsl.TensorSpec
+    sequence_tensor = tensor(
+        (batch, heads, sequence, SUPPORTED_HEAD_DIM), dtypes.bfloat16
+    )
+    state = tensor(
+        (batch, heads, SUPPORTED_HEAD_DIM, SUPPORTED_HEAD_DIM), dtypes.float32
+    )
+    return cannbotdsl.support(
+        inputs={
+            "K": sequence_tensor,
+            "V": sequence_tensor,
+            "Q": sequence_tensor,
+            "beta": tensor((batch, heads, sequence, 1), dtypes.bfloat16),
+            "g": sequence_tensor,
+            "A_log": tensor((heads,), dtypes.float32),
+            "dt_bias": tensor((heads, SUPPORTED_HEAD_DIM), dtypes.float32),
+            "st_in": state,
+        },
+        outputs={"o": sequence_tensor, "st_out": state},
+        attrs={
+            "scale": cannbotdsl.FloatRange(),
+            "lower_bound": cannbotdsl.FloatRange(min=-5.0, max=0.0),
+        },
+    )
+
+
+FLASH_KDA_SUPPORT = cannbotdsl.support_union(
+    _flash_kda_support_case(
+        batch=1, heads=3, sequence_min=8192, sequence_max=8192
+    ),
+    _flash_kda_support_case(
+        batch=1, heads=3, sequence_min=32768, sequence_max=131072
+    ),
+    _flash_kda_support_case(
+        batch=4, heads=3, sequence_min=8192, sequence_max=131072
+    ),
+    _flash_kda_support_case(
+        batch=1, heads=96, sequence_min=1024, sequence_max=65536
+    ),
+    _flash_kda_support_case(
+        batch=2, heads=96, sequence_min=10240, sequence_max=65536
+    ),
+    _flash_kda_support_case(
+        batch=4, heads=96, sequence_min=1024, sequence_max=65536
+    ),
+)
+
+
 @cannbotdsl.entry(
     name="FlashKda",
-    provider_family="flash_kda_provider",
-    internal_parameters=("group", "dv_base", "block_num"),
+    support=FLASH_KDA_SUPPORT,
     output_parameters=("o", "st_out"),
 )
 def flash_kda_l0_entry(
@@ -2019,14 +2074,13 @@ def flash_kda_l0_entry(
     lower_bound: float,
     o: Tensor,
     st_out: Tensor,
-    *,
-    group: int,
-    dv_base: int,
-    block_num: int,
 ) -> None:
     """Normalized BNSD L0 plan; the user L2 owns public layout adaptation."""
     bn_total = V.shape[0] * V.shape[1]
     seq_len = V.shape[2]
+    group = get_group_config(int(bn_total), int(seq_len))
+    dv_base = get_dv_base_config(int(bn_total), int(seq_len))
+    block_num = ASCEND950PR_PACKAGE_BLOCK_NUM
     workspace_tokens = bn_total * group * CHUNK_SIZE
 
     qk_exchange = ctx.workspace.tensor(
@@ -2107,79 +2161,6 @@ def flash_kda_l0_entry(
     )
 
 
-def _flash_kda_package_variant(
-    variant_id: str,
-    *,
-    batch: int,
-    heads: int,
-    sequence_min: int,
-    sequence_max: int,
-    group: int,
-    dv_base: int,
-    block_num: int = ASCEND950PR_PACKAGE_BLOCK_NUM,
-) -> PackageVariant:
-    sequence = cannbotdsl.Dim(
-        "S", min=sequence_min, max=sequence_max, multiple_of=CHUNK_SIZE
-    )
-    tensor = cannbotdsl.TensorSpec
-    bf16_sequence = tensor(
-        (batch, heads, sequence, SUPPORTED_HEAD_DIM), dtypes.bfloat16
-    )
-    beta = tensor((batch, heads, sequence, 1), dtypes.bfloat16)
-    bn_total = batch * heads
-    workspace_tokens = bn_total * group * CHUNK_SIZE
-    state = tensor(
-        (batch, heads, SUPPORTED_HEAD_DIM, SUPPORTED_HEAD_DIM), dtypes.float32
-    )
-    args = (
-        bf16_sequence,  # K
-        bf16_sequence,  # V
-        bf16_sequence,  # Q
-        beta,
-        bf16_sequence,  # g
-        tensor(
-            (block_num, 2, CHUNK_SIZE, D_HALF), dtypes.float32
-        ),
-        tensor((heads,), dtypes.float32),
-        tensor((heads, SUPPORTED_HEAD_DIM), dtypes.float32),
-        tensor((workspace_tokens, SUPPORTED_HEAD_DIM), dtypes.bfloat16),
-        tensor((bn_total * group * SUPPORTED_HEAD_DIM, 1), dtypes.float32),
-        tensor((workspace_tokens, SUPPORTED_HEAD_DIM), dtypes.bfloat16),
-        tensor((workspace_tokens, SUPPORTED_HEAD_DIM), dtypes.bfloat16),
-        tensor((workspace_tokens, CHUNK_SIZE), dtypes.bfloat16),
-        tensor((workspace_tokens, SUPPORTED_HEAD_DIM), dtypes.bfloat16),
-        state,
-        tensor((16, 16), dtypes.float16),
-        bf16_sequence,  # output
-        state,
-        dtypes.int64,
-        dtypes.int64,
-        dtypes.float32,
-        dtypes.float32,
-        SUPPORTED_HEAD_DIM,
-        group,
-        "BNSD",
-        dv_base,
-        block_num,
-    )
-    return PackageVariant(id=variant_id, args=args)
-
-
-def flash_kda_variants() -> list[PackageVariant]:
-    """Finite A5 BNSD delivery set from the shared L0/AOT policy."""
-    return [
-        _flash_kda_package_variant(
-            policy.variant_id,
-            batch=policy.batch,
-            heads=policy.heads,
-            sequence_min=policy.sequence_min,
-            sequence_max=policy.sequence_max,
-            group=policy.group,
-            dv_base=policy.dv_base,
-            block_num=policy.block_num,
-        )
-        for policy in FLASH_KDA_VARIANT_POLICIES
-    ]
 
 
 class FlashKDA:

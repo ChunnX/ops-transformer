@@ -7,8 +7,8 @@
 
 当前首个接入算子是 FlashKDA：
 
-- Python 源码及有限变体声明保留在
-  `attention/flash_kda/flash_kda.py` 和 `package.toml`；
+- Python 源码及公开 support contract 保留在
+  `attention/flash_kda/flash_kda.py`；`package.toml` 只引用 `@entry`；
 - 构建阶段调用 CANNBotDSL AOT，生成 6 个 `ascend950pr` Provider DSO；
 - 生成的 Provider registry 与 `flash_kda_l0.cpp` 一同编入
   `libcust_opapi.so`；
@@ -40,18 +40,19 @@ kernel/registry ABI v1 做了编译期断言；CMake 还会链接
 
 当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 同时
 交付可供任意 L2 组装的 ACLNN L0 和 `aclnnCustomFlashKda` L2；本目录只手写公共
-契约校验、L2 组图以及 `group/dv_base/block_num`
-调度策略，`@entry` 的 workspace/constant/view、checked shape 表达式、物理
-Provider 参数结构、`OP_INPUT/OP_OUTPUT/OP_ATTR` 顺序和 workspace 登记均由
-schema v3 adapter 生成，Provider 变体选择由生成 registry 完成。
+契约校验和 L2 组图。`group/dv_base/block_num` 由 `@entry` 中普通 Python host
+逻辑计算，构建器在有界公开 support domain 上执行并自动分区。`@entry` 的
+workspace/constant/view、checked shape 表达式、物理 Provider 参数结构、
+`OP_INPUT/OP_OUTPUT/OP_ATTR` 顺序和 workspace 登记均由 schema v4 adapter 生成，
+Provider 变体选择由生成 registry 完成。
 
 FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
-`scale/lowerBound` 两个属性、2 个输出 tensor；`group/dv_base/block_num` 是
-构建期 variant 选择值，只记录在 schema v3 的 `internal_parameters` 中，不进入 L0
-公共签名。registry 生成阶段会把每个 variant 的 entry binding plan 与 Provider
-sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape 或
-六个 variant 间的公共 entry 身份任一漂移都会使混合包构建失败。
-schema v3 还显式声明 `output_parameters=["o", "st_out"]`；当前生成器已据此生成
+`scale/lowerBound` 两个属性、2 个输出 tensor；不再声明用户可见
+`internal_parameters`。`group/dv_base` 只记录为编译器生成态值，`block_num` 是目标
+SoC 固定 constexpr，三者都不进入 L0 公共签名。registry 生成阶段会把每个 variant
+的 schema v4 binding/dispatch plan 与 Provider sidecar/HostSchema 逐项校验；
+runtime binding、constexpr、workspace dtype/shape 或六个 variant 间的公共 entry
+身份任一漂移都会使混合包构建失败。schema v4 还显式声明 `output_parameters=["o", "st_out"]`；当前生成器已据此生成
 并接入 `FlashKdaEntryArguments`、`PrepareFlashKdaProviderArguments`、
 `FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
 `SetFlashKdaProviderWorkspaceTensors`。因此七段 scratch、identity 常量、view、
@@ -66,12 +67,13 @@ checked runtime shape 求值、物理参数顺序和底层 workspace 登记均�
   并调用公共 L0。该层不引用 registry、Provider sidecar、物理 slot 或隐藏
   workspace API，后续可在这里继续组装 layout/view/cast 等其他 L0。
 
-六个交付域及其 `group/dv_base/block_num` 由
-`attention/flash_kda/flash_kda_variant_policy.py` 单点声明。Python AOT variant
-直接消费该表；构建在生成 `libcust_opapi.so` 前会穷举每个 64-token 交付点，拒绝
-覆盖空洞/重叠，并逐 artifact 校验真实 sidecar 的 B/N/S 约束与 constexpr，随后
-生成同源 C++ L0/smoke matcher。任何 manifest、specialization 或 L0 支持域漂移
-都会在编译阶段 fail-closed。
+六个交付域只在 `FLASH_KDA_SUPPORT` 中声明公开 B/N/S、dtype、shape 和 attr
+约束；其中没有 variant id、Provider family 或 `group/dv_base`。构建器穷举每个
+64-token 交付点，执行 Entry host 逻辑，自动合并等价物理计划并生成 6 个稳定
+specialization id、覆盖/互斥证明和 C++ dispatcher。构建随后逐 artifact 校验真实
+sidecar 的 B/N/S 约束与 constexpr。manifest、specialization 或 L0 支持域任一漂移
+都会在编译阶段 fail-closed；设备 acceptance 的 shape 矩阵也直接从最终 manifest
+的 dispatch plan 派生。
 
 ## 构建
 
@@ -216,7 +218,8 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 新版 Provider ABI `libnnopbase.so` 匹配的 `LD_LIBRARY_PATH` 做 `ldd`/`dlopen`
 检查。离线构建还必须预置项目声明的第三方依赖，否则 CPack preinstall 可能进入
 依赖下载流程。`verify_mixed_run.py` 不安装归档，并会自动检查 registry/manifest
-语义摘要、entry schema v3、12 个公共参数、2 个输出参数、3 个内部 specialization、artifact
+语义摘要、entry schema v4、12 个公共参数、2 个输出参数、无公开 internal 参数、
+2 个编译器生成态值、dispatch 覆盖证明、artifact
 digest、包内 checksum、传统 kernel 数量下限、Provider DSO 数量和混合导出符号；
 同时要求 L0/Custom L2 两个公开头文件存在。
 发布配置还可用命令行参数锁定传统 kernel 的精确数量。

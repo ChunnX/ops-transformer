@@ -18,7 +18,6 @@
 
 #include "aclnn_custom_flash_kda.h"
 #include "aclnn_flash_kda.h"
-#include "flash_kda_variant_policy.h"
 
 namespace {
 
@@ -228,12 +227,6 @@ struct ShapeConfig {
     int64_t heads = kDefaultHeads;
     int64_t sequence = kDefaultSequence;
 };
-
-bool IsSupportedShape(const ShapeConfig &shape)
-{
-    return cannbotdsl::generated::MatchFlashKdaVariantPolicy(
-               shape.batch, shape.heads, shape.sequence) != nullptr;
-}
 
 struct Invocation {
     Invocation() : resources(10) {}
@@ -549,13 +542,6 @@ int main(int argc, char **argv)
         }
     }
 
-    if (!IsSupportedShape(shape)) {
-        std::fprintf(stderr, "unsupported provider shape: B%lld/N%lld/S%lld\n",
-                     static_cast<long long>(shape.batch),
-                     static_cast<long long>(shape.heads),
-                     static_cast<long long>(shape.sequence));
-        return EXIT_FAILURE;
-    }
     if (requestedWaves > 10000) {
         std::fprintf(stderr, "--waves must not exceed 10000\n");
         return EXIT_FAILURE;

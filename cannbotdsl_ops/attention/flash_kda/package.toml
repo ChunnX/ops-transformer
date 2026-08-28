@@ -4,7 +4,7 @@ schema_version = 1
 name = "ops-transformer-flash-kda"
 version = "0.1.0"
 vendor = "ops-transformer"
-description = "FlashKDA native Provider L0 package"
+description = "FlashKDA Provider L0 package"
 license = "CANN-Open-Software-License-2.0"
 
 [compatibility]
@@ -18,5 +18,3 @@ max_variants = 16
 [[operators]]
 operator = "ops-transformer::attention/flash_kda"
 entry = "flash_kda:flash_kda_l0_entry"
-function = "flash_kda:flash_kda_provider"
-provider = "flash_kda:flash_kda_variants"
