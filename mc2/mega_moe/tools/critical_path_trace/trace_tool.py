@@ -510,6 +510,19 @@ h2 {{ margin:0 0 14px; font-size:17px; }}
 .controls {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }}
 select,button {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text); }}
 button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
+.event-picker {{ position:relative; }}
+.event-picker summary {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff;
+                         cursor:pointer; list-style:none; }}
+.event-picker summary::-webkit-details-marker {{ display:none; }}
+.event-picker-menu {{ position:absolute; z-index:20; top:38px; left:0; width:min(720px,85vw); max-height:520px;
+                      overflow:auto; padding:12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
+                      box-shadow:0 8px 24px #10182824; }}
+.event-picker-actions {{ display:flex; gap:8px; margin-bottom:10px; }}
+.event-groups {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:8px; }}
+.event-group {{ padding:8px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc; }}
+.event-group > label {{ display:block; margin-bottom:5px; font-weight:700; }}
+.event-option {{ display:block; margin:3px 0; font:11px/1.4 monospace; }}
+.event-option input,.event-group input {{ margin-right:5px; vertical-align:middle; }}
 .legend {{ display:flex; flex-wrap:wrap; gap:10px 16px; color:var(--muted); }}
 .legend i {{ display:inline-block; width:10px; height:10px; margin-right:5px; border-radius:2px; }}
 #timeline {{ min-height:140px; overflow-x:auto; }}
@@ -571,7 +584,8 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <section class="panel">
   <h2>流水时间线</h2>
   <div class="controls">
-    <label>AI Block <select id="coreSelect"></select></label>
+    <label>显示 Block <select id="coreSelect"></select></label>
+    <label>统计 Block <select id="statsCoreSelect"></select></label>
     <label>Wave <select id="waveSelect"><option value="all">全部</option></select></label>
     <label>等待筛选 <select id="waitFilter">
       <option value="all">全部</option><option value="with-wait">存在等待</option>
@@ -587,9 +601,30 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
       <option value="tail-desc">Block 尾部空洞 ↓</option>
     </select></label>
     <label>显示 <select id="laneLimit">
-      <option value="all">全部 Block</option><option value="5">前 5 个 Block</option>
+      <option value="all" selected>全部 Block</option><option value="5">前 5 个 Block</option>
       <option value="10">前 10 个 Block</option><option value="20">前 20 个 Block</option>
     </select></label>
+    <label>快速视图 <select id="phasePreset">
+      <option value="all">全部阶段</option>
+      <option value="pre">PRE_MOE</option>
+      <option value="moe">MoE 主流水</option>
+      <option value="count">COUNT_EXPORT</option>
+      <option value="unpermute">UNPERMUTE</option>
+      <option value="post">POST_MOE</option>
+      <option value="shared">Shared experts</option>
+      <option value="cross-rank">跨 Rank 同步</option>
+      <option value="custom" disabled>自定义事件</option>
+    </select></label>
+    <details id="eventPicker" class="event-picker">
+      <summary>阶段/事件：<span id="eventSelectionCount"></span></summary>
+      <div class="event-picker-menu">
+        <div class="event-picker-actions">
+          <button type="button" id="selectAllEvents">全选</button>
+          <button type="button" id="clearAllEvents">清空</button>
+        </div>
+        <div id="eventGroups" class="event-groups"></div>
+      </div>
+    </details>
     <span id="selectionSummary" class="muted"></span>
   </div>
   <div class="legend" id="legend"></div>
@@ -597,6 +632,16 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
+</section>
+<section class="panel">
+  <h2>选中阶段/事件统计</h2>
+  <div class="muted"><span id="statsSelectionSummary"></span>。统计 Block 与显示 Block 独立；统计不受显示 Top N 限制，
+  但随 Wave、等待和阶段/事件筛选联动。累计值按事件区间求和；父阶段和子等待
+  可能重叠，因此不等同于墙钟耗时。覆盖 Span 是选中区间最早 begin 到最晚 end 的时间范围。</div>
+  <div class="table-scroll"><table id="selectionStatsTable"><thead><tr>
+    <th>阶段组</th><th>事件</th><th>角色</th><th>数量</th><th>总时间</th><th>Active</th><th>Wait</th>
+    <th>均值</th><th>P50</th><th>P95</th><th>最大</th><th>最早 begin</th><th>最晚 end</th><th>覆盖 Span</th>
+  </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
   <h2>泳道概览</h2>
@@ -612,7 +657,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <h2>Wave 汇总</h2>
   <div class="table-scroll"><table id="waveTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>角色</th><th>阶段</th><th>事件数</th><th>Token 数</th><th>Work count</th>
-    <th>总 cycles</th><th>Active cycles</th><th>Wait cycles</th><th>Wait 占比</th><th>最长事件</th>
+    <th>总时间</th><th>Active</th><th>Wait</th><th>Wait 占比</th><th>最长事件</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
@@ -633,32 +678,95 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 const trace = JSON.parse(document.getElementById('traceData').textContent);
 const colors = {{OP_PRE_MOE:'#64748b',DISPATCH_WORK:'#06b6d4',WAIT_FOR_DISPATCH:'#cbd5e1',GMM1_PROLOGUE:'#a855f7',GMM1_COMPUTE:'#2563eb',WAIT_FOR_GMM1:'#cbd5e1',ACTIVATION_WORK:'#22c55e',WAIT_FOR_ACTIVATION:'#cbd5e1',GMM2_PROLOGUE:'#c084fc',GMM2_COMPUTE:'#ef4444',WAIT_FOR_GMM2:'#cbd5e1',COMBINE_WORK:'#f97316',FINAL_COMBINE_OR_DRAIN:'#fb923c',COUNT_EXPORT:'#14b8a6',UNPERMUTE:'#0ea5e9',OP_POST_MOE:'#475569',CROSS_RANK_INPUT_SYNC:'#94a3b8',CROSS_RANK_OUTPUT_SYNC:'#94a3b8',SHARED_GMM1_ACTIVATION:'#84cc16',SHARED_GMM2:'#eab308'}};
 const legendColors = colors;
+const eventGroups = {{
+  '算子边界':['OP_PRE_MOE','OP_POST_MOE'],
+  '跨 Rank 同步':['CROSS_RANK_INPUT_SYNC','CROSS_RANK_OUTPUT_SYNC'],
+  'Dispatch':['DISPATCH_WORK','WAIT_FOR_DISPATCH'],
+  'GMM1':['GMM1_PROLOGUE','GMM1_COMPUTE','WAIT_FOR_GMM1'],
+  'Activation':['ACTIVATION_WORK','WAIT_FOR_ACTIVATION'],
+  'GMM2':['GMM2_PROLOGUE','GMM2_COMPUTE','WAIT_FOR_GMM2'],
+  'Combine / 收尾':['COMBINE_WORK','FINAL_COMBINE_OR_DRAIN','COUNT_EXPORT','UNPERMUTE'],
+  'Shared':['SHARED_GMM1_ACTIVATION','SHARED_GMM2'],
+}};
+const phasePresets = {{
+  pre:['OP_PRE_MOE'],
+  moe:['DISPATCH_WORK','WAIT_FOR_DISPATCH','GMM1_PROLOGUE','GMM1_COMPUTE','WAIT_FOR_GMM1',
+       'ACTIVATION_WORK','WAIT_FOR_ACTIVATION','GMM2_PROLOGUE','GMM2_COMPUTE','WAIT_FOR_GMM2',
+       'COMBINE_WORK','FINAL_COMBINE_OR_DRAIN'],
+  count:['COUNT_EXPORT'],
+  unpermute:['UNPERMUTE'],
+  post:['OP_POST_MOE'],
+  shared:['SHARED_GMM1_ACTIVATION','SHARED_GMM2'],
+  'cross-rank':['CROSS_RANK_INPUT_SYNC','CROSS_RANK_OUTPUT_SYNC'],
+}};
+const eventToGroup = new Map(Object.entries(eventGroups).flatMap(([group,names])=>names.map(name=>[name,group])));
 const roles = ['AIC','AIV0','AIV1'];
 const coreSelect = document.getElementById('coreSelect');
+const statsCoreSelect = document.getElementById('statsCoreSelect');
 const waveSelect = document.getElementById('waveSelect');
 const waitFilter = document.getElementById('waitFilter');
 const laneSort = document.getElementById('laneSort');
 const laneLimit = document.getElementById('laneLimit');
+const phasePreset = document.getElementById('phasePreset');
+const eventGroupsRoot = document.getElementById('eventGroups');
 const pinnedBlocks = new Set();
 const pinnedLanes = new Set();
+let currentBlockGroups=[];
+const availableEvents = new Set(trace.records.flatMap(record=>record.events.map(event=>event.event)));
+const selectedEvents = new Set(availableEvents);
 coreSelect.add(new Option('全部','all'));
-for (let core=0; core<trace.header.logical_core_count; core++) coreSelect.add(new Option(String(core),String(core)));
+statsCoreSelect.add(new Option('全部','all'));
+for (let core=0; core<trace.header.logical_core_count; core++) {{
+  coreSelect.add(new Option(String(core),String(core)));
+  statsCoreSelect.add(new Option(String(core),String(core)));
+}}
 const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)))].sort((a,b)=>a-b);
 for (const wave of waves) waveSelect.add(new Option(String(wave),String(wave)));
-document.getElementById('legend').innerHTML = Object.entries(legendColors).map(([name,color])=>`<span><i style="background:${{color}}"></i>${{name}}</span>`).join('');
+function renderEventPicker() {{
+  eventGroupsRoot.innerHTML=Object.entries(eventGroups).map(([group,names])=>{{
+    const present=names.filter(name=>availableEvents.has(name));
+    if(!present.length) return '';
+    const checked=present.every(name=>selectedEvents.has(name));
+    const children=present.map(name=>`<label class="event-option"><input type="checkbox" data-event="${{name}}" ${{selectedEvents.has(name)?'checked':''}}>${{name}}</label>`).join('');
+    return `<div class="event-group"><label><input type="checkbox" data-event-group="${{group}}" ${{checked?'checked':''}}>${{group}}</label>${{children}}</div>`;
+  }}).join('');
+  const count=selectedEvents.size;
+  document.getElementById('eventSelectionCount').textContent=`${{count}} / ${{availableEvents.size}}`;
+  eventGroupsRoot.querySelectorAll('[data-event-group]').forEach(input=>{{
+    const present=eventGroups[input.dataset.eventGroup].filter(name=>availableEvents.has(name));
+    input.indeterminate=present.some(name=>selectedEvents.has(name))&&!present.every(name=>selectedEvents.has(name));
+    input.addEventListener('change',()=>{{
+      for(const name of present) input.checked?selectedEvents.add(name):selectedEvents.delete(name);
+      phasePreset.value='custom';
+      renderEventPicker(); render();
+    }});
+  }});
+  eventGroupsRoot.querySelectorAll('[data-event]').forEach(input=>input.addEventListener('change',()=>{{
+    input.checked?selectedEvents.add(input.dataset.event):selectedEvents.delete(input.dataset.event);
+    phasePreset.value='custom';
+    renderEventPicker(); render();
+  }}));
+}}
+document.getElementById('selectAllEvents').addEventListener('click',()=>{{
+  for(const name of availableEvents) selectedEvents.add(name); phasePreset.value='all'; renderEventPicker(); render();
+}});
+document.getElementById('clearAllEvents').addEventListener('click',()=>{{
+  selectedEvents.clear(); phasePreset.value='custom'; renderEventPicker(); render();
+}});
+phasePreset.addEventListener('change',()=>{{
+  if(phasePreset.value==='custom') return;
+  selectedEvents.clear();
+  const names=phasePreset.value==='all'?[...availableEvents]:(phasePresets[phasePreset.value]||[]);
+  for(const name of names) if(availableEvents.has(name)) selectedEvents.add(name);
+  renderEventPicker(); render();
+}});
+renderEventPicker();
 const cyclesPerUs = trace.header.cycles_per_us || null;
 const cycleAnchor = trace.records.length ? trace.records[0].process_begin_cycle : 0;
 function signedCycleDelta(cycle) {{
   return cycle-cycleAnchor;
 }}
 const durationText=cycles=>cyclesPerUs?`${{cycles.toLocaleString()}} cycles (${{(cycles/cyclesPerUs).toFixed(3)}} μs)`:`${{cycles.toLocaleString()}} cycles`;
-const eventCycles=trace.records.flatMap(r=>r.events.flatMap(e=>[e.begin_cycle,e.end_cycle]));
-const domainCycles=eventCycles.length ? eventCycles : trace.records.flatMap(r=>[r.process_begin_cycle,r.process_end_cycle]);
-const domainStart=domainCycles.length ? Math.min(...domainCycles.map(signedCycleDelta)) : 0;
-const domainEnd=domainCycles.length ? Math.max(...domainCycles.map(signedCycleDelta)) : 1;
-const domainSpan=Math.max(domainEnd-domainStart,1);
-const relativeCycle=cycle=>signedCycleDelta(cycle)-domainStart;
-const absoluteCycle=offset=>cycleAnchor+domainStart+offset;
 const cycleDelta=(begin,end)=>end-begin;
 function withLaneMetrics(record) {{
   const stageEvents=record.events.filter(e=>!e.is_wait_event);
@@ -723,38 +831,63 @@ const laneKey=(core,role)=>`${{core}}|${{role}}`;
 function allBlockGroupsForWave() {{
   const wave=waveSelect.value;
   const records=trace.records
-    .map(r=>withLaneMetrics({{...r,events:r.events.filter(e=>wave==='all'||e.wave===Number(wave))}}))
+    .map(r=>withLaneMetrics({{...r,events:r.events.filter(e=>
+      selectedEvents.has(e.event)&&(wave==='all'||e.wave===Number(wave)))}}))
   return [...new Set(records.map(r=>r.core))].map(block=>
     withBlockMetrics(records.filter(r=>r.core===block).sort((a,b)=>roles.indexOf(a.role)-roles.indexOf(b.role))))
     .filter(group=>group.records.some(r=>r.events.length));
 }}
-function selectedBlockGroups() {{
-  const core=coreSelect.value;
-  const groups=allBlockGroupsForWave()
+function selectedBlockGroups(sourceGroups,core,applyLimit) {{
+  const groups=sourceGroups
     .filter(group=>core==='all'||group.core===Number(core))
     .filter(group=>waitFilter.value==='all'||
       (waitFilter.value==='with-wait'&&group.blockMetrics.waitCycles>0)||
       (waitFilter.value==='without-wait'&&group.blockMetrics.waitCycles===0)||
       (waitFilter.value==='truncated'&&group.blockMetrics.truncated))
     .sort(compareBlockGroups);
-  return laneLimit.value==='all'?groups:groups.slice(0,Number(laneLimit.value));
+  return !applyLimit||laneLimit.value==='all'?groups:groups.slice(0,Number(laneLimit.value));
 }}
 function esc(value) {{ return String(value).replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c])); }}
+function renderStatistics() {{
+  const statsBlockGroups=selectedBlockGroups(currentBlockGroups,statsCoreSelect.value,false);
+  const statsRecords=statsBlockGroups.flatMap(group=>group.records);
+  const statsEvents=statsRecords.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
+  const statsBlockText=statsCoreSelect.value==='all'?'全部可见 Block':`Block ${{statsCoreSelect.value}}`;
+  document.getElementById('statsSelectionSummary').textContent=`统计 ${{statsBlockText}}：${{statsBlockGroups.length}} 个 Block · ${{statsEvents.length}} 个事件`;
+  renderSelectionStats(statsEvents);
+}}
 function render() {{
-  const blockGroups=selectedBlockGroups();
+  currentBlockGroups=allBlockGroupsForWave();
+  const blockGroups=selectedBlockGroups(currentBlockGroups,coreSelect.value,true);
   const records=blockGroups.flatMap(group=>group.records);
   const events=records.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
-  document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件`;
-  renderTimeline(blockGroups,allBlockGroupsForWave(),events);
-  renderLaneTable(blockGroups); renderWaveTable(events); renderEventTable(events);
+  document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件 · ${{selectedEvents.size}} 种事件`;
+  document.getElementById('legend').innerHTML = Object.entries(legendColors)
+    .filter(([name])=>selectedEvents.has(name))
+    .map(([name,color])=>`<span><i style="background:${{color}}"></i>${{name}}</span>`).join('');
+  renderTimeline(blockGroups,currentBlockGroups,events);
+  renderStatistics(); renderLaneTable(blockGroups); renderWaveTable(events); renderEventTable(events);
 }}
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
-  const hasPinnedEvents=pinSourceGroups.some(group=>pinnedBlocks.has(group.core)||
-    group.records.some(record=>pinnedLanes.has(laneKey(record.core,record.role))));
+  const pinnedBlockGroups=pinSourceGroups.filter(group=>pinnedBlocks.has(group.core));
+  const pinnedLaneRecords=pinSourceGroups.flatMap(group=>group.records)
+    .filter(record=>pinnedLanes.has(laneKey(record.core,record.role))&&!pinnedBlocks.has(record.core));
+  const pinnedEvents=[...pinnedBlockGroups.flatMap(group=>group.records.flatMap(record=>record.events)),
+    ...pinnedLaneRecords.flatMap(record=>record.events)];
+  const hasPinnedEvents=pinnedEvents.length>0;
   if (!events.length&&!hasPinnedEvents) {{
     root.innerHTML='<div class="empty">当前筛选条件下没有事件</div>'; return;
   }}
+  const domainEvents=[...events,...pinnedEvents];
+  let domainStart=Infinity,domainEnd=-Infinity;
+  for(const event of domainEvents) {{
+    domainStart=Math.min(domainStart,signedCycleDelta(event.begin_cycle));
+    domainEnd=Math.max(domainEnd,signedCycleDelta(event.end_cycle));
+  }}
+  const domainSpan=Math.max(domainEnd-domainStart,1);
+  const relativeCycle=cycle=>signedCycleDelta(cycle)-domainStart;
+  const absoluteCycle=offset=>cycleAnchor+domainStart+offset;
   const visibleEvents=[];
   let out='<div class="axis">';
   for(let i=0;i<=5;i++) {{
@@ -793,9 +926,6 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       +group.records.map(record=>renderLane(record,highlightPinned)).join('')+'</div>';
   }};
 
-  const pinnedBlockGroups=pinSourceGroups.filter(group=>pinnedBlocks.has(group.core));
-  const pinnedLaneRecords=pinSourceGroups.flatMap(group=>group.records)
-    .filter(record=>pinnedLanes.has(laneKey(record.core,record.role))&&!pinnedBlocks.has(record.core));
   if(pinnedBlockGroups.length||pinnedLaneRecords.length) {{
     out+='<div class="pinned-section"><div class="pinned-title">固定对比</div>';
     out+=pinnedBlockGroups.map(group=>renderBlockGroup(group,true)).join('');
@@ -869,6 +999,53 @@ function renderLaneTable(blockGroups) {{
     render();
   }}));
 }}
+function percentile(sortedValues,ratio) {{
+  if(!sortedValues.length) return 0;
+  return sortedValues[Math.ceil((sortedValues.length-1)*ratio)];
+}}
+function selectionMetricRow(group,event,role,items,summary=false) {{
+  const durations=items.map(item=>item.duration_cycles).sort((a,b)=>a-b);
+  const total=durations.reduce((sum,value)=>sum+value,0);
+  const active=items.reduce((sum,item)=>sum+item.active_cycles,0);
+  const waitKnown=items.every(item=>item.wait_cycles!==null);
+  const wait=waitKnown?items.reduce((sum,item)=>sum+item.wait_cycles,0):null;
+  let first=Infinity,last=-Infinity;
+  for(const item of items) {{ first=Math.min(first,item.begin_cycle); last=Math.max(last,item.end_cycle); }}
+  const waitText=wait===null?'—':durationText(wait);
+  return `<tr class="${{summary?'block-summary-row':''}}"><td>${{esc(group)}}</td><td>${{esc(event)}}</td><td>${{role}}</td>`
+    +`<td>${{items.length}}</td><td>${{durationText(total)}}</td><td>${{durationText(active)}}</td><td>${{waitText}}</td>`
+    +`<td>${{durationText(Math.round(total/items.length))}}</td><td>${{durationText(percentile(durations,.5))}}</td>`
+    +`<td>${{durationText(percentile(durations,.95))}}</td><td>${{durationText(durations[durations.length-1])}}</td>`
+    +`<td>${{first}}</td><td>${{last}}</td><td>${{durationText(last-first)}}</td></tr>`;
+}}
+function renderSelectionStats(events) {{
+  const tbody=document.querySelector('#selectionStatsTable tbody');
+  if(!events.length) {{ tbody.innerHTML='<tr><td colspan="14" class="empty">当前筛选条件下没有事件</td></tr>'; return; }}
+  const groups=new Map();
+  for(const item of events) {{
+    const group=eventToGroup.get(item.event)||'其他';
+    if(!groups.has(group)) groups.set(group,[]);
+    groups.get(group).push(item);
+  }}
+  const groupOrder=[...Object.keys(eventGroups),'其他'];
+  const rows=[];
+  for(const group of groupOrder) {{
+    const groupItems=groups.get(group)||[];
+    if(!groupItems.length) continue;
+    rows.push(selectionMetricRow(group,'阶段汇总','全部',groupItems,true));
+    const eventRoles=new Map();
+    for(const item of groupItems) {{
+      const key=`${{item.event}}|${{item.role}}`;
+      if(!eventRoles.has(key)) eventRoles.set(key,[]);
+      eventRoles.get(key).push(item);
+    }}
+    for(const [key,items] of [...eventRoles].sort((a,b)=>a[0].localeCompare(b[0]))) {{
+      const separator=key.lastIndexOf('|');
+      rows.push(selectionMetricRow(group,key.slice(0,separator),key.slice(separator+1),items));
+    }}
+  }}
+  tbody.innerHTML=rows.join('');
+}}
 function renderWaveTable(events) {{
   const groups=new Map();
   for(const e of events) {{
@@ -883,8 +1060,8 @@ function renderWaveTable(events) {{
   }}
   const rows=[...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.event.localeCompare(b.event));
   document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
-    const wait=g.waitKnown?g.wait.toLocaleString():'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
-    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
+    const wait=g.waitKnown?durationText(g.wait):'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{durationText(g.cycles)}}</td><td>${{durationText(g.active)}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{durationText(g.max)}}</td></tr>`;
   }}).join('');
 }}
 function renderEventTable(events) {{
@@ -896,6 +1073,7 @@ function renderEventTable(events) {{
     return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.work_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{converted}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
   }}).join('');
 }}
+statsCoreSelect.addEventListener('change',renderStatistics);
 for(const control of [coreSelect,waveSelect,waitFilter,laneSort,laneLimit]) control.addEventListener('change',render);
 render();
 </script>
@@ -935,7 +1113,7 @@ def collect_captures(inputs: list[Path]) -> list[Path]:
 
 
 def write_trace_artifacts(
-    capture: Path, output_dir: Path, cycles_per_us: float | None = None
+    capture: Path, output_dir: Path, cycles_per_us: float | None = 1000.0
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     trace = parse_trace(read_words(capture))
@@ -1208,6 +1386,25 @@ def run_synthetic_tests() -> int:
             for name in ("trace.json", "events.csv", "timeline.svg", "index.html")
         ]
         assert all(path.exists() and path.stat().st_size for path in required)
+        rank_page = (output / "rank2" / "index.html").read_text(encoding="utf-8")
+        assert 'id="eventGroups"' in rank_page
+        assert 'id="phasePreset"' in rank_page
+        assert 'id="statsCoreSelect"' in rank_page
+        assert 'id="selectionStatsTable"' in rank_page
+        assert "moe:['DISPATCH_WORK'" in rank_page
+        assert "按 1000 cycles/μs 换算" in rank_page
+        assert "selectedEvents.has(e.event)" in rank_page
+        assert "const domainEvents=[...events,...pinnedEvents]" in rank_page
+        assert '<option value="all" selected>全部 Block</option>' in rank_page
+        assert 'id="timelineEventLimit"' not in rank_page
+        assert 'id="eventTableLimit"' not in rank_page
+        assert (
+            "selectedBlockGroups(currentBlockGroups,statsCoreSelect.value,false)"
+            in rank_page
+        )
+        assert (
+            "statsCoreSelect.addEventListener('change',renderStatistics)" in rank_page
+        )
         good_dir, bad_dir = case / "good", case / "bad"
         good_dir.mkdir()
         bad_dir.mkdir()
@@ -1245,7 +1442,7 @@ def run_synthetic_tests() -> int:
                 raise AssertionError(f"invalid protocol field {index} was accepted")
         node = shutil.which("node")
         if node:
-            page = (output / "rank2" / "index.html").read_text(encoding="utf-8")
+            page = rank_page
             scripts = re.findall(r"<script([^>]*)>(.*?)</script>", page, re.DOTALL)
             js = "\n".join(
                 body
@@ -1280,7 +1477,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--cycles-per-us",
         type=float,
-        help="optional platform SYS_CNT frequency used only for cycles-to-us display",
+        default=1000.0,
+        help="platform SYS_CNT frequency for time display (default: 1000)",
     )
     args = parser.parse_args(argv)
     captures = collect_captures(args.inputs)

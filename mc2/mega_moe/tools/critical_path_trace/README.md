@@ -46,15 +46,34 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py \
   raw/good/rank0.bin raw/good/rank1.bin \
   --output-dir good-trace-report
 
-# Only use this after confirming the platform SYS_CNT frequency.
+# This platform defaults to 1000 cycles/μs; override only for another platform.
 python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py raw/good \
-  --cycles-per-us 1000
+  --cycles-per-us 800
 ```
 
 For one capture, the default output is `<capture-stem>-trace/`. For a case directory or multiple captures, the
 default output is `trace-report/`. Every rank gets `trace.json`, `events.csv`, `timeline.svg` and an interactive
 `index.html`; the multi-rank root gets `run-summary.json` and an index linking all rank reports. Rank clocks are
 shown on separate axes and are never treated as globally synchronized.
+
+The interactive report can enable or disable whole stage groups or individual events. Its timeline domain is
+automatically fitted to the visible events so a dense full trace can be narrowed to one dependency chain. The
+selection statistics follow the statistics Block, Wave, wait and event filters and report count, summed
+total/active/wait time, mean, P50, P95, maximum and wall-clock coverage span in both cycles and μs. The default
+conversion for this platform is `1000 cycles/μs`. Summed intervals can overlap when a
+parent stage and its child wait are both selected, so the sum is not an operator wall-clock duration.
+
+The display Block selector controls the timeline, lane overview, Wave summary and event details. A separate
+statistics Block selector controls only the selection statistics, making it possible to display one Block while
+aggregating another Block or all Blocks. Display Top-N limits do not truncate the statistics selection.
+
+The report renders every event and event-detail row in the selected display scope. Lossless interaction optimizations
+remain enabled: Statistics-Block changes refresh only the statistics panel, and all display consumers reuse one
+filtered Block model per interaction.
+
+High-level presets provide one-click views for `PRE_MOE`, the MoE main pipeline (event IDs 2 through 13),
+`COUNT_EXPORT`, `UNPERMUTE`, `POST_MOE`, shared experts and cross-rank synchronization. Selecting individual events
+switches the preset indicator to `custom`.
 
 `compare` is an optional aggregate difference report. It groups each side by rank/role/event and writes good,
 bad and `bad - good` count/total/active/wait/mean/max values. It does not replace the per-rank timeline:
