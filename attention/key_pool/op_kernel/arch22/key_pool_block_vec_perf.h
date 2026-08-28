@@ -654,7 +654,7 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::ReadFromCacheState(
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
         uint64_t stateOffset =
-            idInBlockTable * constInfo_.blockSize * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+            idInBlockTable * constInfo_.stateCacheStrideDim0 +
             remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
             stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
@@ -684,7 +684,7 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::WriteToCacheState(
         }
         if (idInBlockTable != 0) { // 32
             uint64_t stateOffset =
-                idInBlockTable * constInfo_.blockSize * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+                idInBlockTable * constInfo_.stateCacheStrideDim0 +
                 remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                 stateIdx * coff_ * constInfo_.headDim + dStartIdx;
             DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
