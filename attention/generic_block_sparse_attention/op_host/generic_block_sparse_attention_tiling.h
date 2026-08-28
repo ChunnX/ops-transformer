@@ -104,6 +104,7 @@ private:
     ge::graphStatus CheckQuantConfig(gert::TilingContext *context);
     ge::graphStatus CheckMetadata(gert::TilingContext *context);
     ge::graphStatus CheckReservedOptionalInputs(gert::TilingContext *context);
+    ge::graphStatus CheckCuSeqLengths(gert::TilingContext *context);
     ge::graphStatus ParseKvCacheStride0(gert::TilingContext *context);
     uint64_t GenerateTilingKey();
 

@@ -31,6 +31,8 @@ constexpr int Q_DEQUANT_SCALE_INDEX = 7;
 constexpr int K_DEQUANT_SCALE_INDEX = 8;
 constexpr int V_DEQUANT_SCALE_INDEX = 9;
 constexpr int P_QUANT_SCALE_INDEX = 10;
+constexpr int CU_SEQ_LENGTHS_Q_INDEX = 11;
+constexpr int CU_SEQ_LENGTHS_KV_INDEX = 12;
 constexpr int BLOCK_TABLE_INDEX = 15;
 
 // Must match METADATA_TOTAL_SIZE in the AICPU / kernel metadata protocol.
@@ -615,6 +617,21 @@ ge::graphStatus GBSATiling::CheckReservedOptionalInputs(gert::TilingContext *con
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext *context)
+{
+    // layoutQ is fixed to TND and layoutKv is fixed to PAGED_BBND (validated in GetInputLayout),
+    // so cuSeqLengthsQ/Kv are required to locate per-batch token ranges on device.
+    if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_Q_INDEX) == nullptr) {
+        OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ cannot be empty when layoutQ is TND.");
+        return ge::GRAPH_FAILED;
+    }
+    if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_KV_INDEX) == nullptr) {
+        OP_LOGE(context->GetNodeName(), "cuSeqLengthsKv cannot be empty when layoutKv is PAGED_BBND.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus GBSATiling::CheckSoftmaxPrecision(gert::TilingContext *context)
 {
     if (socVer_ == SOC_VER_950_CODE) {
@@ -771,7 +788,8 @@ ge::graphStatus GBSATiling::GetTiling(gert::TilingContext *context, GenericBlock
         OP_LOGE(context->GetNodeName(), "Parse attrs/inputs failed");
         return ge::GRAPH_FAILED;
     }
-    if (CheckMetadata(context) != ge::GRAPH_SUCCESS || CheckReservedOptionalInputs(context) != ge::GRAPH_SUCCESS) {
+    if (CheckMetadata(context) != ge::GRAPH_SUCCESS || CheckReservedOptionalInputs(context) != ge::GRAPH_SUCCESS ||
+        CheckCuSeqLengths(context) != ge::GRAPH_SUCCESS) {
         OP_LOGE(context->GetNodeName(), "Validate config failed");
         return ge::GRAPH_FAILED;
     }
