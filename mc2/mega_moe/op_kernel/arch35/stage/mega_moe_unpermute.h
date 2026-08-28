@@ -24,6 +24,14 @@ struct TokenUnpermuteConfig {
     uint32_t fullTokenChunkJobCount;
     MegaMoeUnpermuteBufferConfig fullTokenChunkConfig;
     MegaMoeUnpermuteBufferConfig tailTokenChunkConfig;
+    // ==== wire combine（data-with-flag）扩展，wireBlockCount==0 表示旧布局 ====
+    uint32_t wirePayloadBytes = 0;  // P：一条 combine 记录的真实 payload 字节数
+    uint32_t wireBlockCount = 0;    // B = ceil(P / 480)
+    uint32_t wireRowBytes = 0;      // W = B * 512
+    uint32_t wireFlagScanBytes = 0; // Align32(topK * B * 32B)：flag gather 区大小（reduce tmp 同尺寸）
+    // 去同步生效时为本轮 epoch（>0），unpermute 逐 token 等 flag；为 0 时按 wire 布局搬运但不等 flag
+    //（该场景由保留的全卡同步保证数据已到）。
+    int32_t epoch = 0;
 };
 
 struct TokenUnpermuteScratch {
@@ -33,7 +41,58 @@ struct TokenUnpermuteScratch {
     LocalTensor<float> fp32ScaleTensor;
     LocalTensor<bfloat16_t> bf16ScaleTensor;
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor;
+    // wire flag 检查专用（排在既有 buffer 之后，host 侧已为其在 UB 预算中扣除预留）。
+    LocalTensor<int32_t> wireFlagScanTensor;    // topK*B 个 32B flag 的 gather 目标
+    LocalTensor<uint8_t> wireFlagReduceTensor;  // ReduceMax 的共享 tmp
+    LocalTensor<int32_t> wireFlagResultTensor;  // reduce 结果（单值）
+    LocalTensor<int32_t> wireFlagEpochTemplate; // 全 epoch 常量模板（XOR 判全等用，每 launch 填一次）
 };
+
+// wire flag 检查的事件号：输入 ring 最多占 EVENT_ID0..5、输出占 EVENT_ID0(MTE3_V)，7 号无冲突。
+constexpr int32_t UNPERMUTE_WIRE_FLAG_EVENT_ID = 7;
+
+/*
+ * 等待一个 token 的全部 topK 条 combine 记录到齐：gather 该 token连续 topK*B 个块尾 32B flag
+ * （等距 512B），全部 8*topK*B 个 int32 都等于本轮 epoch 才算到齐。
+ * 判全等 = flags XOR 全 epoch 模板后 ReduceMax==0：单次 reduce、无求和混叠（通信域跨 case
+ * 复用、shape 切换后 flag 位置可能是任意残留字节，逐位异或对任意残留都不产生假到齐）。
+ */
+__aicore__ inline void WaitCombineTokenWireFlags(const TokenUnpermuteConfig &context,
+                                                 const MoeStageCommonConfig &common, TokenUnpermuteScratch &scratch,
+                                                 const GlobalTensor<int32_t> &combineWinInt32, int32_t tokenIdx)
+{
+    uint32_t flagCount = common.topK * context.wireBlockCount;
+    uint32_t flagElemCount = flagCount * static_cast<uint32_t>(INT32_PER_256B);
+    uint64_t firstFlagInt32Index =
+        (static_cast<uint64_t>(tokenIdx) * common.topK * context.wireRowBytes +
+         static_cast<uint64_t>(COMBINE_WIRE_BLOCK_DATA_BYTES)) /
+        sizeof(int32_t);
+    // DataCopy（非 pad）：blockLen/stride 单位 32B。每块取 32B，跳过 480B payload。
+    DataCopyParams gatherParams{static_cast<uint16_t>(flagCount), 1U,
+                                static_cast<uint16_t>(COMBINE_WIRE_BLOCK_DATA_BYTES / ALIGN_32), 0U};
+    const uint32_t flagShape[] = {1U, flagElemCount * 2U}; // 按 uint16 归约
+    LocalTensor<uint16_t> scanU16 = scratch.wireFlagScanTensor.template ReinterpretCast<uint16_t>();
+    LocalTensor<uint16_t> templU16 = scratch.wireFlagEpochTemplate.template ReinterpretCast<uint16_t>();
+    LocalTensor<uint16_t> resultU16 = scratch.wireFlagResultTensor.template ReinterpretCast<uint16_t>();
+    while (true) {
+        // 自配对同步：上一轮（或上一 token）的 S 读与 V 归约先于本轮 scan/result 覆写。
+        SyncFuncStatic<HardEvent::S_V, UNPERMUTE_WIRE_FLAG_EVENT_ID>();
+        SyncFuncStatic<HardEvent::V_MTE2, UNPERMUTE_WIRE_FLAG_EVENT_ID>();
+        DataCopy(scratch.wireFlagScanTensor, combineWinInt32[firstFlagInt32Index], gatherParams);
+        SyncFuncStatic<HardEvent::MTE2_V, UNPERMUTE_WIRE_FLAG_EVENT_ID>();
+        Xor(scanU16, scanU16, templU16, static_cast<int32_t>(flagElemCount * 2U));
+        PipeBarrier<PIPE_V>();
+        ReduceMax<uint16_t, AscendC::Pattern::Reduce::AR, true>(resultU16, scanU16, scratch.wireFlagReduceTensor,
+                                                                flagShape, true);
+        SyncFuncStatic<HardEvent::V_S, UNPERMUTE_WIRE_FLAG_EVENT_ID>();
+        if (resultU16.GetValue(0) == 0U) {
+            return;
+        }
+        int64_t waitStart = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - waitStart < 100) {
+        }
+    }
+}
 
 // 加载并转换一批 top-k 权重。
 template <typename TopkWeightsType>
@@ -66,6 +125,31 @@ __aicore__ inline void LoadTokenUnpermuteWeights(const MoeStageCommonConfig &com
     }
 }
 
+// 从 wire 布局（480B payload + 32B flag 交错）把一条记录的 payload 剥出为连续 UB 数据。
+// 实测取舍：480B 分段 strided MTE2 读优于「整行连续读+V 压缩」——unpermute 段 V 管线本就被
+// Cast/加权累加占满，V 压缩反而抢占关键资源（连续读+V 压缩实测 8K 慢 ~460us，勿再试）。
+__aicore__ inline void LoadWireCombinePayload(const TokenUnpermuteConfig &context,
+                                              const GlobalTensor<bfloat16_t> &expandedX, uint64_t expertInputIndex,
+                                              LocalTensor<bfloat16_t> &dataInBf16)
+{
+    constexpr uint32_t wireDataBytes = static_cast<uint32_t>(COMBINE_WIRE_BLOCK_DATA_BYTES);
+    constexpr uint32_t wireBlockBytes = static_cast<uint32_t>(COMBINE_WIRE_BLOCK_BYTES);
+    uint32_t fullBlockCount = context.wireBlockCount - 1U;
+    uint32_t tailBytes = context.wirePayloadBytes - fullBlockCount * wireDataBytes;
+    uint64_t rowElemBase = expertInputIndex * context.wireRowBytes / sizeof(bfloat16_t);
+    DataCopyPadExtParams<bfloat16_t> padParams{false, 0U, 0U, 0U};
+    if (fullBlockCount > 0U) {
+        // GM 侧每 480B payload 后跳 32B flag（srcStride 单位字节），UB 侧连续。
+        DataCopyExtParams fullParams{static_cast<uint16_t>(fullBlockCount), wireDataBytes,
+                                     static_cast<uint32_t>(ALIGN_32), 0U, 0U};
+        DataCopyPad(dataInBf16, expandedX[rowElemBase], fullParams, padParams);
+    }
+    DataCopyExtParams tailParams{1U, tailBytes, 0U, 0U, 0U};
+    DataCopyPad(dataInBf16[fullBlockCount * wireDataBytes / sizeof(bfloat16_t)],
+                expandedX[rowElemBase + static_cast<uint64_t>(fullBlockCount) * wireBlockBytes / sizeof(bfloat16_t)],
+                tailParams, padParams);
+}
+
 // 将一个 MoE 专家的输入搬入 UB，并按 Combine 模式完成 Cast 或 MXFP8 反量化。
 template <uint8_t CombineMode>
 __aicore__ inline void LoadMoeExpertInput(const TokenUnpermuteConfig &context, const MoeStageCommonConfig &common,
@@ -75,13 +159,21 @@ __aicore__ inline void LoadMoeExpertInput(const TokenUnpermuteConfig &context, c
 {
     WaitFlag<HardEvent::V_MTE2>(event);
     if constexpr (CombineMode == COMBINE_NO_QUANT) {
-        DataCopy(dataInBf16, expandedX[expertInputIndex * common.tokenHiddenDim], common.tokenHiddenDim);
+        if (context.wireBlockCount != 0U) {
+            LoadWireCombinePayload(context, expandedX, expertInputIndex, dataInBf16);
+        } else {
+            DataCopy(dataInBf16, expandedX[expertInputIndex * common.tokenHiddenDim], common.tokenHiddenDim);
+        }
         SetFlag<HardEvent::MTE2_V>(event);
         WaitFlag<HardEvent::MTE2_V>(event);
         Cast(dataInFp32, dataInBf16, RoundMode::CAST_NONE, common.tokenHiddenDim);
     } else {
-        uint32_t quantTokenElementCount = context.quantTokenSizeBytes / sizeof(bfloat16_t);
-        DataCopy(dataInBf16, expandedX[expertInputIndex * quantTokenElementCount], quantTokenElementCount);
+        if (context.wireBlockCount != 0U) {
+            LoadWireCombinePayload(context, expandedX, expertInputIndex, dataInBf16);
+        } else {
+            uint32_t quantTokenElementCount = context.quantTokenSizeBytes / sizeof(bfloat16_t);
+            DataCopy(dataInBf16, expandedX[expertInputIndex * quantTokenElementCount], quantTokenElementCount);
+        }
         SetFlag<HardEvent::MTE2_V>(event);
         WaitFlag<HardEvent::MTE2_V>(event);
         uint32_t nScale = Ops::Base::CeilDiv(common.tokenHiddenDim, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
@@ -97,8 +189,13 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
                                                     const MoeStageCommonConfig &common, TokenUnpermuteScratch &scratch,
                                                     int32_t tokenIdx, int32_t localIdx,
                                                     const GlobalTensor<bfloat16_t> &expandedX,
+                                                    const GlobalTensor<int32_t> &combineWinInt32,
                                                     const MegaMoeUnpermuteBufferConfig &bufferConfig)
 {
+    // 去同步生效时（epoch>0）先等本 token 全部 topK 条记录的 data-with-flag 到齐再消费。
+    if (context.epoch != 0) {
+        WaitCombineTokenWireFlags(context, common, scratch, combineWinInt32, tokenIdx);
+    }
     for (int32_t expertIdx = 0; expertIdx < static_cast<int32_t>(common.topK); ++expertIdx) {
         int32_t accumulationItemIdx = localIdx * static_cast<int32_t>(common.topK + common.sharedExpertNum) + expertIdx;
         int32_t inputBufferIdx = accumulationItemIdx % bufferConfig.inputBufferCount;
@@ -179,8 +276,9 @@ template <uint8_t CombineMode, typename TopkWeightsType, bool TopkWeightsPrefetc
 __aicore__ inline void ProcessTokenUnpermuteBatch(
     const TokenUnpermuteConfig &context, const MoeStageCommonConfig &common, const Params &params,
     TokenUnpermuteScratch &scratch, const MegaMoeUnpermuteBufferConfig &bufferConfig,
-    const GlobalTensor<bfloat16_t> &expandedX, GlobalTensor<bfloat16_t> &output, int32_t jobOffset,
-    int32_t batchTokenOffset, int32_t batchTokenCount, TEventID outputBufferEvent)
+    const GlobalTensor<bfloat16_t> &expandedX, const GlobalTensor<int32_t> &combineWinInt32,
+    GlobalTensor<bfloat16_t> &output, int32_t jobOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
+    TEventID outputBufferEvent)
 {
     if constexpr (!TopkWeightsPrefetch) {
         LoadTokenUnpermuteWeights<TopkWeightsType>(common, params, scratch, jobOffset, batchTokenOffset,
@@ -192,7 +290,7 @@ __aicore__ inline void ProcessTokenUnpermuteBatch(
     for (int32_t localIdx = 0; localIdx < batchTokenCount; ++localIdx) {
         int32_t tokenIdx = jobOffset + batchTokenOffset + localIdx;
         AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(context, common, scratch, tokenIdx, localIdx,
-                                                                       expandedX, bufferConfig);
+                                                                       expandedX, combineWinInt32, bufferConfig);
         for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < common.sharedExpertNum; ++sharedExpertIdx) {
             AccumulateSharedExpertForToken<Gmm1TileM>(common, params, scratch, tokenIdx, localIdx, sharedExpertIdx,
                                                       bufferConfig);
@@ -265,6 +363,21 @@ __aicore__ inline MegaMoeUnpermuteBufferConfig CreateTokenUnpermuteBuffers(const
             LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
         scratch.fp32ScaleTensor = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
+        tempAddr += fp32ScaleBufAlign;
+    }
+    if (context.wireBlockCount != 0U) {
+        // flag gather 区 + reduce tmp（同尺寸上界）+ epoch 模板区 + 单值结果；
+        // wireFlagScanBytes 由 wave Init 按 topK*B*32B 算好，host 侧按同一公式扣除 UB 预留（×3+32）。
+        uint32_t flagScanBytes = context.wireFlagScanBytes;
+        scratch.wireFlagScanTensor = LocalTensor<int32_t>(TPosition::VECCALC, tempAddr, flagScanBytes / sizeof(int32_t));
+        tempAddr += flagScanBytes;
+        scratch.wireFlagReduceTensor = LocalTensor<uint8_t>(TPosition::VECCALC, tempAddr, flagScanBytes);
+        tempAddr += flagScanBytes;
+        scratch.wireFlagEpochTemplate =
+            LocalTensor<int32_t>(TPosition::VECCALC, tempAddr, flagScanBytes / sizeof(int32_t));
+        tempAddr += flagScanBytes;
+        scratch.wireFlagResultTensor =
+            LocalTensor<int32_t>(TPosition::VECCALC, tempAddr, static_cast<uint32_t>(ALIGN_32) / sizeof(int32_t));
     }
     return bufferConfig;
 }
@@ -286,17 +399,25 @@ __aicore__ inline void UnpermuteTokens(const TokenUnpermuteConfig &context, cons
     int32_t jobOffset = static_cast<int32_t>(tokenRange.start);
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.peermemInfo.combineSendPtr));
+    GlobalTensor<int32_t> combineWinInt32;
+    combineWinInt32.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.combineSendPtr));
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.y2GmAddr));
 
+    if (context.epoch != 0) {
+        // XOR 判全等的 epoch 常量模板，每 launch 填一次；与后续 MTE2/归约建立一次性顺序。
+        Duplicate<int32_t>(scratch.wireFlagEpochTemplate, context.epoch,
+                           static_cast<int32_t>(context.wireFlagScanBytes / sizeof(int32_t)));
+        PipeBarrier<PIPE_V>();
+    }
     constexpr TEventID outputBufferEvent = EVENT_ID0;
     SetFlag<HardEvent::MTE3_V>(outputBufferEvent);
     for (int32_t batchTokenOffset = 0; batchTokenOffset < jobLen; batchTokenOffset += bufferConfig.tokensPerBatch) {
         int32_t batchTokenCount = batchTokenOffset + bufferConfig.tokensPerBatch > jobLen ? jobLen - batchTokenOffset :
                                                                                             bufferConfig.tokensPerBatch;
         ProcessTokenUnpermuteBatch<CombineMode, TopkWeightsType, TopkWeightsPrefetch, Gmm1TileM>(
-            context, common, params, scratch, bufferConfig, expandedX, output, jobOffset, batchTokenOffset,
-            batchTokenCount, outputBufferEvent);
+            context, common, params, scratch, bufferConfig, expandedX, combineWinInt32, output, jobOffset,
+            batchTokenOffset, batchTokenCount, outputBufferEvent);
     }
     WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
 }

@@ -373,12 +373,17 @@ __aicore__ inline void WaitUntilGmFlagAtLeast(__gm__ int32_t *flagAddr, int32_t 
     }
 }
 
-// 全卡同步：各 AIV 按任务分工分摊 rank 握手，末尾执行本卡 AIV 同步。
-__aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
-                                                const AivJobContext &aivJob)
+/*
+ * 全卡同步：各 AIV 按任务分工分摊 rank 握手，末尾执行本卡 AIV 同步。
+ * 返回本轮同步计数（跨 launch 持久、每次调用 +1、所有 AIV/所有 rank 同值）。
+ * wire combine 用它作 READY flag 的 epoch：旧 launch 残留 flag 值恒小于本轮 epoch，
+ * 因此 flag 区跨轮无需清零。AIC 与不参与的核返回 0（不得用作 epoch）。
+ */
+__aicore__ inline int32_t CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
+                                                   const AivJobContext &aivJob)
 {
     if constexpr (g_coreType == AIC) {
-        return;
+        return 0;
     }
     __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
     __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + 48U * 1024U +
@@ -393,6 +398,15 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
     WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+    /*
+     * epoch 取各 AIV 私有槽的本轮计数：读改写全在本核，天然无跨核可见性依赖。
+     * 不可改成"SyncAll 后统一读 jobIndex0 槽"——AIV0 的自增是 posted GM 写，SyncAll 不保证
+     * 它对其他核已可见；发送端读到旧值就会用旧 epoch 写 flag，消费端拿新 epoch 永久死等
+     * （8K+图模式下实翻：全 AIV 挂死在 Unpermute flag 等待，AIC 全停 kernel 尾栅栏）。
+     * 私有槽方案的前提是历次 launch 的参与 AIV 数恒定——本算子 blockDim 由 tiling 按平台
+     * 全核数固定下发（SetBlockDim(aivNum)），该前提结构性成立。
+     */
+    return count;
 }
 
 template <AscendC::HardEvent event, int32_t eventId>

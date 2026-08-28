@@ -25,11 +25,8 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL; // 异常dump区
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
-// GroupedMatmul 模式。
-constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
-constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
+// GroupedMatmul 模式常量已归拢到 mega_moe_constants.h（peermem.h 的 wire 布局谓词需要）。
 // a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。GMM2 需要 gmm2MmadResPtr workspace。
-constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;

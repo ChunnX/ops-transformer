@@ -92,6 +92,7 @@ private:
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
+    __aicore__ inline void PrefillWireCombineFlags(const CombineBufferConfig &bufferConfig);
     __aicore__ inline void InitExpertTokenCountExportBuffers();
     __aicore__ inline void ProcessSharedExpertGmm1();
     __aicore__ inline void ProcessMoeExpertStages();
@@ -145,6 +146,19 @@ private:
     // 共享专家相关成员
     uint32_t sharedExpertNum_ = 0;
     uint32_t moeExpertPerRank_ = 0;
+    /*
+     * wire combine（data-with-flag）与去同步开关：
+     *   useWireCombine_：combine 窗口按 W=B*512 stride 布局（本模板恒为 MTE A8W8，正常为 true，
+     *                    与 host UseWireCombineLayout 同源）；
+     *   desyncActive_：在 wire 基础上叠加“无丢弃”判定（maxOutputSize 达到无丢弃上界）后，
+     *                  才真正删除 MoE stage 后的全核 SyncAll 与 Unpermute 前的第二次全卡同步；
+     *                  有丢弃可能时保留旧同步（wire 布局仍生效，flag 随数据发出但消费端不等待）。
+     *   combineEpoch_：本轮第一次全卡同步的持久计数，作 READY flag 值；旧 launch 残留恒小于它，
+     *                  flag 区因此跨轮零清理。
+     */
+    bool useWireCombine_ = false;
+    bool desyncActive_ = false;
+    int32_t combineEpoch_ = 0;
 
     static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved;
 
@@ -220,6 +234,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitTok
                              .fullTokenChunkJobCount = params_.tilingData->unpermuteFullTokenChunkCoreCount,
                              .fullTokenChunkConfig = params_.tilingData->unpermuteConfigForFullTokenChunk,
                              .tailTokenChunkConfig = params_.tilingData->unpermuteConfigForTailTokenChunk};
+    if (useWireCombine_) {
+        uint32_t payloadBytes =
+            CombineQuantMode == COMBINE_NO_QUANT ? k_ * static_cast<uint32_t>(sizeof(bfloat16_t)) : quantTokenSizeBytes;
+        uint32_t wireBlockCount = static_cast<uint32_t>(CalcCombineWireBlockCount(static_cast<int64_t>(payloadBytes)));
+        tokenUnpermuteConfig_.wirePayloadBytes = payloadBytes;
+        tokenUnpermuteConfig_.wireBlockCount = wireBlockCount;
+        tokenUnpermuteConfig_.wireRowBytes = wireBlockCount * static_cast<uint32_t>(COMBINE_WIRE_BLOCK_BYTES);
+        tokenUnpermuteConfig_.wireFlagScanBytes = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(params_.tilingData->topK) * wireBlockCount * ALIGN_32, ALIGN_32));
+        // epoch 在第一次全卡同步后由 Process 注入（desync 未生效时保持 0：只走 wire 搬运、不等 flag）。
+    }
 }
 
 // ========================
@@ -283,6 +308,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     const int64_t maxOutput = static_cast<int64_t>(tilingData->maxOutputSize);
     const int64_t tileM = static_cast<int64_t>(GMM1_TILE_M);
     int32_t dispatchFlagSlotsPerExpert = static_cast<int32_t>(Ops::Base::CeilDiv(maxOutput, tileM)) * INT_CACHELINE;
+    // wire 布局随 tiling 静态谓词走（与 host CalcPeermemLeastSize 同源）；
+    // 去同步只在无丢弃（dispatch 容量 clamp 不可能触发）时生效，否则保留旧全核/全卡同步。
+    useWireCombine_ = UseWireCombineLayout(tilingData);
+    desyncActive_ = useWireCombine_ &&
+                    maxOutput == CalcNoDropMaxOutputSize(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
+                                                         static_cast<int64_t>(tilingData->epWorldSize),
+                                                         static_cast<int64_t>(tilingData->topK),
+                                                         static_cast<int64_t>(tilingData->moeExpertPerRank));
     InitInputPrepareConfigs();
     tokenDispatchConfig_ = CreateTokenDispatchConfig(params_, quantProcessConfig_, sendMaskConfig_.maskAlignSize);
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
@@ -405,8 +438,36 @@ MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitCombineBuffers()
         bufferConfig.quantTempElements =
             Ops::Base::CeilAlign(storedScaleBytes, static_cast<uint32_t>(ALIGN_32)) + storedScaleBytes / 2U;
     }
-    constexpr uint32_t rowBufferCount =
+    constexpr uint32_t defaultRowBufferCount =
         CombineQuantMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
+    uint32_t rowBufferCount = defaultRowBufferCount;
+    if (useWireCombine_) {
+        /*
+         * wire 槽位几何：
+         *   NO_QUANT：slot 本身即 wire 记录（MTE2 直接按 480B 段 + 32B gap 搬成 wire 布局），
+         *             slotStride = W；W 变大时按 UB 容量收缩 ring 深度（至少 2 个 slot）。
+         *   quant：  slot = [连续 bf16 行 | 连续量化记录区(B*480 上界，防展开搬运越界读) | wire 区 W]。
+         */
+        uint32_t payloadBytes =
+            CombineQuantMode == COMBINE_NO_QUANT ? bufferConfig.rowBytes : bufferConfig.quantRowStorageBytes;
+        bufferConfig.wirePayloadBytes = payloadBytes;
+        bufferConfig.wireBlockCount =
+            static_cast<uint32_t>(CalcCombineWireBlockCount(static_cast<int64_t>(payloadBytes)));
+        bufferConfig.wireRowBytes = bufferConfig.wireBlockCount * static_cast<uint32_t>(COMBINE_WIRE_BLOCK_BYTES);
+        bufferConfig.epoch = combineEpoch_;
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            bufferConfig.wireSlotByteOffset = 0U;
+            bufferConfig.slotStrideBytes = bufferConfig.wireRowBytes;
+            uint32_t maxSlots = WAVE_COMBINE_UB_CAPACITY_BYTES / bufferConfig.slotStrideBytes;
+            rowBufferCount = maxSlots < defaultRowBufferCount ? maxSlots : defaultRowBufferCount;
+        } else {
+            uint32_t quantAreaBytes = static_cast<uint32_t>(Ops::Base::CeilAlign(
+                static_cast<int64_t>(bufferConfig.wireBlockCount) * COMBINE_WIRE_BLOCK_DATA_BYTES, ALIGN_32));
+            bufferConfig.wireSlotByteOffset = bufferConfig.rowStrideBytes + quantAreaBytes;
+            bufferConfig.slotStrideBytes = bufferConfig.wireSlotByteOffset + bufferConfig.wireRowBytes;
+        }
+        bufferConfig.rowBufferCount = rowBufferCount;
+    }
     uint32_t rowRingBytes = rowBufferCount * bufferConfig.slotStrideBytes;
     waveCombineScratch_.rowBufferTensor =
         LocalTensor<bfloat16_t>(TPosition::VECIN, WAVE_COMBINE_UB_BASE, rowRingBytes / sizeof(bfloat16_t));
@@ -416,7 +477,38 @@ MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitCombineBuffers()
         waveCombineScratch_.quantTempTensor =
             LocalTensor<float>(TPosition::VECIN, WAVE_COMBINE_UB_BASE + rowRingBytes, bufferConfig.quantTempElements);
     }
+    // 注意：wire 区的 epoch 预填不能在这里做——Dispatch 的 host 自适应 UB 布局在大 bs 下会
+    // 越过 64KB 压进 combine ring 区（bs2048 时仅 topkIndex 双表已 ~96KB），Init 时的预填会被
+    // Dispatch 踩掉（实翻：flag 槽变 dispatch 表残渣 → 消费端死等）。预填移至
+    // PrefillWireCombineFlags，在 DispatchAllExpertTokens 完成后执行。
     return bufferConfig;
+}
+
+// 在 Dispatch 全部完成后为 wire slot 预填本轮 epoch（此后 [64KB,160KB) 归 combine 独占，
+// payload 段随每次发送被 MTE2 覆写，块尾 32B flag 槽与 tail 补齐段保持 epoch 不再被扰动）。
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::PrefillWireCombineFlags(
+    const CombineBufferConfig &bufferConfig)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U || !useWireCombine_) {
+        return;
+    }
+    // Dispatch 尾部可能仍有对同一 UB 区间的 MTE 在飞：先建立 MTE2/MTE3 → V 序再覆写。
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
+    SyncFuncStatic<AscendC::HardEvent::MTE3_V, SYNC_EVENT_ID4>();
+    LocalTensor<int32_t> ringInt32 = waveCombineScratch_.rowBufferTensor.template ReinterpretCast<int32_t>();
+    uint32_t rowBufferCount = bufferConfig.rowBufferCount;
+    for (uint32_t slot = 0U; slot < rowBufferCount; ++slot) {
+        uint32_t wireInt32Offset = (slot * bufferConfig.slotStrideBytes + bufferConfig.wireSlotByteOffset) /
+                                   static_cast<uint32_t>(sizeof(int32_t));
+        Duplicate<int32_t>(ringInt32[wireInt32Offset], combineEpoch_,
+                           static_cast<int32_t>(bufferConfig.wireRowBytes / sizeof(int32_t)));
+    }
+    PipeBarrier<PIPE_V>();
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID3>();
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -775,7 +867,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                                     params_, combineAddrInfo, combineState, combineState.expertIdx,
                                                     rowSequence);
     }
-    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
+    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence, bufferConfig.rowBufferCount);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -813,6 +905,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             dispatchEndPosition.expertIdx = moeExpertPerRank_;
         }
     }
+    // Dispatch 完成后 [64KB,160KB) 才归 combine 独占，此时预填 wire flag 槽（AIV1 内部自带守卫）。
+    PrefillWireCombineFlags(combineBufferConfig);
 
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
         ExpertTokenPosition waveEndPosition = waveBeginPosition;
@@ -866,15 +960,20 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
 
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
+    // 返回的持久同步计数即本轮 combine READY flag 的 epoch（AIC 返回 0，不使用）。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    combineEpoch_ = CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
 
     // Dispatch 的全部专家先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
     ProcessMoeExpertStages();
 
+    // 去同步生效时删除 MoE stage 后的全核同步：各 AIV 完成自身 Combine 发送即直接前进，
+    // 数据到达与否由逐 token 的 data-with-flag 承接（Unpermute 侧等待）。
     if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        if (!desyncActive_) {
+            PipeBarrier<PIPE_ALL>();
+            SyncAll<true>();
+        }
     }
 
     if (sharedExpertNum_ > 0) {
@@ -910,10 +1009,22 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     ProcessGmmPipeline();
 
-    // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。
+    // 阶段 3：本卡 Unpermute。去同步生效时删除第二次全卡同步，改为 Unpermute 内逐 token
+    // 等 data-with-flag（哪个 token 的 topK 条记录先到齐就先算哪个的等待条件被满足）；
+    // 未生效时保持旧行为：全卡同步兜底后按 wire/旧布局直接搬运。
     if constexpr (g_coreType == AIV) {
-        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
-        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        if (desyncActive_) {
+            /*
+             * 本核流水栅栏（不跨核不跨卡，不违背去同步目标）：被删除的第二次全卡同步原先
+             * 顺带提供了本核 PIPE_ALL 序，保证 MoE 尾部仍在飞的 V/MTE3（SwiGLU 尾 tile、
+             * Combine 发送）先于 Unpermute 对同一 UB 区域的复写完成。
+             */
+            PipeBarrier<PIPE_ALL>();
+            tokenUnpermuteConfig_.epoch = combineEpoch_;
+        } else {
+            exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+            CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        }
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
