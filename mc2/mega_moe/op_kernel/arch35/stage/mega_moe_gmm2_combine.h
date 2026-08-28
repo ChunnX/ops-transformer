@@ -26,6 +26,7 @@
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
+#include "../common/mc2_kernel_timing.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
 #include "../../../common/quantize_functions.h"
@@ -439,14 +440,18 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
             Ops::Base::CeilDiv(waveM, config.activationTileM) * Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
+        MC2_TS_START(TS_GMM2_WAIT_ACT);
         WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetLoops));
+        MC2_TS_STOP(TS_GMM2_WAIT_ACT);
     } else {
         GmmKernel::BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             GmmKernel::BlockScheduler::Params{
                 Te::MakeCoord(static_cast<int64_t>(config.activationTileM), static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
+        MC2_TS_START(TS_GMM2_WAIT_ACT);
         WaitUntilGmFlagEquals(gmmAddrInfo.activationToGmm2Flag, static_cast<int32_t>(targetLoops));
+        MC2_TS_STOP(TS_GMM2_WAIT_ACT);
     }
 }
 
@@ -1095,6 +1100,7 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
     LocalTensor<uint8_t> reduceTmpUb(TPosition::VECCALC, WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR, ALIGN_512);
     LocalTensor<int32_t> sumUb(TPosition::VECCALC, WAVE_GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
     const uint32_t readyShape[] = {1U, readyElements};
+    MC2_TS_START(TS_COMBINE_WAIT_READY);
     while (true) {
         DataCopy(scanUb, readyGm[readySlotOffset], readyElements);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -1103,6 +1109,7 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
         SetFlag<HardEvent::V_S>(EVENT_ID0);
         WaitFlag<HardEvent::V_S>(EVENT_ID0);
         if (sumUb.GetValue(0) >= static_cast<int32_t>(job.totalJobs)) {
+            MC2_TS_STOP(TS_COMBINE_WAIT_READY);
             return;
         }
         int64_t waitStart = AscendC::GetSystemCycle();
