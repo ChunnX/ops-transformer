@@ -315,6 +315,21 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
     }
 
     CATLASS_DEVICE
+    uint32_t FinalizeBlockLoopWithStatus()
+    {
+        uint32_t status = 0;
+        if constexpr (TileRemoteCopy::DEFER_QUIET)
+        {
+            if (hasPendingCopy)
+            {
+                status = tileRemoteCopy.FinalizeWithStatus(activePeerIdx);
+            }
+        }
+        hasPendingCopy = false;
+        return status;
+    }
+
+    CATLASS_DEVICE
     void FinalizeBlockLoop()
     {
         if constexpr (TileRemoteCopy::DEFER_QUIET)

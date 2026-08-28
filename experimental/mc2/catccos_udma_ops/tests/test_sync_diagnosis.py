@@ -2,18 +2,33 @@
 
 from pathlib import Path
 
-from validation.run_sync_diagnosis import classify_mode_results
+from validation.run_sync_diagnosis import (
+    _collect_runtime_evidence,
+    classify_mode_results,
+)
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
-def _results(baseline, strong_ready, cache_safe):
+def _results(
+    baseline, barrier_only, generation_after_quiet, strong_ready, cache_safe
+):
     return [
         {
             "mode": "baseline",
             "summary_available": True,
             "passed": baseline,
+        },
+        {
+            "mode": "barrier_only",
+            "summary_available": True,
+            "passed": barrier_only,
+        },
+        {
+            "mode": "generation_after_quiet",
+            "summary_available": True,
+            "passed": generation_after_quiet,
         },
         {
             "mode": "strong_ready",
@@ -28,32 +43,117 @@ def _results(baseline, strong_ready, cache_safe):
     ]
 
 
+def test_barrier_only_pass_is_classified_as_invocation_lifecycle():
+    decision = classify_mode_results(_results(False, True, True, True, True))
+    assert (
+        decision["classification"]
+        == "cross_invocation_lifecycle_or_reset_race"
+    )
+    assert decision["conclusive"]
+
+
+def test_earlier_conclusive_pair_does_not_require_later_modes():
+    results = _results(False, True, False, False, False)[:2]
+    decision = classify_mode_results(results)
+    assert (
+        decision["classification"]
+        == "cross_invocation_lifecycle_or_reset_race"
+    )
+    assert decision["conclusive"]
+
+
+def test_generation_after_quiet_is_classified_as_aggregate_counter():
+    decision = classify_mode_results(_results(False, False, True, True, True))
+    assert decision["classification"] == "legacy_aggregate_counter_protocol"
+    assert decision["conclusive"]
+
+
+def test_generation_conclusion_does_not_require_wwn_modes():
+    results = _results(False, False, True, False, False)[:3]
+    decision = classify_mode_results(results)
+    assert decision["classification"] == "legacy_aggregate_counter_protocol"
+    assert decision["conclusive"]
+
+
 def test_strong_ready_pass_is_classified_as_publication_order():
-    decision = classify_mode_results(_results(False, True, True))
-    assert decision["classification"] == "completion_publication_order"
+    decision = classify_mode_results(_results(False, False, False, True, True))
+    assert (
+        decision["classification"]
+        == "cross_engine_payload_ready_publication"
+    )
     assert decision["conclusive"]
 
 
 def test_only_cache_safe_pass_is_classified_as_visibility():
-    decision = classify_mode_results(_results(False, False, True))
+    decision = classify_mode_results(_results(False, False, False, False, True))
     assert decision["classification"] == "receiver_cache_visibility"
     assert decision["conclusive"]
 
 
 def test_non_monotonic_strong_only_pass_is_not_conclusive():
-    decision = classify_mode_results(_results(False, True, False))
+    decision = classify_mode_results(_results(False, False, False, True, False))
     assert decision["classification"] == "non_monotonic_mode_result"
     assert not decision["conclusive"]
 
 
 def test_missing_mode_is_an_infrastructure_failure():
-    results = _results(False, False, False)[:-1]
+    results = _results(False, False, False, False, False)[:-1]
     decision = classify_mode_results(results)
     assert decision["classification"] == "infrastructure_or_runtime_failure"
     assert not decision["conclusive"]
 
 
-def test_kernel_and_runner_keep_the_three_modes_isolated():
+def test_runtime_evidence_invalidates_an_accuracy_matrix():
+    results = _results(False, False, False, True, True)
+    results[0]["runtime_evidence"] = {
+        "detected": True,
+        "counts": {"udma_cq_timeout": 1},
+    }
+    decision = classify_mode_results(results)
+    assert decision["classification"] == "runtime_or_transport_error_observed"
+    assert not decision["conclusive"]
+
+
+def test_checked_quiet_cq_failure_is_conclusive_even_without_summary():
+    results = _results(False, False, False, False, False)
+    results[2]["summary_available"] = False
+    results[2]["runtime_evidence"] = {
+        "detected": True,
+        "counts": {"udma_quiet_cq_failure": 1},
+    }
+    decision = classify_mode_results(results)
+    assert decision["classification"] == "udma_quiet_cq_failure"
+    assert decision["conclusive"]
+
+
+def test_checked_quiet_debug_abort_timeout_is_also_conclusive():
+    results = _results(False, False, False, False, False)
+    results[2]["summary_available"] = False
+    results[2]["runtime_evidence"] = {
+        "detected": True,
+        "counts": {"udma_cq_timeout": 1},
+    }
+    decision = classify_mode_results(results)
+    assert decision["classification"] == "udma_quiet_cq_failure"
+    assert decision["conclusive"]
+
+
+def test_runtime_evidence_extracts_cq_and_shmem_failures(tmp_path):
+    log = tmp_path / "torchrun_ep8.log"
+    log.write_text(
+        "[CATCCOS_UDMA_SYNC_DIAG] quiet_poll_failure status=0xff\n"
+        "poll cq timeout while waiting for completion\n"
+        "HcommChannelCreate failed for dst pe 7, ret = 9\n",
+        encoding="utf-8",
+    )
+    evidence = _collect_runtime_evidence(tmp_path)
+    assert evidence["detected"]
+    assert evidence["counts"]["udma_quiet_cq_failure"] == 1
+    assert evidence["counts"]["udma_cq_timeout"] == 1
+    assert evidence["counts"]["udma_channel_failure"] == 1
+
+
+def test_kernel_and_runner_keep_the_five_modes_isolated():
     kernel = (
         PROJECT_ROOT
         / "csrc"
@@ -77,9 +177,27 @@ def test_kernel_and_runner_keep_the_three_modes_isolated():
     worker = (PROJECT_ROOT / "validation" / "accuracy_worker.py").read_text(
         encoding="utf-8"
     )
+    host = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "all_to_allv_grouped_mat_mul_udma.cpp"
+    ).read_text(encoding="utf-8")
+    runner = (PROJECT_ROOT / "validation" / "run_sync_diagnosis.py").read_text(
+        encoding="utf-8"
+    )
+    assert "COMPLETION_MODE_BARRIER_ONLY" in kernel
+    assert "COMPLETION_MODE_GENERATION_AFTER_QUIET" in kernel
     assert "COMPLETION_MODE_STRONG_READY_CACHE_SAFE" in kernel
+    assert 'value == "barrier_only"' in host
+    assert 'value == "generation_after_quiet"' in host
+    assert '"barrier_only",' in runner
+    assert '"generation_after_quiet",' in runner
     assert "syncCommReady" in kernel
     assert "aclshmemi_signal_wait_until_eq<uint64_t>" in kernel
+    assert "quiet_poll_failure" in kernel
     assert "aclshmemx_udma_put_signal_nbi" in tile
+    assert "aclshmemi_udma_poll_cq" in tile
     assert 'caller_repeats = (' in worker
     assert '"all_to_allv_export"' in worker

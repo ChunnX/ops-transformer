@@ -56,6 +56,14 @@ public:
     }
 
     CATLASS_DEVICE
+    uint32_t FinalizeBlockLoopWithStatus()
+    {
+        uint32_t status = remoteComm.FinalizeBlockLoopWithStatus();
+        localComm.FinalizeBlockLoop();
+        return status;
+    }
+
+    CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc,
         AscendC::GlobalTensor<ElementDst> const &gmDst, LayoutDst const &layoutDst,

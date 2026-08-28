@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -22,31 +25,135 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_CASES = HERE / "cases" / "alltoallv_grouped_mat_mul.yaml"
 DIAGNOSTIC_MODES = (
     "baseline",
+    "barrier_only",
+    "generation_after_quiet",
     "strong_ready",
     "strong_ready_cache_safe",
 )
 
+RUNTIME_EVIDENCE_PATTERNS = (
+    (
+        "udma_quiet_cq_failure",
+        re.compile(
+            r"\[CATCCOS_UDMA_SYNC_DIAG\][^\n]*quiet_poll_failure",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "udma_cq_timeout",
+        re.compile(
+            r"(?:poll(?:ing)?[^\n]*cq[^\n]*timeout|"
+            r"cq[^\n]*poll[^\n]*timeout)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "udma_cqe_error",
+        re.compile(
+            r"(?:\[exception\]\s*\[udma\s+cqe\]|udma[^\n]*cqe[^\n]*(?:error|fail)|"
+            r"cqe[^\n]*(?:status|substatus)[^\n]*(?:error|fail))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "udma_channel_failure",
+        re.compile(
+            r"(?:HcommChannelCreate failed|Async connect failed|"
+            r"Transport Manager ConnectWithOptions failed)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "shmem_initialization_failure",
+        re.compile(
+            r"(?:PrepareOpenDevice failed|Failed to open device|"
+            r"(?:setup|reserve)_heap\(\) failed)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "device_runtime_failure",
+        re.compile(
+            r"(?:rtStreamSynchronize[^\n]*(?:failed|error)|"
+            r"device task[^\n]*(?:failed|error)|kernel[^\n]*exception)",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
 
 def classify_mode_results(results):
-    """Turn the three isolated runs into the next debugging decision."""
+    """Turn the five orthogonal runs into the next debugging decision."""
     by_mode = {item["mode"]: item for item in results}
-    if any(
-        mode not in by_mode or not by_mode[mode]["summary_available"]
-        for mode in DIAGNOSTIC_MODES
-    ):
+    quiet_cq_failure_modes = []
+    for mode, item in by_mode.items():
+        counts = item.get("runtime_evidence", {}).get("counts", {})
+        explicit_failure = counts.get("udma_quiet_cq_failure", 0) > 0
+        debug_abort_failure = (
+            mode == "generation_after_quiet"
+            and (
+                counts.get("udma_cq_timeout", 0) > 0
+                or counts.get("udma_cqe_error", 0) > 0
+            )
+        )
+        if explicit_failure or debug_abort_failure:
+            quiet_cq_failure_modes.append(mode)
+    if quiet_cq_failure_modes:
         return {
-            "classification": "infrastructure_or_runtime_failure",
-            "conclusive": False,
+            "classification": "udma_quiet_cq_failure",
+            "conclusive": True,
             "next_action": (
-                "Inspect the missing mode's launcher and torchrun logs before "
-                "drawing a synchronization conclusion."
+                "A quiet-equivalent CQ poll returned timeout or CQE error. "
+                "Do not publish ready after that failure; either promote the "
+                "WWN protocol and surface completion errors, or fix the "
+                "underlying UDMA transport/CQ failure first."
             ),
+            "runtime_evidence_modes": quiet_cq_failure_modes,
         }
+    def required_mode_problem(mode):
+        item = by_mode.get(mode)
+        if item is None or not item.get("summary_available", False):
+            timed_out = bool(item and item.get("timed_out", False))
+            evidence = bool(
+                item
+                and item.get("runtime_evidence", {}).get("detected", False)
+            )
+            detail = []
+            if timed_out:
+                detail.append("timed out")
+            if evidence:
+                detail.append("runtime/transport evidence detected")
+            return {
+                "classification": "infrastructure_or_runtime_failure",
+                "conclusive": False,
+                "next_action": (
+                    "Inspect runtime_evidence and the {} torchrun log before "
+                    "drawing the next kernel synchronization conclusion.{}"
+                ).format(
+                    mode,
+                    " " + "; ".join(detail) if detail else "",
+                ),
+                "missing_modes": [mode],
+                "timed_out_modes": [mode] if timed_out else [],
+                "runtime_evidence_modes": [mode] if evidence else [],
+            }
+        if item.get("runtime_evidence", {}).get("detected", False):
+            return {
+                "classification": "runtime_or_transport_error_observed",
+                "conclusive": False,
+                "next_action": (
+                    "The {} result is contaminated by UDMA/CQE, SHMEM, or "
+                    "device-runtime errors. Inspect runtime_evidence before "
+                    "selecting a synchronization fix."
+                ).format(mode),
+                "runtime_evidence_modes": [mode],
+            }
+        return None
 
-    baseline_passed = by_mode["baseline"]["passed"]
-    strong_ready_passed = by_mode["strong_ready"]["passed"]
-    cache_safe_passed = by_mode["strong_ready_cache_safe"]["passed"]
-    if baseline_passed:
+    problem = required_mode_problem("baseline")
+    if problem is not None:
+        return problem
+    if by_mode["baseline"]["passed"]:
         return {
             "classification": "baseline_did_not_reproduce",
             "conclusive": False,
@@ -55,13 +162,51 @@ def classify_mode_results(results):
                 "reproduces the consecutive-launch failure."
             ),
         }
-    if strong_ready_passed and cache_safe_passed:
+
+    problem = required_mode_problem("barrier_only")
+    if problem is not None:
+        return problem
+    if by_mode["barrier_only"]["passed"]:
         return {
-            "classification": "completion_publication_order",
+            "classification": "cross_invocation_lifecycle_or_reset_race",
             "conclusive": True,
             "next_action": (
-                "Promote per-stage/per-source write-with-notify generations; "
-                "cache bypass is not required by this result."
+                "Promote the entry all-PE barrier that closes the previous "
+                "invocation before resetting reusable synchronization state."
+            ),
+        }
+
+    problem = required_mode_problem("generation_after_quiet")
+    if problem is not None:
+        return problem
+    if by_mode["generation_after_quiet"]["passed"]:
+        return {
+            "classification": "legacy_aggregate_counter_protocol",
+            "conclusive": True,
+            "next_action": (
+                "Replace the reusable aggregate completion counter with "
+                "per-stage/per-source generation slots. The legacy payload "
+                "WQE plus quiet path was sufficient in this run."
+            ),
+        }
+
+    problem = required_mode_problem("strong_ready")
+    if problem is not None:
+        return problem
+    problem = required_mode_problem("strong_ready_cache_safe")
+    if problem is not None:
+        return problem
+    strong_ready_passed = by_mode["strong_ready"]["passed"]
+    cache_safe_passed = by_mode["strong_ready_cache_safe"]["passed"]
+    if strong_ready_passed and cache_safe_passed:
+        return {
+            "classification": "cross_engine_payload_ready_publication",
+            "conclusive": True,
+            "next_action": (
+                "Promote per-stage/per-source write-with-notify generations. "
+                "The checked quiet returned without CQ errors, but publishing "
+                "a generation through a separate signal operation remained "
+                "insufficient; cache bypass is not required by this result."
             ),
         }
     if cache_safe_passed:
@@ -69,8 +214,9 @@ def classify_mode_results(results):
             "classification": "receiver_cache_visibility",
             "conclusive": True,
             "next_action": (
-                "Keep strong ready generations and add the narrowest staging "
-                "cache-visibility treatment that remains correct."
+                "Keep per-stage/per-source write-with-notify generations and "
+                "add the narrowest staging cache-visibility treatment that "
+                "remains correct."
             ),
         }
     if strong_ready_passed:
@@ -92,7 +238,104 @@ def classify_mode_results(results):
     }
 
 
-def _read_mode_result(mode, output_dir, returncode, launches):
+def _collect_runtime_evidence(output_dir, max_samples=50):
+    counts = {}
+    samples = []
+    for log_path in sorted(output_dir.rglob("*.log")):
+        try:
+            with log_path.open("r", encoding="utf-8", errors="replace") as stream:
+                for line_number, line in enumerate(stream, start=1):
+                    categories = [
+                        name
+                        for name, pattern in RUNTIME_EVIDENCE_PATTERNS
+                        if pattern.search(line)
+                    ]
+                    if not categories:
+                        continue
+                    for category in categories:
+                        counts[category] = counts.get(category, 0) + 1
+                    if len(samples) < max_samples:
+                        samples.append(
+                            {
+                                "categories": categories,
+                                "path": str(log_path),
+                                "line": line_number,
+                                "text": line.rstrip()[:1000],
+                            }
+                        )
+        except OSError as error:
+            if len(samples) < max_samples:
+                samples.append(
+                    {
+                        "categories": ["log_read_failure"],
+                        "path": str(log_path),
+                        "line": None,
+                        "text": str(error),
+                    }
+                )
+            counts["log_read_failure"] = counts.get("log_read_failure", 0) + 1
+    return {
+        "detected": any(
+            name != "log_read_failure" and count > 0
+            for name, count in counts.items()
+        ),
+        "counts": counts,
+        "sample_limit": max_samples,
+        "samples": samples,
+    }
+
+
+def _terminate_process_group(process, grace_seconds=10):
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=grace_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        return
+    process.wait()
+
+
+def _run_with_timeout(command, environment, timeout_seconds):
+    popen_options = {}
+    if os.name == "posix":
+        popen_options["start_new_session"] = True
+    started = time.monotonic()
+    process = subprocess.Popen(command, env=environment, **popen_options)
+    timed_out = False
+    try:
+        process.wait(timeout=None if timeout_seconds == 0 else timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _terminate_process_group(process)
+    except BaseException:
+        _terminate_process_group(process)
+        raise
+    return {
+        "returncode": process.returncode,
+        "timed_out": timed_out,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
+
+
+def _read_mode_result(
+    mode, output_dir, returncode, launches, timed_out=False,
+    elapsed_seconds=None, timeout_seconds=None,
+):
     summary_path = output_dir / "summary.json"
     summary = None
     if summary_path.is_file():
@@ -114,14 +357,18 @@ def _read_mode_result(mode, output_dir, returncode, launches):
         "mode": mode,
         "requested_launches_per_rank": launches,
         "returncode": returncode,
+        "timed_out": timed_out,
+        "timeout_seconds": timeout_seconds,
+        "elapsed_seconds": elapsed_seconds,
         "summary_available": summary is not None,
         "passed": bool(
-            summary and summary.get("passed") and returncode == 0
+            summary and summary.get("passed") and returncode == 0 and not timed_out
         ),
         "failed_report_count": len(failed_reports),
         "failed_reports": failed_reports,
         "output_dir": str(output_dir),
         "summary": str(summary_path) if summary is not None else None,
+        "runtime_evidence": _collect_runtime_evidence(output_dir),
     }
 
 
@@ -132,11 +379,18 @@ def main():
     parser.add_argument("--output-dir")
     parser.add_argument(
         "--launches", type=int, default=6,
-        help="total automatic launches per rank in each strong mode",
+        help="total automatic launches per rank in each non-baseline mode",
     )
     parser.add_argument(
         "--baseline-launches", type=int, default=3,
         help="total automatic launches per rank in baseline mode",
+    )
+    parser.add_argument(
+        "--mode-timeout-seconds", type=int, default=900,
+        help=(
+            "wall-clock timeout for each isolated mode; 0 disables the "
+            "timeout (default: 900)"
+        ),
     )
     parser.add_argument(
         "--max-failure-dumps-per-role", type=int, default=1,
@@ -148,6 +402,8 @@ def main():
         raise ValueError("launch counts must be at least 2")
     if args.max_failure_dumps_per_role < 0:
         raise ValueError("--max-failure-dumps-per-role must be non-negative")
+    if args.mode_timeout_seconds < 0:
+        raise ValueError("--mode-timeout-seconds must be non-negative")
 
     selected = select_cases(
         load_case_manifest(args.cases), mode="accuracy", case_ids=[args.case_id]
@@ -178,6 +434,8 @@ def main():
     base_udma_port = int(os.environ.get("UDMA_MASTER_PORT", "29601"))
     requested_launches = {
         "baseline": args.baseline_launches,
+        "barrier_only": args.launches,
+        "generation_after_quiet": args.launches,
         "strong_ready": args.launches,
         "strong_ready_cache_safe": args.launches,
     }
@@ -190,6 +448,34 @@ def main():
         "automatic_only": True,
         "checks": ["operator_output", "all_to_allv_export"],
         "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
+        "mode_timeout_seconds": args.mode_timeout_seconds,
+        "diagnostic_matrix": {
+            "baseline": {
+                "entry_barrier": False,
+                "payload_ready": "legacy quiet plus aggregate counter",
+                "staging_l2": "default",
+            },
+            "barrier_only": {
+                "entry_barrier": True,
+                "payload_ready": "legacy quiet plus aggregate counter",
+                "staging_l2": "default",
+            },
+            "generation_after_quiet": {
+                "entry_barrier": True,
+                "payload_ready": "legacy UDMA plus quiet, then per-source generation",
+                "staging_l2": "default",
+            },
+            "strong_ready": {
+                "entry_barrier": True,
+                "payload_ready": "per-stage/source WWN generation",
+                "staging_l2": "default",
+            },
+            "strong_ready_cache_safe": {
+                "entry_barrier": True,
+                "payload_ready": "per-stage/source WWN generation",
+                "staging_l2": "bypass",
+            },
+        },
     }
     write_json(output_root / "plan.json", plan)
 
@@ -227,15 +513,34 @@ def main():
             ),
             flush=True,
         )
-        process = subprocess.run(command, env=environment, check=False)
+        execution = _run_with_timeout(
+            command, environment, args.mode_timeout_seconds
+        )
         result = _read_mode_result(
-            mode, mode_output, process.returncode, launches
+            mode,
+            mode_output,
+            execution["returncode"],
+            launches,
+            timed_out=execution["timed_out"],
+            elapsed_seconds=execution["elapsed_seconds"],
+            timeout_seconds=args.mode_timeout_seconds,
         )
         mode_results.append(result)
+        write_json(
+            output_root / "progress.json",
+            {
+                "case_id": args.case_id,
+                "completed_modes": [item["mode"] for item in mode_results],
+                "modes": mode_results,
+            },
+        )
         print(
-            "[sync-diagnosis] mode={} passed={} returncode={} failed_reports={}".format(
-                mode, result["passed"], process.returncode,
+            "[sync-diagnosis] mode={} passed={} returncode={} timed_out={} "
+            "elapsed_seconds={} failed_reports={} runtime_evidence={}".format(
+                mode, result["passed"], execution["returncode"],
+                execution["timed_out"], execution["elapsed_seconds"],
                 result["failed_report_count"],
+                result["runtime_evidence"]["counts"],
             ),
             flush=True,
         )
@@ -243,6 +548,7 @@ def main():
     decision = classify_mode_results(mode_results)
     aggregate = {
         "case_id": args.case_id,
+        "plan": str(output_root / "plan.json"),
         "modes": mode_results,
         "decision": decision,
     }

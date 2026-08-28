@@ -135,8 +135,10 @@ public:
     static constexpr bool USE_UDMA_PEER_SERIAL_SCHEDULE = USE_UDMA_PEER_SERIAL_SCHEDULE_;
     static constexpr bool EXPORT_ALLTOALLV = EXPORT_ALLTOALLV_;
     static constexpr uint32_t COMPLETION_MODE_LEGACY = 0;
-    static constexpr uint32_t COMPLETION_MODE_STRONG_READY = 1;
-    static constexpr uint32_t COMPLETION_MODE_STRONG_READY_CACHE_SAFE = 2;
+    static constexpr uint32_t COMPLETION_MODE_BARRIER_ONLY = 1;
+    static constexpr uint32_t COMPLETION_MODE_GENERATION_AFTER_QUIET = 2;
+    static constexpr uint32_t COMPLETION_MODE_STRONG_READY = 3;
+    static constexpr uint32_t COMPLETION_MODE_STRONG_READY_CACHE_SAFE = 4;
     static constexpr uint32_t READY_SLOT_RANKS = 8;
     static_assert(!EXPORT_ALLTOALLV || WORKSPACE_STAGES >= 2,
         "Pipelined AllToAllV export requires at least two staging buffers");
@@ -444,6 +446,13 @@ public:
         auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(params.syncMmadFinish);
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
         auto syncCommReady = reinterpret_cast<__gm__ uint64_t *>(params.syncCommReady);
+        bool useEntryBarrier =
+            params.completionMode != COMPLETION_MODE_LEGACY;
+        bool useGenerationReady =
+            params.completionMode ==
+                COMPLETION_MODE_GENERATION_AFTER_QUIET ||
+            params.completionMode == COMPLETION_MODE_STRONG_READY ||
+            params.completionMode == COMPLETION_MODE_STRONG_READY_CACHE_SAFE;
         bool useStrongReady =
             params.completionMode == COMPLETION_MODE_STRONG_READY ||
             params.completionMode == COMPLETION_MODE_STRONG_READY_CACHE_SAFE;
@@ -464,11 +473,13 @@ public:
              (aicoreIdx >= rankSize &&
               aicoreIdx < rankSize + selfCopyCores - 1));
 
-        // Strong diagnostic modes close the previous invocation on every PE
-        // before legacy MMAD gates are reset.  Ready slots themselves are not
-        // reset: their 64-bit launch generation makes delayed notifications
-        // distinguishable from the current launch.
-        if (useStrongReady) {
+        // Every non-legacy diagnostic mode closes the previous invocation on
+        // every PE before legacy MMAD gates are reset. barrier_only changes
+        // nothing else, which isolates cross-invocation lifecycle races from
+        // the strong payload-ready protocol. Strong ready slots themselves
+        // are not reset: their 64-bit launch generation makes delayed
+        // notifications distinguishable from the current launch.
+        if (useEntryBarrier) {
             aclshmemx_barrier_all_vec();
         }
 
@@ -482,6 +493,7 @@ public:
         aclshmemx_barrier_all_vec();
 
         uint32_t receiveAccum = 0;
+        bool quietFailureReported = false;
         auto commLoops = scheduler.GetCommLoops();
         if constexpr (EXPORT_ALLTOALLV) {
             static_assert(!std::is_void_v<BlockExport>,
@@ -667,13 +679,49 @@ public:
                 // quiet has drained this worker's queue; a fence alone does
                 // not make the remote stage consumable by the export path.
                 if constexpr (EXPORT_ALLTOALLV) {
+                    uint32_t quietStatus = 0;
                     if (isCommWorker) {
-                        blockRemoteCopy.FinalizeBlockLoop();
+                        if (params.completionMode ==
+                            COMPLETION_MODE_GENERATION_AFTER_QUIET) {
+                            quietStatus =
+                                blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                        } else {
+                            blockRemoteCopy.FinalizeBlockLoop();
+                        }
+                    }
+                    if (quietStatus != 0 && !quietFailureReported) {
+                        AscendC::printf(
+                            "[CATCCOS_UDMA_SYNC_DIAG] "
+                            "quiet_poll_failure rank=%u peer=%u comm=%u "
+                            "status=0x%x\n",
+                            rankIdx, completionPeerIdx, commIdx, quietStatus);
+                        quietFailureReported = true;
                     }
                     if (!useStrongReady && completedBlocks > 0) {
-                        aclshmemx_signal_op(
-                            syncCommFinish, completedBlocks,
-                            ACLSHMEM_SIGNAL_ADD, completionPeerIdx);
+                        if (useGenerationReady) {
+                            // Diagnostic midpoint: preserve the legacy UDMA
+                            // data WQE + quiet path, but replace the reusable
+                            // aggregate counter with a per-stage/source
+                            // generation. SHMEM signal_op is int32 in the
+                            // pinned API, so use the low half of each 64-bit
+                            // ready slot; the full 64-bit slot remains used by
+                            // WRITE_WITH_NOTIFY modes.
+                            auto readyAddress =
+                                reinterpret_cast<__gm__ int32_t *>(
+                                    syncCommReady +
+                                    stageIdx * READY_SLOT_RANKS + rankIdx);
+                            uint32_t readyGeneration =
+                                static_cast<uint32_t>(params.launchEpoch) *
+                                    0x9E3779B9U + commIdx + 1U;
+                            aclshmemx_signal_op(
+                                readyAddress,
+                                static_cast<int32_t>(readyGeneration),
+                                ACLSHMEM_SIGNAL_SET, completionPeerIdx);
+                        } else {
+                            aclshmemx_signal_op(
+                                syncCommFinish, completedBlocks,
+                                ACLSHMEM_SIGNAL_ADD, completionPeerIdx);
+                        }
                     }
                     if (isCommWorker && commIdx + 1 < commLoops) {
                         blockRemoteCopy.InitBlockLoop();
@@ -713,23 +761,46 @@ public:
 
             // 等待当前 commIdx 下，所有写到当前 rank symmetric 上的数据都写完
             if (isRootCore) {
-                if (useStrongReady) {
-                    uint64_t readyGeneration =
-                        (params.launchEpoch << 32) |
-                        static_cast<uint64_t>(commIdx + 1);
-                    for (uint32_t srcRankIdx = 0;
-                         srcRankIdx < rankSize; ++srcRankIdx) {
-                        // The local MTE copy is joined by the AIV inter-block
-                        // barrier below.  Only remote sources need WWN slots.
-                        if (srcRankIdx == rankIdx ||
-                            scheduler.GetActualReceiveRows(
-                                commIdx, srcRankIdx) == 0) {
-                            continue;
+                if (useGenerationReady) {
+                    if (params.completionMode ==
+                        COMPLETION_MODE_GENERATION_AFTER_QUIET) {
+                        uint32_t readyGeneration =
+                            static_cast<uint32_t>(params.launchEpoch) *
+                                0x9E3779B9U + commIdx + 1U;
+                        for (uint32_t srcRankIdx = 0;
+                             srcRankIdx < rankSize; ++srcRankIdx) {
+                            if (srcRankIdx == rankIdx ||
+                                scheduler.GetActualReceiveRows(
+                                    commIdx, srcRankIdx) == 0) {
+                                continue;
+                            }
+                            auto readyAddress =
+                                reinterpret_cast<__gm__ int32_t *>(
+                                    syncCommReady +
+                                    stageIdx * READY_SLOT_RANKS + srcRankIdx);
+                            aclshmem_signal_wait_until(
+                                readyAddress, ACLSHMEM_CMP_EQ,
+                                static_cast<int32_t>(readyGeneration));
                         }
-                        auto readyAddress = syncCommReady +
-                            stageIdx * READY_SLOT_RANKS + srcRankIdx;
-                        aclshmemi_signal_wait_until_eq<uint64_t>(
-                            readyAddress, readyGeneration);
+                    } else {
+                        uint64_t readyGeneration =
+                            (params.launchEpoch << 32) |
+                            static_cast<uint64_t>(commIdx + 1);
+                        for (uint32_t srcRankIdx = 0;
+                             srcRankIdx < rankSize; ++srcRankIdx) {
+                            // The local MTE copy is joined by the AIV
+                            // inter-block barrier below. Only remote sources
+                            // need WWN slots.
+                            if (srcRankIdx == rankIdx ||
+                                scheduler.GetActualReceiveRows(
+                                    commIdx, srcRankIdx) == 0) {
+                                continue;
+                            }
+                            auto readyAddress = syncCommReady +
+                                stageIdx * READY_SLOT_RANKS + srcRankIdx;
+                            aclshmemi_signal_wait_until_eq<uint64_t>(
+                                readyAddress, readyGeneration);
+                        }
                     }
                 } else {
                     aclshmem_signal_wait_until(

@@ -124,6 +124,56 @@ public:
         aclshmemx_udma_quiet(peerIdx);
     }
 
+    /// Diagnostic equivalent of aclshmemx_udma_quiet that preserves the
+    /// pinned SHMEM implementation's CQ return code. The public API returns
+    /// void and silently discards timeout/CQE failures, so this method is used
+    /// only by the synchronization diagnosis path.
+    CATLASS_DEVICE
+    uint32_t FinalizeWithStatus(uint32_t peerIdx)
+    {
+        __gm__ aclshmemi_aiv_udma_info_t *udmaInfo =
+            aclshmemi_udma_qp_info_fetch();
+        __gm__ aclshmemi_udma_qp_table_t *table =
+            aclshmemi_udma_active_table(udmaInfo);
+        uint32_t qpNum = udmaInfo->qp_num;
+        uint32_t actualPeer = peerIdx;
+        uint32_t firstError = 0;
+        if constexpr (ACLSHMEM_RELAY_SUPPORTED) {
+            uint32_t rankCount =
+                static_cast<uint32_t>(aclshmemi_get_total_pe());
+            for (uint32_t relayPeer = 0; relayPeer < rankCount;
+                 ++relayPeer) {
+                if (relayPeer == actualPeer) {
+                    continue;
+                }
+                uint32_t slot = actualPeer * rankCount + relayPeer;
+                __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
+                    (__gm__ aclshmemi_udma_wq_ctx_t *)(
+                        table->sq_ptr +
+                        (slot * qpNum) *
+                            sizeof(aclshmemi_udma_wq_ctx_t));
+                uint32_t wqeCount = qpContext->wqe_cnt;
+                if (wqeCount == 0) {
+                    continue;
+                }
+                uint32_t status =
+                    aclshmemi_udma_poll_cq(slot, 0, wqeCount);
+                if (firstError == 0 && status != 0) {
+                    firstError = status;
+                }
+            }
+        } else {
+            __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
+                (__gm__ aclshmemi_udma_wq_ctx_t *)(
+                    table->sq_ptr +
+                    (actualPeer * qpNum) *
+                        sizeof(aclshmemi_udma_wq_ctx_t));
+            firstError = aclshmemi_udma_poll_cq(
+                actualPeer, 0, qpContext->wqe_cnt);
+        }
+        return firstError;
+    }
+
 private:
     static constexpr uint32_t SYNC_ID = 0;
 

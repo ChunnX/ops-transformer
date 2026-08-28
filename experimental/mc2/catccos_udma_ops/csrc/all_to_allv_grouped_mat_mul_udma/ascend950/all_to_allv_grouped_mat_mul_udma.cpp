@@ -77,8 +77,10 @@ struct TilingProfile {
 
 enum class CompletionDiagnosticMode : uint32_t {
     kBaseline = 0,
-    kStrongReady = 1,
-    kStrongReadyCacheSafe = 2,
+    kBarrierOnly = 1,
+    kGenerationAfterQuiet = 2,
+    kStrongReady = 3,
+    kStrongReadyCacheSafe = 4,
 };
 
 CompletionDiagnosticMode GetCompletionDiagnosticMode()
@@ -88,15 +90,22 @@ CompletionDiagnosticMode GetCompletionDiagnosticMode()
     if (value.empty() || value == "baseline" || value == "legacy" || value == "0") {
         return CompletionDiagnosticMode::kBaseline;
     }
-    if (value == "strong_ready" || value == "1") {
+    if (value == "barrier_only" || value == "1") {
+        return CompletionDiagnosticMode::kBarrierOnly;
+    }
+    if (value == "generation_after_quiet" || value == "2") {
+        return CompletionDiagnosticMode::kGenerationAfterQuiet;
+    }
+    if (value == "strong_ready" || value == "3") {
         return CompletionDiagnosticMode::kStrongReady;
     }
-    if (value == "strong_ready_cache_safe" || value == "2") {
+    if (value == "strong_ready_cache_safe" || value == "4") {
         return CompletionDiagnosticMode::kStrongReadyCacheSafe;
     }
     TORCH_CHECK(false,
         "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE must be one of "
-        "baseline, strong_ready, or strong_ready_cache_safe; got ", value);
+        "baseline, barrier_only, generation_after_quiet, strong_ready, or "
+        "strong_ready_cache_safe; got ", value);
     return CompletionDiagnosticMode::kBaseline;
 }
 
@@ -413,11 +422,22 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     }
     const CompletionDiagnosticMode completionDiagnosticMode =
         GetCompletionDiagnosticMode();
+    const bool usesReadyGeneration =
+        completionDiagnosticMode ==
+            CompletionDiagnosticMode::kGenerationAfterQuiet ||
+        completionDiagnosticMode == CompletionDiagnosticMode::kStrongReady ||
+        completionDiagnosticMode ==
+            CompletionDiagnosticMode::kStrongReadyCacheSafe;
+    const bool usesStrongReady =
+        completionDiagnosticMode == CompletionDiagnosticMode::kStrongReady ||
+        completionDiagnosticMode ==
+            CompletionDiagnosticMode::kStrongReadyCacheSafe;
     TORCH_CHECK(
         completionDiagnosticMode == CompletionDiagnosticMode::kBaseline ||
             allToAllVOutputOptional.has_value(),
-        "strong completion diagnostics require output_all_to_allv=True");
-    if (completionDiagnosticMode != CompletionDiagnosticMode::kBaseline) {
+        "non-baseline completion diagnostics require "
+        "output_all_to_allv=True");
+    if (usesStrongReady) {
         const uint64_t stageRows = tiling.stageRows == 0
             ? static_cast<uint64_t>(tiling.commInterval) * tiling.m0
             : tiling.stageRows;
@@ -431,9 +451,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             kMaxUdmaWriteNotifyBytes);
     }
     const uint64_t launchEpoch =
-        completionDiagnosticMode == CompletionDiagnosticMode::kBaseline
-            ? 0
-            : runtime.NextAllToAllVGroupedMatMulEpoch();
+        usesReadyGeneration ? runtime.NextAllToAllVGroupedMatMulEpoch() : 0;
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
 
