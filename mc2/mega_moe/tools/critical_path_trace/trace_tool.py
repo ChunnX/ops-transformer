@@ -83,7 +83,7 @@ EVENT_COLORS = {
 EVENT_TRACE_POINTS = {
     1: ("ProcessWave 入口", "输入准备 SyncAll 返回"),
     2: ("DispatchMoeExpert 前", "现有 MTE3_S 与 row-ready 发布后"),
-    3: ("dispatch count/row 轮询前", "轮询满足后"),
+    3: ("GMM1 M-group dispatch row-ready 轮询前", "轮询满足后"),
     4: ("GMM1 W4 prologue tile 前", "trace-only MTE3_S 后"),
     5: ("GMM1 scheduler tile 前", "现有 FIX_S 与 ready 发布后"),
     6: ("GMM1 tile ready 轮询前", "轮询满足后"),

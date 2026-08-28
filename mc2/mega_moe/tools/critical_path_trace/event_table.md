@@ -8,7 +8,7 @@ identifies a completion event added only in the diagnostic build.
 |---:|---|---|---|---|---|
 | 1 | `OP_PRE_MOE` | all | `ProcessWave` entry | existing input-preparation `SyncAll<false>` returns | Existing all-role boundary |
 | 2 | `DISPATCH_WORK` | AIV1 | before one expert `DispatchMoeExpert` | after its existing `MTE3_S` and row-ready publish | Complete |
-| 3 | `WAIT_FOR_DISPATCH` | AIC/AIV0 | before per-expert token-count or dispatch-row polling | polling returns | Explicit wait; GMM1 child where contained |
+| 3 | `WAIT_FOR_DISPATCH` | AIC | before one GMM1 M-group's Dispatch row-ready polling | polling returns | Explicit child of ID 5; token-count metadata wait is intentionally not traced |
 | 4 | `GMM1_PROLOGUE` | AIV0 | before one scheduler tile's two W4 prologues | trace-only `MTE3_S` | Complete; diagnostic synchronization |
 | 5 | `GMM1_COMPUTE` | AIC | before one scheduler tile's dispatch wait | existing tile `FIX_S`, then ready publish | Complete; contains ID 3 |
 | 6 | `WAIT_FOR_GMM1` | AIV1 | before per-tile sequence/status polling | polling returns | Explicit child of ID 7 |

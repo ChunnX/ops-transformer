@@ -585,18 +585,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(E
 {
     if constexpr (WaitForTokenCountReady) {
         if (GetSubBlockIdx() == 0U) {
-#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
-            uint64_t tokenCountWaitBegin = ENABLE_A8W4 ? trace_.Now() : 0U;
-#endif
             WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
                                             expertIdx);
-#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
-            if constexpr (ENABLE_A8W4) {
-                A8W4TraceScope scope{A8W4_TRACE_NO_SCOPE, expertIdx, A8W4_TRACE_NO_SCOPE, 0U, 0U, 0U};
-                trace_.RecordWait(A8W4TraceEvent::WAIT_FOR_DISPATCH, A8W4TraceEvent::GMM1_COMPUTE, scope,
-                                  tokenCountWaitBegin, trace_.Now());
-            }
-#endif
         }
     }
     uint32_t expertTokenCount =
