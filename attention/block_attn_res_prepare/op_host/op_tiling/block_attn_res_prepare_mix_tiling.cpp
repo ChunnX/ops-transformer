@@ -60,6 +60,9 @@ constexpr size_t CUBE_BASE_D_CANDIDATE_NUM = 3;
 
 bool BlockAttnResPrepareMixTiling::IsCapable()
 {
+    if (aicCoreNum_ == 0U || aivCoreNum_ != aicCoreNum_ * AIV_CORE_NUM_PER_AIC) {
+        return false;
+    }
     if (totalT_ < CUBE_MIN_T || totalS_ < CUBE_MIN_S || totalD_ < CUBE_MIN_D) {
         return false;
     }
