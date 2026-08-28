@@ -1506,11 +1506,12 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
         gradXPostCopyParams.blockLen = copySizeND * sizeof(T);
         gradXPostCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
         gradXPostCopyParams.dstStride = 0;
-        gradXPostBuf_ = vecInQueue1_.AllocTensor<T>();
+        // 使用q0双缓冲队列加载可选的grad_x_post输入。
+        vecInQueue0_.AllocTensor<T>(gradXPostBuf_);
         DataCopyPad(gradXPostBuf_, gradXPostOptionalGm_[bsChunkStart * nD_ + offsetND], gradXPostCopyParams,
                     gradXPostPadParams);
-        vecInQueue1_.EnQue(gradXPostBuf_);
-        gradXPostBuf_ = vecInQueue1_.DeQue<T>();
+        vecInQueue0_.EnQue(gradXPostBuf_);
+        vecInQueue0_.DeQue<T>(gradXPostBuf_);
         __ubuf__ T *gradXPostAddr = (__ubuf__ T *)gradXPostBuf_.GetPhyAddr();
         VFDoV2AddGradXPostAndCast<true>(outputAddr, xGradAddr, gradXPostAddr, chunkNDSize);
     } else {
@@ -1518,7 +1519,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
     }
     PipeBarrier<PIPE_V>();
     if (withGradXPost_) {
-        vecInQueue1_.FreeTensor(gradXPostBuf_);
+        vecInQueue0_.FreeTensor(gradXPostBuf_);
     }
     vecOutQueue1_.EnQue(bf16OutputBuf_);
     bf16OutputBuf_ = vecOutQueue1_.DeQue<T>();
