@@ -1201,9 +1201,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 初始化
     // ==========================================================
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
-    // 将V2最大队列张量限制为64 * 64 * sizeof(float) = 16KB。
-    // 这是后续开启q0双缓冲前必须满足的队列单块容量条件。
-    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE / 2;
+    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
     uint32_t currentBsSize = bsEnd - bsStart;
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
