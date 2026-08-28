@@ -598,7 +598,8 @@ h2 {{ margin:0 0 14px; font-size:17px; }}
 .card {{ padding:13px 15px; }} .card b {{ display:block; margin-top:3px; font-size:19px; }}
 .panel {{ padding:16px; margin:14px 0; overflow:hidden; }}
 .controls {{ position:relative; display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }}
-select,button {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text); }}
+select,button {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text);
+                font:inherit; }}
 button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .event-picker,.wave-picker {{ position:static; }}
 .event-picker summary,.wave-picker summary {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff;
@@ -612,12 +613,12 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
                      box-shadow:0 8px 24px #10182824; }}
 .event-picker-actions,.wave-picker-actions {{ display:flex; gap:8px; margin-bottom:10px; }}
 .wave-options {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:6px 10px; }}
-.wave-option {{ display:block; padding:3px 5px; border-radius:4px; background:#f8fafc; font:12px/1.5 monospace; }}
+.wave-option {{ display:block; padding:3px 5px; border-radius:4px; background:#f8fafc; font-size:12px; line-height:1.5; }}
 .wave-option input {{ margin-right:5px; vertical-align:middle; }}
 .event-groups {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:8px; }}
 .event-group {{ padding:8px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc; }}
 .event-group > label {{ display:block; margin-bottom:5px; font-weight:700; }}
-.event-option {{ display:block; margin:3px 0; font:11px/1.4 monospace; }}
+.event-option {{ display:block; margin:3px 0; font-size:11px; line-height:1.4; }}
 .event-option input,.event-group input {{ margin-right:5px; vertical-align:middle; }}
 .legend {{ display:flex; flex-wrap:wrap; gap:10px 16px; color:var(--muted); }}
 .legend-item {{ display:inline-flex; align-items:center; padding:4px 7px; border-color:#dbe2ea; color:var(--muted);
@@ -627,14 +628,16 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .legend-item.active {{ border-color:#94a3b8; background:#fff; color:var(--text); box-shadow:0 1px 2px #10182814; }}
 .legend-item:hover {{ opacity:1; }}
 #timeline {{ min-height:140px; overflow-x:auto; }}
-.timeline-viewport {{ position:relative; overflow:auto; min-height:140px; max-height:70vh; border:1px solid var(--line);
+.timeline-viewport {{ position:relative; overflow:auto; min-height:140px; resize:vertical; border:1px solid var(--line);
                       border-radius:8px; background:#fff; }}
 .timeline-content {{ position:relative; min-width:1050px; }}
 .timeline-label-layer {{ position:absolute; left:0; top:0; z-index:3; width:142px; pointer-events:none; }}
 .timeline-label {{ position:absolute; left:0; width:142px; display:flex; align-items:center; gap:5px; padding:0 7px;
                    overflow:hidden; border-right:1px solid var(--line); background:#fff; pointer-events:auto; }}
 .timeline-label.block {{ background:#eef2f6; color:var(--muted); font-size:11px; font-weight:700; }}
-.timeline-label.section {{ background:#fffbeb; color:#92400e; font-size:11px; font-weight:700; }}
+.timeline-label.section {{ justify-content:space-between; background:#fffbeb; color:#92400e; font-size:11px; font-weight:700; }}
+.pinned-toggle {{ width:24px; height:22px; padding:0; border-color:#fbbf24; background:#fff; color:#92400e;
+                  font-size:12px; line-height:20px; }}
 .timeline-label.fixed-pinned {{ z-index:2; }}
 .timeline-pinned-divider {{ position:absolute; left:0; z-index:3; width:142px; height:2px; background:#f59e0b;
                             pointer-events:none; }}
@@ -739,7 +742,8 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <div class="muted">点击图例可直接显示或隐藏单个事件；阶段/事件选择器用于批量选择。</div>
   <div class="legend" id="legend"></div>
   <div class="muted">每个 role/core 只使用一条泳道。父阶段显示完整执行区间，等待按真实 begin/end cycle
-  覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区。</div>
+  覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区；拖动视口
+  右下角可调整高度，固定对比区可单独收起。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
   <div id="canvasTooltip" class="canvas-tooltip"></div>
@@ -970,6 +974,8 @@ let virtualWaveFrame=null;
 let deferredRenderGeneration=0;
 let visibleEventGeneration=0;
 let redrawTimelineSelection=null;
+let timelineViewportHeight=null;
+let pinnedPartitionCollapsed=false;
 const eventRowHeight=32;
 const eventRowOverscan=12;
 const availableEvents = new Set(trace.records.flatMap(record=>record.events.map(event=>event.event)));
@@ -1190,16 +1196,18 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const pinnedBlockGroups=pinSourceGroups.filter(group=>pinnedBlocks.has(group.core));
   const pinnedLaneRecords=pinSourceGroups.flatMap(group=>group.records)
     .filter(record=>pinnedLanes.has(laneKey(record.core,record.role))&&!pinnedBlocks.has(record.core));
-  const pinnedEvents=[...pinnedBlockGroups.flatMap(group=>group.records.flatMap(record=>record.events)),
+  const allPinnedEvents=[...pinnedBlockGroups.flatMap(group=>group.records.flatMap(record=>record.events)),
     ...pinnedLaneRecords.flatMap(record=>record.events)];
-  const hasPinnedEvents=pinnedEvents.length>0;
-  if (!events.length&&!hasPinnedEvents) {{
+  const hasPinnedItems=pinnedBlockGroups.length>0||pinnedLaneRecords.length>0;
+  const pinnedEvents=pinnedPartitionCollapsed?[]:allPinnedEvents;
+  if (!events.length&&!hasPinnedItems) {{
     selectedTimelineEvent=null;
     resetEventDetail();
     root.innerHTML='<div class="empty">当前筛选条件下没有事件</div>'; return;
   }}
-  const domainEvents=[...events,...pinnedEvents];
-  if(selectedTimelineEvent&&!domainEvents.includes(selectedTimelineEvent)) {{
+  const visibleTimelineEvents=[...events,...pinnedEvents];
+  const domainEvents=visibleTimelineEvents.length?visibleTimelineEvents:allPinnedEvents;
+  if(selectedTimelineEvent&&!visibleTimelineEvents.includes(selectedTimelineEvent)) {{
     selectedTimelineEvent=null;
     resetEventDetail();
   }}
@@ -1219,22 +1227,26 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
     appendRow({{type:'block',core:group.core,pinned,fixed,height:blockHeight}});
     for(const record of group.records) appendRow({{type:'lane',record,pinned,fixed,height:laneHeight}});
   }};
-  if(pinnedBlockGroups.length||pinnedLaneRecords.length) {{
+  if(hasPinnedItems) {{
     appendRow({{type:'section',label:'固定对比',fixed:true,height:sectionHeight}});
-    for(const group of pinnedBlockGroups) appendBlock(group,true,true);
-    for(const record of pinnedLaneRecords) {{
-      appendRow({{type:'block',core:record.core,pinned:true,fixed:true,height:blockHeight}});
-      appendRow({{type:'lane',record,pinned:true,fixed:true,height:laneHeight}});
+    if(!pinnedPartitionCollapsed) {{
+      for(const group of pinnedBlockGroups) appendBlock(group,true,true);
+      for(const record of pinnedLaneRecords) {{
+        appendRow({{type:'block',core:record.core,pinned:true,fixed:true,height:blockHeight}});
+        appendRow({{type:'lane',record,pinned:true,fixed:true,height:laneHeight}});
+      }}
     }}
   }}
   const pinnedBottom=rowTop;
   const hasPinnedPartition=pinnedBottom>axisHeight;
   for(const group of blockGroups) appendBlock(group,false);
   const contentHeight=Math.max(rowTop,140);
-  const viewportHeight=Math.min(Math.max(contentHeight,140),650);
+  const defaultViewportHeight=Math.min(Math.max(contentHeight,140),650);
+  const viewportHeight=timelineViewportHeight??defaultViewportHeight;
   const labels=rows.map(row=>{{
     const fixedClass=row.fixed?' fixed-pinned':'';
-    if(row.type==='section') return `<div class="timeline-label section${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px">${{row.label}}</div>`;
+    if(row.type==='section') return `<div class="timeline-label section${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px"><span>${{row.label}}</span>`
+      +`<button type="button" class="pinned-toggle" data-toggle-pinned title="${{pinnedPartitionCollapsed?'展开固定对比区':'收起固定对比区'}}">${{pinnedPartitionCollapsed?'▸':'▾'}}</button></div>`;
     if(row.type==='block') {{
       const active=pinnedBlocks.has(row.core);
       return `<div class="timeline-label block${{fixedClass}}" style="top:${{row.top}}px;height:${{row.height}}px"><span>Block ${{row.core}}</span>`
@@ -1403,17 +1415,24 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   }});
   requestAnimationFrame(syncViewport);
   if('ResizeObserver' in window) {{
-    timelineResizeObserver=new ResizeObserver(()=>requestAnimationFrame(syncViewport));
+    timelineResizeObserver=new ResizeObserver(()=>{{
+      timelineViewportHeight=Math.round(viewport.getBoundingClientRect().height);
+      requestAnimationFrame(syncViewport);
+    }});
     timelineResizeObserver.observe(viewport);
   }}
+  root.querySelectorAll('[data-toggle-pinned]').forEach(button=>button.addEventListener('click',()=>{{
+    pinnedPartitionCollapsed=!pinnedPartitionCollapsed;
+    renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
+  }}));
   root.querySelectorAll('[data-pin-block]').forEach(button=>button.addEventListener('click',()=>{{
     const core=Number(button.dataset.pinBlock);
-    if(pinnedBlocks.has(core)) pinnedBlocks.delete(core); else pinnedBlocks.add(core);
+    if(pinnedBlocks.has(core)) pinnedBlocks.delete(core); else {{ pinnedBlocks.add(core); pinnedPartitionCollapsed=false; }}
     renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
   }}));
   root.querySelectorAll('[data-pin-lane]').forEach(button=>button.addEventListener('click',()=>{{
     const key=button.dataset.pinLane;
-    if(pinnedLanes.has(key)) pinnedLanes.delete(key); else pinnedLanes.add(key);
+    if(pinnedLanes.has(key)) pinnedLanes.delete(key); else {{ pinnedLanes.add(key); pinnedPartitionCollapsed=false; }}
     renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
   }}));
 }}
@@ -1964,7 +1983,8 @@ def run_synthetic_tests() -> int:
         assert 'data-legend-event="${name}"' in rank_page
         assert "selectedEvents.delete(name):selectedEvents.add(name)" in rank_page
         assert ".filter(([name])=>availableEvents.has(name))" in rank_page
-        assert "const domainEvents=[...events,...pinnedEvents]" in rank_page
+        assert "const visibleTimelineEvents=[...events,...pinnedEvents]" in rank_page
+        assert "const domainEvents=visibleTimelineEvents.length" in rank_page
         assert '<option value="all" selected>全部 Block</option>' in rank_page
         assert 'id="timelineEventLimit"' not in rank_page
         assert 'id="eventTableLimit"' not in rank_page
@@ -1974,6 +1994,13 @@ def run_synthetic_tests() -> int:
         assert 'id="waveTableScroll"' in rank_page
         assert "const drawCanvas=()=>" in rank_page
         assert 'class="timeline-pinned-divider"' in rank_page
+        assert "resize:vertical" in rank_page
+        assert "data-toggle-pinned" in rank_page
+        assert (
+            "const viewportHeight=timelineViewportHeight??defaultViewportHeight"
+            in rank_page
+        )
+        assert "pinnedPartitionCollapsed=!pinnedPartitionCollapsed" in rank_page
         assert "const y=row.fixed?row.top:row.top-scrollTop" in rank_page
         assert "label.style.transform=`translateY(" in rank_page
         assert "new ResizeObserver" in rank_page
