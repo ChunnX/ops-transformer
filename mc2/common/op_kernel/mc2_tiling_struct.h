@@ -184,6 +184,7 @@ enum WorkspaceSegType : uint8_t {
     WS_SEG_COMM_INT8     = 10,  // int8 通信 workspace
     WS_SEG_DYNAMIC_QUANT = 11,  // 动态量化临时空间
     WS_SEG_RUNTIME_INFO  = 12,  // 运行时信息段 (64KB)
+    WS_SEG_MM_WORKSPACE  = 13,  // matmul 用户临时空间
     WS_SEG_RESERVED      = 255,
 };
 

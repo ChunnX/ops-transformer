@@ -28,12 +28,14 @@ public:
 
     __aicore__ inline void Init(GM_ADDR workspaceGM,
                                 Mc2Tiling::WorkspaceLayoutInfo *wsLayout,
-                                uint32_t aicCoreNum)
+                                uint32_t aicCoreNum,
+                                uint8_t initialPhase = Mc2Tiling::RT_PHASE_COMM_INIT)
     {
         runtimeInfoBase_ = nullptr;
         slotIdx_ = 0;
 
-        if (wsLayout == nullptr) {
+        if (workspaceGM == nullptr || wsLayout == nullptr ||
+            wsLayout->segCount > Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
             return;
         }
 
@@ -44,9 +46,19 @@ public:
         uint64_t libApiSize = 0;
         for (uint32_t i = 0; i < wsLayout->segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
             if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_LIB_API) {
+                if (wsLayout->segments[i].offset != 0 || wsLayout->segments[i].size > wsLayout->totalSize) {
+                    return;
+                }
                 libApiSize = wsLayout->segments[i].size;
             }
+        }
+        for (uint32_t i = 0; i < wsLayout->segCount; i++) {
             if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_RUNTIME_INFO) {
+                const auto &seg = wsLayout->segments[i];
+                if (seg.offset < libApiSize || seg.offset > wsLayout->totalSize ||
+                    seg.size > wsLayout->totalSize - seg.offset || seg.size < Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE) {
+                    return;
+                }
                 uint64_t userOffset = wsLayout->segments[i].offset - libApiSize;
                 runtimeInfoBase_ = reinterpret_cast<__gm__ Mc2Tiling::RuntimeInfoPerCore *>(
                     workspaceGM + userOffset);
@@ -63,13 +75,17 @@ public:
         } else {
             slotIdx_ = aicCoreNum + AscendC::GetBlockIdx();
         }
+        if (slotIdx_ >= Mc2Tiling::RUNTIME_INFO_CORE_MAX) {
+            runtimeInfoBase_ = nullptr;
+            return;
+        }
 
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
         mySlot->magicNum = 0x5A5A5A5AU;
         mySlot->coreId = static_cast<uint16_t>(slotIdx_);
         mySlot->execTurn = 0;
         mySlot->execPosition = 0;
-        mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_INIT);
+        mySlot->commPhase = initialPhase;
         mySlot->commCommitCount = 0;
         mySlot->commWaitCount = 0;
 
@@ -87,6 +103,18 @@ public:
         mySlot->execTurn = turn;
         mySlot->execPosition = position;
         mySlot->commPhase = phase;
+        FlushCache();
+    }
+
+    // Change the current tile/operation without overwriting the last communication state.
+    __aicore__ inline void WritePositionByPassDCache(uint32_t turn, uint8_t position)
+    {
+        if (runtimeInfoBase_ == nullptr) {
+            return;
+        }
+        __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
+        mySlot->execTurn = static_cast<uint8_t>(turn);
+        mySlot->execPosition = position;
         FlushCache();
     }
 
@@ -113,25 +141,31 @@ public:
     }
 
     // 递增 HCCL Commit 次数: 在 hccl_.Commit() 返回后调用
-    __aicore__ inline void IncCommitCount()
+    __aicore__ inline void IncCommitCount(uint8_t phase = Mc2Tiling::RT_PHASE_RESERVED)
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
         mySlot->commCommitCount++;
+        if (phase != Mc2Tiling::RT_PHASE_RESERVED) {
+            mySlot->commPhase = phase;
+        }
         FlushCache();
     }
 
     // 递增 HCCL Wait 次数: 在 hccl_.Wait() 返回后调用
-    // 崩溃时 commit > wait 说明卡在 Wait; commit == wait 说明不在通信中
-    __aicore__ inline void IncWaitCount()
+    // commit > wait means outstanding communication, not necessarily a blocked Wait.
+    __aicore__ inline void IncWaitCount(uint8_t phase = Mc2Tiling::RT_PHASE_RESERVED)
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
         mySlot->commWaitCount++;
+        if (phase != Mc2Tiling::RT_PHASE_RESERVED) {
+            mySlot->commPhase = phase;
+        }
         FlushCache();
     }
 

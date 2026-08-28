@@ -850,6 +850,25 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
             "wsLayoutOffsetNonQuant=%u, wsLayoutOffsetQuant=%u",
             op, workspaceGmArgIdx, quantModeOffset, wsLayoutOffsetNonQuant, wsLayoutOffsetQuant);
 
+    // Log the kernel's user-workspace pointer even when the tiling layout is invalid.
+    uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);
+    if (wsGmOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "wsGmOffset=%u + 8 > devArgsLen=%u, args too short.", wsGmOffset, devArgsLen);
+        return;
+    }
+    uint64_t workspaceGM = 0U;
+    if (aclrtMemcpy(&workspaceGM, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + wsGmOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy workspaceGM pointer failed, offset=%u.", wsGmOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "workspaceGM=0x%lx (offset=%u)", workspaceGM, wsGmOffset);
+    if (workspaceGM == 0U) {
+        OP_LOGE(OP_NAME, "workspaceGM is 0, skip workspace dump.");
+        return;
+    }
+
     // 1. 选择 wsLayoutOffset
     uint32_t wsLayoutOffset = wsLayoutOffsetNonQuant;
     if (wsLayoutOffsetNonQuant != wsLayoutOffsetQuant) {
@@ -872,42 +891,51 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
     Mc2Tiling::WorkspaceLayoutInfo wsLayout;
     memcpy(&wsLayout, tilingBuf.data() + wsLayoutOffset, wsLayoutInfoSize);
-    if (wsLayout.totalSize == 0 || wsLayout.segCount == 0) {
+    if (wsLayout.totalSize == 0 || wsLayout.segCount == 0 ||
+        wsLayout.segCount > Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
         OP_LOGE(OP_NAME, "wsLayout invalid: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
         return;
     }
     OP_LOGE(OP_NAME, "wsLayout: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
 
-    // 3. 读取 workspaceGM 指针 (workspaceGmArgIdx = tilingGmArgIdx - 1)
-    uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);
-    if (wsGmOffset + sizeof(uint64_t) > devArgsLen) {
-        OP_LOGE(OP_NAME, "wsGmOffset=%u + 8 > devArgsLen=%u, args too short.", wsGmOffset, devArgsLen);
-        return;
+    // Layout offsets include LIB_API, but the kernel argument already skips it.
+    // Match Mc2RuntimeInfo::Init. Do not access framework-owned LIB_API memory.
+    uint64_t libApiSize = 0U;
+    for (uint32_t i = 0; i < wsLayout.segCount; ++i) {
+        const auto &seg = wsLayout.segments[i];
+        if (seg.offset > wsLayout.totalSize || seg.size > wsLayout.totalSize - seg.offset) {
+            OP_LOGE(OP_NAME, "workspace seg[%u] is outside totalSize, offset=%lu, size=%lu.",
+                    i, seg.offset, seg.size);
+            return;
+        }
+        if (seg.type == Mc2Tiling::WS_SEG_LIB_API) {
+            if (seg.offset != 0U) {
+                OP_LOGE(OP_NAME, "LIB_API must start at offset 0, got %lu.", seg.offset);
+                return;
+            }
+            libApiSize = seg.size;
+        }
     }
-    uint64_t workspaceGM = 0U;
-    if (aclrtMemcpy(&workspaceGM, sizeof(uint64_t),
-                    reinterpret_cast<uint8_t *>(devArgsPtr) + wsGmOffset,
-                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy workspaceGM pointer failed, offset=%u.", wsGmOffset);
-        return;
-    }
-    OP_LOGE(OP_NAME, "workspaceGM=0x%lx (offset=%u)", workspaceGM, wsGmOffset);
-    if (workspaceGM == 0U) {
-        OP_LOGE(OP_NAME, "workspaceGM is 0, skip workspace dump.");
-        return;
-    }
+    OP_LOGE(OP_NAME, "workspace user base=0x%lx, libApiSize=%lu, userSize=%lu",
+            workspaceGM, libApiSize, wsLayout.totalSize - libApiSize);
 
     // 4. 逐段 D2H 拷贝并落盘
+    uint32_t dumpedSegments = 0U;
     for (uint32_t i = 0; i < wsLayout.segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
         auto &seg = wsLayout.segments[i];
-        if (seg.size == 0) {
+        if (seg.size == 0 || seg.type == Mc2Tiling::WS_SEG_LIB_API) {
+            continue;
+        }
+        if (seg.offset < libApiSize) {
+            OP_LOGE(OP_NAME, "workspace seg[%u] overlaps LIB_API, offset=%lu.", i, seg.offset);
             continue;
         }
         uint64_t dumpSize = seg.size;
         std::vector<uint8_t> segBuf(dumpSize, 0);
-        void *srcAddr = reinterpret_cast<void *>(workspaceGM + seg.offset);
-        OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
-                i, seg.type, seg.offset, seg.size, dumpSize,
+        const uint64_t userOffset = seg.offset - libApiSize;
+        void *srcAddr = reinterpret_cast<void *>(workspaceGM + userOffset);
+        OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, userOffset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
+                i, seg.type, seg.offset, userOffset, seg.size, dumpSize,
                 static_cast<uint64_t>(reinterpret_cast<uintptr_t>(srcAddr)));
         if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
                         ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
@@ -918,9 +946,11 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
         if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId, segBuf.data(), dumpSize) != 0) {
             OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u].", i);
+        } else {
+            ++dumpedSegments;
         }
     }
-    OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
+    OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u, dumpedSegments=%u.", op, deviceId, dumpedSegments);
 }
 
 } // namespace Mc2Exception

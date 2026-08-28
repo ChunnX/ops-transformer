@@ -566,17 +566,50 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
 
 ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
 {
-    // A2A 路径需要 3 倍 cToFloatLen (senBuf + recvBuf + matmul)，否则只需 1 倍
-    uint32_t factor = isA2APath_ ? 3 : 1;
-    myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().cToFloatLen * factor;
-
-    OP_LOGI(opName_, "set max workspace size %lu to context", myWorkSpaceSize_);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, "WorkspaceSizes");
         return ge::GRAPH_FAILED;
     }
-    workspaces[0] = myWorkSpaceSize_;
+    // The matmul helper includes LIB_API in its workspace size. Kernel workspaceGM
+    // starts after LIB_API: send/result, optional receive, then matmul scratch.
+    OP_TILING_CHECK(myWorkSpaceSize_ < libApiWorkSpaceSize_,
+                    OP_LOGE(opName_, "matmul workspace is smaller than LIB_API"), return ge::GRAPH_FAILED);
+    const uint64_t resultSize = MutableRCSTilingDataA5().cToFloatLen;
+    const uint64_t matmulUserSize = myWorkSpaceSize_ - libApiWorkSpaceSize_ + (isA2APath_ ? resultSize : 0U);
+    workspaceLayout_ = {};
+    uint32_t idx = 0;
+    uint64_t offset = 0;
+    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    offset += libApiWorkSpaceSize_;
+    workspaceLayout_.segments[idx++] = {offset, resultSize,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
+    offset += resultSize;
+    if (isA2APath_) {
+        workspaceLayout_.segments[idx++] = {offset, resultSize,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
+        offset += resultSize;
+    }
+    if (matmulUserSize != 0U) {
+        workspaceLayout_.segments[idx++] = {offset, matmulUserSize,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_WORKSPACE), {}};
+        offset += matmulUserSize;
+    }
+    const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - (offset - libApiWorkSpaceSize_) % alignment) % alignment;
+    if (padding != 0U) {
+        workspaceLayout_.segments[idx++] = {offset, padding,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
+        offset += padding;
+    }
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    workspaceLayout_.totalSize = offset + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+    workspaceLayout_.segCount = idx;
+    workspaces[0] = workspaceLayout_.totalSize;
+    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u, runtimeOffset=%lu",
+            workspaceLayout_.totalSize, workspaceLayout_.segCount, offset);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -716,6 +749,8 @@ DequantBmm::Mc2SlidingWindowParams &QuantBmmReduceScatterTiling::MutableTailTCub
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
 {
+    // Recompute the maximum tile/tail matmul scratch size for this tiling call.
+    myWorkSpaceSize_ = 0U;
     // 主块切分
     uint32_t tempMValue = tileMValue_ == 0 ? MutableRCSTilingDataA5().rankM : tileMValue_;
     args_.mValue = ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||
