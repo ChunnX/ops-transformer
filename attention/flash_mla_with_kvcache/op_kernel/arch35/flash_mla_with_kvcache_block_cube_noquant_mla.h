@@ -16,9 +16,15 @@
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_NOQUANT_MLA_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_NOQUANT_MLA_H_
+#if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
+#else
+#include "../../common/offset_calculator.h"
+#include "../../common/matmul.h"
+#include "../../common/FixpipeOut.h"
+#endif
 #include "memory_copy_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "flash_mla_with_kvcache_type.h"
