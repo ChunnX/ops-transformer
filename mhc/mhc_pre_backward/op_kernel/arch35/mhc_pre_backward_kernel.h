@@ -616,21 +616,24 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     __ubuf__ P *hPreAddr = (__ubuf__ P *)hPre.GetPhyAddr();
     __ubuf__ P *gradHInAddr = (__ubuf__ P *)buffers.hPreGradBuf.GetPhyAddr();
     __ubuf__ P *hPreBufS1Addr = (__ubuf__ P *)buffers.hPreBufS1.GetPhyAddr();
-    VFDoV0HPreGrad(hPreBufS1Addr, hPreAddr, gradHInAddr, buffers.stepLength);
 
-    fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    DataCopyPad(fp32InputBuf, hPostGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
-    vecInQueue1_.EnQue(fp32InputBuf);
+    // 使用 q0 双缓冲提前搬入 h_post 和 grad_h_post，使两笔 MTE2 搬运与 h_pre 向量计算重叠。
+    AscendC::LocalTensor<P> hPost;
+    vecInQueue0_.AllocTensor<P>(hPost);
+    DataCopyPad(hPost, hPostGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
+    vecInQueue0_.EnQue(hPost);
     AscendC::LocalTensor<P> gradHPost;
     vecInQueue0_.AllocTensor<P>(gradHPost);
     DataCopyPad(gradHPost, gradHPostGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(gradHPost);
 
-    LocalTensor<P> hPost = vecInQueue1_.DeQue<P>();
+    VFDoV0HPreGrad(hPreBufS1Addr, hPreAddr, gradHInAddr, buffers.stepLength);
+    vecInQueue1_.FreeTensor(hPre);
+    hPost = vecInQueue0_.DeQue<P>();
     vecInQueue0_.DeQue<P>(gradHPost);
     VFDoV0ProcessGradHPost((__ubuf__ P *)hPost.GetPhyAddr(), (__ubuf__ P *)gradHPost.GetPhyAddr(),
                            (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr(), buffers.stepLength);
-    vecInQueue1_.FreeTensor(hPost);
+    vecInQueue0_.FreeTensor(hPost);
     vecInQueue0_.FreeTensor(gradHPost);
 
     fp32InputBuf = vecInQueue1_.AllocTensor<P>();
