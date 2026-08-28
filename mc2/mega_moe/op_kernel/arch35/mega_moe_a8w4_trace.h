@@ -19,7 +19,7 @@ constexpr uint32_t A8W4_TRACE_ROLE_COUNT = 3U;
 constexpr uint32_t A8W4_TRACE_HEADER_WORDS = 24U;
 constexpr uint32_t A8W4_TRACE_RECORD_HEADER_WORDS = 8U;
 constexpr uint32_t A8W4_TRACE_EVENT_WORDS = 13U;
-constexpr uint32_t A8W4_TRACE_MAX_EVENTS_PER_RECORD = 256U;
+constexpr uint32_t A8W4_TRACE_MAX_EVENTS_PER_RECORD = 1024U;
 constexpr uint32_t A8W4_TRACE_NO_SCOPE = 0xffffffffU;
 
 enum class A8W4TraceRole : uint32_t {

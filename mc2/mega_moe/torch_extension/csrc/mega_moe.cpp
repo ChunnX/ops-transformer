@@ -114,7 +114,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
 
     at::Tensor y;
 #if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
-    constexpr int64_t traceOutputBytes = 2 * 1024 * 1024;
+    constexpr int64_t traceOutputBytes = 8 * 1024 * 1024;
     constexpr int64_t bf16Bytes = 2;
     int64_t traceRows = (traceOutputBytes + h * bf16Bytes - 1) / (h * bf16Bytes);
     y = at::empty({std::max(bs, traceRows), h}, topkIds.options().dtype(x.scalar_type()));

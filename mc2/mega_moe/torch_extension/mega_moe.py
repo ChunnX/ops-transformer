@@ -22,7 +22,7 @@ _BETA_DEFAULT = 1.0
 # Diagnostic source switch. Keep this in sync with
 # MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE in csrc/mega_moe.cpp and the kernel config when tracing.
 MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE = False
-_A8W4_TRACE_OUTPUT_BYTES = 2 * 1024 * 1024
+_A8W4_TRACE_OUTPUT_BYTES = 8 * 1024 * 1024
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),

@@ -15,21 +15,21 @@ Search for `MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE` and change all three defin
 3. In `torch_extension/mega_moe.py`, set it to `True`.
 
 The second and third switches are only needed for the torch extension. A direct ACLNN caller must instead allocate
-`y` with shape `[max(bs, ceil(2 MiB / (h * sizeof(y_dtype)))), h]` itself.
+`y` with shape `[max(bs, ceil(8 MiB / (h * sizeof(y_dtype)))), h]` itself.
 
 When disabled, all three switches must be restored to `0`/`False`. The formal kernel path then has no trace member,
 trace workspace offset, timestamp read or trace-only synchronization.
 
 ## Capture raw
 
-The trace build expands total `y` storage to at least 2 MiB. At kernel completion the trace overwrites the beginning
-of `y`; the result is not suitable for accuracy checking. Save exactly the first 2 MiB for each EP rank, for example:
+The trace build expands total `y` storage to at least 8 MiB. At kernel completion the trace overwrites the beginning
+of `y`; the result is not suitable for accuracy checking. Save exactly the first 8 MiB for each EP rank, for example:
 
 ```python
 from pathlib import Path
 
 raw = y.detach().contiguous().view(torch.uint8).cpu().numpy().tobytes()
-Path(f"rank{rank}.bin").write_bytes(raw[: 2 * 1024 * 1024])
+Path(f"rank{rank}.bin").write_bytes(raw[: 8 * 1024 * 1024])
 ```
 
 Use identical trace sources and switches for good and bad builds. Do not compare traced latency with an untraced

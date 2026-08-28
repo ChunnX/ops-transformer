@@ -16,7 +16,7 @@
 
 namespace MegaMoeImpl {
 
-constexpr unsigned long long A8W4_TRACE_OUTPUT_BYTES = 2ULL * 1024ULL * 1024ULL;
+constexpr unsigned long long A8W4_TRACE_OUTPUT_BYTES = 8ULL * 1024ULL * 1024ULL;
 constexpr unsigned long long A8W4_TRACE_SCRATCH_BYTES = 50ULL * 1024ULL * 1024ULL;
 
 } // namespace MegaMoeImpl
