@@ -51,5 +51,6 @@ __global__ __aicore__ void moe_ep_combine_epilogue(GM_ADDR context, GM_ADDR topk
     op.Init(context, topkIdx, combinedX, combinedTopkWeights, workspace, tilingGM, &pipe,
             &tilingData.moeEpCombineEpilogueInfo);
     op.Process();
+    MoeEpExceptionDump::DebugTrap(); // 临时维测：验证 dump 落盘后回退
 #endif
 }
