@@ -13,12 +13,14 @@
  * \brief Tensor API MIX kernel for grouped matmul finalize routing MX quantization.
  */
 
-#pragma once
+#ifndef KERNEL_GMM_FINALIZE_ROUTING_TENSOR_API_H
+#define KERNEL_GMM_FINALIZE_ROUTING_TENSOR_API_H
 
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/kernel/kernel_universal.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/utils/layout_utils.h"
+#include "cgmct/prologue/block_prologue_finalize_routing.h"
 #include "tensor_api/tensor.h"
 
 namespace Blaze {
@@ -43,6 +45,8 @@ public:
     using BiasType = typename BlockMmad::BiasType;
     using LayoutA = typename BlockMmad::LayoutA;
     using LayoutB = typename BlockMmad::LayoutB;
+    using OutputType = typename BlockEpilogue::DataTypeOut;
+    using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<OutputType, BiasType>;
     static_assert(AscendC::Std::is_same_v<CType, typename BlockEpilogue::DataTypeIn>,
                   "BlockMmad UB output type must match BlockEpilogue input type.");
 
@@ -51,6 +55,7 @@ public:
 
     using BlockMmadAddressParams = typename BlockMmad::Params;
     using BlockMmadInitParams = typename BlockMmad::MmadParams;
+    using BlockPrologueParams = typename BlockPrologue::Params;
     using BlockEpilogueParams = typename BlockEpilogue::Params;
     using L1Params = typename BlockMmad::L1Params;
     using BlockShape = typename BlockMmad::BlockShape;
@@ -79,6 +84,7 @@ public:
     struct Params {
         ProblemShape problemShape;
         BlockMmadAddressParams blockMmadAddressParams;
+        BlockPrologueParams prologueParams;
         BlockEpilogueParams epilogueParams;
         GM_ADDR groupListGmAddr;
         GMMTiling gmmParams;
@@ -269,15 +275,20 @@ private:
                                                           gmmParams.dbL0C == DOUBLE_BUFFER_COUNT};
             blockMmad_.Init(problemShape_, blockMmadInitParams);
         }
-        if ASCEND_IS_AIV {
-            blockEpilogue_.Init(params.epilogueParams);
-        }
     }
 
     __aicore__ inline void Run(const Params &params)
     {
+        if ASCEND_IS_AIV {
+            prologueOp_.Init(params.prologueParams);
+            prologueOp_();
+        }
         Init(params);
+        AscendC::SyncAll();
         WaitForPrologue();
+        if ASCEND_IS_AIV {
+            blockEpilogue_.Init(params.epilogueParams);
+        }
         if (groupNum_ == 0) {
             return;
         }
@@ -383,6 +394,7 @@ private:
     }
 
     BlockMmad blockMmad_;
+    BlockPrologue prologueOp_;
     BlockEpilogue blockEpilogue_;
     ProblemShape problemShape_{};
     AscendC::GlobalTensor<int64_t> groupListGlobal_;
@@ -405,3 +417,4 @@ private:
 } // namespace Kernel
 } // namespace Gemm
 } // namespace Blaze
+#endif
