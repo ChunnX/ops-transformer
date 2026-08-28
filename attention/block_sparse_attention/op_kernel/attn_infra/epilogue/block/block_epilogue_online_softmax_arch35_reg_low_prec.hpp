@@ -30,14 +30,15 @@ enum class KvBaseTileRegSplitStages {
 
 template <
     class OutputType_,
-    class LayoutS_>
+    class LayoutS_,
+    bool rescaleOnCube_>
 class BlockEpilogue<
-    EpilogueOnlineSoftmaxBsa<false>,
+    EpilogueOnlineSoftmaxBsa<false, rescaleOnCube_>,
     OutputType_,
     Gemm::GemmType<half, LayoutS_>>
 {
 public:
-    using DispatchPolicy = EpilogueOnlineSoftmaxBsa<false>;
+    using DispatchPolicy = EpilogueOnlineSoftmaxBsa<false, rescaleOnCube_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element;
     using ElementInput = half;
@@ -58,6 +59,10 @@ public:
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
     static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
+    static constexpr uint32_t ELE_NUM_PER_DATABLOCK_FP32 = 32 / sizeof(float);
+    static constexpr uint32_t ELE_NUM_PER_FRACTAL_FP32 = C0_NUM_PER_FRACTAL * ELE_NUM_PER_DATABLOCK_FP32;
+    static constexpr uint32_t DIAG_TILE_NUM_PER_SUB_BLOCK = 64 / C0_NUM_PER_FRACTAL;
+    static constexpr uint32_t DIAG_TILE_NUM_PER_STAGE = 2 * DIAG_TILE_NUM_PER_SUB_BLOCK;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -138,6 +143,9 @@ public:
                 uBufTileHelper.dmStartOffset +
                 uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
         }
+        if constexpr (rescaleOnCube_) {
+            diagUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.diagStartOffset);
+        }
         gmUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.gmStartOffset);
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
         lmUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(uBufTileHelper.lmStartOffset);
@@ -180,9 +188,12 @@ public:
     __aicore__ inline
     void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
-         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
+         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
+         AscendC::LocalTensor<float> l1DiagTensor = AscendC::LocalTensor<float>(),
+         float vScale = 1.0f, float vScalePrev = 1.0f)
     {
-        uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
+        uint32_t mCopyOffset = rescaleOnCube_ ?
+            RoundUp(actualBlockShape.m(), 64) / 2 : RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
         if (m == 0) {
@@ -190,6 +201,13 @@ public:
             SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
             WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
             SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+            if constexpr (rescaleOnCube_) {
+                if (!isFirstKvSTile) {
+                    Arch::CrossCoreFlag diagFlag(6 + l1PBufId);
+                    WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
+                    SetCrossCoreSync<4, PIPE_MTE3>(diagFlag);
+                }
+            }
             return;
         }
         uint32_t n = actualBlockShape.n();
@@ -244,7 +262,6 @@ public:
                                                                      blockStride, nRound);
             }
         }
-
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
@@ -271,6 +288,48 @@ public:
         } else {
             UpdateExpSumAndExpMax<ElementInput>(
                 lastSumAddr, expMaxUbAddr, lastMaxAddr, nowSumAddr, nowMaxAddr, mLoops, tailM);
+            if constexpr (rescaleOnCube_) {
+                Arch::CrossCoreFlag diagFlag(6 + l1PBufId);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+                uint32_t diagDmRound = RoundUp(m, C0_NUM_PER_FRACTAL);
+                uint32_t diagDmAlignedTile = diagDmRound / 2;
+                uint32_t diagDmFirstTile = m % diagDmAlignedTile;
+                uint32_t diagDmTileNum = m / diagDmAlignedTile;
+                if (diagDmTileNum == 2) {
+                    diagDmFirstTile = diagDmAlignedTile;
+                }
+                __ubuf__ float *diagUbAddr = (__ubuf__ float *)diagUbTensor.GetPhyAddr();
+                if (diagDmTileNum == 0) {
+                    SetDiagonalDeltaMax<MAlignedTileNum::Zero>(diagUbAddr, expMaxUbAddr, diagDmRound,
+                        diagDmFirstTile, vScale, vScalePrev);
+                } else if (diagDmTileNum == 1) {
+                    SetDiagonalDeltaMax<MAlignedTileNum::One>(diagUbAddr, expMaxUbAddr, diagDmRound,
+                        diagDmFirstTile, vScale, vScalePrev);
+                } else {
+                    SetDiagonalDeltaMax<MAlignedTileNum::Two>(diagUbAddr, expMaxUbAddr, diagDmRound,
+                        diagDmFirstTile, vScale, vScalePrev);
+                }
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+                WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
+                AscendC::DataCopyParams diagCopyParams;
+                diagCopyParams.blockCount = diagDmRound / C0_NUM_PER_FRACTAL;
+                diagCopyParams.blockLen = C0_NUM_PER_FRACTAL;
+                diagCopyParams.srcStride = 2 * (diagDmRound + 1);
+                diagCopyParams.dstStride = 0;
+                uint32_t l1DiagFirstHalfOffset =
+                    subBlockIdx_ * DIAG_TILE_NUM_PER_SUB_BLOCK * ELE_NUM_PER_FRACTAL_FP32;
+                uint32_t l1DiagSecondHalfOffset =
+                    (DIAG_TILE_NUM_PER_STAGE + subBlockIdx_ * DIAG_TILE_NUM_PER_SUB_BLOCK) *
+                    ELE_NUM_PER_FRACTAL_FP32;
+                uint32_t diagUbSecondHalfOffset =
+                    (diagDmRound + 1) * ELE_NUM_PER_DATABLOCK_FP32;
+                DataCopy(l1DiagTensor[l1DiagFirstHalfOffset], diagUbTensor, diagCopyParams);
+                DataCopy(l1DiagTensor[l1DiagSecondHalfOffset],
+                    diagUbTensor[diagUbSecondHalfOffset], diagCopyParams);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+                SetCrossCoreSync<4, PIPE_MTE3>(diagFlag);
+            }
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -282,9 +341,16 @@ private:
     AscendC::LocalTensor<float> gmUbTensor;
     AscendC::LocalTensor<float> glUbTensor;
     AscendC::LocalTensor<float> dmUbTensor[UB_DM_BUF_MAX_STAGES];
+    AscendC::LocalTensor<float> diagUbTensor;
     AscendC::LocalTensor<ElementInput> lmUbTensor;
     AscendC::LocalTensor<ElementInput> llUbTensor;
     uint32_t subBlockIdx_;
+
+    enum class MAlignedTileNum {
+        Zero = 0,
+        One = 1,
+        Two = 2,
+    };
 
     template <KvBaseTileRegSplitStages kvBaseTileRegSplitStages>
     __simd_vf__ inline void ComputeScaleAndMax(__ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
@@ -699,6 +765,62 @@ private:
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+    }
+
+    template <MAlignedTileNum diagDmTileNum>
+    __simd_vf__ inline void SetDiagonalDeltaMax(__ubuf__ float *diagonalDmUb, __ubuf__ float *dmUb,
+                                                uint32_t diagDmRound, uint32_t diagDmFirstTile,
+                                                float vDequantScaleValue, float vScalePrevValue)
+    {
+        using namespace AscendC::MicroAPI;
+
+        RegTensor<float> dmVreg;
+        RegTensor<float> diagDmVreg0;
+        RegTensor<float> diagDmVreg1;
+        RegTensor<float> allZeroVreg;
+        RegTensor<float> vScaleRatioVreg;
+        Duplicate(allZeroVreg, 0);
+        MaskReg maskReg32VL64 = CreateMask<float, MaskPattern::VL64>();
+
+        LoadAlign(dmVreg, dmUb);
+        Duplicate(vScaleRatioVreg,
+                  (vDequantScaleValue != 0.0f) ? (vScalePrevValue / vDequantScaleValue) : 1.0f);
+        Mul(dmVreg, dmVreg, vScaleRatioVreg, maskReg32VL64);
+
+        __ubuf__ float *diagDmUb0 = diagonalDmUb;
+        __ubuf__ float *diagDmUb1 = diagonalDmUb + 4 * diagDmRound;
+
+        for (uint16_t i = 0; i < diagDmFirstTile; i++) {
+            uint32_t first0 = i + 1;
+            uint32_t first1 = i + 1 + diagDmRound / 2;
+            uint32_t second0 = i;
+            uint32_t second1 = i + diagDmRound / 2;
+            MaskReg maskRegPlusOne0 = UpdateMask<float>(first0);
+            MaskReg maskRegPlusOne1 = UpdateMask<float>(first1);
+            MaskReg maskReg0 = UpdateMask<float>(second0);
+            MaskReg maskReg1 = UpdateMask<float>(second1);
+            Select(diagDmVreg0, dmVreg, allZeroVreg, maskRegPlusOne0);
+            Select(diagDmVreg1, dmVreg, allZeroVreg, maskRegPlusOne1);
+            Select(diagDmVreg0, allZeroVreg, diagDmVreg0, maskReg0);
+            Select(diagDmVreg1, allZeroVreg, diagDmVreg1, maskReg1);
+            StoreAlign<float, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                diagDmUb0, diagDmVreg0, diagDmRound + 1, 1, maskReg32VL64);
+            StoreAlign<float, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                diagDmUb1, diagDmVreg1, diagDmRound + 1, 1, maskReg32VL64);
+        }
+
+        if constexpr (diagDmTileNum < MAlignedTileNum::Two) {
+            for (uint16_t i = diagDmFirstTile; i < diagDmRound / 2; i++) {
+                uint32_t first = i + 1;
+                uint32_t second = i;
+                MaskReg maskRegPlusOne = UpdateMask<float>(first);
+                MaskReg maskReg = UpdateMask<float>(second);
+                Select(diagDmVreg0, dmVreg, allZeroVreg, maskRegPlusOne);
+                Select(diagDmVreg0, allZeroVreg, diagDmVreg0, maskReg);
+                StoreAlign<float, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                    diagDmUb0, diagDmVreg0, diagDmRound + 1, 1, maskReg32VL64);
+            }
+        }
     }
 
     template <typename ElementInput>

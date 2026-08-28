@@ -37,6 +37,7 @@ namespace NpuArch::Gemm::Block {
 ////////////////////////////////////////////////////////////////////
 
 template <
+    bool rescaleOnCube_,
     class L1TileShape_,
     class L0TileShape_,
     class ElementA_,
@@ -47,7 +48,7 @@ template <
     class TileCopy_,
     class TileMmad_>
 struct BlockMmadTla<
-    MmadAtlasA5BsaQK<false>,
+    MmadAtlasA5BsaQK<false, rescaleOnCube_>,
     L1TileShape_,
     L0TileShape_,
     ElementA_,
@@ -59,7 +60,7 @@ struct BlockMmadTla<
     TileMmad_>
 {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaQK<false>;
+    using DispatchPolicy = MmadAtlasA5BsaQK<false, rescaleOnCube_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementQ = ElementA_;
@@ -92,6 +93,7 @@ public:
     // static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementQ, fp8_e4m3fn_t>::value;
+    static constexpr bool RESCALE_ON_CUBE = DispatchPolicy::rescaleOnCube;
 
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, Mm1L1TileHelper &mm1L1TileHelper)
@@ -335,8 +337,7 @@ public:
                 // rounded up by 8 and splited in half to each AIV
                 // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
                 // valid rows in AIV1: [mFixPAligned8 / 2, qSTile - 1]
-                uint32_t mFixPAligned8 = RoundUp(qSTile, 8);
-                uint32_t mPerSubCore = mFixPAligned8 / 2;
+                uint32_t mPerSubCore = RESCALE_ON_CUBE ? RoundUp(qSTile, 64) / 2 : RoundUp(qSTile, 8) / 2;
                 uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
                     tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mPerSubCore, nFixPAligned16));

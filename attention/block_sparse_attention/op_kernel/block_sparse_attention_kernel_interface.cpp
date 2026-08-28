@@ -210,10 +210,8 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
                            GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)
 {
     using ArchTag = Arch::AtlasA5;
-    // 合法组合只有三种：ND(false,false)、DN 常规(true,false)、DN 融合(true,true，仅 FP8 输入 + FP16/BF16 输出)；
-    // (false,true) 无对应 PV 特化，编译期直接拒绝（dispatch 手动传参，正常不会触发）
-    static_assert(!rescaleOnCube || transposedMm1,
-        "rescaleOnCube=true is only valid with transposedMm1=true (DN + FP8 input)");
+    // transposedMm1 selects the QK/PV orientation; rescaleOnCube independently
+    // selects whether historical output rescaling is performed on CUBE.
     using ElementSparseMask = uint8_t;
     using ElementSparseIdx = int32_t;
     using ElementSparseCount = int32_t;
@@ -229,9 +227,8 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using LayoutK = layout::ColumnMajor;
     // S is rowMajor on UB(dst)
     using LayoutS = layout::RowMajor;
-    // 注：LayoutPDummy/LayoutV 仅用于 TileCopy 推导 L1A/L1B tag；
-    // rescaleOnCube 场景下新 PV 文件（block_mmad_pv_transposed_rescale_arch35.hpp）全部硬编码布局 tag，
-    // 不依赖这两个推导，故保持原样
+    // LayoutPDummy/LayoutV are used by the ordinary PV TileCopy. The exact ND and DN
+    // RescaleOnCube specializations define their L1/L0 layouts in dedicated PV files.
     using LayoutPDummy = std::conditional_t<transposedMm1, layout::nZ, layout::zN>;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
@@ -247,7 +244,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     // mmad qk
-    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK<transposedMm1>;
+    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK<transposedMm1, rescaleOnCube && !transposedMm1>;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
                                                          LayoutS, void, mm1L0C2UBMode, false,
                                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;

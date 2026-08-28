@@ -191,7 +191,7 @@ private:
     ge::graphStatus CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
     // 950 exclusive
-    bool IsFp8DnEnabled() const;
+    bool IsFp8NdRescaleOnCubeEnabled() const;
     uint32_t GetCurQSTileNum950(int64_t curQSeqlen);
     void CalcBaseTileTilingParams950();
     void CalcSplitCoreTilingParams950();

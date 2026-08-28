@@ -615,7 +615,7 @@ public:
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
 
         uint32_t rowNumOriAligned = 0;
-        if (DispatchPolicy::transposedMm1) {
+        if (DispatchPolicy::transposedMm1 || DispatchPolicy::rescaleOnCube) {
             rowNumOriAligned = FULL_QUANT_FP8 ? RoundUp(rowNumOri, 64) : RoundUp(rowNumOri, 32);
         } else {
             rowNumOriAligned = RoundUp(rowNumOri, 8);

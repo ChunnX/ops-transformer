@@ -41,16 +41,16 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
 
-    // rescaleOnCube on cube 路径开关：仅 DN + FP8（新 PV 特化 <true,true>）生效；
-    // 其余（含 FP8 ND 12 键）回落旧路径（VEC rescaleO 逐 tile + lo/dm UB 缓冲）
-    static constexpr bool RESCALE_ON_CUBE = transposedMm1 && BlockMmadPV::rescaleOnCube;
+    // FP8 rescaleOnCube path. The matrix orientation is selected independently
+    // by transposedMm1, so both ND and transposed implementations can use it.
+    static constexpr bool RESCALE_ON_CUBE = BlockMmadPV::rescaleOnCube;
 
     using LayoutQ = std::conditional_t<transposedMm1, layout::ColumnMajor, layout::RowMajor>;
     using LayoutK = std::conditional_t<transposedMm1, layout::RowMajor, layout::ColumnMajor>;
     using LayoutS = layout::RowMajor;
     using LayoutP = layout::RowMajor;
-    // V：rescaleOnCube 时以 ColumnMajor [D, kvS] 进 L1（A=(V)^T 直接读，与 Q 的 DN 加载同构）
-    using LayoutV = std::conditional_t<RESCALE_ON_CUBE, layout::ColumnMajor, layout::RowMajor>;
+    // Only the transposed implementation reads V as ColumnMajor [D, kvS].
+    using LayoutV = std::conditional_t<RESCALE_ON_CUBE && transposedMm1, layout::ColumnMajor, layout::RowMajor>;
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
@@ -317,7 +317,7 @@ public:
                 kShapeRow = strideKVS;
                 vShapeCol = strideKVS;
             }
-            if constexpr (RESCALE_ON_CUBE) {
+            if constexpr (RESCALE_ON_CUBE && transposedMm1) {
                 // V 以 ColumnMajor [D, kvS] 进 L1（A=(V)^T 直接读，与 Q 的 DN 加载同构）
                 vShapeRow = vShapeCol;
                 vShapeCol = kvBaseTile_;
@@ -406,7 +406,7 @@ public:
                         curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
                     float kDequantScaleValue = gKDequantScale.GetValue(kvDequantScaleOffset);
                     float combinedDeqScalar = qDequantScaleValue * kDequantScaleValue;
-                    if constexpr (RESCALE_ON_CUBE) {
+                    if constexpr (RESCALE_ON_CUBE && transposedMm1) {
                         // Fold the attention scale into QK FixPipe so FP8 softmax consumes pre-scaled S.
                         combinedDeqScalar *= scaleValue_;
                     }
@@ -512,14 +512,20 @@ public:
                         // go 的 UB TLA：NZ2DN 输出为 ColumnMajor（DN）布局（仅末块实际使用，供 CopyL0CToDst<TensorC> 匹配特化）
                         // 半区固定 64（与 S 的 sShapeCol=64 一致）：FixPipe 的 nSize 需 16 倍数，
                         // 尾块实际列 < 64 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
-                        auto ubGoLayoutTla = tla::MakeLayout<float, NpuArch::layout::ColumnMajor>(embed_, 64);
+                        using LayoutGoUb = std::conditional_t<transposedMm1,
+                            NpuArch::layout::ColumnMajor, NpuArch::layout::RowMajor>;
+                        uint32_t goUbRows = transposedMm1 ? embed_ : 64;
+                        uint32_t goUbCols = transposedMm1 ? 64 : embedRound;
+                        auto ubGoLayoutTla = tla::MakeLayout<float, LayoutGoUb>(goUbRows, goUbCols);
                         auto ubGoTensorTla = tla::MakeTensor(ubGoTensor, ubGoLayoutTla, Arch::PositionUB{});
                         // GO^T 的 L1 TLA：zN [D, qS]，固定 qBaseTile_ 保证 FixPipe 的 nSize 为 16 倍数（尾块实际列
                         // < qBaseTile_ 时多搬的部分为 L0C dummy / GO^T 缓冲固定分配区，无害）；仅新 PV 使用，
                         // 旧路径（FP8 ND）不构造（避免未使用告警与无谓寻址）
                         AscendC::LocalTensor<float> l1GoTensor =
                             resource.l1Buf.template GetBufferByByte<float>(l1GoAddrStart_);
-                        auto l1GoLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(embed_, qBaseTile_);
+                        uint32_t goL1Rows = transposedMm1 ? embed_ : qBaseTile_;
+                        uint32_t goL1Cols = transposedMm1 ? qBaseTile_ : embed_;
+                        auto l1GoLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(goL1Rows, goL1Cols);
                         auto l1GoTensorTla = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionL1{});
                         // 写侧 C1 视图（DataCopy CO1→C1 要求 C1 位置标签；与 A1 视图同一物理 L1，零拷贝双视图）
                         auto l1GoTensorTlaC1 = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionC1{});
@@ -637,7 +643,7 @@ public:
             mm1L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadQK::L0_TILE_N) *
                 CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
         }
-        if constexpr (RESCALE_ON_CUBE) {
+        if constexpr (RESCALE_ON_CUBE && transposedMm1) {
             // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 批数（批宽与 S_trans 双子核切分一致、
             // diag 对角 16×16 块紧凑打包到 1 个 L0B stage；与 PV 内部 counter 结构严格对应）
             mm2L0ATotalStages_ = CeilDiv(embed_, BlockMmadPV::L0_TILE_M) *
@@ -645,6 +651,13 @@ public:
                 CeilDiv(qBaseTile_, qBaseTile_ / 2) * CeilDiv(embed_, BlockMmadPV::L0_TILE_M);
             mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) *
                 CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_N) + 1;
+        } else if constexpr (RESCALE_ON_CUBE) {
+            // ND PV uses L0A for P/DIAG and L0B for V/GO. DIAG occupies one
+            // additional stage and the two AIV row regions occupy at most two GO stages.
+            mm2L0ATotalStages_ = CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_M) *
+                CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) + 1;
+            mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) *
+                CeilDiv(embed_, BlockMmadPV::L0_TILE_N) + 2;
         } else {
             mm2L0ATotalStages_ = CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_M) *
                 CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K);
