@@ -25,7 +25,9 @@ _ACL_DTYPE_TO_TORCH_DTYPE = {
 
 class _AllGatherQuantMatmulOpBuilder(OpBuilder):
     def __init__(self):
-        super(_AllGatherQuantMatmulOpBuilder, self).__init__("npu_all_gather_quant_matmul", category="mc2")
+        super(_AllGatherQuantMatmulOpBuilder, self).__init__(
+            "npu_all_gather_quant_matmul", category="mc2"
+        )
 
     def sources(self):
         return ["csrc/mc2/all_gather_quant_matmul.cpp"]
@@ -37,7 +39,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? y_dtype=None, str comm_mode=\"urma\""
+            'int? y_dtype=None, str comm_mode="ai_cpu"'
             ") -> (Tensor, Tensor, Tensor)"
         )
 
@@ -59,7 +61,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             x1_scale_dtype=None,
             x2_scale_dtype=None,
             y_dtype=None,
-            comm_mode="urma",
+            comm_mode="ai_cpu",
         ):
             torch._check(
                 rank_size > 0,
@@ -80,7 +82,9 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             if y_dtype is not None:
                 out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, out_dtype)
             y = x1.new_empty(tuple([m_per_rank * rank_size, n]), dtype=out_dtype)
-            gather_out = x1.new_empty(tuple([m_per_rank * rank_size, k]), dtype=x1.dtype)
+            gather_out = x1.new_empty(
+                tuple([m_per_rank * rank_size, k]), dtype=x1.dtype
+            )
             amax_out = x1.new_empty(tuple([0]), dtype=torch.float32)
             return (y, gather_out, amax_out)
 
@@ -106,7 +110,7 @@ def _npu_all_gather_quant_matmul(
     x1_scale_dtype=None,
     x2_scale_dtype=None,
     y_dtype=None,
-    comm_mode="urma",
+    comm_mode="ai_cpu",
 ):
     result = _op_module.npu_all_gather_quant_matmul(
         context,
@@ -143,7 +147,7 @@ def all_gather_quant_matmul(
     x1_scale_dtype: Optional[int] = None,
     x2_scale_dtype: Optional[int] = None,
     y_dtype: Optional[int] = None,
-    comm_mode: Optional[str] = "urma",
+    comm_mode: Optional[str] = "ai_cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """AllGather + MX quantized Matmul fused computation (apace UDMA path).
 
@@ -170,7 +174,8 @@ def all_gather_quant_matmul(
         x1_scale_dtype (int, optional): x1_scale dtype enum for bitcast, None means use tensor dtype.
         x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast, None means use tensor dtype.
         y_dtype (int, optional): Output dtype enum, None means default bfloat16. Only bfloat16/float16 are supported.
-        comm_mode (str, optional): Communication engine, only ``"urma"`` is supported.
+        comm_mode (str, optional): Communication engine. Only ``"urma"`` is supported;
+            the default ``"ai_cpu"`` is rejected, so pass ``"urma"`` explicitly.
 
     Returns:
         Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
@@ -180,9 +185,11 @@ def all_gather_quant_matmul(
     """
     if group_sizes is None:
         group_sizes = []  # 不传时使用 OpDef 缺省值 0，由 tiling 从 scale shape 自动推导
+    # 拦截：当前仅支持 urma；缺省值 ai_cpu 不支持，用户不传 comm_mode 时在此拦下并提示
     torch._check(
         comm_mode == "urma",
-        lambda: f"comm_mode only supports 'urma', got '{comm_mode}'.",
+        lambda: f"comm_mode only supports 'urma', but got '{comm_mode}'. "
+        f"Please pass comm_mode='urma' explicitly.",
     )
 
     # 拦截：uint8 tensor 只能搭配 fp4_e2m1 dtype enum（296）传入
@@ -192,66 +199,83 @@ def all_gather_quant_matmul(
         torch._check(
             False,
             lambda: f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} is not a valid fp4 enum. "
-                    f"Please pass x1_dtype=296 (fp4_e2m1).",
+            f"Please pass x1_dtype=296 (fp4_e2m1).",
         )
     if x2.dtype == torch.uint8 and x2_dtype not in FP4_DTYPE_ENUMS:
         torch._check(
             False,
             lambda: f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} is not a valid fp4 enum. "
-                    f"Please pass x2_dtype=296 (fp4_e2m1).",
+            f"Please pass x2_dtype=296 (fp4_e2m1).",
         )
 
     # 拦截：uint8 scale tensor 必须搭配 fp8_e8m0 枚举（293）传入
     # torch 没有原生 float8_e8m0 dtype，scale 用 uint8 存储 + enum override
     FP8_E8M0_DTYPE_ENUM = 293
-    if x1_scale is not None and x1_scale.dtype == torch.uint8 and x1_scale_dtype != FP8_E8M0_DTYPE_ENUM:
+    if (
+        x1_scale is not None
+        and x1_scale.dtype == torch.uint8
+        and x1_scale_dtype != FP8_E8M0_DTYPE_ENUM
+    ):
         torch._check(
             False,
             lambda: f"x1_scale is uint8 tensor (fp8_e8m0 stored as uint8) but x1_scale_dtype={x1_scale_dtype} "
-                    f"is not 293 (fp8_e8m0). Please pass x1_scale_dtype=293.",
+            f"is not 293 (fp8_e8m0). Please pass x1_scale_dtype=293.",
         )
-    if x2_scale is not None and x2_scale.dtype == torch.uint8 and x2_scale_dtype != FP8_E8M0_DTYPE_ENUM:
+    if (
+        x2_scale is not None
+        and x2_scale.dtype == torch.uint8
+        and x2_scale_dtype != FP8_E8M0_DTYPE_ENUM
+    ):
         torch._check(
             False,
             lambda: f"x2_scale is uint8 tensor (fp8_e8m0 stored as uint8) but x2_scale_dtype={x2_scale_dtype} "
-                    f"is not 293 (fp8_e8m0). Please pass x2_scale_dtype=293.",
+            f"is not 293 (fp8_e8m0). Please pass x2_scale_dtype=293.",
         )
     rank_id = torch.distributed.get_rank(group)
     rank_size = torch.distributed.get_world_size(group)
     if rank_size <= 0:
         rank_size = torch.distributed.get_rank_size()  # fallback to default group
-    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-        rank_id
-    )
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
 
     channel_builder = CommChannelBuilderManager(group_name)
     ctx_tag = group_name + "all_gather_matmul"
     context = channel_builder.create_context(ctx_tag)
     hccl_buffer_size = channel_builder.get_hccl_buffer_size()
 
-    # 拦截：通信数据总量（x1 data + x1_scale）不能超过 hccl_buffer_size
+    # 拦截：通信数据总量（x1 data + x1_scale）+ 2MB 预留 不能超过 hccl_buffer_size
     # x1 data:  rank_size * M * K * x1.element_size()（fp4 packed 自动折半）
     # x1_scale: rank_size * M * Ceil(K/64) * 2 * scale.element_size()（MX scale [M, Ceil(K/64), 2]）
+    HCCL_BUFFER_RESERVED_BYTES = 2 * 1024 * 1024
     m_per_rank = x1.size(0)
     k = x1.size(1)
     x1_data_bytes = rank_size * m_per_rank * k * x1.element_size()
     scale_k_groups = (k + 63) // 64
     x1_scale_bytes = 0
     if x1_scale is not None:
-        x1_scale_bytes = rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
+        x1_scale_bytes = (
+            rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
+        )
     comm_data_bytes = x1_data_bytes + x1_scale_bytes
-    print(f"[all_gather_quant_matmul] hccl_buffer_size={hccl_buffer_size} bytes ({hccl_buffer_size/1024/1024:.2f} MB), "
-          f"comm_data_bytes={comm_data_bytes} bytes ({comm_data_bytes/1024/1024:.2f} MB) "
-          f"= data {x1_data_bytes} + scale {x1_scale_bytes}", flush=True)
+    need_bytes = comm_data_bytes + HCCL_BUFFER_RESERVED_BYTES
+    print(
+        f"[all_gather_quant_matmul] hccl_buffer_size={hccl_buffer_size} bytes ({hccl_buffer_size / 1024 / 1024:.2f} MB), "
+        f"comm_data_bytes={comm_data_bytes} bytes ({comm_data_bytes / 1024 / 1024:.2f} MB) "
+        f"= data {x1_data_bytes} + scale {x1_scale_bytes}, need (with 2MB reserved)={need_bytes}",
+        flush=True,
+    )
     torch._check(
-        comm_data_bytes <= hccl_buffer_size,
-        lambda: f"Communication data size ({comm_data_bytes} bytes = data {x1_data_bytes} + scale {x1_scale_bytes}) "
-                f"exceeds hccl_buffer_size ({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
-                f"Please increase HCCL_BUFFSIZE environment variable.",
+        need_bytes <= hccl_buffer_size,
+        lambda: f"Communication data size + 2MB reserved ({need_bytes} bytes = data {x1_data_bytes} + "
+        f"scale {x1_scale_bytes} + reserved {HCCL_BUFFER_RESERVED_BYTES}) exceeds hccl_buffer_size "
+        f"({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
+        f"Please increase HCCL_BUFFSIZE environment variable.",
     )
 
-    print(f"[all_gather_quant_matmul] rank={rank_id}, rank_size={rank_size}, comm_mode={comm_mode}, "
-          f"calling npu_all_gather_quant_matmul ...", flush=True)
+    print(
+        f"[all_gather_quant_matmul] rank={rank_id}, rank_size={rank_size}, comm_mode={comm_mode}, "
+        f"calling npu_all_gather_quant_matmul ...",
+        flush=True,
+    )
     result = torch.ops.cann_ops_transformer.npu_all_gather_quant_matmul(
         context,
         x1,
@@ -263,12 +287,15 @@ def all_gather_quant_matmul(
         x1_scale=x1_scale,
         x2_scale=x2_scale,
         group_sizes=group_sizes,
-        x1_dtype=None if x1_dtype == -1 else x1_dtype,
-        x2_dtype=None if x2_dtype == -1 else x2_dtype,
-        x1_scale_dtype=None if x1_scale_dtype == -1 else x1_scale_dtype,
-        x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
-        y_dtype=None if y_dtype == -1 else y_dtype,
+        x1_dtype=x1_dtype,
+        x2_dtype=x2_dtype,
+        x1_scale_dtype=x1_scale_dtype,
+        x2_scale_dtype=x2_scale_dtype,
+        y_dtype=y_dtype,
         comm_mode=comm_mode,
     )
-    print(f"[all_gather_quant_matmul] rank={rank_id}, npu_all_gather_quant_matmul returned", flush=True)
+    print(
+        f"[all_gather_quant_matmul] rank={rank_id}, npu_all_gather_quant_matmul returned",
+        flush=True,
+    )
     return result
