@@ -225,13 +225,14 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.fdOn = 0;
     param.outputLayout = load_balance::OutputLayout::BN2_S1G;
 
-    // 校验 v_descale: quantMode=1(MxFp8) 且 TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
+    // 校验 v_descale: quantMode=1(MxFp8) 且 TND layout 下, T 维应等于 sum(ceil(seqused_kv[i] / 64))
+    // v_descale TND 官方形状为 4D (KV_T/64, KV_N, D, 2), dim0 即 T 维; 用总元素数换算以兼容 1D 场景
     // HIF8 (quantMode=0): v_descale 为 per-tensor 标量, 不需要校验
     if (quantMode_ == 1 && vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
         const int64_t V_DESCALE_GROUP_SIZE = 64;
         bool isTndLayout = (layoutKv_ == "TND");
         if (isTndLayout) {
-            int64_t vDescaleT = vDescale_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
+            int64_t vDescaleT = vDescale_->GetTensorShape()->GetShapeSize() / (numHeadsKv_ * headDim_ * 2);
             int64_t expectedT = 0;
             if (baseInfo.isCumulativeKvSeq && batchSize_ > 0 &&
                 static_cast<int64_t>(baseInfo.actualKvSeqSize.size()) >= batchSize_) {
