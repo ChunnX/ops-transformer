@@ -62,7 +62,7 @@ constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t META_INNER_DIM = 4;
+constexpr int64_t META_INNER_DIM = 5;
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
 
@@ -72,8 +72,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
             info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "numTokens=%u, hidden=%u, topK=%u, numMaxTokensPerRank=%u", info.cfg.numTokens, info.cfg.hidden,
             info.cfg.topK, info.cfg.numMaxTokensPerRank);
-    OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
-            info.aivNum);
+    OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u, recvCapacity=%lu", info.cfg.perSlotBytes,
+            info.hasTopkWeights, info.aivNum, info.recvCapacity);
     OP_LOGD(nodeName,
             "totalWinSizeEp=%lu, combineStateWinOffset=%lu, combineDataWinOffset=%lu, "
             "sendDataWorkspaceSizePerRank=%lu, totalUbSize=%lu",
@@ -139,6 +139,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     info.cfg.hidden = static_cast<uint32_t>(recvxDim1);
     info.cfg.numTokens = static_cast<uint32_t>(topkDim0);
     info.cfg.topK = static_cast<uint32_t>(topkDim1);
+    info.recvCapacity = static_cast<uint64_t>(recvxDim0);
 
     const gert::StorageShape *recvSrcMetadataShape = context->GetInputShape(RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetadataShape);
@@ -377,13 +378,15 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    uint64_t perCoreRankCountStride =
-        ops::CeilDiv(static_cast<uint64_t>(info.cfg.epWorldSize) * UB_ALIGN, COMM_ALIGN) * COMM_ALIGN;
-    // Address tables, per-AIV flags, rank totals, and one aligned per-rank count row for every AIV.
-    workSpaces[0] =
-        SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
-        static_cast<uint64_t>(aivNum) * COMM_ALIGN + static_cast<uint64_t>(info.cfg.epWorldSize) * COMM_ALIGN +
-        static_cast<uint64_t>(aivNum) * perCoreRankCountStride;
+    // TODO(delete): legacy address-table workspace sizing after the direct-metadata path is validated.
+    // uint64_t perCoreRankCountStride =
+    //     ops::CeilDiv(static_cast<uint64_t>(info.cfg.epWorldSize) * UB_ALIGN, COMM_ALIGN) * COMM_ALIGN;
+    // workSpaces[0] =
+    //     SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
+    //     static_cast<uint64_t>(aivNum) * COMM_ALIGN + static_cast<uint64_t>(info.cfg.epWorldSize) * COMM_ALIGN +
+    //     static_cast<uint64_t>(aivNum) * perCoreRankCountStride;
+    // The direct path only needs one 512-byte flag source per AIV.
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(aivNum) * COMM_ALIGN;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
