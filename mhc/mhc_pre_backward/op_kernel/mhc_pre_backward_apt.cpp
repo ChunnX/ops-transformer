@@ -34,7 +34,7 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
-    if constexpr (TILING_MODE == MHC_PRE_BACKWARD_DEFAULT || TILING_MODE == MHC_PRE_BACKWARD_N4) {
+    if constexpr (TILING_MODE == MHC_PRE_BACKWARD_DEFAULT) {
         InitParams initParams{
             x,          phi,      alpha, gradHIn,   gradHPost, gradHRes, invRms,  hMix,
             hPre,      hPost,   gamma, gradXPostOptional, gradX, gradPhi, gradAlpha, gradBias,
@@ -43,7 +43,7 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
         MT_C1 mm1;
         mm0.Init(&tilingData.matmulTilingC0, &pipe);
         mm1.Init(&tilingData.matmulTilingC1, &pipe);
-        MhcPreBackwardKernel<DTYPE_X, float32_t, TILING_MODE == MHC_PRE_BACKWARD_N4> op(mm0, mm1);
+        MhcPreBackwardKernel<DTYPE_X, float32_t> op(mm0, mm1);
         op.Init(initParams);
         op.Process();
     }

@@ -414,9 +414,7 @@ void MhcPreBackwardTiling::PrintTilingData()
 
 uint64_t MhcPreBackwardTiling::GetTilingKey() const
 {
-    // N=4 是当前主流性能规格，单独选择编译期常量化的 kernel 实例。
-    uint64_t tilingMode = (N_ == 4) ? MHC_PRE_BACKWARD_N4 : MHC_PRE_BACKWARD_DEFAULT;
-    return GET_TPL_TILING_KEY(tilingMode);
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(MHC_PRE_BACKWARD_DEFAULT));
 }
 
 ge::graphStatus MhcPreBackwardTiling::PostTiling()
