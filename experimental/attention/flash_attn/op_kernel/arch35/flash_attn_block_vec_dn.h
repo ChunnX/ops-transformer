@@ -614,22 +614,12 @@ public:
             relTempBuf_[bufIdx * 2 * (UB_REL_BUF_BYTES / sizeof(INPUT_T)) + (UB_REL_BUF_BYTES / sizeof(INPUT_T))];
         RelCopyIn(relHTempTensor, relWTempTensor, relHGm_, relWGm_, runInfo, mte2ToVId);
 
-        // 进行转置
+        // 进行转置，使用 kernel 访问的实际 stride (actMSizeAlign32 >> 1) 作为行间距，
+        // 确保 LoadAlign(rel_h + row * m) 读到的行布局与转置输出一致
         Mutex::Lock<PIPE_V>(mte2ToVId);
-        Transpose(relHUb, relHTempTensor, runInfo.actVecMSize, constInfo_.relHSize);
-        Transpose(relWUb, relWTempTensor, runInfo.actVecMSize, constInfo_.relWSize);
-        // 清零转置后有效数据之外的区域，防止后续 LoadAlign 读取残留脏数据
-        // 转置写入 relHSize/relWSize * m_pad 个元素，缓冲区更大，多余区域需清零
-        // constexpr uint32_t relBufElem = UB_REL_BUF_BYTES / sizeof(INPUT_T);
-        // uint32_t mPad = (runInfo.actVecMSize + 15U) >> 4 << 4;
-        // uint32_t validH = constInfo_.relHSize * mPad;
-        // uint32_t validW = constInfo_.relWSize * mPad;
-        // if (relBufElem > validH) {
-        //     Duplicate<INPUT_T>(relHUb[validH], static_cast<INPUT_T>(0), relBufElem - validH);
-        // }
-        // if (relBufElem > validW) {
-        //     Duplicate<INPUT_T>(relWUb[validW], static_cast<INPUT_T>(0), relBufElem - validW);
-        // }
+        uint32_t mStride = runInfo.actMSizeAlign32 >> 1;
+        Transpose(relHUb, relHTempTensor, runInfo.actVecMSize, constInfo_.relHSize, mStride);
+        Transpose(relWUb, relWTempTensor, runInfo.actVecMSize, constInfo_.relWSize, mStride);
         Mutex::Unlock<PIPE_V>(mte2ToVId);
     }
 

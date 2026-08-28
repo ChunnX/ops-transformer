@@ -982,10 +982,11 @@ __simd_vf__ inline void TransposeImplVF(__ubuf__ T *dst_ub, __ubuf__ T *src_ub, 
                                         const uint16_t m_pad)
 {
     uint32_t activeM = static_cast<uint32_t>(m);
+    uint32_t storeM = static_cast<uint32_t>(m_pad);
     AscendC::MicroAPI::RegTensor<uint16_t> idxReg;
     AscendC::MicroAPI::RegTensor<T> dataReg;
     AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<uint16_t>(activeM);
-    AscendC::MicroAPI::MaskReg mask_fp16 = AscendC::MicroAPI::UpdateMask<T>(activeM);
+    AscendC::MicroAPI::MaskReg maskStore = AscendC::MicroAPI::UpdateMask<uint16_t>(storeM);
     AscendC::MicroAPI::RegTensor<uint16_t> strideReg;
 
     // Arange<int16_t> → [0, 1, 2, ..., VL-1]
@@ -1004,14 +1005,14 @@ __simd_vf__ inline void TransposeImplVF(__ubuf__ T *dst_ub, __ubuf__ T *src_ub, 
 
         // 清零 dataReg，确保掩码外元素为 0 而非残留值，
         // 防止 StoreAlign 将残留值写入目标缓冲区导致后续 LoadAlign 读到脏数据
-        // AscendC::MicroAPI::Duplicate<T>(dataReg, static_cast<T>(0));
+        AscendC::MicroAPI::Duplicate<T>(dataReg, static_cast<T>(0));
 
         // Gather: 按索引从源矩阵收集列 j 的 M 个元素
         AscendC::MicroAPI::Gather(dataReg, src_ub, idxReg, mask);
 
-        // StoreAlign: 连续写回目标矩阵行 j
+        // StoreAlign: 写回目标矩阵行 j，使用 m_pad 掩码确保整行（含 padding）都被写入
         AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(dst_ub + static_cast<uint32_t>(j) * m_pad,
-                                                                         dataReg, mask);
+                                                                         dataReg, maskStore);
     }
 }
 
@@ -1023,6 +1024,17 @@ __aicore__ inline void Transpose(const LocalTensor<T> &dstTensor, const LocalTen
     __ubuf__ T *srcUbAddr = (__ubuf__ T *)srcTensor.GetPhyAddr();
 
     uint16_t m_pad = (m + 15) >> 4 << 4;
+    TransposeImplVF<T>(outUbAddr, srcUbAddr, m, n, m_pad);
+}
+
+template <typename T>
+__aicore__ inline void Transpose(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor, uint32_t m,
+                                 uint32_t n, uint32_t mPad)
+{
+    __ubuf__ T *outUbAddr = (__ubuf__ T *)dstTensor.GetPhyAddr();
+    __ubuf__ T *srcUbAddr = (__ubuf__ T *)srcTensor.GetPhyAddr();
+
+    uint16_t m_pad = static_cast<uint16_t>(mPad);
     TransposeImplVF<T>(outUbAddr, srcUbAddr, m, n, m_pad);
 }
 
