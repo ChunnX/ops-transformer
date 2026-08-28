@@ -66,8 +66,13 @@ using namespace AscendC;
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t COMBINE_CHANNEL_COUNT = 7U;
-static constexpr uint32_t RECV_META_FIELDS = 4;
 static constexpr uint32_t HCOMM_CHANNEL_TOKEN_CAPACITY = 32368U;
+static constexpr uint32_t RECV_META_FIELDS = 5U;
+static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
+static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
+static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
+static constexpr uint32_t META_SLOT_IDX_OFFSET = 3U;
+static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 // Keep one SQ entry unused. A token that would make the following token cross this limit requests a CQE and drains.
 static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
@@ -103,6 +108,7 @@ private:
                                           GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline void SendChannelFlag(uint32_t dstRank, uint32_t channelIndex);
     __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t channelIndex);
+    __aicore__ inline void InitFlagSource();
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
@@ -113,6 +119,20 @@ private:
     __aicore__ inline void SendPhaseExpertToToken();
     __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
                                              uint32_t &groupSize);
+    __aicore__ inline int32_t ReadMetadataRank(uint64_t metadataRow);
+    __aicore__ inline uint64_t LowerBoundSrcRank(uint32_t targetRank);
+    __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
+                                      uint64_t &coreBegin, uint64_t &coreEnd);
+    __aicore__ inline bool IsMetadataRowValid(uint32_t targetRank, int32_t srcRank, int32_t srcTokenIdx,
+                                              int32_t srcTopKIdx, int32_t recvXIdx);
+    __aicore__ inline void SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr);
+    __aicore__ inline void SendLocalMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
+                                                 GM_ADDR localDataBase, GM_ADDR localStateBase);
+    __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
+                                                  GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
+    __aicore__ inline bool ProcessLocalMetadataRange(uint64_t rangeBegin, uint64_t rangeEnd);
+    __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd);
+    __aicore__ inline void SendPhaseDirectFromMetadata();
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
     {
@@ -159,8 +179,10 @@ private:
     uint32_t XTypeAlign32Size_{0};
     uint32_t perSlotBytes_{0};
     uint64_t actualA_{0};
+    uint64_t recvCapacity_{0};
     uint32_t aivNum_{0};
     uint32_t localmoeNum_{0};
+    uint32_t metadataChunkTokens_{1};
     uint64_t sendDataWorkspaceSizePerRank_{0};
 
     GlobalTensor<XType> xGm_;
@@ -182,7 +204,8 @@ private:
     TBuf<> rankInfoBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> weightQueue_;
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
@@ -218,9 +241,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
     localmoeNum_ = tilingData_->cfg.numLocalExperts;
+    recvCapacity_ = tilingData_->recvCapacity;
     sendDataWorkspaceSizePerRank_ = tilingData->sendDataWorkspaceSizePerRank;
-    flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
-                         static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
+    // TODO(delete): legacy address-table workspace placed flag storage after every rank's send table.
+    // flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
+    //                      static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
+    flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
     rankCountWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
                               static_cast<uint64_t>(aivNum_) * WIN_ADDR_ALIGN;
     perCoreRankCountStride_ = Ceil(static_cast<uint64_t>(epWorldSize_) * UB_ALIGN, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
@@ -284,14 +310,25 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     LocalTensor<int64_t> sumOut = reduceTmp[reduceTmpBytes / sizeof(int64_t)];
     ReduceSum<int64_t>(sumOut, numRecvLocal, reduceTmp, static_cast<int32_t>(localmoeNum_));
     SyncFunc<AscendC::HardEvent::V_S>();
-    actualA_ = static_cast<uint64_t>(sumOut.GetValue(0));
+    int64_t actualASigned = sumOut.GetValue(0);
+    actualA_ = (actualASigned > 0) ? static_cast<uint64_t>(actualASigned) : 0U;
+    if (actualA_ > recvCapacity_) {
+        actualA_ = recvCapacity_;
+    }
     XTypeAlign32Size_ = hAlignSize_;
     if constexpr (HasTopkWeight == 1) {
-        XTypeAlign32Size_ = hWeightAlignSize_;
         topkWeightsGm_.SetGlobalBuffer((__gm__ float *)topkWeights);
     }
     tpipe_->InitBuffer(xQueue_, SEND_DOUBLE_BUFFER_NUM, XTypeAlign32Size_);
-    tpipe_->InitBuffer(readStateBuf_, UB_ALIGN); // 32
+    if constexpr (HasTopkWeight == 1) {
+        tpipe_->InitBuffer(weightQueue_, SEND_DOUBLE_BUFFER_NUM, UB_ALIGN);
+    }
+    metadataChunkTokens_ = (actualA_ < META_CHUNK_TOKEN_MAX) ? static_cast<uint32_t>(actualA_) : META_CHUNK_TOKEN_MAX;
+    metadataChunkTokens_ = (metadataChunkTokens_ == 0U) ? 1U : metadataChunkTokens_;
+    uint32_t metadataChunkBytes =
+        Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
+    tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
 }
@@ -541,7 +578,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalToke
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams copyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     LocalTensor<XType> tokenTensor = xQueue_.AllocTensor<XType>();
-    DataCopyPad(tokenTensor, xGm_[tokenIndex * axisH_], copyParams, padParams);
+    DataCopyPad(tokenTensor, xGm_[static_cast<uint64_t>(tokenIndex) * axisH_], copyParams, padParams);
     xQueue_.EnQue(tokenTensor);
     tokenTensor = xQueue_.DeQue<XType>();
     DataCopyPad(outToken, tokenTensor, copyParams);
@@ -660,12 +697,270 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
     if (dstRank == rankId_) {
         GlobalTensor<uint64_t> localFlag;
         localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
-        localFlag.SetValue(0, 1U);
+        LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        DataCopy(localFlag, flagTensor, UB_ALIGN / sizeof(uint64_t));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
     BeginPreparedWrites(dstRank, channelIndex);
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSource()
+{
+    LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+    Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    GlobalTensor<uint64_t> flagWorkspace;
+    flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
+    DataCopy(flagWorkspace, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline int32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReadMetadataRank(uint64_t metadataRow)
+{
+    if (metadataRow >= actualA_) {
+        return static_cast<int32_t>(epWorldSize_);
+    }
+    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    DataCopyExtParams copyParams{1U, RECV_META_FIELDS * sizeof(int32_t), 0U, 0U, 0U};
+    const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    DataCopyPad(metadataLocal, recvSrcMetadataGm_[metadataRow * RECV_META_FIELDS], copyParams, padParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    int32_t srcRank = metadataLocal.GetValue(META_SRC_RANK_OFFSET);
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    return srcRank;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline uint64_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::LowerBoundSrcRank(uint32_t targetRank)
+{
+    uint64_t left = 0U;
+    uint64_t right = actualA_;
+    while (left < right) {
+        uint64_t mid = left + ((right - left) >> 1U);
+        int32_t srcRank = ReadMetadataRank(mid);
+        if (srcRank < static_cast<int32_t>(targetRank)) {
+            left = mid + 1U;
+        } else {
+            right = mid;
+        }
+    }
+    return left;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(uint64_t rangeBegin, uint64_t rangeEnd,
+                                                                              uint32_t coreCount, uint32_t coreIndex,
+                                                                              uint64_t &coreBegin, uint64_t &coreEnd)
+{
+    if (rangeBegin >= rangeEnd || coreCount == 0U || coreIndex >= coreCount) {
+        coreBegin = rangeBegin;
+        coreEnd = rangeBegin;
+        return;
+    }
+    uint64_t count = rangeEnd - rangeBegin;
+    uint64_t base = count / coreCount;
+    uint64_t remainder = count % coreCount;
+    uint64_t prefix = static_cast<uint64_t>(coreIndex) * base +
+                      ((static_cast<uint64_t>(coreIndex) < remainder) ? coreIndex : remainder);
+    uint64_t coreCountValue = base + ((static_cast<uint64_t>(coreIndex) < remainder) ? 1U : 0U);
+    coreBegin = rangeBegin + prefix;
+    coreEnd = coreBegin + coreCountValue;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::IsMetadataRowValid(
+    uint32_t targetRank, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, int32_t recvXIdx)
+{
+    return srcRank == static_cast<int32_t>(targetRank) && srcTokenIdx >= 0 &&
+           srcTokenIdx < static_cast<int32_t>(numMaxTokensPerRank_) && srcTopKIdx >= 0 &&
+           srcTopKIdx < static_cast<int32_t>(topK_) && recvXIdx >= 0 && static_cast<uint64_t>(recvXIdx) < actualA_;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr)
+{
+    if constexpr (HasTopkWeight == 1) {
+        GlobalTensor<float> outWeight;
+        outWeight.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dstAddr));
+        LocalTensor<float> weightTensor = weightQueue_.AllocTensor<float>();
+        DataCopyParams copyParams{1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
+        DataCopyPadParams padParams{false, 0U, 0U, 0U};
+        DataCopyPad(weightTensor, topkWeightsGm_[recvXIdx], copyParams, padParams);
+        weightQueue_.EnQue(weightTensor);
+        weightTensor = weightQueue_.DeQue<float>();
+        DataCopyPad(outWeight, weightTensor, copyParams);
+        weightQueue_.FreeTensor<float>(weightTensor);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalMetadataSlot(
+    uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR localDataBase, GM_ADDR localStateBase)
+{
+    uint64_t dstSlot =
+        static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
+    SendLocalToken(recvXIdx, localDataBase + dstSlot * perSlotBytes_);
+    if constexpr (HasTopkWeight == 1) {
+        SendLocalWeight(recvXIdx, localStateBase + dstSlot * WIN_ADDR_ALIGN);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMetadataSlot(
+    uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR remoteDataBase, GM_ADDR remoteStateBase,
+    uint64_t tokenBytes)
+{
+    uint64_t dstSlot =
+        static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
+    GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
+    PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    if constexpr (HasTopkWeight == 1) {
+        GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessLocalMetadataRange(uint64_t rangeBegin,
+                                                                                             uint64_t rangeEnd)
+{
+    if (rangeBegin >= rangeEnd) {
+        return false;
+    }
+    constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
+    GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
+    bool didLocalWrite = false;
+
+    for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
+        uint64_t chunkEnd =
+            (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
+        uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+        DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
+        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        for (uint32_t i = 0; i < chunkCount; ++i) {
+            uint32_t metaOffset = i * RECV_META_FIELDS;
+            // int32_t srcRank = metadataLocal.GetValue(metaOffset + META_SRC_RANK_OFFSET); // TODO(delete): validation
+            // only
+            int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+            // TODO(delete): remove the legacy per-row validation helper after metadata contract validation.
+            // Kernel trusts metadata produced by Dispatch Epilogue; do not validate every row on the hot path.
+            // if (!IsMetadataRowValid(rankId_, srcRank, srcTokenIdx, srcTopKIdx, recvXIdx)) {
+            //     continue;
+            // }
+            SendLocalMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, localDataBase,
+                                  localStateBase);
+            didLocalWrite = true;
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+    return didLocalWrite;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemoteMetadataRange(uint32_t targetRank,
+                                                                                              uint64_t rangeBegin,
+                                                                                              uint64_t rangeEnd)
+{
+    constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(targetRank, combineDataWinOffset_);
+    GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
+    uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
+
+    for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
+        uint64_t chunkEnd =
+            (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
+        uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+        DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
+        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        for (uint32_t i = 0; i < chunkCount; ++i) {
+            uint32_t metaOffset = i * RECV_META_FIELDS;
+            // int32_t srcRank = metadataLocal.GetValue(metaOffset + META_SRC_RANK_OFFSET); // TODO(delete): validation
+            // only
+            int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+            // TODO(delete): remove the legacy per-row validation helper after metadata contract validation.
+            // Kernel trusts metadata produced by Dispatch Epilogue; do not validate every row on the hot path.
+            // if (!IsMetadataRowValid(targetRank, srcRank, srcTokenIdx, srcTopKIdx, recvXIdx)) {
+            //     continue;
+            // }
+            SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase,
+                                   remoteStateBase, tokenBytes);
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDirectFromMetadata()
+{
+    if (epWorldSize_ == 0U || aivNum_ == 0U) {
+        return;
+    }
+
+    InitFlagSource();
+
+    uint64_t localBegin = LowerBoundSrcRank(rankId_);
+    uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
+    uint64_t localCoreBegin = 0U;
+    uint64_t localCoreEnd = 0U;
+    SplitRange(localBegin, localEnd, aivNum_, aivId_, localCoreBegin, localCoreEnd);
+    bool didLocalWrite = ProcessLocalMetadataRange(localCoreBegin, localCoreEnd);
+    if (didLocalWrite) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+
+    // All AIVs must reach this barrier, including empty local ranges and actualA_ == 0.
+    SyncAll<true>();
+
+    if (aivId_ == 0U) {
+        for (uint32_t channelIndex = 0U; channelIndex < combineChannelCount_; ++channelIndex) {
+            SendChannelFlag(rankId_, channelIndex);
+        }
+    }
+
+    activeBatchHandle_ = {};
+    activeBatchChannel_ = 0U;
+    preparedWriteCount_ = 0U;
+    activeBatchInitialized_ = false;
+
+    uint64_t remoteTaskBegin = 0U;
+    uint64_t remoteTaskEnd = 0U;
+    uint32_t remoteRankCount = epWorldSize_ - 1U;
+    uint64_t remoteTaskCount = static_cast<uint64_t>(remoteRankCount) * combineChannelCount_;
+    // A rank/channel has one owner; a low core count assigns multiple channel tasks to the same AIV.
+    SplitRange(0U, remoteTaskCount, aivNum_, aivId_, remoteTaskBegin, remoteTaskEnd);
+    for (uint64_t task = remoteTaskBegin; task < remoteTaskEnd; ++task) {
+        uint64_t ordinal = task / combineChannelCount_;
+        uint32_t channelIndex = static_cast<uint32_t>(task % combineChannelCount_);
+        uint32_t dstRank = (ordinal < rankId_) ? static_cast<uint32_t>(ordinal) : static_cast<uint32_t>(ordinal + 1U);
+        uint64_t rankBegin = LowerBoundSrcRank(dstRank);
+        uint64_t rankEnd = LowerBoundSrcRank(dstRank + 1U);
+        uint64_t channelBegin = 0U;
+        uint64_t channelEnd = 0U;
+        SplitRange(rankBegin, rankEnd, combineChannelCount_, channelIndex, channelBegin, channelEnd);
+        BeginPreparedWrites(dstRank, channelIndex);
+        ProcessRemoteMetadataRange(dstRank, channelBegin, channelEnd);
+        // Empty channel slices must also publish a completion flag.
+        SendChannelFlag(dstRank, channelIndex);
+        FlushPreparedWrites();
+    }
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -781,7 +1076,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
-    SendPhaseExpertToToken();
+    // TODO(delete): remove the legacy address-table entry point and its helpers after direct-path validation.
+    // SendPhaseExpertToToken();
+    SendPhaseDirectFromMetadata();
 }
 
 #endif
