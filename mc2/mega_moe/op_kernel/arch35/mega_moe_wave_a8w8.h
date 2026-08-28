@@ -122,10 +122,10 @@ private:
      * 整专家（基线同款语义：wave 边界截断的专家推迟到其完成的 wave 再收），触发节奏
      * 天然跟随 GMM2 的 wave 推进。rowSequence 为行环计数（切回 dispatch 前必须 Drain
      * 并清零，避免与 dispatch 的同号 MTE3_MTE2 事件互吃）。
-     * frontier 正确性红线：只允许尝试 dispatch 重放已触达（count 已发布）的专家。
-     * GetExpertTokenCountFromWorkspace 是非阻塞裸读且计数区不在每 launch 清零范围内，
-     * 越界读到的是陈旧值——0 会让专家被静默跳过（无声错数），大值会越界搬运；
-     * 这不是「最多挂死」的活性问题，是正确性红线。
+     * 计数读取正确性红线（分两路安全门，详见 CachedExpertGmm2Ready 注释）：非零专家
+     * 凭「槽全置位 ⇒ count 必已发布」的依赖链即时收取；零 token 专家凭 dispatch
+     * frontier。frontier 之外读计数会读到陈旧值（计数区不在每 launch 清零范围）：
+     * 0=专家被静默跳过（无声错数），大值=越界搬运。
      */
     struct CombineExpertCursor {
         uint32_t nextExpert = 0U;
@@ -141,7 +141,7 @@ private:
     template <bool DoCountNotify>
     __aicore__ inline void AdvanceWaveReplay(WaveReplayState &st, ExpertTokenPosition &segBegin,
                                              uint64_t &segBeginPrefix);
-    __aicore__ inline bool CachedExpertGmm2Ready(CombineExpertCursor &cursor);
+    __aicore__ inline bool CachedExpertGmm2Ready(CombineExpertCursor &cursor, uint32_t dispatchFrontier);
     __aicore__ inline void CombineWholeExpert(CombineExpertCursor &cursor, ExpertLoopState &combineState,
                                               GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig);
     __aicore__ inline bool TryDispatchNextWave(WaveReplayState &dispatchReplay);
@@ -830,10 +830,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
             didWork = true;
         }
         bool combined = false;
-        // 就绪门 = 专家槽（GMM2 完成即时信号）；frontier 约束 = 只碰 dispatch 已触达
-        // （count 已发布）的专家，见 CombineExpertCursor 注释的正确性红线。
+        // 就绪门 = 专家槽（GMM2 完成即时信号，非零专家不受 dispatch 进度约束）；
+        // frontier 仅用于零 token 专家的计数安全读，见 CachedExpertGmm2Ready 注释。
         MC2_TS_START(TS_COMBINE_TOTAL);
-        while (cursor.nextExpert < dispatchReplay.pos.expertIdx && CachedExpertGmm2Ready(cursor)) {
+        while (cursor.nextExpert < moeExpertPerRank_ && CachedExpertGmm2Ready(cursor, dispatchReplay.pos.expertIdx)) {
             CombineWholeExpert(cursor, combineState, combineAddrInfo, bufferConfig);
             combined = true;
         }
@@ -857,7 +857,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     MC2_TS_START(TS_COMBINE_TOTAL);
     while (cursor.nextExpert < moeExpertPerRank_) {
         MC2_TS_START(TS_COMBINE_WAIT_READY);
-        while (!CachedExpertGmm2Ready(cursor)) {
+        while (!CachedExpertGmm2Ready(cursor, moeExpertPerRank_)) {
             int64_t waitStart = GetSystemCycle();
             while (GetSystemCycle() - waitStart < 100) {
             }
@@ -995,33 +995,47 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 }
 
 /*
- * 非阻塞判定 cursor.nextExpert 的 GMM2 是否全部完成（专家槽增量扫描：槽置位单调，
- * 已确认的 AIC 不再重读 GM）。零 token 专家无槽信号，凭计数=0 直接放行。
- * 调用方必须保证 nextExpert 已被 dispatch 重放触达（count 已发布）：计数是非阻塞裸读
- * 且不在清零范围，越界读到陈旧值=静默错数（见 CombineExpertCursor 注释的正确性红线）。
+ * 非阻塞判定 cursor.nextExpert 是否可收（专家槽增量扫描：槽置位单调，已确认的 AIC
+ * 不再重读 GM）。计数读取的安全门分两路：
+ *  - 非零专家：槽全置位 ⇒ 全体 AIC 完成该专家 GMM2 ⇒ GMM1 已消费 ⇒ GMM1 曾等到
+ *    count ⇒ count 必已发布——槽本身就是充分门，收取不受 dispatch 进度约束
+ *    （这让 combine 紧跟 GMM2 推进，避免专家堆到尾段串行暴露）；
+ *  - 零 token 专家：GMM2 不置槽，只能凭 dispatchFrontier（dispatch 重放已触达，
+ *    count 已发布）读到 0 后跳过。
+ * frontier 之外读计数是正确性红线：计数区不在每 launch 清零范围，读到陈旧值=静默
+ * 错数（0=专家被无声跳过，大值=越界搬运）。
  */
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::CachedExpertGmm2Ready(
-    CombineExpertCursor &cursor)
+    CombineExpertCursor &cursor, uint32_t dispatchFrontier)
 {
-    if (!cursor.countLoaded) {
-        cursor.expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
-                                                                   countWorkspace_, cursor.nextExpert);
-        cursor.countLoaded = true;
-    }
-    if (cursor.expertTokenCount == 0U) {
+    if (cursor.countLoaded && cursor.expertTokenCount == 0U) {
         return true;
     }
     __gm__ int32_t *slotBase =
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2ReadyPtr) +
         static_cast<uint64_t>(cursor.nextExpert) * MegaMoeImpl::GetWaveGmm2ReadySlotStride(waveCombineJob_);
-    while (cursor.aicConfirmed < waveCombineJob_.totalJobs) {
-        if (AscendC::ReadGmByPassDCache(slotBase + static_cast<uint64_t>(cursor.aicConfirmed) * INT_CACHELINE) == 0) {
-            return false;
-        }
+    while (cursor.aicConfirmed < waveCombineJob_.totalJobs &&
+           AscendC::ReadGmByPassDCache(slotBase + static_cast<uint64_t>(cursor.aicConfirmed) * INT_CACHELINE) != 0) {
         ++cursor.aicConfirmed;
     }
-    return true;
+    if (cursor.aicConfirmed >= waveCombineJob_.totalJobs) {
+        if (!cursor.countLoaded) {
+            cursor.expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                       countWorkspace_, cursor.nextExpert);
+            cursor.countLoaded = true;
+        }
+        return true;
+    }
+    if (!cursor.countLoaded && cursor.nextExpert < dispatchFrontier) {
+        cursor.expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                   countWorkspace_, cursor.nextExpert);
+        cursor.countLoaded = true;
+        if (cursor.expertTokenCount == 0U) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // 收取 cursor.nextExpert 整个专家（调用方已保证就绪），并推进游标。
