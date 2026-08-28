@@ -2161,6 +2161,67 @@ def cpu_mxfp8_golden(
         QUANT_GROUP_SIZE,
     )
 
+    blocks_per_task = max(
+        1, int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE
+    )
+    progress_total = 0
+    for progress_batch_idx, progress_q_len in enumerate(q_lengths):
+        progress_qb_count = math.ceil(int(progress_q_len) / SPARSE_BLOCK_SIZE)
+        block_counts = sparse_seq_len[
+            progress_batch_idx, :, :progress_qb_count
+        ].to(torch.int64)
+        progress_total += int(
+            torch.div(
+                block_counts + blocks_per_task - 1,
+                blocks_per_task,
+                rounding_mode="floor",
+            ).sum().item()
+        )
+
+    progress_done = 0
+    progress_start = time.monotonic()
+    progress_last_log = progress_start
+    progress_last_done = -1
+    progress_next_percent = 0.0
+
+    def log_golden_progress(force=False):
+        nonlocal progress_last_log, progress_last_done, progress_next_percent
+        if force and progress_done == progress_last_done:
+            return
+        now = time.monotonic()
+        percent = 100.0 if progress_total == 0 else min(
+            100.0, 100.0 * progress_done / progress_total
+        )
+        if not force and progress_done < progress_total:
+            if percent < progress_next_percent and now - progress_last_log < 30.0:
+                return
+
+        elapsed = now - progress_start
+        if progress_done > 0 and progress_done < progress_total:
+            eta_seconds = elapsed * (progress_total - progress_done) / progress_done
+            eta_text = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
+        elif progress_done >= progress_total:
+            eta_text = "00:00:00"
+        else:
+            eta_text = "--:--:--"
+        elapsed_text = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+        filled = min(20, int(percent / 5.0))
+        logger.info(
+            "[CPU Golden] progress [%s%s] %6.2f%% (%d/%d), elapsed=%s, ETA=%s",
+            "#" * filled,
+            "-" * (20 - filled),
+            percent,
+            progress_done,
+            progress_total,
+            elapsed_text,
+            eta_text,
+        )
+        progress_last_log = now
+        progress_last_done = progress_done
+        progress_next_percent = min(100.0, (math.floor(percent / 5.0) + 1) * 5.0)
+
+    log_golden_progress(force=True)
+
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
         kv_len = int(kv_lengths[batch_idx])
@@ -2355,6 +2416,9 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
+                    progress_done += 1
+                    log_golden_progress()
+
                 # Match the master kernel's final guards. LastDivNewVF writes
                 # zero when sum == 0, RowInvalidUpdateVF writes zero when max
                 # is the -FLT_MAX sentinel, and ComputeLseOutputVF maps either
@@ -2380,6 +2444,9 @@ def cpu_mxfp8_golden(
                         )
                     if bool(lse_active[local_idx].item()):
                         softmax_lse[out_idx, head_idx] = lse[local_idx]
+
+    progress_done = progress_total
+    log_golden_progress(force=True)
 
     logger.info(
         "[CPU Golden] output(TND)=%s, lse(TN)=%s",
