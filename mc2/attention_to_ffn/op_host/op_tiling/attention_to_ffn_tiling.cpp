@@ -203,6 +203,9 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
     OP_TILING_CHECK(ffnStartRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "ffnStartRankId"),
                     return false);
 
+    uint32_t moeExpertNum = *moeExpertNumPtr;
+    uint32_t worldSize = *worldSizePtr
+    
     OP_TILING_CHECK(
         (moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
         OP_LOGE_WITH_INVALID_ATTR(ATTN_FFN_INNER_DEBUG, "moe_expert_num", std::to_string(moeExpertNum).c_str(),
