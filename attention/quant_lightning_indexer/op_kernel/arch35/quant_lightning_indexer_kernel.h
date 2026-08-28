@@ -394,6 +394,7 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                     lastGS1RemainBlockCnt = 0;
                     coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ?
                         minBlockPerCore + 1 : minBlockPerCore;
+                    if (coreIdx == coreNum - 1) { coreDealBlockCnt = totalBlockNum + 1; }
                 } else {
                     lastGS1RemainBlockCnt += s2RemainBaseNum;
                     break;
