@@ -140,9 +140,10 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     }
 
     DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(actualTokenNumGMTensor_);
-    int64_t actualTokenNum = actualTokenNumGMTensor_.GetValue(0);
-    ascendc_assert(actualTokenNum >= 0, "actualTokenNum must be non-negative, actualTokenNum=%ld", actualTokenNum);
-    actualTokenNum_ = static_cast<uint64_t>(actualTokenNum);
+    int64_t actualTokenNumValue = actualTokenNumGMTensor_.GetValue(0);
+    ascendc_assert(actualTokenNumValue >= 0, "actualTokenNum must be non-negative, actualTokenNum=%ld",
+                   actualTokenNumValue);
+    actualTokenNum_ = static_cast<uint64_t>(actualTokenNumValue);
     ascendc_assert(actualTokenNum_ <= maxTokenNum_,
                    "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
