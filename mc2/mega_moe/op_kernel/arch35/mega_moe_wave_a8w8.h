@@ -664,7 +664,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
             params_, g_winRankAddr_, tokenDispatchScratch_, expertIdx, expertTokenCount);
         MC2_TS_STOP(TS_DISPATCH_EXPERT);
         // 专家边界：dispatch 的 per-buffer 事件已在 CopyTokensAndMetaForDispatch 末尾排空，
-        // 可安全切入 combine 消费已就绪的 GMM2 wave。
+        // 可安全切入 combine 消费已就绪的 GMM2 wave。每次切回 dispatch 前必须 Drain 行环
+        // （两侧共用同号 MTE3_MTE2 事件），而 Drain 要等在飞发送落地——切换有固定冲刷成本，
+        // 故每 2 个专家消费一次以摊薄（结构语义不变：combine 仍逐 wave 消费、不等 dispatch 全完）。
+        if ((expertIdx & 1U) == 0U) {
+            continue;
+        }
         bool combined = false;
         while (TryCombineNextWave(cursor, false, combineState, combineAddrInfo, bufferConfig)) {
             combined = true;
