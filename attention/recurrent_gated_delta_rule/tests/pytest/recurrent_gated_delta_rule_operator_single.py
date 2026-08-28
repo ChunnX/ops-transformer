@@ -8,10 +8,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 from recurrent_gated_delta_rule_golden import (
     run_recurrent_gated_delta_rule_eager,
     cpu_recurrent_gated_delta_rule,
@@ -77,7 +73,7 @@ def output_operator(params):
         state_non_contiguous,
     ) = params
 
-    logger.info(f"params = {params}")
+    print(f"params = {params}")
 
     run_recurrent_gated_delta_rule_eager(
         batch_size,
