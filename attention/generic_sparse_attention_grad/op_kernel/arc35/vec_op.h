@@ -354,7 +354,7 @@ public:
     }
 
     /**
-     * Design §2.4 方案 A: causal mask on S — k > q → -INF (on-chip, no GM attenMask).
+     * RIGHT_DOWN_CAUSAL: origin at bottom-right; valid when k <= q + (S2 - S1).
      */
     __aicore__ inline void ApplyCausalAttenMask(const LocalTensor<float> &sUb, const RunTimeInfo &runTimeInfo)
     {
@@ -364,11 +364,12 @@ public:
         constexpr float NEG_INF = -1.0e30f;
         const int32_t rowStart = v_sub_core_idx_ * half_s1_process_align_;
         const int32_t s2Start = runTimeInfo.s2Idx;
+        const int32_t causalOffset = runTimeInfo.cur_kv_seq_len - runTimeInfo.cur_q_seq_len;
         for (int32_t r = 0; r < half_s1_process_real_; ++r) {
             const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowStart + r);
             for (int32_t c = 0; c < static_cast<int32_t>(runTimeInfo.s2Len); ++c) {
                 const int32_t kTok = s2Start + c;
-                if (kTok > qTok) {
+                if (kTok > qTok + causalOffset) {
                     sUb.SetValue(r * s2_process_align_ + c, NEG_INF);
                 }
             }

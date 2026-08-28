@@ -2,15 +2,16 @@
 # Install AICore custom package, then merge AICPU metadata kernel artifacts.
 set -euo pipefail
 
-INSTALL_PATH="${1:-/home/cjz/ops-transformer/add_gsag/add_gsag_custom}"
-OPS_ROOT="/home/cjz/ops-transformer/add_gsag/ops-transformer_2"
+INSTALL_PATH="${1:-/data/cjz/add_gsag_custom}"
+OPS_ROOT="/data/cjz/ops-transformer_2"
 RUN_PKG="${OPS_ROOT}/build_out/cann-ops-transformer-custom_linux-x86_64.run"
 
 if [[ ! -f "${RUN_PKG}" ]]; then
   RUN_PKG="${OPS_ROOT}/build/cann-ops-transformer-custom_linux-x86_64.run"
 fi
 
-"${RUN_PKG}" --quiet --install-path="${INSTALL_PATH}"
+# --force: skip shared-lib validation when optional deps (e.g. libopapi_math.so) are absent.
+"${RUN_PKG}" --quiet --force --install-path="${INSTALL_PATH}"
 
 CPU_IMPL="${INSTALL_PATH}/vendors/custom_transformer/op_impl/cpu"
 mkdir -p "${CPU_IMPL}/aicpu_kernel/impl" "${CPU_IMPL}/config"
