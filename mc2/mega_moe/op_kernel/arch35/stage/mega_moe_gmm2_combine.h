@@ -26,6 +26,7 @@
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
+#include "../common/mc2_kernel_timing.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
 #include "../../../common/quantize_functions.h"
@@ -98,6 +99,8 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = GetCombineDstRowIndex(route, params) * rowElements;
 
+    // 512B 定长分片经 A/B 实测坐实为最优：整行 14336B 单发会把 combine 拖慢约 3 倍
+    // （单大描述符在跨卡互联上串行，多描述符可多链路流水），勿合并。
     constexpr uint32_t TRANSFER_BYTES = 512U;
     constexpr uint32_t TILE_ELEMENTS = TRANSFER_BYTES / sizeof(Element);
     AscendC::DataCopyExtParams ub2GmParams{1U, 0U, 0U, 0U, 0U};
@@ -439,14 +442,18 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
             Ops::Base::CeilDiv(waveM, config.activationTileM) * Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
+        MC2_TS_START(TS_GMM2_WAIT_ACT);
         WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetLoops));
+        MC2_TS_STOP(TS_GMM2_WAIT_ACT);
     } else {
         GmmKernel::BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             GmmKernel::BlockScheduler::Params{
                 Te::MakeCoord(static_cast<int64_t>(config.activationTileM), static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
+        MC2_TS_START(TS_GMM2_WAIT_ACT);
         WaitUntilGmFlagEquals(gmmAddrInfo.activationToGmm2Flag, static_cast<int32_t>(targetLoops));
+        MC2_TS_STOP(TS_GMM2_WAIT_ACT);
     }
 }
 
@@ -1051,34 +1058,41 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
     }
 }
 
-constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
-constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES = MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
-                                                        MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
-                                                        ALIGN_512;
-constexpr uint32_t WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR =
-    WAVE_GMM2_READY_SCAN_UB_ADDR + ((WAVE_GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
-constexpr uint32_t WAVE_GMM2_READY_SUM_UB_ADDR = WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR + ALIGN_512;
-
-__aicore__ inline uint64_t GetWaveGmm2ReadySlotStride(const AivJobContext &job)
-{
-    return static_cast<uint64_t>(job.totalJobs) * INT_CACHELINE;
-}
-
-// 每个 AIC 在 GMM2 写入可见后发布一个独占 cache line 的完成标记。
-__aicore__ inline void NotifyWaveGmm2Ready(const AivJobContext &job, const Params &params, uint32_t slotIdx)
+/*
+ * wave 粒度 GMM2→Combine 进度通道：每个 AIC 在 gmm2Ready 区第 0 槽行内独占一条
+ * cacheline，写入自己已完成的 GMM2 wave 单调计数（沿用每 launch 清零的 reset 语义，
+ * 无需扩 workspace）。Combine 侧取全体 AIC 计数的最小值与目标比较。
+ */
+__aicore__ inline void PublishGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t completedWaves)
 {
     if constexpr (g_coreType == AIC) {
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
-        uint64_t slotOffset = static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(job);
-        AscendC::WriteGmByPassDCache(readyBase + slotOffset + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
-                                     int32_t(1));
+        AscendC::WriteGmByPassDCache(readyBase + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE, completedWaves);
     }
 }
 
-// 一个 AIV Combine 任务等待全部 AIC 完成指定专家。
-__aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params &params, uint32_t slotIdx)
+// 非阻塞探测：全部 AIC 的 GMM2 wave 计数是否已达 targetWaves（单趟标量 min 扫描）。
+__aicore__ inline bool ProbeGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
+{
+    if constexpr (g_coreType == AIC) {
+        return false;
+    }
+    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
+        return false;
+    }
+    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
+    for (uint32_t aicIdx = 0U; aicIdx < job.totalJobs; ++aicIdx) {
+        if (AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE) < targetWaves) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// AIV1 自旋等待全部 AIC 的 GMM2 wave 计数到达 targetWaves（标量 min 扫描，绕 DCache）。
+__aicore__ inline void WaitGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -1086,59 +1100,19 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
     if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
         return;
     }
-    uint32_t readyElements = job.totalJobs * static_cast<uint32_t>(INT_CACHELINE);
     __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
-    uint64_t readySlotOffset = static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(job);
-    GlobalTensor<int32_t> readyGm;
-    readyGm.SetGlobalBuffer(readyBase);
-    LocalTensor<int32_t> scanUb(TPosition::VECCALC, WAVE_GMM2_READY_SCAN_UB_ADDR, readyElements);
-    LocalTensor<uint8_t> reduceTmpUb(TPosition::VECCALC, WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR, ALIGN_512);
-    LocalTensor<int32_t> sumUb(TPosition::VECCALC, WAVE_GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
-    const uint32_t readyShape[] = {1U, readyElements};
     while (true) {
-        DataCopy(scanUb, readyGm[readySlotOffset], readyElements);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        ReduceSum<int32_t, AscendC::Pattern::Reduce::AR, true>(sumUb, scanUb, reduceTmpUb, readyShape, true);
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        if (sumUb.GetValue(0) >= static_cast<int32_t>(job.totalJobs)) {
+        int32_t minWaves = 0x7FFFFFFF;
+        for (uint32_t aicIdx = 0U; aicIdx < job.totalJobs; ++aicIdx) {
+            int32_t waves = AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE);
+            minWaves = waves < minWaves ? waves : minWaves;
+        }
+        if (minWaves >= targetWaves) {
             return;
         }
         int64_t waitStart = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - waitStart < 100) {
         }
-    }
-}
-
-template <uint8_t CombineMode>
-__aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &common, const AivJobContext &job,
-                                                 const WaveCombineBufferConfig &bufferConfig,
-                                                 WaveCombineScratch &scratch, const Params &params,
-                                                 const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                 uint32_t expertIdx, uint32_t &rowSequence)
-{
-    uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
-    // AIV0 不参与 wave Combine，仅 AIV1 取本专家 token 上分到的连续区间。
-    WorkRange currentCoreTokenRange = GetSubBlockIdx() != 1U ?
-                                          WorkRange{} :
-                                          GetBalancedTokenRange(currentExpertTokenNum, job.jobIndex, job.totalJobs);
-    if (currentCoreTokenRange.count != 0U) {
-        WaitWaveGmm2Ready(job, params, expertIdx);
-    }
-    for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
-        uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
-        uint32_t chunkTokenNum = remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
-                                     remainingTokenNum :
-                                     WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
-        PreloadWaveCombineMetaInfo(
-            params, scratch,
-            static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + processedTokenNum,
-            chunkTokenNum, 0U);
-        CombineWaveTokenRange<CombineMode>(common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
-                                           currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U,
-                                           rowSequence);
-        processedTokenNum += chunkTokenNum;
     }
 }
 

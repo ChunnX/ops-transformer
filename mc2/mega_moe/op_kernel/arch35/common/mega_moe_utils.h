@@ -22,6 +22,7 @@
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_types.h"
+#include "mc2_kernel_timing.h"
 
 namespace MegaMoeImpl {
 
@@ -162,7 +163,9 @@ __aicore__ inline void NotifyCube(uint16_t value = 0)
 
 __aicore__ inline void WaitForVector(uint16_t value = 0)
 {
+    MC2_TS_START(TS_AIC_WAIT_VECTOR);
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value);
+    MC2_TS_STOP(TS_AIC_WAIT_VECTOR);
 }
 
 __aicore__ inline void NotifyVector(uint16_t value = 0)
@@ -172,7 +175,9 @@ __aicore__ inline void NotifyVector(uint16_t value = 0)
 
 __aicore__ inline void WaitForCube(uint16_t value = 0)
 {
+    MC2_TS_START(TS_AIV_WAIT_CUBE);
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+    MC2_TS_STOP(TS_AIV_WAIT_CUBE);
 }
 
 template <bool IsPingPong = false>

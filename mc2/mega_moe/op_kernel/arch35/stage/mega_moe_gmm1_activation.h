@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mc2_kernel_timing.h"
 
 namespace MegaMoeImpl {
 
@@ -39,7 +40,9 @@ __aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, con
     uint32_t targetValue = (mLoc + config.tileM > config.m) ? (config.m - mLoc) : config.tileM;
     uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
     __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + flagOffset;
+    MC2_TS_START(TS_GMM1_WAIT_DATA);
     WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetValue));
+    MC2_TS_STOP(TS_GMM1_WAIT_DATA);
 }
 
 namespace GmmKernel {
@@ -251,9 +254,11 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
             WaitForVector();
         }
 
+        MC2_TS_START(TS_MMAD_TILE);
         Gmm1AicMmadTileToUbGeneric<BlockMmad, IsGmm1Interleaved>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, actualShape, nLoc, kLoc, gmBlockA,
             gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, pingpongIdx);
+        MC2_TS_STOP(TS_MMAD_TILE);
 
         if constexpr (IsGmm1Interleaved) {
             NotifyVector(pingpongIdx);
@@ -642,8 +647,10 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
             pingpongIdx = 1U - pingpongIdx;
         } else {
             WaitForCube();
+            MC2_TS_START(TS_EPILOGUE_TILE);
             Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc,
                                                            nLoc);
+            MC2_TS_STOP(TS_EPILOGUE_TILE);
             NotifyCube();
         }
     }
