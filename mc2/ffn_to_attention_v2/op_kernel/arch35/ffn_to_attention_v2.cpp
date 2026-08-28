@@ -43,7 +43,6 @@ static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingD
  *   CommModeType: MTE or URMA.
  */
 
-template <bool RankTableMode, uint8_t ArchTag, uint8_t CommModeType>
 __global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds,
                                                GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
                                                GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM,
@@ -54,17 +53,11 @@ __global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(FFNToAttentionV2TilingData, tilingData, tilingGM);
-        if constexpr (CommModeType == TILINGKEY_COMM_MTE) {
-            const auto *v1TilingData = reinterpret_cast<const FFNToAttentionTilingData *>(&tilingData);
-            FFNToAttention<DTYPE_X, RankTableMode, FFNToAttentionContextType::MC2_CONTEXT> op;
-            op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
-                    workspaceGM, &pipe, v1TilingData);
-            op.Process();
-        } else if constexpr (CommModeType == TILINGKEY_COMM_URMA) {
-            FFNToAttentionUrma<DTYPE_X, RankTableMode> op;
-            op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
-                    workspaceGM, &pipe, &tilingData);
-            op.Process();
-        }
+
+        FFNToAttentionUrma<DTYPE_X, RankTableMode> op;
+        op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
+                workspaceGM, &pipe, &tilingData);
+        op.Process();
+        
     }
 }
