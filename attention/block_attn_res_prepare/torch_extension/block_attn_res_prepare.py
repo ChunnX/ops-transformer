@@ -21,11 +21,9 @@ S_DIM_INDEX = 0
 D_DIM_INDEX = 2
 
 
-class BlockAttnResPrepareOpBuilder(OpBuilder):
+class _BlockAttnResPrepareOpBuilder(OpBuilder):
     def __init__(self):
-        super(BlockAttnResPrepareOpBuilder, self).__init__(
-            "block_attn_res_prepare", category="attention"
-        )
+        super().__init__("block_attn_res_prepare", category="attention")
 
     def sources(self):
         return ["csrc/attention/block_attn_res_prepare.cpp"]
@@ -51,11 +49,22 @@ class BlockAttnResPrepareOpBuilder(OpBuilder):
             return numerator, logit_max, exp_sum
 
 
-block_attn_res_prepare_op_builder = BlockAttnResPrepareOpBuilder()
-block_attn_res_prepare_op_builder._ensure_initialized()
+_block_attn_res_prepare_op_builder = _BlockAttnResPrepareOpBuilder()
+_block_attn_res_prepare_op_builder._ensure_initialized()
 
 
-@impl(get_as_library(), block_attn_res_prepare_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _block_attn_res_prepare_op_builder.name, "PrivateUse1")
+def _block_attn_res_prepare(
+    block_res: torch.Tensor,
+    valid_blocks: torch.Tensor,
+    pseudo_query: torch.Tensor,
+    *,
+    eps: float = DEFAULT_EPS,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    op_module = _block_attn_res_prepare_op_builder.load()
+    return op_module.block_attn_res_prepare(block_res, valid_blocks, pseudo_query, eps)
+
+
 def block_attn_res_prepare(
     block_res: torch.Tensor,
     valid_blocks: torch.Tensor,
@@ -76,5 +85,6 @@ def block_attn_res_prepare(
         ``(numerator, logit_max, exp_sum)`` with shapes
         ``[S, T, D]``, ``[S, T]``, and ``[S, T]`` respectively; all outputs are FP32.
     """
-    op_module = block_attn_res_prepare_op_builder.load()
-    return op_module.block_attn_res_prepare(block_res, valid_blocks, pseudo_query, eps)
+    return torch.ops.cann_ops_transformer.block_attn_res_prepare(
+        block_res, valid_blocks, pseudo_query, eps=eps
+    )

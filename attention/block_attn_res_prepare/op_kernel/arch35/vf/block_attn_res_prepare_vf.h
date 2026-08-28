@@ -221,47 +221,6 @@ __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t valid
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-__simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubuf__ float *dotAddr,
-                                            __ubuf__ float *maxAddr, __ubuf__ float *sumAddr, uint32_t validN,
-                                            uint32_t nAlign, float reciprocalD, float eps)
-{
-    RegTensor<float> sumSquareReg;
-    RegTensor<float> dotReg;
-    RegTensor<float> rmsReg;
-    RegTensor<float> zReg;
-    RegTensor<float> maxReg;
-    RegTensor<float> maxBroadcastReg;
-    RegTensor<float> expReg;
-    RegTensor<float> expSumReg;
-    RegTensor<float> zeroReg;
-
-    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
-    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
-    uint32_t validRemaining = validN;
-    uint32_t alignRemaining = nAlign;
-    MaskReg validMask = UpdateMask<float, RegTraitNumOne>(validRemaining);
-    MaskReg alignMask = UpdateMask<float, RegTraitNumOne>(alignRemaining);
-
-    LoadAlign<float, LoadDist::DIST_NORM>(sumSquareReg, sumSquareAddr);
-    LoadAlign<float, LoadDist::DIST_NORM>(dotReg, dotAddr);
-    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD, validMask);
-    Adds<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
-    Sqrt<float, MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
-    Div<float, MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
-    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg, validMask);
-    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(maxBroadcastReg, maxReg, allMask);
-    Sub<float, MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
-    Exp<float, MaskMergeMode::ZEROING>(expReg, expReg, validMask);
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg, validMask);
-
-    Duplicate(zeroReg, 0.0F, allMask);
-    StoreAlign<float, StoreDist::DIST_NORM>(dotAddr, zeroReg, alignMask);
-    StoreAlign<float, StoreDist::DIST_NORM>(dotAddr, expReg, validMask);
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(maxAddr, maxReg, oneMask);
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(sumAddr, expSumReg, oneMask);
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-}
-
 template <bool FIRST_BLOCK>
 __simd_vf__ inline void WeightedAccumulate(__ubuf__ float *vAddr, __ubuf__ float *weightAddr,
                                            __ubuf__ float *outputAddr, uint32_t validD)

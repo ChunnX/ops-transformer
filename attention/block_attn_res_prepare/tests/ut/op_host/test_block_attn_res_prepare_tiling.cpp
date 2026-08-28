@@ -37,7 +37,7 @@ constexpr uint64_t ASCEND_950_L0A_SIZE = 64UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0B_SIZE = 64UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0C_SIZE = 256UL * 1024UL;
 constexpr uint64_t FAKE_L2_SIZE = 4096UL;
-constexpr uint32_t VECTOR_TILING_DATA_SIZE = 52U;
+constexpr uint32_t VECTOR_TILING_DATA_SIZE = 48U;
 constexpr uint32_t CUBE_TILING_DATA_SIZE = 136U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
 constexpr size_t T_DIM_INDEX = 0U;
@@ -56,7 +56,6 @@ struct VectorTilingDataView {
     uint32_t tailBlockFactor;
     uint32_t baseD;
     uint32_t statUbElems;
-    uint32_t workUbElems;
     float eps;
     uint16_t usedCoreNum;
     uint16_t bigCoreNum;
@@ -98,8 +97,6 @@ struct CubeTilingDataView {
     uint8_t qL1BufferNum;
     uint8_t vL1BufferNum;
     uint8_t vUbBufferNum;
-    uint8_t l1CacheMode;
-    uint8_t vL1CacheRows;
 };
 
 static_assert(sizeof(VectorTilingDataView) == VECTOR_TILING_DATA_SIZE);
@@ -137,8 +134,8 @@ struct BlockAttnResPrepareTilingCase {
             "BlockAttnResPrepare",
             {
                 {ops::ut::MakeGertStorageShape(blockDims), ops::ut::ParseGeDtype(blockResDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape(std::vector<int64_t>{1}),
-                 ops::ut::ParseGeDtype(validBlocksDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(std::vector<int64_t>{1}), ops::ut::ParseGeDtype(validBlocksDtype),
+                 ge::FORMAT_ND},
                 {ops::ut::MakeGertStorageShape(queryDims), ops::ut::ParseGeDtype(pseudoQueryDtype), ge::FORMAT_ND},
             },
             {

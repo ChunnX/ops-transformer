@@ -55,6 +55,20 @@ public:
     ~BlockAttnResPrepareBaseTiling() override = default;
 
 protected:
+    static constexpr uint64_t AIV_CORE_NUM_PER_AIC = 2UL;
+
+    template <typename T>
+    static constexpr T CeilDiv(T value, T factor)
+    {
+        return (value + factor - 1) / factor;
+    }
+
+    template <typename T>
+    static constexpr T AlignUp(T value, T factor)
+    {
+        return CeilDiv(value, factor) * factor;
+    }
+
     struct WorkDistribution {
         uint32_t usedCoreNum = 0;
         uint32_t bigCoreNum = 0;

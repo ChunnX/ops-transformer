@@ -156,11 +156,20 @@ $$
 
 ## 调用说明
 
-| 调用方式 | 调用样例 | 说明 |
-| --- | --- | --- |
-| aclnn调用 | [test_aclnn_block_attn_res_prepare](./examples/test_aclnn_block_attn_res_prepare.cpp) | 示例包含 GetWorkspaceSize、workspace 申请和算子执行。 |
-
-详细的算子编译运行方法参见[算子调用](../../docs/zh/invocation/quick_op_invocation.md)。
+<table><thead>
+  <tr>
+    <th>调用方式</th>
+    <th>调用样例</th>
+    <th>说明</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>aclnn调用</td>
+    <td><a href="./examples/test_aclnn_block_attn_res_prepare.cpp">test_aclnn_block_attn_res_prepare</a></td>
+    <td>示例参数与上表顺序一致，并包含GetWorkspaceSize、workspace申请和算子执行。详细的算子编译运行方法参见<a href="../../docs/zh/invocation/quick_op_invocation.md">算子调用</a>。</td>
+  </tr>
+</tbody>
+</table>
 
 ```bash
 # 在ops-transformer仓库根目录执行
