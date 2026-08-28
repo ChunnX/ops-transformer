@@ -130,7 +130,7 @@ private:
     template <bool DoCountNotify>
     __aicore__ inline void AdvanceWaveReplay(WaveReplayState &st, ExpertTokenPosition &segBegin,
                                              uint64_t &segBeginPrefix);
-    __aicore__ inline bool TryCombineNextWave(WaveCombineCursor &cursor, bool blocking, ExpertLoopState &combineState,
+    __aicore__ inline bool TryCombineNextWave(WaveCombineCursor &cursor, ExpertLoopState &combineState,
                                               GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig);
     __aicore__ inline bool TryDispatchNextWave(WaveReplayState &dispatchReplay);
     __aicore__ inline bool CachedGmm2ProgressAtLeast(int32_t *cachedWaves, int32_t targetWaves);
@@ -775,8 +775,8 @@ __aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::TryDisp
  *    GMM1 逐语句同源的 wave 重放切分，256 行 tile 就绪契约不变）；
  *  - dispatch 领先 GMM1 约一个 wave：以 GMM2 进度计数 c 为反馈（AIC 第 k 轮序列为
  *    G1(k)→G2(k-1)→发布(k-1)，故 G1 已完成 c+1 个 wave），放行条件
- *    dispatchedWaves < c + DISPATCH_LOOKAHEAD_CAP；CAP=3 即稳态领先 1~2 个 wave，
- *    且 CAP≥3 保证与发布相位无死锁；
+ *    dispatchedWaves < c + DISPATCH_LOOKAHEAD_CAP（CAP≥3 与发布相位无死锁；
+ *    定版 CAP=8，取值依据见常量处的实测 K 曲线注释）；
  *  - combine 逐 wave 消费 GMM2 产出，无需等待 dispatch 全部完成；节流空转期天然被
  *    combine 消费填充。
  * UB/事件安全：dispatch 跨专家持久 UB 态仅 [0,~1KB) cumsum 块（受保护低区），64KB 以上
@@ -787,9 +787,11 @@ template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DispatchAndCombineInterleaved(
     ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig)
 {
-    // 领先额度：CAP=3 为严格领先一个 wave（含发布相位），实测相位余量过薄——任何反应
-    // 延迟都让 GMM1 每 wave 继承 ~60us 等待（相位锁）；CAP=5（有效领先 2~3 wave）吸收
-    // 反应延迟，同时保持「dispatch 有界领先、防饿不囤积」的节拍语义。
+    // 领先额度（实测 K 曲线定版 8）：K=3 为字面「领先一个 wave」但相位余量过薄，任何
+    // 反应延迟都让 GMM1 每 wave 继承 ~60us 等数据（相位锁，+14%）；K=5 双模态（启动
+    // 滑落后锁死零领先）；K=8 单模态稳定、距全前置极限仅 33us，且仍是「有界领先、
+    // 防饿不囤积」的节拍语义。配套两条恢复性设计见下：dispatch 优先清空放行额度、
+    // 缓存增量式进度探测。
     constexpr int32_t DISPATCH_LOOKAHEAD_CAP = 8;
     // 空转退避：过短形成 GM 读风暴，过深加大对放行窗口的反应延迟。
     constexpr int64_t IDLE_BACKOFF_CYCLES = 500;
@@ -819,7 +821,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
         bool combined = false;
         while (cursor.replay.pos.expertIdx < moeExpertPerRank_ &&
                CachedGmm2ProgressAtLeast(cachedWaves, cursor.waveIdx + 1) &&
-               TryCombineNextWave(cursor, true, combineState, combineAddrInfo, bufferConfig)) {
+               TryCombineNextWave(cursor, combineState, combineAddrInfo, bufferConfig)) {
             combined = true;
         }
         if (combined) {
@@ -839,7 +841,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     MC2_TS_STOP(TS_DISPATCH_ALL);
     // dispatch 全部完成，阻塞式收齐剩余 wave。
     MC2_TS_START(TS_COMBINE_TOTAL);
-    while (TryCombineNextWave(cursor, true, combineState, combineAddrInfo, bufferConfig)) {
+    while (TryCombineNextWave(cursor, combineState, combineAddrInfo, bufferConfig)) {
     }
     DrainWaveCombineRowRing<CombineQuantMode>(cursor.rowSequence);
     cursor.rowSequence = 0U;
@@ -973,13 +975,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
  * 增量消费一个 GMM wave 的 combine（wave 切分重放与 ProcessGmm1Wave 推进算术逐语句
  * 同源，token 数来自 workspace——调用时该专家的 dispatch 计数必已发布，因为消费门槛
  * 是「该 wave 的 GMM2 完成计数」，而 GMM2 依赖链上游即 dispatch）。
- * blocking=false：进度未就绪立即返回 false（不推进游标）；无剩余 wave 返回 false。
+ * 调用方以缓存进度预检保证就绪（内部等待随即返回）；无剩余 wave 返回 false。
  * 返回 true 表示消费了一个 wave；调用方负责在切换回 dispatch 前 Drain 行环并清
  * cursor.rowSequence。
  */
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::TryCombineNextWave(
-    WaveCombineCursor &cursor, bool blocking, ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
+    WaveCombineCursor &cursor, ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
     const CombineBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIC) {
@@ -991,19 +993,14 @@ __aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::TryComb
     if (cursor.replay.pos.expertIdx >= moeExpertPerRank_) {
         return false;
     }
-    if (!blocking && !ProbeGmm2WaveProgress(waveCombineJob_, params_, cursor.waveIdx + 1)) {
-        return false;
-    }
 
     ExpertTokenPosition segBegin{};
     uint64_t segBeginPrefix = 0U;
     AdvanceWaveReplay<false>(cursor.replay, segBegin, segBeginPrefix);
     ++cursor.waveIdx;
-    if (blocking) {
-        MC2_TS_START(TS_COMBINE_WAIT_READY);
-        WaitGmm2WaveProgress(waveCombineJob_, params_, cursor.waveIdx);
-        MC2_TS_STOP(TS_COMBINE_WAIT_READY);
-    }
+    MC2_TS_START(TS_COMBINE_WAIT_READY);
+    WaitGmm2WaveProgress(waveCombineJob_, params_, cursor.waveIdx);
+    MC2_TS_STOP(TS_COMBINE_WAIT_READY);
     CombineSegment(segBegin, cursor.replay.pos, segBeginPrefix, combineState, combineAddrInfo, bufferConfig,
                    cursor.rowSequence);
     return true;
@@ -1171,7 +1168,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
     // 尾块后发布最终 wave 计数（含尾块补齐的最后 1~2 个 wave）；重复发布同值幂等。
-    PublishGmm2WaveProgress(waveCombineJob_, params_, gmm1WaveIdx);
+    // moeExpertPerRank==0 时 gmm2Ready 区尺寸为 0，越区写以守卫拦截（审查 7a）。
+    if (moeExpertPerRank_ != 0U) {
+        PublishGmm2WaveProgress(waveCombineJob_, params_, gmm1WaveIdx);
+    }
 
     if constexpr (!TopkWeightsPrefetch) {
         EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
