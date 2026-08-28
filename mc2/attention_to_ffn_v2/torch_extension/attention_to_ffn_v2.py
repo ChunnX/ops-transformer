@@ -150,43 +150,15 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
-def _get_npu_backend(group):
-    """Get the NPU backend from a torch.distributed.ProcessGroup."""
-    get_backend = getattr(group, "".join(["_get", "_backend"]))
-    return get_backend(torch.device("npu"))
-
-
-def _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode=0):
-    """Calculate the required window buffer size in bytes."""
-    _op_module = _attention_to_ffn_v2_op_builder.load()
-    return _op_module.get_attention_to_ffn_v2_ccl_buffer_size(
-        ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
-    )
-
-
-def get_attention_to_ffn_v2_ccl_buffer_size(
+def _get_attention_to_ffn_v2_ccl_buffer_size(
     ffn_token_info_table_shape: List[int],
     ffn_token_data_shape: List[int],
     quant_mode: int = 0,
 ) -> int:
-    """Calculate the required CCL buffer size (bytes) for attention_to_ffn_v2.
-
-    The returned value should be passed to ``AttentionToFfnV2Buffer`` (or used as
-    ``customCclBufferSize`` when constructing ``CommContextManager`` directly).
-
-    Args:
-        ffn_token_info_table_shape (List[int]): 3-element list.
-        ffn_token_data_shape (List[int]): 5-element list
-            [attnWorkerNum, microBatchNum, BS, K+shared, HS].
-        quant_mode (int): 0=none, 2=pertoken+INT8, 3=mx+FP8_E5M2,
-            4=mx+FP8_E4M3, 5=mx+FP4_E2M1, 6=mx_clip+FP8_E5M2,
-            7=mx_clip+FP8_E4M3. Default 0.
-
-    Returns:
-        int: Required CCL buffer size in bytes, aligned to 2 MB.
-    """
-    return _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode)
-
+    _op_module = _attention_to_ffn_v2_op_builder.load()
+    return _op_module.get_attention_to_ffn_v2_ccl_buffer_size(
+        ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
+    )
 
 
 class AttentionToFfnV2Buffer:
@@ -212,7 +184,7 @@ class AttentionToFfnV2Buffer:
         self.ffn_token_data_shape = list(ffn_token_data_shape)
         self.quant_mode = quant_mode
 
-        required_buffer_size = _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode)
+        required_buffer_size = _get_attention_to_ffn_v2_ccl_buffer_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode)
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
