@@ -13,7 +13,7 @@
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/arch/bsa_arch.hpp"
-#include "../../../tla/tensor.hpp"
+#include "../../../tla/tensor_bsa.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_arch35_utils.hpp"
 
 namespace NpuArch::Gemm::Tile {
@@ -25,9 +25,8 @@ struct CopyL1ToL0AMxFp8A5 {
     __aicore__ inline CopyL1ToL0AMxFp8A5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t dAct, uint32_t s2Act, uint32_t s2Start = 0)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t dAct, uint32_t s2Act, uint32_t s2Start = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -42,14 +41,14 @@ struct CopyL1ToL0AMxFp8A5 {
         loadData2DParamsA.kStep = dAct / FP8_C0;
         loadData2DParamsA.srcStride = (s2Start + s2Act + NZ_C0 - 1) / NZ_C0; // full tile stride if needed
         // 简化：srcStride 仍用整段 S2 对齐（调用方保证 L1 按整 tile 布局）
-        loadData2DParamsA.srcStride = ((s2Start + s2Act) >= Block::MXFP8::S2_BASE_TILE_SIZE)
-            ? (Block::MXFP8::S2_BASE_TILE_SIZE / NZ_C0)
-            : ((s2Start + s2Act + NZ_C0 - 1) / NZ_C0);
+        loadData2DParamsA.srcStride = ((s2Start + s2Act) >= Block::MXFP8::S2_BASE_TILE_SIZE) ?
+                                          (Block::MXFP8::S2_BASE_TILE_SIZE / NZ_C0) :
+                                          ((s2Start + s2Act + NZ_C0 - 1) / NZ_C0);
         // 调用方传完整 L1 S2 对齐时更稳妥——用 s2Act 作为本段，srcStride 由外层全长决定
         // 这里用 max(s2Start+s2Act, s2Act) 的 16 对齐；PV 侧会再传 s2Full
         loadData2DParamsA.dstStride = (dAct + NZ_C0 - 1) / NZ_C0 + 1; // +1 for rowsum pad fractal
         // mxfp4: `if (dAct <= FP4_C0)` 且 FP4_C0=64，把 D=64 的 dstStride 从 5 pad 到 9
-        //（与 D=128 / PV_MMAD_M_DIM=144 同构）。fp8 不能用 FP8_C0=32 当阈值，否则 D=64 不进分支。
+        // （与 D=128 / PV_MMAD_M_DIM=144 同构）。fp8 不能用 FP8_C0=32 当阈值，否则 D=64 不进分支。
         if (dAct <= Block::MXFP8::CONST_64) {
             loadData2DParamsA.dstStride += Block::MXFP8::CONST_64 / NZ_C0;
         }
@@ -68,9 +67,8 @@ struct CopyL1ToL0AMxFp8A5 {
 
     // 带完整 L1 S2 行 stride 的重载（k-split 时 srcStride 必须是整 tile）
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -107,10 +105,9 @@ struct CopyL1ToL0BMxFp8A5 {
     __aicore__ inline CopyL1ToL0BMxFp8A5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t s2Align64, uint32_t dAct, uint32_t s2Base,
-        uint32_t actScaleSrcStride, uint32_t s1Align64, uint32_t s2Start = 0)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t s2Align64, uint32_t dAct, uint32_t s2Base, uint32_t actScaleSrcStride,
+                                      uint32_t s1Align64, uint32_t s2Start = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -143,11 +140,9 @@ struct CopyL1ToL0AMxFp8QKA5 {
     __aicore__ inline CopyL1ToL0AMxFp8QKA5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK,
-        uint32_t s2Align16Full, uint32_t scaleK,
-        uint32_t kStart = 0)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK, uint32_t s2Align16Full,
+                                      uint32_t scaleK, uint32_t kStart = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -182,11 +177,9 @@ struct CopyL1ToL0BMxFp8QKA5 {
     __aicore__ inline CopyL1ToL0BMxFp8QKA5() {}
 
     template <class TensorDst, class TensorSrc, class TensorScale>
-    __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0,
-        uint32_t scaleMAlignL1, uint32_t scaleK,
-        uint32_t kStart = 0)
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t mAlignL1, uint32_t alignK, uint32_t mAlignL0, uint32_t scaleMAlignL1,
+                                      uint32_t scaleK, uint32_t kStart = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
