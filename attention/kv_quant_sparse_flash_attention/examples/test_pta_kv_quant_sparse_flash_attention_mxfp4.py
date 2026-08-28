@@ -20,11 +20,11 @@ sys.path.insert(0, str(GOLDEN_DIR))
 import kv_quant_sparse_flash_attention_golden as qsfa_golden
 
 
-CASE_NAME = "pta_bsnd_bf16_b2_s1_3_g128_s2_130_offset32"
-BATCH = 2
-S1 = 3
+CASE_NAME = "pta_bsnd_bf16_b4_s1_8_g128_s2_135_offset32"
+BATCH = 4
+S1 = 8
 G = 128
-S2 = 130
+S2 = 135
 QUERY_DIM = bi.NOPE_DIM + bi.ROPE_DIM
 STORAGE_OFFSET_BYTES = 32
 
