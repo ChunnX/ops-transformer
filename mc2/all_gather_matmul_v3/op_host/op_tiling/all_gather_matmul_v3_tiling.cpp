@@ -47,6 +47,7 @@ constexpr uint32_t IDX_OUTPUT_Y = 0U;
 // ---- attr indices (must match def order) ----
 // group(0) hccl_buffer_size(1) is_trans_a(2) is_trans_b(3) rank_size(4) group_size(5) y_dtype(6) comm_mode(7)
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;
+constexpr uint32_t ATTR_HCCL_BUFFER_SIZE_INDEX = 1U;
 constexpr uint32_t ATTR_IS_TRANS_B_INDEX = 3U;
 constexpr uint32_t ATTR_RANK_SIZE_INDEX = 4U;
 constexpr uint32_t ATTR_GROUP_SIZE_INDEX = 5U;
@@ -61,7 +62,8 @@ constexpr int64_t MAX_INT32_VAL = 2147483647;
 constexpr int64_t K_MIN_VAL = 256;
 constexpr int64_t K_MAX_VAL = 65535;
 constexpr uint64_t COMM_TILE_M = 512UL;
-constexpr uint64_t M_TAIL_ALIGN = 16UL;  // m方向对齐粒度，确保 L0C 拷出时首地址 1024 对齐
+constexpr uint64_t M_TAIL_ALIGN = 16UL; // m方向对齐粒度，确保 L0C 拷出时首地址 1024 对齐
+constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL; // 通信 buffer 预留量（2MB）
 
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
 constexpr uint64_t GROUP_N_OFFSET = 16UL;
@@ -70,8 +72,7 @@ constexpr uint64_t MX_GROUP_M = 1UL;
 constexpr uint64_t MX_GROUP_N = 1UL;
 constexpr uint64_t MX_GROUP_K = 32UL;
 
-static const std::vector<ge::DataType> X_DTYPE_LIST = {
-    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
+static const std::vector<ge::DataType> X_DTYPE_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
 static const std::vector<ge::DataType> OUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16};
 
 static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value)
@@ -106,10 +107,10 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
     // scale 在 def 中为 OPTIONAL，但 V3 仅支持 MX 量化，tiling 强制要求必传
     auto x1ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
     auto x2ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
-    OP_TILING_CHECK(x1ScaleDesc == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x1_scale"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(x2ScaleDesc == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x2_scale"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(x1ScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x1_scale"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(x2ScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x2_scale"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -141,40 +142,38 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
 
     // FP4 要求 x1/x2 同时为 FP4
     OP_TILING_CHECK((x1Dtype == ge::DT_FLOAT4_E2M1) != (x2Dtype == ge::DT_FLOAT4_E2M1),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "x1/x2", Ops::Base::ToString(x1Dtype).c_str(),
-                        "FP4 requires both x1 and x2 to be DT_FLOAT4_E2M1."),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x1/x2", Ops::Base::ToString(x1Dtype).c_str(),
+                                                          "FP4 requires both x1 and x2 to be DT_FLOAT4_E2M1."),
                     return ge::GRAPH_FAILED);
 
     // scale dtype
     auto x1ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
     OP_TILING_CHECK(x1ScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "x1_scale", Ops::Base::ToString(x1ScaleDesc->GetDataType()).c_str(),
-                        "The dtype of x1_scale must be DT_FLOAT8_E8M0."),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x1_scale",
+                                                          Ops::Base::ToString(x1ScaleDesc->GetDataType()).c_str(),
+                                                          "The dtype of x1_scale must be DT_FLOAT8_E8M0."),
                     return ge::GRAPH_FAILED);
     auto x2ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
     OP_TILING_CHECK(x2ScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "x2_scale", Ops::Base::ToString(x2ScaleDesc->GetDataType()).c_str(),
-                        "The dtype of x2_scale must be DT_FLOAT8_E8M0."),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x2_scale",
+                                                          Ops::Base::ToString(x2ScaleDesc->GetDataType()).c_str(),
+                                                          "The dtype of x2_scale must be DT_FLOAT8_E8M0."),
                     return ge::GRAPH_FAILED);
 
     // output dtype
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(OUT_DTYPE_LIST, yDtype),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "y", Ops::Base::ToString(yDtype).c_str(),
-                        "The dtype of y must be DT_BF16 or DT_FLOAT16."),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "y", Ops::Base::ToString(yDtype).c_str(),
+                                                          "The dtype of y must be DT_BF16 or DT_FLOAT16."),
                     return ge::GRAPH_FAILED);
 
     // bias dtype (optional, 若非空，则必须为 DT_FLOAT)
     auto biasDesc = context->GetOptionalInputDesc(IDX_INPUT_BIAS);
     if (biasDesc != nullptr) {
         OP_TILING_CHECK(biasDesc->GetDataType() != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                            nodeName, "bias", Ops::Base::ToString(biasDesc->GetDataType()).c_str(),
-                            "The dtype of bias must be DT_FLOAT."),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "bias",
+                                                              Ops::Base::ToString(biasDesc->GetDataType()).c_str(),
+                                                              "The dtype of bias must be DT_FLOAT."),
                         return ge::GRAPH_FAILED);
     }
 
@@ -189,7 +188,8 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     const char *nodeName = context->GetNodeName();
 
     auto contextDesc = context->GetInputDesc(IDX_INPUT_CONTEXT);
-    ge::Format contextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat()));  // todo: 这里到底需要primaryFormat吗？
+    ge::Format contextFormat = static_cast<ge::Format>(
+        ge::GetPrimaryFormat(contextDesc->GetStorageFormat())); // todo: 这里到底需要primaryFormat吗？
     OP_TILING_CHECK(contextFormat != ge::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "context", Ops::Base::ToString(contextFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
@@ -223,17 +223,19 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     auto x1ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
     if (x1ScaleDesc != nullptr) {
         ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
-        OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x1_scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x1ScaleFormat != ge::FORMAT_ND,
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x1_scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
+            return ge::GRAPH_FAILED);
     }
-    
+
     auto x2ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
     if (x2ScaleDesc != nullptr) {
         ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
-        OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x2_scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            x2ScaleFormat != ge::FORMAT_ND,
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x2_scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -245,24 +247,24 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 static ge::graphStatus CheckOneScaleShape(const gert::StorageShape *scaleShape, const char *nodeName,
                                           const char *paramName, int64_t dim0, int64_t scaleKDim)
 {
-    OP_TILING_CHECK(scaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, paramName),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(scaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, paramName), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(scaleShape->GetStorageShape().GetDimNum() != SCALE_DIM_NUM,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, paramName,
-                        (std::to_string(scaleShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                        nodeName, paramName, (std::to_string(scaleShape->GetStorageShape().GetDimNum()) + "D").c_str(),
                         "The shape dim of scale must be 3D."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(scaleShape->GetStorageShape().GetDim(0) != dim0 ||
-                    scaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
-                    scaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
+                        scaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
+                        scaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, paramName,
                         (std::string("[") + std::to_string(scaleShape->GetStorageShape().GetDim(0)) + "," +
                          std::to_string(scaleShape->GetStorageShape().GetDim(1)) + "," +
-                         std::to_string(scaleShape->GetStorageShape().GetDim(2)) + "]").c_str(),
+                         std::to_string(scaleShape->GetStorageShape().GetDim(2)) + "]")
+                            .c_str(),
                         (std::string("expected [") + std::to_string(dim0) + "," + std::to_string(scaleKDim) + "," +
-                         std::to_string(SCALE_LAST_DIM) + "]").c_str()),
+                         std::to_string(SCALE_LAST_DIM) + "]")
+                            .c_str()),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -276,8 +278,7 @@ static ge::graphStatus ResolveRankSize(const gert::TilingContext *context, int64
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
-    OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"), return ge::GRAPH_FAILED);
     rankSize = *rankSizePtr;
     return ge::GRAPH_SUCCESS;
 }
@@ -310,42 +311,42 @@ static ge::graphStatus CheckInputShape(const gert::TilingContext *context, Shape
     int64_t x2N = x2Shape->GetStorageShape().GetDim(0);
     int64_t kX2 = x2Shape->GetStorageShape().GetDim(1);
 
-    OP_TILING_CHECK(mPerRank == 0 || kX1 == 0 || x2N == 0 || kX2 == 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1/x2",
-                        (std::string("x1=[") + std::to_string(mPerRank) + "," + std::to_string(kX1) +
-                         "] x2=[" + std::to_string(x2N) + "," + std::to_string(kX2) + "]").c_str(),
-                        "non-zero"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        mPerRank == 0 || kX1 == 0 || x2N == 0 || kX2 == 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1/x2",
+                                  (std::string("x1=[") + std::to_string(mPerRank) + "," + std::to_string(kX1) +
+                                   "] x2=[" + std::to_string(x2N) + "," + std::to_string(kX2) + "]")
+                                      .c_str(),
+                                  "non-zero"),
+        return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(kX1 != kX2,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                        nodeName, "x1 and x2",
-                        (std::to_string(kX1) + " and " + std::to_string(kX2)).c_str(),
+                        nodeName, "x1 and x2", (std::to_string(kX1) + " and " + std::to_string(kX2)).c_str(),
                         "The k-axis of x1 and x2 must be the same."),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(kX1 < K_MIN_VAL || kX1 >= K_MAX_VAL,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "K",
-                        std::to_string(kX1).c_str(),
-                        (std::string("must be in range [") + std::to_string(K_MIN_VAL) + ", " +
-                         std::to_string(K_MAX_VAL) + ")").c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "K", std::to_string(kX1).c_str(),
+                                              (std::string("must be in range [") + std::to_string(K_MIN_VAL) + ", " +
+                                               std::to_string(K_MAX_VAL) + ")")
+                                                  .c_str()),
                     return ge::GRAPH_FAILED);
 
     // fp4 要求 K 为偶数
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
     if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-        OP_TILING_CHECK(kX1 % 2 != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "K",
-                            std::to_string(kX1).c_str(),
-                            "must be even in mxfp4 scene"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            kX1 % 2 != 0,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "K", std::to_string(kX1).c_str(), "must be even in mxfp4 scene"),
+            return ge::GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(mPerRank > MAX_INT32_VAL || x2N > MAX_INT32_VAL,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1.M/x2.N",
-                        (std::to_string(mPerRank) + "/" + std::to_string(x2N)).c_str(),
-                        "must not exceed INT32_MAX"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        mPerRank > MAX_INT32_VAL || x2N > MAX_INT32_VAL,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1.M/x2.N", (std::to_string(mPerRank) + "/" + std::to_string(x2N)).c_str(),
+                                  "must not exceed INT32_MAX"),
+        return ge::GRAPH_FAILED);
 
     // rank_size: 直接读取外界传入的 attr
     int64_t rankSize = 0;
@@ -377,14 +378,14 @@ static ge::graphStatus CheckOutputShape(const gert::TilingContext *context, cons
 
     int64_t yM = yShape->GetStorageShape().GetDim(0);
     int64_t yN = yShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(yM != shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize) || yN != shapeInfo.n,
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                        nodeName, "y",
-                        (std::string("[") + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
-                        (std::string("expected [") +
-                         std::to_string(shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize)) +
-                         "," + std::to_string(shapeInfo.n) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        yM != shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize) || yN != shapeInfo.n,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName, "y", (std::string("[") + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
+            (std::string("expected [") + std::to_string(shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize)) +
+             "," + std::to_string(shapeInfo.n) + "]")
+                .c_str()),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -400,15 +401,14 @@ static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const 
     if (biasShape != nullptr) {
         OP_TILING_CHECK(biasShape->GetStorageShape().GetDimNum() != 1,
                         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                            nodeName, "bias",
-                            (std::to_string(biasShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                            nodeName, "bias", (std::to_string(biasShape->GetStorageShape().GetDimNum()) + "D").c_str(),
                             "The shape dim of bias must be 1D."),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(biasShape->GetStorageShape().GetDim(0) != shapeInfo.n,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "bias",
-                            std::to_string(biasShape->GetStorageShape().GetDim(0)).c_str(),
-                            (std::string("equal to N=") + std::to_string(shapeInfo.n)).c_str()),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            biasShape->GetStorageShape().GetDim(0) != shapeInfo.n,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "bias", std::to_string(biasShape->GetStorageShape().GetDim(0)).c_str(),
+                                      (std::string("equal to N=") + std::to_string(shapeInfo.n)).c_str()),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -421,16 +421,13 @@ static ge::graphStatus CheckScaleShapes(const gert::TilingContext *context, cons
 {
     const char *nodeName = context->GetNodeName();
 
-    int64_t scaleKDim = (shapeInfo.k + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) /
-                        static_cast<int64_t>(MX_SCALE_BLOCK);
-    OP_TILING_CHECK(
-        CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X1_SCALE), nodeName, "x1_scale",
-                           shapeInfo.mPerRank, scaleKDim) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "check x1_scale shape failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X2_SCALE), nodeName, "x2_scale",
-                           shapeInfo.n, scaleKDim) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "check x2_scale shape failed."), return ge::GRAPH_FAILED);
+    int64_t scaleKDim = (shapeInfo.k + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) / static_cast<int64_t>(MX_SCALE_BLOCK);
+    OP_TILING_CHECK(CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X1_SCALE), nodeName, "x1_scale",
+                                       shapeInfo.mPerRank, scaleKDim) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check x1_scale shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X2_SCALE), nodeName, "x2_scale",
+                                       shapeInfo.n, scaleKDim) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check x2_scale shape failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -463,10 +460,10 @@ static ge::graphStatus CheckTensor(const gert::TilingContext *context, ShapeInfo
 
     OP_TILING_CHECK(CheckTensorPtrNullptr(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check tensor nullptr failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckTensorDataType(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check tensor dtype failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckTensorFormat(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check tensor format failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckTensorDataType(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check tensor dtype failed."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckTensorFormat(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check tensor format failed."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckTensorShape(context, shapeInfo) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check tensor shape failed."), return ge::GRAPH_FAILED);
 
@@ -485,8 +482,7 @@ static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
     OP_TILING_CHECK(ResolveRankSize(context, rankSize) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "resolve rank_size failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8 && rankSize != 16,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(rankSize).c_str(),
-                                              "2/4/8/16"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(rankSize).c_str(), "2/4/8/16"),
                     return ge::GRAPH_FAILED);
     // 拦截：1:1 核配比下实际可用 block 数 = min(aicNum, aivNum)
     // rankSize 不能超过实际可用 block 数，否则通信挂死
@@ -494,12 +490,14 @@ static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t actualBlockNum = std::min(aicNum, aivNum);
-    OP_TILING_CHECK(static_cast<uint32_t>(rankSize) > actualBlockNum,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size",
-                        (std::to_string(rankSize) + " > min(aicNum=" + std::to_string(aicNum) +
-                         ", aivNum=" + std::to_string(aivNum) + ")=" + std::to_string(actualBlockNum)).c_str(),
-                        "<= min(aicNum, aivNum)"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        static_cast<uint32_t>(rankSize) > actualBlockNum,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size",
+                                  (std::to_string(rankSize) + " > min(aicNum=" + std::to_string(aicNum) +
+                                   ", aivNum=" + std::to_string(aivNum) + ")=" + std::to_string(actualBlockNum))
+                                      .c_str(),
+                                  "<= min(aicNum, aivNum)"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -513,8 +511,11 @@ static ge::graphStatus CheckIsTransBAttr(const gert::TilingContext *context)
     auto attrs = context->GetAttrs();
 
     auto isTransBPtr = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_B_INDEX);
-    OP_TILING_CHECK(isTransBPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "is_trans_b"),  // todo: 还要讨论下这个到底是通过推导后自己构造的is transb传入aclnninner,还是通过用户透传下来的
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        isTransBPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "is_trans_b"), // todo: 还要讨论下这个到底是通过推导后自己构造的is
+                                                            // transb传入aclnninner,还是通过用户透传下来的
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!(*isTransBPtr),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "is_trans_b", "false", "true (x2 must be [N,K] layout)"),
                     return ge::GRAPH_FAILED);
@@ -531,11 +532,9 @@ static ge::graphStatus CheckCommModeAttr(const gert::TilingContext *context)
     auto attrs = context->GetAttrs();
 
     auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    OP_TILING_CHECK(commModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "comm_mode"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "comm_mode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(std::strcmp(commModePtr, "urma") != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_mode", commModePtr, "urma"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_mode", commModePtr, "urma"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -570,20 +569,22 @@ static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
         int64_t scaleM = x1ScaleShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(scaleM == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1_scale M", "0", "non-zero"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(mValue % scaleM != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1 M / x1_scale M",
-                            (std::to_string(mValue) + " / " + std::to_string(scaleM)).c_str(), "divisible"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            mValue % scaleM != 0,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1 M / x1_scale M",
+                                      (std::to_string(mValue) + " / " + std::to_string(scaleM)).c_str(), "divisible"),
+            return ge::GRAPH_FAILED);
         gsM = static_cast<uint64_t>(mValue / scaleM);
     }
     if (gsN == 0) {
         int64_t scaleN = x2ScaleShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(scaleN == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "x2_scale N", "0", "non-zero"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(nValue % scaleN != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x2 N / x2_scale N",
-                            (std::to_string(nValue) + " / " + std::to_string(scaleN)).c_str(), "divisible"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            nValue % scaleN != 0,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "x2 N / x2_scale N",
+                                      (std::to_string(nValue) + " / " + std::to_string(scaleN)).c_str(), "divisible"),
+            return ge::GRAPH_FAILED);
         gsN = static_cast<uint64_t>(nValue / scaleN);
     }
     if (gsK == 0) {
@@ -593,7 +594,8 @@ static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
         OP_TILING_CHECK(scaleKValue == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1_scale K dim", "0", "non-zero"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(kValue % scaleKValue != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1 K / x1_scale K",
+                        OP_LOGE_FOR_INVALID_VALUE(
+                            nodeName, "x1 K / x1_scale K",
                             (std::to_string(kValue) + " / " + std::to_string(scaleKValue)).c_str(), "divisible"),
                         return ge::GRAPH_FAILED);
         gsK = static_cast<uint64_t>(kValue / scaleKValue);
@@ -604,31 +606,89 @@ static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
             gs & GROUP_MNK_BIT_SIZE, gsM, gsN, gsK);
     OP_TILING_CHECK(gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "group_size",
-                        (std::string("[") + std::to_string(gsM) + "," + std::to_string(gsN) + "," +
-                         std::to_string(gsK) + "]").c_str(),
-                        "[1,1,32]"),
+                                              (std::string("[") + std::to_string(gsM) + "," + std::to_string(gsN) +
+                                               "," + std::to_string(gsK) + "]")
+                                                  .c_str(),
+                                              "[1,1,32]"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 /**
- * @brief 校验算子属性
+ * @brief 校验通信数据量 + 预留量 <= hccl_buffer_size
+ *
+ * hccl_buffer_size 为 torch 层 get_hccl_buffer_size() 透传的实际 HCCL buffer 大小（受 HCCL_BUFFSIZE 环境变量控制）。
+ * 通信数据量 = rank_size * m_per_rank * (x1 data + x1_scale)，其中：
+ *   x1 data:  k 个元素，按 x1 dtype 位宽（fp8/e8m0=8bit，fp4=4bit，存储 uint8 packed 2 元素/字节）
+ *   x1_scale: ceil(k/64) * 2 个元素，e8m0 8bit
+ * 预留 2MB（与通信框架开销/同步字段有关，对齐 torch 层拦截口径）。
  */
-static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
+static ge::graphStatus CheckHcclBufferSizeAttr(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckRankSizeAttr(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check rank_size attr failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckIsTransBAttr(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check is_trans_b attr failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckCommModeAttr(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check comm_mode attr failed."), return ge::GRAPH_FAILED);
+    auto hcclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_SIZE_INDEX);
+    OP_TILING_CHECK(hcclBufferSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "hccl_buffer_size"),
+                    return ge::GRAPH_FAILED);
+    int64_t hcclBufferSize = *hcclBufferSizePtr;
+    OP_TILING_CHECK(hcclBufferSize <= 0,
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "hccl_buffer_size", std::to_string(hcclBufferSize).c_str(),
+                                              "positive integer"),
+                    return ge::GRAPH_FAILED);
+
+    auto x1Desc = context->GetInputDesc(IDX_INPUT_X1);
+    OP_TILING_CHECK(x1Desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x1"), return ge::GRAPH_FAILED);
+    ge::DataType x1Dtype = x1Desc->GetDataType();
+    // x1 元素位宽：fp8 系 = 8bit，fp4 = 4bit
+    uint64_t x1Bits = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 4UL : 8UL;
+
+    uint64_t m = static_cast<uint64_t>(shapeInfo.mPerRank);
+    uint64_t k = static_cast<uint64_t>(shapeInfo.k);
+    uint64_t rankSize = shapeInfo.rankSize;
+    uint64_t scaleKGroups = (k + MX_SCALE_BLOCK - 1UL) / MX_SCALE_BLOCK; // ceil(k/64)
+    // 通信数据量（bit）= rank_size * m * (k * x1_bits + scale_groups * 2 * 8bit_e8m0)
+    uint64_t commDataBits = rankSize * m * (k * x1Bits + scaleKGroups * 2UL * 8UL);
+    uint64_t commDataBytes = (commDataBits + 7UL) / 8UL; // 向上取整到字节
+    uint64_t needBytes = commDataBytes + HCCL_BUFFER_RESERVED_BYTES;
+
+    OP_TILING_CHECK(needBytes > static_cast<uint64_t>(hcclBufferSize),
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "hccl_buffer_size",
+                        (std::string("need ") + std::to_string(needBytes) + " bytes = comm_data " +
+                         std::to_string(commDataBytes) + " + reserved " + std::to_string(HCCL_BUFFER_RESERVED_BYTES) +
+                         ", but got " + std::to_string(hcclBufferSize))
+                            .c_str(),
+                        ">= comm_data + 2MB; please increase HCCL_BUFFSIZE environment variable"),
+                    return ge::GRAPH_FAILED);
+
+    OP_LOGI(nodeName,
+            "hccl_buffer_size check: hcclBufferSize=%ld bytes, commDataBytes=%lu, reserved=%lu, needBytes=%lu, PASS.",
+            hcclBufferSize, commDataBytes, HCCL_BUFFER_RESERVED_BYTES, needBytes);
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验算子属性
+ */
+static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckRankSizeAttr(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check rank_size attr failed."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckIsTransBAttr(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check is_trans_b attr failed."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckCommModeAttr(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check comm_mode attr failed."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckGroupSizeAttr(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check group_size attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckHcclBufferSizeAttr(context, shapeInfo) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check hccl_buffer_size attr failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -648,7 +708,8 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
                             sizeof(AllGatherMxMatmulUrmaTilingData)),
                     return ge::GRAPH_FAILED);
 
-    memset_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), 0, rawTilingData->GetCapacity());  // 校验非空并tilingdata 缓冲区清零
+    memset_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), 0,
+             rawTilingData->GetCapacity()); // 校验非空并tilingdata 缓冲区清零
     auto *tilingData = reinterpret_cast<AllGatherMxMatmulUrmaTilingData *>(rawTilingData->GetData());
 
     uint64_t m = static_cast<uint64_t>(shapeInfo.mPerRank);
@@ -659,8 +720,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     OP_LOGI(nodeName, "quant dtype: x1=%s x2=%s y=%s, m=%lu k=%lu n=%lu rankSize=%lu.",
             Ops::Base::ToString(context->GetInputDesc(IDX_INPUT_X1)->GetDataType()).c_str(),
             Ops::Base::ToString(context->GetInputDesc(IDX_INPUT_X2)->GetDataType()).c_str(),
-            Ops::Base::ToString(context->GetOutputDesc(IDX_OUTPUT_Y)->GetDataType()).c_str(),
-            m, k, n, rankSize);
+            Ops::Base::ToString(context->GetOutputDesc(IDX_OUTPUT_Y)->GetDataType()).c_str(), m, k, n, rankSize);
 
     // comm tile: split per-rank M into 512-row tiles
     uint64_t tileM = COMM_TILE_M;
@@ -701,9 +761,9 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
 
     // AIV comm loop requires rankSize <= launched cores
     // 存在可用block数大于ranksize但是经过swat tiling后usedCoreNum可能小于rankSize的情况，需调整否则通信卡死
-    uint32_t usedCoreNum = tilingData->mmTile.usedCoreNum < static_cast<uint32_t>(rankSize)
-                               ? static_cast<uint32_t>(rankSize)
-                               : tilingData->mmTile.usedCoreNum;
+    uint32_t usedCoreNum = tilingData->mmTile.usedCoreNum < static_cast<uint32_t>(rankSize) ?
+                               static_cast<uint32_t>(rankSize) :
+                               tilingData->mmTile.usedCoreNum;
     tilingData->mmTile.usedCoreNum = usedCoreNum;
 
     // bias: 非空时设 isBias=1
@@ -758,8 +818,7 @@ static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(context == nullptr, OP_LOGE("AllGatherMatmulV3", "failed to get tiling context."),
                     return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "nodeName"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "nodeName"), return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "Enter AllGatherMatmulV3 tiling func.");
 
@@ -769,8 +828,8 @@ static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "check input/output failed."), return ge::GRAPH_FAILED);
 
     // 2. attr check
-    OP_TILING_CHECK(CheckAttrs(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAttrs(context, shapeInfo) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check attrs failed."),
+                    return ge::GRAPH_FAILED);
 
     // 3. set tiling data
     OP_TILING_CHECK(SetTilingData(context, shapeInfo) != ge::GRAPH_SUCCESS,
@@ -780,8 +839,8 @@ static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext *context)
     SetTilingKey(context);
 
     // 5. set workspace
-    OP_TILING_CHECK(SetWorkSpace(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "set workspace failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetWorkSpace(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "set workspace failed."),
+                    return ge::GRAPH_FAILED);
 
     OP_LOGI(nodeName, "AllGatherMatmulV3 tiling end.");
     return ge::GRAPH_SUCCESS;
