@@ -73,7 +73,7 @@ __aicore__ inline constexpr bool IsPageAttentionMla()
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType>
 __aicore__ inline constexpr GmFormat GetKvLayoutMla()
 {
-    return BaseApi::GetKVGmFormat<GetQueryLayoutMla<inOutLayoutType>(), KvLayoutType,
+    return FlashAttnKernel::GetKVGmFormat<GetQueryLayoutMla<inOutLayoutType>(), KvLayoutType,
                                   IsPageAttentionMla<KvLayoutType>()>();
 }
 
@@ -121,12 +121,12 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
 
     // —— 模板参数聚合（FAType 式，镜像 flash_attn utils/flash_attn_type.h；
     // cube/vec/fd 参数集不一致 → 各建聚合类型，见 arch35/flash_mla_with_kvcache_type.h）——
-    using FA_T_Cube = BaseApi::FATypeCube<INPUT_T, float, qLayout, s1TemplateType, s2TemplateType, dTemplateType,
+    using FA_T_Cube = FlashAttnKernel::FATypeCube<INPUT_T, float, qLayout, s1TemplateType, s2TemplateType, dTemplateType,
                                           dVTemplateType, KvLayoutType>;
-    using FA_T_Vec = BaseApi::FATypeVec<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
+    using FA_T_Vec = FlashAttnKernel::FATypeVec<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
                                         dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     // FD block 参数聚合（无 flashDecode：FD 恒实例化，运行时由 metadata mLen>0 驱动）
-    using FA_T_Fd = BaseApi::FATypeFd<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
+    using FA_T_Fd = FlashAttnKernel::FATypeFd<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
                                       dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
 
     // 编译期 core-type 选型（与 flash_attn.cpp 的 #ifdef __DAV_C310_CUBE__ 同构）：该宏由 950
@@ -134,15 +134,15 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     // g_coreType==AscendC::AIC/AIV 等价 —— AIC 核取 cube 实块 + vec 哑块（FD 槽复用哑块），
     // AIV 核反之取 vec 实块 + cube 哑块。
 #ifdef __DAV_C310_CUBE__
-    using CubeBlock = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCube<FA_T_Cube>;
-    using VecFaBlock = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
-    using VecFdBlock = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
+    using CubeBlock = FlashAttnKernel::FlashMlaWithKvcacheNoQuantMlaBlockCube<FA_T_Cube>;
+    using VecFaBlock = FlashAttnKernel::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
+    using VecFdBlock = FlashAttnKernel::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
 #else
-    using CubeBlock = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy<FA_T_Cube>;
-    using VecFaBlock = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVec<FA_T_Vec>;
-    using VecFdBlock = BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMla<FA_T_Fd>;
+    using CubeBlock = FlashAttnKernel::FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy<FA_T_Cube>;
+    using VecFaBlock = FlashAttnKernel::FlashMlaWithKvcacheNoQuantMlaBlockVec<FA_T_Vec>;
+    using VecFdBlock = FlashAttnKernel::FlashMlaWithKvcacheBlockVecFlashDecodeMla<FA_T_Fd>;
 #endif
-    using Kernel = BaseApi::FlashAttentionNoQuantMlaKernel<CubeBlock, VecFaBlock, VecFdBlock>;
+    using Kernel = FlashAttnKernel::FlashAttentionNoQuantMlaKernel<CubeBlock, VecFaBlock, VecFdBlock>;
 
     Kernel op;
     // 无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
