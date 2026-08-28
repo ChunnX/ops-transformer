@@ -49,8 +49,21 @@ public:
         uint64_t baseN = mmTiling.baseN;
         uint64_t usedCoreNum = mmTiling.usedCoreNum;
 
+        // 防御性零值守卫：baseM/baseN/usedCoreNum 为 0 说明 matmul tiling 异常，
+        // 此时无法推导通信切分，直接返回零值 tiling 避免除零。
+        if (baseM == 0UL || baseN == 0UL || usedCoreNum == 0UL) {
+            dataTiling = {};
+            scaleTiling = {};
+            return;
+        }
+
         auto nTile = (n + baseN - 1) / baseN;
         uint64_t headMSize = ((usedCoreNum + nTile - 1) / nTile) * baseM;
+        if (headMSize == 0UL) {
+            dataTiling = {};
+            scaleTiling = {};
+            return;
+        }
         uint64_t headTileCnt = m / headMSize;
         uint64_t tailMSize = m % headMSize;
         uint64_t tailTileCnt = (tailMSize > 0) ? 1 : 0;

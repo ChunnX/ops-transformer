@@ -10,6 +10,5 @@
 __all__ = ["all_to_all_quant_matmul"]
 
 from .all_to_all_quant_matmul import all_to_all_quant_matmul
-from . import graph_convert_allto_all_matmul_v2
 
 allto_all_matmul_v2 = all_to_all_quant_matmul

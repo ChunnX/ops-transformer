@@ -39,7 +39,10 @@ public:
 
 protected:
     uint32_t usedCoreNum_ = 0; // 保存 tiling 实际使用的核数
-    bool IsCapable() override { return true; }
+    bool IsCapable() override
+    {
+        return true;
+    }
 
     ge::graphStatus GetPlatformInfo() override
     {
@@ -102,6 +105,10 @@ protected:
     ge::graphStatus CheckTensorAttrs()
     {
         const char *opName = context_->GetNodeName();
+        if (context_->GetAttrs() == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "attrs");
+            return ge::GRAPH_FAILED;
+        }
         if (!CheckInputDescs(opName) || !CheckWorldSizeAttr(opName) || !CheckGroupAttr(opName) ||
             !CheckTensorFormats(opName) || !CheckTensorDtypes(opName) || !CheckQuantAndYDtypeAttr(opName) ||
             !CheckOtherAttrs(opName)) {
@@ -174,8 +181,7 @@ protected:
         auto yFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat()));
         if (x1Fmt != ge::FORMAT_ND || x2Fmt != ge::FORMAT_ND) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-                opName, "x1, x2",
-                (Ops::Base::ToString(x1Fmt) + "," + Ops::Base::ToString(x2Fmt)).c_str(),
+                opName, "x1, x2", (Ops::Base::ToString(x1Fmt) + "," + Ops::Base::ToString(x2Fmt)).c_str(),
                 "x1 and x2 format must be ND");
             return false;
         }
@@ -196,15 +202,13 @@ protected:
         if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2 && x1Dtype != ge::DT_FLOAT4_E2M1) ||
             (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2 && x2Dtype != ge::DT_FLOAT4_E2M1)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                opName, "x1, x2",
-                (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
+                opName, "x1, x2", (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
                 "x1/x2 dtype must be FP8_E4M3/FP8_E5M2/FP4_E2M1");
             return false;
         }
         if ((x1Dtype == ge::DT_FLOAT4_E2M1) != (x2Dtype == ge::DT_FLOAT4_E2M1)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                opName, "x1, x2",
-                (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
+                opName, "x1, x2", (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype)).c_str(),
                 "FP4 requires both x1 and x2 to be FP4_E2M1");
             return false;
         }
@@ -223,12 +227,10 @@ protected:
         if (!x1ScaleDesc || !x2ScaleDesc) {
             if (!x1ScaleDesc)
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName, "x1_scale", "nil",
-                    "only MXFP quantization is currently supported, x1_scale is required");
+                    opName, "x1_scale", "nil", "only MXFP quantization is currently supported, x1_scale is required");
             if (!x2ScaleDesc)
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName, "x2_scale", "nil",
-                    "only MXFP quantization is currently supported, x2_scale is required");
+                    opName, "x2_scale", "nil", "only MXFP quantization is currently supported, x2_scale is required");
             return false;
         }
         auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
@@ -334,14 +336,13 @@ protected:
 
         // 自动推导：groupSize 中为 0 的维度根据 x1/x2/x1Scale/x2Scale 的 shape 推断。
         // MX 场景 groupSize=[1,1,32]，推断公式 groupSizeM=m/scaleM、groupSizeN=n/scaleN、groupSizeK=k/scaleK。
-        mc2tiling::Mc2MatmulShapeInfo shapeInfo = {
-            context_->GetInputShape(IDX_INPUT_X1),
-            context_->GetInputShape(IDX_INPUT_X2),
-            context_->GetOptionalInputShape(IDX_INPUT_X1_SCALE),
-            context_->GetOptionalInputShape(IDX_INPUT_X2_SCALE),
-            true, // isMxfp：本算子为 MX 量化
-            true, // isBTrans：transposeX2 恒为 true
-            opName};
+        mc2tiling::Mc2MatmulShapeInfo shapeInfo = {context_->GetInputShape(IDX_INPUT_X1),
+                                                   context_->GetInputShape(IDX_INPUT_X2),
+                                                   context_->GetOptionalInputShape(IDX_INPUT_X1_SCALE),
+                                                   context_->GetOptionalInputShape(IDX_INPUT_X2_SCALE),
+                                                   true, // isMxfp：本算子为 MX 量化
+                                                   true, // isBTrans：transposeX2 恒为 true
+                                                   opName};
         if (!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, gsM, gsN, gsK)) {
             return false;
         }
@@ -349,10 +350,9 @@ protected:
         if (gsM != MX_GROUP_M || gsN != MX_GROUP_N || gsK != MX_GROUP_K) {
             OP_LOGE_WITH_INVALID_ATTR(
                 opName, "group_size",
-                ("[M=" + std::to_string(gsM) + ",N=" + std::to_string(gsN) + ",K=" + std::to_string(gsK) + "]")
-                    .c_str(),
-                ("[M=" + std::to_string(MX_GROUP_M) + ",N=" + std::to_string(MX_GROUP_N) + ",K=" +
-                 std::to_string(MX_GROUP_K) + "]")
+                ("[M=" + std::to_string(gsM) + ",N=" + std::to_string(gsN) + ",K=" + std::to_string(gsK) + "]").c_str(),
+                ("[M=" + std::to_string(MX_GROUP_M) + ",N=" + std::to_string(MX_GROUP_N) +
+                 ",K=" + std::to_string(MX_GROUP_K) + "]")
                     .c_str());
             return false;
         }
@@ -393,8 +393,7 @@ protected:
         uint64_t yDimNum = yShape->GetStorageShape().GetDimNum();
         if (x1DimNum != 2 || x2DimNum != 2) {
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                opName, "x1, x2",
-                (std::to_string(x1DimNum) + "D," + std::to_string(x2DimNum) + "D").c_str(),
+                opName, "x1, x2", (std::to_string(x1DimNum) + "D," + std::to_string(x2DimNum) + "D").c_str(),
                 "x1 and x2 must be 2D");
             return false;
         }
@@ -409,25 +408,22 @@ protected:
         uint64_t x2K = x2Shape->GetStorageShape().GetDim(1U);
 
         if (x1M == 0 || x1K == 0 || x2N == 0 || x2K == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1, x2",
-                ("x1=[" + std::to_string(x1M) + "," + std::to_string(x1K) + "], x2=[" + std::to_string(x2N) + "," +
-                 std::to_string(x2K) + "]")
-                    .c_str(),
-                "The dimensions of x1 and x2 must be non-zero.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1, x2",
+                                                  ("x1=[" + std::to_string(x1M) + "," + std::to_string(x1K) +
+                                                   "], x2=[" + std::to_string(x2N) + "," + std::to_string(x2K) + "]")
+                                                      .c_str(),
+                                                  "The dimensions of x1 and x2 must be non-zero.");
             return false;
         }
         if (x1M > static_cast<uint64_t>(MAX_INT32_VAL) || x2N > static_cast<uint64_t>(MAX_INT32_VAL)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1 dim0, x2 dim0",
-                ("M=" + std::to_string(x1M) + ", N=" + std::to_string(x2N)).c_str(),
-                "The dim0 of x1 and dim0 of x2 must not exceed INT32_MAX.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1 dim0, x2 dim0",
+                                                  ("M=" + std::to_string(x1M) + ", N=" + std::to_string(x2N)).c_str(),
+                                                  "The dim0 of x1 and dim0 of x2 must not exceed INT32_MAX.");
             return false;
         }
         if (x1K > K_MAX_VAL || x2K > K_MAX_VAL) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1_k, x2_k",
-                ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
+                opName, "x1_k, x2_k", ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
                 ("The K dimension must not exceed " + std::to_string(K_MAX_VAL) + ".").c_str());
             return false;
         }
@@ -450,30 +446,25 @@ protected:
         uint64_t yN = yShape->GetStorageShape().GetDim(1U);
 
         if (x1M % worldSize != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1 dim0",
-                ("M=" + std::to_string(x1M)).c_str(),
-                "The dim0 of x1 must be divisible by world_size.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1 dim0", ("M=" + std::to_string(x1M)).c_str(),
+                                                  "The dim0 of x1 must be divisible by world_size.");
             return false;
         }
         if (x1K % MX_SCALE_ALIGN != 0 || x2K % MX_SCALE_ALIGN != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x1_k, x2_k",
-                ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
+                opName, "x1_k, x2_k", ("x1_k=" + std::to_string(x1K) + ", x2_k=" + std::to_string(x2K)).c_str(),
                 ("The K dimension must be divisible by " + std::to_string(MX_SCALE_ALIGN) + ".").c_str());
             return false;
         }
         if (x2K != x1K * worldSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "x2_k",
-                std::to_string(x2K).c_str(),
+                opName, "x2_k", std::to_string(x2K).c_str(),
                 ("x2.K must equal x1.K * world_size = " + std::to_string(x1K * worldSize) + ".").c_str());
             return false;
         }
         if (yM != x1M / worldSize || yN != x2N) {
             OP_LOGE_FOR_INVALID_SHAPE(
-                opName, "y",
-                ("[" + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
+                opName, "y", ("[" + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
                 ("[" + std::to_string(x1M / worldSize) + "," + std::to_string(x2N) + "]").c_str());
             return false;
         }
@@ -494,10 +485,8 @@ protected:
         uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0U);
         uint64_t x2N = context_->GetInputShape(IDX_INPUT_X2)->GetStorageShape().GetDim(0U);
         if (biasDim0 != x2N) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName, "bias dim0",
-                std::to_string(biasDim0).c_str(),
-                ("bias dim0 must equal N = " + std::to_string(x2N) + ".").c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "bias dim0", std::to_string(biasDim0).c_str(),
+                                                  ("bias dim0 must equal N = " + std::to_string(x2N) + ".").c_str());
             return false;
         }
         return true;
@@ -538,25 +527,23 @@ protected:
         uint64_t x2K = context_->GetInputShape(IDX_INPUT_X2)->GetStorageShape().GetDim(1U);
 
         if (x1ScaleM != x1M || x1ScaleK != x1K / MX_SCALE_ALIGN || x1ScaleLast != SCALE_LAST_DIM) {
-            OP_LOGE_FOR_INVALID_SHAPE(
-                opName, "x1_scale",
-                ("[m=" + std::to_string(x1ScaleM) + ",k=" + std::to_string(x1ScaleK) + ",last=" +
-                 std::to_string(x1ScaleLast) + "]")
-                    .c_str(),
-                ("[m=" + std::to_string(x1M) + ",k=" + std::to_string(x1K / MX_SCALE_ALIGN) + ",last=" +
-                 std::to_string(SCALE_LAST_DIM) + "]")
-                    .c_str());
+            OP_LOGE_FOR_INVALID_SHAPE(opName, "x1_scale",
+                                      ("[m=" + std::to_string(x1ScaleM) + ",k=" + std::to_string(x1ScaleK) +
+                                       ",last=" + std::to_string(x1ScaleLast) + "]")
+                                          .c_str(),
+                                      ("[m=" + std::to_string(x1M) + ",k=" + std::to_string(x1K / MX_SCALE_ALIGN) +
+                                       ",last=" + std::to_string(SCALE_LAST_DIM) + "]")
+                                          .c_str());
             return false;
         }
         if (x2ScaleN != x2N || x2ScaleK != x2K / MX_SCALE_ALIGN || x2ScaleLast != SCALE_LAST_DIM) {
-            OP_LOGE_FOR_INVALID_SHAPE(
-                opName, "x2_scale",
-                ("[n=" + std::to_string(x2ScaleN) + ",k=" + std::to_string(x2ScaleK) + ",last=" +
-                 std::to_string(x2ScaleLast) + "]")
-                    .c_str(),
-                ("[n=" + std::to_string(x2N) + ",k=" + std::to_string(x2K / MX_SCALE_ALIGN) + ",last=" +
-                 std::to_string(SCALE_LAST_DIM) + "]")
-                    .c_str());
+            OP_LOGE_FOR_INVALID_SHAPE(opName, "x2_scale",
+                                      ("[n=" + std::to_string(x2ScaleN) + ",k=" + std::to_string(x2ScaleK) +
+                                       ",last=" + std::to_string(x2ScaleLast) + "]")
+                                          .c_str(),
+                                      ("[n=" + std::to_string(x2N) + ",k=" + std::to_string(x2K / MX_SCALE_ALIGN) +
+                                       ",last=" + std::to_string(SCALE_LAST_DIM) + "]")
+                                          .c_str());
             return false;
         }
         return true;
@@ -617,14 +604,20 @@ protected:
 
         {
             auto *x1sh = context_->GetInputShape(IDX_INPUT_X1);
-            auto x1Dtype = context_->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+            auto *x1Desc = context_->GetInputDesc(IDX_INPUT_X1);
+            if (x1Desc == nullptr) {
+                OP_LOGE_WITH_INVALID_INPUT(opName, "x1 desc");
+                return ge::GRAPH_FAILED;
+            }
+            auto x1Dtype = x1Desc->GetDataType();
             uint64_t mTotal = x1sh ? x1sh->GetStorageShape().GetDim(0U) : 0;
             uint64_t kPerRank = k_; // Ka = per-rank K（AlltoAll 通信 x1 的 K 维是 Ka，非 K_total）
             double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
             double requiredBuf = static_cast<double>(mTotal) * static_cast<double>(kPerRank) * typeSize * 1.1;
             if (hccBufPtr != nullptr && static_cast<double>(*hccBufPtr) < requiredBuf) {
-                OP_LOGE_WITHOUT_REPORT(opName, "[hcclBufferSize] hcclBufferSize(%ld) is less than "
-                                               "M_total(%lu) * Ka(%lu) * sizeof(x1Dtype)(%.1f) * 1.1 = %.1f",
+                OP_LOGE_WITHOUT_REPORT(opName,
+                                       "[hcclBufferSize] hcclBufferSize(%ld) is less than "
+                                       "M_total(%lu) * Ka(%lu) * sizeof(x1Dtype)(%.1f) * 1.1 = %.1f",
                                        static_cast<long>(*hccBufPtr), mTotal, kPerRank, typeSize, requiredBuf);
                 // HCCL_BUFFSIZE 单位为 MB，向上取整保证不小于 requiredBuf（字节）。
                 constexpr uint64_t BYTES_PER_MB = 1024UL * 1024UL;
@@ -638,8 +631,12 @@ protected:
         }
 
         auto *rt = context_->GetRawTilingData();
+        if (rt == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "rawTilingData");
+            return ge::GRAPH_FAILED;
+        }
         auto cap = rt->GetCapacity();
-        if (!rt || cap < sizeof(allToAllMatmulTilingData)) {
+        if (cap < sizeof(allToAllMatmulTilingData)) {
             OP_LOGE_WITH_INVALID_INPUT(opName, "rawTilingData");
             return ge::GRAPH_FAILED;
         }
@@ -649,21 +646,36 @@ protected:
 
         // MXFP4 使用打包存储(2 个 fp4 占 1 字节)，tiling 引擎需要按 fp4 数据类型
         // 推导 baseK 块大小(256 vs 128)与 L1 布局，其余 dtype 均按 fp8 处理。
-        auto x1Dtype = context_->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+        auto *x1DescTiling = context_->GetInputDesc(IDX_INPUT_X1);
+        if (x1DescTiling == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(opName, "x1 desc");
+            return ge::GRAPH_FAILED;
+        }
+        auto x1Dtype = x1DescTiling->GetDataType();
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
-            tilingEngine.SetPlatformInfo(quantPlatformInfo_);
+            tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.EnableBaseMHalving(true);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         } else {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-            tilingEngine.SetPlatformInfo(quantPlatformInfo_);
+            tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.EnableBaseMHalving(true);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         }
 
         auto &mm = td->tileQbmmTilingData;
         usedCoreNum_ = mm.usedCoreNum;
+
+        // matmul 实际分配核数必须 >= rankSize（kernel 侧通信切分依赖每 rank 至少一个核，
+        // 见 RunAllToAll: if (GetBlockIdx() < rankSize)），否则部分 rank 无核参与 alltoall 导致死锁。
+        if (static_cast<uint64_t>(usedCoreNum_) < worldSize_) {
+            OP_LOGE_WITHOUT_REPORT(opName,
+                                   "[coreNum] usedCoreNum(%u) is less than rankSize(%lu), "
+                                   "matmul tiling 分配核数不足以覆盖所有 rank",
+                                   usedCoreNum_, worldSize_);
+            return ge::GRAPH_FAILED;
+        }
 
         // 可用核数 = min(aicNum, aivNum)，必须 >= rankSize（通信切分依赖每 rank 至少一个核）
         uint64_t availCoreNum = std::min(quantPlatformInfo_.aicNum, quantPlatformInfo_.aivNum);
@@ -681,13 +693,11 @@ protected:
             td->commTilingData.nonSplitAxisSize = ka / 2;
         }
 
-        OP_LOGI(opName,
-                "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
+        OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
                 td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
                 td->commTilingData.nonSplitAxisSize);
-        OP_LOGI(opName,
-                "scale comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
+        OP_LOGI(opName, "scale comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
                 td->scaleCommTilingData.splitAxisTileSize, td->scaleCommTilingData.splitAxisTileCnt,
                 td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
                 td->scaleCommTilingData.nonSplitAxisSize);
@@ -711,7 +721,10 @@ protected:
         return ge::GRAPH_SUCCESS;
     }
 
-    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
     uint64_t GetTilingKey() const override
     {
@@ -721,7 +734,12 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
+        auto *platformInfo = context_->GetPlatformInfo();
+        if (platformInfo == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platformInfo");
+            return ge::GRAPH_FAILED;
+        }
+        platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
         libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
         workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
         auto *wsBuf = context_->GetWorkspaceSizes(1);

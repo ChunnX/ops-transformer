@@ -43,6 +43,7 @@ inline std::ostream &operator<<(std::ostream &os, const AlltoAllMatmulV2HostUtPa
 }
 
 struct AlltoAllMatmulV2InferShapeUtParam : public AlltoAllMatmulV2HostUtParamBase {
+    gert::InfershapeContextPara::TensorDescription context = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription x1 = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription x2 = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription bias = ID_DEFAULT;
@@ -55,6 +56,8 @@ struct AlltoAllMatmulV2InferShapeUtParam : public AlltoAllMatmulV2HostUtParamBas
     explicit AlltoAllMatmulV2InferShapeUtParam(const csv_map &csvMap)
         : AlltoAllMatmulV2HostUtParamBase(csvMap)
     {
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "context_shape", "context_dtype", "context_format", context));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format", bias));
@@ -63,8 +66,8 @@ struct AlltoAllMatmulV2InferShapeUtParam : public AlltoAllMatmulV2HostUtParamBas
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format", x2Scale));
 
-        this->y = gert::InfershapeContextPara::TensorDescription(
-            {}, Str2DTypeGE(ReadMap(csvMap, "y_dtype", "BF16")), ge::FORMAT_ND);
+        this->y = gert::InfershapeContextPara::TensorDescription({}, Str2DTypeGE(ReadMap(csvMap, "y_dtype", "BF16")),
+                                                                 ge::FORMAT_ND);
         this->all2allOut = gert::InfershapeContextPara::TensorDescription(
             {}, Str2DTypeGE(ReadMap(csvMap, "all2all_out_dtype", "FLOAT8_E4M3FN")), ge::FORMAT_ND);
 
@@ -78,6 +81,7 @@ struct AlltoAllMatmulV2InferShapeUtParam : public AlltoAllMatmulV2HostUtParamBas
 };
 
 struct AlltoAllMatmulV2InferDataTypeUtParam : public AlltoAllMatmulV2HostUtParamBase {
+    ge::DataType context = ge::DT_INT32;
     ge::DataType x1 = ge::DT_UNDEFINED;
     ge::DataType x2 = ge::DT_UNDEFINED;
     ge::DataType bias = ge::DT_UNDEFINED;
@@ -89,6 +93,7 @@ struct AlltoAllMatmulV2InferDataTypeUtParam : public AlltoAllMatmulV2HostUtParam
     explicit AlltoAllMatmulV2InferDataTypeUtParam(const csv_map &csvMap)
         : AlltoAllMatmulV2HostUtParamBase(csvMap)
     {
+        this->inputInstance.emplace_back(1); // context always exists
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", x1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", x2));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "bias_dtype", bias));

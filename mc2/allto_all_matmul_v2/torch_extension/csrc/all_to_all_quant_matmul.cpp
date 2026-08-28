@@ -3,7 +3,7 @@
 // This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 // CANN Open Software License Agreement Version 2.0 (the "License").
 // Please refer to the License for details. You may not use this file except in compliance with the License.
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 // See LICENSE in the root of the software repository for the full text of the License.
 // -----------------------------------------------------------------------------------------------------------
@@ -85,11 +85,11 @@ static aclDataType GetTensorAclDtype(c10::optional<int64_t> dtype, const at::Ten
 
 std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     const at::Tensor &context, const at::Tensor &x1, const at::Tensor &x2, int64_t hcclBufferSize, std::string group,
-    int64_t worldSize, const c10::optional<at::Tensor> &biasOptional,
-    const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
-    c10::optional<int64_t> x1QuantMode, c10::optional<int64_t> x2QuantMode, c10::IntArrayRef groupSizes,
-    c10::optional<int64_t> x1Dtype, c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype,
-    c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
+    int64_t worldSize, const c10::optional<at::Tensor> &biasOptional, const c10::optional<at::Tensor> &x1ScaleOptional,
+    const c10::optional<at::Tensor> &x2ScaleOptional, c10::optional<int64_t> x1QuantMode,
+    c10::optional<int64_t> x2QuantMode, c10::IntArrayRef groupSizes, c10::optional<int64_t> x1Dtype,
+    c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype, c10::optional<int64_t> x2ScaleDtype,
+    c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
 {
     CheckNpuAlltoAllQuantMatmulInputs(x1, x2, worldSize);
 
@@ -131,9 +131,9 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 
     int64_t groupSize = CheckAndGetGroupSize(groupSizes);
 
-    ACLNN_CMD(AlltoAllMatmulV2, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
-              groupPtr, worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal,
-              groupSize, commModePtr, precisionMode, y, alltoallOutWrapper);
+    ACLNN_CMD(AlltoAllMatmulV2, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper, groupPtr,
+              worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal, groupSize, commModePtr, precisionMode, y,
+              alltoallOutWrapper);
 
     return std::make_tuple(y, alltoallOut);
 }
