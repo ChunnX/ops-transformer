@@ -138,7 +138,7 @@ public:
                        ge::DT_FLOAT8_E4M3FN,ge::DT_HIFLOAT8,
                        ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1
                     })
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, 
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
@@ -153,7 +153,7 @@ public:
         config91095.Input("scale")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                       ge::DT_FLOAT8_E8M0, 
+                       ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0,
                        ge::DT_BF16, ge::DT_FLOAT,

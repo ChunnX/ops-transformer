@@ -58,7 +58,7 @@ const int64_t GMMFR_QUANT_SCALE_PARAM_COUNT = 2;
 const int ND_N_VALUE_ALIGN = 8;
 const int ND_K0_VALUE_INT8 = 64;
 const int64_t OUT_DTYPE_BF16 = 2;
-}
+} // namespace
 
 using namespace gert;
 namespace ops {
@@ -411,8 +411,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(logitOptionIndex) != expectedLogitDtype),
-            OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of logit is wrong."),
+            OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "The MXFP4/MXFP8 InputDataType of logit is wrong."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
                     OPS_REPORT_CUBE_INNER_ERR(
@@ -453,7 +452,7 @@ static bool IsSupportMX(const gert::InferDataTypeContext *context, const int64_t
 static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferDataTypeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
-        return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     const int64_t *outputDtype = attrs == nullptr ? nullptr : attrs->GetAttrPointer<int64_t>(0);
     bool supportDataTypeMX = IsSupportMX(context, outputDtype);
@@ -503,7 +502,7 @@ static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferData
                         "InputDataType is wrong, please check scale, bias, groupList, rowIndex or logit dtype."),
                     return ge::GRAPH_FAILED);
     }
-    
+
     if (supportDataTypeMX && IsMxBf16Output(context, outputDtype)) {
         context->SetOutputDataType(0, ge::DT_BF16);
     } else {
