@@ -29,7 +29,10 @@ struct FFNToAttentionV2Info {
     uint32_t worldSize;
     bool isInputRankTable;
     uint8_t windowType;
-    uint64_t totalUbSize;
+    union {
+        uint64_t totalUbSize;
+        uint64_t maxTokenNum;
+    };
     uint64_t totalWinSize;
 };
 

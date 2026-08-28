@@ -69,6 +69,17 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 
     // Reserve one GM flag slot for every AIV. WriteNbi uses the slot as the source of the remote token flag.
     FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData->ffnToAttentionV2Info.H > tilingData->ffnToAttentionV2Info.HS,
+                    OP_LOGE(context->GetNodeName(), "token_data_shape HS must be greater than or equal to x H"),
+                    return ge::GRAPH_FAILED);
+    const gert::StorageShape *xShape = context->GetInputShape(config.xIndex);
+    OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "xShape"),
+                    return ge::GRAPH_FAILED);
+    tilingData->ffnToAttentionV2Info.maxTokenNum =
+        static_cast<uint64_t>(xShape->GetStorageShape().GetDim(0));
+
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
                     return ge::GRAPH_FAILED);

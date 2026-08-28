@@ -126,6 +126,19 @@ std::vector<OpAttr> BuildAlignmentBoundaryAttrs(int64_t cclBufferSize)
     };
 }
 
+std::vector<OpAttr> BuildAttrsWithHs(int64_t hs)
+{
+    return {
+        {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+        {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+        {"token_info_table_shape",
+         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 16, 9})},
+        {"token_data_shape",
+         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 16, 9, hs})},
+        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(DEFAULT_CCL_BUFFER_SIZE)},
+    };
+}
+
 void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, const std::vector<OpAttr> &attrs,
                        ge::graphStatus expectedStatus, uint64_t expectedTilingKey = 0UL)
 {
@@ -175,6 +188,11 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidBs)
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidMicroBatchNum)
 {
     ExecuteTilingCase(BuildInputs(true), BuildAttrs(false, true), ge::GRAPH_FAILED);
+}
+
+TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsHsSmallerThanH)
+{
+    ExecuteTilingCase(BuildInputs(true), BuildAttrsWithHs(7167), ge::GRAPH_FAILED);
 }
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsBufferWithoutTokenInfoAlignmentSpace)
