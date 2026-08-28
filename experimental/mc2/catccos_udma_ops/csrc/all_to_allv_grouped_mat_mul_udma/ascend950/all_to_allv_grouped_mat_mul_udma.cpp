@@ -75,7 +75,7 @@ struct TilingProfile {
     uint32_t selfCopyCores;
 };
 
-enum class CompletionDiagnosticMode : uint32_t {
+enum class CompletionMode : uint32_t {
     kBaseline = 0,
     kBarrierOnly = 1,
     kGenerationAfterQuiet = 2,
@@ -83,30 +83,37 @@ enum class CompletionDiagnosticMode : uint32_t {
     kStrongReadyCacheSafe = 4,
 };
 
-CompletionDiagnosticMode GetCompletionDiagnosticMode()
+CompletionMode GetCompletionMode(bool outputAllToAllV)
 {
     const char *raw = std::getenv("CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE");
-    const std::string value = raw == nullptr ? "baseline" : raw;
-    if (value.empty() || value == "baseline" || value == "legacy" || value == "0") {
-        return CompletionDiagnosticMode::kBaseline;
+    const std::string value = raw == nullptr ? "production" : raw;
+    if (value.empty() || value == "production" || value == "default") {
+        // The WRITE_WITH_NOTIFY generation protocol is the production path
+        // for the optional AllToAllV export. The non-export kernel keeps its
+        // independently validated legacy completion path.
+        return outputAllToAllV ? CompletionMode::kStrongReady
+                               : CompletionMode::kBaseline;
+    }
+    if (value == "baseline" || value == "legacy" || value == "0") {
+        return CompletionMode::kBaseline;
     }
     if (value == "barrier_only" || value == "1") {
-        return CompletionDiagnosticMode::kBarrierOnly;
+        return CompletionMode::kBarrierOnly;
     }
     if (value == "generation_after_quiet" || value == "2") {
-        return CompletionDiagnosticMode::kGenerationAfterQuiet;
+        return CompletionMode::kGenerationAfterQuiet;
     }
     if (value == "strong_ready" || value == "3") {
-        return CompletionDiagnosticMode::kStrongReady;
+        return CompletionMode::kStrongReady;
     }
     if (value == "strong_ready_cache_safe" || value == "4") {
-        return CompletionDiagnosticMode::kStrongReadyCacheSafe;
+        return CompletionMode::kStrongReadyCacheSafe;
     }
     TORCH_CHECK(false,
         "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE must be one of "
-        "baseline, barrier_only, generation_after_quiet, strong_ready, or "
-        "strong_ready_cache_safe; got ", value);
-    return CompletionDiagnosticMode::kBaseline;
+        "production, baseline, barrier_only, generation_after_quiet, "
+        "strong_ready, or strong_ready_cache_safe; got ", value);
+    return CompletionMode::kBaseline;
 }
 
 constexpr TilingProfile kDefaultTiling{
@@ -420,22 +427,19 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
         CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", routeMetadata,
                              "route_metadata");
     }
-    const CompletionDiagnosticMode completionDiagnosticMode =
-        GetCompletionDiagnosticMode();
+    const CompletionMode completionMode =
+        GetCompletionMode(allToAllVOutputOptional.has_value());
     const bool usesReadyGeneration =
-        completionDiagnosticMode ==
-            CompletionDiagnosticMode::kGenerationAfterQuiet ||
-        completionDiagnosticMode == CompletionDiagnosticMode::kStrongReady ||
-        completionDiagnosticMode ==
-            CompletionDiagnosticMode::kStrongReadyCacheSafe;
+        completionMode == CompletionMode::kGenerationAfterQuiet ||
+        completionMode == CompletionMode::kStrongReady ||
+        completionMode == CompletionMode::kStrongReadyCacheSafe;
     const bool usesStrongReady =
-        completionDiagnosticMode == CompletionDiagnosticMode::kStrongReady ||
-        completionDiagnosticMode ==
-            CompletionDiagnosticMode::kStrongReadyCacheSafe;
+        completionMode == CompletionMode::kStrongReady ||
+        completionMode == CompletionMode::kStrongReadyCacheSafe;
     TORCH_CHECK(
-        completionDiagnosticMode == CompletionDiagnosticMode::kBaseline ||
+        completionMode == CompletionMode::kBaseline ||
             allToAllVOutputOptional.has_value(),
-        "non-baseline completion diagnostics require "
+        "non-baseline completion modes require "
         "output_all_to_allv=True");
     if (usesStrongReady) {
         const uint64_t stageRows = tiling.stageRows == 0
@@ -445,7 +449,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             stageRows * static_cast<uint64_t>(k64) * sizeof(uint16_t);
         TORCH_CHECK(
             maximumPeerSliceBytes <= kMaxUdmaWriteNotifyBytes,
-            "strong completion diagnostics require each staged peer slice to "
+            "strong completion mode requires each staged peer slice to "
             "fit one UDMA write-with-notify request; got ",
             maximumPeerSliceBytes, " bytes, maximum ",
             kMaxUdmaWriteNotifyBytes);
@@ -490,7 +494,7 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
                 ? reinterpret_cast<uint8_t *>(routeMetadataOptional.value().data_ptr())
                 : nullptr,
             launchEpoch,
-            static_cast<uint32_t>(completionDiagnosticMode),
+            static_cast<uint32_t>(completionMode),
             blockDim, stream, fftsAddress);
     };
     auto launchByMSplit = [&](auto mSplit1, auto mSplit2, auto mSplit4) {

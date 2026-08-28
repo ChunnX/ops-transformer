@@ -18,7 +18,12 @@ import ops_transformer_catccos_udma as udma
 
 try:
     from .case_schema import read_resolved_cases
-    from .common import udma_init_method_from_env, validation_udma_heap_size, write_json
+    from .common import (
+        sync_completion_mode_from_env,
+        udma_init_method_from_env,
+        validation_udma_heap_size,
+        write_json,
+    )
     from .precision import analyze_accuracy, write_accuracy_artifacts
     from .memory_safety import (
         GuardedTensor,
@@ -29,7 +34,12 @@ try:
     )
 except ImportError:  # Direct execution keeps the source tree out of package lookup.
     from case_schema import read_resolved_cases
-    from common import udma_init_method_from_env, validation_udma_heap_size, write_json
+    from common import (
+        sync_completion_mode_from_env,
+        udma_init_method_from_env,
+        validation_udma_heap_size,
+        write_json,
+    )
     from precision import analyze_accuracy, write_accuracy_artifacts
     from memory_safety import (
         GuardedTensor,
@@ -479,9 +489,7 @@ def _run_case(
                 allocation_mode == "caller_provided" and export_output is not None
             ),
             "synchronized_control": synchronized_control,
-            "sync_diagnostic_mode": os.environ.get(
-                "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
-            ),
+            "sync_diagnostic_mode": sync_completion_mode_from_env(),
             "output_prefill": output_prefill,
             "output": _tensor_metadata(output),
             "all_to_allv_output": (
@@ -1127,9 +1135,7 @@ def _run_case(
             "caller_provided_out": False if mssanitizer_enabled else None,
         },
         "sync_diagnosis": {
-            "mode": os.environ.get(
-                "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
-            ),
+            "mode": sync_completion_mode_from_env(),
             "automatic_only": automatic_only,
             "max_failure_dumps_per_role": max_failure_dumps_per_role,
             "failure_dumps_written": failure_dump_counts,

@@ -18,6 +18,7 @@ _MIB = 1 << 20
 _DEFAULT_UDMA_HEAP_BYTES = 1 << 30
 _UDMA_KERNEL_WORKSPACE_BYTES = 400 * _MIB + 4096
 _UDMA_HEAP_HEADROOM_BYTES = 64 * _MIB
+_DEFAULT_SYNC_COMPLETION_MODE = "production"
 
 
 def timestamp() -> str:
@@ -83,6 +84,14 @@ def validation_udma_heap_size() -> int:
     return requested
 
 
+def sync_completion_mode_from_env() -> str:
+    """Return the requested completion mode, including the production default."""
+    value = os.environ.get(
+        "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", _DEFAULT_SYNC_COMPLETION_MODE
+    )
+    return value or _DEFAULT_SYNC_COMPLETION_MODE
+
+
 def environment_fingerprint() -> Dict[str, Any]:
     ascend_home = (
         os.environ.get("ASCEND_HOME_PATH")
@@ -102,7 +111,7 @@ def environment_fingerprint() -> Dict[str, Any]:
             "CATCCOS_UDMA_VALIDATE_ROUTES", "0"
         ),
         "catccos_udma_sync_diagnostic_mode": os.environ.get(
-            "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
+            "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", _DEFAULT_SYNC_COMPLETION_MODE
         ),
     }
     try:

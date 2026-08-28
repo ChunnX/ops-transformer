@@ -173,6 +173,18 @@ to benchmark or validate the original non-export kernel explicitly. Performance
 preallocates both outputs before warm-up, so allocation and route-count
 preprocessing are excluded from the profiled launch loop.
 
+The export kernel uses the production `strong_ready` completion protocol by
+default. Each remote peer slice and its 64-bit per-stage/source generation are
+published by one UDMA WRITE_WITH_NOTIFY request. An entry SHMEM barrier runs
+immediately before the reusable MMAD/communication gates are cleared, followed
+by the existing post-initialization barrier. Staging keeps the default L2
+policy; cache bypass is not part of the production path. The
+`CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE` environment variable is reserved for A/B
+diagnosis (`baseline`, `barrier_only`, `generation_after_quiet`,
+`strong_ready`, or `strong_ready_cache_safe`). Calls that do not request the
+AllToAllV output retain their independently validated non-export completion
+path.
+
 `grouped_mat_mul_all_to_allv` performs the inverse order: local grouped
 matmuls followed by UDMA AllToAllV. Its `x` and `weight` inputs remain ordinary
 contiguous BF16 NPU tensors. UDMA GET writes the result directly, so the result

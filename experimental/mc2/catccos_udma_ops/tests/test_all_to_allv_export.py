@@ -334,7 +334,7 @@ def test_peer_completion_signal_is_published_after_data_completion():
     )
     completion_signal = kernel.index("syncCommFinish, completedBlocks,", finalize)
     receiver_wait = kernel.index(
-        "aclshmem_signal_wait_until(syncCommFinish", completion_signal
+        "syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum", completion_signal
     )
     assert finalize < completion_signal < receiver_wait
 

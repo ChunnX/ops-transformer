@@ -473,19 +473,19 @@ public:
              (aicoreIdx >= rankSize &&
               aicoreIdx < rankSize + selfCopyCores - 1));
 
-        // Every non-legacy diagnostic mode closes the previous invocation on
-        // every PE before legacy MMAD gates are reset. barrier_only changes
-        // nothing else, which isolates cross-invocation lifecycle races from
-        // the strong payload-ready protocol. Strong ready slots themselves
-        // are not reset: their 64-bit launch generation makes delayed
-        // notifications distinguishable from the current launch.
+        // Resolve local state before the collective so the entry barrier is
+        // immediately followed by the first reset of reusable SHMEM gates.
+        // Reaching this barrier closes the previous invocation on every PE;
+        // no previous sender can still depend on syncMmadFinish when a fast
+        // PE resets it below. Strong ready slots are not reset because their
+        // 64-bit launch generation distinguishes delayed notifications.
+        bool isRootCore = (AscendC::GetBlockIdx() == 0);
+        auto rankIdx = params.problemShape.rankIdx();
         if (useEntryBarrier) {
             aclshmemx_barrier_all_vec();
         }
 
         // 选择唯一的 aicore，对当前 rank 的信号地址进行初始化
-        bool isRootCore = (AscendC::GetBlockIdx() == 0);
-        auto rankIdx = params.problemShape.rankIdx();
         if (isRootCore) {
             aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
             aclshmemx_signal_op(syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);

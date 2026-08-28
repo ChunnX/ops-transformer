@@ -14,7 +14,13 @@ from pathlib import Path
 
 try:
     from .case_schema import load_case_manifest, select_cases, write_resolved_cases
-    from .common import environment_fingerprint, timestamp, write_csv, write_json
+    from .common import (
+        environment_fingerprint,
+        sync_completion_mode_from_env,
+        timestamp,
+        write_csv,
+        write_json,
+    )
     from .runtime_log_collection import (
         collect_runtime_logs,
         runtime_log_roots,
@@ -22,7 +28,13 @@ try:
     )
 except ImportError:
     from case_schema import load_case_manifest, select_cases, write_resolved_cases
-    from common import environment_fingerprint, timestamp, write_csv, write_json
+    from common import (
+        environment_fingerprint,
+        sync_completion_mode_from_env,
+        timestamp,
+        write_csv,
+        write_json,
+    )
     from runtime_log_collection import (
         collect_runtime_logs,
         runtime_log_roots,
@@ -208,9 +220,7 @@ def main():
             "udma_master_addr": environment["UDMA_MASTER_ADDR"],
             "udma_master_port": udma_port,
             "udma_heap_size": environment.get("UDMA_HEAP_SIZE", "default"),
-            "sync_diagnostic_mode": environment.get(
-                "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
-            ),
+            "sync_diagnostic_mode": sync_completion_mode_from_env(),
             "automatic_only": args.automatic_only,
             "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
             "console_log": launch_log.name,
@@ -290,9 +300,7 @@ def main():
     write_json(output_root / "summary.json", {
         "passed": bool(overall), "failed_launches": failed_launches,
         "case_count": len(cases), "results": rows,
-        "sync_diagnostic_mode": os.environ.get(
-            "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
-        ),
+        "sync_diagnostic_mode": sync_completion_mode_from_env(),
         "automatic_only": args.automatic_only,
         "auto_repeats_override": args.auto_repeats,
         "runtime_logs": runtime_log_results,

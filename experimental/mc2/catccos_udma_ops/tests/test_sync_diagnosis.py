@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from validation.common import sync_completion_mode_from_env
 from validation.run_sync_diagnosis import (
     _collect_runtime_evidence,
     classify_mode_results,
@@ -270,3 +271,59 @@ def test_kernel_and_runner_keep_the_five_modes_isolated():
     assert "aclshmemi_udma_poll_cq" in tile
     assert 'caller_repeats = (' in worker
     assert '"all_to_allv_export"' in worker
+
+
+def test_production_default_uses_strong_ready_without_l2_bypass(monkeypatch):
+    monkeypatch.delenv("CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", raising=False)
+    assert sync_completion_mode_from_env() == "production"
+
+    host = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "all_to_allv_grouped_mat_mul_udma.cpp"
+    ).read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert 'raw == nullptr ? "production" : raw' in host
+    assert (
+        "return outputAllToAllV ? CompletionMode::kStrongReady\n"
+        "                               : CompletionMode::kBaseline;"
+    ) in host
+    assert kernel.count("SetL2CacheHint") == 2
+    cursor = 0
+    for _ in range(2):
+        hint = kernel.index("SetL2CacheHint", cursor)
+        assert "COMPLETION_MODE_STRONG_READY_CACHE_SAFE" in kernel[
+            max(0, hint - 256):hint
+        ]
+        cursor = hint + 1
+
+
+def test_entry_barrier_precedes_reusable_signal_reset():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+
+    entry_condition = kernel.index("if (useEntryBarrier)")
+    entry_barrier = kernel.index("aclshmemx_barrier_all_vec();", entry_condition)
+    reset = kernel.index("syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET", entry_barrier)
+    initialization_barrier = kernel.index("aclshmemx_barrier_all_vec();", reset)
+    assert entry_barrier < reset < initialization_barrier
