@@ -1657,7 +1657,7 @@ static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape, co
 
 static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr, const int64_t tempD)
 {
-    return false;
+    return true;
     bool isPageAttention = context.GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     auto tempAttnMaskShape = context.GetOptionalInputShape(ATTEN_MASK_INDEX);
     auto qDataType = context.GetInputDesc(QUERY_INDEX)->GetDataType();
