@@ -44,6 +44,7 @@ struct AttentionToFFNTilingConfig {
     uint32_t attrCclBufferSizeIndex = UINT32_MAX;
 
     bool isMc2Context = false;
+    bool allowMxQuantMode = false;
 };
 
 ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context,

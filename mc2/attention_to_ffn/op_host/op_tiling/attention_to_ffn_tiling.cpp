@@ -78,6 +78,19 @@ constexpr int64_t K_MAX = 16;
 constexpr int64_t MAX_WORLD_SIZE = 768L; // 384 * 2
 constexpr int64_t MIN_WORLD_SIZE = 2;
 
+constexpr uint32_t USER_QUANT_MODE_MX_E5M2 = 3U;
+constexpr uint32_t USER_QUANT_MODE_MX_E4M3 = 4U;
+constexpr uint32_t USER_QUANT_MODE_MX_E2M1 = 5U;
+constexpr uint32_t USER_QUANT_MODE_MX_CLIP_E5M2 = 6U;
+constexpr uint32_t USER_QUANT_MODE_MX_CLIP_E4M3 = 7U;
+
+static bool IsMxQuantMode(uint32_t quantMode)
+{
+    return quantMode == USER_QUANT_MODE_MX_E5M2 || quantMode == USER_QUANT_MODE_MX_E4M3 ||
+           quantMode == USER_QUANT_MODE_MX_E2M1 || quantMode == USER_QUANT_MODE_MX_CLIP_E5M2 ||
+           quantMode == USER_QUANT_MODE_MX_CLIP_E4M3;
+}
+
 static void PrintTilingDataInfo(const char *nodeName, AttentionToFFNTilingData &tilingData)
 {
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "X is %u.", tilingData.attentionToFFNInfo.X);
@@ -211,11 +224,19 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
         OP_LOGE_WITH_INVALID_ATTR(ATTN_FFN_INNER_DEBUG, "moe_expert_num", std::to_string(moeExpertNum).c_str(),
                                   (std::string("(0, ") + std::to_string(MOE_EXPERT_MAX_NUM) + "]").c_str()),
         return false);
-    OP_TILING_CHECK(
-        (*quantModePtr < static_cast<int64_t>(NO_SCALES)) || (*quantModePtr > static_cast<int64_t>(DYNAMIC_SCALES)),
-        OP_LOGE_WITH_INVALID_ATTR(ATTN_FFN_INNER_DEBUG, "quant_mode", std::to_string(*quantModePtr).c_str(),
-                                  (std::string("[0, ") + std::to_string(DYNAMIC_SCALES) + "]").c_str()),
-        return false);
+    if (config.allowMxQuantMode) {
+        OP_TILING_CHECK(
+            *quantModePtr != 0 && *quantModePtr != 2 && !IsMxQuantMode(static_cast<uint32_t>(*quantModePtr)),
+            OP_LOGE_WITH_INVALID_ATTR(ATTN_FFN_INNER_DEBUG, "quant_mode", std::to_string(*quantModePtr).c_str(),
+                                      "0, 2, 3, 4, 5, 6 or 7"),
+            return false);
+    } else {
+        OP_TILING_CHECK(
+            (*quantModePtr < static_cast<int64_t>(NO_SCALES)) || (*quantModePtr > static_cast<int64_t>(DYNAMIC_SCALES)),
+            OP_LOGE_WITH_INVALID_ATTR(ATTN_FFN_INNER_DEBUG, "quant_mode", std::to_string(*quantModePtr).c_str(),
+                                      (std::string("[0, ") + std::to_string(DYNAMIC_SCALES) + "]").c_str()),
+            return false);
+    }
     OP_TILING_CHECK(
         (*syncFlagPtr != 0) && (*syncFlagPtr != 1),
         OP_LOGE_WITH_INVALID_ATTR(nodeName, "sync_flag", std::to_string(*syncFlagPtr).c_str(), "0 or 1"),
@@ -671,8 +692,8 @@ static bool CheckInputAndSetTilingData(gert::TilingContext *context, const char 
 {
     const gert::StorageShape *scalesShape = context->GetOptionalInputShape(config.scalesIndex);
     const gert::StorageShape *activeMaskShape = context->GetOptionalInputShape(config.activeMaskIndex);
-    bool isScales = (scalesShape != nullptr);
-    bool isActiveMask = (activeMaskShape != nullptr);
+    bool isScales = (scalesShape != nullptr && scalesShape->GetStorageShape().GetDimNum() != 0U);
+    bool isActiveMask = (activeMaskShape != nullptr && activeMaskShape->GetStorageShape().GetDimNum() != 0U);
 
     // 校验quantMode和scale是否匹配
     uint32_t quantMode = tilingData.attentionToFFNInfo.quantMode;
@@ -681,14 +702,19 @@ static bool CheckInputAndSetTilingData(gert::TilingContext *context, const char 
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "quant_mode", std::to_string(quantMode).c_str(),
                                               "The value of quant_mode does not support static quant"),
         return false);
-    OP_TILING_CHECK((isScales && (quantMode == NO_SCALES)) || ((!isScales) && (quantMode == STATIC_SCALES)),
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "scales and quant_mode",
-                        (std::string("isScales=") + std::to_string(static_cast<int32_t>(isScales)) +
-                         ", quantMode=" + std::to_string(quantMode))
-                            .c_str(),
-                        "The value of scales must match quant_mode"),
-                    return false);
+    if (config.allowMxQuantMode && IsMxQuantMode(quantMode)) {
+        OP_TILING_CHECK(isScales,
+                        OP_LOGE(nodeName, "scales must be absent in MX/MX_CLIP modes"), return false);
+    } else {
+        OP_TILING_CHECK((isScales && (quantMode == NO_SCALES)) || ((!isScales) && (quantMode == STATIC_SCALES)),
+                        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                            ATTN_FFN_INNER_DEBUG, "scales and quant_mode",
+                            (std::string("isScales=") + std::to_string(static_cast<int32_t>(isScales)) +
+                             ", quantMode=" + std::to_string(quantMode))
+                                .c_str(),
+                            "The value of scales must match quant_mode"),
+                        return false);
+    }
 
     // 校验输入数据dim、format、dataType
     OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, isActiveMask, config),
