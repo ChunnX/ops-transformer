@@ -329,20 +329,21 @@ __aicore__ inline void
 AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulCompute()
 {
     auto &&cfg = tilingData_->param;
-    // 已注释：MXFP4量化中matmul本地块计算
-    // if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
-    //     QuantMatmulLocalCompute(); 
-    // }
+    // 计算本片的块
+    // 未用到的AIC核不需要参与计算
+    if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
+        QuantMatmulLocalCompute(); 
+    }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
     // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
-    // if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
-    //     aGM_ = gatherOut_;
-    //     if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
-    //         // 计算其他片数据前先wait scale1
-    //         hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
-    //     }
-    // }
+    if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
+        aGM_ = gatherOut_;
+        if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
+            // 计算其他片数据前先wait scale1
+            hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
+        }
+    }
     // 已注释：MXFP4量化中matmul gather块计算
     // QuantMatmulGatherCompute();
 }
