@@ -135,8 +135,7 @@ public:
     // WITH_ZERO_HEAD 仅对 TND（cu_seqlens 首零头）成立；BSND/BNSD 走 GM_Q_OUT_BNGSD 3-参实现
     // （offset_calculator_v2.h，无 WITH_ZERO_HEAD 形参），与 flash_attn IS_TND 同构。
     FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND> queryGm;
-    FaGmTensor<KV_T, KV_FORMAT> keyGm;
-    FaGmTensor<KV_T, KV_FORMAT> valueGm;
+    FaGmTensor<KV_T, KV_FORMAT> kCacheGm;
     GlobalTensor<int32_t> blockTableGm;
     // seq-lens GM 张量与解析器所有权在 kernel 侧 FlashMlaSeqLensTool，本 block 只读引用
     SeqLensToolType &seqLensTool_;
@@ -203,13 +202,10 @@ public:
         // 不能用 ListTensorDesc 解码（会把 k_cache 数据首部误解析为 list 描述符 → GM 越界）
 
         // k_cache 576 宽单张量（nope 512 + rope 64 合并）——key 与 value 同源（k==v）：
-        // bmm2 的 V 段 = L1 上 nope 区（512 宽，mm1 后仍留在 L1），valueGm 仅初始化不再单独读取
+        // bmm2 的 V 段 = L1 上 nope 区（512 宽，mm1 后仍留在 L1），无独立 value GM 张量/读取
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, seqLensTool_.actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                     constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, keyGm, kCache,
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, kCacheGm, kCache,
                      constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
-        InitKVBuffer(constInfo.bSize, constInfo.s2Size, seqLensTool_.actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                     constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV + constInfo.dSizeRope, valueGm, kCache,
-                     constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -330,7 +326,7 @@ public:
                               .dIdx = 0,
                               .s2DealSize = runInfo.actSingleLoopS2Size,
                               .dDealSize = (uint32_t)constInfo.dSize};
-            copyKvGmToL1(l1Tensor, keyGm, gmCoord);
+            copyKvGmToL1(l1Tensor, kCacheGm, gmCoord);
         }
 
         {
@@ -343,7 +339,7 @@ public:
                               .dIdx = (uint32_t)constInfo.dSize,
                               .s2DealSize = runInfo.actSingleLoopS2Size,
                               .dDealSize = (uint32_t)constInfo.dSizeRope};
-            copyKvGmToL1(l1Tensor, keyGm, gmCoord);
+            copyKvGmToL1(l1Tensor, kCacheGm, gmCoord);
         }
     }
 
