@@ -778,11 +778,10 @@ __aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::Compute(uint32_t xElemNum, u
     VF_CALL<vfMxfp4ComputeData<T, U>>(xLocalAddr, invScaleLocalAddr, xQuantLocalAddr, xElemNum, vfLoopNumForX,
                                       vlForB16_, numUbBlocksPerVReg_);
 
-    // free input
-    xInQueue_.FreeTensor(xLocal);
-    // enque outputs
+    // enque outputs first to establish V→MTE3 barrier, then free input
     xQuantOutQueue_.EnQue(xQuantLocal);
     mxScaleOutQueue_.EnQue(mxScaleLocal);
+    xInQueue_.FreeTensor(xLocal);
 }
 
 template <typename T, typename U>
