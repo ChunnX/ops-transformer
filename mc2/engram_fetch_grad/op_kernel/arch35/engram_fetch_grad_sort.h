@@ -13,16 +13,14 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
-#include "adv_api/math/cumsum.h"
 #include "simt_api/asc_simt.h"
 
 constexpr uint32_t SIMT_THREAD_NUM = 1024;
 
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
-__aicore__ inline void ScatterWithPosSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey,
-                                          __ubuf__ uint32_t *sortedIndex, __ubuf__ uint32_t *binStart,
-                                          __ubuf__ uint32_t *basePos, __ubuf__ int32_t *value,
-                                          __ubuf__ int32_t *index, __gm__ int32_t *dstValueGm,
+__aicore__ inline void ScatterWithPosSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
+                                          __ubuf__ uint32_t *binStart, __ubuf__ uint32_t *basePos,
+                                          __ubuf__ int32_t *value, __ubuf__ int32_t *index, __gm__ int32_t *dstValueGm,
                                           __gm__ int32_t *dstIndexGm)
 {
     for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
@@ -62,8 +60,14 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitU162U32Odd = {
     AscendC::RoundMode::UNKNOWN,
 };
 
-__aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b) { return a < b ? a : b; }
-__aicore__ inline uint32_t CeilDiv(uint32_t a, uint32_t b) { return (a + b - 1U) / b; }
+__aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b)
+{
+    return a < b ? a : b;
+}
+__aicore__ inline uint32_t CeilDiv(uint32_t a, uint32_t b)
+{
+    return (a + b - 1U) / b;
+}
 __aicore__ inline uint32_t AlignUpU32(uint32_t bytes)
 {
     return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
@@ -151,8 +155,6 @@ private:
         AscendC::GlobalTensor<int32_t> &tileOffsetsGm, AscendC::TPipe &pipe);
 
     static constexpr AscendC::SortConfig sortConfig{AscendC::SortType::RADIX_SORT, false};
-    static constexpr AscendC::CumSumConfig prefixScanCfg{true, false, false,
-                                                         AscendC::CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
 
     AscendC::TBuf<AscendC::TPosition::VECCALC> sortWorkspace_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> keyBuffer_;
@@ -202,8 +204,13 @@ __aicore__ inline void ComputeTileHistogram(__local_mem__ uint32_t *valueUb, uin
         Duplicate(cumu0, (uint16_t)0, mask16);
         Duplicate(cumu1, (uint16_t)0, mask16);
         Duplicate(offsetReg, static_cast<uint32_t>(valueOffset), mask32);
-        for (uint16_t i = 0; i < CeilDiv(elementCount, VECTOR_LEN_INT8); i++) {
-            MaskReg elemMask = UpdateMask<uint8_t>(elementCount);
+        // UpdateMask decrements its by-ref operand (POST_UPDATE); the trip count must be
+        // precomputed from the ORIGINAL count and a separate scratch passed in, otherwise the
+        // loop condition re-reads the decremented value and drops tail chunks (hist/key loss).
+        uint32_t remainCount = elementCount;
+        const uint16_t histRepeat = static_cast<uint16_t>(CeilDiv(elementCount, VECTOR_LEN_INT8));
+        for (uint16_t i = 0; i < histRepeat; i++) {
+            MaskReg elemMask = UpdateMask<uint8_t>(remainCount);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input0, valueUb, VECTOR_LEN_INT32);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input1, valueUb, VECTOR_LEN_INT32);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input2, valueUb, VECTOR_LEN_INT32);
@@ -369,7 +376,10 @@ __aicore__ inline void EngramFetchGradSort::SetMaxValue(uint32_t maxVal)
     }
 }
 
-__aicore__ inline void EngramFetchGradSort::SetValueOffset(int32_t offset) { valueOffset_ = offset; }
+__aicore__ inline void EngramFetchGradSort::SetValueOffset(int32_t offset)
+{
+    valueOffset_ = offset;
+}
 
 __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
                                                                     AscendC::GlobalTensor<int32_t> &prefixGm,
@@ -387,6 +397,8 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
     event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
     event_t evtMte3Mte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_MTE2));
     event_t evtMte3S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_S));
+    event_t evtVS = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
+    event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
 
     uint32_t coreId = AscendC::GetBlockIdx();
     uint32_t tilesPerCore = CeilDiv(tc, coreCount_);
@@ -405,12 +417,12 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
         AscendC::Add(localSum, localSum, histogram, HISTOGRAM_BINS);
     }
 
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-            // SIMT writes dst GM via the V pipe; next byte-round's ProcessHist reads it via MTE2.
-            // Make V stores visible to MTE2 explicitly (don't rely on SyncAll flushing V->GM).
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+    // SIMT writes dst GM via the V pipe; next byte-round's ProcessHist reads it via MTE2.
+    // Make V stores visible to MTE2 explicitly (don't rely on SyncAll flushing V->GM).
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
     AscendC::DataCopyPad(coreSumsGm_[coreId * HISTOGRAM_BINS], localSum, offsetParam);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
@@ -480,20 +492,19 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
 
     AscendC::PipeBarrier<PIPE_V>();
 
-    AscendC::LocalTensor<float> floatBuf = histogramBuffer_.Get<float>();
-    AscendC::LocalTensor<int32_t> inclBuf =
-        sortWorkspace_.GetWithOffset<int32_t>(HISTOGRAM_BINS, coreCount_ * HISTOGRAM_BINS * sizeof(int32_t));
-
-    AscendC::Cast<float, int32_t>(floatBuf, totalBuf, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    AscendC::CumSumInfo prefixScanInfo{1U, HISTOGRAM_BINS};
-    AscendC::CumSum<float, prefixScanCfg>(floatBuf, floatBuf, floatBuf, prefixScanInfo);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    AscendC::Cast<int32_t, float>(inclBuf, floatBuf, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
-    AscendC::PipeBarrier<PIPE_V>();
-    AscendC::Sub(totalBuf, inclBuf, totalBuf, HISTOGRAM_BINS);
+    // Scalar exclusive scan over bins (baseline-proven). The previous in-place
+    // CumSum<float>(x, x, x) needs a 32KB stack tmp (device-side unchecked) and
+    // dst==src aliasing; both risk silent UB corruption of the prefix result.
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
+    int32_t running = 0;
+    for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
+        int32_t binCount = totalBuf.GetValue(b);
+        totalBuf.SetValue(b, running);
+        running += binCount;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+    AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
 
     for (uint32_t t = coreStart; t < coreEnd; t++) {
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
