@@ -27,7 +27,7 @@
 #include "../../../common/op_kernel/memcopy/gm_layout.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 
 // ---------------------------------------------------------------------------
 // 布局/格式推导 helper（源自 fork common/op_kernel/memcopy/{gm_format,mem_format}.h，
@@ -224,6 +224,6 @@ public:
     }
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 
 #endif // FLASH_MLA_WITH_KVCACHE_TYPE_H_

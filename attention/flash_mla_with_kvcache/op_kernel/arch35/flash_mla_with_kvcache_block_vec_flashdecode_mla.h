@@ -15,7 +15,7 @@
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_MLA_H
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_MLA_H
 
-#include "attenmask_gs1.h"
+#include "../utils/attenmask_gs1.h"
 
 #if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
@@ -27,7 +27,7 @@
 #include "flash_mla_with_kvcache_public_define_arch35.h"
 #include "flash_mla_with_kvcache_type.h"
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 // ConstInfo_t 解析为 MLA 的 ConstInfoX（= ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>）；
 // FA fd 构造与 DataCopySoftmaxLse* 模板取 ConstInfo_t，两个 struct 字段完全一致。
 using ConstInfoX = AttentionCommon::ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
@@ -466,5 +466,5 @@ public:
     }
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 #endif
