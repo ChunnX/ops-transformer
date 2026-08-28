@@ -79,6 +79,7 @@ constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // 直方图每次计算0-255
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr uint32_t JETTY_CNT = 1U;   // 打桩 通信使用jetty个数  仅取1或2
+constexpr bool ENABLE_DISPATCH_WAIT = false; // 打桩 在dispatch内等待所有slot状态位到达
 constexpr uint32_t MAX_BATCH_SIZE = 160 * 1024U;   // 打桩 通信地址信息 160KB
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 256U;
 constexpr uint32_t HCOMM_WRITE_TASK_BYTES = 64U;
@@ -124,6 +125,7 @@ private:
     __aicore__ inline void WriteAddrInfoTable(uint32_t copyStride, DataCopyParams &addrInfoCopyOutParams);
     __aicore__ inline void CopyInMetaInfo(uint32_t tokenId);
     __aicore__ inline void WriteToRemoteWindow();
+    __aicore__ inline void DispatchWaitNotify();
     __aicore__ inline void CommBufferInit();
     __aicore__ inline void SendTokenByAddrInfo(uint32_t tokenNum, uint64_t commHandle, GM_ADDR remoteWinBaseAddr,
                                                GM_ADDR notifyAddr, GlobalTensor<uint64_t> slotAddrInfoGMTensor);
@@ -870,6 +872,40 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DispatchWaitNotify()
+{
+    if (!ENABLE_DISPATCH_WAIT) {
+        return;
+    }
+    if (aivId_ != aivNum_ - 1) {
+        return;
+    }
+
+    uint32_t totalNotifyCnt = epWorldSize_ * JETTY_CNT;
+    GlobalTensor<int32_t> statusGMTensor;
+    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
+    LocalTensor<int32_t> waitStatus = tempBuf_.GetWithOffset<int32_t>(totalNotifyCnt * UB_STRIDE, 0);
+    LocalTensor<float> waitStatusFp32 = waitStatus.template ReinterpretCast<float>();
+    LocalTensor<int32_t> waitSum = tempBuf_.GetWithOffset<int32_t>(UB_ALIGN, totalNotifyCnt * UB_ALIGN);
+    LocalTensor<float> waitSumFp32 = waitSum.template ReinterpretCast<float>();
+    LocalTensor<float> sharedTmp = tempBuf_.GetWithOffset<float>(2 * WIN_ADDR_ALIGN, totalNotifyCnt * UB_ALIGN + UB_ALIGN);
+    DataCopyParams statusCopyParams = {static_cast<uint16_t>(totalNotifyCnt), 1U,
+                                       static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
+    uint32_t mask = 1;
+    int32_t sumOfFlag = 0;
+    int32_t commpareFlag = static_cast<int32_t>(totalNotifyCnt);
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+
+    while (sumOfFlag != commpareFlag) {
+        DataCopy(waitStatus, statusGMTensor, statusCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        ReduceSum(waitSumFp32, waitStatusFp32, sharedTmp, mask, totalNotifyCnt, 1);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        sumOfFlag = waitSum.GetValue(0);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStartNum()
 {
     slotIdxPerRankTensor_ = sendCntExpertBuf_.GetWithOffset<int32_t>(epWorldSizeAlign_ / sizeof(int32_t), 0);
@@ -992,6 +1028,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         SendPhase();
         SyncAll<true>();
         WriteToRemoteWindow();
+        DispatchWaitNotify();
     }
 }
 
