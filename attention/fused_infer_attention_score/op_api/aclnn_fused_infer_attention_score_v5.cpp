@@ -54,6 +54,8 @@ __attribute__((visibility("default"))) aclnnStatus CheckTensorContiguous(
     const aclTensorList *key, const aclTensorList *value,
     const aclTensor *keyAntiquantScaleOptional,
     const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *keyAntiquantOffsetOptional,
+    const aclTensor *valueAntiquantOffsetOptional,
     const aclTensor *keyRopeOptional);
 
 aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
@@ -183,6 +185,8 @@ aclnnStatus CheckTensorContiguous(
     const aclTensorList *key, const aclTensorList *value,
     const aclTensor *keyAntiquantScaleOptional,
     const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *keyAntiquantOffsetOptional,
+    const aclTensor *valueAntiquantOffsetOptional,
     const aclTensor *keyRopeOptional)
 {
     if ((key != nullptr && !IsContiguous((*key)[0])) || (value != nullptr && !IsContiguous((*value)[0]))) {
@@ -192,7 +196,9 @@ aclnnStatus CheckTensorContiguous(
         return ACLNN_ERR_INNER_TILING_ERROR;
     }
     if ((keyAntiquantScaleOptional != nullptr && !IsContiguous(keyAntiquantScaleOptional)) ||
-        (valueAntiquantScaleOptional != nullptr && !IsContiguous(valueAntiquantScaleOptional))) {
+        (valueAntiquantScaleOptional != nullptr && !IsContiguous(valueAntiquantScaleOptional)) ||
+        (keyAntiquantOffsetOptional != nullptr && !IsContiguous(keyAntiquantOffsetOptional)) ||
+        (valueAntiquantOffsetOptional != nullptr && !IsContiguous(valueAntiquantOffsetOptional))) {
         return ACLNN_ERR_INNER_TILING_ERROR;
     }
     return ACLNN_SUCCESS;
@@ -244,7 +250,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
     aclnnStatus ret =
-        CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
+        CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional,
+                               keyAntiquantOffsetOptional, valueAntiquantOffsetOptional, keyRopeOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
         return ret;
