@@ -1,32 +1,58 @@
-# KeyPool Phase 1 CPU Golden
+# KeyPool Tests
 
-`key_pool_golden.py`包含两套实现：
+This directory contains the maintained KeyPool validation entry points. The
+tests use the public `torch_npu.key_pool` interface and the independent CPU
+Golden implementation. Legacy parameter-combination, batch data conversion,
+profiling, and ad-hoc JIT loader scripts are intentionally not part of the
+release tree.
 
-- `run_key_pool_golden`：逐Batch、逐Token读取Block Table和State Cache的参考实现。
-- `run_key_pool_oracle`：向量化读取Cache、分组Softmax和加权ReduceSum的独立Torch实现。
+## Maintained Files
 
-两套实现都覆盖：
+| File | Purpose |
+| --- | --- |
+| `key_pool_golden.py` | Scalar Golden and independent Torch Oracle |
+| `key_pool_test_utils.py` | Deterministic input builders and Golden checks |
+| `key_pool_public_loader.py` | Loads only the installed KeyPool public module |
+| `test_key_pool_golden.py` | CPU Golden and cache-boundary unit tests |
+| `test_key_pool_step01_baseline.py` | Baseline BSH/TH, history, ratio, and block cases |
+| `test_key_pool_public_interface.py` | Public signature, schema, Meta, and rejection checks |
+| `test_key_pool_public_npu.py` | Direct NPU functional and precision regression |
+| `test_key_pool_precision_standalone.py` | Standalone NPU-versus-Golden precision check |
+| `test_key_pool_layout_equivalence_npu.py` | BSH/TH and batch-position equivalence |
+| `test_key_pool_chunk_equivalence_npu.py` | Single-call versus chunked-call equivalence |
+| `test_key_pool_determinism_npu.py` | Repeatability and cache determinism |
+| `key_pool_long_sequence_npu.py` | Long-sequence regression, including 32K cases |
+| `pytest.ini` | Pytest markers and local test configuration |
+
+## Coverage
+
+The maintained tests cover:
 
 ```text
-BSH [B,S,H]
-TH  [T,H] + cu_seqlens[B+1]
-K/Gate投影
-可选LayerNorm
-State Cache写入
-Block Table寻址
-Gate + APE
-逐通道Softmax
-BF16概率量化
-加权K归约
-固定容量输出和无效尾部清零
+BSH [B, S, H]
+TH  [T, H] with cu_seqlens
+K/Gate projection
+optional LayerNorm
+state-cache update and Block Table addressing
+Gate + APE pooling
+all supported compression ratios
+fixed-capacity pooled output and zero tail
+non-empty RoPE rejection
 ```
 
-首版本RoPE接口保留，但传入非空`cos/sin`时显式抛出
-`NotImplementedError`，不静默忽略。
+RoPE remains an interface placeholder. Non-empty `cos`/`sin` inputs must be
+rejected explicitly and must not be silently ignored.
 
-设置`KEYPOOL_CASE_ROOT`后，`test_key_pool_manifest.py`会读取Phase 0.5归档的
-Smoke、Typical、Full和Performance manifest。正常用例执行两套Oracle
-bitwise比对；异常用例在接口阶段继续补充逐项拒绝验证。
+The NPU scripts are intended to run after the CANN, custom OPP, and wheel
+environments have been loaded. They do not require `torchair`.
 
-本地Windows没有PyTorch/CANN运行环境，因此测试在A2/A5远端CPU Python环境中
-执行。此阶段不调用NPU算子，也不声称NPU精度通过。
+Typical commands:
+
+```bash
+python3 -m pytest -q test_key_pool_golden.py test_key_pool_step01_baseline.py
+python3 -m pytest -q test_key_pool_public_interface.py
+python3 test_key_pool_public_npu.py --case all
+python3 test_key_pool_public_npu.py --case all --norm-on
+python3 key_pool_long_sequence_npu.py --norm-off
+python3 key_pool_long_sequence_npu.py --norm-on
+```

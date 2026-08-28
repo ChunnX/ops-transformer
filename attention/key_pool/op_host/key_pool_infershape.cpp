@@ -38,22 +38,14 @@ namespace ops {
 struct KeyPoolProtoShapeParam {
     bool isBsMerge { false };
     int64_t B { 0 };
-    int64_t T { 0 };
-    int64_t S { 0 };
     int64_t Sr { 0 };
-    int64_t H { 0 };
     int64_t D { 0 };
 };
 
-// tmp
-constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;
-constexpr uint32_t DIM_NUM_4 = 4;
 constexpr uint32_t DIM_INDEX_0 = 0;
 constexpr uint32_t DIM_INDEX_1 = 1;
-constexpr uint32_t DIM_INDEX_2 = 2;
-constexpr uint32_t DIM_INDEX_3 = 3;
 
 ge::graphStatus GetKeyPoolShapeDim(const gert::InferShapeContext* context, KeyPoolProtoShapeParam &shapeParam)
 {
@@ -86,18 +78,13 @@ ge::graphStatus GetKeyPoolShapeDim(const gert::InferShapeContext* context, KeyPo
     if (hiddenStatesShape->GetDimNum() == DIM_NUM_3) {                // BS
         shapeParam.isBsMerge = false;
         shapeParam.B = hiddenStatesShape->GetDim(DIM_INDEX_0);
-        shapeParam.S = hiddenStatesShape->GetDim(DIM_INDEX_1);
         shapeParam.Sr = (hiddenStatesShape->GetDim(DIM_INDEX_1) + cmpRatio - 1) / cmpRatio;
-        shapeParam.H = hiddenStatesShape->GetDim(DIM_INDEX_2);
-        shapeParam.T = shapeParam.B * shapeParam.S;
     } else {                                                    // T
         shapeParam.isBsMerge = true;
         auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQLENS_INPUT_INDEX);
         shapeParam.B = cuSeqlensShape->GetDim(DIM_INDEX_0) - 1;
         shapeParam.Sr = (cacheBlockTableShape->GetDim(DIM_INDEX_1) * stateCacheShape->GetDim(DIM_INDEX_1) +
             cmpRatio - 1) / cmpRatio;
-        shapeParam.T = hiddenStatesShape->GetDim(DIM_INDEX_0);
-        shapeParam.H = hiddenStatesShape->GetDim(DIM_INDEX_1);
     }
 
     shapeParam.D = wkShape->GetDim(DIM_INDEX_0);
@@ -114,9 +101,6 @@ ge::graphStatus SetKeyPoolShapeDim(const KeyPoolProtoShapeParam &shapeParam, ger
     // KeyPool always returns a fixed-capacity BSH tensor.
     auto pooledKeyShape = context->GetOutputShape(POOLED_KEY_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, pooledKeyShape);
-    auto attr = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attr);
-    // Set output shape
     pooledKeyShape->SetDimNum(DIM_NUM_3);
     pooledKeyShape->SetDim(DIM_INDEX_0, shapeParam.B);
     pooledKeyShape->SetDim(DIM_INDEX_1, shapeParam.Sr);

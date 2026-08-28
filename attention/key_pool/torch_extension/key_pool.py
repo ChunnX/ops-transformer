@@ -10,17 +10,16 @@
 from typing import Optional
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class KeyPoolOpBuilder(OpBuilder):
     def __init__(self):
-        super(KeyPoolOpBuilder, self).__init__("key_pool")
+        super(KeyPoolOpBuilder, self).__init__("key_pool", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
-        return ["ops/csrc/key_pool.cpp"]
+        return ["csrc/attention/key_pool.cpp"]
 
     def schema(self):
         """PyTorch operator signature."""
@@ -38,7 +37,7 @@ class KeyPoolOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def key_pool_meta(
             hidden_states,
             wk,
@@ -78,9 +77,10 @@ class KeyPoolOpBuilder(OpBuilder):
 
 
 key_pool_op_builder = KeyPoolOpBuilder()
+key_pool_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, key_pool_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), key_pool_op_builder.name, "PrivateUse1")
 def key_pool(
     hidden_states: torch.Tensor,
     wk: torch.Tensor,
@@ -101,8 +101,10 @@ def key_pool(
     rotary_mode: int = 1,
 ) -> torch.tensor:
     """
-    dispatcher implementation for NPU.
-    'PrivateUse1' is the combine key for custom NPU backends.
+    Run the KeyPool aclnn operator on NPU tensors.
+
+    BSH input uses ``[B, S, H]``. TH input uses ``[T, H]`` together with
+    ``cu_seqlens``.
     """
     if (norm_weight is None) != (norm_bias is None):
         raise ValueError("norm_weight and norm_bias must be passed as a pair")

@@ -14,7 +14,6 @@
  */
 
 #if (__CCE_AICORE__ == 220)
-#include "arch22/key_pool_kernel.h"
 #include "arch22/key_pool_kernel_perf.h"
 #include "arch22/key_pool_kernel_full_load.h"
 #else

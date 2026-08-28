@@ -14,42 +14,79 @@ from typing import List, Union
 import torch
 from torch.utils.cpp_extension import load
 from torch.library import Library
-import torch_npu
-import cann_ops_transformer
 
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
-AS_LIBRARY = Library("cann_ops_transformer", "DEF")
+_as_library = None
+
+
+def get_as_library():
+    global _as_library
+    if _as_library is None:
+        try:
+            _as_library = Library("cann_ops_transformer", "DEF")
+        except RuntimeError:
+            _as_library = Library("cann_ops_transformer", "FRAGMENT")
+    return _as_library
+
+
+# Keep the legacy symbol available for centralized operators that have not
+# moved to the distributed torch_extension layout yet.
+AS_LIBRARY = get_as_library()
 
 
 class OpBuilder(ABC):
-    """
-    Base class for building ops with aclnn
-    """
+    """Base class for building operators backed by an aclnn API."""
 
-    _cann_path = None
-    _torch_npu_path = None
-    _cann_version = None
     _loaded_ops = {}
 
-    def __init__(self, name):
+    def __init__(self, name, category=None):
         self.name = name
-        self._cann_path = self.get_cann_path()
+        self.category = category
+        self._initialized = False
+        self._ensure_initialized()
+
+    def _ensure_initialized(self):
+        if self._initialized:
+            return
+
+        import torch_npu
+
         self._torch_npu_path = os.path.dirname(os.path.abspath(torch_npu.__file__))
         self._package_path = os.path.dirname(
-            os.path.abspath(cann_ops_transformer.__file__)
+            os.path.dirname(os.path.abspath(__file__))
         )
-        self.register_schema(self.schema())
-        self.register_meta()
+        self._cann_path = self.get_cann_path()
+        if not hasattr(torch.ops.cann_ops_transformer, self.name):
+            self.register_schema(self.schema())
+            self.register_meta()
+        self._initialized = True
 
     def get_cann_path(self):
         if ASCEND_HOME_PATH in os.environ and os.path.exists(
             os.environ[ASCEND_HOME_PATH]
         ):
             return os.environ[ASCEND_HOME_PATH]
-        return None
+        return os.path.dirname(os.path.dirname(self._torch_npu_path))
+
+    @property
+    def cann_path(self):
+        self._ensure_initialized()
+        return self._cann_path
+
+    @property
+    def torch_npu_path(self):
+        self._ensure_initialized()
+        return self._torch_npu_path
 
     def get_absolute_paths(self, paths):
+        self._ensure_initialized()
         return [os.path.join(self._package_path, path) for path in paths]
+
+    def resolve_source(self, cpp_filename):
+        self._ensure_initialized()
+        if self.category is None:
+            return cpp_filename
+        return f"csrc/{self.category}/{cpp_filename}"
 
     def register_schema(self, op_schema: Union[str, List[str], None]):
         if op_schema is None:
@@ -57,7 +94,7 @@ class OpBuilder(ABC):
         if isinstance(op_schema, str):
             op_schema = [op_schema]
         for schema in op_schema:
-            AS_LIBRARY.define(schema)
+            get_as_library().define(schema)
 
     @abstractmethod
     def sources(self): ...
@@ -68,14 +105,41 @@ class OpBuilder(ABC):
     @abstractmethod
     def register_meta(self): ...
 
+    def _custom_opp_paths(self):
+        custom_opp_paths = []
+        custom_opp_env = os.environ.get("ASCEND_CUSTOM_OPP_PATH", "")
+        for custom_opp_path in custom_opp_env.split(os.pathsep):
+            custom_opp_path = custom_opp_path.strip()
+            if custom_opp_path and os.path.isdir(custom_opp_path):
+                custom_opp_paths.append(custom_opp_path)
+
+        vendors_dir = os.path.join(self._cann_path, "opp", "vendors")
+        if os.path.isdir(vendors_dir):
+            for vendor_name in sorted(os.listdir(vendors_dir)):
+                vendor_dir = os.path.join(vendors_dir, vendor_name)
+                if os.path.isdir(vendor_dir):
+                    custom_opp_paths.append(vendor_dir)
+        return custom_opp_paths
+
     def include_paths(self):
-        paths = [
-            os.path.join(self._torch_npu_path, "include"),
-            os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
-            os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
-            os.path.join(self._cann_path, "include"),
-            os.path.join(self._package_path, "common/inc"),
-        ]
+        self._ensure_initialized()
+        paths = []
+        for vendor_dir in self._custom_opp_paths():
+            include_path = os.path.join(vendor_dir, "op_api", "include")
+            if os.path.isdir(include_path):
+                paths.append(include_path)
+        paths.extend(
+            [
+                os.path.join(self._torch_npu_path, "include"),
+                os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
+                os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
+                os.path.join(self._torch_npu_path, "include/third_party/op-plugin"),
+                os.path.join(self._cann_path, "include"),
+                os.path.join(self._cann_path, "include/aclnnop"),
+                os.path.join(self._package_path, "common"),
+                os.path.join(self._package_path, "common/inc"),
+            ]
+        )
         return paths
 
     def cxx_args(self):
@@ -97,17 +161,26 @@ class OpBuilder(ABC):
         return args
 
     def extra_ldflags(self):
-        flags = [
-            "-L" + os.path.join(self._cann_path, "lib64"),
-            "-lascendcl",
-            "-L" + os.path.join(self._torch_npu_path, "lib"),
-            "-ltorch_npu",
-        ]
+        self._ensure_initialized()
+        flags = []
+        for vendor_dir in self._custom_opp_paths():
+            lib_path = os.path.join(vendor_dir, "op_api", "lib")
+            if os.path.isdir(lib_path):
+                flags.append("-L" + lib_path)
+        flags.extend(
+            [
+                "-L" + os.path.join(self._cann_path, "lib64"),
+                "-lascendcl",
+                "-L" + os.path.join(self._torch_npu_path, "lib"),
+                "-ltorch_npu",
+            ]
+        )
         return flags
 
     def load(self, verbose=True):
-        if self.name in __class__._loaded_ops:
-            return __class__._loaded_ops[self.name]
+        self._ensure_initialized()
+        if self.name in OpBuilder._loaded_ops:
+            return OpBuilder._loaded_ops[self.name]
 
         op_module = load(
             name=self.name,
@@ -117,6 +190,6 @@ class OpBuilder(ABC):
             extra_ldflags=self.extra_ldflags(),
             verbose=verbose,
         )
-        __class__._loaded_ops[self.name] = op_module
+        OpBuilder._loaded_ops[self.name] = op_module
 
         return op_module

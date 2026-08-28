@@ -13,7 +13,6 @@
 namespace ops {
 class KeyPool : public OpDef {
 public:
-    static constexpr uint32_t ROPE_HEAD_DIM_VALUE = 64;
     static constexpr uint32_t CMP_RATIO_VALUE = 4;
     static constexpr uint32_t ROTARY_MODE_VALUE = 1;
     static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = 0;

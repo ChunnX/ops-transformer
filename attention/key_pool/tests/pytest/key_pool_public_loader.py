@@ -11,7 +11,7 @@ import torch_npu
 
 def load_key_pool_public_api():
     """Load only the KeyPool wheel modules, without importing unrelated operators."""
-    loaded = sys.modules.get("cann_ops_transformer.ops.key_pool")
+    loaded = sys.modules.get("cann_ops_transformer.ops.attention.key_pool")
     if loaded is not None:
         return loaded
 
@@ -33,8 +33,9 @@ def load_key_pool_public_api():
     sys.modules["cann_ops_transformer.ops"] = ops
     package.ops = ops
 
-    module = importlib.import_module("cann_ops_transformer.ops.key_pool")
+    module = importlib.import_module("cann_ops_transformer.ops.attention.key_pool")
     ops.key_pool = module.key_pool
-    ops.key_pool = module.key_pool
+    # Keep the historical module path available to existing test/spec loaders.
+    sys.modules["cann_ops_transformer.ops.key_pool"] = module
     torch_npu.key_pool = module.key_pool
     return module

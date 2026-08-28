@@ -46,8 +46,6 @@ private:
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     // ================================Process functions================================
     __aicore__ inline void InitTilingData();
-    // 获取基本块数量
-    __aicore__ inline void SkipInvalidBatch(BatchInfo &batchInfo);
     // 计算分核基本信息
     __aicore__ inline void CalcSplitCoreInfo();
 
@@ -56,7 +54,6 @@ private:
     __aicore__ inline void ComputeMm1(const RunInfo &info);
     __aicore__ inline void ComputeVec();
 
-    __aicore__ inline bool IsNeedExcuteC1(RunInfo info);
     __aicore__ inline void CalcCubeParams(RunInfo &info);
     __aicore__ inline void CalcV1Params(Vec1RunInfo &vec1Info);
 
@@ -70,9 +67,7 @@ private:
     static constexpr uint64_t SYNC_MODE2 = 2;
     static constexpr uint32_t SYNC_C1_FLAG = 3;
     static constexpr uint32_t SYNC_V1_FLAG = 4;
-    static constexpr uint32_t SYNC_V1_FLAG2 = 5;
     static constexpr uint32_t SYNC_C1_V1_FLAG = 7;
-    static constexpr uint32_t SYNC_V1_C1_FLAG = 9;
 
     // ==============================TilingData&TPipe==============================
     TPipe *pipe_;
@@ -93,7 +88,6 @@ private:
     KeyPoolBlockCubeFullLoad<COMP> blockCube_;
     KeyPoolBlockVectorFullLoad<COMP> blockVec_;
 
-    uint32_t accDealSize = 0;
     uint32_t loopTimes = 0;
     uint32_t cubeLoop = 0;
     uint32_t vec1Loop = 0;
@@ -191,32 +185,6 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::InitTilingData()
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolKernelFullLoad<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
-{
-    for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
-        if (batchInfo.seqCnt > 0) {
-            break;
-        }
-    }
-    batchInfo.remSeqCnt = batchInfo.seqCnt;
-    if (tools_.isExistSeqUsed_) {
-        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
-    } else {
-        batchInfo.seqUsedCnt = batchInfo.seqCnt;
-    }
-    if (batchInfo.bIdx < constInfo.batchSize) {
-        batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
-        batchInfo.sIdx = 0;
-        batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
-        batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio -
-                          batchInfo.bStartPos / constInfo.cmpRatio;
-        batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio -
-                                    batchInfo.bStartPos / constInfo.cmpRatio;
-    }
-}
-
-template <typename COMP>
 __aicore__ inline void KeyPoolKernelFullLoad<COMP>::CalcSplitCoreInfo()
 {
     // D方向的基本块数量
@@ -228,9 +196,8 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::CalcSplitCoreInfo()
     constInfo.mGroupNum = constInfo.coreGroupNum;
     constInfo.mCurGroupIdx = constInfo.curGroupIdx;
 
-    constexpr uint32_t coff = 1;
-    constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim;
+    constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim;
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
@@ -301,13 +268,6 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::FreeEventID()
     } else {
         blockVec_.FreeEventID();
     }
-}
-
-template <typename COMP>
-__aicore__ inline bool KeyPoolKernelFullLoad<COMP>::IsNeedExcuteC1(RunInfo info)
-{
-    // B超出范围则cube不执行
-    return info.bStart < constInfo.batchSize;
 }
 
 template <typename COMP>

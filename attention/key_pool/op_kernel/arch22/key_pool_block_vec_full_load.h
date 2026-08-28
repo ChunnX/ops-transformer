@@ -1083,7 +1083,6 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::UpdateIteratorState(Vec
     splitInfo.curBStart = splitInfo.preDealBatchNum;
     splitInfo.dealSeqCnt = splitInfo.dealBatchNum * constInfo_.sSize;
     splitInfo.curSStart = 0;
-    uint32_t endB = splitInfo.preDealBatchNum + splitInfo.dealBatchNum;
     for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
         uint32_t startPos = GetStartPos(curB);
         uint32_t seqLength = GetSeqLength(curB);
@@ -1257,56 +1256,13 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ComputeIncrementalPool(
         return;
     }
     dDealSize = min(dDealSize, constInfo_.headDim - dStartIdx);
-    uint32_t maxPoolCount = BUFFER_SIZE_BYTE_16K / (cmpRatio_ * dDealSize * sizeof(T));
-    maxPoolCount = max(maxPoolCount, 1U);
     uint32_t outputPoolCapacity =
         CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
 
-    apeUb = inputQueApe.AllocTensor<T>();
-    CopyInApe(dStartIdx, dDealSize);
-    inputQueApe.EnQue(apeUb);
-    inputQueApe.DeQue<T>();
-    LocalTensor<T> scoreLocal = tmpBuf1.Get<T>();
-    LocalTensor<T> kvLocal = scoreLocal[BUFFER_SIZE_BYTE_16K / sizeof(T)];
-    LocalTensor<T> tmpUb = tmpBuf2.Get<T>();
-
     for (uint32_t bIdx = 0; bIdx < constInfo_.batchSize; bIdx++) {
-        // With LayerNorm, the cache is normalized after the streaming path.
-        // Rebuild first-pass pools from the normalized cache as well.
         uint32_t startPool = GetStartPos(bIdx) / cmpRatio_;
         uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;
         uint32_t newPoolCount = validPoolCount > startPool ? validPoolCount - startPool : 0;
-        if (false) {
-            for (uint32_t poolStart = startPool; poolStart < validPoolCount; poolStart += maxPoolCount) {
-            uint32_t poolCount = min(maxPoolCount, validPoolCount - poolStart);
-            uint32_t tokenStart = poolStart * cmpRatio_;
-            uint32_t tokenEnd = (poolStart + poolCount) * cmpRatio_;
-            ReadFromCacheState(kvLocal, stateCacheGm_, stateBlockTableGm_, bIdx, tokenStart, tokenEnd,
-                               dStartIdx, dDealSize, kvStateIdx_);
-            ReadFromCacheState(scoreLocal, stateCacheGm_, stateBlockTableGm_, bIdx, tokenStart, tokenEnd,
-                               dStartIdx, dDealSize, scoreStateIdx_);
-            AddApeToPooledScore(scoreLocal, poolCount, dDealSize);
-            PipeBarrier<PIPE_V>();
-            SoftmaxDN(scoreLocal, tmpUb, poolCount, dDealSize);
-            PipeBarrier<PIPE_V>();
-            RoundToHiddenDtype(scoreLocal, poolCount * cmpRatio_ * dDealSize);
-            PipeBarrier<PIPE_V>();
-            KvMulReduceScore(kvLocal, scoreLocal, scoreLocal, tmpUb, poolCount, dDealSize);
-            PipeBarrier<PIPE_V>();
-
-            LocalTensor<HIDDEN_STATES_T> outputUb = outputQue1.AllocTensor<HIDDEN_STATES_T>();
-            Cast(outputUb, scoreLocal, RoundMode::CAST_ROUND, poolCount * dDealSize);
-            outputQue1.EnQue(outputUb);
-            outputQue1.DeQue<HIDDEN_STATES_T>();
-            uint64_t outputPoolIdx =
-                static_cast<uint64_t>(bIdx) * outputPoolCapacity + poolStart - startPool;
-            uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
-            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, poolCount, dDealSize, dDealSize,
-                                constInfo_.headDim);
-            PipeBarrier<PIPE_ALL>();
-            outputQue1.FreeTensor(outputUb);
-            }
-        }
         const uint32_t clearPoolCapacity = max(
             1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_16K / (dDealSize * sizeof(HIDDEN_STATES_T))));
         for (uint32_t clearStart = newPoolCount; clearStart < outputPoolCapacity; clearStart += clearPoolCapacity) {
@@ -1323,7 +1279,6 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ComputeIncrementalPool(
             outputQue1.FreeTensor(zeroUb);
         }
     }
-    inputQueApe.FreeTensor(apeUb);
 }
 
 } // namespace KeyPool

@@ -287,7 +287,6 @@ struct MSplitInfo {
 };
 
 // BUFFER的字节数
-inline constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
@@ -308,7 +307,6 @@ inline constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(bfloat16_
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
 inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;          // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
-inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;
 
 inline constexpr uint32_t NZ_FRACTAL_DIM = 16;
@@ -320,12 +318,6 @@ template <typename C>
 __aicore__ inline constexpr uint32_t BlockElementNum()
 {
     return static_cast<uint32_t>(BYTE_BLOCK / sizeof(C));
-}
-
-template <typename C>
-__aicore__ inline constexpr uint32_t RepeatElementNum()
-{
-    return static_cast<uint32_t>(REPEAT_BLOCK_BYTE / sizeof(C));
 }
 
 template <typename T>

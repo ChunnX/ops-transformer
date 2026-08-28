@@ -16,7 +16,7 @@
 
 #include <functional>
 #include <algorithm>
-#include <unordered_map>
+#include <sstream>
 #include <graph/utils/type_utils.h>
 #include "err/ops_err.h"
 #include "register/op_def_registry.h"
@@ -171,8 +171,6 @@ ge::graphStatus KeyPoolTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KeyPoolTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
-
 ge::graphStatus KeyPoolTiling::SetTemplateId()
 {
     if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
@@ -307,8 +305,7 @@ ge::graphStatus KeyPoolTiling::RunBigKernelTiling(KeyPoolTilingData *tilingData)
                                                     std::bind(&KeyPoolTiling::CheckBlockDimConstrain, this),
                                                     std::bind(&KeyPoolTiling::SetTemplateId, this),
                                                     std::bind(&KeyPoolTiling::SetInnerSplitInfo, this),
-                                                    std::bind(&KeyPoolTiling::SetWorkSpaceInfo, this),
-                                                    std::bind(&KeyPoolTiling::SetScenarioInfo, this)};
+                                                    std::bind(&KeyPoolTiling::SetWorkSpaceInfo, this)};
     for (const auto &func : requiredTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;

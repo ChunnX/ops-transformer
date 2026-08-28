@@ -17,34 +17,11 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-const int64_t DIM_ONE = 1;
 const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 const int64_t VALUE_0 = 0;
 const int64_t VALUE_1 = 1;
-const int64_t VALUE_2 = 2;
-
-std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
-{
-    auto sizes = tensor.sizes();
-    auto strides = tensor.strides();
-    int64_t ndim = sizes.size();
-    if (ndim == 0) {
-        return {};
-    }
-    std::vector<bool> result(ndim, false);
-
-    std::vector<int64_t> contiguousStride(ndim, 1);
-    for (int64_t i = ndim - 2; i >= 0; i--) {
-        contiguousStride[i] = contiguousStride[i + 1] * sizes[i + 1];
-    }
-
-    for (int64_t i = 0; i < ndim; i++) {
-        result[i] = (strides[i] == contiguousStride[i]);
-    }
-    return result;
-}
 
 at::Tensor ConstructKeyPoolOutputTensor(const at::Tensor &hidden_states, const at::Tensor &wk,
                                       const at::Tensor &stateCache, const at::Tensor &cacheBlockTable, int64_t cmpRatio)
@@ -101,10 +78,6 @@ at::Tensor KeyPool(const at::Tensor &hidden_states, const at::Tensor &wk, const 
     TORCH_CHECK(!seqused.has_value(), "seqused is reserved and must be None in this stage");
     at::Tensor pooledKey = ConstructKeyPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 
-    auto stateCacheDim = stateCache.dim();
-    TORCH_CHECK(stateCacheDim == DIM_THREE, "state_cache dim num[", stateCacheDim, "] should be 3");
-
-    auto contiguousAxesResult = IsContiguousAxes(stateCache);
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
     if (cuSeqlens.has_value()) {
@@ -119,39 +92,6 @@ at::Tensor KeyPool(const at::Tensor &hidden_states, const at::Tensor &wk, const 
               stateCacheStrideDim0, pooledKey);
 
     return pooledKey;
-}
-
-at::Tensor KeyPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight,
-                     const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
-                     const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
-                     const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
-                     const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &cuSeqlens,
-                     const c10::optional<at::Tensor> &seqused,
-                     int64_t cmpRatio, double normEps, int64_t rotaryMode)
-{
-    TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
-    auto hiddenStatesDim = hidden_states.dim();
-    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE, "hidden_states dim num[", hiddenStatesDim, "] should be 2 or 3");
-
-    TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
-
-    TORCH_CHECK(normWeight.has_value() == normBias.has_value(),
-                "norm_weight and norm_bias must be provided as a pair");
-    if (normWeight.has_value()) {
-        TORCH_CHECK(normWeight->scalar_type() == at::kFloat && normBias->scalar_type() == at::kFloat,
-                    "norm_weight and norm_bias must be FP32");
-        TORCH_CHECK(normWeight->dim() == DIM_ONE && normBias->dim() == DIM_ONE,
-                    "norm_weight and norm_bias must be rank-1");
-        TORCH_CHECK(normWeight->size(0) == wk.size(0) && normBias->size(0) == wk.size(0),
-                    "norm_weight and norm_bias size must match wk.size(0)");
-    }
-    TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
-    TORCH_CHECK(cos.has_value() == sin.has_value(), "cos and sin must be provided as a pair");
-    TORCH_CHECK(!cos.has_value(), "KeyPool RoPE is not implemented in this stage");
-    TORCH_CHECK(hiddenStatesDim != DIM_TWO || cuSeqlens.has_value(), "cu_seqlens is required for TH layout");
-    TORCH_CHECK(hiddenStatesDim != DIM_THREE || !cuSeqlens.has_value(), "cu_seqlens must be absent for BSH layout");
-    TORCH_CHECK(!seqused.has_value(), "seqused is reserved and must be None in this stage");
-    return ConstructKeyPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

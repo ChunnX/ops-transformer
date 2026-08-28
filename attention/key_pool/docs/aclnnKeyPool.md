@@ -2,285 +2,224 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品 | 是否支持 |
+| --- | :---: |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 | √ |
+| Ascend 950PR/Ascend 950DT（A5） | √ |
+
+本版本的实机验证范围为 A2 和 A5。A3 不在本版本验证范围内。
 
 ## 功能说明
 
-- 接口功能：KeyPool是推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，KeyPool可以有效地减少计算开销。主要计算过程为：
-    1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
-    2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
-    3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
+KeyPool 是推理场景下的 Key 压缩算子。算子对每个输入 token 分别执行 K
+投影和 Gate 投影，按 `cmpRatio` 个 token 进行 Gate 加权池化，并将未完成
+压缩组所需的中间状态写入分页 `stateCache`。
 
-- 计算公式：
+对当前输入的每个 token：
 
-    1. 计算矩阵乘法：
+```text
+K = hidden_states @ wk.T
+G = hidden_states @ gate_weight.T
+K_norm = LayerNorm(K, dim=-1)  # 提供 normWeight/normBias 时
+```
 
-    $$
-    C4A：\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];
-    $$
+对第 `p` 个压缩组：
 
-    $$
-    C128A：\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]
-    $$
+```text
+logits[r] = G[p * cmpRatio + r] + ape[r]
+weight = softmax(logits, dim=0)
+pooled_key[p] = sum(weight[r] * K_norm[p * cmpRatio + r], dim=0)
+```
 
-    2. 计算分组加法：
+历史 token 通过 `cacheBlockTable` 从 `stateCache` 读取，当前输入 token 的投影
+结果优先使用当前调用产生的数据。`ape` 不写入 `stateCache`。RoPE 参数入口
+保留用于后续扩展，但当前版本不实现 RoPE；传入非空 `cos`/`sin` 会返回参数
+错误。
 
-    $$
-    C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
-    $$
-
-    $$
-    C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
-    $$
-
-    3. 计算分组Softmax：
-
-    $$
-    C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
-    $$
-
-    $$
-    C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
-    $$
-
-    4. 计算Hadamard乘积：
-
-    $$
-    C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
-    $$
-
-    $$
-    C128A：S_H = S_i^\prime \odot kv\_state;
-    $$
-
-    5. 沿着压缩轴分组求和：
-
-    $$
-    C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
-    $$
-
-    $$
-     C128A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};
-    $$
+LayerNorm 沿每个 token 的最后一维 `D` 独立计算，不跨 token 归约。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnKeyPoolGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnKeyPool”接口执行计算。
+算子采用两段式接口。必须先调用
+`aclnnKeyPoolGetWorkspaceSize` 获取 workspace 大小和 executor，再调用
+`aclnnKeyPool` 执行计算。
 
 ```cpp
 aclnnStatus aclnnKeyPoolGetWorkspaceSize(
-    const aclTensor *x,
-    const aclTensor *wkv,
-    const aclTensor *wgate,
-    aclTensor       *stateCacheRef,
+    const aclTensor *hiddenStates,
+    const aclTensor *wk,
+    const aclTensor *gateWeight,
     const aclTensor *ape,
-    const aclTensor *stateBlockTableOptional,
+    aclTensor       *stateCacheRef,
+    const aclTensor *cacheBlockTable,
+    const aclTensor *startPos,
+    const aclTensor *normWeightOptional,
+    const aclTensor *normBiasOptional,
+    const aclTensor *cosOptional,
+    const aclTensor *sinOptional,
     const aclTensor *cuSeqlensOptional,
     const aclTensor *sequsedOptional,
-    const aclTensor *startPosOptional,
     int64_t          cmpRatio,
-    int64_t          coff,
-    int64_t          cacheMode,
+    double           normEps,
+    int64_t          rotaryMode,
     int64_t          stateCacheStrideDim0,
-    const aclTensor *cmpKvOut,
+    aclTensor       *pooledKeyOut,
     uint64_t        *workspaceSize,
-    aclOpExecutor   **executor)
+    aclOpExecutor  **executor);
 ```
 
-``` cpp
+```cpp
 aclnnStatus aclnnKeyPool(
-  void          *workspace,
-  uint64_t       workspaceSize,
-  aclOpExecutor *executor,
-  aclrtStream    stream)
+    void          *workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor  *executor,
+    aclrtStream     stream);
 ```
+
+`stateCacheRef` 为原地更新输入，`pooledKeyOut` 是唯一输出。
 
 ## aclnnKeyPoolGetWorkspaceSize
 
-- **参数说明**
+### 参数说明
 
-    | 参数名                      | 输入/输出 | 描述  |  使用说明  | 数据类型       | 数据格式   | 维度（shape） | 非连续Tensor |
-    |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|-|-|-|
-    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 |  支持B=0,S=0,T=0的空Tensor。  | FLOAT16、BFLOAT16 | ND         | BS合轴：[T,H]、BS非合轴：[B,S,H]|×|
-    | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  |不支持空Tensor。| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
-    | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 |不支持空Tensor。| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
-    | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2*coff* D]|支持0轴非连续|
-    | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor。|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
-    | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；支持S=0,T=0的空Tensor。| INT32 | ND         |cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
-    | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
-    | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 |如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor；如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。| INT32          | ND         |[B,]|×|
-    | startPos | 可选输入 | 表示计算起始位置。 |支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
-    | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 128]内的整数。| INT32          | -         |-|-|
-    | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
-    | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
-    | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
-    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| FLOAT16、BFLOAT16         | ND          |BS合轴：[min(T,T//cmp_ratio+B),D]、BS非合轴：[B,ceil(S/cmp_ratio),D]|×|
+| 参数 | 输入/输出 | 数据类型 | Shape | 说明 |
+| --- | --- | --- | --- | --- |
+| `hiddenStates` | 输入 | BF16/FP16 | BSH `[B,S,H]` 或 TH `[T,H]` | 当前调用的 token |
+| `wk` | 输入 | 与 `hiddenStates` 相同 | `[D,H]` | K 投影权重 |
+| `gateWeight` | 输入 | 与 `hiddenStates` 相同 | `[D,H]` | Gate 投影权重 |
+| `ape` | 输入 | FP32 | `[R,D]` | `R=cmpRatio` 的位置偏置 |
+| `stateCacheRef` | 输入/输出 | FP32 | `[N,BS,2D]` | 前 `D` 列保存 K，后 `D` 列保存原始 Gate |
+| `cacheBlockTable` | 输入 | INT32 | `[B,L]` | 逻辑 block 到物理 block 的映射 |
+| `startPos` | 输入 | INT32 | `[B]` | 每个 batch 的逻辑起始位置 |
+| `normWeightOptional` | 可选输入 | FP32 | `[D]` | 与 `normBiasOptional` 成对出现 |
+| `normBiasOptional` | 可选输入 | FP32 | `[D]` | 与 `normWeightOptional` 成对出现 |
+| `cosOptional` | 可选输入 | BF16 | 保留接口 | 当前版本必须为空 |
+| `sinOptional` | 可选输入 | BF16 | 保留接口 | 当前版本必须为空 |
+| `cuSeqlensOptional` | 可选输入 | INT32 | TH 时 `[B+1]` | BSH 时必须为空 |
+| `sequsedOptional` | 可选输入 | INT32 | 保留接口 | 当前版本必须为空 |
+| `cmpRatio` | 属性 | INT64 | 标量 | 压缩率 |
+| `normEps` | 属性 | FLOAT | 标量 | LayerNorm epsilon |
+| `rotaryMode` | 属性 | INT64 | 标量 | RoPE 模式入口 |
+| `stateCacheStrideDim0` | 属性 | INT64 | 标量 | `stateCache` 第 0 轴 stride |
+| `pooledKeyOut` | 输出 | 与 `hiddenStates` 相同 | `[B,Pcap,D]` | 固定容量池化结果 |
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
- cacheMode不支持输入2，且不支持0轴非连续。
- cmp_ratio仅支持2/4/8/16/32/64/128
+其中：
 
-- **返回值**
+- `R = cmpRatio`；
+- `N` 为物理 block 数；
+- `BS` 为 block size；
+- `L` 为每个 batch 的最大逻辑 block 数；
+- `Pcap = ceil(L * BS / cmpRatio)`。
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+输入 tensor 使用 ND 格式。`stateCacheRef` 是原地输入，不应在两次算子调用
+之间被释放或改作其他用途。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+### 属性约束
 
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-    <col style="width: 319px">
-    <col style="width: 144px">
-    <col style="width: 671px">
-    </colgroup>
-      <thead>
-        <tr>
-          <th>返回值</th>
-          <th>错误码</th>
-          <th>描述</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>ACLNN_ERR_PARAM_NULLPTR</td>
-          <td>161001</td>
-          <td>必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。</td>
-        </tr>
-        <tr>
-          <td>ACLNN_ERR_PARAM_INVALID</td>
-          <td>161002</td>
-          <td>输入参数的shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
-        </tr>
-        <tr>
-          <td>ACLNN_ERR_RUNTIME_ERROR</td>
-          <td>361001</td>
-          <td>API内存调用NPU Runtime接口时发生异常（如Runtime服务未启动、内存申请失败等）。</td>
-        </tr>
-        <tr>
-          <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-          <td>561002</td>
-          <td>tiling发生异常，入参的dtype类型或者shape错误。</td>
-        </tr>
-      </tbody>
-    </table>
+| 属性 | 默认值 | 支持范围 |
+| --- | --- | --- |
+| `cmpRatio` | 4 | `2/4/8/16/32/64/128` |
+| `normEps` | `1e-6` | 大于 0 |
+| `rotaryMode` | 1 | `0/1` |
+| `stateCacheStrideDim0` | 0 | 由调用方传入实际 stride |
+
+### 返回值
+
+返回 `aclnnStatus`。第一段接口负责参数、shape、dtype 和 workspace 校验，
+常见错误码包括：
+
+| 返回值 | 错误码 | 含义 |
+| --- | --- | --- |
+| `ACLNN_ERR_PARAM_NULLPTR` | 161001 | 必须提供的参数为空 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | shape、dtype、属性或布局不支持 |
+| `ACLNN_ERR_RUNTIME_ERROR` | 361001 | Runtime 或内存申请失败 |
+| `ACLNN_ERR_INNER_TILING_ERROR` | 561002 | Tiling 失败 |
 
 ## aclnnKeyPool
 
-- **参数说明**
+第二段接口的参数含义与其他 aclnn 两段式接口一致：
 
-  <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
-  <col style="width: 153px">
-  <col style="width: 121px">
-  <col style="width: 880px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnKeyPoolGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+| 参数 | 说明 |
+| --- | --- |
+| `workspace` | Device 侧 workspace 地址 |
+| `workspaceSize` | 第一段接口返回的 workspace 大小 |
+| `executor` | 第一段接口生成的算子执行器 |
+| `stream` | 执行算子的 ACL stream |
 
-- **返回值**
+## Shape 和布局约束
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+### hiddenStates
 
-## 约束说明
+- BSH：`hiddenStates` 为 `[B,S,H]`，`cuSeqlensOptional` 必须为空。
+- TH：`hiddenStates` 为 `[T,H]`，`cuSeqlensOptional` 必须为 `[B+1]`。
+- TH 下 `cuSeqlens[0] == 0`，元素单调不减，且
+  `cuSeqlens[B] == T`。
+- `cacheBlockTable` 和 `startPos` 的第 0 维必须等于 `B`。
+- TH 输入允许存在长度为 0 的 batch。
 
-- 确定性计算：
-  - aclnnKeyPool默认确定性实现。
-- x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
-- 输入shape限制：
-    - wkv支持输入shape[coff* D,H]
-    - wgate支持输入shape[coff* D,H]
-    - stateCache支持输入shape[block_num,block_size,2*coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
-    - ape支持输入shape[cmp_ratio,coff* D]
-    - startPos支持输入shape[B,]
-    - 若x的维度采用BS合轴，即x的输入shape为[T,H]
-        - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
-        - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
-        - cacheMode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。cacheMode=2时，state\_block\_table支持输入shape[B]。
-        - cmpKv，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
-    - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
-        - cuSeqlens，参数必须为空。
-        - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
-        - cacheMode=1时，stateBlockTable支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。cacheMode=2时，stateBlockTable支持输入shape[B]。
-        - cmpKv，输出shape为[B,ceil(S/cmp_ratio),D]：(<batch0>compressed_tokens+pad0) + (<batch1>compressed_tokens+pad1) + ...  + (<batchN>compressed_tokens+padN)。
-- 输入值域限制：
-  - 该接口支持B、S泛化，且存在如下场景限制：
-      - 只支持B、S为0
-      - 部分长序列场景下，如果计算量过大可能会导致出现超过NPU内存的报错，注：这里计算量会受x输入shape的影响，值越大计算量越大。典型的长序列（即B、S的乘积或T较大）场景包括但不限于：
-      <div style="overflow-x: auto;">
-      <table style="undefined;table-layout: fixed; width: 400px"><colgroup>
-      <col style="width: 100px">
-      <col style="width: 100px">
-      </colgroup><thead>
-      <tr>
-      <th>B</th>
-      <th>S</th>
-      <th>H</th>
-      </tr></thead>
-      <tbody>
-      <tr>
-      <td>100</td>
-      <td>65525</td>
-      <td>4096</td>
-      </tr>
-      <tr>
-      <td>25</td>
-      <td>261120</td>
-      <td>4096</td>
-      </tr>
-      <tr>
-      <td>100</td>
-      <td>131072</td>
-      <td>4096</td>
-      </tr>
-      <tr>
-      <td>100</td>
-      <td>261120</td>
-      <td>4096</td>
-      </tr>
-      </tbody>
-      </table>
-      </div>
-- 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下stateCache不做更新，输出cmpKv为空tensor。
-- 输入属性限制：
-  - 支持D为128/512。
-  - 支持H为1K~10K，512对齐。
-  - 支持blockSize为1~1024。
-  - 支持如下三种典型组合场景：
-      - C4A: D=512, coff=2, cmp_ratio=4；
-      - C4Li: D=128, coff=2, cmp_ratio=4；
-      - C128A: D=512, coff=1, cmp_ratio=128。
+### 投影、cache 和输出
 
-## 调用示例
+- `wk.shape == gateWeight.shape == [D,H]`。
+- `ape.shape == [cmpRatio,D]`。
+- `stateCache.shape == [N,BS,2D]`，其中 `N > 0` 且 `BS` 在支持范围内。
+- `pooledKeyOut.shape == [B,Pcap,D]`，输出 dtype 与 `hiddenStates` 相同。
+- 输出容量由 cache table 和 cache block size 决定，而不是由当前调用的
+  token 数动态决定。
+- 每个 batch 的有效压缩结果写在输出前部；未形成完整压缩组的尾部和剩余
+  容量保持为 0。
 
-  无
+### 数据类型
+
+- `hiddenStates`、`wk`、`gateWeight`、`pooledKeyOut` 支持 BF16 或 FP16，
+  且四者 dtype 一致。
+- `stateCacheRef`、`ape`、`normWeightOptional`、`normBiasOptional` 使用 FP32。
+- `cacheBlockTable`、`startPos`、`cuSeqlensOptional` 使用 INT32。
+- `cosOptional`、`sinOptional` 的接口 dtype 为 BF16，但当前必须为空。
+
+### 形状范围
+
+- `D` 支持 128 或 512。
+- `H` 支持 `[1024,10240]`，并要求按 512 对齐。
+- `BS` 支持 `[1,1024]`。
+- `cmpRatio` 仅支持 `2/4/8/16/32/64/128`。
+- `normWeightOptional` 和 `normBiasOptional` 必须同时提供或同时为空，
+  shape 均为 `[D]`。
+
+## 语义约束
+
+- `stateCacheRef` 的前半部分保存 K，后半部分保存 Gate；`ape` 不进入 cache。
+- 开启 LayerNorm 时，K 投影先沿 `D` 维归一化，再写入 cache 并参与池化。
+- `sequsedOptional` 当前仅作接口占位，必须传空指针。
+- `cosOptional` 和 `sinOptional` 当前仅作 RoPE 接口占位，必须同时为空。
+- `stateCacheStrideDim0` 应与实际 `stateCacheRef` 的第 0 轴 stride 一致；
+  当前验证路径使用连续 state cache。
+- 当前版本不支持通过 `attention_mask` 挑选 token，调用方应保证输入 token
+  已经是连续有效 token。
+
+## PyTorch 调用
+
+安装 torch extension 后，可使用：
+
+```python
+torch_npu.key_pool(
+    hidden_states,
+    wk,
+    gate_weight,
+    ape,
+    state_cache,
+    cache_block_table,
+    start_pos,
+    norm_weight=None,
+    norm_bias=None,
+    cos=None,
+    sin=None,
+    cu_seqlens=None,
+    seqused=None,
+    cmp_ratio=4,
+    norm_eps=1e-6,
+    rotary_mode=1,
+)
+```
+
+测试脚本位于 `attention/key_pool/tests/pytest`，覆盖 CPU Golden、BSH/TH、
+LayerNorm、历史 cache、跨 block、压缩率、确定性和长序列场景。

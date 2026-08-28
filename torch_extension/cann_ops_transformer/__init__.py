@@ -11,6 +11,26 @@
 import torch
 import torch_npu
 from . import ops
-from .ops import *
 
+
+_op_namespace = torch.ops.cann_ops_transformer
+
+
+def __getattr__(name):
+    if hasattr(ops, name):
+        value = getattr(ops, name)
+        globals()[name] = value
+        return value
+    if hasattr(_op_namespace, name):
+        value = getattr(_op_namespace, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | set(dir(ops)) | set(dir(_op_namespace)))
+
+
+# Preserve the established torch_npu.key_pool entry point.
 torch_npu.key_pool = ops.key_pool

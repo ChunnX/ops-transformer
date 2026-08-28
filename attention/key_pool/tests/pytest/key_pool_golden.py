@@ -154,9 +154,6 @@ def _project(
     hidden: torch.Tensor,
     wk: torch.Tensor,
     gate_weight: torch.Tensor,
-    norm_weight: Optional[torch.Tensor],
-    norm_bias: Optional[torch.Tensor],
-    norm_eps: float,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     hidden_fp32 = hidden.float()
     k = torch.matmul(hidden_fp32, wk.float().transpose(-1, -2)).to(hidden.dtype)
@@ -289,7 +286,7 @@ def run_key_pool_golden(
     k_parts = []
     gate_parts = []
     for hidden in batch_hidden:
-        k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
+        k, gate = _project(hidden, wk, gate_weight)
         k = _normalize_key(k.float(), norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
@@ -353,7 +350,7 @@ def run_key_pool_oracle(
     k_parts = []
     gate_parts = []
     for batch, hidden in enumerate(batch_hidden):
-        k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
+        k, gate = _project(hidden, wk, gate_weight)
         k = _normalize_key(k.float(), norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
