@@ -19,7 +19,7 @@
 #include "cgmct/kernel/kernel_gmm_activation_mxquant.h"
 #include "cgmct/block/block_mmad_mx.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
-#include "cgmct/policy/dispatch_policy.h"
+#include "cgmct/policy/cgmct_dispatch_policy.h"
 #include "grouped_matmul_activation_quant_tiling_data.h"
 
 using namespace Cgmct::Gemm;
