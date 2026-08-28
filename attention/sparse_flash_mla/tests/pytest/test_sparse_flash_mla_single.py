@@ -22,7 +22,7 @@ from batch import sparse_flash_mla_process
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
 pt_save_path = os.environ.get("SMLA_PT_SAVE_PATH", "data")
 
-# 处理所有参数组合
+# 处理所有参数组合 
 result_path = os.getenv("SMLA_RESULT_SAVE_PATH", "./result/smla_result_all_sparse.xlsx")
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 
