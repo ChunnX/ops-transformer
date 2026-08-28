@@ -257,6 +257,7 @@ def parse_foreach_config(config_str):
         "910B_93": "ascend910_93",
         "910B_95": "ascend950",
         "950": "ascend950",
+        "350": "ascend350",
         "910": "ascend910",
         "910_55": "ascend910_55",
     }
@@ -273,6 +274,7 @@ def parse_foreach_config(config_str):
         ("910B_93", "ascend910_93"),
         ("910B_95", "ascend950"),
         ("950", "ascend950"),
+        ("350", "ascend350"),
         ("910", "ascend910"),
     ]
 
