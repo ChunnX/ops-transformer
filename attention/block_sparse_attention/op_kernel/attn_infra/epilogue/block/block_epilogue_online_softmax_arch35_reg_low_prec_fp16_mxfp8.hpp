@@ -22,8 +22,8 @@
 #include "block_epilogue_arch35_utils.hpp"
 #include "../../../arch35/kernel_utils.hpp"
 #include "mxfp8_vf/vf_nd2nz_indexes_dn_mxfp8.h"
-#include "mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_qs128_kvs256.h"
-#include "mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_qs64_kvs256.h"
+#include "mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_qs128_kvs128.h"
+#include "mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_qs64_kvs128.h"
 #include "mxfp8_vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"
 #include "mxfp8_vf/vf_mm1_res_pre_padding_align_kvs32_multi_qs64.h"
 #include "mxfp8_vf/vf_softmax_dn_cast_nz_mxfp8_align_qs128_kvs32_multi.h"
@@ -171,13 +171,13 @@ public:
         if (actKvsTile == MXFP8::KVS_BASE_SIZE) {
             if (sRowIsQs128) {
                 // qs=128 或 qs=64 pad 到 128：整基块 softmax
-                Mxfp8VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
+                Mxfp8VF::SoftmaxWithGroupMaxQs128Kvs128CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                                                               MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                     localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
             } else {
                 // 未 pad 的 qs=64 整基块 softmax（当前路径不应走到）
-                Mxfp8VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
+                Mxfp8VF::SoftmaxWithGroupMaxQs64Kvs128CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                                                              MXFP8::KVS_BASE_SIZE, MXFP8::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                     localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
