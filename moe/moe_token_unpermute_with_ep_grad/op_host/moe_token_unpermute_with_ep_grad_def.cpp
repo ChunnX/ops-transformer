@@ -62,6 +62,15 @@ public:
         this->Attr("topk_num").AttrType(OPTIONAL).Int(1);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+
+        OpAICoreConfig aicore_config;
+        aicore_config.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("opFile.value", "moe_token_unpermute_with_ep_grad");
+        this->AICore().AddConfig("ascend950", aicore_config);
     }
 };
 OP_ADD(MoeTokenUnpermuteWithEpGrad);
