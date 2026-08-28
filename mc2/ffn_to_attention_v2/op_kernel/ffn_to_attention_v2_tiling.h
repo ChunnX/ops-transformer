@@ -36,7 +36,7 @@ struct FFNToAttentionV2Info {
     };
     union {
         uint64_t totalWinSize;
-        uint64_t urmaFlagWorkspaceOffset;
+        uint64_t urmaWorkspaceOffset;
     };
 };
 

@@ -64,13 +64,13 @@ private:
     __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
                                        const DataCopyExtParams &xCopyParams);
     __aicore__ inline void SendToRemote(uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr,
-                                        uint64_t yOffset);
+                                        uint64_t yOffset, const DataCopyExtParams &xCopyParams);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 
-    GM_ADDR xAddr_{nullptr};
+    GM_ADDR localDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
 
     GlobalTensor<xType> xGMTensor_;
@@ -102,9 +102,10 @@ private:
     uint32_t worldSize_{0};
     uint64_t batchSizeSendCnt_{0};
     uint64_t hSize_{0};
+    uint64_t dataWorkspaceStride_{0};
     uint64_t winTokenInfoTableSize_{0};
     uint64_t requiredWindowSize_{0};
-    uint64_t urmaFlagWorkspaceOffset_{0};
+    uint64_t urmaWorkspaceOffset_{0};
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -119,7 +120,6 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     aivId_ = GetBlockIdx();
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFFNContext *>(mc2Context);
     rankId_ = mc2Context_->epRankId;
-    xAddr_ = x;
 
     axisBS_ = tilingData->ffnToAttentionV2Info.BS;
     axisH_ = tilingData->ffnToAttentionV2Info.H;
@@ -130,9 +130,8 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     aivNum_ = tilingData->ffnToAttentionV2Info.aivNum;
     worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
     maxTokenNum_ = tilingData->ffnToAttentionV2Info.maxTokenNum;
-    urmaFlagWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.urmaFlagWorkspaceOffset;
+    urmaWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.urmaWorkspaceOffset;
     ascendc_assert(workspaceGM != nullptr, "workspace address must not be null");
-    localFlagAddr_ = workspaceGM + urmaFlagWorkspaceOffset_ + static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
     ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
     ascendc_assert(axisH_ <= axisHS_, "H must be <= HS, H=%u, HS=%u", axisH_, axisHS_);
@@ -155,6 +154,10 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     ascendc_assert(actualTokenNum_ <= maxTokenNum_,
                    "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
+    dataWorkspaceStride_ = Ceil(hSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
+    localDataAddr_ = workspaceGM + urmaWorkspaceOffset_ + static_cast<uint64_t>(aivId_) * dataWorkspaceStride_;
+    localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + static_cast<uint64_t>(aivNum_) * dataWorkspaceStride_ +
+                     static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hSize_);
     tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
@@ -169,8 +172,10 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][INIT] rank=%u aiv=%u actualTokenNum=%lu aivNum=%u infoSize=%lu windowSize=%lu\n",
                rankId_, aivId_, actualTokenNum_, aivNum_, winTokenInfoTableSize_, requiredWindowSize_);
-        PRINTF("[F2A_URMA][WORKSPACE] rank=%u aiv=%u base=%lu offset=%lu flagAddr=%lu flagAddrAlign=%lu\n",
-               rankId_, aivId_, reinterpret_cast<uint64_t>(workspaceGM), urmaFlagWorkspaceOffset_,
+        PRINTF("[F2A_URMA][WORKSPACE] rank=%u aiv=%u base=%lu offset=%lu dataAddr=%lu dataStride=%lu\n",
+               rankId_, aivId_, reinterpret_cast<uint64_t>(workspaceGM), urmaWorkspaceOffset_,
+               reinterpret_cast<uint64_t>(localDataAddr_), dataWorkspaceStride_);
+        PRINTF("[F2A_URMA][WORKSPACE_FLAG] rank=%u aiv=%u flagAddr=%lu flagAddrAlign=%lu\n", rankId_, aivId_,
                reinterpret_cast<uint64_t>(localFlagAddr_),
                reinterpret_cast<uint64_t>(localFlagAddr_) % URMA_FLAG_SLOT_SIZE);
     }
@@ -316,17 +321,37 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToRemote(
-    uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset)
+    uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
+    const DataCopyExtParams &xCopyParams)
 {
+    DataCopyPadExtParams<xType> copyPadExtParams{false, 0U, 0U, 0U};
+    xTmpTensor_ = xQueue_.AllocTensor<xType>();
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_STAGE_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu localDataAddr=%lu\n",
+               rankId_, dstRank, aivId_, yOffset, reinterpret_cast<uint64_t>(localDataAddr_));
+    }
+    DataCopyPad(xTmpTensor_, xGMTensor_[yOffset * axisH_], xCopyParams, copyPadExtParams);
+    xQueue_.EnQue(xTmpTensor_);
+    xTmpTensor_ = xQueue_.DeQue<xType>();
+
+    GlobalTensor<xType> localDataGMTensor;
+    localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(localDataAddr_));
+    DataCopyPad(localDataGMTensor, xTmpTensor_, xCopyParams);
+    xQueue_.FreeTensor<xType>(xTmpTensor_);
+    SyncFunc<HardEvent::MTE3_S>();
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_STAGE_DONE] rank=%u dstRank=%u aiv=%u yOffset=%lu localDataAddr=%lu bytes=%lu\n",
+               rankId_, dstRank, aivId_, yOffset, reinterpret_cast<uint64_t>(localDataAddr_), hSize_);
+    }
+
     uint64_t channel = GetUrmaCommHandle(dstRank);
-    GM_ADDR localDataAddr = xAddr_ + static_cast<uint64_t>(yOffset) * hSize_;
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_DATA_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu localAddr=%lu "
                "remoteAddr=%lu bytes=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localDataAddr),
+               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localDataAddr_),
                reinterpret_cast<uint64_t>(remoteDataAddr), hSize_);
     }
-    int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, localDataAddr, hSize_);
+    int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, localDataAddr_, static_cast<int64_t>(hSize_));
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_DATA_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
                aivId_, yOffset, ret);
@@ -347,7 +372,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
                rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE,
                reinterpret_cast<uint64_t>(remoteFlagAddr));
     }
-    ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, sizeof(int32_t));
+    ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, static_cast<int64_t>(sizeof(int32_t)));
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_FLAG_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
                aivId_, yOffset, ret);
@@ -424,7 +449,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
             if (metaDataStruct.curAttenWorkRank == rankId_) {
                 SendToLocal(remoteDataAddr, remoteFlagAddr, yOffset, xCopyParams);
             } else {
-                SendToRemote(metaDataStruct.curAttenWorkRank, remoteDataAddr, remoteFlagAddr, yOffset);
+                SendToRemote(metaDataStruct.curAttenWorkRank, remoteDataAddr, remoteFlagAddr, yOffset, xCopyParams);
             }
         }
         if constexpr (URMA_FLAG_TRACE) {

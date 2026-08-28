@@ -44,7 +44,8 @@ using namespace Mc2Tiling;
 
 namespace MC2Tiling {
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
-constexpr size_t URMA_FLAG_WORKSPACE_ALIGN = 32U;
+constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
+constexpr size_t URMA_X_TYPE_SIZE = sizeof(uint16_t);
 
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
@@ -69,7 +70,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
         return ret;
     }
 
-    // Reserve one GM flag slot for every AIV. WriteNbi uses the slot as the source of the remote token flag.
+    // Reserve one token staging slot and one flag slot for every AIV. URMA WriteNbi uses these local GM slots.
     FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
                     return ge::GRAPH_FAILED);
@@ -85,16 +86,35 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
                     return ge::GRAPH_FAILED);
-    const size_t flagWorkspaceSize =
-        static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum) * URMA_FLAG_SLOT_SIZE;
-    OP_TILING_CHECK(workSpaces[0] > std::numeric_limits<size_t>::max() - (URMA_FLAG_WORKSPACE_ALIGN - 1U),
+    const size_t aivNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum);
+    const size_t axisH = static_cast<size_t>(tilingData->ffnToAttentionV2Info.H);
+    OP_TILING_CHECK(aivNum == 0U, OP_LOGE(context->GetNodeName(), "aivNum must be greater than zero"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(axisH > std::numeric_limits<size_t>::max() / URMA_X_TYPE_SIZE,
+                    OP_LOGE(context->GetNodeName(), "URMA token staging size overflow"), return ge::GRAPH_FAILED);
+    const size_t tokenBytes = axisH * URMA_X_TYPE_SIZE;
+    OP_TILING_CHECK(tokenBytes > std::numeric_limits<size_t>::max() - (URMA_WORKSPACE_ALIGN - 1U),
+                    OP_LOGE(context->GetNodeName(), "URMA token staging alignment overflow"),
+                    return ge::GRAPH_FAILED);
+    const size_t dataWorkspaceStride =
+        (tokenBytes + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
+    OP_TILING_CHECK(dataWorkspaceStride > std::numeric_limits<size_t>::max() / aivNum,
+                    OP_LOGE(context->GetNodeName(), "URMA data workspace size overflow"), return ge::GRAPH_FAILED);
+    const size_t dataWorkspaceSize = aivNum * dataWorkspaceStride;
+    OP_TILING_CHECK(URMA_FLAG_SLOT_SIZE > std::numeric_limits<size_t>::max() / aivNum,
+                    OP_LOGE(context->GetNodeName(), "URMA flag workspace size overflow"), return ge::GRAPH_FAILED);
+    const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
+    OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
+                    OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);
+    const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize;
+    OP_TILING_CHECK(workSpaces[0] > std::numeric_limits<size_t>::max() - (URMA_WORKSPACE_ALIGN - 1U),
                     OP_LOGE(context->GetNodeName(), "workspace alignment overflow"), return ge::GRAPH_FAILED);
-    const size_t flagWorkspaceOffset =
-        (workSpaces[0] + URMA_FLAG_WORKSPACE_ALIGN - 1U) / URMA_FLAG_WORKSPACE_ALIGN * URMA_FLAG_WORKSPACE_ALIGN;
-    OP_TILING_CHECK(flagWorkspaceOffset > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
+    const size_t urmaWorkspaceOffset =
+        (workSpaces[0] + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
+    OP_TILING_CHECK(urmaWorkspaceOffset > std::numeric_limits<size_t>::max() - urmaWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "workspace size overflow"), return ge::GRAPH_FAILED);
-    tilingData->ffnToAttentionV2Info.urmaFlagWorkspaceOffset = static_cast<uint64_t>(flagWorkspaceOffset);
-    workSpaces[0] = flagWorkspaceOffset + flagWorkspaceSize;
+    tilingData->ffnToAttentionV2Info.urmaWorkspaceOffset = static_cast<uint64_t>(urmaWorkspaceOffset);
+    workSpaces[0] = urmaWorkspaceOffset + urmaWorkspaceSize;
 
     // FFNToAttentionV2 on A5 uses the URMA communication implementation.
     bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;
