@@ -64,9 +64,6 @@ public:
     AscendC::GlobalTensor<uint32_t> fdMetaDataGm_;
     uint32_t sectionNum_ = 0U;
     FlashMlaWithKvcacheFdParamsX fdParams_ = {};
-    __gm__ uint8_t *keyPtr_ = nullptr;
-    __gm__ uint8_t *valuePtr_ = nullptr;
-
     // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：（producer
     // 旧名：flash_mla_metadata，历史原因保留） AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 /
     // HEAD_METADATA_STRIDE=16， producer 侧 static_assert 已就位于
@@ -124,9 +121,6 @@ public:
             FA_AIV_CORE_NUM * FA_FD_METADATA_SIZE * sectionNum_);
 
         InitConstInfo();
-
-        keyPtr_ = kCache;
-        valuePtr_ = kCache;
 
         // seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
         // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用
