@@ -105,6 +105,7 @@ def build_golden(cpu_inputs, records_by_batch):
 
 
 def run_once(iteration: int) -> None:
+    print(f"[STEP] iteration={iteration} build_inputs", flush=True)
     cpu_inputs, records_by_batch = build_inputs_and_records()
     if cpu_inputs["query"].shape[-1] != QUERY_DIM:
         raise AssertionError(f"query D must be {QUERY_DIM}, got {cpu_inputs['query'].shape[-1]}")
@@ -112,11 +113,16 @@ def run_once(iteration: int) -> None:
         raise AssertionError(f"packed key D must be {bi.RECORD_BYTES}, got {cpu_inputs['key'].shape[-1]}")
     print(
         f"[INPUT] query_shape={tuple(cpu_inputs['query'].shape)} "
-        f"key_shape={tuple(cpu_inputs['key'].shape)} output_shape=({BATCH},{S1},{G},{bi.NOPE_DIM})"
+        f"key_shape={tuple(cpu_inputs['key'].shape)} output_shape=({BATCH},{S1},{G},{bi.NOPE_DIM})",
+        flush=True,
     )
+    print(f"[STEP] iteration={iteration} build_golden", flush=True)
     expected = build_golden(cpu_inputs, records_by_batch)
+    print(f"[STEP] iteration={iteration} golden_ready shape={tuple(expected.shape)}", flush=True)
+    print(f"[STEP] iteration={iteration} move_inputs_to_npu", flush=True)
     npu_inputs = bi.move_inputs_to_npu(cpu_inputs, STORAGE_OFFSET_BYTES)
 
+    print(f"[STEP] iteration={iteration} call_operator", flush=True)
     actual = torch_npu.npu_kv_quant_sparse_flash_attention(
         npu_inputs["query"],
         npu_inputs["key"],
@@ -140,7 +146,9 @@ def run_once(iteration: int) -> None:
         tile_size=128,
         rope_head_dim=64,
     )
+    print(f"[STEP] iteration={iteration} synchronize", flush=True)
     torch.npu.synchronize()
+    print(f"[STEP] iteration={iteration} copy_output_to_cpu", flush=True)
 
     actual_f32 = actual.cpu().float()
     expected_f32 = expected.float()
@@ -164,6 +172,11 @@ def main() -> None:
     parser.add_argument("--repeat", type=int, default=1)
     args = parser.parse_args()
     torch.npu.set_device(args.device)
+    print(
+        f"[ENV] python={sys.version.split()[0]} torch={torch.__version__} "
+        f"torch_npu={getattr(torch_npu, '__version__', 'unknown')} device={args.device}",
+        flush=True,
+    )
     for iteration in range(args.repeat):
         run_once(iteration)
     print(f"summary: executed={args.repeat} passed={args.repeat} failed=0")
