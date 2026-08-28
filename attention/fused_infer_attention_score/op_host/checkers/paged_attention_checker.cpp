@@ -771,6 +771,45 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                                                               std::to_string(keyRopeDim))
                                                                  .c_str()),
                     return ge::GRAPH_FAILED);
+    // antiquant: 放行 key/value 到下方布局级非连续检查（BBH仅0轴 / BNBD·NZ 0/1轴）。
+    // 但 antiquant 不支持 keyRope 非连续（kRopeStrides 不处理），仍单独拦截。
+    if (enableAntiQuant_) {
+        OP_CHECK_IF(
+            keyRopeDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                fiaInfo.opName, "keyRope",
+                ("In anti-quant scenarios, PA does not support non-contiguous keyRope tensors, "
+                 "but the first non-contiguous dimension is index " +
+                 std::to_string(keyRopeDim) + ".")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
+    }
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT) {
+        OP_CHECK_IF(keyDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        fiaInfo.opName, "key",
+                        ("In mla fullquant scenarios, PA does not support non-contiguous key tensors, "
+                         "but the first non-contiguous dimension is index " +
+                         std::to_string(keyDim) + ".")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        fiaInfo.opName, "value",
+                        ("In mla fullquant scenarios, PA does not support non-contiguous value tensors, "
+                         "but the first non-contiguous dimension is index " +
+                         std::to_string(valueDim) + ".")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            keyRopeDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                fiaInfo.opName, "keyRope",
+                ("In mla fullquant scenarios, PA does not support non-contiguous keyRope tensors, "
+                 "but the first non-contiguous dimension is index " +
+                 std::to_string(keyRopeDim) + ".")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
