@@ -25,7 +25,7 @@
 
 #include "memory_copy_arch35.h"
 
-namespace FlashAttnKernel {
+namespace BaseApi {
 struct TaskInfo {
     uint32_t bIdx;
     uint32_t n2Idx;
@@ -90,6 +90,7 @@ private:
     static constexpr float FLOAT_INF = 3e+99;
     uint32_t preLoadNum_ = 2U;
     uint32_t dSizeV_Align_;
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
 protected:
     GlobalTensor<float> lseSumFdGm_;
@@ -107,7 +108,7 @@ protected:
     uint64_t actSeqLensKv_ = 0;
     uint64_t actSeqLensQ_ = 0;
     // ================================类成员变量====================================
-    const ConstInfo_t &constInfo_;
+    const ConstInfoX &constInfo_;
     TaskInfo taskInfo_{};
 
     using SEQLEN_T = uint32_t;
@@ -136,7 +137,7 @@ private:
     LocalTensor<T> fdLseUbBuf_;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecode(ConstInfo_t &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
+    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
                                              SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
         : constInfo_(constInfo),
           qSeqLensTool_(qSeqLensTool),
@@ -175,11 +176,11 @@ public:
             // 与 FA block 共享UB布局：bmm1/bmm2 区域在前，FD 业务缓冲区紧随其后。
             // 使用 LocalTensor 构造函数直接指定绝对字节偏移，实现内存完全自主管理，
             // 无需 LocalMemAllocator 线性分配器。
-            // bmm1和bmm2复用buffer
-            constexpr uint32_t mmSz = mBaseSize / 2U * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
+            constexpr uint32_t mm1Sz = mBaseSize / 2U * s2BaseSize * sizeof(T);
+            constexpr uint32_t mm2Sz = mBaseSize / 2U * dVBaseSize * sizeof(T);
 
             // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mmSz * ((dVBaseSize > 128) ? 2U : 4U);
+            constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U;
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
@@ -201,15 +202,16 @@ public:
             // sharedBuf1b 内：fdReduceBuf_（前16K）、fdOutputBuf_（后16K）
             fdReduceBuf_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
-            fdOutputBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
-                    .template ReinterpretCast<OUTPUT_T>();
+            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K,
+                                                BUFFER_SIZE_BYTE_16K)
+                               .template ReinterpretCast<OUTPUT_T>();
 
             // sharedBuf3 内：5 个 6144-byte 槽（fdSum1/2, fdMax1/2, fdLseExp）
             constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
             fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3, STRIDE).template ReinterpretCast<T>();
-            fdSumBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE, STRIDE).template ReinterpretCast<T>();
+            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE,
+                                              STRIDE)
+                             .template ReinterpretCast<T>();
             fdMaxBuf1_ =
                 LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 2U * STRIDE, STRIDE).template ReinterpretCast<T>();
             fdMaxBuf2_ =
@@ -401,7 +403,7 @@ protected:
     }
 
 public:
-    __aicore__ inline void FlashDecode(FDparams &fd)
+    __aicore__ inline void FlashDecode(FDparamsX &fd)
     {
         if (!fd.fdCoreEnable) {
             return;
@@ -455,20 +457,20 @@ public:
                 if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                    actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                   actualGSplitSize, constInfo_);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                 actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                actualGSplitSize, constInfo_);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                 actualGSplitSize, constInfo_, qActSeqLens);
+                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                actualGSplitSize, constInfo_, qActSeqLens);
                 }
                 Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
@@ -491,5 +493,5 @@ public:
     }
 };
 
-} // namespace FlashAttnKernel
+} // namespace BaseApi
 #endif

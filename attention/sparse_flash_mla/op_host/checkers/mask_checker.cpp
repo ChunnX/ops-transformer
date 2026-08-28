@@ -14,10 +14,7 @@
 namespace optiling {
 namespace sparse_mla_checker {
 namespace {
-const char *Op(const CheckContext &context)
-{
-    return context.opName == nullptr ? "SparseMla" : context.opName;
-}
+const char *Op(const CheckContext &context) { return context.opName == nullptr ? "SparseMla" : context.opName; }
 } // namespace
 
 ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const

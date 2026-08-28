@@ -278,8 +278,7 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, quant_mode=None, **kwargs
         raise ValueError("QuantSparseFlashMla npu_preprocess requires quant_mode")
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
-    force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
-    if protocol.metadata_is_materialized(metadata) and not force_metadata_refresh:
+    if protocol.metadata_is_materialized(metadata):
         logging.info("[%s] reuse nonzero QSMLA metadata input", testcase_name)
         return None
     arguments = protocol.load_metadata_inputs(OPERATOR, testcase_name)
@@ -288,12 +287,7 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, quant_mode=None, **kwargs
     else:
         arguments = build_metadata_arguments(q, ori_kv, cmp_kv, quant_mode, kwargs)
         source = "main API fallback (sidecar unavailable)"
-    logging.info(
-        "[%s] build QSMLA metadata from %s; forced=%s",
-        testcase_name,
-        source,
-        force_metadata_refresh,
-    )
+    logging.info("[%s] build QSMLA metadata from %s", testcase_name, source)
     generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(

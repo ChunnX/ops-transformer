@@ -15,7 +15,6 @@
 
 #include "quant_flash_attn_tiling_mxfp8.h"
 #include "../quant_flash_attn_tiling.h"
-#include "../qfa_adjust_sinner_souter.h"
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -119,10 +118,13 @@ void QuantFlashAttnTilingImpl::InitImplParam()
 
 void QuantFlashAttnTilingImpl::SplitPolicy()
 {
-    qfa_tiling_util::AdjustSinnerAndSouter(qfaInfo_->vHeadDim, qfaInfo_->maxSeqQ, qfaInfo_->maxSeqKv,
-                                           static_cast<int32_t>(qfaInfo_->maskMode), qfaInfo_->winLeft,
-                                           qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
-                                           static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
+    if (qfaInfo_->qkHeadDim == DSIZE_256) {
+        sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_256;
+    } else {
+        sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_512;
+    }
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
 }
