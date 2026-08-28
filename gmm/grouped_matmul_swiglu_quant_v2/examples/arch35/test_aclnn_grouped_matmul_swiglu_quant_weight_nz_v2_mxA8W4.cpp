@@ -288,7 +288,7 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4Test(int32_t deviceId, aclrtStr
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputData from device to host failed. ERROR: %d\n", ret);
               return ret);
-    for (int64_t j = 0; j < 10; j++) {
+    for (int64_t j = 0; j < (size < 10 ? size : 10); j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, outputData[j]);
     }
 
@@ -298,7 +298,7 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4Test(int32_t deviceId, aclrtStr
                       size * sizeof(outputScaleData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputScaleData from device to host failed. ERROR: %d\n", ret);
               return ret);
-    for (int64_t j = 0; j < 10; j++) {
+    for (int64_t j = 0; j < (size < 10 ? size : 10); j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, outputScaleData[j]);
     }
 
