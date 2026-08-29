@@ -16,11 +16,16 @@
 #include "blaze_kernel_stub.h"
 #include "tikicpulib.h"
 
-inline void copy_gm_to_cbuf_v2(__cbuf__ void *dst, __gm__ void *src, uint8_t sid, uint32_t nBurst, uint32_t lenBurst,
-                               uint8_t padFuncMode, uint64_t l2CacheCtl, uint64_t srcStride, uint32_t dstStride)
+inline int64_t ld_dev(int64_t *src, int16_t offset)
 {
-    (void)l2CacheCtl;
-    copy_gm_to_cbuf_v2(dst, src, sid, nBurst, lenBurst, padFuncMode, srcStride, dstStride);
+    return static_cast<int64_t>(ld_dev(reinterpret_cast<uint64_t *>(src), offset));
+}
+
+inline void vdup(vector_f8e8m0 &, fp8_e8m0_t, vector_bool, int32_t)
+{}
+
+inline void vdup(vector_f8e8m0 &, vector_f8e8m0, vector_bool, int32_t, int32_t)
+{
 }
 
 #include "kernel_operator.h"

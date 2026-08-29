@@ -19,8 +19,10 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     set(block_attn_res_prepare_soc_version "Ascend950PR_9599")
     set(block_attn_res_prepare_kernel_file
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_kernel/block_attn_res_prepare_apt.cpp)
-    AddOpTestCase(block_attn_res_prepare "${block_attn_res_prepare_soc_version}" ""
-                  "${block_attn_res_prepare_tiling_files}" "${block_attn_res_prepare_kernel_file}")
+    # TODO: Re-enable after the FlatQuant CPU Debug compatibility issue is resolved:
+    # https://gitcode.com/cann/ops-tensor/issues/206
+    # AddOpTestCase(block_attn_res_prepare "${block_attn_res_prepare_soc_version}" ""
+    #               "${block_attn_res_prepare_tiling_files}" "${block_attn_res_prepare_kernel_file}")
 
     set(block_attn_res_prepare_tiling_tmp
         "block_attn_res_prepare_${block_attn_res_prepare_soc_version}_tiling_tmp")
