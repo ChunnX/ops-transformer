@@ -162,9 +162,11 @@ public:
 
 #ifdef __DAV_C220_CUBE__
         coreIdx = AscendC::GetBlockIdx();
-        gIdentityIdx.SetValue(0, 0);
-        for (uint32_t i = 1; i < topK_; i++) {
-            gIdentityIdx.SetValue(i, 0);
+        // Single writer: avoid multi-core WAW on the same GM identity buffer.
+        if (coreIdx == 0) {
+            for (uint32_t i = 0; i < topK_; i++) {
+                gIdentityIdx.SetValue(i, 0);
+            }
         }
 #endif
         AscendC::SyncAll<false>();
@@ -249,7 +251,7 @@ public:
             uint32_t actualLoopNum = 0;
             for (uint32_t i = 0; i < kvSLoopNum && i < topK_; i++) {
                 int32_t logicalId = gSparseBlockIdx.GetValue(sparseIdxBase + i);
-                if (logicalId < 0)
+                if (logicalId < 0 || static_cast<uint32_t>(logicalId) >= maxBlocksPerBatch_)
                     continue;
                 int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + logicalId;
                 int32_t physicalId = gBlockTable.GetValue(btOffset);

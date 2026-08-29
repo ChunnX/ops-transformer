@@ -89,9 +89,13 @@ ge::graphStatus GBSATiling::GetNpuInfo(gert::TilingContext *context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     aicNum_ = ascendcPlatform.GetCoreNumAic();
+    if (aicNum_ == 0) {
+        OP_LOGE(context->GetNodeName(), "GetCoreNumAic returned 0.");
+        return ge::GRAPH_FAILED;
+    }
     // Task schedule is owned by AICPU metadata (saTotalTaskNum). Host only launches
     // all AIC cores; idle cores exit when taskIdx >= metadata saTotalTaskNum.
-    blockDim_ = (aicNum_ == 0) ? 1U : aicNum_;
+    blockDim_ = aicNum_;
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     socVer_ = static_cast<uint32_t>(ascendcPlatform.GetSocVersion());
     return ge::GRAPH_SUCCESS;
@@ -517,7 +521,7 @@ ge::graphStatus GBSATiling::ParseQkvDtype(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    if (scaleValue_ < 1e-9f && scaleValue_ > -1e-9f && embeddingSize_ > 0) {
+    if (scaleValue_ == 0.0f && embeddingSize_ > 0) {
         scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
     }
     if (CheckAttentionOutDtype(context) != ge::GRAPH_SUCCESS || CheckSoftmaxPrecision(context) != ge::GRAPH_SUCCESS ||
