@@ -1115,8 +1115,6 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
                                                     __ubuf__ P *gammaInAddr,
                                                     uint32_t currentChunkSize, uint32_t copySizeND)
 {
-    uint32_t eleNumPerVf = 64;
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
     __VEC_SCOPE__
     {
         Reg::RegTensor<P> gammaReg, xRsFp32Reg, xRsGradMmReg, xRsGradReg, gammaGradReg, xGradReg;
@@ -1130,29 +1128,28 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
             uint32_t lenND = copySizeND;
             P invRmsScalar = invRmsAddr[tIdx];
             Reg::Duplicate<P>(invRmsReg, invRmsScalar, maskAll);
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
-                Reg::MaskReg mask = Reg::UpdateMask<P>(lenND);
-                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
-                Reg::LoadAlign(xRsGradMmReg, xRsGradMmAddr + offset);
-                Reg::LoadAlign(xGradReg, xGradVec3Addr + offset);
-                Reg::LoadAlign(xRsFp32Reg, xRsFp32Addr + offset);
+            // copySizeND最大为64，当前T行只需一次向量处理，删除恒单次的内层循环控制。
+            Reg::MaskReg mask = Reg::UpdateMask<P>(lenND);
+            uint32_t offset = tIdx * copySizeND;
+            Reg::LoadAlign(xRsGradMmReg, xRsGradMmAddr + offset);
+            Reg::LoadAlign(xGradReg, xGradVec3Addr + offset);
+            Reg::LoadAlign(xRsFp32Reg, xRsFp32Addr + offset);
 
-                Reg::Mul(xRsGradReg, xRsFp32Reg, invRmsReg, mask);
-                Reg::Add(xGradReg, xGradReg, xRsGradReg, mask);
+            Reg::Mul(xRsGradReg, xRsFp32Reg, invRmsReg, mask);
+            Reg::Add(xGradReg, xGradReg, xRsGradReg, mask);
 
-                if constexpr (hasGamma) {
-                    if constexpr (!reuseGamma) {
-                        Reg::LoadAlign(gammaReg, gammaInAddr + vfBlockIdx * eleNumPerVf);
-                    }
-                    Reg::Mul(xRsGradReg, gammaReg, xRsGradMmReg, mask);
-                    Reg::Add(xGradReg, xGradReg, xRsGradReg, mask);
-                    Reg::Mul(gammaGradReg, xRsFp32Reg, xRsGradMmReg, mask);
-                    Reg::StoreAlign(xRsGradMmAddr + offset, gammaGradReg, mask);
-                } else {
-                    Reg::Add(xGradReg, xGradReg, xRsGradMmReg, mask);
+            if constexpr (hasGamma) {
+                if constexpr (!reuseGamma) {
+                    Reg::LoadAlign(gammaReg, gammaInAddr);
                 }
-                Reg::StoreAlign(xGradVec3Addr + offset, xGradReg, mask);
+                Reg::Mul(xRsGradReg, gammaReg, xRsGradMmReg, mask);
+                Reg::Add(xGradReg, xGradReg, xRsGradReg, mask);
+                Reg::Mul(gammaGradReg, xRsFp32Reg, xRsGradMmReg, mask);
+                Reg::StoreAlign(xRsGradMmAddr + offset, gammaGradReg, mask);
+            } else {
+                Reg::Add(xGradReg, xGradReg, xRsGradMmReg, mask);
             }
+            Reg::StoreAlign(xGradVec3Addr + offset, xGradReg, mask);
         }
     }
 }
