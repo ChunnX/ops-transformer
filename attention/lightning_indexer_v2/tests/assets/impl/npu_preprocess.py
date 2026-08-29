@@ -21,28 +21,6 @@ import torch
 
 OPERATOR = "lightning_indexer_v2"
 METADATA_INDEX = 10
-ACLNN_PARAMETER_NAMES = (
-    "q",
-    "k",
-    "w",
-    "cu_seqlens_q",
-    "cu_seqlens_k",
-    "seqused_q",
-    "seqused_k",
-    "cmp_residual_k",
-    "block_table",
-    "output_idx_offset",
-    "metadata",
-    "topk",
-    "max_seqlen_q",
-    "layout_q",
-    "layout_k",
-    "mask_mode",
-    "cmp_ratio",
-    "return_value",
-    "sparse_indices_out",
-    "sparse_values_out",
-)
 
 
 def load_metadata_protocol():
@@ -175,8 +153,6 @@ def move_to_device(value, target):
 
 
 def run_metadata(arguments, metadata):
-    import cann_ops_transformer
-
     return torch.ops.cann_ops_transformer.lightning_indexer_metadata(
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_k"]),
@@ -232,8 +208,7 @@ def run(
     )
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
-    force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
-    if protocol.metadata_is_materialized(metadata) and not force_metadata_refresh:
+    if protocol.metadata_is_materialized(metadata):
         logging.info("[%s] reuse nonzero LI_V2 metadata input", testcase_name)
         return None
     arguments = protocol.load_metadata_inputs(OPERATOR, testcase_name)
@@ -252,12 +227,7 @@ def run(
             arguments_kwargs,
         )
         source = "main API fallback (sidecar unavailable)"
-    logging.info(
-        "[%s] build LI_V2 metadata from %s; forced=%s",
-        testcase_name,
-        source,
-        force_metadata_refresh,
-    )
+    logging.info("[%s] build LI_V2 metadata from %s", testcase_name, source)
     generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
@@ -271,31 +241,3 @@ def run(
     if rewritten is not None:
         logging.info("[%s] rewrote LI_V2 metadata input: %s", testcase_name, rewritten)
     return None
-
-
-def run_aclnn(*args, **kwargs):
-    """Adapt the ACLNN main API order to the shared Torch metadata hook."""
-    if len(args) != len(ACLNN_PARAMETER_NAMES):
-        raise ValueError(
-            f"LightningIndexerV2 ACLNN hook expects {len(ACLNN_PARAMETER_NAMES)} arguments, got {len(args)}"
-        )
-    values = dict(zip(ACLNN_PARAMETER_NAMES, args))
-    host_metadata = values["metadata"]
-    metadata = move_to_device(host_metadata, torch.empty(0, device="npu"))
-    values["metadata"] = metadata
-    result = run(
-        values.pop("q"),
-        values.pop("k"),
-        values.pop("w"),
-        values.pop("topk"),
-        **values,
-        **kwargs,
-    )
-    if torch.is_tensor(host_metadata):
-        if host_metadata.device != metadata.device:
-            host_metadata.copy_(
-                metadata.to(dtype=host_metadata.dtype, device=host_metadata.device)
-            )
-    else:
-        host_metadata[...] = metadata.detach().cpu().numpy()
-    return result
