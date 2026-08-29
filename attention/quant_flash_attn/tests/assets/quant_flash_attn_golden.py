@@ -33,7 +33,7 @@ try:
 
     _HAS_NPU = True
 except ImportError as e:
-    logger.warning("Failed to import cann_ops_transformer.ops: %s", e)
+    logging.warning("Failed to import cann_ops_transformer.ops: %s", e)
     _HAS_NPU = False
 
 try:
