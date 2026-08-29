@@ -16,7 +16,7 @@
 #include "../../arch35/common/mega_moe_constants.h"
 #include "mega_moe_types.h"
 #include "mega_moe_utils.h"
-#include "../blaze/gemm/block/mega_moe_block_mmad_mx_fp8.h"
+#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "../../arch35/blaze/gemm/block/block_scheduler_swizzle.h"
 
 namespace MegaMoeImpl {
@@ -68,7 +68,7 @@ struct Config {
     using LayoutScaleB = Te::ScaleBDNLayoutPtn;
 
     using LayoutBias = Te::NDExtLayoutPtn;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
+    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
     using LayoutB = Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>;
 
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE_A>>;
@@ -91,7 +91,7 @@ struct Config {
 
     static __aicore__ inline typename BlockMmad::L1Params MakeL1Params(uint64_t kL1, uint64_t scaleKL1)
     {
-        return typename BlockMmad::L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1, .l1BufNum = 2};
+        return typename BlockMmad::L1Params{.kAL1 = kL1, .kBL1 = kL1, .scaleKL1 = scaleKL1};
     }
 
     static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
@@ -211,7 +211,8 @@ struct Config {
 
             BlockMmadTilingConfig adaptiveConfig = MakeAdaptiveBlockMmadTilingConfig(m);
             // 512K 一旦可用，必然比 256K 减少 A/B 的 K 搬运轮数。
-            if (adaptiveConfig.l1Params.kL1 > baselineConfig.l1Params.kL1) {
+            if (adaptiveConfig.l1Params.kAL1 > baselineConfig.l1Params.kAL1 &&
+                adaptiveConfig.l1Params.kBL1 > baselineConfig.l1Params.kBL1) {
                 return adaptiveConfig;
             }
 
@@ -305,18 +306,18 @@ struct Config {
 };
 
 // 统一描述一次 BlockMmad::Init 的可变配置，避免 Context 分散保存并逐字段比较。
-// 通用 MX BlockMmad 的 l1BufNum 始终固定为 2，A8W4 L1Params 则没有该字段，因此不纳入运行时状态。
 struct BlockMmadInitConfig {
     uint32_t problemK = 0U;
     uint32_t tileM = 0U;
     uint32_t tileN = 0U;
-    uint64_t kL1 = 0U;
+    uint64_t kAL1 = 0U;
+    uint64_t kBL1 = 0U;
     uint64_t scaleKL1 = 0U;
 
     __aicore__ inline bool operator!=(const BlockMmadInitConfig &other) const
     {
-        return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN || kL1 != other.kL1 ||
-               scaleKL1 != other.scaleKL1;
+        return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN ||
+               kAL1 != other.kAL1 || kBL1 != other.kBL1 || scaleKL1 != other.scaleKL1;
     }
 };
 
@@ -328,7 +329,7 @@ struct BlockMmadContext {
     bool initialized = false;
 };
 
-// 仅当 BlockMmad::Init 消费的配置发生变化时刷新，problem 的实际 M/N 由每次 MMAD 调用传入。
+// 仅当 L1/L0 配置发生变化时重新 Init；其余 problem shape 更新保持内部 ping-pong 相位连续。
 template <typename MmadContext, typename ProblemConfig>
 __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
 {
@@ -338,15 +339,21 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
         config.k,
         tilingConfig.tileM,
         tilingConfig.tileN,
-        tilingConfig.l1Params.kL1,
+        tilingConfig.l1Params.kAL1,
+        tilingConfig.l1Params.kBL1,
         tilingConfig.l1Params.scaleKL1};
+    typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
         constexpr bool enableL0CPingPong = false;
-        context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
+        constexpr uint8_t l1BufferStage = 2U;
+        typename BlockMmad::MmadParams mmParams{
+            l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong, l1BufferStage};
+        context.blockMmad.Init(matmulShape, mmParams);
         context.initConfig = requestedConfig;
         context.initialized = true;
+    } else {
+        context.blockMmad.UpdateParamsForNextProblem(matmulShape);
     }
 }
 
