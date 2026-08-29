@@ -616,16 +616,11 @@ should be 1 or 2, but the actual dim num is %zu.",
 
 bool GroupedQmmTiling::CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const
 {
-    OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
+    OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0 || inputParams_.kSize <= EVEN_FACTOR,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
                                                        ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
-                                                       "when the dtype of x is FLOAT4, k size must be even number"),
-                return false);
-    // 2: mxfp4场景下不支持K轴为2
-    OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                                       ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
-                                                       "when the dtype of x is FLOAT4, k size cannot be 2"),
+                                                       "when the dtype of x is FLOAT4, k size must be even and greater "
+                                                       "than 2"),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(inputParams_.nSize % EVEN_FACTOR != 0,
