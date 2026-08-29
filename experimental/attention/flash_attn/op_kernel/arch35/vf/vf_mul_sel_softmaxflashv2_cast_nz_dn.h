@@ -1005,7 +1005,7 @@ __simd_vf__ inline void TransposeImplVF(__ubuf__ T *dst_ub, __ubuf__ T *src_ub, 
 
         // 清零 dataReg，确保掩码外元素为 0 而非残留值，
         // 防止 StoreAlign 将残留值写入目标缓冲区导致后续 LoadAlign 读到脏数据
-        AscendC::MicroAPI::Duplicate<T>(dataReg, static_cast<T>(0));
+        AscendC::MicroAPI::Duplicate<T>(dataReg, static_cast<T>(0)); // 是否必要
 
         // Gather: 按索引从源矩阵收集列 j 的 M 个元素
         AscendC::MicroAPI::Gather(dataReg, src_ub, idxReg, mask);

@@ -641,31 +641,50 @@ public:
         }
         uint32_t n1Idx = runInfo.n2Idx * constInfo_.gSize + gIdx;
 
-        int64_t relHOffset = 0;
-        int64_t relWOffset = 0;
+        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
-            relHOffset = prefixS1 * n1Size * constInfo_.relHSize +
-                         s1Idx * n1Size * constInfo_.relHSize + n1Idx * constInfo_.relHSize;
-            relWOffset = prefixS1 * n1Size * constInfo_.relWSize +
-                         s1Idx * n1Size * constInfo_.relWSize + n1Idx * constInfo_.relWSize;
+            int64_t relHOffset = prefixS1 * n1Size * constInfo_.relHSize + s1Idx * n1Size * constInfo_.relHSize +
+                                 n1Idx * constInfo_.relHSize;
+            int64_t relWOffset = prefixS1 * n1Size * constInfo_.relWSize + s1Idx * n1Size * constInfo_.relWSize +
+                                 n1Idx * constInfo_.relWSize;
+            uint32_t relHLen = runInfo.actVecMSize * constInfo_.relHSize;
+            uint32_t relWLen = runInfo.actVecMSize * constInfo_.relWSize;
+            DataCopy(relHUb, relHGm[relHOffset], relHLen);
+            DataCopy(relWUb, relWGm[relWOffset], relWLen);
         } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
-            relHOffset = runInfo.bIdx * constInfo_.s1Size * n1Size * constInfo_.relHSize +
-                         s1Idx * n1Size * constInfo_.relHSize + n1Idx * constInfo_.relHSize;
-            relWOffset = runInfo.bIdx * constInfo_.s1Size * n1Size * constInfo_.relWSize +
-                         s1Idx * n1Size * constInfo_.relWSize + n1Idx * constInfo_.relWSize;
+            int64_t relHOffset = runInfo.bIdx * constInfo_.s1Size * n1Size * constInfo_.relHSize +
+                                 s1Idx * n1Size * constInfo_.relHSize + n1Idx * constInfo_.relHSize;
+            int64_t relWOffset = runInfo.bIdx * constInfo_.s1Size * n1Size * constInfo_.relWSize +
+                                 s1Idx * n1Size * constInfo_.relWSize + n1Idx * constInfo_.relWSize;
+            uint32_t relHLen = runInfo.actVecMSize * constInfo_.relHSize;
+            uint32_t relWLen = runInfo.actVecMSize * constInfo_.relWSize;
+            DataCopy(relHUb, relHGm[relHOffset], relHLen);
+            DataCopy(relWUb, relWGm[relWOffset], relWLen);
         } else {
-            relHOffset = runInfo.bIdx * n1Size * constInfo_.s1Size * constInfo_.relHSize +
-                         n1Idx * constInfo_.s1Size * constInfo_.relHSize + s1Idx * constInfo_.relHSize;
-            relWOffset = runInfo.bIdx * n1Size * constInfo_.s1Size * constInfo_.relWSize +
-                         n1Idx * constInfo_.s1Size * constInfo_.relWSize + s1Idx * constInfo_.relWSize;
+            // BNSD: M轴按GS1紧凑空间(actS1Size)切块, seqused_q < s1时物理布局按s1Size跨head存在padding间隙,
+            // 子块跨g边界时连续拷贝会串到下一head的数据, 需按g边界分段拷贝(与ProcessGS1/DataCopySoftmaxLseBNSD一致)
+            uint32_t remainRows = runInfo.actVecMSize;
+            uint32_t curS1Idx = s1Idx;
+            uint32_t curN1Idx = n1Idx;
+            uint32_t dstRow = 0;
+            while (remainRows > 0) {
+                uint32_t segRows = runInfo.actS1Size - curS1Idx;
+                if (segRows > remainRows) {
+                    segRows = remainRows;
+                }
+                int64_t relHOffset = (runInfo.bIdx * n1Size + curN1Idx) * constInfo_.s1Size * constInfo_.relHSize +
+                                     curS1Idx * constInfo_.relHSize;
+                int64_t relWOffset = (runInfo.bIdx * n1Size + curN1Idx) * constInfo_.s1Size * constInfo_.relWSize +
+                                     curS1Idx * constInfo_.relWSize;
+                DataCopy(relHUb[dstRow * constInfo_.relHSize], relHGm[relHOffset], segRows * constInfo_.relHSize);
+                DataCopy(relWUb[dstRow * constInfo_.relWSize], relWGm[relWOffset], segRows * constInfo_.relWSize);
+                dstRow += segRows;
+                remainRows -= segRows;
+                curS1Idx = 0;
+                curN1Idx += 1;
+            }
         }
-        uint32_t relHLen = runInfo.actVecMSize * constInfo_.relHSize;
-        uint32_t relWLen = runInfo.actVecMSize * constInfo_.relWSize;
-
-        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
-        DataCopy(relHUb, relHGm[relHOffset], relHLen);
-        DataCopy(relWUb, relWGm[relWOffset], relWLen);
         Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
     }
 };
