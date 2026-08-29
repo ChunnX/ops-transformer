@@ -841,7 +841,7 @@ static aclnnStatus CheckPerTokenScale(const gmm::GroupedMatmulParams &gmmParams,
             opName, "x, weight, y",
             std::to_string(xGroupedSize) + ", " + std::to_string(weightGroupedSize) + ", " +
                 std::to_string(yGroupedSize),
-            "When A8W8 quant with separated x, weight or y, per-token scale is not supported.");
+            "When A8W8 quant with separated x, weight or y, per-token scale is not supported");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -1140,7 +1140,7 @@ static aclnnStatus CheckFunctionQuantParams(const gmm::GroupedMatmulParams &gmmP
               yDtype == DataType::DT_INT32)) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                 opName, "y[" + std::to_string(i) + "]", gmm::dTypeToString(yDtype),
-                "When A8W8 quant, the data type of y is not supported.");
+                "When A8W8 quant, the data type of y is not supported");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -1551,7 +1551,7 @@ bool CheckIsEnabledActive(const gmm::GroupedMatmulParams &gmmParams)
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             GetAclnnGetWorkspaceSizeOpName(gmmParams.apiVersion), "x, weight",
             std::string(op::ToString(xDtype).GetString()) + ", " + op::ToString(weightDtype).GetString(),
-            "When the activation function is enabled, the dtype of x and weight should be DT_INT8.");
+            "When the activation function is enabled, the dtype of x and weight should be DT_INT8");
         return false;
     }
     bool isInt8StaticTCQuant = CheckInt8StaticTCQuant(gmmParams);
@@ -1674,7 +1674,7 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         opName, "x, weight",
         std::string(gmm::dTypeToString(gmmParams.xDtype)) + ", " + gmm::dTypeToString(weightDtype),
         "There is no matching x dtype and weight dtype pattern. Supported scenarios include A8W8 quant, A8W4 "
-        "weight quant, A4W4 quant, A16W8 antiquant, A16W4 antiquant and non-quant.");
+        "weight quant, A4W4 quant, A16W8 antiquant, A16W4 antiquant and non-quant");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -2015,7 +2015,7 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
         opName, "x, weight, y",
         std::to_string(xSize) + ", " + std::to_string(weightSize) + ", " + std::to_string(ySize),
         "When " + errorMessage + ", tensor list combination is not supported (x " + xStatus + ", weight " +
-            weightStatus + ", y " + yStatus + ").");
+            weightStatus + ", y " + yStatus + ")");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -2086,7 +2086,7 @@ static aclnnStatus CheckCaseSplitK(const gmm::GroupedMatmulParams &gmmParams, co
     OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
         opName, "x, weight, y",
         std::to_string(xSize) + ", " + std::to_string(weightSize) + ", " + std::to_string(ySize),
-        "When groupType == 2(split-K), separated x is not supported.");
+        "When groupType == 2(split-K), separated x is not supported");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -2641,7 +2641,7 @@ static aclnnStatus CheckOutputShape(const aclTensorList *l0Res, const aclTensorL
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     opName, "output, inferred output",
                     std::string(op::ToString(yShape).GetString()) + ", " + op::ToString(resShape).GetString(),
-                    "Output shape " + std::to_string(i) + " is not equal with inferred output shape.");
+                    "Output shape " + std::to_string(i) + " is not equal with inferred output shape");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -2893,7 +2893,7 @@ static aclnnStatus ParamsWeightNzDtype(gmm::GroupedMatmulParams &params, const c
         "The x dtype and weight dtype do not match with required dtype when " +
             std::string(GetGmmScenarioName(x1Dtype, weightDtype)) +
             ". Only supported scenarios: A8W8 quant, non-quant BF16/FP16, "
-            "A8W4 weight quant, A4W4 quant and A16W4 antiquant.");
+            "A8W4 weight quant, A4W4 quant and A16W4 antiquant");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -2902,7 +2902,7 @@ static const aclTensor *SetTensorToNZFormat(const aclTensor *input, op::Shape &s
     auto formatTensor = executor->CreateView(input, shape, input->GetViewOffset());
     if (formatTensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            "aclnnGroupedMatmulWeightNz", "CreateView result", "nullptr", "Failed to create the NZ-format view.");
+            "aclnnGroupedMatmulWeightNz", "CreateView result", "nullptr", "Failed to create the NZ-format view");
         return nullptr;
     }
     formatTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
