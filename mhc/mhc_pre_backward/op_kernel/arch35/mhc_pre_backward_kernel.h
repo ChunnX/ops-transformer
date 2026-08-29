@@ -1163,7 +1163,8 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<T> hInReg;
-        MicroAPI::RegTensor<P> hInFP32Reg, hPreFullReg;
+        MicroAPI::RegTensor<P> hInFP32Reg, hPreReg, hPreFullReg;
+        MicroAPI::RegTensor<uint32_t> hPreIndexReg;
         MicroAPI::MaskReg mask, maskAll;
         maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
         uint32_t hPreOffset = static_cast<uint32_t>(bsGlobalOffset * N_ + currentN);
@@ -1171,9 +1172,9 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
             uint32_t lenND = copySizeND;
             uint32_t hInOffset = tIdx * copySizeND;
 
-            // hPre每行仅使用一个标量，直接读取后广播，避免构造同值索引并执行Gather。
-            P hPreScalar = hPreUbAddr[hPreOffset];
-            MicroAPI::Duplicate<P>(hPreFullReg, hPreScalar, maskAll);
+            // Load hPre [1] -> [copySizeND]
+            MicroAPI::Duplicate(hPreIndexReg, hPreOffset, maskAll);
+            MicroAPI::Gather(hPreFullReg, hPreUbAddr, hPreIndexReg, maskAll);
             // copySizeND最大为64，当前T行只需一次向量处理，删除恒单次的内层循环控制。
             mask = MicroAPI::UpdateMask<P>(lenND);
             // hIn B16 -> B32
