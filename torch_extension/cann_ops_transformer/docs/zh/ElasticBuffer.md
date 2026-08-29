@@ -27,7 +27,7 @@ ElasticBuffer类提供统一的分布式通信buffer管理能力：
 
 - Engram存储接口用于分布式Engram存储管理，支持将本rank的表写入host pinned共享段，以及通过RDMA从远端rank抓取Engram数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
 - Engram训练接口在推理接口的基础上，通过 `with_grad=True` 开启训练模式。前向 [engram_fetch](#engram_fetch) 在抓取数据的同时保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），反向 [engram_fetch_grad](#engram_fetch_grad) 根据这些元数据将梯度沿前向路径反向交换并按local entry稀疏累加，产出稀疏梯度用于优化器更新。
-- Dispatch/Combine接口用于MoE的Expert Parallelism（EP）并行部署，支持通过[dispatch](#dispatch)将token数据分发到对应专家卡，再通过[combine](#combine)将专家输出按原路由聚合回原始序列。需与[get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法)配套使用。
+- Dispatch/Combine接口用于MoE的Expert Parallelism（EP）并行部署，支持通过[dispatch](#dispatch)将token数据分发到对应专家卡，再通过[combine](#combine)将专家输出按原路由聚合回原始序列。所需的CCL通信buffer由ElasticBuffer内部按算子参数自动计算并申请，无需手动配置。
 
 ## 函数原型
 
@@ -41,6 +41,7 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
+        num_experts: Optional[int] = None,
         with_grad: bool = False,
         explicitly_destroy: bool = False,
     )
@@ -115,16 +116,17 @@ class ElasticBuffer:
 
 ### **init**
 
-**功能**：构造ElasticBuffer实例，记录Engram和Dispatch/Combine所需配置。Engram运行时资源在首次调用 [engram_write](#engram_write) 时初始化；Dispatch/Combine通信上下文在首次调用 [dispatch](#dispatch) 或 [combine](#combine) 时初始化。
+**功能**：构造ElasticBuffer实例，记录Engram和Dispatch/Combine所需配置。Engram运行时资源在首次调用 [engram_write](#engram_write) 时初始化；Dispatch/Combine通信上下文在构造时就初始化，所需的CCL通信buffer在构造时即按算子参数自动计算并申请，此时`num_max_tokens_per_rank`、`hidden`、`num_topk` 与 `num_experts` 必须同时指定；未指定这组参数时仅可使用Engram相关接口。`with_grad=True` 训练模式下，`num_max_tokens_per_rank` 单独必填（供Engram训练使用），其余三参同样必须同时指定以启用MoE。
 
 **输入参数**：
 
 - **group** (`torch.distributed.ProcessGroup`)：必选参数，分布式进程组，用于跨rank通信和同步。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 - **num_cpu_bytes** (`int`)：可选参数，CPU buffer大小（字节），用于host pinned存储区分配。默认值为0，且必须2MB对齐。
-- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk` 一起指定；使用 `with_grad=True` 训练模式时必须指定且大于0。
-- **hidden** (`int`)：可选参数，hidden size隐藏层大小。
-- **num_topk** (`int`)：可选参数，表示选取topK个专家。
+- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk`、`num_experts` 一起指定；使用 `with_grad=True` 训练模式时必须指定且大于0。
+- **hidden** (`int`)：可选参数，hidden size隐藏层大小。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `num_max_tokens_per_rank`、`num_topk`、`num_experts` 一起指定。
+- **num_topk** (`int`)：可选参数，表示选取topK个专家。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `num_max_tokens_per_rank`、`hidden`、`num_experts` 一起指定。
+- **num_experts** (`int`)：可选参数，MoE专家总数量。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `num_max_tokens_per_rank`、`hidden`、`num_topk` 一起指定。
 - **with_grad** (`bool`)：可选参数，是否开启训练。默认为 `False`（推理）。设为 `True` 时，前向 [engram_fetch](#engram_fetch) 会额外保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），并可通过 [engram_fetch_grad](#engram_fetch_grad) 执行反向。
 - **explicitly_destroy** (`bool`)：可选参数，是否需要显式调用 [destroy](#destroy) 释放资源。默认为 `False`，实例被垃圾回收时会自动调用 `destroy` 释放资源；设为 `True` 时，调用方需要显式调用 `destroy` 释放资源。推荐设置为 `True` 并在使用结束后手动调用 `destroy` 释放资源，以确保资源释放时机确定。
 
@@ -359,7 +361,7 @@ ElasticBuffer.dispatch(
 - **topk_idx** (`Tensor`)：可选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2 维张量，shape为 `(BS, K)`，数据类型支持 `int32`，数据格式为 $ND$。张量里value取值范围为 `[0, num_experts)`。非cached模式下为必选参数，cached模式下必须为 `None`。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重。要求为2 维张量，shape为 `(BS, K)`，数据类型支持 `float32`，数据格式为 $ND$。非cached模式下为可选参数，cached模式下必须为 `None`。
 - **handle** (`EPHandle`)：可选参数，表示上一次dispatch返回的handle对象，用于cached模式。传入handle时，`topk_idx` 和 `topk_weights` 必须为 `None`，`do_cpu_sync` 必须为 `False`。默认为 `None`，即非cached模式。
-- **num_experts** (`int`)：可选参数，MoE专家总数量。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。非cached模式下为必选参数；cached模式下使用 `handle` 中的值，传入参数被忽略。
+- **num_experts** (`int`)：可选参数，MoE专家总数量。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。非cached模式下为必选参数；cached模式下使用 `handle` 中的值，传入参数被忽略。传入值必须与ElasticBuffer初始化时指定的 `num_experts` 一致，否则报错。
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。cached模式下使用 `handle` 中的值，传入参数被忽略。
 - **expert_alignment** (`int`)：可选参数，表示专家对齐数。当前仅支持取值1；cached模式使用 `handle` 中的值。
 - **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式下不能为 `True`。
@@ -417,7 +419,7 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 
 ### get_moe_ep_ccl_buffer_size（静态方法）
 
-**功能**：需与 [dispatch](#dispatch) 和 [combine](#combine) 配套使用，用于计算dispatch和combine算子所需的HCCL通信 `buffer_size` 大小（单位：MB）。该接口为静态方法，可在初始化ElasticBuffer前调用。
+**功能**：用于计算dispatch和combine算子所需的CCL通信buffer大小（单位：MB）。用于ElasticBuffer构造时调用，计算buffer大小并自动申请，无需再手动配置该值；该接口仅用于容量评估参考。
 
 **函数原型**：
 
@@ -435,7 +437,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 **输出说明**：
 
-- **ccl_buffer_size** (`int`)：计算得到的 `ccl_buffer_size` 大小，单位为MB。将该值设置为 `HCCL_BUFFSIZE` 环境变量即可满足通信域的内存需求。
+- **ccl_buffer_size** (`int`)：计算得到的 `ccl_buffer_size` 大小，单位为MB，将该值用作dispatch和combine所需的通信buffer在ElasticBuffer内部自动申请通信域内存，该值仅用于容量评估参考。
 
 **计算公式**：
 
@@ -549,9 +551,8 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
   - `num_local_experts`：表示本卡专家数量，`num_local_experts = num_experts / ep_world_size`，其中 `num_experts` 取值范围为 `[2, 2048]` 且须被 `ep_world_size` 整除，即满足 `0 < num_local_experts * ep_world_size ≤ 2048`。
 
 - **HCCL通信域缓存区大小**：
-  - 调用 [dispatch](#dispatch) 或 [combine](#combine) 前需检查 `HCCL_BUFFSIZE` 环境变量取值是否合理，该环境变量配置单个通信域的 buffer 大小（单位MB，实际物理分配为 2 倍），不配置时默认为200MB。
-  - 通信域缓存区大小可通过调用 [get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法) 计算。
-  - 计算得到的 `ccl_buffer_size` 需通过环境变量 `HCCL_BUFFSIZE` 设置，每个通信域独占一组 `2 * HCCL_BUFFSIZE` 大小的内存。
+  - [dispatch](#dispatch) 和 [combine](#combine) 所需的CCL通信buffer由ElasticBuffer内部自动计算并按需申请，无需配置 `HCCL_BUFFSIZE` 环境变量；buffer大小由 [get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法) 计算（单位MB，实际内部按 `2 * ccl_buffer_size` 大小申请内存），在构造时（指定 `num_experts` 等四个参数）完成计算与申请。
+  - Engram训练模式（`with_grad=True`）仍使用HCCL默认通信buffer，`HCCL_BUFFSIZE` 环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
 
 - **通信域约束**：
   - Engram通信域 `world_size` 范围 `[2, 1024]`，支持多卡分布式场景。
@@ -798,6 +799,7 @@ def run_dispatch_combine(rank):
         num_max_tokens_per_rank=num_max_tokens_per_rank,
         hidden=hidden,
         num_topk=top_k,
+        num_experts=num_experts,
         explicitly_destroy=True,
     )
 
@@ -848,15 +850,6 @@ def run_dispatch_combine(rank):
 
 if __name__ == "__main__":
     os.environ["HCCL_WHITELIST_DISABLE"] = "1"
-    os.environ["HCCL_BUFFSIZE"] = str(
-        ElasticBuffer.get_moe_ep_ccl_buffer_size(
-            world_size,
-            num_max_tokens_per_rank,
-            hidden,
-            num_experts,
-            top_k,
-        )
-    )
 
     processes = []
     for rank in range(world_size):
