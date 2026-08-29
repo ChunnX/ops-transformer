@@ -248,6 +248,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     invRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.inv_rms));
     hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
     hPreGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_pre));
+    // h_pre体积很小且被V0及多个V2核心重复读取，使用常驻缓存提高跨核心复用。
+    hPreGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_PERSISTENT);
     hPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_post));
     xGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x));
     xGradGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
