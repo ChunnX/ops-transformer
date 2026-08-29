@@ -9,6 +9,8 @@
 """Fused Chunk Kimi Delta Attention public operator."""
 
 import dataclasses
+import inspect
+import math
 import os
 import threading
 from collections import OrderedDict
@@ -93,9 +95,9 @@ D_HALF = SUPPORTED_HEAD_DIM // 2
 MAX_GROUP_CHUNKS = 8
 LOW_DTYPE = torch.bfloat16
 HIGH_DTYPE = torch.float32
-_DYNAMIC_KERNEL_CACHE: dict[
-    tuple[int, int, int, int, int, int], object
-] = {}
+_DYNAMIC_KERNEL_CACHE: dict[str, object] = {}
+_NATIVE_DISPATCH_SYNTHESIS = None
+_NATIVE_CACHE_LOCK = threading.RLock()
 
 
 def get_group_config(heads: int, seq_len: int) -> int:
@@ -2119,11 +2121,156 @@ def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
     return min(cube_core_num, ALGORITHM_MAX_BLOCK_NUM)
 
 
-def _dynamic_sequence_tensor(dtype, batch, seq_len, heads, width):
-    return cannbotdsl.TensorSpec(
-        (batch, heads, seq_len, width),
-        dtype,
+def _normalized_shape_slot_matches(slot: dict, value: int) -> bool:
+    if "equal" in slot:
+        return slot["equal"] == value
+    return (
+        slot["min"] <= value <= slot["max"]
+        and value % slot["multiple_of"] == 0
     )
+
+
+def _normalized_attr_matches(contract: dict, value: object) -> bool:
+    kind = contract["kind"]
+    if kind == "float_range":
+        if type(value) is not float:
+            return False
+        if contract["finite"] and not math.isfinite(value):
+            return False
+        if contract["min"] is not None and value < contract["min"]:
+            return False
+        return contract["max"] is None or value <= contract["max"]
+    if kind == "int_range":
+        return (
+            type(value) is int
+            and contract["min"] <= value <= contract["max"]
+        )
+    if kind == "scalar_values":
+        return any(
+            type(value) is type(candidate) and value == candidate
+            for candidate in contract["values"]
+        )
+    return False
+
+
+def _normalized_rule_matches_samples(rule: dict, samples) -> bool:
+    predicate = rule["predicate"]
+    tensor_contracts = {
+        **samples.case.inputs,
+        **samples.case.outputs,
+    }
+    tensor_predicates = predicate["tensors"]
+    if set(tensor_predicates) != set(samples.shapes):
+        return False
+    for name, shape in samples.shapes.items():
+        expected = tensor_predicates[name]
+        if expected["dtype"] != tensor_contracts[name].dtype.name:
+            return False
+        slots = expected["shape"]
+        if len(slots) != len(shape) or not all(
+            _normalized_shape_slot_matches(slot, value)
+            for slot, value in zip(slots, shape, strict=True)
+        ):
+            return False
+    attr_predicates = predicate["attrs"]
+    return set(attr_predicates) == set(samples.scalars) and all(
+        _normalized_attr_matches(attr_predicates[name], value)
+        for name, value in samples.scalars.items()
+    )
+
+
+def _generated_native_physical_args(
+    samples,
+    *,
+    group: int,
+    dv_base: int,
+) -> tuple:
+    """Return one trusted physical identity and its compiler-owned args."""
+    global _NATIVE_DISPATCH_SYNTHESIS
+
+    from cannbotdsl.package.variant_manifest import flatten_variant_manifest
+
+    with _NATIVE_CACHE_LOCK:
+        if _NATIVE_DISPATCH_SYNTHESIS is None:
+            from cannbotdsl.package.dispatch import synthesize_aot_dispatch
+
+            _NATIVE_DISPATCH_SYNTHESIS = synthesize_aot_dispatch(
+                flash_kda_l0_entry,
+                target_soc="ascend950pr",
+            )
+        synthesis = _NATIVE_DISPATCH_SYNTHESIS
+    rules = flatten_variant_manifest(
+        synthesis.variant_manifest,
+        require_content_keys=False,
+        public_contract_digest=flash_kda_l0_entry.spec.support.digest,
+        operator_identity=flash_kda_l0_entry.spec.name,
+        target_soc="ascend950pr",
+    )
+    compile_by_physical_key = {}
+    for item in synthesis.compile_variants:
+        if item.physical_key in compile_by_physical_key:
+            raise RuntimeError(
+                "canonical FlashKDA compile variants repeat physical key "
+                f"{item.physical_key!r}"
+            )
+        compile_by_physical_key[item.physical_key] = item.variant.args
+    manifest_physical_keys = {rule["physical_key"] for rule in rules}
+    compile_physical_keys = set(compile_by_physical_key)
+    if manifest_physical_keys != compile_physical_keys:
+        raise RuntimeError(
+            "canonical FlashKDA manifest and compile physical keys differ: "
+            f"missing={sorted(manifest_physical_keys - compile_physical_keys)!r}, "
+            f"extra={sorted(compile_physical_keys - manifest_physical_keys)!r}"
+        )
+    matches = [
+        rule for rule in rules if _normalized_rule_matches_samples(rule, samples)
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            "canonical FlashKDA validated sample must select exactly one "
+            f"generated manifest case; got {len(matches)}"
+        )
+    selected = matches[0]
+    expected_variant_key = {"group": group, "dv_base": dv_base}
+    if selected["variant_key"] != expected_variant_key:
+        raise RuntimeError(
+            "canonical FlashKDA generated values differ from the validated "
+            f"sample: got {selected['variant_key']!r}, "
+            f"expected {expected_variant_key!r}"
+        )
+    physical_key = selected["physical_key"]
+    return physical_key, compile_by_physical_key[physical_key]
+
+
+def _ordered_native_runtime_args(
+    callable_,
+    runtime_values: dict[str, object],
+) -> tuple:
+    """Bind resources to the canonical runtime order owned by the callable."""
+    parameters = inspect.signature(callable_).parameters
+    unsupported_kinds = {
+        name: parameter.kind
+        for name, parameter in parameters.items()
+        if parameter.kind
+        not in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        }
+    }
+    if unsupported_kinds:
+        raise RuntimeError(
+            "canonical FlashKDA native callable has non-positional runtime "
+            f"parameters: {unsupported_kinds!r}"
+        )
+    parameter_names = tuple(parameters)
+    missing = sorted(set(parameter_names) - set(runtime_values))
+    extra = sorted(set(runtime_values) - set(parameter_names))
+    if missing or extra:
+        raise RuntimeError(
+            "canonical FlashKDA native callable differs from runtime resources: "
+            f"missing={missing!r}, extra={extra!r}"
+        )
+    return tuple(runtime_values[name] for name in parameter_names)
 
 
 def flash_kda(
@@ -2277,69 +2424,24 @@ def flash_kda(
             "canonical FlashKDA native support targets Ascend950PR "
             f"block_num={ASCEND950PR_PACKAGE_BLOCK_NUM}, got {block_num}"
         )
-    _kernel_key = (
-        n_kv,
-        n_v,
-        dim,
-        dv_base,
-        group,
-        block_num,
+    physical_key, physical_args = _generated_native_physical_args(
+        validated_samples,
+        group=group,
+        dv_base=dv_base,
     )
-    fn = _DYNAMIC_KERNEL_CACHE.get(_kernel_key)
+    fn = _DYNAMIC_KERNEL_CACHE.get(physical_key)
     if fn is None:
-        sym_batch = cannbotdsl.Dim("B")
-        sym_seq = cannbotdsl.Dim("S", multiple_of=CHUNK_SIZE)
-        scratch_tokens = sym_batch * n_v * group * CHUNK_SIZE
-        gamma_rows = sym_batch * n_v * group * dim
-        fake = cannbotdsl.TensorSpec
-
-        physical_args = (
-            _dynamic_sequence_tensor(
-                dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim
-            ),
-            _dynamic_sequence_tensor(
-                dtypes.bfloat16, sym_batch, sym_seq, n_v, dim
-            ),
-            _dynamic_sequence_tensor(
-                dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim
-            ),
-            _dynamic_sequence_tensor(
-                dtypes.bfloat16, sym_batch, sym_seq, n_v, 1
-            ),
-            _dynamic_sequence_tensor(
-                dtypes.bfloat16, sym_batch, sym_seq, n_v, dim
-            ),
-            fake((block_num, 2, CHUNK_SIZE, D_HALF), dtypes.float32),
-            fake((n_v,), dtypes.float32),
-            fake((n_v, dim), dtypes.float32),
-            fake((scratch_tokens, dim), dtypes.bfloat16),
-            fake((gamma_rows, 1), dtypes.float32),
-            fake((scratch_tokens, dim), dtypes.bfloat16),
-            fake((scratch_tokens, dim), dtypes.bfloat16),
-            fake((scratch_tokens, CHUNK_SIZE), dtypes.bfloat16),
-            fake((scratch_tokens, dim), dtypes.bfloat16),
-            _dynamic_sequence_tensor(
-                dtypes.bfloat16, sym_batch, sym_seq, n_v, dim
-            ),
-            fake((sym_batch, n_v, dim, dim), dtypes.float32),
-            fake((sym_batch, n_v, dim, dim), dtypes.float32),
-            fake((16, 16), dtypes.float16),
-            dtypes.int64,
-            dtypes.int64,
-            dtypes.float32,
-            dtypes.float32,
-            dim,
-            group,
-            dv_base,
-            block_num,
-        )
-        fn = compile_native_entry_variant(
-            flash_kda_l0_entry,
-            physical_args,
-            sample_shapes=sample_shapes,
-            sample_scalars=sample_scalars,
-        )
-        _DYNAMIC_KERNEL_CACHE[_kernel_key] = fn
+        with _NATIVE_CACHE_LOCK:
+            fn = _DYNAMIC_KERNEL_CACHE.get(physical_key)
+            if fn is None:
+                compiled = compile_native_entry_variant(
+                    flash_kda_l0_entry,
+                    physical_args,
+                    sample_shapes=sample_shapes,
+                    sample_scalars=sample_scalars,
+                )
+                _DYNAMIC_KERNEL_CACHE[physical_key] = compiled
+                fn = compiled
     execution = _EXECUTION_CACHE.get_or_create(
         ref=q,
         batch=batch,
@@ -2352,12 +2454,31 @@ def flash_kda(
         layout_qkv=layout_qkv,
     )
     ws = execution.workspace
+    runtime_values = {
+        "gm_K": k,
+        "gm_V": v,
+        "gm_Q": q,
+        "gm_beta_brc": beta,
+        "gm_g": g,
+        "gm_qk_exchange": execution.qk_exchange,
+        "gm_A_log": A_log,
+        "gm_dt_bias": dt_bias,
+        "gm_k_restored": ws.K_restored,
+        "gm_gamma": ws.gamma_C,
+        "gm_q_decayed": ws.Q_decayed,
+        "gm_w": ws.W,
+        "gm_Mqk": ws.Mqk,
+        "gm_U": ws.U_pre,
+        "gm_state_in": initial_state,
+        "gm_identity16": ws.identity16,
+        "gm_O": out,
+        "gm_state_out": final_state,
+        "bn_total": bn_total,
+        "seq_len": seq_len,
+        "scale_value": scale_value,
+        "lower_bound": lower_bound_value,
+    }
+    runtime_args = _ordered_native_runtime_args(fn, runtime_values)
     with execution.launch_lock:
-        fn(
-            k, v, q, beta, g, execution.qk_exchange, A_log, dt_bias,
-            ws.K_restored, ws.gamma_C, ws.Q_decayed, ws.W, ws.Mqk,
-            ws.U_pre, out, initial_state, final_state, ws.identity16,
-            bn_total, seq_len, scale_value,
-            lower_bound_value,
-        )
+        fn(*runtime_args)
     return out, final_state
