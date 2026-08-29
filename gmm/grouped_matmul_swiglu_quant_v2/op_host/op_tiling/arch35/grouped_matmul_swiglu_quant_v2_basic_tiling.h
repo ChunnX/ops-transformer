@@ -90,6 +90,7 @@ private:
     bool IsB8(ge::DataType dtype);
     bool CheckDtypePertoken();
     bool AnalyzeInputsPertoken();
+    bool CheckPertokenWeightNzShape(const gert::Shape &wShape, const gert::Shape &wStorageShape) const;
     ge::graphStatus DoOpTilingPertoken();
     int64_t LogPertokenQuantParams();
     bool CheckCoreNum() const override;
