@@ -412,7 +412,7 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
     tiling.set_tokensNum(tokensNum);
     tiling.set_topK(topK);
     tiling.set_hiddenSize(hiddenSize);
-#if (__NPU_ARCH__==3510)
+#if (__NPU_ARCH__ == 3510)
     if (tokensNum == 0 || topK == 0 || hiddenSize == 0 || numOutTokens == 0) {
         OP_LOGD(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] input shape has 0, skip tiling.");
         const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
