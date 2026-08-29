@@ -120,6 +120,11 @@ struct WorkspaceInfo {
         bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
         bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
         bool useMteGroupReady = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
+        bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+        bool useW4PairwiseTileCombine =
+            useMteWaveCombine && isW4Mode && tilingData->combineQuantMode == COMBINE_NO_QUANT;
         bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
 
         int64_t maxWavesPerExpert =
@@ -162,9 +167,11 @@ struct WorkspaceInfo {
                                      moeExpertCount * INT_CACHELINE;
                 }
             } else {
-                // W4 保持逐专家、逐 AIC ready 槽，避免改变既有路径。
-                gmm2ReadyPtr = base + workspaceSize;
-                workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+                if (!useW4PairwiseTileCombine) {
+                    // W4 量化 Combine 保持逐专家、逐 AIC ready 槽；非量化路径复用每 AIC 单调序号。
+                    gmm2ReadyPtr = base + workspaceSize;
+                    workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+                }
             }
         }
 
