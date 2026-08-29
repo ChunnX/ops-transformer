@@ -79,6 +79,9 @@ __aicore__ inline void PrepareSharedExpertInput(const AivJobContext &job, const 
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    // 本屏障同时兜住 a8w8 路径窗口 0 权重预取在飞块的排空（shared>0 分支在 SyncAll 前无其他
+    // 排空点，调用方另有防御性 Drain 兜底，见 mega_moe_wave_a8w8.h Process）。本函数不得新增
+    // 早于本屏障的提前返回，否则在飞预取写 [192K,208K) 会与 GMM epilogue 的 C tile 跨队列竞争。
     PipeBarrier<PIPE_ALL>();
 }
 

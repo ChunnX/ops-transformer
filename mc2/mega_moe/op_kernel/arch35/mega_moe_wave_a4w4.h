@@ -177,6 +177,30 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
+    // 权重 L2 预取（策略写死，不经 tiling 下发）：仅 AIV0 构造游标（AIC/AIV1 传空指针保持原行为）；
+    // 各 block 的 AIV0 以 (blockIdx, blockNum) 为 worker 标识在专家区域内按 chunk 交错认领；窗口 1
+    // 为软预算（count 等待死区发多少算多少），从窗口 0 已覆盖量之后接续：自适应总量经能力门限分解
+    // 后剩余 >0 才构造，剩余为 0（小权重场景）时不构造（Init 内 regionIndex 耗尽为第二层兜底）。
+    // A4W4 的 GMM1 走 generic（权重 AIC GM->L1，默认不 bypass L2），W1 预取命中 GMM1 权重读。
+    // topo/mode 门控：本 Wave 类仅在 TILINGKEY_TPL_MTE 拓扑实例化（apt.cpp），mode 与 Wave 类经
+    // tiling 互斥校验一一对应，故不重复判定 topoType/groupedMatmulMode（基类窗口 0 的 topoType 判定
+    // 为同义冗余防御）；复用本类到其他拓扑时须补门控。
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        uint64_t adaptiveTotalBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank);
+        uint64_t window0Capacity = WeightL2PrefetchWindow0TotalBytes(countWorkspace_.blockNum);
+        uint64_t window0Bytes = adaptiveTotalBytes < window0Capacity ? adaptiveTotalBytes : window0Capacity;
+        if (GetSubBlockIdx() == 0U && adaptiveTotalBytes > window0Bytes) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                                 commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx,
+                                 countWorkspace_.blockNum, adaptiveTotalBytes - window0Bytes, window0Bytes);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，必须按相同调用顺序推进并始终保持一致。
     // 某个角色即使不参与当前 GMM 计算，也必须使用该 problem 的 tile 数更新游标。
     uint32_t startBlockIdx = 0U;
@@ -239,7 +263,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx, weightPrefetch);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
