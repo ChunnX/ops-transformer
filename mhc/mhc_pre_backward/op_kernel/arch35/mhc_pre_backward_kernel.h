@@ -498,19 +498,12 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId)
 {
     AscendC::LocalTensor<P> alphaOutBuf = vecOutQueue1_.AllocTensor<P>();
-    uint32_t srcShape1[] = {1, static_cast<uint32_t>(N_)};
-    uint32_t srcShape2[] = {1, static_cast<uint32_t>(2 * N_)};
-    uint32_t srcShape3[] = {1, static_cast<uint32_t>(fusionSize_)};
-    ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf, sumBuf, srcShape1, true);
-    PipeBarrier<PIPE_V>();
-    Muls(sumBuf, sumBuf, ZERO, N_);
-    PipeBarrier<PIPE_V>();
-    ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf[8], sumBuf, srcShape2, true);
-    PipeBarrier<PIPE_V>();
-    Muls(sumBuf, sumBuf, ZERO, N_ * 2);
-    PipeBarrier<PIPE_V>();
-    ReduceSum<float, Pattern::Reduce::AR, true>(alphaOutBuf[16], sumBuf, srcShape3, true);
-    PipeBarrier<PIPE_V>();
+    uint32_t prePostShape[] = {1, static_cast<uint32_t>(N_)};
+    uint32_t resShape[] = {1, static_cast<uint32_t>(N_ * N_)};
+    // 三段输入互不重叠，直接分段归约，避免先乘零再扩大归约范围及其流水屏障。
+    ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf, sumBuf, prePostShape, true);
+    ReduceSum<float, Pattern::Reduce::AR, false>(alphaOutBuf[8], sumBuf[N_], prePostShape, true);
+    ReduceSum<float, Pattern::Reduce::AR, true>(alphaOutBuf[16], sumBuf[2 * N_], resShape, true);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
     vecOutQueue1_.EnQue(alphaOutBuf);
