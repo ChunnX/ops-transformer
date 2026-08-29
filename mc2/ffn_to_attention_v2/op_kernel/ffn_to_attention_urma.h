@@ -24,10 +24,12 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "ffn_to_attention_v2_tiling.h"
 
-#if __has_include("../ffn_to_attention/ffn_to_attention.h")
-#include "../ffn_to_attention/ffn_to_attention.h"
+#if __has_include("../common/attention_ffn_context.h")
+#include "../common/attention_ffn_context.h"
+#include "../common/mc2_kernel_utils.h"
 #else
-#include "../../ffn_to_attention/op_kernel/ffn_to_attention.h"
+#include "../../common/op_kernel/attention_ffn_context.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 namespace FFNToAttentionImpl {
@@ -35,6 +37,14 @@ namespace FFNToAttentionImpl {
 constexpr uint32_t URMA_HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr int32_t URMA_FLAG_VALUE = 1;
+
+struct FFNToAttentionV2TokenMetaData {
+    uint32_t curAttenWorkIds;
+    uint32_t curAttenWorkRank;
+    uint32_t curMicroBatchIds;
+    uint32_t curTokenBatchOffset;
+    uint32_t curTokenTopkOffset;
+};
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
@@ -52,7 +62,11 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset);
+    static constexpr uint8_t URMA_BUFFER_NUM = 2U;
+    static constexpr uint32_t URMA_UB_ALIGN = 32U;
+    static constexpr uint64_t URMA_WIN_ADDR_ALIGN = 512UL;
+
+    __aicore__ inline void ReadTokenMetaData(FFNToAttentionV2TokenMetaData &metaDataStruct, uint64_t yOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
     __aicore__ inline void HcommInit();
@@ -156,14 +170,14 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + static_cast<uint64_t>(aivNum_) * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
-    tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hSize_);
-    tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, hSize_);
+    tpipe_->InitBuffer(statusBuf_, URMA_UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
 
     batchSizeSendCnt_ = static_cast<uint64_t>(axisBS_) * expertNumPerToken_;
     winTokenInfoTableSize_ =
-        Ceil(static_cast<uint64_t>(microBatchNum_) * batchSizeSendCnt_ * sizeof(int32_t), WIN_ADDR_ALIGN) *
-        WIN_ADDR_ALIGN;
+        Ceil(static_cast<uint64_t>(microBatchNum_) * batchSizeSendCnt_ * sizeof(int32_t), URMA_WIN_ADDR_ALIGN) *
+        URMA_WIN_ADDR_ALIGN;
     const uint64_t totalSlotNum = static_cast<uint64_t>(microBatchNum_) * axisBS_ * expertNumPerToken_;
     requiredWindowSize_ = winTokenInfoTableSize_ + totalSlotNum * axisHS_ * sizeof(xType);
 }
@@ -205,8 +219,8 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetUrmaCommHandle(uint32
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void
-FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct,
-                                                                          uint64_t yOffset)
+FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(
+    FFNToAttentionV2TokenMetaData &metaDataStruct, uint64_t yOffset)
 {
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         sessionIdsGMTensor_[yOffset]);
@@ -333,7 +347,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint64_t yOffset = static_cast<uint64_t>(aivId_) + round * aivNum_;
             if (yOffset < actualTokenNum_) {
-                ReadTokenMetaDataStruct metaDataStruct;
+                FFNToAttentionV2TokenMetaData metaDataStruct;
                 ReadTokenMetaData(metaDataStruct, yOffset);
                 if (metaDataStruct.curAttenWorkRank == rankId_) {
                     GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
@@ -372,7 +386,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     if (sourceYOffset >= actualTokenNum_) {
                         break;
                     }
-                    ReadTokenMetaDataStruct metaDataStruct;
+                    FFNToAttentionV2TokenMetaData metaDataStruct;
                     ReadTokenMetaData(metaDataStruct, sourceYOffset);
                     if (metaDataStruct.curAttenWorkRank == rankId_) {
                         continue;
