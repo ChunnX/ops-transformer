@@ -22,7 +22,7 @@
 
 namespace GROUPED_MATMUL {
 
-template <class XType, class WeightType, class ScaleBType, class BiasType, class YType>
+template <class XType, class WeightType, class ScaleBType, class BiasType, class YType, bool IsSingleMultiSingle>
 __aicore__ inline void GmmWeightQuantSampleMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale,
                                                     GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
                                                     const GroupedMatmulTilingData::GMMWeightQuantParam *gmmBaseParams,
@@ -42,25 +42,27 @@ __aicore__ inline void GmmWeightQuantSampleMxKernel(GM_ADDR x, GM_ADDR weight, G
     recipeTiling.secondTailBlockCount = gmmBaseParams->secondTailBlockCount;
     recipeTiling.baseM = mmTilingData->baseM;
     recipeTiling.groupListType = gmmBaseParams->groupListType;
-    recipeTiling.singleWeight = gmmBaseParams->singleWeight;
     recipeTiling.hasBias = gmmBaseParams->hasBias;
-
-    GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
-    // The recipe consumes a raw base in single-weight mode and resolves each tensor-list entry in multi-weight mode.
-    GM_ADDR weightAddr = weight;
-    GM_ADDR scaleBAddr = antiquantScale;
-    GM_ADDR biasAddr = bias;
-    if (gmmBaseParams->singleWeight != 0) {
-        weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
-        scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
+    if constexpr (IsSingleMultiSingle) {
+        // SMS: X/Y are packed single tensors; W/ScaleB/Bias remain tensor-list descriptors for per-group lookup.
+        GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
+        GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
+        Blaze::Gemm::Kernel::RunWeightQuantGroupedMatmulMxfp8Fp4Recipe<WeightType, BiasType, YType, true>(
+            xAddr, weight, perTokenScale, antiquantScale, bias, groupList, yAddr, recipeTiling);
+    } else {
+        // The MX A8W4 host checker rejects MMM, so a non-SMS tiling key is SSS. Resolve each one-element tensor
+        // list once, then advance contiguous group payloads in the recipe.
+        GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
+        GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
+        GM_ADDR scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
+        GM_ADDR biasAddr = bias;
         if (gmmBaseParams->hasBias != 0) {
             biasAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias));
         }
+        GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
+        Blaze::Gemm::Kernel::RunWeightQuantGroupedMatmulMxfp8Fp4Recipe<WeightType, BiasType, YType, false>(
+            xAddr, weightAddr, perTokenScale, scaleBAddr, biasAddr, groupList, yAddr, recipeTiling);
     }
-    GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-
-    Blaze::Gemm::Kernel::RunWeightQuantGroupedMatmulMxfp8Fp4Recipe<WeightType, BiasType, YType>(
-        xAddr, weightAddr, perTokenScale, scaleBAddr, biasAddr, groupList, yAddr, recipeTiling);
 }
 
 } // namespace GROUPED_MATMUL
