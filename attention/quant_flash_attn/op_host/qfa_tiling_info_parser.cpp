@@ -652,18 +652,31 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
             return ge::GRAPH_FAILED;
         }
     } else {
+        // MxFP8: TND prefill 4D / N2TGD decode 5D / BNSD、BSND(与 layout_q 一致) 5D
+        bool isBnsdOrBsndQ = (layoutQ_ == QfaLayout::BNSD || layoutQ_ == QfaLayout::BSND);
         bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
-        if (isDecode && qDescaleDimNum != 5) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In MxFP8 decode scenario(layout_q_descale=N2TGD), the shape dim of q_descale must be 5D");
-            return ge::GRAPH_FAILED;
-        }
-        if (!isDecode && qDescaleDimNum != 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In MxFP8 prefill scenario(layout_q_descale=TND), the shape dim of q_descale must be 4D");
-            return ge::GRAPH_FAILED;
+        if (isBnsdOrBsndQ) {
+            if (qDescaleDimNum != 5) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
+                    ("In MxFP8 scenario, the shape dim of q_descale must be 5D when layout_q is " +
+                     QfaLayoutToSerialString(layoutQ_))
+                        .c_str());
+                return ge::GRAPH_FAILED;
+            }
+        } else {
+            if (isDecode && qDescaleDimNum != 5) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
+                    "In MxFP8 decode scenario(layout_q_descale=N2TGD), the shape dim of q_descale must be 5D");
+                return ge::GRAPH_FAILED;
+            }
+            if (!isDecode && qDescaleDimNum != 4) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
+                    "In MxFP8 prefill scenario(layout_q_descale=TND), the shape dim of q_descale must be 4D");
+                return ge::GRAPH_FAILED;
+            }
         }
     }
 

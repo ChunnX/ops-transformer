@@ -346,13 +346,18 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
 
 def canonical_q_scale_layout(layout):
     layout = (layout or "TND").upper()
-    if layout not in ("TND", "N2TGD"):
+    # BNSD/BSND: q_descale 与 query 同排布 (5D, D//64 组内偶奇打包)
+    if layout not in ("TND", "N2TGD", "BNSD", "BSND"):
         raise ValueError(f"Unsupported Q scale layout: {layout}")
     return layout
 
 
 def resolve_q_scale_layout(layout=None):
-    resolved = canonical_q_scale_layout(layout or Q_SCALE_LAYOUT)
+    effective = layout or Q_SCALE_LAYOUT
+    # BNSD/BSND 非 PA 场景: 算子约束 layout_q_descale 必须与 layout_q 一致
+    if not ENABLE_PA and INPUT_LAYOUT in ("BNSD", "BSND"):
+        effective = INPUT_LAYOUT
+    resolved = canonical_q_scale_layout(effective)
     if N_kv <= 0 or N_q % N_kv != 0:
         raise ValueError(f"N_q must be divisible by N_kv, got N_q={N_q}, N_kv={N_kv}")
     group = N_q // N_kv
@@ -1782,9 +1787,13 @@ def npu_mxfp8_fa(
 
     act_seqused_q = _get_seqused_q()
     npu_output = atten_out
-    T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
-    if npu_output.shape[0] > T_actual:
-        npu_output = npu_output[:T_actual]
+    # 仅 TND 输出 dim0=T 需按实际 token 数截断;
+    # BNSD/BSND 输出 dim0=B, S 维即 max(seqused), padding 行由算子零初始化
+    out_layout = "TND" if ENABLE_PA else INPUT_LAYOUT
+    if out_layout == "TND":
+        T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
+        if npu_output.shape[0] > T_actual:
+            npu_output = npu_output[:T_actual]
     logger.info("[NPU] output=%s", npu_output.shape)
     return npu_output, lse_out
 
