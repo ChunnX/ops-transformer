@@ -362,6 +362,7 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
+        num_experts: Optional[int] = None,
         with_grad: bool = False,
         explicitly_destroy: bool = False,
     ):
@@ -374,14 +375,17 @@ class ElasticBuffer:
             num_max_tokens_per_rank: maximum MoE dispatch tokens per rank.
             hidden: hidden dimension for MoE dispatch/combine.
             num_topk: top-k value for MoE dispatch/combine.
+            num_experts: total MoE expert count.
             with_grad: whether to enable training mode.
             explicitly_destroy: if True, the caller needs to explicitly
                 invoke ``destroy`` to release resources; if False (default),
                 resources are released automatically when the instance is
                 garbage collected.
         """
-        moe_args = (num_max_tokens_per_rank, hidden, num_topk)
-        self._validate_init_args(group, num_cpu_bytes, moe_args, with_grad)
+        moe_args = (num_max_tokens_per_rank, hidden, num_topk, num_experts)
+        self._moe_enabled = self._validate_init_args(
+            group, num_cpu_bytes, moe_args, with_grad
+        )
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
@@ -410,6 +414,18 @@ class ElasticBuffer:
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden
         self._num_topk = num_topk
+        self._moe_num_experts = num_experts
+        if self._moe_enabled:
+            ccl_buffer_size = self.get_moe_ep_ccl_buffer_size(
+                self._ep_world_size,
+                num_max_tokens_per_rank,
+                hidden,
+                num_experts,
+                num_topk,
+            )
+            required_ccl_buffer_size_bytes = ccl_buffer_size * 2 * 1024 * 1024
+            self._runtime.init_moe_context(required_ccl_buffer_size_bytes)
+
         self._host_pinned_counter = None
         self._engram_context_tensor = None
         self._engram_hidden_size = None
@@ -542,6 +558,7 @@ class ElasticBuffer:
 
     @staticmethod
     def _validate_init_args(group, num_cpu_bytes, moe_args, with_grad):
+        """Validate init args and return whether MoE dispatch/combine is enabled."""
         buffer_alignment = 2 * 1024 * 1024
         _torch_check((group is not None), lambda: ("group must not be None."))
         _torch_check(
@@ -557,6 +574,11 @@ class ElasticBuffer:
                 f"which is not divisible by {buffer_alignment=}."
             ),
         )
+        moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk", "num_experts")
+        missing_args = [
+            name for name, val in zip(moe_arg_names, moe_args) if val is None
+        ]
+        moe_enabled = len(missing_args) == 0
         if with_grad:
             num_max_tokens_per_rank = moe_args[0]
             _torch_check(
@@ -568,19 +590,25 @@ class ElasticBuffer:
                     f"got {type(num_max_tokens_per_rank).__name__}: {num_max_tokens_per_rank!r}."
                 ),
             )
-        else:
-            moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
-            missing_args = [
-                name for name, val in zip(moe_arg_names, moe_args) if val is None
-            ]
+            # with_grad 时 num_max_tokens_per_rank 单独必填，其余三参必须"全给或全不给"
             _torch_check(
-                len(missing_args) == 0 or len(missing_args) == len(moe_args),
+                moe_enabled or len(missing_args) == 3,
                 lambda: (
-                    "num_max_tokens_per_rank, hidden and num_topk "
+                    "hidden, num_topk and num_experts "
                     "must be specified together for MoE dispatch/combine, "
                     f"missing: {', '.join(missing_args)}."
                 ),
             )
+        else:
+            _torch_check(
+                moe_enabled or len(missing_args) == len(moe_arg_names),
+                lambda: (
+                    "num_max_tokens_per_rank, hidden, num_topk and num_experts "
+                    "must be specified together for MoE dispatch/combine, "
+                    f"missing: {', '.join(missing_args)}."
+                ),
+            )
+        return moe_enabled
 
     def engram_write(self, storage: torch.Tensor) -> None:
         """
@@ -924,6 +952,13 @@ class ElasticBuffer:
                 f"got {args.topk_idx.shape[1]} and {self._num_topk}"
             ),
         )
+        torch._check(
+            args.num_experts == self._moe_num_experts,
+            lambda: (
+                "num_experts must equal the num_experts the comm context was "
+                f"created with, got {args.num_experts} and {self._moe_num_experts}"
+            ),
+        )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
 
         (
@@ -1064,6 +1099,8 @@ class ElasticBuffer:
         if self._host_pinned_counter is not None:
             del self._host_pinned_counter
         self._host_pinned_counter = None
+        self._moe_num_experts = None
+        self._moe_enabled = False
         self._engram_context_tensor = None
         self._engram_hidden_size = None
         self._engram_num_entries = None
@@ -1095,17 +1132,11 @@ class ElasticBuffer:
             )
 
     def _ensure_moe_config(self):
-        moe_args = (self._num_max_tokens_per_rank, self._hidden, self._num_topk)
-        moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
-        missing_args = [
-            name for name, val in zip(moe_arg_names, moe_args) if val is None
-        ]
         torch._check(
-            len(missing_args) == 0,
+            self._moe_enabled,
             lambda: (
-                "num_max_tokens_per_rank, hidden and num_topk "
-                "must be specified to use MoE dispatch/combine, "
-                f"missing: {', '.join(missing_args)}."
+                "MoE dispatch/combine requires num_max_tokens_per_rank, hidden, "
+                "num_topk and num_experts to be specified together at initialization"
             ),
         )
 
