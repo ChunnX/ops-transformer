@@ -360,6 +360,24 @@ __aicore__ inline void SoftmaxWithGroupMaxQs128Kvs256CallVF(const LocalTensor<T2
         validRowsY1Invalid, validRowsY2Invalid);
 }
 
+// 单 chunk(128 行)的中间 __simd_vf__ 层。
+// 注意: softmax_with_group_max_qs128_chunk_vf 不能被 __aicore__ 函数直接调用 —— bisheng 会为它
+// 生成跨 aicore/simd_vf 边界的独立函数体, 后端 legalization 崩溃:
+//   "fatal error: error in backend: Do not know how to split the result of this operator!"
+// 故必须与 SoftmaxWithGroupMaxQs128Kvs256CallVF 保持同构的三层结构:
+//   __aicore__ CallVF -> __simd_vf__ 中间层 -> __simd_vf__ chunk_vf
+template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
+          uint16_t QsBase = 128, uint16_t chunkY = 0>
+__simd_vf__ inline void softmax_with_group_max_qs128_kvs256_chunk_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
+                                                                     __ubuf__ T *local_group_max,
+                                                                     __ubuf__ T *global_max,
+                                                                     __ubuf__ uint8_t *indexes_ub,
+                                                                     const T NEG_LOG2_CX, const uint16_t effY)
+{
+    softmax_with_group_max_qs128_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
+        p_dest, s, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, false);
+}
+
 // 单 chunk(128 行)入口: 供 dispatch 按 chunk 有效行数分流时单独下发有效 chunk。
 // 用于 kvs256 部分 chunk 无效(Y1==0 或 Y2==0)的场景, 无效 chunk 由 allInvalid 模板处理。
 // chunkY 为模板参数(0/1), 保持与原 full VF 相同的编译期常量代码生成。
@@ -378,8 +396,8 @@ __aicore__ inline void SoftmaxWithGroupMaxQs128Kvs256ChunkCallVF(const LocalTens
     __ubuf__ T *global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
     __ubuf__ uint8_t * indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
-    softmax_with_group_max_qs128_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
-        p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, false);
+    softmax_with_group_max_qs128_kvs256_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase, chunkY>(
+        p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, effY);
 }
 
 }
