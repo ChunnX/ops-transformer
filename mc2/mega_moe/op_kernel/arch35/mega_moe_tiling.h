@@ -203,5 +203,8 @@ struct MegaMoeTilingData {
     // 全卡一致的单卡 token 数上界（attr num_max_tokens_per_rank；attr=0 时 host 置为 bs）。
     // 跨卡窗口布局、mask 槽几何与收发批网格一律用该上界，bs 仅描述本卡真实 token 数。
     uint32_t numMaxTokensPerRank;
+    // 预取 scratch 的 UB 偏移（= 平台 ubSize − 16KB chunk，即 UB 顶部；运行时由 host 下发，
+    // 布局钳位与 kernel scratch 落点共用该值）。
+    uint32_t weightPrefetchUbOffset;
 };
 #endif
