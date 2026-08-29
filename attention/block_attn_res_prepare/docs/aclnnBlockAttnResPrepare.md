@@ -85,12 +85,11 @@
 
     $$
     O=\mathbf{0}_{S\times T\times D},\qquad
-    M=m_{\min}\mathbf{1}_{S\times T},\qquad
-    L=\mathbf{0}_{S\times T},\qquad
-    m_{\min}=-3.4028234663852886\times10^{38}.
+    M=\mathbf{0}_{S\times T},\qquad
+    L=\mathbf{0}_{S\times T}.
     $$
 
-    即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`expSum` 为 shape `[S, T]` 的全 0 Tensor。该结果表示 online softmax 的空状态；`validBlocks[0] < 0` 时按 0 处理，返回结果相同。
+    即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 和 `expSum` 均为 shape `[S, T]` 的全 0 Tensor；`validBlocks[0] < 0` 时按 0 处理，返回结果相同。
 
     其中：
     - $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `blockRes`；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史残差块在第 $d$ 个隐藏特征上的值。
@@ -285,7 +284,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
 
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `blockRes` 与 `pseudoQuery` 的最后一维必须相同。
-- `validBlocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logitMax` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`expSum` 返回全 0 Tensor；`validBlocks[0] < 0` 时返回结果相同。
+- `validBlocks[0] <= 0` 时，`numerator`、`logitMax` 和 `expSum` 均返回全 0 Tensor。
 - 所有输入和输出 Tensor 均必须为连续 Tensor，不支持非连续 Tensor。
 - `T == 0` 或 `S == 0` 时返回对应形状的空输出。
 
