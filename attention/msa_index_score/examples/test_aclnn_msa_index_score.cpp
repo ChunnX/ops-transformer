@@ -24,7 +24,8 @@ __attribute__((constructor)) static void DisableFpeEarly()
  *
  * 用例矩阵覆盖：Prefill 多 M-tile、prefix 非 128 对齐的边界 block、varlen 多 batch、
  * Decode(q_len=1)、投机解码(q_len>1)、长序列多 S-tile 轮转、block_table 乱序、
- * 无效尾填充、bf16 / fp16 双 dtype、int8 key 前融合反量化、PA BNBD、TND packed key。
+ * 无效尾填充、q_len/kv_len=0 的 mixed-batch pad、bf16 / fp16 双 dtype、
+ * int8 key 前融合反量化、PA BNBD、TND packed key。
  */
 
 #include <algorithm>
@@ -225,19 +226,21 @@ public:
     {
         void *devAddr = nullptr;
         const size_t bytes = host.size() * sizeof(T);
-        if (aclrtMalloc(&devAddr, bytes, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+        // 空张量（T1=0 / T2=0）仍需要合法 device 指针；aclrtMalloc(0) 会失败。
+        const size_t allocBytes = (bytes == 0) ? static_cast<size_t>(32) : bytes;
+        if (aclrtMalloc(&devAddr, allocBytes, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
             return nullptr;
         }
         addrs_.push_back(devAddr);
-        if (aclrtMemcpy(devAddr, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
+        if (bytes > 0 && aclrtMemcpy(devAddr, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
             return nullptr;
         }
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = static_cast<int64_t>(shape.size()) - kPrevDimOffset; i >= 0; i--) {
             strides[i] = shape[i + 1] * strides[i + 1];
         }
-        aclTensor *t = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
-                                       shape.data(), shape.size(), devAddr);
+        aclTensor *t = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                                       shape.size(), devAddr);
         tensors_.push_back(t);
         if (addrOut != nullptr) {
             *addrOut = devAddr;
@@ -732,6 +735,30 @@ int main()
         {"L0-fp8-e4m3fn", 2, 128, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 1},
         {"L0-fp8-e5m2", 2, 128, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 2},
         {"L1-fp8-e4m3fn-prefill", 8, 128, 8, {32}, {256}, {1}, false, false, kSparseModeRightDown, KeyLayout::BBND, 1},
+        // mixed-batch 零长度：部分请求 pad。整 batch 全 0 见文末 L0-all-* / L0-tnd-all-*。
+        {"L1-pad-q0", 8, 128, 8, {0, 32}, {256, 256}, {1, 1}, false, false},
+        {"L1-pad-kv0", 8, 128, 8, {32, 32}, {0, 256}, {0, 1}, false, false},
+        {"L1-pad-q0-kv0", 8, 128, 8, {0, 32}, {0, 256}, {0, 1}, false, false},
+        {"L1-pad-mid-q0", 8, 128, 8, {16, 0, 16}, {200, 0, 200}, {1, 0, 1}, false, false},
+        {"L1-tnd-pad-q0-kv0",
+         8,
+         128,
+         0,
+         {0, 32},
+         {0, 256},
+         {0, 1},
+         false,
+         false,
+         kSparseModeRightDown,
+         KeyLayout::TND},
+        // 整 batch 空序列：host 跳过计算（950）。
+        {"L0-all-q0", 8, 128, 8, {0}, {256}, {1}, false, false},
+        {"L0-all-kv0", 8, 128, 8, {32}, {0}, {0}, false, false},
+        {"L0-all-q0-kv0", 8, 128, 8, {0}, {0}, {0}, false, false},
+        {"L1-all-q0", 8, 128, 8, {0, 0}, {256, 256}, {1, 1}, false, false},
+        {"L0-tnd-all-q0", 8, 128, 0, {0}, {256}, {1}, false, false, kSparseModeRightDown, KeyLayout::TND},
+        {"L0-tnd-all-kv0", 8, 128, 0, {32}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
+        {"L0-tnd-all-q0-kv0", 8, 128, 0, {0}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
     };
 
     size_t passed = 0;

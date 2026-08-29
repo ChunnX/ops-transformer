@@ -17,6 +17,7 @@
 #include "../op_kernel/msa_index_score_common.h"
 
 #include <string>
+#include "graph/utils/type_utils.h"
 
 using namespace ge;
 using namespace MsaIndexScoreNs;
@@ -75,6 +76,8 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
 {
     info.platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(info.platformInfo == nullptr, OP_LOGE(context, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
+    auto ascendcPlatformEarly = platform_ascendc::PlatformAscendC(info.platformInfo);
+    info.isAscend950 = (ascendcPlatformEarly.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950);
 
     const gert::StorageShape *queryShape = context->GetInputShape(MSA_IDX_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -91,9 +94,16 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     OP_CHECK_NULL_WITH_CONTEXT(context, startLocShape);
 
     const gert::Shape &q = queryShape->GetStorageShape();
-    const gert::Shape &kc = keyShape->GetStorageShape();
     const gert::Shape &qlen = actualSeqQlenShape->GetStorageShape();
     const gert::Shape &klen = actualSeqKlenShape->GetStorageShape();
+
+    const auto *keyDesc = context->GetInputDesc(MSA_IDX_KEY);
+    OP_CHECK_NULL_WITH_CONTEXT(context, keyDesc);
+    info.keyDtype = keyDesc->GetDataType();
+    OP_CHECK_IF(static_cast<ge::Format>(ge::GetPrimaryFormat(keyDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+                OP_LOGE(context, "FRACTAL_NZ key is not supported."), return ge::GRAPH_FAILED);
+
+    const gert::Shape &kc = keyShape->GetStorageShape();
 
     OP_CHECK_IF(q.GetDimNum() != MSA_QUERY_DIM_NUM,
                 OP_LOGE(context, "query must be TND(3 dims), got %zu.", q.GetDimNum()), return ge::GRAPH_FAILED);
@@ -130,10 +140,6 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
         OP_CHECK_IF(klen.GetDimNum() != MSA_RANK_1D || static_cast<uint32_t>(klen.GetDim(MSA_DIM_0)) != info.batch + 1,
                     OP_LOGE(context, "TND actual_seq_klen must be [B+1] prefix-sum."), return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(kc.GetDimNum() != MSA_KEY_PA_DIM_NUM,
-                    OP_LOGE(context, "layout_key=%s requires key rank 4, got %zu.",
-                            info.keyLayout == MSA_KEY_LAYOUT_BNBD ? "BNBD" : "BBND", kc.GetDimNum()),
-                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(blockTableShape == nullptr, OP_LOGE(context, "PageAttention (BBND/BNBD) requires block_table."),
                     return ge::GRAPH_FAILED);
         const gert::Shape &bt = blockTableShape->GetStorageShape();
@@ -145,6 +151,10 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
                             bt.GetDim(MSA_DIM_0), info.batch),
                     return ge::GRAPH_FAILED);
         info.maxBlocksPerBatch = static_cast<uint32_t>(bt.GetDim(MSA_DIM_1));
+        OP_CHECK_IF(kc.GetDimNum() != MSA_KEY_PA_DIM_NUM,
+                    OP_LOGE(context, "layout_key=%s requires key rank 4, got %zu.",
+                            info.keyLayout == MSA_KEY_LAYOUT_BNBD ? "BNBD" : "BBND", kc.GetDimNum()),
+                    return ge::GRAPH_FAILED);
         info.numPages = static_cast<uint32_t>(kc.GetDim(MSA_DIM_0));
         if (info.keyLayout == MSA_KEY_LAYOUT_BBND) {
             info.blockSize = static_cast<uint32_t>(kc.GetDim(MSA_DIM_1));
@@ -192,8 +202,16 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     OP_CHECK_IF(info.numKvHeads == 0 || (info.numQHeads % info.numKvHeads) != 0,
                 OP_LOGE(context, "numQHeads(%u) must be divisible by numKvHeads(%u).", info.numQHeads, info.numKvHeads),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(info.batch == 0 || info.totalQ == 0 || info.maxBlocksPerBatch == 0,
-                OP_LOGE(context, "batch/totalQ/maxBlocksPerBatch must be positive."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(info.batch == 0, OP_LOGE(context, "batch must be positive."), return ge::GRAPH_FAILED);
+    if (!info.isAscend950) {
+        // A2/A3：整 batch 空序列仍拒绝。950：q_len/kv_len 全 0 跳过计算（FIA PR 9246）。
+        OP_CHECK_IF(info.totalQ == 0 || info.maxBlocksPerBatch == 0,
+                    OP_LOGE(context, "batch/totalQ/maxBlocksPerBatch must be positive."), return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(info.maxBlocksPerBatch == 0,
+                    OP_LOGE(context, "maxBlocksPerBatch must be positive (empty kv uses aligned score stride)."),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(info.keyLayout != MSA_KEY_LAYOUT_TND && info.numPages == 0,
                 OP_LOGE(context, "PA numPages must be positive."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<uint32_t>(startLocShape->GetStorageShape().GetDim(MSA_DIM_0)) != info.batch,
@@ -202,21 +220,15 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     const auto *queryDesc = context->GetInputDesc(MSA_IDX_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryDesc);
     info.queryDtype = queryDesc->GetDataType();
-
-    auto ascendcPlatformEarly = platform_ascendc::PlatformAscendC(info.platformInfo);
-    info.isAscend950 = (ascendcPlatformEarly.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950);
     OP_CHECK_IF(!IsNonQuantQueryDtype(info.queryDtype, info.isAscend950),
                 OP_LOGE(context,
                         "query dtype must be bf16 or fp16 on A2/A3; Ascend 950 also allows hifloat8 / "
                         "float8_e5m2 / float8_e4m3fn."),
                 return ge::GRAPH_FAILED);
 
-    const auto *keyDesc = context->GetInputDesc(MSA_IDX_KEY);
-    OP_CHECK_NULL_WITH_CONTEXT(context, keyDesc);
-    info.keyDtype = keyDesc->GetDataType();
     info.isQuant = (info.keyDtype == ge::DT_INT8);
     if (info.isQuant) {
-        OP_CHECK_IF(info.queryDtype != ge::DT_FLOAT16, OP_LOGE(context, "int8 key currently requires fp16 query."),
+        OP_CHECK_IF(info.queryDtype != ge::DT_FLOAT16, OP_LOGE(context, "ND int8 key currently requires fp16 query."),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(info.keyDtype != info.queryDtype, OP_LOGE(context, "non-quant key dtype must match query dtype."),
@@ -367,7 +379,12 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     // MIX 1AIC:2AIV：CalcTschBlockDim 的 sliceNum 按 AIV 计数，内部再 / (aiv/aic)。
     // 传入 aicNum 会再除一次得到 blockDim=aic/2（910B3: 20→10），只能打一半 Cube。
     // 与 LightningIndexer 等 MIX 算子一致：sliceNum = aivNum → 910B3 blockDim=20。
-    context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+    // 950 整 batch q_len=0：对齐 FIA PR 9246（queryS==0 → BlockDim=1），避免 totalTaskNum=0。
+    if (info.isAscend950 && info.totalQ == 0U) {
+        context->SetBlockDim(1);
+    } else {
+        context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
+    }
 
     size_t *workspaces = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
@@ -391,6 +408,8 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
         tilingKey = (info.queryDtype == ge::DT_BF16) ? MSA_TILING_KEY_BF16 : MSA_TILING_KEY_FP16;
     }
     context->SetTilingKey(tilingKey);
+    OP_LOGI(context->GetNodeName(), "MsaIndexScore tilingKey=%lu headDim=%u layout=%u", tilingKey, info.headDim,
+            info.keyLayout);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace
