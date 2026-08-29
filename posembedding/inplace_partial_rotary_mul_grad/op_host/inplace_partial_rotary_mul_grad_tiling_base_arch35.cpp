@@ -471,9 +471,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t InplacePartialRotaryMulGradRegbaseTiling::GetTilingKey() const
-{
-    return tilingKey_;
-}
+uint64_t InplacePartialRotaryMulGradRegbaseTiling::GetTilingKey() const { return tilingKey_; }
 
 } // namespace optiling
