@@ -167,3 +167,21 @@ TEST_F(MoeTutelCombineGatesProto, infer_datatype_bfloat16)
 {
     CheckInferDataType(ge::DT_BF16);
 }
+
+TEST_F(MoeTutelCombineGatesProto, infer_shape_null_context_fails)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto shapeFunc = spaceRegistry->GetOpImpl("MoeTutelCombineGates")->infer_shape;
+    ASSERT_NE(shapeFunc, nullptr);
+    EXPECT_EQ(shapeFunc(nullptr), ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesProto, infer_datatype_null_context_fails)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto dataTypeFunc = spaceRegistry->GetOpImpl("MoeTutelCombineGates")->infer_datatype;
+    ASSERT_NE(dataTypeFunc, nullptr);
+    EXPECT_EQ(dataTypeFunc(nullptr), ge::GRAPH_FAILED);
+}

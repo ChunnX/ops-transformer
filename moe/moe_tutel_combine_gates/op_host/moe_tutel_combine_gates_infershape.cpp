@@ -30,6 +30,9 @@ constexpr size_t OUTPUT_GATES_GRAD_INDEX = 0;
 // need all inputs are checked by concrete-shape tiling.
 static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *context)
 {
+    if (context == nullptr) {
+        return GRAPH_FAILED;
+    }
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape4MoeTutelCombineGates");
 
     const gert::Shape *indicesShape = context->GetInputShape(INPUT_INDICES_INDEX);
@@ -39,13 +42,13 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
 
     if (Ops::Base::IsUnknownRank(*indicesShape)) {
         Ops::Base::SetUnknownRank(*gatesGradShape);
-        OP_LOGD(context->GetNodeName(), "indices is unknown rank, set gates_grad to unknown rank");
+        OP_LOGD(context->GetNodeName(), "indices has an unknown rank; gates_grad is set to an unknown rank");
         return GRAPH_SUCCESS;
     }
 
     *gatesGradShape = *indicesShape;
 
-    OP_LOGD(context->GetNodeName(), "End to do InferShape4MoeTutelCombineGates");
+    OP_LOGD(context->GetNodeName(), "Finished InferShape4MoeTutelCombineGates");
     return GRAPH_SUCCESS;
 }
 
@@ -54,8 +57,10 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
 // GEIR smoke test cover this packaging-specific registration.
 static ge::graphStatus InferDataType4MoeTutelCombineGates(gert::InferDataTypeContext *context)
 {
-    context->SetOutputDataType(OUTPUT_GATES_GRAD_INDEX, context->GetInputDataType(INPUT_X_INDEX));
-    return GRAPH_SUCCESS;
+    if (context == nullptr) {
+        return GRAPH_FAILED;
+    }
+    return context->SetOutputDataType(OUTPUT_GATES_GRAD_INDEX, context->GetInputDataType(INPUT_X_INDEX));
 }
 
 IMPL_OP_INFERSHAPE(MoeTutelCombineGates)
