@@ -122,6 +122,57 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+TEST_F(BSASelectBlockMaskInferShapeTest, rejects_bnsd_query_rank_mismatch)
+{
+    int64_t b = 2, n = 8, s = 256, s_kv = 128, d = 128;
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "BSASelectBlockMask",
+        {// query uses rank 3, which is invalid for BNSD.
+         {{{b, s, d}, {b, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{b}, {b}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}},
+        {{{{-1}, {-1}}, ge::DT_INT8, ge::FORMAT_ND}},
+        {{"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+         {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
+         {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)}});
+
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(BSASelectBlockMaskInferShapeTest, rejects_tnd_query_rank_mismatch)
+{
+    int64_t total_q = 1024, total_kv = 2048, n = 8, d = 128;
+    int64_t batch = 1;
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "BSASelectBlockMask",
+        {// query uses rank 4, which is invalid for TND.
+         {{{batch, total_q, n, d}, {batch, total_q, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{total_kv, n, d}, {total_kv, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+         {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}},
+        {{{{-1}, {-1}}, ge::DT_INT8, ge::FORMAT_ND}},
+        {{"q_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"kv_input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(n)},
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
+         {"sparsity", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)}});
+
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
+}
+
 // ============================================================================
 // 测试用例 3: BF16 数据类型
 // ============================================================================
