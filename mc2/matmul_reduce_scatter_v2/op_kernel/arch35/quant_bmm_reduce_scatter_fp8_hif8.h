@@ -137,14 +137,10 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess(
             hccl_.Wait(handles_[i]);
             runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
         }
-        AscendC::GlobalTensor<CType> mmResultDumpTensor;
-        const uint64_t mmResultElemCnt = cfg.cToFloatLen / sizeof(CType);
-        mmResultDumpTensor.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(gmToFloat_), mmResultElemCnt);
-        AscendC::DumpTensor(mmResultDumpTensor, 101, 64);
         // 终止hcclserver
-        runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
+        runtimeInfo_.WriteGmByPassDCache(static_cast<uint8_t>(cfg.tileCnt + cfg.tailCnt), POS_FINALIZE_BEFORE,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
         hccl_.Finalize();
-        runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
     }
 }
 

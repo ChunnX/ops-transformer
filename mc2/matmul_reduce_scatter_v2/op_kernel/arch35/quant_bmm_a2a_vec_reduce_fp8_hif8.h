@@ -108,7 +108,7 @@ private:
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
     uint64_t aivNum_{0};
-        uint64_t tileMN_{0};
+    uint64_t tileMN_{0};
     uint64_t tailMN_{0};
     uint64_t tileOffset_{0};
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
@@ -232,16 +232,9 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
     // 等待执行完成后，最后终止hcclserver
     if (GetBlockIdx() == 0) {
         const auto &cfg = tilingData_->param;
-        const uint64_t workspaceElemCnt = cfg.cToFloatLen / sizeof(CType);
-        AscendC::GlobalTensor<CType> sendDumpTensor;
-        sendDumpTensor.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(sendBuf_), workspaceElemCnt);
-        AscendC::DumpTensor(sendDumpTensor, 101, 64);
-        AscendC::GlobalTensor<CType> recvDumpTensor;
-        recvDumpTensor.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(recvBuf_), workspaceElemCnt);
-        AscendC::DumpTensor(recvDumpTensor, 102, 64);
-        runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
+        runtimeInfo_.WriteGmByPassDCache(static_cast<uint8_t>(cfg.tileCnt + cfg.tailCnt), POS_FINALIZE_BEFORE,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
         hccl_.Finalize();
-        runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
     }
 }
 
