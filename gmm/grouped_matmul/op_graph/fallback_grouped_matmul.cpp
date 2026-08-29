@@ -380,6 +380,7 @@ static graphStatus ExecuteGmmApi(
     int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType,
     std::vector<int64_t>& tuningConfig, std::vector<const gert::Tensor*>& geTensorVectorY)
 {
+  (void)host_api_ctx;
   aclTensorList* activationInputOptional = nullptr;
   aclTensorList* activationQuantScaleOptional = nullptr;
   aclTensorList* activationQuantOffsetOptional = nullptr;

@@ -107,7 +107,7 @@ private:
     aclnnStatus CheckMxFp8TypeKCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxSplitKDimNum(const TensorDimInfo &dimInfo) const;
     aclnnStatus CheckMxSplitKDimValue(const TensorIndexInfo &tensorIndex, int64_t groupNum) const;
-        struct MxTypeMDims {
+    struct MxTypeMDims {
         int64_t xMDimValue;
         int64_t xKDimValue;
         int64_t pertokenMDimValue;
@@ -116,6 +116,7 @@ private:
         int64_t weightNDimValue;
         int64_t inferedScaleKDimValue;
         int64_t scaleLastDimValue;
+        int64_t groupNum;
     };
     aclnnStatus CheckMxTypeMCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     MxTypeMDims ExtractMxTypeMDims(const TensorDimInfo &dimInfo, size_t index) const;
