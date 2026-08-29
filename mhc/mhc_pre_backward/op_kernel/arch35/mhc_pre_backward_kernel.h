@@ -200,7 +200,6 @@ private:
     GlobalTensor<P> xRsGradMmGm_;  // C0输出 x_rs_grad_mm
     GlobalTensor<P> xRsFp32Gm_;    // V2输出 & C1输入 x_rs
 
-    LocalTensor<uint32_t> hPreGatherOffsetBuf_;
     TPipe *pipe_;
     const MhcPreBackwardTilingData *tiling_;
     TQue<QuePosition::VECIN, 0> vecInQueue0_;
@@ -1024,11 +1023,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
     if (blockIdx_ >= 2 * v1UsedCubeCoreNum_) {
         return;
     }
-    hPreGatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(PROCESS_V2_CHUNK_SIZE, 0);
+    // 保留原有512B起始偏移，仅删除已无消费者的Gather索引初始化，避免本轮改变后续UB地址布局。
     globalUbOffset_ = PROCESS_V2_CHUNK_SIZE * sizeof(uint32_t); // V2部分开始分配fp32TBuf_
-    for (uint32_t i = 0; i < PROCESS_V2_CHUNK_SIZE; i++) {
-        hPreGatherOffsetBuf_.SetValue(i, i * N_ * sizeof(P));
-    }
 
     // 确定处理范围 （1C2V 模式）
     uint32_t vecIdx = blockIdx_ % VEC_CORE_VECIDX_MOD;
