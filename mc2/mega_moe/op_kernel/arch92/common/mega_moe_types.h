@@ -58,6 +58,8 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+    // Temporary diagnostic identity for the arch92 GMM2/Combine counter protocol.
+    uint32_t debugExpertIdx = 0xFFFFFFFFU;
 };
 
 struct CombineCommParams {

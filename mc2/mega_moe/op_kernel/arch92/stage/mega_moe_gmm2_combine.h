@@ -23,6 +23,7 @@
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
+#include "c_api/asc_simd.h"
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
@@ -35,6 +36,48 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+constexpr unsigned long COMBINE_COUNTER_DEBUG_UINT_BIAS = 1000000UL;
+constexpr unsigned long COMBINE_COUNTER_DEBUG_CONFIG_MARKER = 913000UL;
+constexpr unsigned long COMBINE_COUNTER_DEBUG_RESET_MARKER_BASE = 913010UL;
+
+// One set_cond value is one complete notification record, so records from different AICs cannot interleave.
+// 31..28 magic=0xd, 27..24 expert, 23..19 group, 18..13 counter-before-add,
+// 12..7 block, 6..2 N-tile, 1..0 K-tile.
+__aicore__ inline void DebugLogCombineCounterNotification(uint32_t expertIdx, uint32_t tokenGroupIndex,
+                                                          int32_t counterBeforeAdd, uint32_t nLoc,
+                                                          uint32_t kLoc)
+{
+    if (expertIdx == 0xFFFFFFFFU || counterBeforeAdd < 0 || counterBeforeAdd > 40) {
+        return;
+    }
+    bool primaryCounter = expertIdx == 0U && tokenGroupIndex == 0U;
+    bool reachesOrExceedsTarget = counterBeforeAdd >= 14;
+    if (!primaryCounter && !reachesOrExceedsTarget) {
+        return;
+    }
+
+    uint32_t packed = 0xD0000000U |
+                      ((expertIdx & 0xFU) << 24U) |
+                      ((tokenGroupIndex & 0x1FU) << 19U) |
+                      ((static_cast<uint32_t>(counterBeforeAdd) & 0x3FU) << 13U) |
+                      ((static_cast<uint32_t>(AscendC::GetBlockIdx()) & 0x3FU) << 7U) |
+                      (((nLoc / L1_TILE_N) & 0x1FU) << 2U) |
+                      ((kLoc / L0_TILE_K) & 0x3U);
+    set_cond(static_cast<unsigned long>(packed));
+}
+
+// 31..28 magic=0xe, 27..24 expert, 23..19 group, 18..13 observed counter,
+// 12..7 AIV job, 6..0 sync slot.
+__aicore__ inline void DebugLogCombineCounterWaitOvershoot(uint32_t expertIdx, uint32_t groupIndex,
+                                                           int32_t observedCounter, uint32_t jobIndex,
+                                                           uint32_t syncSlotIndex)
+{
+    uint32_t packed = 0xE0000000U | ((expertIdx & 0xFU) << 24U) | ((groupIndex & 0x1FU) << 19U) |
+                      ((static_cast<uint32_t>(observedCounter) & 0x3FU) << 13U) |
+                      ((jobIndex & 0x3FU) << 7U) | (syncSlotIndex & 0x7FU);
+    set_cond(static_cast<unsigned long>(packed));
+}
 
 namespace CombineImpl {
 
@@ -274,6 +317,43 @@ struct QuantCombineTokenRange {
     uint32_t expertIdx;
 };
 
+__aicore__ inline void DebugLogCombineCounterInitialState(const Gmm2Config &context, const Params &params)
+{
+    if constexpr (g_coreType != AIC) {
+        return;
+    }
+    if (AscendC::GetBlockIdx() != 0 || params.workspaceInfo.gmm2CombineSyncCounterPtr == nullptr ||
+        context.combineSyncSlotCountPerExpert == 0U) {
+        return;
+    }
+
+    set_cond(COMBINE_COUNTER_DEBUG_CONFIG_MARKER);
+    set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS + static_cast<unsigned long>(AscendC::GetBlockNum()));
+    set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS + static_cast<unsigned long>(params.tilingData->aicNum));
+    set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS + static_cast<unsigned long>(params.tilingData->blockAivNum));
+    set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS +
+             static_cast<unsigned long>(context.combineSyncSlotCountPerExpert));
+    set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS +
+             static_cast<unsigned long>(context.common.moeExpertPerRank));
+    set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS +
+             static_cast<unsigned long>(context.common.tokenHiddenDim));
+
+    __gm__ int32_t *allCounterBase =
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2CombineSyncCounterPtr);
+    for (uint32_t expertIdx = 0U; expertIdx < context.common.moeExpertPerRank; ++expertIdx) {
+        uint64_t expertSlotOffset =
+            static_cast<uint64_t>(expertIdx) * context.combineSyncSlotCountPerExpert * INT_CACHELINE;
+        __gm__ int32_t *expertCounterBase = allCounterBase + expertSlotOffset;
+        set_cond(COMBINE_COUNTER_DEBUG_RESET_MARKER_BASE + static_cast<unsigned long>(expertIdx));
+        set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS + static_cast<unsigned long>(
+                     AscendC::ReadGmByPassDCache(expertCounterBase)));
+        __gm__ int32_t *lastCounterAddress = expertCounterBase +
+            (context.combineSyncSlotCountPerExpert - 1U) * INT_CACHELINE;
+        set_cond(COMBINE_COUNTER_DEBUG_UINT_BIAS + static_cast<unsigned long>(
+                     AscendC::ReadGmByPassDCache(lastCounterAddress)));
+    }
+}
+
 // 加载当前任务负责的 metadata，并完成一段连续 token 的量化 Combine 发送。
 template <uint8_t CombineMode>
 __aicore__ inline void CombineQuantizedTokenRange(
@@ -509,7 +589,8 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
 // Notifies all AIV consumers assigned to the completed GMM2 token group.
 __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset,
                                                               const GroupSyncSlotLayout &slotLayout,
-                                                              __gm__ int32_t *expertCounterBase)
+                                                              const GMMAddrInfo &gmmAddrInfo,
+                                                              uint32_t nLoc, uint32_t kLoc)
 {
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -519,7 +600,14 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
     uint32_t syncSlotCount = 0;
     GetGroupSyncSlotRange(tokenGroupIndex, slotLayout, firstSyncSlot, syncSlotCount);
     for (uint32_t syncSlot = firstSyncSlot; syncSlot < firstSyncSlot + syncSlotCount; ++syncSlot) {
-        AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, syncSlot), int32_t(1));
+        __gm__ int32_t *counterAddress =
+            GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlot);
+        if (syncSlot == firstSyncSlot) {
+            int32_t counterBeforeAdd = AscendC::ReadGmByPassDCache(counterAddress);
+            DebugLogCombineCounterNotification(gmmAddrInfo.debugExpertIdx, tokenGroupIndex,
+                                               counterBeforeAdd, nLoc, kLoc);
+        }
+        AscendC::AtomicAdd(counterAddress, int32_t(1));
     }
 }
 
@@ -591,15 +679,10 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-            if (rowOffsetInExpert + mLoc == 0U && nLoc == 0U) {
-                blockMmad.EnableOneShotDebug(912101U, true);
-            }
-        }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
-                                                   gmmAddrInfo.gmm2CombineSyncCounter);
+                                                   gmmAddrInfo, nLoc, kLoc);
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
@@ -646,7 +729,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
-            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
+            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo, nLoc, 0U);
         } else if constexpr (IsShared) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
@@ -717,7 +800,7 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
         blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n,
-                      config.blockMmadTiling.l1Params.kL1);
+                      config.blockMmadTiling.l1Params.kBL1);
     }
 }
 
@@ -1013,6 +1096,7 @@ __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
         gmmAddrInfo.gmm2CombineSyncCounter =
             reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
             syncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
+        gmmAddrInfo.debugExpertIdx = expertIdx;
     }
     gmmAddrInfo.activationToGmm2Flag =
         reinterpret_cast<__gm__ int32_t *>(workspace.flagActivationToGmm2Ptr) +
@@ -1118,6 +1202,7 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
         gmmAddrInfo.gmm2CombineSyncCounter =
             reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
+        gmmAddrInfo.debugExpertIdx = expertIdx;
     }
     gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagActivationToGmm2Ptr) +
                                        Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.activationFlagSlotsPerExpert +
@@ -1302,8 +1387,17 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
         uint32_t syncSlotIndex = groupCount <= context.job.totalJobs ? context.job.jobIndex : groupIndex;
         __gm__ int32_t *syncCounterAddress =
             GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlotIndex);
-        while (AscendC::ReadGmByPassDCache(syncCounterAddress) !=
-               static_cast<int32_t>(gmm2NTilesPerGroup)) {
+        bool debugOvershootLogged = false;
+        while (true) {
+            int32_t observedCounter = AscendC::ReadGmByPassDCache(syncCounterAddress);
+            if (observedCounter == static_cast<int32_t>(gmm2NTilesPerGroup)) {
+                break;
+            }
+            if (!debugOvershootLogged && observedCounter > static_cast<int32_t>(gmm2NTilesPerGroup)) {
+                DebugLogCombineCounterWaitOvershoot(expertIdx, groupIndex, observedCounter,
+                                                    context.job.jobIndex, syncSlotIndex);
+                debugOvershootLogged = true;
+            }
             int64_t waitStartCycle = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
             }

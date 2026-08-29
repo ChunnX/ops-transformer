@@ -216,11 +216,6 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
-        if constexpr (!IsShared) {
-            if (expertIdx == 0U && mLoc == 0U && nLoc == 0U) {
-                blockMmad.EnableOneShotDebug(912201U, false);
-            }
-        }
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
             kLoc, gmBlockA, gmBlockScaleA);
@@ -540,7 +535,7 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
         for (uint32_t weightBlock = 0; weightBlock < ACTIVATION_N_HALF; ++weightBlock) {
             auto nOffset = nLoc + weightBlock * config.outputN;
             blockPrologue(
-                gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kL1);
+                gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kBL1);
         }
     }
 }
