@@ -1,0 +1,617 @@
+[
+ {
+  "id": 0,
+  "name": "moe_token_unpermute_with_routing_map_pad_0000_issue_small",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 8, \"num_experts\": 2, \"capacity\": 1, \"hidden\": 64, \"seed\": 20260817, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 1,
+  "name": "moe_token_unpermute_with_routing_map_pad_0001_st_like_medium",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 121, \"num_experts\": 56, \"capacity\": 2, \"hidden\": 361, \"seed\": 20260818, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 2,
+  "name": "moe_token_unpermute_with_routing_map_pad_0002_rowval_eq_core",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 8, \"num_experts\": 20, \"capacity\": 2, \"hidden\": 16, \"seed\": 20260819, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 3,
+  "name": "moe_token_unpermute_with_routing_map_pad_0003_front_tail_split",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 64, \"num_experts\": 100, \"capacity\": 4, \"hidden\": 32, \"seed\": 20260820, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 4,
+  "name": "moe_token_unpermute_with_routing_map_pad_0004_one_per_expert",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 8, \"num_experts\": 1000, \"capacity\": 1, \"hidden\": 8, \"seed\": 20260821, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 5,
+  "name": "moe_token_unpermute_with_routing_map_pad_0005_multiloop_2M4",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 2400, \"num_experts\": 2400, \"capacity\": 1000, \"hidden\": 2, \"seed\": 20260822, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 6,
+  "name": "moe_token_unpermute_with_routing_map_pad_0006_bf16_small",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"bf16\", \"num_tokens\": 8, \"num_experts\": 2, \"capacity\": 1, \"hidden\": 64, \"seed\": 20260823, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 7,
+  "name": "moe_token_unpermute_with_routing_map_pad_0007_bf16_medium",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"bf16\", \"num_tokens\": 64, \"num_experts\": 100, \"capacity\": 4, \"hidden\": 32, \"seed\": 20260824, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 8,
+  "name": "moe_token_unpermute_with_routing_map_pad_0008_bf16_multiloop_4M8",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"bf16\", \"num_tokens\": 4800, \"num_experts\": 4800, \"capacity\": 1000, \"hidden\": 2, \"seed\": 20260825, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 9,
+  "name": "moe_token_unpermute_with_routing_map_pad_0009_fp16_small",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp16\", \"num_tokens\": 8, \"num_experts\": 2, \"capacity\": 1, \"hidden\": 64, \"seed\": 20260826, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 10,
+  "name": "moe_token_unpermute_with_routing_map_pad_0010_mixed_bf16_fp32",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"bf16\", \"num_tokens\": 8, \"num_experts\": 2, \"capacity\": 1, \"hidden\": 64, \"seed\": 20260827, \"paddedMode\": true, \"soc\": \"ascend910b\", \"probs_dtype\": \"fp32\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 11,
+  "name": "moe_token_unpermute_with_routing_map_pad_0011_mixed_bf16_fp32_medium",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"bf16\", \"num_tokens\": 64, \"num_experts\": 100, \"capacity\": 4, \"hidden\": 32, \"seed\": 20260828, \"paddedMode\": true, \"soc\": \"ascend910b\", \"probs_dtype\": \"fp32\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 12,
+  "name": "moe_token_unpermute_with_routing_map_pad_0012_single_slot",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 8, \"num_experts\": 1, \"capacity\": 1, \"hidden\": 8, \"seed\": 20260829, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 13,
+  "name": "moe_token_unpermute_with_routing_map_pad_0013_capacity2",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 8, \"num_experts\": 2, \"capacity\": 2, \"hidden\": 8, \"seed\": 20260830, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ },
+ {
+  "id": 14,
+  "name": "moe_token_unpermute_with_routing_map_pad_0014_rowval9",
+  "aclnn_name": "MoeTokenUnpermuteWithRoutingMap",
+  "triton_name": null,
+  "version": "v2.1",
+  "expected_error_msg": null,
+  "api": "pytorch",
+  "api_type": "executor_moe_token_unpermute_with_routing_map",
+  "aclnn_api_type": "aclnn_function",
+  "triton_api_type": "triton_function",
+  "backward": false,
+  "standard": {
+   "acc": "default",
+   "perf": "not_key",
+   "mem": 1.1
+  },
+  "outputs": null,
+  "inputs": [
+   {
+    "name": "case_spec",
+    "type": "attr",
+    "required": true,
+    "dtype": "string",
+    "shape": null,
+    "range_values": "{\"dtype\": \"fp32\", \"num_tokens\": 128, \"num_experts\": 3, \"capacity\": 3, \"hidden\": 8, \"seed\": 20260831, \"paddedMode\": true, \"soc\": \"ascend910b\"}",
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ],
+  "acl_json": "",
+  "method_inputs": null,
+  "tensor_input": null,
+  "save_name": null,
+  "uuid": null,
+  "downloaded": false,
+  "is_boundary": false,
+  "xrun_cs_name": null,
+  "xrun_data": null
+ }
+]
