@@ -192,7 +192,6 @@ private:
     LocalTensor<P> gammaIn_;
     LocalTensor<P> xRsFp32Buf_;
     LocalTensor<P> xGradVec3Buf_;
-    LocalTensor<P> xRsGradMmUb_;
     LocalTensor<P> invRmsUb_;
     LocalTensor<P> hPreUb_;
 
@@ -290,7 +289,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
         pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(vecInQueue1_, 1, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0; // V0V1部分开始分配fp32TBuf_
@@ -1215,10 +1214,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     xGradVec3Buf_ = fp32TBuf_.GetWithOffset<P>(maxChunkNDSize, ubOffset);
-    ubOffset =
-        MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
-
-    xRsGradMmUb_ = fp32TBuf_.GetWithOffset<P>(maxChunkNDSize, ubOffset);
     ubOffset =
         MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
