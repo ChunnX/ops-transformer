@@ -394,6 +394,143 @@ __aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPer
     return tensorAddr + elementOffset * sizeof(ElementType);
 }
 
+template <AscendC::HardEvent event, int32_t eventId>
+__aicore__ inline void SyncFuncStatic()
+{
+    AscendC::SetFlag<event>(static_cast<event_t>(eventId));
+    AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
+}
+
+// ======================================================================================
+// W1 权重 L2 预取（仅 GMM1 权重）：AIV 用 fire-and-forget 的 GM->UB 拷贝把权重拉进 L2（只填
+// L2，UB 数据从不消费）。双窗口独立预算（数据维分割）：窗口 0 覆盖专家 [0,2)、窗口 1 接续
+// [2,4)，每窗口预算 = min(窗口内专家数 × W1 单专家量, 拓扑分档上限 8MB/2MB)；预取 worker（窗口 0
+// 为双 AIV，workerCount = blockNum*2）在专家区域内按 chunk 交错认领（不回绕，零重叠），与消费序一致。
+// ======================================================================================
+
+// 权重预取跨机门控：worldSize > WEIGHT_PREFETCH_MIN_WORLD_SIZE（跨机）才使能。
+// 作用于窗口 0 与窗口 1 的构造门控（W4/W8 统一：跨机才开，单机全关）与 gmm1 权重读的
+// L2 hint 联动。另用于自适应总量的拓扑分档上限选择（跨机 8MB / 单机 2MB）。
+__aicore__ inline bool IsWeightPrefetchRank(uint32_t worldSize)
+{
+    return worldSize > WEIGHT_PREFETCH_MIN_WORLD_SIZE;
+}
+
+// 单窗口自适应预算：从第 firstExpert 个专家起取 min(expertCount - firstExpert, MAX_EXPERTS) 个
+// 专家的 W1 字节量，再钳到拓扑分档上限（跨机 >8P 取 8MB、单机 <=8P 取 2MB）。窗口 0 传
+// firstExpert=0（专家 [0, min(E,2))），窗口 1 固定传 firstExpert=MAX_EXPERTS(=2)（接续专家
+// [2, min(E,4))，E<=2 时预算为 0 不构造）——两窗口独立预算、数据按专家边界分割不重叠。
+// gmm1OutputDim = tiling 的 hiddenDim = GMM1 的 N（勿与模型隐维 h=tokenHiddenDim=K 混淆）。
+__aicore__ inline uint64_t WeightL2PrefetchAdaptiveTotalBytes(uint64_t gmm1OutputDim, uint64_t tokenHiddenDim,
+                                                              uint32_t expertCount, uint32_t worldSize,
+                                                              uint32_t firstExpert, uint32_t weightElementsPerByte = 2U)
+{
+    uint64_t w1BytesPerExpert = gmm1OutputDim * tokenHiddenDim / weightElementsPerByte;
+    uint64_t remainingExperts = expertCount > firstExpert ? static_cast<uint64_t>(expertCount - firstExpert) : 0U;
+    uint64_t expertCountCapped = remainingExperts < WEIGHT_L2_PREFETCH_MAX_EXPERTS ?
+                                     remainingExperts :
+                                     static_cast<uint64_t>(WEIGHT_L2_PREFETCH_MAX_EXPERTS);
+    uint64_t expertBudget = expertCountCapped * w1BytesPerExpert;
+    uint64_t totalCap = IsWeightPrefetchRank(worldSize) ?
+                            static_cast<uint64_t>(WEIGHT_L2_PREFETCH_MAX_TOTAL_BYTES_CROSS_NODE) :
+                            static_cast<uint64_t>(WEIGHT_L2_PREFETCH_MAX_TOTAL_BYTES_SINGLE_NODE);
+    return expertBudget < totalCap ? expertBudget : totalCap;
+}
+
+// 窗口接续偏移：跳过前 firstExpert 个完整专家区域的字节数（Init 的 startOffsetBytes 按整区域
+// 跳过，专家边界对齐，与预算分割的专家边界一致，保证窗口间数据不重叠）。
+__aicore__ inline uint64_t WeightL2PrefetchExpertSkipBytes(uint64_t gmm1OutputDim, uint64_t tokenHiddenDim,
+                                                           uint32_t firstExpert, uint32_t weightElementsPerByte = 2U)
+{
+    return static_cast<uint64_t>(firstExpert) * gmm1OutputDim * tokenHiddenDim / weightElementsPerByte;
+}
+
+// 把 regionIndex（= 专家编号）映射到 W1 区域基址并定位本 worker 的起始 chunk（交错认领）。
+__aicore__ inline void WeightL2PrefetchSetupRegion(WeightL2PrefetchCursor &cursor, uint64_t skipInRegion)
+{
+    if (cursor.regionIndex >= cursor.regionCount) {
+        return;
+    }
+    uint32_t expertIdx = cursor.regionIndex;
+    uint64_t regionBytes = cursor.w1BytesPerExpert;
+    __gm__ uint8_t *regionBase = reinterpret_cast<__gm__ uint8_t *>(GetExpertWeightAddr<uint8_t>(
+        cursor.weight1List, cursor.isPerExpertWeightTensor, expertIdx, static_cast<uint64_t>(expertIdx) * regionBytes));
+    cursor.regionEnd = regionBase + regionBytes;
+    // 区域内 chunk 交错认领：worker c 从偏移 skip + c * CHUNK 起步，不回绕——区域装不下 c 号
+    // lane（偏移越过区域尾）时由 TryIssue 的区域推进直接跳到下一区域，小区域由低号 worker 每
+    // 区域 1 块完整覆盖，任意 worker 间零重叠（无重复 MTE2 搬运）。
+    uint64_t startOffset = skipInRegion + static_cast<uint64_t>(cursor.workerIdx) * WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+    cursor.chunkAddr = regionBase + startOffset;
+}
+
+// 初始化预取游标。W1 字节数公式与 UpdateMoeExpertGmm1GlobalBuffer 的 B 侧寻址同源；budgetBytes
+// 为全局预算（按 workerCount 均摊，不足 1 chunk 保底）；startOffsetBytes 为起始偏移（窗口 1 传
+// 跳过窗口 0 专家数的偏移，跨过的整区域跳过）。
+__aicore__ inline void WeightL2PrefetchInit(WeightL2PrefetchCursor &cursor, GM_ADDR weight1List,
+                                            bool isPerExpertWeightTensor, uint64_t gmm1OutputDim,
+                                            uint64_t tokenHiddenDim, uint32_t expertCount, uint32_t workerIdx,
+                                            uint32_t workerCount, uint64_t budgetBytes, uint64_t startOffsetBytes,
+                                            uint32_t weightElementsPerByte = 2U, uint32_t scratchUbOffset = 0U)
+{
+    cursor.scratchUbOffset = scratchUbOffset != 0U ? scratchUbOffset : WEIGHT_L2_PREFETCH_UB_OFFSET;
+    cursor.weight1List = weight1List;
+    cursor.isPerExpertWeightTensor = isPerExpertWeightTensor;
+    cursor.expertCount = expertCount;
+    cursor.regionCount = expertCount;
+    cursor.workerIdx = workerIdx;
+    cursor.workerCount = workerCount > 0U ? workerCount : 1U;
+    cursor.w1BytesPerExpert = gmm1OutputDim * tokenHiddenDim / weightElementsPerByte;
+    cursor.budgetRemaining = budgetBytes / cursor.workerCount;
+    if (budgetBytes != 0U && cursor.budgetRemaining == 0U) {
+        cursor.budgetRemaining = WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+    }
+    // 定位起始区域：整段跳过 startOffsetBytes 覆盖的前缀，剩余 skip 留给初始区域内偏移。
+    cursor.regionIndex = 0U;
+    uint64_t skipInRegion = startOffsetBytes;
+    while (cursor.regionIndex < cursor.regionCount && skipInRegion > 0U) {
+        if (skipInRegion >= cursor.w1BytesPerExpert) {
+            skipInRegion -= cursor.w1BytesPerExpert;
+            ++cursor.regionIndex;
+        } else {
+            break;
+        }
+    }
+    WeightL2PrefetchSetupRegion(cursor, skipInRegion);
+}
+
+// 推进到下一专家区域（指针表解析每区域一次，摊到该区域的 chunk 上）。
+__aicore__ inline void WeightL2PrefetchAdvanceRegion(WeightL2PrefetchCursor &cursor)
+{
+    ++cursor.regionIndex;
+    WeightL2PrefetchSetupRegion(cursor, 0U);
+}
+
+// 发射一个 chunk 的 GM->UB fire-and-forget 拷贝；返回 false 表示游标耗尽（预算用完或区域走完）。
+// 单缓冲 scratch 即可：MTE2 队列按序保证写-写程序序，且 scratch 数据从不被消费。
+__aicore__ inline bool WeightL2PrefetchTryIssue(WeightL2PrefetchCursor &cursor)
+{
+    while (cursor.regionIndex < cursor.regionCount && cursor.budgetRemaining != 0U) {
+        if (cursor.chunkAddr >= cursor.regionEnd) {
+            WeightL2PrefetchAdvanceRegion(cursor);
+            continue;
+        }
+        uint64_t bytesToRegionEnd = static_cast<uint64_t>(cursor.regionEnd - cursor.chunkAddr);
+        // 拷贝量同时被区域尾与剩余预算钳住，防止预算均摊后不足一个 chunk 时 uint64 回绕。
+        uint64_t copyLimit = bytesToRegionEnd < cursor.budgetRemaining ? bytesToRegionEnd : cursor.budgetRemaining;
+        uint32_t copyBytes = copyLimit < WEIGHT_L2_PREFETCH_CHUNK_BYTES ? static_cast<uint32_t>(copyLimit) :
+                                                                          WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+        GlobalTensor<uint8_t> weightGm;
+        weightGm.SetGlobalBuffer(cursor.chunkAddr);
+        LocalTensor<uint8_t> scratch(TPosition::VECCALC, cursor.scratchUbOffset, copyBytes);
+        DataCopyPad(scratch, weightGm, {1U, copyBytes, 0U, 0U, 0U}, {false, 0U, 0U, 0U});
+        cursor.budgetRemaining -= copyBytes;
+        // 下一 chunk 跳过其它 worker 认领的 chunk（步长 = workerCount 个 chunk）。
+        cursor.chunkAddr += static_cast<uint64_t>(cursor.workerCount) * WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+        return true;
+    }
+    return false;
+}
+
 template <size_t I, typename T>
 __aicore__ constexpr inline decltype(auto) Get(T &&value)
 {
@@ -443,6 +580,13 @@ __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertToken
     return sliceTokenCount;
 }
 
+// 游标是否还有可发 chunk——判据与 TryIssue 内部循环条件同源，供调用方在发射前预判；
+// 预算耗尽后调用方据此跳过整个"屏障+发射+屏障"波尾补发块，避免逐 wave 的空屏障开销。
+__aicore__ inline bool WeightL2PrefetchHasRemaining(const WeightL2PrefetchCursor &cursor)
+{
+    return cursor.regionIndex < cursor.regionCount && cursor.budgetRemaining != 0U;
+}
+
 // 轮询 GM 中的 int32 ready flag，并在两次读取之间加入短暂退避。
 __aicore__ inline void WaitUntilGmFlagIsNonZero(__gm__ int32_t *flagAddr)
 {
@@ -464,6 +608,26 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
                                           static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
                                           static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+}
+
+// WaitForMoeExpertTokenCountReady 的预取变体：自旋间隙逐块发预取（每轮先查 flag 再发块，
+// 预取不得推迟就绪检测）；flag 就绪即停发，以 MTE2_V 事件（SyncFuncStatic）排空在飞拷贝——
+// 首份额交付，剩余预算由 wave 循环尾的波尾滑动补发按 WAVE_QUOTA_CHUNKS 配额继续交付。仅 e0
+// 首等待调用（expertCountTableReady 一次性短路 e1+），调用方保证只进一次。
+__aicore__ inline void WaitForMoeExpertTokenCountReadyWithPrefetch(GM_ADDR tokenCountReadyFlagWorkspace,
+                                                                   const BlockWorkspaceContext &countWorkspace,
+                                                                   uint32_t expertIdx, WeightL2PrefetchCursor &cursor)
+{
+    __gm__ int32_t *tokenCountReadyFlag = reinterpret_cast<__gm__ int32_t *>(tokenCountReadyFlagWorkspace) +
+                                          static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
+                                          static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
+    while (AscendC::ReadGmByPassDCache(tokenCountReadyFlag) == 0) {
+        if (!WeightL2PrefetchTryIssue(cursor)) {
+            WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+            break;
+        }
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID>();
 }
 
 // 从当前 block 的 [block][expert] workspace 行读取专家 token 数。
@@ -549,13 +713,6 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
     WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
-}
-
-template <AscendC::HardEvent event, int32_t eventId>
-__aicore__ inline void SyncFuncStatic()
-{
-    AscendC::SetFlag<event>(static_cast<event_t>(eventId));
-    AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
 
 } // namespace MegaMoeImpl
