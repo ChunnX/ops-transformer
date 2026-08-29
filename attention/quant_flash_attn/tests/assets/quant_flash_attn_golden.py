@@ -67,6 +67,8 @@ BATCH_SIZE = None
 N_q = None
 N_kv = None
 D = None
+# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
+HEAD_DIM_V = None
 
 CU_SEQLENS_Q = None
 CU_SEQLENS_KV = None
@@ -122,9 +124,6 @@ LAYOUT_Q = "TND"
 LAYOUT_Q_DESCALE = "TND"
 LAYOUT_KV = "TND"
 LAYOUT_OUT = "TND"
-
-# head_dim_v: csv 显式传入则用 csv 值, 否则 None -> 算子内默认取 head_dim
-HEAD_DIM_V = None
 
 SOFTMAX_SCALE = None
 
