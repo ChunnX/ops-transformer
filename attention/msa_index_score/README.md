@@ -166,7 +166,7 @@
     - 为 0 时，代表 defaultMask 模式，`atten_mask` 传入空；
     - 为 3 时，代表 rightDownCausal 模式，`atten_mask` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
 - `init_blocks`、`local_blocks` 必须 $\ge 0$ 且不超过逻辑 block 数（PA 为 `block_table` 第二维；TND 为 score 末维对齐宽度）。两者均为 0 时跳过 $local\_mask$。
-- Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 填 `-inf`；整 batch `T1=0` 时 `SetBlockDim(1)`。A2/A3 整 batch `T1=0` 仍拒绝。
+- A2/A3 与 Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 填 `-inf`；整 batch `T1=0` 时 `SetBlockDim(1)`。
 - 本算子输出止于 block score，**不包含** TopK。
 
 ## 调用示例
