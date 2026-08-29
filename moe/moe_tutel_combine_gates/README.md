@@ -65,21 +65,21 @@
     <tr>
       <td>x</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>x</code>，表示combine正向输出的上游梯度。</li><li>shape为2维(S, H)。</li></ul></td>
+      <td><ul><li>公式中的<code>x</code>，表示combine正向输出的上游梯度。</li><li>shape为2维（S，H）。</li></ul></td>
       <td>FLOAT32、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>y_grad</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>yGrad</code>，表示正向被combine的dispatch结果。</li><li>shape为3维(E, C, H)，最后一维必须与<code>x</code>的第2维相同。</li></ul></td>
+      <td><ul><li>公式中的<code>yGrad</code>，表示正向被combine的dispatch结果。</li><li>shape为3维（E，C，H），最后一维必须与<code>x</code>的第2维相同。</li></ul></td>
       <td>FLOAT32、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>indices</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>indices</code>，表示每个(路由, token)对应的专家序号。</li><li>shape为2维(K, S)。</li></ul></td>
+      <td><ul><li>公式中的<code>indices</code>，表示每个（路由，token）对应的专家序号。</li><li>shape为2维（K，S）。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -93,7 +93,7 @@
     <tr>
       <td>gates_grad</td>
       <td>输出</td>
-      <td><ul><li>公式中的<code>gatesGrad</code>，表示门控权重<code>gates</code>的梯度。</li><li>shape与<code>indices</code>相同，为(K, S)；数据类型与<code>x</code>一致。</li></ul></td>
+      <td><ul><li>公式中的<code>gatesGrad</code>，表示门控权重<code>gates</code>的梯度。</li><li>shape与<code>indices</code>相同，为（K，S）；数据类型与<code>x</code>一致。</li></ul></td>
       <td>FLOAT32、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>

@@ -122,10 +122,38 @@ TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_bfloat16_k_equals_e)
     ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
+TEST_F(MoeTutelCombineGatesTilingTest, core_split_uses_all_available_cores)
+{
+    auto compileInfo = MakeCompileInfo(32);
+    auto para = MakePara({17, 64}, {2, 4, 64}, {2, 17}, {2, 17}, {2, 17}, ge::DT_FLOAT, &compileInfo);
+    TilingInfo info;
+    ASSERT_TRUE(ExecuteTiling(para, info));
+    ASSERT_GE(info.tilingDataSize, sizeof(optiling::MoeTutelCombineGatesTilingData));
+    const auto *tilingData = reinterpret_cast<const optiling::MoeTutelCombineGatesTilingData *>(info.tilingData.get());
+    EXPECT_EQ(info.blockNum, 32);
+    EXPECT_EQ(tilingData->sCoreNum, 16);
+}
+
 TEST_F(MoeTutelCombineGatesTilingTest, cut_h_float32_large_hidden)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara({4, 65536}, {2, 3, 65536}, {1, 4}, {1, 4}, {1, 4}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_CUT_H);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, datacopy_block_len_limit_boundary_uses_not_cut_h)
+{
+    constexpr int64_t hidden = 2097151 / static_cast<int64_t>(sizeof(float));
+    auto compileInfo = MakeCompileInfo(32, 16UL * 1024UL * 1024UL);
+    auto para = MakePara({1, hidden}, {1, 1, hidden}, {1, 1}, {1, 1}, {1, 1}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, datacopy_block_len_overflow_falls_back_to_cut_h)
+{
+    constexpr int64_t hidden = 2097151 / static_cast<int64_t>(sizeof(float)) + 1;
+    auto compileInfo = MakeCompileInfo(32, 16UL * 1024UL * 1024UL);
+    auto para = MakePara({1, hidden}, {1, 1, hidden}, {1, 1}, {1, 1}, {1, 1}, ge::DT_FLOAT, &compileInfo);
     ExpectSuccess(para, optiling::MTCG_TILING_KEY_CUT_H);
 }
 

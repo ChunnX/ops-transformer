@@ -25,7 +25,6 @@ using namespace AscendC;
 using optiling::MoeTutelCombineGatesTilingData;
 using namespace AscendC::MicroAPI;
 
-constexpr uint32_t BLOCK_BYTE_SIZE = Ops::Base::GetUbBlockSize();
 constexpr uint32_t VL_FP32 = static_cast<uint32_t>(Ops::Base::GetVRegSize()) / sizeof(float);
 constexpr int32_t DOUBLE_BUFFER = 2;
 

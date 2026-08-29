@@ -24,6 +24,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "op_common/op_host/util/platform_util.h"
 #include "../../op_kernel/arch35/moe_tutel_combine_gates_tiling_data.h"
+#include "../../op_kernel/arch35/moe_tutel_combine_gates_tiling_key.h"
 
 namespace optiling {
 
@@ -33,8 +34,8 @@ constexpr size_t MTCG_INPUT_INDICES_INDEX = 2;
 constexpr size_t MTCG_INPUT_LOCATIONS_INDEX = 3;
 constexpr size_t MTCG_OUTPUT_GATES_GRAD_INDEX = 0;
 
-constexpr uint64_t MTCG_TILING_KEY_NOT_CUT_H = 10001UL;
-constexpr uint64_t MTCG_TILING_KEY_CUT_H = 10002UL;
+constexpr uint64_t MTCG_TILING_KEY_NOT_CUT_H = 0UL;
+constexpr uint64_t MTCG_TILING_KEY_CUT_H = 1UL;
 
 struct MoeTutelCombineGatesCompileInfo {
     uint64_t coreNum = 0;
@@ -94,7 +95,7 @@ private:
     int64_t capacity_ = 0;
     int64_t routes_ = 0;
 
-    uint64_t tilingKey_ = MTCG_TILING_KEY_NOT_CUT_H;
+    uint64_t schMode_ = MTCG_TILING_KEY_NOT_CUT_H;
     uint32_t blockDim_ = 1;
     MoeTutelCombineGatesTilingData td_{};
 };

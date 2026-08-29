@@ -33,9 +33,13 @@ constexpr size_t DIM_2 = 2;
 
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t INPUT_BUFFER_NUM = 2;
+constexpr int64_t ROUTE_BUFFER_NUM = 2;
+constexpr int64_t POWER_OF_TWO_RADIX = 2;
+constexpr int64_t TILE_SHRINK_FACTOR = 2;
 constexpr int64_t UB_RESERVE_BYTES = 1024;
 constexpr int64_t MAX_CHUNK_TREE_BYTES = 4096;
 constexpr int64_t MAX_CHUNK_COUNT = MAX_CHUNK_TREE_BYTES / static_cast<int64_t>(sizeof(float));
+constexpr int64_t MAX_DATACOPY_BLOCK_LEN = 2097151;
 constexpr int64_t S_BLOCK_INIT = 64;
 constexpr int64_t K_BLOCK_INIT = 64;
 
@@ -79,10 +83,10 @@ bool CheckedNextPowerOfTwo(int64_t value, int64_t minimum, int64_t &result)
     }
     result = minimum;
     while (result < value) {
-        if (result > std::numeric_limits<int64_t>::max() / 2) {
+        if (result > std::numeric_limits<int64_t>::max() / POWER_OF_TWO_RADIX) {
             return false;
         }
-        result *= 2;
+        result *= POWER_OF_TWO_RADIX;
     }
     return true;
 }
@@ -96,7 +100,7 @@ std::string ShapeValues(int64_t samples, int64_t hidden, int64_t experts, int64_
 
 ge::graphStatus MoeTutelCombineGatesTiling::GetPlatformInfo()
 {
-    auto compileInfo = reinterpret_cast<const MoeTutelCombineGatesCompileInfo *>(context_->GetCompileInfo());
+    auto compileInfo = static_cast<const MoeTutelCombineGatesCompileInfo *>(context_->GetCompileInfo());
     OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "compile info is null"),
                 return ge::GRAPH_FAILED);
     coreNum_ = compileInfo->coreNum;
@@ -315,11 +319,23 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitCore()
         return ge::GRAPH_SUCCESS;
     }
 
-    const int64_t sCoreNum = std::min(coreNum, samples_);
-    const int64_t kCoreNum = std::min(coreNum / sCoreNum, routes_);
-    int64_t blockDim = 0;
-    OP_CHECK_IF(kCoreNum <= 0 || !CheckedMul(sCoreNum, kCoreNum, blockDim) ||
-                    blockDim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+    const int64_t maxSCoreNum = std::min(coreNum, samples_);
+    int64_t sCoreNum = 1;
+    int64_t kCoreNum = std::min(coreNum, routes_);
+    int64_t blockDim = kCoreNum;
+    for (int64_t candidateSCoreNum = 2; candidateSCoreNum <= maxSCoreNum; ++candidateSCoreNum) {
+        const int64_t candidateKCoreNum = std::min(coreNum / candidateSCoreNum, routes_);
+        int64_t candidateBlockDim = 0;
+        if (!CheckedMul(candidateSCoreNum, candidateKCoreNum, candidateBlockDim)) {
+            return ge::GRAPH_FAILED;
+        }
+        if (candidateBlockDim > blockDim || (candidateBlockDim == blockDim && candidateSCoreNum > sCoreNum)) {
+            sCoreNum = candidateSCoreNum;
+            kCoreNum = candidateKCoreNum;
+            blockDim = candidateBlockDim;
+        }
+    }
+    OP_CHECK_IF(kCoreNum <= 0 || blockDim <= 0 || blockDim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
                 OP_LOGE(context_->GetNodeName(), "invalid core split: sCoreNum=%ld, kCoreNum=%ld", sCoreNum, kCoreNum),
                 return ge::GRAPH_FAILED);
 
@@ -345,6 +361,7 @@ bool MoeTutelCombineGatesTiling::GetTileBytes(int64_t sBlock, int64_t kBlock, in
     int64_t elementBytes = 0;
     return CheckedAlignUp(sBlock, vlFp32_, sAlign) && CheckedMul(kBlock, sAlign, elements) &&
            CheckedAdd(dtypeSize_, static_cast<int64_t>(sizeof(float)), elementBytes) &&
+           CheckedAdd(elementBytes, ROUTE_BUFFER_NUM * static_cast<int64_t>(sizeof(int32_t)), elementBytes) &&
            CheckedMul(elements, elementBytes, bytes);
 }
 
@@ -365,9 +382,8 @@ bool MoeTutelCombineGatesTiling::TryNotCutH(int64_t avail, int64_t &sBlock, int6
     int64_t partialCount = 0;
     int64_t partialAlign = 0;
     int64_t treeBytes = 0;
-    if (!CheckedMul(hidden_, dtypeSize_, copyBytes) ||
-        copyBytes > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) || !GetRowBytes(hidden_, rowBytes) ||
-        !GetTreeLayout(hidden_, partialCount, partialAlign, treeBytes) ||
+    if (!CheckedMul(hidden_, dtypeSize_, copyBytes) || copyBytes > MAX_DATACOPY_BLOCK_LEN ||
+        !GetRowBytes(hidden_, rowBytes) || !GetTreeLayout(hidden_, partialCount, partialAlign, treeBytes) ||
         partialCount > static_cast<int64_t>(std::numeric_limits<uint16_t>::max()) ||
         partialAlign > static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
         return false;
@@ -386,9 +402,9 @@ bool MoeTutelCombineGatesTiling::TryNotCutH(int64_t avail, int64_t &sBlock, int6
             return true;
         }
         if (sBlock > 1) {
-            sBlock = std::max<int64_t>(1, sBlock / 2);
+            sBlock = std::max<int64_t>(1, sBlock / TILE_SHRINK_FACTOR);
         } else if (kBlock > 1) {
-            kBlock = std::max<int64_t>(1, kBlock / 2);
+            kBlock = std::max<int64_t>(1, kBlock / TILE_SHRINK_FACTOR);
         } else {
             return false;
         }
@@ -398,7 +414,8 @@ bool MoeTutelCombineGatesTiling::TryNotCutH(int64_t avail, int64_t &sBlock, int6
 bool MoeTutelCombineGatesTiling::FindCutHFactor(int64_t budget, int64_t &hFactor, int64_t &partialAlign) const
 {
     const int64_t bytesPerElement = dtypeSize_ * INPUT_BUFFER_NUM * DOUBLE_BUFFER;
-    hFactor = budget / bytesPerElement / vlFp32_ * vlFp32_;
+    const int64_t budgetFactor = budget / bytesPerElement / vlFp32_ * vlFp32_;
+    hFactor = std::min(hidden_, budgetFactor) / vlFp32_ * vlFp32_;
     for (; hFactor >= vlFp32_; hFactor -= vlFp32_) {
         int64_t copyBytes = 0;
         int64_t rowBytes = 0;
@@ -406,8 +423,7 @@ bool MoeTutelCombineGatesTiling::FindCutHFactor(int64_t budget, int64_t &hFactor
         int64_t partialCount = 0;
         int64_t treeBytes = 0;
         int64_t totalBytes = 0;
-        const bool safe = CheckedMul(hFactor, dtypeSize_, copyBytes) &&
-                          copyBytes <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) &&
+        const bool safe = CheckedMul(hFactor, dtypeSize_, copyBytes) && copyBytes <= MAX_DATACOPY_BLOCK_LEN &&
                           GetRowBytes(hFactor, rowBytes) &&
                           CheckedMul(rowBytes, INPUT_BUFFER_NUM * DOUBLE_BUFFER, inputBytes) &&
                           GetTreeLayout(hFactor, partialCount, partialAlign, treeBytes) &&
@@ -477,9 +493,9 @@ ge::graphStatus MoeTutelCombineGatesTiling::SolveZeroH(int64_t avail, int64_t &s
     int64_t tileBytes = 0;
     while ((!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail) && (sBlock > 1 || kBlock > 1)) {
         if (sBlock > 1) {
-            sBlock = std::max<int64_t>(1, sBlock / 2);
+            sBlock = std::max<int64_t>(1, sBlock / TILE_SHRINK_FACTOR);
         } else {
-            kBlock = std::max<int64_t>(1, kBlock / 2);
+            kBlock = std::max<int64_t>(1, kBlock / TILE_SHRINK_FACTOR);
         }
     }
     OP_CHECK_IF(!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail,
@@ -514,7 +530,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
         td_.numChunks = 1;
         td_.hTail = static_cast<uint64_t>(hidden_);
     } else {
-        tilingKey_ = MTCG_TILING_KEY_CUT_H;
+        schMode_ = MTCG_TILING_KEY_CUT_H;
         if (SolveCutH(avail, sBlock, kBlock) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -537,8 +553,15 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
 
 ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
 {
-    context_->SetBlockDim(blockDim_);
-    context_->SetTilingKey(tilingKey_);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(schMode_);
+    OP_CHECK_IF(
+        tilingKey == INVALID_TILING_KEY,
+        OP_LOGE(context_->GetNodeName(), "failed to encode template tiling key for schedule mode %lu", schMode_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "set block dim failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->SetTilingKey(tilingKey) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "set tiling key failed"), return ge::GRAPH_FAILED);
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
@@ -560,7 +583,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
             "MoeTutelCombineGates tiling: S=%lu H=%lu E=%lu C=%lu K=%lu sCore=%lu sBlock=%lu "
             "kBlock=%lu hFactor=%lu chunks=%lu vlPartialAlign=%lu chunkPartialAlign=%lu key=%lu blockDim=%u",
             td_.samples, td_.hidden, td_.experts, td_.capacity, td_.routes, td_.sCoreNum, td_.sBlock, td_.kBlock,
-            td_.hFactor, td_.numChunks, td_.vlPartialAlign, td_.chunkPartialAlign, tilingKey_, blockDim_);
+            td_.hFactor, td_.numChunks, td_.vlPartialAlign, td_.chunkPartialAlign, tilingKey, blockDim_);
     return ge::GRAPH_SUCCESS;
 }
 
