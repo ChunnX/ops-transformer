@@ -155,6 +155,8 @@ __aicore__ inline void StageBroadcastMaxSum(const S2SplitFdStagingLayout &layout
                                             LocalTensor<float> &maxBroadcastUb, LocalTensor<float> &sumBroadcastUb,
                                             uint8_t vToMte3Id, uint8_t mte3ToVId)
 {
+    // Diagnostic only: serialize batch-consistency staging while narrowing pipeline visibility issues.
+    PipeBarrier<PIPE_ALL>();
     __gm__ uint8_t *maxRegion = layout.MaxRegion(stagingBase);
     __gm__ uint8_t *sumRegion = layout.SumRegion(stagingBase);
     GlobalTensor<float> maxGm;
@@ -171,6 +173,7 @@ __aicore__ inline void StageBroadcastMaxSum(const S2SplitFdStagingLayout &layout
     DataCopyPad(maxGm[floatOffset], maxBroadcastUb, copyParams);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
+    PipeBarrier<PIPE_ALL>();
 }
 
 // Stage Vec1 max/sum to GM staging.
@@ -217,10 +220,12 @@ __aicore__ inline void StageVec2PartialOAndWait(const S2SplitFdStagingLayout &la
                                                 int64_t dValid, LocalTensor<T> &vec2ResUb, uint8_t vToMte3Id,
                                                 uint8_t mte3ToVId)
 {
+    PipeBarrier<PIPE_ALL>();
     StageVec2PartialO<T>(layout, stagingOut, workspaceIdx, stagingMOffset, validRows, dValid, vec2ResUb, vToMte3Id,
                          mte3ToVId);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
+    PipeBarrier<PIPE_ALL>();
 }
 
 // FD chunk reduction: read all splits from staging, compute weights, reduce partial O.
@@ -358,11 +363,14 @@ __aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layou
                                              int64_t softmaxLseOffset, uint8_t vToMte2Id0, uint8_t vToMte2Id1,
                                              uint8_t mte2ToVId, uint8_t vToMte3LseOutId, uint8_t mte3ToVLseOutId)
 {
+    // Diagnostic only: make every pairwise FD stage locally complete before the next stage starts.
+    PipeBarrier<PIPE_ALL>();
     if (workspaceNum <= FD_INCREMENTAL_MERGE_INPUT_NUM) {
         ReduceWithLse<T, D_ALIGN>(layout, stagingBase, workspaceIdx, workspaceNum, fdMOffset, mNum, dValid,
                                   accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOUb, softmaxLseFlag,
                                   softmaxLseGm, softmaxLseOffset, vToMte2Id0, vToMte2Id1, mte2ToVId, vToMte3LseOutId,
                                   mte3ToVLseOutId);
+        PipeBarrier<PIPE_ALL>();
         return;
     }
 
@@ -432,6 +440,7 @@ __aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layou
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
             MergeTwoInputsWithLse<T, D_ALIGN>(layout, dealRowCount, chunkAccumO, chunkAccumO, partialOUb, blockMaxUb,
                                               blockSumUb, blockMaxUb, blockSumUb, sinkUb);
+            PipeBarrier<PIPE_ALL>();
         }
 
         if (softmaxLseFlag) {
@@ -450,6 +459,7 @@ __aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layou
         SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
         startRow += layout.chunkRows;
     }
+    PipeBarrier<PIPE_ALL>();
 }
 
 // Merge one previously staged result with one current normalized result.
@@ -467,6 +477,7 @@ __aicore__ inline void MergeStagedAndCurrentChunk(
     LocalTensor<T> &partialOTmpUb, LocalTensor<float> &mergedLseBroadcastUb, LocalTensor<float> &mergedSumBroadcastUb,
     LocalTensor<T> &sinkUb, uint8_t maxSumVToMte2Id, uint8_t partialOVToMte2Id, uint8_t mte2ToVId)
 {
+    PipeBarrier<PIPE_ALL>();
     constexpr int64_t outputElemsPerBlock = FD_BUFFER_SIZE_BYTE_32B / sizeof(float);
     int64_t dealRowsElems = dealRowCount * layout.broadcastElems;
     int64_t brcbRepeat = (dealRowCount + layout.broadcastElems - 1) / layout.broadcastElems;
@@ -484,6 +495,7 @@ __aicore__ inline void MergeStagedAndCurrentChunk(
     DataCopy(blockSumUb, previousSumGm[maxSumOffset], dealRowsElems);
     SetFlag<HardEvent::MTE2_V>(mte2ToVId);
     WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
+    PipeBarrier<PIPE_ALL>();
 
     GlobalTensor<float> previousPartialOGm;
     previousPartialOGm.SetGlobalBuffer((__gm__ float *)(layout.AttenOutRegion(stagingBase) +
@@ -505,6 +517,7 @@ __aicore__ inline void MergeStagedAndCurrentChunk(
     LocalTensor<T> currentPartialOTmp = partialOTmpUb[dealRowCount * D_ALIGN];
     MergeTwoInputsWithLse<T, D_ALIGN>(layout, dealRowCount, currentPartialO, partialOTmpUb, currentPartialOTmp,
                                       mergedLseBroadcastUb, mergedSumBroadcastUb, blockMaxUb, blockSumUb, sinkUb);
+    PipeBarrier<PIPE_ALL>();
     SetFlag<HardEvent::V_MTE2>(partialOVToMte2Id);
     SetFlag<HardEvent::V_MTE2>(maxSumVToMte2Id);
 }
