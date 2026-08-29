@@ -263,6 +263,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     }
     if (withGamma_) {
         gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.gamma));
+        // gamma体积小且被V2跨T分块重复读取，使用常驻缓存降低重复访存开销。
+        gammaGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_PERSISTENT);
         gammaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_gamma));
     }
     tiling_ = initParams.tilingData;
