@@ -678,7 +678,11 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
     if constexpr (IsWaveFlagGrained && g_coreType == AscendC::AIC) {
-        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config, allowWeightL2Bypass, gmB, gmScaleB);
+        // 实验开关（临时）：权重读无条件 NORMAL——彻底禁用 L2 bypass（DISABLE 的 no-allocate 读
+        // 不命中预取行），与预取开关/拓扑解耦，隔离验证 L2 hint 对 GMM1 的影响；实验后恢复为
+        // "allowWeightL2Bypass && !IsWeightPrefetchRank(params.tilingData->epWorldSize)"。
+        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config, allowWeightL2Bypass && false, gmB,
+                                                                           gmScaleB);
     }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
