@@ -2193,7 +2193,7 @@ __aicore__ inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t vir
                                            bool &useLine, int64_t &soloPairRounds)
 {
     const int64_t cols = virtN * pairCount;
-    isSmall = (pairCount > 0 && cols > 0 && cols < k);
+    isSmall = (pairCount > 0 && cols > 0 && (cols < k || virtM < Min(k, virtN)));
     if (isSmall || pairCount <= 0 || cols <= 0) {
         useLine = false;
         soloPairRounds = 0;
