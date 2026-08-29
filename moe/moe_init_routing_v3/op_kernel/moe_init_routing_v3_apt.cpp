@@ -30,7 +30,7 @@
 #include "arch35/moe_v3_gather_out_mxfp8.h"
 #include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
-#include "arch35/moe_v3_counting_sort_full_load_unquantized.h"
+#include "arch35/moe_v3_counting_sort_full_load.h"
 #include "arch35/moe_v3_full_load_unquantized_arch35.h"
 #include "arch35/moe_v3_full_load_dynamic_quant_arch35.h"
 #include "arch35/moe_v3_full_load_static_quant_arch35.h"
@@ -323,7 +323,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float>::value) {
+                      IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
             MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
             csOp.Init(x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
