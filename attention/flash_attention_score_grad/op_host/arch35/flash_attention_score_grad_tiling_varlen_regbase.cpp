@@ -38,6 +38,19 @@ inline void GetTNDOuterMN(const FuzzyBaseInfoParamsRegbase &p, int64_t bIdx, int
     }
 }
 
+inline bool TNDAllCubesSingleCell(const FuzzyBaseInfoParamsRegbase &p)
+{
+    for (int64_t i = 0; i < p.b; ++i) {
+        int64_t m = 0;
+        int64_t n = 0;
+        GetTNDOuterMN(p, i, m, n);
+        if (m > 1 || n > 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
 inline int64_t CalTNDCase0RecRounds(int64_t k, int64_t m, int64_t n)
 {
     if (n <= 0) {
@@ -386,11 +399,26 @@ inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
 
 inline void ApplyTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p, const TNDSparseDeterPack &pack)
 {
-    p.splitAxis = SplitAxisEnum::BN2GS1S2;
+    // 每个batch只有一个cube时，同一列只会被写一次，BN2S2直接写dK/dV是安全的。
+    // 这里不能动kernel协议：只有rSingle==0才留BN2S2，否则prefix2会被single前缀占用，
+    // 而BN2S2的SpecialS2Index把prefix2当成dK切列偏移。
+    const bool keepBns2 = (p.splitAxis == SplitAxisEnum::BN2S2) && TNDAllCubesSingleCell(p) && (pack.rSingle == 0);
+    if (!keepBns2) {
+        p.splitAxis = SplitAxisEnum::BN2GS1S2;
+    }
     p.deterMaxRound = pack.rLine + pack.rPool + pack.rSingle;
     StoreTNDPrefix(pack.prefixSolo, p.deterPrefixStep, pack.rLine, p.deterPrefix0);
     StoreTNDPrefix(pack.prefixPool, p.deterPrefixStep, pack.rPool, p.deterPrefix1);
-    StoreTNDPrefix(pack.prefixSingle, p.deterPrefixStep, pack.rSingle, p.deterPrefix2);
+    if (keepBns2) {
+        std::fill(std::begin(p.deterPrefix2), std::end(p.deterPrefix2), static_cast<int64_t>(-1));
+        std::fill(std::begin(p.separateDkOffset), std::end(p.separateDkOffset), static_cast<int64_t>(-1));
+        std::fill(std::begin(p.startNeedSyncRound), std::end(p.startNeedSyncRound), static_cast<uint64_t>(0));
+        std::fill(std::begin(p.endNeedSyncRound), std::end(p.endNeedSyncRound), static_cast<uint64_t>(0));
+        std::fill(std::begin(p.dqIsNeedDeter), std::end(p.dqIsNeedDeter), static_cast<uint64_t>(0));
+        std::fill(std::begin(p.dkDvIsNeedDeter), std::end(p.dkDvIsNeedDeter), static_cast<uint64_t>(0));
+    } else {
+        StoreTNDPrefix(pack.prefixSingle, p.deterPrefixStep, pack.rSingle, p.deterPrefix2);
+    }
 
     std::vector<int64_t> deterPrefix = {0};
     std::vector<int64_t> deterPrefixAlign = {0};
@@ -429,6 +457,13 @@ protected:
     void CalcleTNDDeterParam() override
     {
         if (fBaseParams.layoutType != INPUT_FORMAT_TND) {
+            return;
+        }
+
+        // SetSplitAxis在isAllSame且走BN2S2时会把ProcessSparseModeInfo已经转成的BSND拉回TND。
+        // 单个s1/s2（含B=1、各batch等长）应走BSND主线，不要进新调度。
+        if (fBaseParams.isAllSame) {
+            fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
             return;
         }
 
