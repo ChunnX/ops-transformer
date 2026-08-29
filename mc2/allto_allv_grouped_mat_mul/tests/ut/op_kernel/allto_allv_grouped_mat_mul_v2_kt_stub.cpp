@@ -7,4 +7,5 @@
 // The CANN CPU kernel stub cannot model HCCL peer windows or CATLASS device
 // execution. Compile the V2 host/device contract here; real device compilation
 // is covered by the opkernel build.
+#include "allto_allv_grouped_mat_mul_hccl_context_stub.h"
 #include "../../../op_kernel/allto_allv_grouped_mat_mul_aiv_mode.h"

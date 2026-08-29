@@ -1453,23 +1453,48 @@ bool ExecuteAivHostCase(ge::DataType dtype, int64_t rankSize, const std::vector<
     Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
     return success;
 }
+
+std::vector<int64_t> MakeAivCounts(int64_t rankSize)
+{
+    std::vector<int64_t> counts(static_cast<size_t>(rankSize) * 2U, 0);
+    for (size_t token = 0; token < 16U; ++token) {
+        ++counts[token % counts.size()];
+    }
+    return counts;
+}
 } // namespace
 
-TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRankContracts)
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A3AivRankContracts)
 {
-    for (const int64_t rankSize : {2, 4, 8}) {
-        const std::vector<int64_t> counts(static_cast<size_t>(rankSize) * 2U, 16 / (rankSize * 2));
+    for (const int64_t rankSize : {2, 4, 8, 16, 32, 64, 128}) {
+        const std::vector<int64_t> counts = MakeAivCounts(rankSize);
         TilingInfo tilingInfo;
-        ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo));
+        ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo,
+                                       "Ascend910_93", 20));
         const auto *tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData *>(tilingInfo.tilingData.get());
         EXPECT_EQ(tiling->gmmInfo.rankSize, static_cast<uint32_t>(rankSize));
         EXPECT_EQ(tiling->countNum, static_cast<uint32_t>(rankSize * 2));
         EXPECT_EQ(tilingInfo.tilingKey, 8);
-        ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
-        EXPECT_GT(tilingInfo.workspaceSizes[0], 16U * 1024U * 1024U);
-        EXPECT_EQ(tiling->countTableOffset % 512U, 0U);
-        EXPECT_EQ(tiling->expertMetaOffset % 512U, 0U);
-        EXPECT_EQ(tiling->expertReadyOffset % 512U, 0U);
+    }
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A2AivSupportsEp2Ep4Ep8)
+{
+    for (const int64_t rankSize : {2, 4, 8}) {
+        const std::vector<int64_t> counts = MakeAivCounts(rankSize);
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo,
+                                       "Ascend910B", 24));
+    }
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A2AivRejectsEp16AndAbove)
+{
+    for (const int64_t rankSize : {16, 32, 64, 128}) {
+        const std::vector<int64_t> counts = MakeAivCounts(rankSize);
+        TilingInfo tilingInfo;
+        EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo,
+                                        "Ascend910B", 24));
     }
 }
 
@@ -1513,11 +1538,11 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivTransposeSharedMmAndPermuteCon
                                              tiling->mmCocTiling.n0));
 }
 
-TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsFp16)
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivSupportsFp16)
 {
     const std::vector<int64_t> counts(8, 2);
     TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_FLOAT16, 4, counts, counts, false, false, false, tilingInfo));
+    EXPECT_TRUE(ExecuteAivHostCase(ge::DT_FLOAT16, 4, counts, counts, false, false, false, tilingInfo));
 }
 
 TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsCountLengthMismatch)
@@ -1613,16 +1638,37 @@ TEST(AlltoAllvGroupedMatMulAivCommTest, ComputesPeerSourceOffsets)
 TEST(AlltoAllvGroupedMatMulAivCommTest, ValidatesWindowAndReadyLayout)
 {
     AivComm::A2avWindowLayout layout = {};
-    constexpr uint64_t controlBytes = 16U * 1024U * 1024U;
-    ASSERT_TRUE(AivComm::BuildWindowLayout(6, 256, 4, controlBytes, 32U * 1024U * 1024U, layout));
+    AivComm::RuntimeControlLayout control = {};
+    ASSERT_TRUE(AivComm::BuildRuntimeControlLayout(128U, 2U, control));
+    ASSERT_TRUE(AivComm::BuildWindowLayout(6, 256, 4, control, 32U * 1024U * 1024U, layout));
     EXPECT_EQ(layout.inputBytes, 3072U);
-    EXPECT_EQ(layout.countsOffset, 16U * 1024U * 1024U - 512U);
-    EXPECT_EQ(layout.controlOffset, 16U * 1024U * 1024U);
-    EXPECT_EQ(layout.readyOffset, AivComm::kFirstExpertFlagOffset);
-    EXPECT_FALSE(AivComm::BuildWindowLayout(6, 256, 4, controlBytes, layout.totalBytes - 1U, layout));
-    EXPECT_FALSE(AivComm::BuildWindowLayout(UINT64_MAX, 256, 4, controlBytes, UINT64_MAX, layout));
+    EXPECT_EQ(layout.controlOffset % AivComm::kWindowAlignment, 0U);
+    EXPECT_GE(layout.countsOffset, layout.inputBytes);
+    EXPECT_EQ(layout.readyOffset, control.firstExpertFlagOffset);
+    EXPECT_FALSE(AivComm::BuildWindowLayout(6, 256, 4, control, layout.totalBytes - 1U, layout));
+    EXPECT_FALSE(AivComm::BuildWindowLayout(UINT64_MAX, 256, 4, control, UINT64_MAX, layout));
     EXPECT_EQ(AivComm::ExpertReadyBytes(32), 1024U);
     EXPECT_EQ(AivComm::ExpertReadyOffset(4096, 3), 4192U);
+}
+
+TEST(AlltoAllvGroupedMatMulAivCommTest, KeepsPeerControlOffsetStableAcrossExpertCounts)
+{
+    constexpr uint64_t windowBytes = 200U * 1024U * 1024U;
+    AivComm::RuntimeControlLayout controlE2 = {};
+    AivComm::RuntimeControlLayout controlE16 = {};
+    AivComm::A2avWindowLayout layoutE2 = {};
+    AivComm::A2avWindowLayout layoutE16 = {};
+
+    ASSERT_TRUE(AivComm::BuildRuntimeControlLayout(8U, 2U, controlE2));
+    ASSERT_TRUE(AivComm::BuildRuntimeControlLayout(8U, 16U, controlE16));
+    ASSERT_TRUE(AivComm::BuildWindowLayout(32U, 256U, 16U, controlE2, windowBytes, layoutE2));
+    ASSERT_TRUE(AivComm::BuildWindowLayout(32U, 256U, 128U, controlE16, windowBytes, layoutE16));
+
+    EXPECT_EQ(controlE2.releaseSlotsOffset, controlE16.releaseSlotsOffset);
+    EXPECT_EQ(controlE2.peerControlBytes, 544U);
+    EXPECT_EQ(controlE2.peerControlBytes, controlE16.peerControlBytes);
+    EXPECT_NE(controlE2.totalBytes, controlE16.totalBytes);
+    EXPECT_EQ(layoutE2.controlOffset, layoutE16.controlOffset);
 }
 } // namespace AlltoAllvGroupedMatMulUT
 

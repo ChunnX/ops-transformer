@@ -72,10 +72,10 @@ TEST_F(L2AlltoAllvGroupedMatMulV2Test, Test)
     // A valid call reaches NNopbase initialization. The API UT has no bound device
     // context, so assert that the V2 parameter checker accepts the request.
     EXPECT_NE(CallGetWorkspaceSize("aiv", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(CallGetWorkspaceSize("ai_cpu", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_NE(CallGetWorkspaceSize("ai_cpu", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(CallGetWorkspaceSize("ccu", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(CallGetWorkspaceSize("", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(CallGetWorkspaceSize("aiv", ACL_FLOAT16), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_NE(CallGetWorkspaceSize("aiv", ACL_FLOAT16), ACLNN_ERR_PARAM_INVALID);
     EXPECT_NE(CallGetWorkspaceSize("aiv", ACL_BF16, ACL_FORMAT_NCL), ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(CallGetWorkspaceSize("aiv", ACL_BF16, ACL_FORMAT_FRACTAL_NZ), ACLNN_ERR_PARAM_INVALID);
 }
@@ -86,7 +86,7 @@ TEST_F(L2AlltoAllvGroupedMatMulV2Test, TestAivSupportedOnA2AndA3)
               ACLNN_ERR_PARAM_INVALID);
     EXPECT_NE(CallGetWorkspaceSize("aiv", ACL_BF16, ACL_FORMAT_ND, op::SocVersion::ASCEND910_93),
               ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(CallGetWorkspaceSize("ai_cpu", ACL_BF16, ACL_FORMAT_ND, op::SocVersion::ASCEND910B),
+    EXPECT_NE(CallGetWorkspaceSize("ai_cpu", ACL_BF16, ACL_FORMAT_ND, op::SocVersion::ASCEND910B),
               ACLNN_ERR_PARAM_INVALID);
 }
 

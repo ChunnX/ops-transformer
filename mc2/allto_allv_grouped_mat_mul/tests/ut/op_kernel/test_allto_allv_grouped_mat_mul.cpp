@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include "allto_allv_grouped_mat_mul_hccl_context_stub.h"
 #include "../../../op_kernel/allto_allv_grouped_mat_mul_aiv_mode.h"
 
 namespace {
@@ -134,6 +135,22 @@ TEST(AlltoAllvGroupedMatMulV2KernelTest, RejectsInvalidPeerContextMetadata)
     EXPECT_FALSE(AivComm::NormalizePeerContextMetadata(
         0U, AivComm::kMaxRankSize + 1U, 1U, metadata));
     EXPECT_FALSE(AivComm::NormalizePeerContextMetadata(4U, 4U, 1U, metadata));
+}
+
+TEST(AlltoAllvGroupedMatMulV2KernelTest, AppliesArchitectureSpecificPeerRankLimits)
+{
+    for (const uint32_t rankSize : {2U, 4U, 8U}) {
+        EXPECT_TRUE(AivComm::IsSupportedPeerRankSize(rankSize, false));
+        EXPECT_TRUE(AivComm::IsSupportedPeerRankSize(rankSize, true));
+    }
+    for (const uint32_t rankSize : {16U, 32U, 64U, 128U}) {
+        EXPECT_FALSE(AivComm::IsSupportedPeerRankSize(rankSize, false));
+        EXPECT_TRUE(AivComm::IsSupportedPeerRankSize(rankSize, true));
+    }
+    for (const uint32_t rankSize : {0U, 1U, 3U, 9U, 129U}) {
+        EXPECT_FALSE(AivComm::IsSupportedPeerRankSize(rankSize, false));
+        EXPECT_FALSE(AivComm::IsSupportedPeerRankSize(rankSize, true));
+    }
 }
 
 } // namespace

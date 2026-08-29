@@ -12,6 +12,7 @@
 namespace AlltoAllvGroupedMatMulAiv {
 
 constexpr uint32_t kMaxRankSize = 128U;
+constexpr uint32_t kMaxA2RankSize = 8U;
 constexpr uint64_t kWindowAlignment = 512U;
 constexpr uint64_t kDefaultWindowBytes = 200U * 1024U * 1024U;
 constexpr uint64_t kFlagSlotBytes = 32U;
@@ -45,6 +46,12 @@ struct RuntimeControlLayout {
     uint64_t epochOffset = 0U;
     uint64_t publishSlotsOffset = 0U;
     uint64_t releaseSlotsOffset = 0U;
+    // Only epoch/publish/release live in the peer window.  This boundary must
+    // stay independent of expertPerRank so consecutive shapes reuse one
+    // cross-rank synchronization address.
+    uint64_t peerControlBytes = 0U;
+    // Expert-ready helpers address user workspace, not the peer window.  Keep
+    // their compatibility layout separate from peer-window allocation.
     uint64_t firstExpertFlagOffset = 0U;
     uint64_t totalBytes = 0U;
 };
@@ -60,6 +67,14 @@ struct PeerContextMetadata {
 #else
 #define A2AVGMM_HOST_DEVICE inline
 #endif
+
+A2AVGMM_HOST_DEVICE bool IsSupportedPeerRankSize(uint32_t rankSize, bool isA3)
+{
+    const bool supportedByA2 = rankSize == 2U || rankSize == 4U || rankSize == kMaxA2RankSize;
+    const bool supportedByA3 = rankSize == 16U || rankSize == 32U || rankSize == 64U ||
+                               rankSize == kMaxRankSize;
+    return supportedByA2 || (isA3 && supportedByA3);
+}
 
 A2AVGMM_HOST_DEVICE bool NormalizePeerContextMetadata(uint32_t rankId, uint32_t rankSize,
                                                        uint64_t windowBytes,
@@ -110,8 +125,12 @@ A2AVGMM_HOST_DEVICE bool BuildRuntimeControlLayout(uint32_t rankSize, uint32_t e
     rankSlotsBytes = rankSize * kFlagSlotBytes;
     expertSlotsBytes = expertPerRank * kFlagSlotBytes;
     if (!SafeAddU64(layout.publishSlotsOffset, rankSlotsBytes, layout.releaseSlotsOffset) ||
-        !SafeAddU64(layout.releaseSlotsOffset, rankSlotsBytes, layout.firstExpertFlagOffset) ||
-        !SafeAddU64(layout.firstExpertFlagOffset, expertSlotsBytes, layout.totalBytes)) {
+        !SafeAddU64(layout.releaseSlotsOffset, rankSlotsBytes, layout.peerControlBytes)) {
+        layout = {};
+        return false;
+    }
+    layout.firstExpertFlagOffset = layout.peerControlBytes;
+    if (!SafeAddU64(layout.firstExpertFlagOffset, expertSlotsBytes, layout.totalBytes)) {
         layout = {};
         return false;
     }
@@ -123,12 +142,6 @@ A2AVGMM_HOST_DEVICE bool IsRankAssignedToWorker(uint32_t rank, uint32_t workerId
     return workerNum != 0U && workerIdx < workerNum && rank >= workerIdx &&
            (rank - workerIdx) % workerNum == 0U;
 }
-
-A2AVGMM_HOST_DEVICE bool RequiresA2DynamicWindowTable(uint32_t rankSize)
-{
-    return rankSize >= 64U;
-}
-
 
 A2AVGMM_HOST_DEVICE uint64_t MulU32ToU64(uint32_t lhs, uint32_t rhs)
 {
@@ -251,12 +264,13 @@ A2AVGMM_HOST_DEVICE bool BuildWindowLayout(uint64_t inputTokenNum, uint64_t hidd
         !AlignUpU64(rawInputBytes, kWindowAlignment, layout.inputBytes) ||
         !SafeMulU64(countNum, sizeof(int64_t), rawCountBytes) ||
         !AlignUpU64(rawCountBytes, kWindowAlignment, countAreaBytes) ||
-        !AlignUpU64(control.totalBytes, kWindowAlignment, controlBytes) ||
+        !AlignUpU64(control.peerControlBytes, kWindowAlignment, controlBytes) ||
         !SafeAddU64(layout.inputBytes, countAreaBytes, payloadAndCounts) ||
         !SafeAddU64(payloadAndCounts, controlBytes, requiredBytes)) {
         return false;
     }
-    if (control.totalBytes == 0U || control.totalBytes > controlBytes || requiredBytes > windowBytes ||
+    if (control.peerControlBytes == 0U || control.peerControlBytes > controlBytes ||
+        requiredBytes > windowBytes ||
         controlBytes > windowBytes) {
         return false;
     }
@@ -312,10 +326,16 @@ public:
                                               a2Context_->winSize, metadata)) {
                 return false;
             }
-            if (RequiresA2DynamicWindowTable(metadata.rankSize) &&
-                (a2Context_->multiFlag == 0U || a2Context_->data == nullptr)) {
+            // CANN may select the dynamic peer-window table even for an A2
+            // EP8 group (for example, count_num == 128).  EP capability is
+            // restricted separately by IsSupportedPeerRankSize; the address
+            // representation must still follow the runtime HCCL context.
+            if (a2Context_->multiFlag != 0U && a2Context_->data == nullptr) {
                 return false;
             }
+        }
+        if (!IsSupportedPeerRankSize(metadata.rankSize, isA3_)) {
+            return false;
         }
 
         rankId_ = metadata.rankId;
@@ -358,9 +378,6 @@ public:
         }
         if (a2Context_->multiFlag == 0U) {
             return reinterpret_cast<GM_ADDR>(a2Context_->windowsIn[rank]);
-        }
-        if (a2Context_->data == nullptr) {
-            return nullptr;
         }
         return rank == rankId_
                    ? reinterpret_cast<GM_ADDR>(a2Context_->data[rank].localInput.addr)

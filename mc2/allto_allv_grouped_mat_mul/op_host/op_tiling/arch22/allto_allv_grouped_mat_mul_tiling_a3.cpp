@@ -46,10 +46,11 @@ bool IsPositiveInt32(int64_t value)
     return value > 0 && value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 }
 
-bool IsSupportedAivRankSize(int64_t rankSize)
+bool IsSupportedAivRankSize(int64_t rankSize, bool is910C)
 {
-    return rankSize == 2 || rankSize == 4 || rankSize == 8 || rankSize == 16 || rankSize == 32 ||
-           rankSize == 64 || rankSize == 128;
+    const bool supportedByA2 = rankSize == 2 || rankSize == 4 || rankSize == 8;
+    const bool supportedByA3 = rankSize == 16 || rankSize == 32 || rankSize == 64 || rankSize == 128;
+    return supportedByA2 || (is910C && supportedByA3);
 }
 
 bool IsSupportedAivDType(ge::DataType dtype)
@@ -124,9 +125,19 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
                         recvCountsVector == nullptr || transGmmWeight == nullptr || transMmWeight == nullptr ||
                         permuteOutFlag == nullptr,
                     OP_LOGE(nodeName, "AIV attributes are incomplete."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!IsSupportedAivRankSize(*epWorldSize),
-                    OP_LOGE(nodeName, "AIV epWorldSize must be one of 2/4/8/16/32/64/128, but got %lld.",
-                            static_cast<long long>(*epWorldSize)),
+
+    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    OP_TILING_CHECK(platformInfo == nullptr,
+                    OP_LOGE(nodeName, "AIV platform information is null."), return ge::GRAPH_FAILED);
+    std::string socVersion;
+    (void)platformInfo->GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+    const bool is910C = socVersion == "Ascend910_93";
+    tilingData->is910C = static_cast<uint32_t>(is910C);
+    OP_TILING_CHECK(!IsSupportedAivRankSize(*epWorldSize, is910C),
+                    OP_LOGE(nodeName,
+                            "AIV epWorldSize %lld is unsupported on %s; A2 supports 2/4/8 and A3 supports "
+                            "2/4/8/16/32/64/128.",
+                            static_cast<long long>(*epWorldSize), is910C ? "A3" : "A2"),
                     return ge::GRAPH_FAILED);
 
     int64_t rankSize = 0;
@@ -269,14 +280,6 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
                         OP_LOGE(nodeName, "AIV permuteOut must match the FP16/BF16 input dtype and shape [outputM, K]."),
                         return ge::GRAPH_FAILED);
     }
-
-    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr,
-                    OP_LOGE(nodeName, "AIV platform information is null."), return ge::GRAPH_FAILED);
-    std::string socVersion;
-    (void)platformInfo->GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
-    const bool is910C = socVersion == "Ascend910_93";
-    tilingData->is910C = static_cast<uint32_t>(is910C);
 
     auto platform = platform_ascendc::PlatformAscendC(platformInfo);
     const uint32_t aicNum = platform.GetCoreNumAic();

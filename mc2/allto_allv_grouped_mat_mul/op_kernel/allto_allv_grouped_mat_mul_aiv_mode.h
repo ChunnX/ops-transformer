@@ -294,12 +294,14 @@ __aicore__ inline bool BuildDeviceWindowLayout(
             static_cast<uint64_t>(countNum) << 3U,
             AlltoAllvGroupedMatMulAiv::kWindowAlignment, countAreaBytes) ||
         !AlltoAllvGroupedMatMulAiv::AlignUpU64(
-            control.totalBytes, AlltoAllvGroupedMatMulAiv::kWindowAlignment,
+            control.peerControlBytes, AlltoAllvGroupedMatMulAiv::kWindowAlignment,
             controlBytes) ||
         !AlltoAllvGroupedMatMulAiv::SafeAddU64(
             layout.inputBytes, countAreaBytes, payloadAndCounts) ||
         !AlltoAllvGroupedMatMulAiv::SafeAddU64(
             payloadAndCounts, controlBytes, requiredBytes) ||
+        control.peerControlBytes == 0U ||
+        control.peerControlBytes > controlBytes ||
         requiredBytes > windowBytes || controlBytes > windowBytes) {
         return false;
     }

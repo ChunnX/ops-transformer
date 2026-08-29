@@ -13,6 +13,13 @@ SOURCE = (
     / "op_kernel"
     / "allto_allv_grouped_mat_mul_aiv_mode.h"
 )
+COMM_SOURCE = SOURCE.parent / "allto_allv_grouped_mat_mul_aiv_comm.h"
+HOST_TILING_HEADER = (
+    SOURCE.parent.parent
+    / "op_host"
+    / "op_tiling"
+    / "allto_allv_grouped_mat_mul_tiling.h"
+)
 
 
 def _function_body(source: str, signature: str) -> str:
@@ -34,6 +41,54 @@ def _source() -> str:
     return SOURCE.read_text(encoding="utf-8")
 
 
+def test_a2_ep8_accepts_both_fixed_and_runtime_dynamic_peer_windows() -> None:
+    source = COMM_SOURCE.read_text(encoding="utf-8")
+    init = _function_body(source, "__aicore__ inline bool Init(")
+    window = _function_body(source, "__aicore__ inline GM_ADDR Window(")
+
+    assert "GetRemoteRankAddrs" in window
+    assert "a2Context_->windowsIn[rank]" in window
+    assert "RequiresA2DynamicWindowTable" not in source
+    assert "a2Context_->multiFlag != 0U" in init
+    assert "a2Context_->data == nullptr" in init
+    assert "a2Context_->multiFlag == 0U" in window
+    assert "a2Context_->data[rank].localInput.addr" in window
+    assert "a2Context_->data[rank].remoteInput.addr" in window
+
+
+def test_peer_window_allocation_excludes_workspace_expert_ready_bytes() -> None:
+    comm_source = COMM_SOURCE.read_text(encoding="utf-8")
+    mode_source = SOURCE.read_text(encoding="utf-8")
+    runtime_layout = _function_body(
+        comm_source, "A2AVGMM_HOST_DEVICE bool BuildRuntimeControlLayout("
+    )
+    host_layout = _function_body(
+        comm_source, "A2AVGMM_HOST_DEVICE bool BuildWindowLayout("
+    )
+    device_layout = _function_body(
+        mode_source, "__aicore__ inline bool BuildDeviceWindowLayout("
+    )
+
+    assert "layout.peerControlBytes" in runtime_layout
+    assert "control.peerControlBytes" in host_layout
+    assert "control.totalBytes" not in host_layout
+    assert "control.peerControlBytes" in device_layout
+    assert "control.totalBytes" not in device_layout
+
+
+def test_nonquant_tiling_key_precedes_quant_base_include() -> None:
+    """The quant base pulls in a legacy 0/1-only tiling-key declaration."""
+
+    source = HOST_TILING_HEADER.read_text(encoding="utf-8")
+    key_include = source.index(
+        '#include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"'
+    )
+    base_include = source.index(
+        '#include "allto_allv_grouped_mat_mul_tiling_base.h"'
+    )
+    assert key_include < base_include
+
+
 def test_shared_mm_precedes_counted_cross_core_expert_waits() -> None:
     body = _function_body(_source(), "__aicore__ inline void ProcessAic(")
 
@@ -49,7 +104,7 @@ def test_shared_mm_precedes_counted_cross_core_expert_waits() -> None:
 def test_shared_mm_starts_after_local_payload_publish_but_before_peer_wait() -> None:
     source = _source()
     aiv_body = _function_body(source, "__aicore__ inline void ProcessAiv(")
-    publish = aiv_body.index("kPublishSlotsOffset")
+    publish = aiv_body.index("control.publishSlotsOffset")
     shared_ready = aiv_body.index("SignalAicSharedExpertReady", publish)
     peer_wait = aiv_body.index("WaitPeerPhase", shared_ready)
 
@@ -64,7 +119,7 @@ def test_shared_mm_starts_after_local_payload_publish_but_before_peer_wait() -> 
 def test_aiv_signals_each_expert_after_the_collective_copy_barrier() -> None:
     body = _function_body(_source(), "__aicore__ inline void ProcessAiv(")
     expert_loop = body.index("for (uint32_t expertIdx")
-    final_release = body.index("kReleaseSlotsOffset")
+    final_release = body.index("control.releaseSlotsOffset")
     copy_expert = body.index("CopyExpertFromSource", expert_loop)
     copy_barrier = body.index("SyncAll<true>", copy_expert)
     publish_ready = body.index("SignalAicExpertReady", copy_barrier)
