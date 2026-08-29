@@ -67,15 +67,15 @@
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
-      <td>详见quant_mode</td>
+      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。使用UINT8传入时，每个UINT8元素必须承载对应FLOAT8_E4M3FN元素的原始位模式，接口按FLOAT8_E4M3FN解释，不进行数值转换。</td>
+      <td>FLOAT8_E4M3FN；aclnn API、PyTorch API支持UINT8承载</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
-      <td>详见quant_mode</td>
+      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。UINT8承载规则同ori_kv。</td>
+      <td>FLOAT8_E4M3FN；aclnn API、PyTorch API支持UINT8承载</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -289,6 +289,7 @@
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
 - 该接口支持batch一致性。
+- 通过aclnn API或PyTorch API调用时，`ori_kv`和`cmp_kv`支持使用UINT8承载FLOAT8_E4M3FN原始位模式。UINT8仅改变接口侧的数据类型标识，不改变底层数据，算子仍按FLOAT8_E4M3FN语义计算；因此不能将普通UINT8数值直接作为量化KV输入。
 - 该接口当前支持三种计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
 
 ### 常见字段释义
