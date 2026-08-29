@@ -100,6 +100,22 @@ struct ExpertWeightTensorListAddrs {
     GM_ADDR weightScales2 = nullptr;
 };
 
+// W1 权重 L2 预取游标（仅 GMM1 权重，AIV0 专用）：区域 = 专家，预算 = 自适应总量按 worker 均摊。
+struct WeightL2PrefetchCursor {
+    __gm__ uint8_t *chunkAddr = nullptr; // 本 worker 在当前区域内的下一 chunk 地址
+    __gm__ uint8_t *regionEnd = nullptr; // 当前区域结束地址（exclusive）
+    uint32_t regionIndex = 0U;           // 当前区域编号 = 专家编号（仅 W1 区域）
+    uint32_t regionCount = 0U;           // expertCount；regionIndex >= regionCount 表示耗尽
+    uint32_t workerIdx = 0U;
+    uint32_t workerCount = 1U;
+    uint64_t budgetRemaining = 0U; // 本 worker 的字节预算（全局预算 / workerCount）
+    GM_ADDR weight1List = nullptr;
+    bool isPerExpertWeightTensor = false;
+    uint32_t expertCount = 0U;
+    uint64_t w1BytesPerExpert = 0U;
+    uint32_t scratchUbOffset = WEIGHT_L2_PREFETCH_UB_OFFSET; // scratch 的 UB 偏移（host 按平台 ubSize 下发）
+};
+
 struct Params {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
