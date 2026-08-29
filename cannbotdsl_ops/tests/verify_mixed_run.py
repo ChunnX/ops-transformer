@@ -37,6 +37,8 @@ PUBLIC_PARAMETERS = [
 ]
 GENERATED_INTERNAL_PARAMETERS = ["dv_base", "group"]
 OUTPUT_PARAMETERS = ["o", "st_out"]
+FLASH_KDA_OUTER_OPERATOR = "ops-transformer::attention/flash_kda"
+FLASH_KDA_ENTRY_IDENTITY = "flash_kda_l0_entry"
 REQUIRED_PUBLIC_HEADERS = [
     "aclnn_custom_flash_kda.h",
     "aclnn_flash_kda.h",
@@ -157,10 +159,18 @@ def _validated_variant_rules(
         raise AssertionError("package compatibility.soc must be a non-empty string")
 
     entry: dict[str, Any] | None = None
+    entry_name: str | None = None
+    entry_support_digest: str | None = None
+    entry_variant_manifest: dict[str, Any] | None = None
     entry_identity: str | None = None
     for index, artifact in enumerate(artifacts):
         if not isinstance(artifact, dict):
             raise AssertionError(f"artifact {index} is not an object")
+        if artifact.get("operator") != FLASH_KDA_OUTER_OPERATOR:
+            raise AssertionError(
+                f"artifact {index} operator must be "
+                f"{FLASH_KDA_OUTER_OPERATOR!r}"
+            )
         candidate = artifact.get("entry")
         if not isinstance(candidate, dict) or candidate.get("schema_version") != 5:
             raise AssertionError(f"artifact {index} does not carry entry schema v5")
@@ -181,19 +191,49 @@ def _validated_variant_rules(
             )
         if candidate.get("output_parameters") != OUTPUT_PARAMETERS:
             raise AssertionError(f"artifact {index} output parameters drifted")
+        candidate_name = candidate.get("name")
+        if not isinstance(candidate_name, str) or not candidate_name:
+            raise AssertionError(
+                f"artifact {index} entry.name must be a non-empty string"
+            )
+        if candidate_name != FLASH_KDA_ENTRY_IDENTITY:
+            raise AssertionError(
+                f"artifact {index} entry.name must be "
+                f"{FLASH_KDA_ENTRY_IDENTITY!r}"
+            )
+        candidate_support_digest = candidate.get("support_digest")
+        if (
+            not isinstance(candidate_support_digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", candidate_support_digest) is None
+        ):
+            raise AssertionError(
+                f"artifact {index} entry.support_digest must be a lowercase "
+                "64-hex digest"
+            )
+        candidate_variant_manifest = candidate.get("variant_manifest")
+        if not isinstance(candidate_variant_manifest, dict):
+            raise AssertionError(
+                f"artifact {index} entry.variant_manifest must be an object"
+            )
         canonical_entry = json.dumps(candidate, sort_keys=True, separators=(",", ":"))
         if entry_identity is None:
             entry = candidate
+            entry_name = candidate_name
+            entry_support_digest = candidate_support_digest
+            entry_variant_manifest = candidate_variant_manifest
             entry_identity = canonical_entry
         elif entry_identity != canonical_entry:
             raise AssertionError("Provider artifacts carry different Entry plans")
 
     assert entry is not None
+    assert entry_name is not None
+    assert entry_support_digest is not None
+    assert entry_variant_manifest is not None
     rules = flatten_variant_manifest(
-        entry.get("variant_manifest"),
+        entry_variant_manifest,
         require_content_keys=True,
-        public_contract_digest=entry.get("support_digest"),
-        operator_identity=entry.get("name"),
+        public_contract_digest=entry_support_digest,
+        operator_identity=entry_name,
         target_soc=target_soc,
     )
     expected_generated = set(GENERATED_INTERNAL_PARAMETERS)

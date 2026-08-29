@@ -274,6 +274,72 @@ def test_delivery_dump_paths_encode_variant_and_case_without_separator_collision
     assert len(set(paths)) == 2
 
 
+@pytest.mark.parametrize(
+    ("variant_id", "case_id"),
+    [
+        (".", "case"),
+        ("..", "case"),
+        ("auto", "."),
+        ("auto", ".."),
+        ("auto/escape", "case"),
+        ("auto", "case/escape"),
+    ],
+)
+def test_delivery_dump_path_rejects_path_control_components(
+    tmp_path, variant_id, case_id
+):
+    region = runner.DeliveryRegion(
+        variant_id=variant_id,
+        case_id=case_id,
+        content_key="c" * 64,
+        static_values=(("dv_base", 128), ("group", 4)),
+        batch=1,
+        heads=1,
+        sequence_min=16,
+    )
+
+    with pytest.raises(ValueError, match="path component"):
+        runner._delivery_dump_path(tmp_path, region)
+
+
+def test_delivery_dump_path_stays_two_levels_below_resolved_work_root(tmp_path):
+    region = runner.DeliveryRegion(
+        variant_id="auto_safe",
+        case_id="case_safe",
+        content_key="c" * 64,
+        static_values=(("dv_base", 128), ("group", 4)),
+        batch=1,
+        heads=1,
+        sequence_min=16,
+    )
+
+    result = runner._delivery_dump_path(tmp_path, region)
+
+    assert result.is_absolute()
+    assert result.relative_to(tmp_path.resolve()).parts == (
+        "dump-auto_safe",
+        "case_safe",
+    )
+
+
+def test_delivery_dump_path_rejects_existing_symlink_escape(tmp_path):
+    outside = tmp_path.parent / "task5-outside"
+    outside.mkdir(exist_ok=True)
+    (tmp_path / "dump-auto_safe").symlink_to(outside, target_is_directory=True)
+    region = runner.DeliveryRegion(
+        variant_id="auto_safe",
+        case_id="case_safe",
+        content_key="c" * 64,
+        static_values=(("dv_base", 128), ("group", 4)),
+        batch=1,
+        heads=1,
+        sequence_min=16,
+    )
+
+    with pytest.raises(ValueError, match="escapes work root"):
+        runner._delivery_dump_path(tmp_path, region)
+
+
 def test_acceptance_stops_at_shared_verifier_failure_before_device_work(
     tmp_path, monkeypatch
 ):

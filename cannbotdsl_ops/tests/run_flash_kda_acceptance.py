@@ -44,6 +44,7 @@ _NATIVE_PATTERN = re.compile(
     r"(?P<aclnn_output>[0-9.eE+-]+); state max_abs="
     r"(?P<aclnn_state>[0-9.eE+-]+)"
 )
+_IDENTITY_COMPONENT = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 @dataclass(frozen=True)
@@ -126,7 +127,28 @@ def _delivery_regions(variant_rules: object) -> tuple[DeliveryRegion, ...]:
 
 
 def _delivery_dump_path(work_root: Path, region: DeliveryRegion) -> Path:
-    return work_root / f"dump-{region.variant_id}" / region.case_id
+    components = {
+        "variant_id": region.variant_id,
+        "case_id": region.case_id,
+    }
+    for field, value in components.items():
+        if (
+            not isinstance(value, str)
+            or value in {".", ".."}
+            or _IDENTITY_COMPONENT.fullmatch(value) is None
+        ):
+            raise ValueError(f"FlashKDA {field} is not a safe path component")
+    root = work_root.resolve()
+    if not root.is_dir():
+        raise ValueError(f"FlashKDA work root is not a directory: {root}")
+    candidate = (root / f"dump-{region.variant_id}" / region.case_id).resolve()
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as error:
+        raise ValueError("FlashKDA dump path escapes work root") from error
+    if relative.parts != (f"dump-{region.variant_id}", region.case_id):
+        raise ValueError("FlashKDA dump path has an unexpected depth")
+    return candidate
 
 
 def _sha256(path: Path) -> str:

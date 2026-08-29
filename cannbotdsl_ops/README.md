@@ -82,7 +82,11 @@ sidecar 的 B/N/S 约束与 constexpr。VariantManifest、artifact 或 L0 支持
 FlashKDA 交付不再生成 v4 数据。`verify_mixed_run.py` 在包边界只调用一次共享
 VariantManifest validator/flattener，并把规范化 artifact/case 规则交给
 `run_flash_kda_acceptance.py`；验收脚本不再重新读取 registry/manifest 或维护第二份
-dispatch 表。最终 FlashKDA 交付强制 schema v5，v4 只保留在 CANNBotDSL 框架兼容测试中。
+dispatch 表。该边界将每个外层 artifact 固定到
+`ops-transformer::attention/flash_kda`，将 Entry identity 固定到
+`flash_kda_l0_entry`，并在调用共享 flattener 前检查非空 Entry name、64 位小写
+support digest 和必需的 VariantManifest 对象。最终 FlashKDA 交付强制 schema v5，
+v4 只保留在 CANNBotDSL 框架兼容测试中。
 
 ## 构建
 
@@ -172,6 +176,9 @@ manifest 的规范化 artifact/case 规则通过 `aclnnCustomFlashKda*` 驱动�
 完整 CPU golden、代表性 native 位级对拍、三轮单流时延，最后执行 2 streams ×
 20 waves 和 10 类 GetWorkspace 错误矩阵；一个 artifact 可覆盖多个互斥 case，
 每个 dump/报告项都保留 `variant_id`、`case_id`、`content_key` 和编译器生成值。
+dump 使用 `dump-<variant_id>/<case_id>` 两级目录；路径组件必须是安全生成 ID，
+解析后仍须位于本次验收 work root 的预期两级深度，`.`、`..`、分隔符和已有
+symlink 逃逸均会在设备执行前被拒绝。
 原 `aclnnFlashKda*` 另执行一次 standalone 回归。JSON 报告记录
 归档/二进制 SHA256、源码提交、实际动态库路径、每个 shape 的 workspace/误差/
 时延和 soak 结果；任一子门禁失败时写入 `passed=false` 并使 target 失败。

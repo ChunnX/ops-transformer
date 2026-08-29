@@ -57,6 +57,8 @@ def test_symbol_verifier_accepts_complete_delivery_surface():
 
 _SUPPORT_DIGEST = "a" * 64
 _SOC = "Ascend950PR_9599"
+_FLASH_KDA_OPERATOR = "ops-transformer::attention/flash_kda"
+_MISSING = object()
 
 
 def _predicate(*, batch: int, sequence_min: int, sequence_max: int):
@@ -147,11 +149,13 @@ def _package_manifest():
         "compatibility": {"soc": _SOC},
         "artifacts": [
             {
+                "operator": _FLASH_KDA_OPERATOR,
                 "variant": "auto_a",
                 "content_key": "3" * 64,
                 "entry": deepcopy(entry),
             },
             {
+                "operator": _FLASH_KDA_OPERATOR,
                 "variant": "auto_b",
                 "content_key": "4" * 64,
                 "entry": deepcopy(entry),
@@ -188,6 +192,99 @@ def _drift_support_digest(package):
     _mutate_all_entries(
         package, lambda entry: entry.__setitem__("support_digest", "b" * 64)
     )
+
+
+def _set_all_entry_fields(package, field, value):
+    for artifact in package["artifacts"]:
+        if value is _MISSING:
+            artifact["entry"].pop(field, None)
+        else:
+            artifact["entry"][field] = value
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("name", _MISSING, "entry.name"),
+        ("name", None, "entry.name"),
+        ("name", 7, "entry.name"),
+        ("name", "", "entry.name"),
+        ("support_digest", _MISSING, "entry.support_digest"),
+        ("support_digest", None, "entry.support_digest"),
+        ("support_digest", 7, "entry.support_digest"),
+        ("support_digest", "a" * 63, "entry.support_digest"),
+        ("support_digest", "A" * 64, "entry.support_digest"),
+        ("variant_manifest", _MISSING, "entry.variant_manifest"),
+        ("variant_manifest", None, "entry.variant_manifest"),
+        ("variant_manifest", [], "entry.variant_manifest"),
+    ],
+)
+def test_entry_identity_fields_are_validated_before_shared_flattener(
+    field, value, message, monkeypatch
+):
+    package = _package_manifest()
+    _set_all_entry_fields(package, field, value)
+
+    def forbidden_flatten(*args, **kwargs):
+        raise AssertionError("shared flattener called before Entry identity validation")
+
+    monkeypatch.setattr(verifier, "flatten_variant_manifest", forbidden_flatten)
+
+    with pytest.raises(AssertionError, match=message):
+        _rules(package)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda package: package["artifacts"][0].pop("operator"),
+            "artifact 0.*operator",
+        ),
+        (
+            lambda package: package["artifacts"][0].__setitem__(
+                "operator", "other::attention/flash_kda"
+            ),
+            "artifact 0.*operator",
+        ),
+        (
+            lambda package: [
+                artifact.__setitem__("operator", "other::attention/flash_kda")
+                for artifact in package["artifacts"]
+            ],
+            "operator",
+        ),
+    ],
+)
+def test_outer_artifacts_are_fixed_to_the_flash_kda_operator(mutate, message):
+    package = _package_manifest()
+    mutate(package)
+
+    with pytest.raises(AssertionError, match=message):
+        _rules(package)
+
+
+def test_entry_identity_cannot_drift_as_one_self_consistent_table():
+    package = _package_manifest()
+    for artifact in package["artifacts"]:
+        artifact["entry"]["name"] = "other_entry"
+        artifact["entry"]["variant_manifest"][
+            "operator_identity"
+        ] = "other_entry"
+
+    with pytest.raises(AssertionError, match="flash_kda_l0_entry"):
+        _rules(package)
+
+
+def test_repeated_canonical_entry_and_outer_operator_are_accepted():
+    package = _package_manifest()
+
+    rules = _rules(package)
+
+    assert {artifact["operator"] for artifact in package["artifacts"]} == {
+        _FLASH_KDA_OPERATOR
+    }
+    assert {rule["variant_id"] for rule in rules} == {"auto_a", "auto_b"}
 
 
 def test_v5_manifest_is_flattened_once_and_grouped_cases_remain_one_artifact(
@@ -280,7 +377,7 @@ def test_shared_flattener_rejects_corrupted_predicate_before_identity_join():
         ),
         (
             _rename_entry,
-            "operator identity",
+            "flash_kda_l0_entry|operator identity",
         ),
         (
             _drift_support_digest,
