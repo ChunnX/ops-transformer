@@ -813,6 +813,9 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     if (args_.nValue != 0) {
         AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
         MC2_CHECK_LOG_RET(opName_, mmLocalTile.DoTiling());
+        //DEBUG
+        MutableTCubeLocalTilingWindowParam().mTailTile = 1;
+        MutableTCubeLocalTilingWindowParam().nTailTile = 1;
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
                        (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) :
