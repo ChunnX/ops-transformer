@@ -1722,49 +1722,113 @@ class GenInputAndGolden():
             sample = np.asarray(values).reshape(-1)[:count].astype(np.float32).tolist()
         print(f"[golden {marker}] {name}: {sample}")
 
+    @staticmethod
+    def fnv1a_bytes(values):
+        raw = np.ascontiguousarray(values).view(np.uint8).reshape(-1)
+        value_hash = 2166136261
+        for value in raw:
+            value_hash ^= int(value)
+            value_hash = (value_hash * 16777619) & 0xFFFFFFFF
+        return value_hash, raw.size
+
+    def print_full_tile_hash(self, marker, prefix, data_tile, scale_tile):
+        data_hash, data_bytes = self.fnv1a_bytes(data_tile)
+        scale_hash, scale_bytes = self.fnv1a_bytes(scale_tile)
+        print(f"[golden {marker}] {prefix}_data_bytes: [{data_bytes}]")
+        print(f"[golden {marker}] {prefix}_scale_bytes: [{scale_bytes}]")
+        print(f"[golden {marker}] {prefix}_data_fnv1a: ['0x{data_hash:08x}']")
+        print(f"[golden {marker}] {prefix}_scale_fnv1a: ['0x{scale_hash:08x}']")
+
+    def print_fp8_stage_debug_values(self, marker, prefix, data_row, scale_row,
+                                     data_tile=None, scale_tile=None):
+        self.print_golden_debug_values(marker, f"{prefix}_data", data_row, 20)
+        self.print_golden_debug_values(marker, f"{prefix}_scale", scale_row, 8)
+        if data_tile is not None and scale_tile is not None:
+            self.print_full_tile_hash(marker, prefix, data_tile, scale_tile)
+
+    def _weight_data_window(self, weight_storage, n_loc=0, k_loc=0, count=20):
+        weight = np.asarray(weight_storage)
+        if self.transpose_weight:
+            return weight[0, n_loc, k_loc:k_loc + count]
+        return weight[0, k_loc, n_loc:n_loc + count]
+
+    def _weight_scale_window(self, scale_storage, n_loc=0, scale_k_loc=0, count=8):
+        scale = np.asarray(scale_storage)
+        if self.transpose_weight:
+            scale_row = scale[0, n_loc].reshape(-1)
+        else:
+            scale_row = scale[0, :, n_loc].reshape(-1)
+        return scale_row[scale_k_loc:scale_k_loc + count]
+
+    def print_weight_debug_values(self, marker, prefix, weight_storage, scale_storage,
+                                  n_loc=0, k_loc=0):
+        if self.a8w8_is_nz:
+            print(
+                f"[golden {marker}] {prefix}: raw NZ window is produced by npu_format_cast; "
+                "compare the kernel layout tag and MMAD config first"
+            )
+            return
+        self.print_golden_debug_values(
+            marker, f"{prefix}_data",
+            self._weight_data_window(weight_storage, n_loc, k_loc), 20
+        )
+        self.print_golden_debug_values(
+            marker, f"{prefix}_scale",
+            self._weight_scale_window(scale_storage, n_loc, k_loc // 32), 8
+        )
+        weight = np.asarray(weight_storage)
+        scale = np.asarray(scale_storage)
+        if self.transpose_weight:
+            actual_n = min(256, weight.shape[1] - n_loc)
+            data_tile = weight[0, n_loc:n_loc + actual_n, k_loc:]
+            scale_tile = scale[0, n_loc:n_loc + actual_n].reshape(actual_n, -1)
+        else:
+            actual_n = min(256, weight.shape[2] - n_loc)
+            data_tile = weight[0, k_loc:, n_loc:n_loc + actual_n]
+            scale_tile = scale[0, :, n_loc:n_loc + actual_n].transpose(1, 0, 2)
+        self.print_full_tile_hash(marker, prefix, data_tile, scale_tile)
+
+    def print_expected_mmad_config(self, marker, prefix, row_count, problem_n, problem_k):
+        scale_k = ((problem_k + 63) // 64) * 2
+        expected = {
+            "problem_m": int(row_count),
+            "problem_n": int(problem_n),
+            "problem_k": int(problem_k),
+            "scale_k": int(scale_k),
+            "actual_m": int(min(row_count, 256)),
+            "actual_n": int(min(problem_n, 256)),
+            "actual_k": int(problem_k),
+            "weight_layout": "ZN" if self.a8w8_is_nz else "DN",
+            "m_loc": 0,
+            "n_loc": 0,
+            "k_loc": 0,
+        }
+        print(f"[golden {marker}] {prefix}: {expected}")
+
+    def get_debug_gmm1_weight_storage(self, weight_storage, scale_storage):
+        if not self.is_interleaved:
+            return weight_storage, scale_storage
+        n_axis = 1 if self.transpose_weight == 1 else 2
+        return (
+            interleave_gate_up_along_axis(weight_storage, n_axis=n_axis),
+            interleave_gate_up_along_axis(scale_storage, n_axis=n_axis),
+        )
+
     def print_gmm1_debug_values(self, gmm1_row):
         half_width = gmm1_row.shape[-1] // 2
         gate_row = gmm1_row[:half_width]
         self.print_golden_debug_values(910002, "gmm1_gate", gate_row, 20)
         self.print_golden_debug_values(910002, "gmm1_up", gmm1_row[half_width:], 20)
-        self.print_golden_debug_values(912201, "gmm1_fixpipe_control", gate_row, 20)
 
-    def print_activation_debug_values(self, swiglu_row, quant_row, scale_row):
+    def print_activation_debug_values(self, swiglu_row, quant_data, scale_data):
         self.print_golden_debug_values(910003, "swiglu", swiglu_row, 20)
-        self.print_golden_debug_values(910003, "quant_data", quant_row, 20)
-        self.print_golden_debug_values(910003, "quant_scale", scale_row, 8)
-
-    def print_gmm2_partial_debug_values(
-        self, quant_input, weight, weight_scale, input_scale, unit_weight_scale
-    ):
-        input_dequant = _dequant_qbmm_input(quant_input, input_scale)
-        weight_dequant = _dequant_qbmm_weight(
-            weight, weight_scale, unit_weight_scale
+        self.print_golden_debug_values(910003, "quant_data", quant_data[0], 20)
+        self.print_golden_debug_values(910003, "quant_scale", scale_data[0], 8)
+        debug_tile_m = min(256, quant_data.shape[0])
+        self.print_full_tile_hash(
+            910003, "quant", quant_data[:debug_tile_m], scale_data[:debug_tile_m]
         )
-        input_tensor = torch.from_numpy(input_dequant[:1]).to(torch.float32)
-        weight_tensor = torch.from_numpy(weight_dequant).to(torch.float32)
-        partial = torch.zeros((1, weight_tensor.shape[-1]), dtype=torch.float32)
-        chunk_k = 128
-        marker = 912101
-        for k_start in range(0, input_tensor.shape[-1], chunk_k):
-            k_end = min(k_start + chunk_k, input_tensor.shape[-1])
-            chunk = torch.matmul(
-                input_tensor[:, k_start:k_end], weight_tensor[k_start:k_end, :]
-            )
-            partial += chunk
-            self.print_golden_debug_values(
-                marker,
-                f"gmm2_partial_k{k_end}",
-                partial[0].to(torch.bfloat16),
-                20,
-            )
-            self.print_golden_debug_values(
-                marker + 10,
-                f"gmm2_isolated_chunk_k{k_start}_{k_end}",
-                chunk[0].to(torch.bfloat16),
-                20,
-            )
-            marker += 1
+
 
     def __init__(self, **kwargs):
         self.bs = kwargs['bs']
@@ -1815,6 +1879,7 @@ class GenInputAndGolden():
         self.quant_mode = kwargs['quant_mode']
         self.transpose_weight = kwargs['transpose_weight']
         self.is_interleaved = bool(kwargs.get('is_interleaved', False))
+        self.a8w8_is_nz = bool(kwargs.get('a8w8_is_nz', False))
         validate_interleaved_weight_dimensions(self.h, self.n, self.is_interleaved)
         self.comm_quant_mode = kwargs['comm_quant_mode']
         self.weight_dtype = kwargs['weight_dtype']
@@ -2199,6 +2264,10 @@ class GenInputAndGolden():
             x_quant_all, x_scale_all = dispatch_mx_quantize(
                 input_tokens_fp32.numpy(), mx_ele_dtype=w_dtype, axis=-1, block_size=32, round_mode="rint"
             )
+            if x_quant_all.shape[0] > 0:
+                self.print_fp8_stage_debug_values(
+                    910000, "pre_dispatch", x_quant_all[0], x_scale_all[0]
+                )
             for rank in range(self.ep_world_size):
                 rank_token_nums = []
                 rank_token_indices = (
@@ -2236,8 +2305,18 @@ class GenInputAndGolden():
                         a_quant_list.append(np.empty((0,) + x_quant_all.shape[1:], dtype=x_quant_all.dtype))
                         a_scale_list.append(np.empty((0,) + x_scale_all.shape[1:], dtype=x_scale_all.dtype))
                 expert_token_nums_per_rank.append(torch.tensor(rank_token_nums, dtype=torch.int64))
-            if a_quant_list and a_quant_list[0].shape[0] > 0:
-                self.print_golden_debug_values(910001, "dispatch_data", a_quant_list[0][0], 20)
+            debug_expert_list_idx = self.shared_expert_num
+            if (debug_expert_list_idx < len(a_quant_list) and
+                    a_quant_list[debug_expert_list_idx].shape[0] > 0):
+                debug_tile_m = min(256, a_quant_list[debug_expert_list_idx].shape[0])
+                self.print_fp8_stage_debug_values(
+                    910001,
+                    "dispatch",
+                    a_quant_list[debug_expert_list_idx][0],
+                    a_scale_list[debug_expert_list_idx][0],
+                    a_quant_list[debug_expert_list_idx][:debug_tile_m],
+                    a_scale_list[debug_expert_list_idx][:debug_tile_m],
+                )
             return a_quant_list, token_indices_list, expert_pos_list, prob_list, a_scale_list, expert_token_nums_per_rank
 
         a_reordered_list = []
@@ -2315,6 +2394,20 @@ class GenInputAndGolden():
             output2 = torch.empty(0, self.h, dtype=torch.float32)
         else:
             stage_times["active_expert"] = 1
+            if global_expert_idx == 0:
+                debug_w1_npu, debug_weight_scale1_npu = self.get_debug_gmm1_weight_storage(
+                    w1_npu, weight_scale1_npu
+                )
+                self.print_weight_debug_values(
+                    910005, "gmm1_weight_gate", debug_w1_npu, debug_weight_scale1_npu
+                )
+                self.print_weight_debug_values(
+                    910006, "gmm1_weight_up", debug_w1_npu, debug_weight_scale1_npu,
+                    n_loc=self.n // 2
+                )
+                self.print_expected_mmad_config(
+                    910007, "gmm1_expected_config", x_value.shape[0], self.n // 2, self.h
+                )
             stage_start = time.perf_counter()
             output1 = qbmm_mx_golden_calculate(
                 [x_value],
@@ -2362,18 +2455,17 @@ class GenInputAndGolden():
             )
             if global_expert_idx == 0:
                 self.print_activation_debug_values(
-                    swiglu_out[0], quant_output[0], per_token_scale[0]
+                    swiglu_out[0], quant_output, per_token_scale
                 )
             stage_times["swiglu_quant"] = time.perf_counter() - stage_start
 
             stage_start = time.perf_counter()
             if global_expert_idx == 0:
-                self.print_gmm2_partial_debug_values(
-                    quant_output,
-                    weight2[0],
-                    weight_scale2[0],
-                    per_token_scale,
-                    use_fast_random_weight,
+                self.print_weight_debug_values(
+                    910008, "gmm2_weight", w2_npu, weight_scale2_npu
+                )
+                self.print_expected_mmad_config(
+                    910009, "gmm2_expected_config", quant_output.shape[0], self.h, self.n // 2
                 )
             output2 = qbmm_mx_golden_calculate(
                 [quant_output],
@@ -2881,6 +2973,18 @@ class GenInputAndGolden():
             weight2_scale_list = list(weight_scale2)
             x_list = self.a_reordered_list[start:end]
             x_scale_list = self.a_scale_list[start:end]
+            debug_expert_zero = start == 0 and len(x_list) > 0 and x_list[0].shape[0] > 0
+            if debug_expert_zero:
+                self.print_weight_debug_values(
+                    910005, "gmm1_weight_gate", w1_npu[0:1], weight_scale1_npu_cpu[0:1]
+                )
+                self.print_weight_debug_values(
+                    910006, "gmm1_weight_up", w1_npu[0:1], weight_scale1_npu_cpu[0:1],
+                    n_loc=self.n // 2
+                )
+                self.print_expected_mmad_config(
+                    910007, "gmm1_expected_config", x_list[0].shape[0], self.n // 2, self.h
+                )
 
             output1 = qbmm_mx_golden_calculate(
                 x_list, weight1_list, weight1_scale_list, x_scale_list,
@@ -2899,7 +3003,6 @@ class GenInputAndGolden():
                 output2 = [torch.empty(0, self.h, dtype=torch.float32) for _ in range(cur_expert_num)]
             else:
                 output1[0] = output1[0].to(torch.bfloat16).to(torch.float32)
-                debug_expert_zero = start == 0 and split_sizes[0] > 0
                 if debug_expert_zero:
                     self.print_gmm1_debug_values(output1[0][0])
                 swiglu_out = apply_golden_activation(
@@ -2939,21 +3042,19 @@ class GenInputAndGolden():
                 perTokenScale_input = transpose_last_two_dim(perTokenScale_input, x_transpose_flag)
                 if debug_expert_zero:
                     self.print_activation_debug_values(
-                        swiglu_out[0], quant_output[0], perTokenScale_input[0]
+                        swiglu_out[0], quant_output, perTokenScale_input
+                    )
+                    self.print_weight_debug_values(
+                        910008, "gmm2_weight", w2_npu[0:1], weight_scale2_npu_cpu[0:1]
+                    )
+                    self.print_expected_mmad_config(
+                        910009, "gmm2_expected_config", split_sizes[0], self.h, self.n // 2
                     )
                 del output1, swiglu_out
                 quant_output = [quant_output[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)]
                 quant_scale_output = [
                     perTokenScale_input[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)
                 ]
-                if debug_expert_zero:
-                    self.print_gmm2_partial_debug_values(
-                        quant_output[0],
-                        weight2_list[0],
-                        weight2_scale_list[0],
-                        quant_scale_output[0],
-                        use_fast_random_weight,
-                    )
                 output2 = qbmm_mx_golden_calculate(
                     quant_output, weight2_list, weight2_scale_list, quant_scale_output,
                     batch_matmul=self.golden_batch_matmul,
@@ -3131,42 +3232,11 @@ class GenInputAndGolden():
         c2_scale_broadcast = c2_scale_broadcast[..., :c2_quant.shape[-1]]
         return torch.from_numpy(c2_quant.astype(np.float32) * c2_scale_broadcast.astype(np.float32))
 
-    def print_combine_receive_debug_values(self, global_expert_idx, c2_rows):
-        if self.is_shared_expert_slot(global_expert_idx):
-            return
-        token_indices = self.token_indices_list[global_expert_idx]
-        expert_positions = self.expert_pos_list[global_expert_idx]
-        route_rows = torch.nonzero(
-            (token_indices == 0) & (expert_positions == 0), as_tuple=False
-        ).flatten()
-        if route_rows.numel() == 0:
-            return
-
-        c2_row = c2_rows[route_rows[0].item()].to(torch.bfloat16).to(torch.float32)
-        is_quantized = self.comm_quant_mode in (3, 4)
-        self.print_golden_debug_values(
-            910005, "combine_mode", np.asarray([int(is_quantized)], dtype=np.int32), 1
-        )
-        if not is_quantized:
-            self.print_golden_debug_values(910005, "combine_data", c2_row, 20)
-            return
-
-        w_dtype = "float8_e4m3fn" if self.comm_quant_mode == 4 else "float8_e5m2"
-        c2_quant, _ = dispatch_mx_quantize(
-            c2_row.unsqueeze(0).numpy(),
-            mx_ele_dtype=w_dtype,
-            axis=-1,
-            block_size=32,
-            round_mode="rint"
-        )
-        self.print_golden_debug_values(910005, "combine_data", c2_quant[0], 20)
-
     def accumulate_combine_golden(self, output2, expert_start, expert_scales, expert_ids):
         for local_g, c2_rows in enumerate(output2):
             g = expert_start + local_g
             if len(self.token_indices_list[g]) == 0:
                 continue
-            self.print_combine_receive_debug_values(g, c2_rows)
             indices = self.token_indices_list[g]
             if self.is_shared_expert_slot(g):
                 self.combine_golden_accumulator.index_add_(0, indices, c2_rows)

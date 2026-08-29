@@ -958,9 +958,12 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     bool useAiv1OnlyWaveCombine =
         tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                                                   tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
-    if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+    // A5 has two AIVs per AIC; A6 is 1C1V and must retain every physical AIV slot.
+    bool hasPairedAiv = static_cast<uint64_t>(tilingData->blockAivNum) ==
+                        static_cast<uint64_t>(tilingData->aicNum) * 2U;
+    if (hasPairedAiv && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine)) {
         // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }

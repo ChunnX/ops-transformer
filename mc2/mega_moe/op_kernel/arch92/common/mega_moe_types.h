@@ -58,6 +58,9 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+    // Temporary diagnostic identity for the focused arch92 MMAD precision trace.
+    uint32_t debugRankId = 0xFFFFFFFFU;
+    uint32_t debugExpertIdx = 0xFFFFFFFFU;
 };
 
 struct CombineCommParams {
