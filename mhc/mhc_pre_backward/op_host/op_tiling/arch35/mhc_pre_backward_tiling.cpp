@@ -51,6 +51,7 @@ const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
+const constexpr uint32_t C0_M_STEP = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
@@ -255,9 +256,10 @@ void MhcPreBackwardTiling::SetC0TilingParams()
     tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKa(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKb(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_depthA1(C0_SET_VALUE);
+    // C0满块包含两个baseM，将A侧L1深度与M方向步长设为2以复用B侧数据。
+    tilingData_.matmulTilingC0.set_depthA1(C0_M_STEP);
     tilingData_.matmulTilingC0.set_depthB1(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_stepM(C0_SET_VALUE);
+    tilingData_.matmulTilingC0.set_stepM(C0_M_STEP);
     tilingData_.matmulTilingC0.set_stepN(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_baseM(C0_BASE_M);
     tilingData_.matmulTilingC0.set_baseN(C0_BASE_N);
