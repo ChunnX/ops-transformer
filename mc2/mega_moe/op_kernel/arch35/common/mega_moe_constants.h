@@ -67,6 +67,35 @@ constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
+// W8/W4 权重 L2 预取（仅 W1，fire-and-forget）。双窗口独立游标、独立预算（按 firstExpert 专家
+// 边界分割数据）：窗口 0 由 AIV0 平面在量化段后倾泻（AIV1 平面独占 SendMask，指令流分离）、
+// SyncAll 前 PipeBarrier 排空；窗口 1 在 count 等待自旋处交付首份额（MTE2_V 事件排空收尾）+
+// wave 循环尾滑动补发。两窗口共用预算公式与分档上限，各自开关独立控制；均由 AIV0 持有，后续
+// 可按专家边界合并为连续覆盖。当前配置：窗口 0 开启，窗口 1 关闭。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID = SYNC_EVENT_ID5;
+// 窗口开关：false 时对应构造点游标保持 nullptr（窗口 1 的 count 等待退回原版等待；窗口 0 不发射）。
+// constexpr 编译期裁剪，无运行时开销。
+constexpr bool WEIGHT_L2_PREFETCH_ENABLE_WINDOW0 = true;
+constexpr bool WEIGHT_L2_PREFETCH_ENABLE_WINDOW1 = false;
+// 预取 scratch 偏移的兜底默认值：正常运行时 scratch 位于平台 UB 顶部 [ubSize−16K, ubSize)（host 按
+// ubSize 动态下发 weightPrefetchUbOffset，SendMask 布局同值钳位），本常量仅作字段未设置时的回落。
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_OFFSET = 192U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_CHUNK_BYTES = 16U * 1024U;
+// 自适应总量（单窗口预算）：min(min(expertCount - firstExpert, MAX_EXPERTS) * W1 单专家量,
+// 拓扑分档上限)。上限按拓扑分档：跨机（>8P）8MB、单机（<=8P）2MB——单机 RTT 小、GMM1 消费早，
+// 预取过多早期倾泻白发率高，上限进一步收紧。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_TOTAL_BYTES_CROSS_NODE = 8U * 1024U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_TOTAL_BYTES_SINGLE_NODE = 2U * 1024U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_EXPERTS = 2U;
+// 窗口 1 滑动补发配额（chunk/wave）：count 自旋仅 μs 级（CrossRankSync 已保证远端 mask 就绪，
+// 自旋≈AIV1 本地算表时间），首份额必然欠交；剩余预算按 wave 边界小额补发，使交付量不依赖自旋
+// 时长、驻留收敛到 O(1 wave)。a8w8/a8w4/a4w4 三条 wave 路径的循环尾消费。16KB chunk 下配额 4
+// 即 64KB/wave；配额取小值以抑制
+// 对共享 MTE2 引擎（块内 1AIC+2AIV 共用）上 dispatch/combine 流量的干扰。
+constexpr uint32_t WEIGHT_L2_PREFETCH_WAVE_QUOTA_CHUNKS = 4U;
+// 权重预取跨机门控阈值（实测）：worldSize > 8 才使能。作用于窗口 0 与窗口 1 的构造门控
+// （W4/W8 统一：跨机才开，单机全关）与 gmm1 权重读的 L2 hint 联动（窗口 1 已由开关整体关闭）。
+constexpr uint32_t WEIGHT_PREFETCH_MIN_WORLD_SIZE = 8U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;

@@ -24,16 +24,19 @@ struct SendMaskConfig {
     MegaMoeSendMaskBufferConfig bufferConfig;
 };
 
-// 装配 MTE 路径唯一的 compact route 发送配置。
-__aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint32_t aivCoreIdx)
+// 装配 MTE 路径唯一的 compact route 发送配置。maskPlaneCoreIdx 为 SendMask 所在 AIV 平面内的
+// 核序号（= block 序号），与 GatherAndSendExpertCompactRoutes 的 jobIndex 同值——SendMask 已收缩
+// 到单 AIV 平面均摊专家段，两档 bufferConfig 的选择条件必须与该平面的 quotient/remainder 分核一致。
+__aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint32_t maskPlaneCoreIdx)
 {
     uint64_t routeIndexWinOffset =
         static_cast<uint64_t>(params.peermemInfo.maskRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
     uint64_t expertCountWinOffset =
         static_cast<uint64_t>(params.peermemInfo.expertCountRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
-    const MegaMoeSendMaskBufferConfig &bufferConfig = aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
-                                                          params.tilingData->sendMaskConfigForCoreWithExtraExpert :
-                                                          params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
+    const MegaMoeSendMaskBufferConfig &bufferConfig =
+        maskPlaneCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
+            params.tilingData->sendMaskConfigForCoreWithExtraExpert :
+            params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
     return {.expertCountWinOffset = expertCountWinOffset,
             .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
             .routeIndexWinOffset = routeIndexWinOffset,
