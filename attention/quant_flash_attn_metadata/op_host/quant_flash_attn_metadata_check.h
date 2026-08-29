@@ -151,15 +151,19 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize,
     CHECK_COND(layoutOutSet.count(layoutOut) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "layoutOut only supports BSND, TND, BNSD, but got %s", layoutOut);
 
-    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_out 仅支持 TND
-    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 && strcmp(layoutOut, "TND") != 0),
-               ACLNN_ERR_RUNTIME_ERROR, "When quantMode is %ld (MxFP8), layoutOut only supports TND, but got %s",
-               quantMode, layoutOut);
+    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_out 支持 TND/BNSD/BSND
+    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+                 strcmp(layoutOut, "TND") != 0 && strcmp(layoutOut, "BNSD") != 0 && strcmp(layoutOut, "BSND") != 0),
+               ACLNN_ERR_RUNTIME_ERROR,
+               "When quantMode is %ld (MxFP8), layoutOut only supports TND, BNSD and BSND, but got %s", quantMode,
+               layoutOut);
 
-    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_q 仅支持 TND
-    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 && strcmp(layoutQ, "TND") != 0),
-               ACLNN_ERR_RUNTIME_ERROR, "When quantMode is %ld (MxFP8), layoutQ only supports TND, but got %s",
-               quantMode, layoutQ);
+    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_q 支持 TND/BNSD/BSND
+    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+                 strcmp(layoutQ, "TND") != 0 && strcmp(layoutQ, "BNSD") != 0 && strcmp(layoutQ, "BSND") != 0),
+               ACLNN_ERR_RUNTIME_ERROR,
+               "When quantMode is %ld (MxFP8), layoutQ only supports TND, BNSD and BSND, but got %s", quantMode,
+               layoutQ);
 
     return ACLNN_SUCCESS;
 }

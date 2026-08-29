@@ -35,6 +35,7 @@ PARAM_MAP = {
     "max_seqlen_kv": "MAX_SEQLEN_KV",
     "enable_pa": "ENABLE_PA",
     "kv_cache_layout": "KV_CACHE_LAYOUT",
+    "input_layout": "INPUT_LAYOUT",
     "block_size": "BLOCK_SIZE",
     "mask_mode": "SPARSE_MODE",
     "q_scale_layout": "Q_SCALE_LAYOUT",
@@ -214,7 +215,8 @@ def execute_test(params, mode, cdir=None):
     if "npu" in mode and "compare" not in mode:
         return None, None
 
-    compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
+    # NPU op 约束: layout_out == layout_q, 故输出排布始终为 INPUT_LAYOUT
+    compare_layout = golden.INPUT_LAYOUT
     act_seqused_q = golden._get_seqused_q()
 
     def _to_cmp(tensor):
@@ -233,6 +235,13 @@ def execute_test(params, mode, cdir=None):
             )
             # NPU LSE 输出为 N-major 排布 (N, T): golden 经 convert 后是 [T, N, 1] (T-major)
             lse_cmp = lse_cmp.squeeze(-1).permute(1, 0).contiguous()
+        else:
+            # BNSD/BSND: LSE 输出固定为 (B, N, S) 排布 (与 layout_out 无关, 由 infershape 决定)
+            # CPU golden lse 为 [B, N, S, 1], 转成 BNSD 后 squeeze 掉末维对齐
+            lse_cmp = (
+                golden.convert_q_bnsd_to_layout(cpu_lse, act_seqused_q, "BNSD")
+                .squeeze(-1)
+                .contiguous()
         return lse_cmp
 
     if golden.USE_FP64_GOLDEN:
