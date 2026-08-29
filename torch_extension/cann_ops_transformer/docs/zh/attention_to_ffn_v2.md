@@ -353,6 +353,7 @@ attention_to_ffn_v2(buffer, x, session_id, micro_batch_id, layer_id, expert_ids,
 $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
 
 其中：
+
   - `tokenInfoSize = attnWorkerNum × microBatchNum × infoTableLastDim × 4B`
   - 非量化模式：`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 2B`
   - INT8/FP8量化模式：`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`

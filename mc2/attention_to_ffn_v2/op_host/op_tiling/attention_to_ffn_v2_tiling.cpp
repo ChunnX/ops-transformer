@@ -244,14 +244,11 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     bool isScales = scalesShape != nullptr && scalesShape->GetStorageShape().GetDimNum() != 0U;
     OP_TILING_CHECK(CheckQuantMode(context->GetNodeName(), quantMode, isScales) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "quant mode validation failed"), return ge::GRAPH_FAILED);
-
     // Legacy path: quantMode 0 (FP16/BF16) and 2 (PERTOKEN+INT8) use v1 tiling
     bool useNewTiling = IsMxQuantMode(quantMode);
-
     if (useNewTiling) {
         return TilingNewQuantMode(context, quantMode);
     }
-
     AttentionToFFNTilingConfig config;
     config.contextIndex = 0U;
     config.xIndex = 1U;
