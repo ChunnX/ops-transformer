@@ -2,6 +2,10 @@
 
 from pathlib import Path
 
+import torch
+
+from validation.device_precision import analyze_accuracy_on_device
+from validation.precision import analyze_accuracy
 from validation.run_gmm_a2av_root_cause import (
     DIAGNOSTIC_MODES,
     classify_results,
@@ -136,6 +140,87 @@ def test_worker_generates_inputs_and_golden_before_the_mode_loop():
     assert '"golden_generation_count": 1' in worker
 
 
+def test_worker_isolates_outputs_and_aligns_each_collective_launch():
+    worker = (
+        PROJECT_ROOT / "validation" / "gmm_a2av_root_cause_worker.py"
+    ).read_text(encoding="utf-8")
+    launch_loop = worker[worker.index(
+        "for launch_index in range(args.launches_per_mode):"
+    ):worker.index("mutation_checks = {")]
+
+    assert 'diagnostic_out.fill_(float("nan"))' in launch_loop
+    assert "out=diagnostic_out" in launch_loop
+    assert launch_loop.count("dist.barrier()") == 3
+    assert '"allocation": "caller_provided_per_launch"' in launch_loop
+    assert "resident_tensors_unchanged" in launch_loop
+
+
+def test_worker_validates_full_reused_tensors_in_addition_to_samples():
+    worker = (
+        PROJECT_ROOT / "validation" / "gmm_a2av_root_cause_worker.py"
+    ).read_text(encoding="utf-8")
+
+    assert "input_references = {" in worker
+    assert "golden_reference = expected.detach().clone()" in worker
+    assert "torch.count_nonzero(" in worker
+    assert '"mismatch_count": mismatch_count' in worker
+    assert '"full_tensor_exact": exact' in worker
+    assert '"prelaunch_validation_passed"' in worker
+
+
+def test_device_comparator_matches_regular_opbase_pass_fail_decisions():
+    expected = torch.zeros((100, 2), dtype=torch.bfloat16)
+    variants = []
+    variants.append(expected.clone())
+    one_percent = expected.clone()
+    one_percent[0] = 0.5
+    variants.append(one_percent)
+    hard_failure = expected.clone()
+    hard_failure[:2] = 2.0
+    variants.append(hard_failure)
+    nonfinite = expected.clone()
+    nonfinite[3, 1] = float("nan")
+    variants.append(nonfinite)
+    segments = [{
+        "local_expert": 0,
+        "global_expert": 0,
+        "source_rank": 0,
+        "row_start": 0,
+        "row_end": 100,
+        "rows": 100,
+    }]
+
+    for actual in variants:
+        regular = analyze_accuracy(
+            actual, expected, segments_override=segments, topk=8
+        )
+        device = analyze_accuracy_on_device(
+            actual,
+            expected,
+            segments,
+            topk=8,
+            chunk_elements=17,
+            include_breakdown=True,
+        )
+        assert device["passed"] == regular["passed"]
+        assert device["failure_reasons"] == regular["failure_reasons"]
+        assert device["mixed_mismatch_count"] == regular["mismatch_count"]
+        assert device["matched_ratio"] == regular["matched_ratio"]
+        assert (
+            device["hard_limit_violation_count"]
+            == regular["hard_limit_violation_count"]
+        )
+        assert device["max_abs_error"] == regular["max_abs_error"]
+        assert (
+            device["actual_nonfinite"]
+            == regular["actual_nonfinite"]["total_nonfinite"]
+        )
+        assert (
+            device["expected_nonfinite"]
+            == regular["expected_nonfinite"]["total_nonfinite"]
+        )
+
+
 def test_runner_uses_one_persistent_torchrun_and_one_wheel():
     runner = (
         PROJECT_ROOT / "validation" / "run_gmm_a2av_root_cause.py"
@@ -143,6 +228,9 @@ def test_runner_uses_one_persistent_torchrun_and_one_wheel():
     assert runner.count('"torch.distributed.run"') == 1
     assert '"single_torchrun": True' in runner
     assert '"golden_generation_count_per_rank": 1' in runner
+    assert '"output_isolation"' in runner
+    assert '"rank_launch_alignment"' in runner
+    assert '"mutation_validation"' in runner
     assert '"--build-install", action="store_true"' in runner
 
 

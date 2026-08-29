@@ -496,6 +496,14 @@ def main():
         "single_udma_initialization_per_rank": True,
         "input_generation_count_per_rank": 1,
         "golden_generation_count_per_rank": 1,
+        "output_isolation": "NaN-prefilled caller-provided output per launch",
+        "rank_launch_alignment": (
+            "Gloo barriers after output prefill, after kernel completion, "
+            "and after report generation"
+        ),
+        "mutation_validation": (
+            "full-tensor exact reference clones plus sampled SHA-256"
+        ),
         "production_runs_last": True,
         "mode_timeout_seconds": args.mode_timeout_seconds,
         "preparation_timeout_seconds": args.preparation_timeout_seconds,

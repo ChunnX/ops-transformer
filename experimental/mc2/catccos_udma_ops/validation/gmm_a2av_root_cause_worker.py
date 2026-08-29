@@ -8,7 +8,6 @@ import csv
 import gc
 import hashlib
 import json
-import math
 import os
 import struct
 import sys
@@ -36,8 +35,8 @@ try:
         validation_udma_heap_size,
         write_json,
     )
+    from .device_precision import analyze_accuracy_on_device
     from .memory_safety import compare_fingerprints, sampled_fingerprint
-    from .precision import _hard_limit_at_scalar, precision_standard
 except ImportError:  # Direct torchrun execution.
     from accuracy_worker import (
         _grouped_mat_mul_all_to_allv_golden,
@@ -53,295 +52,11 @@ except ImportError:  # Direct torchrun execution.
         validation_udma_heap_size,
         write_json,
     )
+    from device_precision import analyze_accuracy_on_device
     from memory_safety import compare_fingerprints, sampled_fingerprint
-    from precision import _hard_limit_at_scalar, precision_standard
 
 
 STATUS_CACHE_LINE_BYTES = 64
-
-
-def _finite_or_none(value):
-    value = float(value)
-    return value if math.isfinite(value) else None
-
-
-def _segment_for_row(segments, row):
-    for segment in segments:
-        if segment["row_start"] <= row < segment["row_end"]:
-            return segment
-    return {
-        "local_expert": None,
-        "global_expert": None,
-        "source_rank": None,
-    }
-
-
-def _aggregate_breakdown(rows, key):
-    aggregate = {}
-    for row in rows:
-        value = row.get(key)
-        current = aggregate.setdefault(value, {
-            key: value,
-            "rows": 0,
-            "elements": 0,
-            "mixed_mismatches": 0,
-            "hard_violations": 0,
-            "max_abs_error": 0.0,
-        })
-        current["rows"] += row["rows"]
-        current["elements"] += row["elements"]
-        current["mixed_mismatches"] += row["mixed_mismatches"]
-        current["hard_violations"] += row["hard_violations"]
-        maximum = row["max_abs_error"]
-        if maximum is None:
-            current["max_abs_error"] = None
-        elif current["max_abs_error"] is not None:
-            current["max_abs_error"] = max(
-                current["max_abs_error"], maximum
-            )
-    return [aggregate[value] for value in sorted(aggregate)]
-
-
-def _error_tensors(actual, expected, standard):
-    actual_fp32 = actual.float()
-    expected_fp32 = expected.float()
-    absolute_error = (actual_fp32 - expected_fp32).abs()
-    mixed_limit = (
-        standard["atol"] + standard["rtol"] * expected_fp32.abs()
-    )
-    mixed_mismatch = ~(absolute_error <= mixed_limit)
-    golden_abs = expected_fp32.abs()
-    tiny = torch.finfo(torch.float32).tiny
-    exponents = torch.floor(torch.log2(golden_abs.clamp_min(tiny)))
-    exponents = torch.clamp_min(
-        exponents, float(standard["ulp_min_exponent"])
-    )
-    ulp = torch.pow(2.0, exponents - standard["ulp_mantissa_bits"])
-    hard_limit = torch.clamp_min(
-        32.0 * ulp, standard["max_abs_error_limit_fixed"]
-    )
-    hard_mismatch = ~(absolute_error <= hard_limit)
-    return (
-        actual_fp32,
-        expected_fp32,
-        absolute_error,
-        mixed_mismatch,
-        hard_mismatch,
-    )
-
-
-def _device_accuracy_report(
-    actual,
-    expected,
-    segments,
-    *,
-    topk,
-    chunk_elements,
-    include_breakdown,
-):
-    """Apply the opbase BF16 criteria with bounded NPU working memory."""
-    if tuple(actual.shape) != tuple(expected.shape):
-        raise ValueError(
-            "shape mismatch: actual={} expected={}".format(
-                tuple(actual.shape), tuple(expected.shape)
-            )
-        )
-    standard = precision_standard(actual.dtype)
-    actual_flat = actual.detach().reshape(-1)
-    expected_flat = expected.detach().reshape(-1)
-    element_count = actual_flat.numel()
-    mixed_counts = []
-    hard_counts = []
-    actual_nonfinite_counts = []
-    expected_nonfinite_counts = []
-    maximum_errors = []
-    top_values = []
-    top_indices = []
-
-    for start in range(0, element_count, chunk_elements):
-        stop = min(element_count, start + chunk_elements)
-        (
-            actual_fp32,
-            expected_fp32,
-            absolute_error,
-            mixed_mismatch,
-            hard_mismatch,
-        ) = _error_tensors(
-            actual_flat[start:stop], expected_flat[start:stop], standard
-        )
-        mixed_counts.append(mixed_mismatch.sum(dtype=torch.int64))
-        hard_counts.append(hard_mismatch.sum(dtype=torch.int64))
-        actual_nonfinite_counts.append(
-            (~torch.isfinite(actual_fp32)).sum(dtype=torch.int64)
-        )
-        expected_nonfinite_counts.append(
-            (~torch.isfinite(expected_fp32)).sum(dtype=torch.int64)
-        )
-        maximum_errors.append(
-            torch.nan_to_num(
-                absolute_error, nan=math.inf, posinf=math.inf, neginf=math.inf
-            ).max()
-        )
-        current_topk = min(topk, stop - start)
-        values, indices = torch.topk(
-            torch.nan_to_num(
-                absolute_error, nan=math.inf, posinf=math.inf, neginf=math.inf
-            ),
-            current_topk,
-        )
-        top_values.append(values)
-        top_indices.append(indices.to(torch.int64) + start)
-
-    def _sum_scalars(values):
-        if not values:
-            return 0
-        return int(torch.stack(values).sum().item())
-
-    mixed_count = _sum_scalars(mixed_counts)
-    hard_count = _sum_scalars(hard_counts)
-    actual_nonfinite = _sum_scalars(actual_nonfinite_counts)
-    expected_nonfinite = _sum_scalars(expected_nonfinite_counts)
-    max_abs_error = (
-        float(torch.stack(maximum_errors).max().item())
-        if maximum_errors else 0.0
-    )
-    matched_ratio = (
-        1.0 if element_count == 0
-        else (element_count - mixed_count) / element_count
-    )
-    passed = (
-        matched_ratio >= standard["required_matched_ratio"]
-        and hard_count == 0
-        and actual_nonfinite == 0
-        and expected_nonfinite == 0
-    )
-
-    top_mismatches = []
-    if top_values:
-        candidate_values = torch.cat(top_values)
-        candidate_indices = torch.cat(top_indices)
-        final_topk = min(topk, candidate_values.numel())
-        selected_values, selection = torch.topk(
-            candidate_values, final_topk
-        )
-        selected_indices = candidate_indices.index_select(0, selection)
-        selected_actual = actual_flat.index_select(
-            0, selected_indices
-        ).float().cpu().tolist()
-        selected_expected = expected_flat.index_select(
-            0, selected_indices
-        ).float().cpu().tolist()
-        values_host = selected_values.cpu().tolist()
-        indices_host = selected_indices.cpu().tolist()
-        columns = actual.shape[1]
-        for flat_index, error, actual_value, expected_value in zip(
-            indices_host, values_host, selected_actual, selected_expected
-        ):
-            row, column = divmod(int(flat_index), columns)
-            segment = _segment_for_row(segments, row)
-            ulp, hard_limit = _hard_limit_at_scalar(
-                float(expected_value), standard
-            )
-            mixed_limit = standard["atol"] + standard["rtol"] * abs(
-                float(expected_value)
-            )
-            top_mismatches.append({
-                "flat_index": int(flat_index),
-                "row": row,
-                "column": column,
-                "local_expert": segment.get("local_expert"),
-                "global_expert": segment.get("global_expert"),
-                "source_rank": segment.get("source_rank"),
-                "actual": _finite_or_none(actual_value),
-                "expected": _finite_or_none(expected_value),
-                "abs_error": _finite_or_none(error),
-                "mixed_limit": _finite_or_none(mixed_limit),
-                "hard_limit": _finite_or_none(hard_limit),
-                "ulp_at_abs_expected": _finite_or_none(ulp),
-                "mixed_tolerance_pass": bool(error <= mixed_limit),
-                "hard_limit_pass": bool(error <= hard_limit),
-            })
-
-    by_segment = []
-    if include_breakdown and not passed:
-        segment_mixed = []
-        segment_hard = []
-        segment_max = []
-        for segment in segments:
-            start = segment["row_start"]
-            stop = segment["row_end"]
-            if start == stop:
-                segment_mixed.append(
-                    torch.zeros((), dtype=torch.int64, device=actual.device)
-                )
-                segment_hard.append(
-                    torch.zeros((), dtype=torch.int64, device=actual.device)
-                )
-                segment_max.append(
-                    torch.zeros((), dtype=torch.float32, device=actual.device)
-                )
-                continue
-            _, _, errors, mixed, hard = _error_tensors(
-                actual[start:stop], expected[start:stop], standard
-            )
-            segment_mixed.append(mixed.sum(dtype=torch.int64))
-            segment_hard.append(hard.sum(dtype=torch.int64))
-            segment_max.append(
-                torch.nan_to_num(
-                    errors, nan=math.inf, posinf=math.inf, neginf=math.inf
-                ).max()
-            )
-        mixed_host = torch.stack(segment_mixed).cpu().tolist()
-        hard_host = torch.stack(segment_hard).cpu().tolist()
-        max_host = torch.stack(segment_max).cpu().tolist()
-        for segment, mixed, hard, maximum in zip(
-            segments, mixed_host, hard_host, max_host
-        ):
-            by_segment.append({
-                **segment,
-                "elements": (
-                    segment["row_end"] - segment["row_start"]
-                ) * actual.shape[1],
-                "mixed_mismatches": int(mixed),
-                "hard_violations": int(hard),
-                "max_abs_error": _finite_or_none(maximum),
-            })
-
-    reasons = []
-    if matched_ratio < standard["required_matched_ratio"]:
-        reasons.append("FAIL_MATCHED_RATIO")
-    if hard_count:
-        reasons.append("FAIL_MAX_ABS_ERROR")
-    if actual_nonfinite:
-        reasons.append("FAIL_ACTUAL_NONFINITE")
-    if expected_nonfinite:
-        reasons.append("FAIL_EXPECTED_NONFINITE")
-    return {
-        "passed": passed,
-        "failure_reasons": reasons,
-        "precision_standard": standard,
-        "shape": list(actual.shape),
-        "elements": element_count,
-        "mixed_mismatch_count": mixed_count,
-        "matched_ratio": matched_ratio,
-        "hard_limit_violation_count": hard_count,
-        "max_abs_error": _finite_or_none(max_abs_error),
-        "actual_nonfinite": actual_nonfinite,
-        "expected_nonfinite": expected_nonfinite,
-        "top_mismatches": top_mismatches,
-        "by_route_segment": by_segment,
-        "by_source_rank": _aggregate_breakdown(
-            by_segment, "source_rank"
-        ) if by_segment else [],
-        "by_local_expert": _aggregate_breakdown(
-            by_segment, "local_expert"
-        ) if by_segment else [],
-        "comparison_device": str(actual.device),
-        "comparison_strategy": (
-            "chunked NPU opbase reductions; only Top-K and scalar summaries "
-            "are copied to Host"
-        ),
-    }
 
 
 def _write_report(output_dir, report, actual=None, expected=None):
@@ -414,6 +129,63 @@ def _fingerprints(x, weight, local_table, global_table, max_elements):
         "global_tokens_per_local_expert": sampled_fingerprint(
             global_table, max_elements=max_elements
         ),
+    }
+
+
+def _exact_reuse_check(reference, current, *, chunk_elements):
+    if chunk_elements <= 0:
+        raise ValueError("chunk_elements must be positive")
+    structure_equal = (
+        tuple(reference.shape) == tuple(current.shape)
+        and tuple(reference.stride()) == tuple(current.stride())
+        and reference.dtype == current.dtype
+        and reference.device == current.device
+    )
+    mismatch_count = None
+    if structure_equal:
+        reference_flat = reference.detach().reshape(-1)
+        current_flat = current.detach().reshape(-1)
+        mismatch_counts = []
+        for start in range(0, current_flat.numel(), chunk_elements):
+            stop = min(current_flat.numel(), start + chunk_elements)
+            mismatch_counts.append(torch.count_nonzero(
+                reference_flat[start:stop] != current_flat[start:stop]
+            ))
+        mismatch_count = (
+            int(torch.stack(mismatch_counts).sum().item())
+            if mismatch_counts else 0
+        )
+    values_equal = mismatch_count == 0
+    return {
+        "structure_equal": structure_equal,
+        "values_equal": values_equal,
+        "mismatch_count": mismatch_count,
+        "reference_data_ptr": "0x{:x}".format(reference.data_ptr()),
+        "current_data_ptr": "0x{:x}".format(current.data_ptr()),
+        "elements_checked": current.numel() if structure_equal else 0,
+        "passed": structure_equal and values_equal,
+    }
+
+
+def _reuse_check(
+    reference,
+    current,
+    fingerprint_before,
+    *,
+    max_elements,
+    chunk_elements,
+):
+    fingerprint_after = sampled_fingerprint(
+        current, max_elements=max_elements
+    )
+    sampled = compare_fingerprints(fingerprint_before, fingerprint_after)
+    exact = _exact_reuse_check(
+        reference, current, chunk_elements=chunk_elements
+    )
+    return {
+        "sampled_fingerprint": sampled,
+        "full_tensor_exact": exact,
+        "passed": sampled["passed"] and exact["passed"],
     }
 
 
@@ -524,6 +296,17 @@ def main():
             x, weight, local_table, global_table,
             args.fingerprint_elements,
         )
+        resident_inputs = {
+            "x": x,
+            "weight": weight,
+            "local_tokens_per_expert": local_table,
+            "global_tokens_per_local_expert": global_table,
+        }
+        input_references = {
+            name: tensor.detach().clone()
+            for name, tensor in resident_inputs.items()
+        }
+        torch_npu.npu.synchronize()
         dataset_id = _identity({
             "case_id": case["id"],
             "rank": rank,
@@ -545,11 +328,27 @@ def main():
         golden_fingerprint = sampled_fingerprint(
             expected, max_elements=args.fingerprint_elements
         )
+        golden_reference = expected.detach().clone()
+        torch_npu.npu.synchronize()
         golden_id = _identity({
             "case_id": case["id"],
             "rank": rank,
             "fingerprint": golden_fingerprint,
         })
+        prelaunch_input_validation = {
+            name: _reuse_check(
+                input_references[name],
+                tensor,
+                fingerprints_before[name],
+                max_elements=args.fingerprint_elements,
+                chunk_elements=args.comparison_chunk_elements,
+            )
+            for name, tensor in resident_inputs.items()
+        }
+        prelaunch_validation_passed = all(
+            item["passed"]
+            for item in prelaunch_input_validation.values()
+        )
         segments = _grouped_mat_mul_all_to_allv_segments(
             route_matrix, rank, world_size, expert_num
         )
@@ -571,10 +370,16 @@ def main():
             },
             "input_fingerprints": fingerprints_before,
             "golden_fingerprint": golden_fingerprint,
+            "prelaunch_input_validation": prelaunch_input_validation,
+            "prelaunch_validation_passed": prelaunch_validation_passed,
             "mode_order": args.mode,
             "reuse_contract": (
                 "The same resident tensors and Golden are used by every mode "
                 "and launch in this worker process."
+            ),
+            "mutation_validation": (
+                "Full-tensor exact reference clones plus sampled SHA-256 "
+                "fingerprints are checked throughout the matrix."
             ),
         }
         write_json(rank_root / "reuse_manifest.json", reuse_manifest)
@@ -592,7 +397,19 @@ def main():
                 "group_golden_id": _identity([
                     item["golden_id"] for item in gathered_reuse
                 ]),
+                "prelaunch_validation_passed": all(
+                    item["prelaunch_validation_passed"]
+                    for item in gathered_reuse
+                ),
             })
+        if not all(
+            item["prelaunch_validation_passed"]
+            for item in gathered_reuse
+        ):
+            raise RuntimeError(
+                "input tensors changed while generating the shared Golden; "
+                "see reuse_manifest.json"
+            )
 
         completed_modes = []
         mode_group_results = []
@@ -613,23 +430,64 @@ def main():
 
             launch_results = []
             for launch_index in range(args.launches_per_mode):
+                diagnostic_out = torch.empty_like(expected)
+                diagnostic_out.fill_(float("nan"))
+                torch_npu.npu.synchronize()
+                # Every rank starts the kernel only after all diagnostic
+                # outputs contain NaNs. This keeps Host-side report cost from
+                # shifting the following collective launch.
+                dist.barrier()
                 launch_started = time.monotonic()
                 actual = udma.grouped_mat_mul_all_to_allv(
                     x, weight, local_table, global_table,
                     ep_size=world_size, expert_num=expert_num,
+                    out=diagnostic_out,
                 )
                 torch_npu.npu.synchronize()
                 elapsed = time.monotonic() - launch_started
+                output_aliases_prefilled_buffer = (
+                    actual.data_ptr() == diagnostic_out.data_ptr()
+                )
+                # Do not let a fast rank inspect output or CQ state while a
+                # slower rank is still executing the communication kernel.
+                dist.barrier()
                 cq_failures = (
                     [] if mode == "production"
                     else _read_cq_status(x, world_size)
                 )
-                report = _device_accuracy_report(
+                report = analyze_accuracy_on_device(
                     actual, expected, segments,
                     topk=case["accuracy"]["topk"],
                     chunk_elements=args.comparison_chunk_elements,
                     include_breakdown=True,
                 )
+                launch_reuse_checks = {
+                    name: _exact_reuse_check(
+                        input_references[name],
+                        tensor,
+                        chunk_elements=args.comparison_chunk_elements,
+                    )
+                    for name, tensor in resident_inputs.items()
+                }
+                launch_reuse_checks["golden"] = _exact_reuse_check(
+                    golden_reference,
+                    expected,
+                    chunk_elements=args.comparison_chunk_elements,
+                )
+                resident_tensors_unchanged = all(
+                    item["passed"]
+                    for item in launch_reuse_checks.values()
+                )
+                if not resident_tensors_unchanged:
+                    report["passed"] = False
+                    report["failure_reasons"].append(
+                        "FAIL_RESIDENT_TENSOR_MUTATION"
+                    )
+                if not output_aliases_prefilled_buffer:
+                    report["passed"] = False
+                    report["failure_reasons"].append(
+                        "FAIL_OUTPUT_ALIAS_CONTRACT"
+                    )
                 report.update({
                     "case_id": case["id"],
                     "rank": rank,
@@ -641,6 +499,20 @@ def main():
                     "cq_failures": cq_failures,
                     "cq_status_passed": not cq_failures,
                     "output": _tensor_metadata(actual),
+                    "output_isolation": {
+                        "allocation": "caller_provided_per_launch",
+                        "prefill": "nan",
+                        "returned_tensor_aliases_prefilled_buffer":
+                            output_aliases_prefilled_buffer,
+                        "purpose": (
+                            "Expose any output element the kernel leaves "
+                            "unwritten and prevent stale allocator contents "
+                            "from satisfying accuracy checks."
+                        ),
+                    },
+                    "resident_tensor_integrity": launch_reuse_checks,
+                    "resident_tensors_unchanged":
+                        resident_tensors_unchanged,
                 })
                 launch_dir = (
                     rank_root / "modes" / mode /
@@ -653,33 +525,43 @@ def main():
                 )
                 launch_results.append({
                     "launch_index": launch_index,
-                    "passed": report["passed"],
+                    "passed": (
+                        report["passed"]
+                        and resident_tensors_unchanged
+                        and output_aliases_prefilled_buffer
+                    ),
                     "matched_ratio": report["matched_ratio"],
                     "hard_limit_violation_count":
                         report["hard_limit_violation_count"],
                     "max_abs_error": report["max_abs_error"],
                     "actual_nonfinite": report["actual_nonfinite"],
+                    "resident_tensors_unchanged":
+                        resident_tensors_unchanged,
                     "cq_failures": cq_failures,
                     "report": str(launch_dir / "report.json"),
                 })
-                del actual
+                del actual, diagnostic_out
                 gc.collect()
+                # Reporting and failure breakdowns take different time on
+                # different ranks. Align them before the next launch.
+                dist.barrier()
 
-            fingerprints_after = _fingerprints(
-                x, weight, local_table, global_table,
-                args.fingerprint_elements,
-            )
             mutation_checks = {
-                name: compare_fingerprints(
-                    fingerprints_before[name], fingerprints_after[name]
+                name: _reuse_check(
+                    input_references[name],
+                    resident_inputs[name],
+                    fingerprints_before[name],
+                    max_elements=args.fingerprint_elements,
+                    chunk_elements=args.comparison_chunk_elements,
                 )
                 for name in fingerprints_before
             }
-            mutation_checks["golden"] = compare_fingerprints(
+            mutation_checks["golden"] = _reuse_check(
+                golden_reference,
+                expected,
                 golden_fingerprint,
-                sampled_fingerprint(
-                    expected, max_elements=args.fingerprint_elements
-                ),
+                max_elements=args.fingerprint_elements,
+                chunk_elements=args.comparison_chunk_elements,
             )
             rank_mode = {
                 "case_id": case["id"],
