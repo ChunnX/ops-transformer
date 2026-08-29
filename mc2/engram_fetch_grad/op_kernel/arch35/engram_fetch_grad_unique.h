@@ -616,7 +616,8 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
     bool canDirectCopy = (inputDtype_ == outputDtype_);
     // TEMP BISECTION (debug commit): set true to route every row through the accumulate
     // path (FlushAccum) and disable FlushDirect entirely; isolates the direct-copy path.
-    constexpr bool kForceAllAccum = false;
+    // With flags all zeroed below, both the accum skip and the direct-copy loop no-op.
+    constexpr bool kForceAllAccum = true;
     if (kForceAllAccum) {
         canDirectCopy = false;
     }
