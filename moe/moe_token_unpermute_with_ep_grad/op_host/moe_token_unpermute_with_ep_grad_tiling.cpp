@@ -412,10 +412,6 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
     tiling.set_tokensNum(tokensNum);
     tiling.set_topK(topK);
     tiling.set_hiddenSize(hiddenSize);
-    OP_CHECK_IF(
-        tokensNum == 0 || topK == 0 || hiddenSize == 0 || numOutTokens == 0,
-        OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] input shape has 0."),
-        return ge::GRAPH_FAILED);
 #if (__NPU_ARCH__==3510)
     if (tokensNum == 0 || topK == 0 || hiddenSize == 0 || numOutTokens == 0) {
         OP_LOGD(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] input shape has 0, skip tiling.");
@@ -429,6 +425,10 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
         return ge::GRAPH_SUCCESS;
     }
 #endif
+    OP_CHECK_IF(
+        tokensNum == 0 || topK == 0 || hiddenSize == 0 || numOutTokens == 0,
+        OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] input shape has 0."),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         topK > 512,
         OP_LOGE(
