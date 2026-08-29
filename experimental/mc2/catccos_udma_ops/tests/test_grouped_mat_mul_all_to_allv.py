@@ -214,3 +214,112 @@ def test_workspace_reuse_guard_avoids_unsigned_underflow():
         "commLoops >= WORKSPACE_STAGES &&\n"
         "                commIdx < commLoops - WORKSPACE_STAGES"
     ) in kernel
+
+
+def test_target_order_get_completion_uses_host_epoch_and_per_peer_slots():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    runtime_header = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "udma_runtime.h"
+    ).read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    target_order = kernel[kernel.index("void RunTargetOrderAiv") :]
+
+    assert "gGroupedMatMulAllToAllVLaunchMutex" in host
+    assert "runtime.NextGroupedMatMulAllToAllVEpoch()" in host
+    assert "uint64_t launchEpoch{0};" in kernel
+    assert "syncLaunchEpoch" in target_order
+    assert "syncProducerReady" in target_order
+    assert "syncConsumerDone" in target_order
+    assert "TARGET_ORDER_SYNC_OFFSET_BYTES = 1024" in kernel
+    assert "stageIdx * SYNC_SLOT_RANKS + rankIdx" in target_order
+    assert "scheduler.HasOutput(commIdx, dstRankIdx)" in target_order
+    assert "FinalizeBlockLoopWithStatus()" in target_order
+    assert "GET CQ failure" in target_order
+    assert "ACLSHMEM_SIGNAL_ADD" not in target_order
+    assert "CACHE_MODE_DISABLE" not in target_order
+    # The repair reuses the existing entry barrier and adds no per-round
+    # device-wide synchronization.
+    assert target_order.count("aclshmemx_barrier_all_vec()") == 1
+    assert "NextGroupedMatMulAllToAllVEpoch" in runtime_header
+
+
+def test_target_order_scheduler_exposes_rank_exact_output_predicate():
+    scheduler = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "comm"
+        / "block"
+        / "comm_block_scheduler_gmm_alltoallv_target_order.hpp"
+    ).read_text(encoding="utf-8")
+    assert "bool HasOutput(uint32_t commIdx, uint32_t dstRankIdx) const" in scheduler
+    assert "commGroupOffset < outputGroupNum[dstRankIdx]" in scheduler
+
+
+def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():
+    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
+    gmm_kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    a2av_kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    gmm_cmake = (ASCEND950_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    a2av_cmake = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "CMakeLists.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS" in root_cmake
+    assert 'set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS "-DASCENDC_DUMP=0")' in root_cmake
+    assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 -DASCENDC_DUMP=1" in root_cmake
+    assert 'cmake_boolean_from_env("CATCCOS_UDMA_DEVICE_DIAGNOSTICS")' in setup_source
+    assert "${CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS}" in gmm_cmake
+    assert "${CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS}" in a2av_cmake
+    for kernel in (gmm_kernel, a2av_kernel):
+        assert kernel.count("AscendC::printf(") == 1
+        printf_offset = kernel.index("AscendC::printf(")
+        guard_offset = kernel.rfind(
+            "#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && "
+            "CATCCOS_UDMA_DEVICE_DIAGNOSTICS",
+            0,
+            printf_offset,
+        )
+        end_offset = kernel.find("#endif", printf_offset)
+        assert guard_offset >= 0
+        assert end_offset > printf_offset

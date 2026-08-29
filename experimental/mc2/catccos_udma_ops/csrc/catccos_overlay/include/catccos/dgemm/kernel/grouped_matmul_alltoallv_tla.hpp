@@ -62,6 +62,13 @@ public:
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     static constexpr uint64_t SYMMETRIC_DATA_BYTES = SYMMETRIC_DATA_BYTES_;
     static constexpr bool TARGET_ORDER_STAGING = TARGET_ORDER_STAGING_;
+    static constexpr uint32_t SYNC_SLOT_RANKS = 8;
+    // UdmaRuntime reserves 4096 bytes after the shared data workspace. The
+    // first 1 KiB belongs to AllToAllVGroupedMatMul (including its 64-bit
+    // strong-ready slots), so this operator's generation protocol must not
+    // alias it when the two fused directions alternate in a model.
+    static constexpr uint64_t TARGET_ORDER_SYNC_OFFSET_BYTES = 1024;
+    static constexpr uint64_t RESERVED_SYNC_BYTES = 4096;
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
@@ -81,6 +88,14 @@ public:
         GM_ADDR ptrSymmetric;
         GM_ADDR syncMmadFinish;
         GM_ADDR syncCommFinish;
+        // Target-order completion protocol. The launch epoch prevents an ABA
+        // match across invocations, producerReady protects each staging
+        // buffer, and consumerDone gives every destination an independent
+        // acknowledgement slot on the source PE.
+        GM_ADDR syncLaunchEpoch;
+        GM_ADDR syncProducerReady;
+        GM_ADDR syncConsumerDone;
+        uint64_t launchEpoch;
         BlockCommParams blockCommParams;
         BlockCommSchedulerParams blockCommSchedulerParams;
 
@@ -95,6 +110,8 @@ public:
             GM_ADDR ptrB_, LayoutB const &layoutB_,
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
+            GM_ADDR syncLaunchEpoch_, GM_ADDR syncProducerReady_,
+            GM_ADDR syncConsumerDone_, uint64_t launchEpoch_,
             BlockCommParams const &blockCommParams_,
             BlockCommSchedulerParams const &blockCommSchedulerParams_
         ) : problemShape(problemShape_), commInterval(commInterval_),
@@ -103,6 +120,8 @@ public:
             ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
             ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)), layoutC(layoutC_),
             ptrSymmetric(ptrSymmetric_), syncMmadFinish(syncMmadFinish_), syncCommFinish(syncCommFinish_),
+            syncLaunchEpoch(syncLaunchEpoch_), syncProducerReady(syncProducerReady_),
+            syncConsumerDone(syncConsumerDone_), launchEpoch(launchEpoch_),
             blockCommParams(blockCommParams_),
             blockCommSchedulerParams(blockCommSchedulerParams_)
         {
@@ -131,6 +150,9 @@ public:
         // Zero preserves the legacy balanced-route layout. It is also safe for
         // a zero-token rank because the scheduler emits no C writes.
         uint32_t outputRows{0};
+        // Internal launch generation assigned by UdmaRuntime. It is not part
+        // of the public PyTorch schema.
+        uint64_t launchEpoch{0};
     };
 
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr)
@@ -155,6 +177,20 @@ public:
         auto syncMmadFinish = args.ptrSymmetric + symmetricOffset;
         symmetricOffset += SYNC_UNIT_SIZE;
         auto syncCommFinish = args.ptrSymmetric + symmetricOffset;
+        symmetricOffset = SYMMETRIC_DATA_BYTES + TARGET_ORDER_SYNC_OFFSET_BYTES;
+        auto syncLaunchEpoch = args.ptrSymmetric + symmetricOffset;
+        symmetricOffset += SYNC_UNIT_SIZE;
+        auto syncProducerReady = args.ptrSymmetric + symmetricOffset;
+        symmetricOffset += SYNC_UNIT_SIZE;
+        auto syncConsumerDone = args.ptrSymmetric + symmetricOffset;
+
+        static_assert(WORKSPACE_STAGES * sizeof(int32_t) <= SYNC_UNIT_SIZE,
+            "producer-ready slots exceed one synchronization unit");
+        static_assert(
+            TARGET_ORDER_SYNC_OFFSET_BYTES + 2 * SYNC_UNIT_SIZE +
+                WORKSPACE_STAGES * SYNC_SLOT_RANKS * sizeof(int32_t) <=
+                RESERVED_SYNC_BYTES,
+            "target-order synchronization slots exceed the reserved workspace");
 
         typename BlockComm::TileRemoteCopy::Params tileParams{args.commTileShape};
         BlockCommParams blockCommParams{args.commBlockShape, tileParams};
@@ -168,6 +204,8 @@ public:
             args.ptrB, layoutB,
             args.ptrC, layoutC,
             gmSymmetric, syncMmadFinish, syncCommFinish,
+            syncLaunchEpoch, syncProducerReady, syncConsumerDone,
+            args.launchEpoch,
             blockCommParams,
             blockCommSchedulerParams
         );
@@ -509,36 +547,74 @@ private:
 
         bool isSyncCore = (subcoreIdx == 0) && (srcRankIdx == rankIdx);
         bool isCommCore = (subcoreIdx == 0) && (srcRankIdx < rankSize);
-        auto syncMmadFinish = reinterpret_cast<__gm__ int32_t *>(params.syncMmadFinish);
+        auto syncLaunchEpoch =
+            reinterpret_cast<__gm__ int32_t *>(params.syncLaunchEpoch);
+        auto syncProducerReady =
+            reinterpret_cast<__gm__ int32_t *>(params.syncProducerReady);
+        auto syncConsumerDone =
+            reinterpret_cast<__gm__ int32_t *>(params.syncConsumerDone);
+        auto remoteLaunchEpoch = syncLaunchEpoch;
+        auto remoteProducerReady = syncProducerReady;
         if (isCommCore) {
-            syncMmadFinish = static_cast<__gm__ int32_t *>(
-                aclshmem_ptr(params.syncMmadFinish, srcRankIdx));
+            remoteLaunchEpoch = static_cast<__gm__ int32_t *>(
+                aclshmem_ptr(params.syncLaunchEpoch, srcRankIdx));
+            remoteProducerReady = static_cast<__gm__ int32_t *>(
+                aclshmem_ptr(params.syncProducerReady, srcRankIdx));
         }
-        auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
+        int32_t launchEpoch = static_cast<int32_t>(params.launchEpoch);
 
+        // The source owns these slots. Clear them before the one existing
+        // collective entry barrier so no destination can observe a value from
+        // the preceding invocation. The separate Host epoch makes call-order
+        // divergence fail closed instead of accepting an ABA match.
         if (isSyncCore) {
-            aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
-            aclshmemx_signal_op(syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
+            for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
+                aclshmemx_signal_op(
+                    syncProducerReady + stageIdx, 0,
+                    ACLSHMEM_SIGNAL_SET, rankIdx);
+                for (uint32_t dstRankIdx = 0;
+                     dstRankIdx < rankSize; ++dstRankIdx) {
+                    uint32_t slotIdx =
+                        stageIdx * SYNC_SLOT_RANKS + dstRankIdx;
+                    aclshmemx_signal_op(
+                        syncConsumerDone + slotIdx, 0,
+                        ACLSHMEM_SIGNAL_SET, rankIdx);
+                }
+            }
         }
         aclshmemx_barrier_all_vec();
 
-        uint32_t receiveAccum = 0;
+        if (isSyncCore) {
+            aclshmemx_signal_op(
+                syncLaunchEpoch, launchEpoch,
+                ACLSHMEM_SIGNAL_SET, rankIdx);
+        }
+        if (isCommCore) {
+            aclshmem_signal_wait_until(
+                remoteLaunchEpoch, ACLSHMEM_CMP_EQ, launchEpoch);
+        }
+
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+        bool quietFailureReported = false;
+#endif
         uint32_t commLoops = scheduler.GetCommLoops();
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            int32_t roundGeneration = static_cast<int32_t>(commIdx + 1);
             scheduler.UpdateCommContext(commIdx);
-            receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
 
             Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
             AscendC::SyncAll<true>();
             if (isSyncCore) {
                 aclshmemx_signal_op(
-                    syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
+                    syncProducerReady + stageIdx, roundGeneration,
+                    ACLSHMEM_SIGNAL_SET, rankIdx);
             }
 
             if (isCommCore && scheduler.HasInput()) {
                 aclshmem_signal_wait_until(
-                    syncMmadFinish, ACLSHMEM_CMP_EQ, commIdx + 1);
+                    remoteProducerReady + stageIdx,
+                    ACLSHMEM_CMP_EQ, roundGeneration);
 
                 uint32_t actualRows = scheduler.GetActualRows();
                 MatrixCoord actualShape{actualRows, params.problemShape.n()};
@@ -552,16 +628,46 @@ private:
                 blockRemoteCopy(
                     gmBlockSrc, layoutBlockSrc, gmBlockDst, layoutBlockDst,
                     actualShape, srcRankIdx);
-                blockRemoteCopy.FinalizeBlockLoop();
+                uint32_t quietStatus =
+                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
 
-                aclshmem_fence();
-                aclshmemx_signal_op(
-                    syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+                if (quietStatus == 0) {
+                    // Each destination owns one slot on the source PE. A SET
+                    // removes the aggregate-atomic hotspot and, unlike ADD,
+                    // cannot be confused with a delayed prior-launch update.
+                    uint32_t slotIdx =
+                        stageIdx * SYNC_SLOT_RANKS + rankIdx;
+                    aclshmem_fence();
+                    aclshmemx_signal_op(
+                        syncConsumerDone + slotIdx, roundGeneration,
+                        ACLSHMEM_SIGNAL_SET, srcRankIdx);
+                }
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+                else if (!quietFailureReported) {
+                    AscendC::printf(
+                        "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
+                        "rank=%u source=%u comm=%u status=0x%x; "
+                        "stage will not be released\n",
+                        rankIdx, srcRankIdx, commIdx, quietStatus);
+                    quietFailureReported = true;
+                }
+#endif
             }
 
             if (isSyncCore) {
-                aclshmem_signal_wait_until(
-                    syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
+                // Do not recycle this source stage until every destination
+                // that actually owns rows in the round has completed its GET.
+                for (uint32_t dstRankIdx = 0;
+                     dstRankIdx < rankSize; ++dstRankIdx) {
+                    if (!scheduler.HasOutput(commIdx, dstRankIdx)) {
+                        continue;
+                    }
+                    uint32_t slotIdx =
+                        stageIdx * SYNC_SLOT_RANKS + dstRankIdx;
+                    aclshmem_signal_wait_until(
+                        syncConsumerDone + slotIdx,
+                        ACLSHMEM_CMP_EQ, roundGeneration);
+                }
             }
             AscendC::SyncAll<true>();
             if (commIdx + WORKSPACE_STAGES < commLoops) {

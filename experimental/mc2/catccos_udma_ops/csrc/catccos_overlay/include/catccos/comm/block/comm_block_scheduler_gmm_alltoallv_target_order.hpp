@@ -184,6 +184,17 @@ struct BlockCommSchedulerGmmAllToAllVTargetOrder {
         }
         return receiveCount;
     }
+
+    /// Whether this source rank produced a stage slice for dstRankIdx in the
+    /// current communication round. The producer uses exactly this predicate
+    /// when waiting for per-destination GET completion acknowledgements.
+    CATLASS_DEVICE
+    bool HasOutput(uint32_t commIdx, uint32_t dstRankIdx) const
+    {
+        uint32_t commGroupOffset = commIdx * groupsPerCommInRank;
+        return dstRankIdx < problemShape.rankSize() &&
+            commGroupOffset < outputGroupNum[dstRankIdx];
+    }
 };
 
 }  // namespace Catccos::CommEpilogue::Block

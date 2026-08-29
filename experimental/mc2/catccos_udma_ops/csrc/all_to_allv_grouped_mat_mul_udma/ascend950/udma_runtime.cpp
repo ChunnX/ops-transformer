@@ -76,6 +76,7 @@ void UdmaRuntime::Initialize(int32_t rank, int32_t worldSize, const std::string 
     }
     fftsAddress_ = shmemx_get_ffts_config();
     allToAllVGroupedMatMulEpoch_ = 0;
+    groupedMatMulAllToAllVEpoch_ = 0;
 
     rank_ = rank;
     worldSize_ = worldSize;
@@ -184,6 +185,7 @@ void UdmaRuntime::Finalize(aclrtStream stream)
     lastStream_ = nullptr;
     fftsAddress_ = 0;
     allToAllVGroupedMatMulEpoch_ = 0;
+    groupedMatMulAllToAllVEpoch_ = 0;
     TORCH_CHECK(status == ACLSHMEM_SUCCESS, "shmem_finalize failed: ", status);
 }
 
@@ -195,6 +197,19 @@ uint64_t UdmaRuntime::NextAllToAllVGroupedMatMulEpoch()
         allToAllVGroupedMatMulEpoch_ != std::numeric_limits<uint32_t>::max(),
         "AllToAllVGroupedMatMul launch epoch exhausted");
     return ++allToAllVGroupedMatMulEpoch_;
+}
+
+uint64_t UdmaRuntime::NextGroupedMatMulAllToAllVEpoch()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    EnsureInitialized();
+    // The pinned SHMEM signal API transports int32 values. Keep the host
+    // epoch positive so zero remains the reset value for reusable stage slots.
+    TORCH_CHECK(
+        groupedMatMulAllToAllVEpoch_ !=
+            static_cast<uint64_t>(std::numeric_limits<int32_t>::max()),
+        "GroupedMatMulAllToAllV launch epoch exhausted; reinitialize the UDMA group");
+    return ++groupedMatMulAllToAllVEpoch_;
 }
 
 uint8_t *UdmaRuntime::Workspace() const

@@ -44,6 +44,14 @@ python3 -m pip install --force-reinstall --no-deps dist/*.whl
 It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
 match the package version in `ops_transformer_catccos_udma/_version.py`.
 
+The production build removes every device-side `AscendC::printf` call during
+preprocessing and explicitly compiles with `ASCENDC_DUMP=0`; performance Wheels
+therefore do not reserve or initialize the per-core Dump/printf buffer. To
+investigate an exceptional device path, build a separate diagnostic Wheel with
+`CATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 bash scripts/build_wheel.sh`. That Wheel
+enables device Dump and must not be used for accuracy-performance comparison or
+model delivery.
+
 `prepare_dependencies.sh` refuses an existing CatCCOS or SHMEM checkout at
 another revision. SHMEM is built with `-soc_type Ascend950` and the same C++
 ABI setting as the active PyTorch installation. Both the extension's device

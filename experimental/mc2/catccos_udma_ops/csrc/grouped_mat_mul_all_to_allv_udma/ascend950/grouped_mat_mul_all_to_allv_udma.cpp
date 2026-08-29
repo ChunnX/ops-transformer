@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <mutex>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
@@ -75,6 +76,11 @@ constexpr uint32_t kMaxLocalExperts = 32;
 constexpr uint64_t kAscend950UbBytes = 256UL * 1024;
 constexpr uint64_t kUdmaWqeScratchBytes = 256;
 constexpr uint32_t kBf16UbAlignElements = 16;
+
+// Epoch allocation and kernel enqueue must have the same host-side order.
+// Otherwise two Python threads can obtain epochs 1/2 and enqueue them as 2/1,
+// making different ranks wait for different collective generations.
+std::mutex gGroupedMatMulAllToAllVLaunchMutex;
 
 uint32_t TargetOrderLocalCopyColumns(uint32_t columns)
 {
@@ -295,8 +301,12 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     CheckNoTensorOverlap(output, "out", globalTokensPerLocalExpert,
                          "global_tokens_per_local_expert");
 
+    // Hold this guard through RunOpApi: assigning an epoch and enqueueing the
+    // corresponding kernel are one ordered collective-launch transaction.
+    std::lock_guard<std::mutex> launchGuard(gGroupedMatMulAllToAllVLaunchMutex);
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
+    const uint64_t launchEpoch = runtime.NextGroupedMatMulAllToAllVEpoch();
     Catlass::GemmCoord shape{m, n, k};
     Catlass::MatrixCoord commCoreSplit{
         tiling.commDataSplit, tiling.commNpuSplit};
@@ -335,6 +345,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
             commBlockShape,
             commTileShape,
             static_cast<uint32_t>(outputRows64),
+            launchEpoch,
         };
 
         SelectedDeviceOp deviceOp;

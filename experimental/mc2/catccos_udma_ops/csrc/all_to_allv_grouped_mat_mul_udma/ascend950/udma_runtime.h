@@ -40,6 +40,7 @@ public:
     int32_t WorldSize() const;
     uint64_t HeapSize() const;
     uint64_t NextAllToAllVGroupedMatMulEpoch();
+    uint64_t NextGroupedMatMulAllToAllVEpoch();
 
 private:
     UdmaRuntime() = default;
@@ -57,6 +58,7 @@ private:
     aclrtStream lastStream_{nullptr};
     uint64_t fftsAddress_{0};
     uint64_t allToAllVGroupedMatMulEpoch_{0};
+    uint64_t groupedMatMulAllToAllVEpoch_{0};
     std::unordered_set<void *> externalAllocations_;
 };
 
