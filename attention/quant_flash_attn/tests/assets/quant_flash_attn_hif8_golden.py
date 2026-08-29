@@ -657,7 +657,9 @@ class Network(nn.Module):
         out_dtype,
         max_seqlen_q,
         max_seqlen_kv,
+        batch_size,
     ):
+        is_tnd_q = layout_q == "TND"
         metadata = quant_flash_attn_metadata(
             num_heads_q=q_n,
             num_heads_kv=kv_n,
@@ -675,6 +677,7 @@ class Network(nn.Module):
             layout_out=layout_out,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
+            batch_size=batch_size if not is_tnd_q else None,
         )
         main_kwargs = {
             "q": q,
@@ -1077,6 +1080,7 @@ def hif8_fa_torch_npu(
             out_dtype,
             max_seqlen_q,
             max_seqlen_kv,
+            q.shape[0] if layout_q != "TND" else None,
         )
 
         # aclgraph: 直接使用 npugraph_ex backend
