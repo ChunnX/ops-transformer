@@ -51,5 +51,6 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(GM_ADDR context, GM_ADDR dst
     op.Init(context, dstBufferSlotIdx, numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata, recvX, recvSrcMetadata,
             recvTopkWeights, recvScales, workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
     op.Process();
+    MoeEpExceptionDump::DebugTrap(); // 临时维测：验证 dump 落盘后回退
 #endif
 }
