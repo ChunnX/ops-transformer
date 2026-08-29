@@ -66,20 +66,18 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             y_dtype=None,
             comm_mode="ai_cpu",
         ):
-            torch._check(
-                rank_size > 0,
-                lambda: f"rank_size should be greater than 0, {ops_error(ErrCode.VALUE)}.",
-            )
-            torch._check(
-                x1.dim() == 2,
-                lambda: f"x1 should be 2D, but got {x1.dim()}D, "
-                f"{ops_error(ErrCode.VALUE)}.",
-            )
-            torch._check(
-                x2.dim() == 2,
-                lambda: f"x2 should be 2D, but got {x2.dim()}D, "
-                f"{ops_error(ErrCode.VALUE)}.",
-            )
+            if rank_size <= 0:
+                raise ValueError(
+                    f"rank_size should be greater than 0, {ops_error(ErrCode.VALUE)}."
+                )
+            if x1.dim() != 2:
+                raise ValueError(
+                    f"x1 should be 2D, but got {x1.dim()}D, {ops_error(ErrCode.VALUE)}."
+                )
+            if x2.dim() != 2:
+                raise ValueError(
+                    f"x2 should be 2D, but got {x2.dim()}D, {ops_error(ErrCode.VALUE)}."
+                )
             m_per_rank = x1.size(0)
             k = x1.size(1)
             n = x2.size(1)
@@ -150,23 +148,21 @@ def _check_params(
     comm_mode,
 ):
     """Validate input parameters."""
-    torch._check(
-        comm_mode == "urma",
-        lambda: f"comm_mode only supports 'urma', but got '{comm_mode}'. "
-        f"Please pass comm_mode='urma' explicitly.",
-    )
+    if comm_mode != "urma":
+        raise ValueError(
+            f"comm_mode only supports 'urma', but got '{comm_mode}'. "
+            f"Please pass comm_mode='urma' explicitly."
+        )
     fp4_dtype_enums = (296,)
     if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
-        torch._check(
-            False,
-            lambda: f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} "
-            f"is not a valid fp4 enum. Please pass x1_dtype=296 (fp4_e2m1).",
+        raise ValueError(
+            f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} "
+            f"is not a valid fp4 enum. Please pass x1_dtype=296 (fp4_e2m1)."
         )
     if x2.dtype == torch.uint8 and x2_dtype not in fp4_dtype_enums:
-        torch._check(
-            False,
-            lambda: f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} "
-            f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1).",
+        raise ValueError(
+            f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} "
+            f"is not a valid fp4 enum. Please pass x2_dtype=296 (fp4_e2m1)."
         )
     fp8_e8m0_dtype_enum = 293
     if (
@@ -174,22 +170,20 @@ def _check_params(
         and x1_scale.dtype == torch.uint8
         and x1_scale_dtype != fp8_e8m0_dtype_enum
     ):
-        torch._check(
-            False,
-            lambda: f"x1_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
+        raise ValueError(
+            f"x1_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
             f"x1_scale_dtype={x1_scale_dtype} is not 293 (fp8_e8m0). "
-            f"Please pass x1_scale_dtype=293.",
+            f"Please pass x1_scale_dtype=293."
         )
     if (
         x2_scale is not None
         and x2_scale.dtype == torch.uint8
         and x2_scale_dtype != fp8_e8m0_dtype_enum
     ):
-        torch._check(
-            False,
-            lambda: f"x2_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
+        raise ValueError(
+            f"x2_scale is uint8 tensor (fp8_e8m0 stored as uint8) but "
             f"x2_scale_dtype={x2_scale_dtype} is not 293 (fp8_e8m0). "
-            f"Please pass x2_scale_dtype=293.",
+            f"Please pass x2_scale_dtype=293."
         )
 
 
@@ -232,14 +226,14 @@ def _check_hccl_buffer(x1, x1_scale, rank_size, hccl_buffer_size):
         x1_scale_bytes,
         need_bytes,
     )
-    torch._check(
-        need_bytes <= hccl_buffer_size,
-        lambda: f"Communication data size + 2MB reserved ({need_bytes} bytes = "
-        f"data {x1_data_bytes} + scale {x1_scale_bytes} + reserved "
-        f"{hccl_buffer_reserved_bytes}) exceeds hccl_buffer_size "
-        f"({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
-        f"Please increase HCCL_BUFFSIZE environment variable.",
-    )
+    if need_bytes > hccl_buffer_size:
+        raise ValueError(
+            f"Communication data size + 2MB reserved ({need_bytes} bytes = "
+            f"data {x1_data_bytes} + scale {x1_scale_bytes} + reserved "
+            f"{hccl_buffer_reserved_bytes}) exceeds hccl_buffer_size "
+            f"({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
+            f"Please increase HCCL_BUFFSIZE environment variable."
+        )
 
 
 def all_gather_quant_matmul(

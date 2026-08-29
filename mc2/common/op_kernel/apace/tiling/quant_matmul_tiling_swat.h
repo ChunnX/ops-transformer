@@ -22,12 +22,14 @@
 template <mm::DataType aDataType, mm::DataType bDataType>
 class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType> {
 public:
-    QuantMatmulTilingSwat() = default;
+    QuantMatmulTilingSwat()
+        : maxBaseM_(BASIC_BLOCK_SIZE_256)
+    {}
     ~QuantMatmulTilingSwat() override = default;
 
-    void EnableBaseMHalving(bool enable)
+    void SetMaxBaseM(uint64_t v)
     {
-        enableBaseMHalving_ = enable;
+        maxBaseM_ = v;
     }
 
 protected:
@@ -58,9 +60,8 @@ private:
     using Base::runInfo_;
     using Base::isOpenOptimize_;
     using Base::enableMTailAlign_;
-    using Base::enableAdjustBasicBlock_;
 
-    bool enableBaseMHalving_{false};
+    uint64_t maxBaseM_{0};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -272,6 +273,9 @@ private:
         // Start from a 256-sized candidate tile, then refine it and capture
         // the tail statistics used by later scheduling decisions.
         runInfo_.baseM = std::min(args_.m, BASIC_BLOCK_SIZE_256);
+        if (runInfo_.baseM > maxBaseM_) {
+            runInfo_.baseM = maxBaseM_;
+        }
         runInfo_.baseM = !args_.transA ? Align(runInfo_.baseM, CUBE_BLOCK) :
                                          Align(runInfo_.baseM, GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE));
         runInfo_.baseN = std::min(args_.n, BASIC_BLOCK_SIZE_256);
@@ -282,11 +286,8 @@ private:
             TILING_MXFP_DIVISOR_SIZE);
 
         uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
-        if (enableAdjustBasicBlock_ && blockNum < platformInfo_.aicNum) {
+        if (blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
-        }
-        if (enableBaseMHalving_) {
-            HalveBaseMForPipeline();
         }
         CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
                    "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
@@ -299,21 +300,6 @@ private:
         runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
         runInfo_.dbL0c =
             runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
-    }
-
-    void HalveBaseMForPipeline()
-    {
-        // baseM/baseN may still be zero at this point (CHECK_COND runs later in
-        // CalcBasicBlock), so guard against divide-by-zero in the CeilDiv below.
-        if (runInfo_.baseM == 0UL || runInfo_.baseN == 0UL) {
-            return;
-        }
-        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
-        uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
-        if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM % (NUM_TWO * baseMAlignNum) == 0UL &&
-            runInfo_.baseM < args_.m) {
-            runInfo_.baseM = runInfo_.baseM / NUM_TWO;
-        }
     }
 
     void OptimizeEdgeBasicBlock()
