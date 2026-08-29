@@ -1037,7 +1037,7 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     return bufferConfig;
 }
 
-// A8W8 Wave 的 route 已在发送端压紧为连续 int32 topkIndex，接收侧只需一份 index batch。
+// MTE Wave 的 route 已在发送端压紧为连续 int32 topkIndex，接收侧只需一份 index batch。
 static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoeTilingData *tilingData,
                                                                    uint32_t activationElementsPerByte,
                                                                    uint32_t availableUbBytes)
@@ -1160,7 +1160,7 @@ static uint64_t CalcCompactRouteRingSlotBytes(uint32_t routeItemsPerBatch, uint3
     return static_cast<uint64_t>(routeItemsPerBatch) / 8U + compactBytes;
 }
 
-// A8W8 Wave producer：ring slot 同时保存临时 compare mask 与本专家的 compact index。
+// MTE Wave producer：ring slot 同时保存临时 compare mask 与本专家的 compact index。
 static MegaMoeSendMaskBufferConfig CalcCompactSendBufferConfig(const MegaMoeTilingData *tilingData,
                                                                uint32_t fixedBufferBytes, uint32_t ownedExpertCount,
                                                                uint32_t availableUbBytes)
@@ -1329,10 +1329,10 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
         return 0U;
     }
 
-    // Compact A8W8 MTE wave 的 GMM2/Combine 依赖按 expert-local 256-token group 发布。
+    // A8W8 MTE wave 的 GMM2/Combine 依赖按 expert-local 256-token group 发布。
     // 同一 token 的 topK expert id 不重复，因此单专家从每张卡最多接收 numMaxTokensPerRank 行；
     // 再与整卡 maxOutputSize 取小，避免按整卡容量为每个专家重复预留 counter。
-    if (UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode)) {
+    if (UseMteGroupCombineReady(tilingData->topoType, tilingData->groupedMatmulMode)) {
         uint64_t maxTokenCountForOneExpert =
             static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
         maxTokenCountForOneExpert =
@@ -1363,7 +1363,7 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
     bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
-    bool useMteGroupReady = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
+    bool useMteGroupReady = UseMteGroupCombineReady(tilingData->topoType, tilingData->groupedMatmulMode);
     bool useA8W8PairwiseTileCombine = useMteGroupReady && tilingData->combineQuantMode == COMBINE_NO_QUANT;
     bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
                     tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
@@ -1527,7 +1527,7 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
              tilingData->compactSendConfigForCoreWithExtraExpert.bufferCount < MIN_SEND_MASK_BUFFER_COUNT ||
              tilingData->compactSendConfigForCoreWithoutExtraExpert.routeItemsPerBatch <= 0 ||
              tilingData->compactSendConfigForCoreWithoutExtraExpert.bufferCount < MIN_SEND_MASK_BUFFER_COUNT),
-        OP_LOGE(nodeName, "UB is insufficient for A8W8 Wave compact route buffers."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "UB is insufficient for MTE Wave compact route buffers."), return ge::GRAPH_FAILED);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);

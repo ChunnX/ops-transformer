@@ -60,7 +60,7 @@ HOST_DEVICE int64_t CalcDispatchMaskAlignSize(const MegaMoeTilingData *tilingDat
                                        static_cast<int64_t>(tilingData->topK));
 }
 
-// A8W8 MTE Wave 的每个 (localExpert, srcRank) 槽直接保存有序 topkIndex。
+// MTE Wave 的每个 (localExpert, srcRank) 槽直接保存有序 topkIndex。
 // 同一 token 的 topK expert id 不重复，因此单专家从一张源卡最多接收 numMaxTokensPerRank 个 index。
 HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSizeBy(int64_t numMaxTokensPerRank)
 {
@@ -72,11 +72,21 @@ HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSize(const MegaMoeTilingData *til
     return CalcDispatchRouteIndexAlignSizeBy(static_cast<int64_t>(tilingData->numMaxTokensPerRank));
 }
 
-HOST_DEVICE bool UseCompactRouteIndex(int64_t topoType, uint8_t groupedMatmulMode)
+HOST_DEVICE bool UseMteGroupCombineReady(int64_t topoType, uint8_t groupedMatmulMode)
 {
     constexpr uint8_t groupedMatmulModeGeneral = 0U;
     return topoType == TOPO_TYPE_MTE &&
            (groupedMatmulMode == groupedMatmulModeGeneral || groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+}
+
+// MTE Wave 的三个模板统一使用 compact route index。Combine 的 group-ready 协议仍由
+// UseMteGroupCombineReady 独立控制，避免路由格式选择隐式改变 W4 的量化 Combine workspace 布局。
+HOST_DEVICE bool UseCompactRouteIndex(int64_t topoType, uint8_t groupedMatmulMode)
+{
+    bool isW4Mode = groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                    groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                    groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+    return UseMteGroupCombineReady(topoType, groupedMatmulMode) || (topoType == TOPO_TYPE_MTE && isW4Mode);
 }
 
 // mask 接收区总字节数：每个 (localExpert, srcRank) 一个槽，槽 = mask 位区 + 末尾 32B count 区。
