@@ -42,6 +42,7 @@ constexpr uint32_t CUBE_MIN_S = 16U;
 constexpr uint32_t CUBE_MIN_D = 256U;
 constexpr uint32_t STAT_VECTOR_COUNT = 2U;
 constexpr uint64_t DOUBLE_BUFFER_NUM = 2UL;
+constexpr uint64_t MAX_RUNTIME_BASE_T = 16UL;
 constexpr uint64_t L1_SLOT_NUM = 4UL;
 constexpr uint64_t CUBE_BASE_S_LARGE = 128UL;
 constexpr uint64_t CUBE_BASE_S_MEDIUM = 64UL;
@@ -301,11 +302,11 @@ ge::graphStatus BlockAttnResPrepareMixTiling::CalculateMixWork(uint64_t &totalWo
 ge::graphStatus BlockAttnResPrepareMixTiling::CalculateWorkspaceSize()
 {
     // MM1 writes rows with mm1NAlign pitch, which also reserves capacity for runtime token grouping. AIV and AIC use
-    // two E slots when more than one token exists, even if host tiling selects baseT=1, because the kernel may expand
-    // baseT after reading validN. MM2 Fixpipe writes O directly and therefore needs no output workspace.
+    // one E slot per possible runtime token group, because the kernel may expand baseT after reading validN.
+    // MM2 Fixpipe writes O directly and therefore needs no output workspace.
     const uint64_t dotWorkspaceElems = static_cast<uint64_t>(tilingData_.baseS) * tilingData_.mm1NAlign;
     const uint64_t eWorkspaceElems = static_cast<uint64_t>(tilingData_.sAlign) * tilingData_.nAlign;
-    const uint64_t eWorkspaceBufferNum = totalT_ > 1U ? DOUBLE_BUFFER_NUM : 1U;
+    const uint64_t eWorkspaceBufferNum = std::min<uint64_t>(totalT_, MAX_RUNTIME_BASE_T);
     OP_CHECK_IF(eWorkspaceElems > std::numeric_limits<uint64_t>::max() / eWorkspaceBufferNum ||
                     dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceBufferNum * eWorkspaceElems,
                 OP_LOGE(context_->GetNodeName(),

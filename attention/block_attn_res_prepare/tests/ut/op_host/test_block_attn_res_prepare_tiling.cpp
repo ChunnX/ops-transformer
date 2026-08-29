@@ -18,6 +18,7 @@
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,6 +41,7 @@ constexpr uint64_t FAKE_L2_SIZE = 4096UL;
 constexpr uint32_t VECTOR_TILING_DATA_SIZE = 48U;
 constexpr uint32_t MIX_TILING_DATA_SIZE = 136U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+constexpr uint64_t MAX_RUNTIME_BASE_T = 16U;
 constexpr size_t T_DIM_INDEX = 0U;
 constexpr size_t D_DIM_INDEX = 2U;
 constexpr size_t S_DIM_INDEX = 0U;
@@ -173,7 +175,7 @@ struct BlockAttnResPrepareTilingCase {
         if (checkWorkspaceFormula) {
             const uint64_t expectedWorkspaceElems =
                 static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-                DOUBLE_BUFFER_NUM * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+                std::min<uint64_t>(totalT, MAX_RUNTIME_BASE_T) * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
             EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems) << "case=" << caseName;
         }
     }
