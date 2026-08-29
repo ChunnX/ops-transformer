@@ -132,6 +132,7 @@ struct RunParamStr<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/
     int32_t cmpResidual;     /* cmp的余数，用于mask计算 */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
+    uint8_t taskIdMod4; \
     uint8_t multiCoreIdxMod2 = 0; \
     uint8_t multiCoreIdxMod3 = 0; \
     bool isCmp; \
