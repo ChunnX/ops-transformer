@@ -19,15 +19,9 @@ using namespace std;
 namespace MoeDistributeCombineV2UT {
 class MoeDistributeCombineV2Arch22TilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeDistributeCombineV2Arch22TilingTest SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "MoeDistributeCombineV2Arch22TilingTest SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeDistributeCombineV2Arch22TilingTest TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "MoeDistributeCombineV2Arch22TilingTest TearDown" << std::endl; }
 };
 
 TEST_F(MoeDistributeCombineV2Arch22TilingTest, SharedExpertX0)

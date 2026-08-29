@@ -74,15 +74,16 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                 DOUBLE_DATA_BUFFER;
 
     if (winSizeData.isLayered) {
-        OP_TILING_CHECK((socVersion != "Ascend910_93") && (bs != maxBs),
-                        OP_LOGE_WITHOUT_REPORT(nodeName, "Layered cannot support variableBs on %s, bs is %lu, maxBs is %lu",
-                                                socVersion.c_str(), bs, maxBs),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((maxBs > LAYERED_BS_UPPER_BOUND),
-                        OP_LOGE_WITHOUT_REPORT(nodeName,
-                                                "maxBs is invalid for hierarchy, should be in range [1, %lu], but got %lu",
-                                                LAYERED_BS_UPPER_BOUND, maxBs),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (socVersion != "Ascend910_93") && (bs != maxBs),
+            OP_LOGE_WITHOUT_REPORT(nodeName, "Layered cannot support variableBs on %s, bs is %lu, maxBs is %lu",
+                                   socVersion.c_str(), bs, maxBs),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (maxBs > LAYERED_BS_UPPER_BOUND),
+            OP_LOGE_WITHOUT_REPORT(nodeName, "maxBs is invalid for hierarchy, should be in range [1, %lu], but got %lu",
+                                   LAYERED_BS_UPPER_BOUND, maxBs),
+            return ge::GRAPH_FAILED);
         // 校验buffersize
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
                         OP_LOGE_WITHOUT_REPORT(
