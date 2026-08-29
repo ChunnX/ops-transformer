@@ -75,7 +75,6 @@ public:
     struct L0ABuffSel {
         using Type = BuffersPolicyDB<BufferType::L0A>;
     };
-
     /* ============确定L0B的类型============= */
     template <uint32_t s2BaseSize, uint32_t dBaseSize>
     struct L0BBuffSel {
