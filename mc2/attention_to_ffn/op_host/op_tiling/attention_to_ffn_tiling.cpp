@@ -857,6 +857,19 @@ ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context, const
     OP_TILING_CHECK(!CheckInputAndSetTilingData(context, nodeName, *tilingData, config),
                     OP_LOGE(nodeName, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
 
+    // ffn_start_rank_id + ffn_num must not exceed world_size, otherwise the
+    // kernel will access epHcclBuffer_[rankId] / hcommHandle_[rankId] beyond
+    // the valid [0, worldSize) range populated during context init.
+    uint32_t ffnNum = tilingData->attentionToFFNInfo.worldSize - tilingData->attentionToFFNInfo.attentionWorkerNum;
+    OP_TILING_CHECK(
+        tilingData->attentionToFFNInfo.ffnStartRankId + ffnNum > tilingData->attentionToFFNInfo.worldSize,
+        OP_LOGE_WITH_INVALID_ATTR(
+            nodeName, "ffn_start_rank_id", std::to_string(tilingData->attentionToFFNInfo.ffnStartRankId).c_str(),
+            (std::string("[0, ") + std::to_string(tilingData->attentionToFFNInfo.attentionWorkerNum) +
+             "] (ffn_start_rank_id + ffn_num must not exceed world_size)")
+                .c_str()),
+        return ge::GRAPH_FAILED);
+
     // Check window Size
     uint64_t neededSize = 0;
     uint64_t viableWindowSize = 0;
