@@ -24,8 +24,24 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 #include "../op_kernel/kda_prolog_tiling_data.h"
+#include "kda_prolog_host_common.h"
 
 namespace optiling {
+using kda_prolog::X_INDEX;
+using kda_prolog::WEIGHT_QKV_INDEX;
+using kda_prolog::WEIGHT_BETA_INDEX;
+using kda_prolog::WEIGHT_GATE_INDEX;
+using kda_prolog::WEIGHT_G_INDEX;
+using kda_prolog::SCALE_QKV_INDEX;
+using kda_prolog::QKV_INDEX;
+using kda_prolog::BETA_INDEX;
+using kda_prolog::GATE_INDEX;
+using kda_prolog::G_INDEX;
+using kda_prolog::ATTR_TRANS_WEIGHT_QKV_INDEX;
+using kda_prolog::ATTR_TRANS_WEIGHT_BETA_INDEX;
+using kda_prolog::ATTR_TRANS_WEIGHT_GATE_INDEX;
+using kda_prolog::ATTR_TRANS_WEIGHT_G_INDEX;
+
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
@@ -36,23 +52,6 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-constexpr uint32_t X_INDEX = 0;
-constexpr uint32_t WEIGHT_QKV_INDEX = 1;
-constexpr uint32_t WEIGHT_BETA_INDEX = 2;
-constexpr uint32_t WEIGHT_GATE_INDEX = 3;
-constexpr uint32_t WEIGHT_G_INDEX = 4;
-constexpr uint32_t SCALE_QKV_INDEX = 5;
-
-constexpr uint32_t QKV_INDEX = 0;
-constexpr uint32_t BETA_INDEX = 1;
-constexpr uint32_t GATE_INDEX = 2;
-constexpr uint32_t G_INDEX = 3;
-
-constexpr uint32_t ATTR_TRANS_WEIGHT_QKV_INDEX = 0;
-constexpr uint32_t ATTR_TRANS_WEIGHT_BETA_INDEX = 1;
-constexpr uint32_t ATTR_TRANS_WEIGHT_GATE_INDEX = 2;
-constexpr uint32_t ATTR_TRANS_WEIGHT_G_INDEX = 3;
-
 struct KdaPrologCompileInfo {};
 
 struct KdaPrologParaInfo {
@@ -61,7 +60,7 @@ struct KdaPrologParaInfo {
     TilingRequiredParaInfo weightBeta = {nullptr, nullptr};
     TilingRequiredParaInfo weightGate = {nullptr, nullptr};
     TilingRequiredParaInfo weightG = {nullptr, nullptr};
-    TilingOptionalParaInfo scaleQkv = {nullptr, nullptr};
+    TilingRequiredParaInfo scaleQkv = {nullptr, nullptr};
     TilingRequiredParaInfo qkvOut = {nullptr, nullptr};
     TilingRequiredParaInfo betaOut = {nullptr, nullptr};
     TilingRequiredParaInfo gateOut = {nullptr, nullptr};

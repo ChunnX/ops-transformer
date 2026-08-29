@@ -15,62 +15,64 @@
 
 #include "register/op_def_registry.h"
 
+#include "kda_prolog_host_common.h"
+
 namespace ops {
 class KdaProlog : public OpDef {
 public:
     explicit KdaProlog(const char *name) : OpDef(name)
     {
-        this->Input("x")
+        this->Input(kda_prolog::X_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("weight_qkv")
+        this->Input(kda_prolog::WEIGHT_QKV_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("weight_beta")
+        this->Input(kda_prolog::WEIGHT_BETA_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("weight_gate")
+        this->Input(kda_prolog::WEIGHT_GATE_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("weight_g")
+        this->Input(kda_prolog::WEIGHT_G_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("scale_qkv")
-            .ParamType(OPTIONAL)
+        this->Input(kda_prolog::SCALE_QKV_NAME)
+            .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("qkv")
+        this->Output(kda_prolog::QKV_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Output("beta")
+        this->Output(kda_prolog::BETA_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
-        this->Output("gate")
+        this->Output(kda_prolog::GATE_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Output("g")
+        this->Output(kda_prolog::G_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
 
-        this->Attr("trans_weight_qkv").AttrType(OPTIONAL).Bool(true);
-        this->Attr("trans_weight_beta").AttrType(OPTIONAL).Bool(true);
-        this->Attr("trans_weight_gate").AttrType(OPTIONAL).Bool(true);
-        this->Attr("trans_weight_g").AttrType(OPTIONAL).Bool(true);
+        this->Attr(kda_prolog::ATTR_TRANS_WEIGHT_QKV_NAME).AttrType(OPTIONAL).Bool(true);
+        this->Attr(kda_prolog::ATTR_TRANS_WEIGHT_BETA_NAME).AttrType(OPTIONAL).Bool(true);
+        this->Attr(kda_prolog::ATTR_TRANS_WEIGHT_GATE_NAME).AttrType(OPTIONAL).Bool(true);
+        this->Attr(kda_prolog::ATTR_TRANS_WEIGHT_G_NAME).AttrType(OPTIONAL).Bool(true);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
