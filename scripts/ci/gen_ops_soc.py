@@ -55,6 +55,10 @@ group_op_dict = {
         "flash_attention_score_grad": 5,
         "mega_moe": 20,
     },
+    "ascend350": {
+        "flash_attention_score": 5,
+        "flash_attention_score_grad": 5,
+    },
 }
 
 
