@@ -60,6 +60,7 @@ private:
     bool CheckShapeContainsNegativeValue(const gert::Shape *shape) const;
     bool CheckDataContainsNegativeValue() const;
     bool CheckNonDataInputContainsNegativeValue(const gert::InferShapeContext *context) const;
+
 private:
     int64_t groupNum_ = 0L;
     int64_t xKDim_ = 0L;

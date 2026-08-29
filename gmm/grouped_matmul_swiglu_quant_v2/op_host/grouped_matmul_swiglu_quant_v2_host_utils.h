@@ -43,4 +43,5 @@ constexpr int32_t SPLIT_M = 0;
 constexpr uint64_t MXFP4_K_MIN_VALUE = 2UL;
 constexpr uint64_t MXFP4_N_MIN_VALUE = 4UL;
 } // namespace GroupedMatmulSwigluQuantParamsV2
+
 #endif
