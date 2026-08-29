@@ -17,12 +17,19 @@
 
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
+#include "mc2_comm_utils.h"
+
+// AICPU通信场景下，pertile量化等分切分上限
+constexpr uint64_t AICPU_PERTILE_MAX_TILE_CNT = 2U;
+constexpr uint64_t AICPU_PERTILE_ALIGN_BASE = 256U;
+constexpr uint64_t AICPU_PERTILE_MIN_RANK_DIM = 8U;
 
 class MMAllReduceFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MMAllReduceFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                          TopoType topoType = TopoType::STANDARD_CARD,
-                                         SocVersion socVersion = SocVersion::SOC950)
+                                         SocVersion socVersion = SocVersion::SOC950,
+                                         uint8_t commMode = Mc2Comm::COMM_MODE_AICPU, bool isPertileFp8 = false)
         : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion)
     {
         commPerf_.SetCommShapeLen(args.nValue);
@@ -30,6 +37,11 @@ public:
 
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
+        isAicpuMode_ = (commMode == Mc2Comm::COMM_MODE_AICPU);
+        this->isPertileFp8_ = isPertileFp8;
+        if (isAicpuMode_ && isPertileFp8_ && rankDim_ >= AICPU_PERTILE_MIN_RANK_DIM) {
+            tilingM_.SetMaxTileCnt(AICPU_PERTILE_MAX_TILE_CNT);
+        }
     }
 
     void EstimateMMCommTime() override;
@@ -46,6 +58,8 @@ public:
 
 private:
     bool isAlign_ = false;
+    bool isAicpuMode_ = false;
+    bool isPertileFp8_ = false;
 };
 
 #endif // __ALL_REDUCE_FIT_BALANCE_TILING_H__
