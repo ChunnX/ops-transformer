@@ -80,7 +80,7 @@ ge::graphStatus InferShape4SparseFlashMlaGrad(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, cmpKvShape);
 
     auto attrs = context->GetAttrs();
-    auto scaleValue = attrs->GetInt(static_cast<size_t>(AttrIndex::SCALE_VALUE));
+    auto scaleValue = attrs->GetFloat(static_cast<size_t>(AttrIndex::SCALE_VALUE));
     auto cmpRatio = attrs->GetInt(static_cast<size_t>(AttrIndex::CMP_RATIO));
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleValue);
