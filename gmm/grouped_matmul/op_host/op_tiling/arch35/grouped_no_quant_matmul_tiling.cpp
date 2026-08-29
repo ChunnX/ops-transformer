@@ -43,11 +43,11 @@ bool GroupedNoQuantMatmulTiling::CalBaseMMTiling(const gert::TilingContext *cont
                                                  const GMMCompileInfo *compileInfoPtr)
 {
     // according to the double buffer enabled L0B, compute baseK
-    baseK_ = (compileInfoPtr->l0BSize / DB_SIZE) / (baseN_ * GetSizeByDataType(xDType_));
+    baseK_ = (compileInfoPtr->l0BSize / DB_SIZE) / (baseN_ * GetSizeByDataType(xDType_));//baseN_ default 256
     baseK_ = baseK_ & ~ALIGN_DOWN_16; // 16 bytes down-align
     OP_CHECK_IF(baseK_ == 0, OP_LOGE(context->GetNodeName(), "baseK_ cannot be 0."), return false);
     // according to the double buffer enabled L0A/L0C, compute baseM(cube)
-    uint32_t maxBaseM = static_cast<uint32_t>(compileInfoPtr->l0CSize / (baseN_ * FP32_DTYPE_SIZE));
+    uint32_t maxBaseM = static_cast<uint32_t>(compileInfoPtr->l0CSize / (baseN_ * FP32_DTYPE_SIZE));  
     baseM_ = std::min<uint32_t>((compileInfoPtr->l0ASize / DB_SIZE) / (baseK_ * GetSizeByDataType(xDType_)), maxBaseM);
     if (baseM_ > BASE_M_DEFAULT) {
         baseM_ = BASE_M_DEFAULT;
