@@ -234,6 +234,7 @@ ffn_to_attention_v2(buffer, x, session_ids, micro_batch_ids, token_ids, expert_o
 $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
 
 其中：
+
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
 

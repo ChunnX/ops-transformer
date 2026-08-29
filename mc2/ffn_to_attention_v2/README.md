@@ -134,6 +134,7 @@
 $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
 
 其中：
+
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
 
