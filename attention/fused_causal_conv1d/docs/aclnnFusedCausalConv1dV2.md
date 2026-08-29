@@ -1,4 +1,4 @@
-# aclnnFusedCausalConv1d
+# aclnnFusedCausalConv1dV2
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/fused_causal_conv1d)
 
