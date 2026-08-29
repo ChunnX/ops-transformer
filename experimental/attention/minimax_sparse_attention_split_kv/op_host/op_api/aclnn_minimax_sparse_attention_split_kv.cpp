@@ -99,12 +99,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     DataType qDtype = query->GetDataType();
     DataType kDtype = key->GetDataType();
     DataType vDtype = value->GetDataType();
-    auto isQkvOk = [](DataType d) {
-        return d == DataType::DT_BF16 || d == DataType::DT_FLOAT8_E4M3FN;
-    };
+    auto isQkvOk = [](DataType d) { return d == DataType::DT_BF16 || d == DataType::DT_FLOAT8_E4M3FN; };
     if (!isQkvOk(qDtype) || !isQkvOk(kDtype) || !isQkvOk(vDtype)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "MinimaxSparseAttentionSplitKv Q/K/V only support BF16 or FLOAT8_E4M3FN.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MinimaxSparseAttentionSplitKv Q/K/V only support BF16 or FLOAT8_E4M3FN.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (qDtype != kDtype || qDtype != vDtype) {

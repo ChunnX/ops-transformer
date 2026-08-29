@@ -50,8 +50,8 @@ extern "C" __global__ __aicore__ void minimax_sparse_attention_split_kv(
 #if TILING_KEY_VAR == MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING
         // FP8 Q/K/V, bf16 softmax S, fp32 O_partial, bf16 attentionOut.
         MinimaxSaSplitKvInferIntf<fp8_e4m3fn_t, bfloat16_t, float>(
-            query, key, value, blockTable, k2qRowPtr, k2qQIndices, k2qSlotIndices, actualSeqLengths,
-            actualSeqLengthsKv, attentionOut, softmaxLse, user, tiling);
+            query, key, value, blockTable, k2qRowPtr, k2qQIndices, k2qSlotIndices, actualSeqLengths, actualSeqLengthsKv,
+            attentionOut, softmaxLse, user, tiling);
 #endif
 #endif
     }

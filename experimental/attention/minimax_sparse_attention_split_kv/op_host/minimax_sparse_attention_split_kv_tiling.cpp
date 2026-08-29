@@ -423,8 +423,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CheckTilingConstraints(gert
     }
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         if (blockSize_ != KERNEL_HEAD_SIZE) {
-            OP_LOGE(context->GetNodeName(),
-                    "MinimaxSparseAttentionSplitKv fp8 path requires blockSize=%u (got %u).",
+            OP_LOGE(context->GetNodeName(), "MinimaxSparseAttentionSplitKv fp8 path requires blockSize=%u (got %u).",
                     KERNEL_HEAD_SIZE, blockSize_);
             return ge::GRAPH_FAILED;
         }
@@ -587,8 +586,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateWorkSpace(gert::Ti
     lseStatSize_ = taskSlots * slotStatElems;
     // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); 0 and 4 keep fp32.
     // FP8 only implements the FP32 O_partial template, so workspace stays fp32.
-    uint64_t accumOutBytes = accumOutSize_ *
-        ((dataType_ != ge::DT_FLOAT8_E4M3FN && innerPrecise_ == 1U) ? sizeof(uint16_t) : sizeof(float));
+    uint64_t accumOutBytes =
+        accumOutSize_ * ((dataType_ != ge::DT_FLOAT8_E4M3FN && innerPrecise_ == 1U) ? sizeof(uint16_t) : sizeof(float));
     uint64_t userWorkspaceSize = accumOutBytes + (lseStatSize_ * 2U) * sizeof(float);
     workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
