@@ -15,6 +15,7 @@
 #include "../../../attn_infra/arch/bsa_resource.hpp"
 #include "../../../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
 #include "../../../attn_infra/epilogue/tile_common/bsa_epilogue_tile_copy.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_arch35_utils.hpp"
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
 #include "../../../tla/tensor_bsa.hpp"
@@ -35,9 +36,10 @@ template <
     class TileCopy_,
     class OTmpSrcPos_, // the src TPosition of pv res, viable configurations: GM/L0C
     LseMode LSE_MODE_,
-    LseFormat LSE_FORMAT_>
+    LseFormat LSE_FORMAT_,
+    bool transposedMm1>
 class BlockEpilogue<
-    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>,
+    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1>,
     ElementO_,
     ElementOTmp_,
     ElementS_,
@@ -46,7 +48,7 @@ class BlockEpilogue<
     OTmpSrcPos_>
 {
 public:
-    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>;
+    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = ElementO_;
     using ElementOTmp = ElementOTmp_;
@@ -60,12 +62,15 @@ public:
 
     static constexpr uint32_t UB_OTMP_BUF_STAGES = 2;
     static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 32768;
+    static constexpr uint32_t MAX_UB_OTMP_ELEM_NUM = 8192;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t RESCALE_ROW_MAX_ELEM_NUM = 64;
     static constexpr uint32_t RESCALE_COL_MAX_ELEM_NUM = 128;
     static constexpr uint32_t RESCALE_VREG_SIZE = 256 / sizeof(ElementOTmp);
     static constexpr float MAX_VALUE_RECIPROCAL_FP8 = 1.0f / 448.0f;
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
+    static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
+
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
@@ -82,37 +87,40 @@ public:
             loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                 LO_UB_TENSOR_OFFSET + i * UB_UINT8_BLOCK_SIZE);
         }
+        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
+            dmUbTensor32[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                DM_UB_TENSOR_OFFSET + i * DM_UB_GLOBAL_ELEM_NUM * sizeof(float));
+        }
         goUbTensor32 = resource.ubBuf.template GetBufferByByte<ElementOTmp>(GO_UB_TENSOR_OFFSET);
         goUbTensor16 = resource.ubBuf.template GetBufferByByte<ElementO>(GO_UB_TENSOR_OFFSET);
         glUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET);
-        dmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(DM_UB_TENSOR_OFFSET);
         gmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(GM_UB_TENSOR_OFFSET);
         lseUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(LSE_UB_TENSOR_OFFSET);
     }
 
     __aicore__ inline
+    BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper)
+    {
+        for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
+            loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                uBufTileHelper.loStartOffset +
+                uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.embedPerSubCore * sizeof(ElementOTmp) * i);
+        }
+        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
+            dmUbTensor32[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                uBufTileHelper.dmStartOffset +
+                uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
+        }
+        goUbTensor32 = resource.ubBuf.template GetBufferByByte<ElementOTmp>(uBufTileHelper.goStartOffset);
+        goUbTensor16 = resource.ubBuf.template GetBufferByByte<ElementO>(uBufTileHelper.goStartOffset);
+        glUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
+        gmUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.gmStartOffset);
+        lseUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.lseStartOffset);
+    }
+
+    __aicore__ inline
     ~BlockEpilogue()
     {
-    }
-
-    template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
-    {
-        // in mode 4, AIC set for 2 AIVs seperately
-        if constexpr (MODE == 4U) {
-            Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
-        }
-    }
-
-    template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
-    {
-        // in mode 4, AIC wait for 2 AIVs seperately
-        if constexpr (MODE == 4U) {
-            Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
-        }
     }
 
     template <class TensorLseGm, class TensorLseUb>
@@ -159,7 +167,7 @@ public:
         __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *) loUbTensor[ubOTmpBufId].GetPhyAddr();
         __ubuf__ ElementOTmp *glUb = (__ubuf__ ElementOTmp *) glUbTensor32.GetPhyAddr();
         __ubuf__ ElementOTmp *dmUb =
-            (__ubuf__ ElementOTmp *) dmUbTensor32[curTileMod * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
+            (__ubuf__ ElementOTmp *) dmUbTensor32[curTileMod].GetPhyAddr();
         __ubuf__ float *gmUb = (__ubuf__ float *) gmUbTensor32.GetPhyAddr();
         __ubuf__ float *lseUb = (__ubuf__ float *) lseUbTensor32.GetPhyAddr();
         
@@ -531,15 +539,20 @@ public:
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
 
-        uint32_t rowNumOriAligned8 = RoundUp(rowNumOri, 8);
-        uint32_t colNumOriAligned8 = RoundUp(colNumOri, 8);
+        uint32_t rowNumOriAligned = 0;
+        if (DispatchPolicy::transposedMm1) {
+            rowNumOriAligned = RoundUp(rowNumOri, 32);
+        } else {
+            rowNumOriAligned = RoundUp(rowNumOri, 8);
+        }
+        uint32_t colNumOriAligned = RoundUp(colNumOri, 8);
 
-        uint32_t rowNumSplit = rowNumOriAligned8 / subBlockNum;
+        uint32_t rowNumSplit = rowNumOriAligned / subBlockNum;
         rowNumSplit = (rowNumOri < rowNumSplit) ? rowNumOri : rowNumSplit;
         uint32_t rowNumCurSubCore = (subBlockIdx == 0) ? rowNumSplit : (rowNumOri - rowNumSplit);
         uint32_t rowOffsetCurSubCore = rowNumSplit * subBlockIdx;
         uint32_t colNumCurSubCore = colNumOri;
-        uint32_t colStrideCurSubCore = colNumOriAligned8;
+        uint32_t colStrideCurSubCore = colNumOriAligned;
 
         auto gOTensorTlaTile = GetTile(gOTensor,
             tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, colNumCurSubCore));
@@ -568,7 +581,7 @@ private:
     AscendC::LocalTensor<SMDtype> dmUbTensor16;
     AscendC::LocalTensor<SMDtype> glUbTensor16;
     AscendC::LocalTensor<float> gmUbTensor32;
-    AscendC::LocalTensor<float> dmUbTensor32;
+    AscendC::LocalTensor<float> dmUbTensor32[UB_DM_BUF_MAX_STAGES];
     AscendC::LocalTensor<float> glUbTensor32;
     AscendC::LocalTensor<ElementO> goUbTensor16;
     AscendC::LocalTensor<ElementOTmp> goUbTensor32;
