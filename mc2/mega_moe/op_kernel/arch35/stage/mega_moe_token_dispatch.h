@@ -506,6 +506,80 @@ __aicore__ inline void DispatchExpertTokensByRows(const TokenDispatchConfig &con
         rankRange, gmm1TileRowCount);
 }
 
+/**
+ * Dispatch 第 1 层（wave 切片版）：把专家内 [sliceRowBegin, sliceRowEnd) 行均分给
+ * Dispatch core，段映射与逐 token 搬运复用 DispatchExpertTokensByRank。调用方须保证
+ * 专家内全部切片恰好覆盖 [0, 夹紧后行数) 一次——PublishGmm1TileReady 是加法契约，
+ * 多算/漏算都会破坏 GMM1 的等值放行；切片边界按 wave 重放推进天然对齐 256 行 tile。
+ */
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchExpertTokenSlice(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
+                                                const BlockJobContext &blockJob,
+                                                const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                                GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
+                                                uint32_t localExpertId, int32_t expertGlobalRowBegin,
+                                                uint32_t sliceRowBegin, uint32_t sliceRowEnd, uint32_t expertShareRows)
+{
+    if (sliceRowEnd <= sliceRowBegin) {
+        return;
+    }
+
+    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+    uint32_t dispatchCoreCount = blockJob.totalJobs == 0U ? 1U : blockJob.totalJobs;
+    // 分核域按形状的计算/搬运比自适应（两个 regime 实测最优相反）：
+    //  - AIV1-bound（n 小，如 N=3072 泛化族）：dispatch 时长直接进 E2E，分工取专家
+    //    全域固定份额、wave 窗口取交集——每核持有专家内一段连续行、跨 wave 头尾
+    //    相接，远端窗口读地址流连续（slice 域均分会让行流碎片化，bt_L17/L18 基线
+    //    对表坐实 dispatch 慢 2~3 倍；tb0 热专家同样吃连续收益，A/B −414us）；
+    //  - AIC-bound（n 大，如 N=6144 穿刺）：GMM 每 wave 时间 ∝ 行×h×n 远大于
+    //    dispatch 每 wave ∝ 行×h，关键是供数节奏——跨 wave 大专家的专家域份额每
+    //    wave 仅 ~窗口/份额 个核参与，供数掉 ~3 倍（A/B +679us），取 slice 域全核
+    //    均分。判据以 gmm1OutputDim（gate+up 拼接维 = 2n）≥8192 为「计算/搬运比
+    //    ∝ n」的静态代理（穿刺 n=6144→12288，泛化 n=3072→6144），锚两端实测。
+    // 两种划分下各核区间之并 = [sliceRowBegin, sliceRowEnd) 且两两不交，
+    // PublishGmm1TileReady 的行数累加（等值判定）契约不变。
+    uint32_t sliceRows = sliceRowEnd - sliceRowBegin;
+    int32_t coreDispatchRowBegin;
+    int32_t coreDispatchRowEnd;
+    if (common.gmm1OutputDim >= 8192U && expertShareRows > sliceRows * 2U) {
+        int32_t rowsPerCore =
+            Ops::Base::CeilDiv(static_cast<int32_t>(sliceRows), static_cast<int32_t>(dispatchCoreCount));
+        coreDispatchRowBegin =
+            static_cast<int32_t>(sliceRowBegin) + static_cast<int32_t>(blockJob.jobIndex) * rowsPerCore;
+        coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
+        if (coreDispatchRowEnd > static_cast<int32_t>(sliceRowEnd)) {
+            coreDispatchRowEnd = static_cast<int32_t>(sliceRowEnd);
+        }
+    } else {
+        int32_t rowsPerCore =
+            Ops::Base::CeilDiv(static_cast<int32_t>(expertShareRows), static_cast<int32_t>(dispatchCoreCount));
+        int32_t shareBegin = static_cast<int32_t>(blockJob.jobIndex) * rowsPerCore;
+        int32_t shareEnd = shareBegin + rowsPerCore;
+        if (shareEnd > static_cast<int32_t>(expertShareRows)) {
+            shareEnd = static_cast<int32_t>(expertShareRows);
+        }
+        coreDispatchRowBegin =
+            shareBegin > static_cast<int32_t>(sliceRowBegin) ? shareBegin : static_cast<int32_t>(sliceRowBegin);
+        coreDispatchRowEnd =
+            shareEnd < static_cast<int32_t>(sliceRowEnd) ? shareEnd : static_cast<int32_t>(sliceRowEnd);
+    }
+    if (coreDispatchRowBegin >= coreDispatchRowEnd) {
+        return;
+    }
+
+    DispatchExpertRange expertRange{coreDispatchRowBegin, coreDispatchRowEnd};
+    DispatchExpertRankRange rankRange =
+        FindDispatchExpertRankRange(common.worldSize, scratch, localExpertId, expertGlobalRowBegin,
+                                    expertRange.coreExpertRowBegin, expertRange.coreExpertRowEnd);
+    if (rankRange.firstRankIdx == static_cast<int32_t>(common.worldSize) || rankRange.lastRankIdx < 0) {
+        return;
+    }
+
+    DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, common, syncLayout, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin, expertRange,
+        rankRange, gmm1TileRowCount);
+}
+
 // 计算一个专家的接收 token 数，并发布就绪 flag。
 template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
 __aicore__ inline void ComputeExpertTokenCountAndNotify(

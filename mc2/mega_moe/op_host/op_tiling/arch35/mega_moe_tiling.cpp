@@ -1225,7 +1225,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
     if (useMteA8W8Wave) {
-        flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+        // +1 槽：wave 粒度 GMM2 进度计数（与 device 侧 mega_moe_workspace.h 同步）。
+        flagElementCount += (moeExpertCount + 1) * tilingData->aicNum * INT_CACHELINE;
     }
     if (useGroupSyncCounters) {
         flagElementCount += tilingData->combineSyncSlotCountPerExpert * moeExpertCount * INT_CACHELINE;
