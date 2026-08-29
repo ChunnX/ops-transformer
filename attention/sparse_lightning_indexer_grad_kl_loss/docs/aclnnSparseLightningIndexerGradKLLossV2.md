@@ -108,11 +108,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossV2GetWorkspaceSize(
 ```
 
 ```c++
-aclnnStatus aclnnSparseLightningIndexerGradKLLossV2(
+aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnSparseLightningIndexerGradKLLossV2GetWorkspaceSize
@@ -459,10 +459,6 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossV2(
         </tr>
         </tbody>
     </table>
-
-<!-- npu="A3,910b" id7 -->
-- <term>不支持 Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>不支持 Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-  - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 <!-- end id7 -->
 - **返回值：**
