@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_stage_debug.h"
 
 namespace MegaMoeImpl {
 
@@ -193,6 +194,7 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
     MmadContext *blockMmadContext)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
+    using KernelConfig = typename Config::KernelConfig;
     InitBlockMmad(*blockMmadContext, config);
     auto &blockMmad = blockMmadContext->blockMmad;
 
@@ -216,16 +218,64 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
+        bool debugFirstExpertRow = false;
         if constexpr (!IsShared) {
-            if (expertIdx == 0U && mLoc == 0U && nLoc == 0U) {
-                blockMmad.EnableOneShotDebug(912201U, false);
+            debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && expertIdx == 0U &&
+                                  mLoc == 0U && nLoc == 0U && kLoc == 0U &&
+                                  gmmAddrInfo.aGlobal == params.workspaceInfo.dispatchRevDataPtr;
+            if (debugFirstExpertRow) {
+                StageDebug::LogFp8AndScale<typename KernelConfig::ElementAType>(
+                    StageDebug::POST_DISPATCH_MARKER, gmmAddrInfo.aGlobal, gmmAddrInfo.aScaleGlobal,
+                    gmmAddrInfo.debugRankId, expertIdx, 0U);
+                auto gateWeight = workSet.gmB.Slice(
+                    Te::MakeCoord(kLoc, nLoc),
+                    Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                auto gateWeightScale = workSet.gmScaleB.Slice(
+                    Te::MakeCoord(0U, nLoc),
+                    Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+                auto upWeight = workSet.gmB.Slice(
+                    Te::MakeCoord(kLoc, nLoc + config.outputN),
+                    Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+                auto upWeightScale = workSet.gmScaleB.Slice(
+                    Te::MakeCoord(0U, nLoc + config.outputN),
+                    Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+                StageDebug::LogFp8TensorAndScale<typename KernelConfig::ElementBType>(
+                    StageDebug::GMM1_WEIGHT_GATE_MARKER, gateWeight, gateWeightScale,
+                    gmmAddrInfo.debugRankId, expertIdx, 0U);
+                StageDebug::LogFp8TensorAndScale<typename KernelConfig::ElementBType>(
+                    StageDebug::GMM1_WEIGHT_UP_MARKER, upWeight, upWeightScale,
+                    gmmAddrInfo.debugRankId, expertIdx, 0U);
+                StageDebug::MmadConfigRecord debugConfig{
+                    config.m,
+                    config.outputN,
+                    config.k,
+                    config.scaleK,
+                    static_cast<uint32_t>(Get<M_VALUE>(actualShape)),
+                    static_cast<uint32_t>(Get<N_VALUE>(actualShape)),
+                    static_cast<uint32_t>(Get<K_VALUE>(actualShape)),
+                    config.blockMmadTiling.tileM,
+                    config.blockMmadTiling.tileN,
+                    config.blockMmadTiling.l1Params.kAL1,
+                    config.blockMmadTiling.l1Params.kBL1,
+                    config.blockMmadTiling.l1Params.scaleKL1,
+                    KernelConfig::IS_WEIGHT_NZ ? StageDebug::WEIGHT_LAYOUT_ZN :
+                                                 StageDebug::WEIGHT_LAYOUT_DN,
+                    mLoc,
+                    nLoc,
+                    kLoc};
+                StageDebug::LogMmadConfig(StageDebug::GMM1_CONFIG_MARKER, debugConfig,
+                                          gmmAddrInfo.debugRankId, expertIdx, 0U);
             }
         }
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
             kLoc, gmBlockA, gmBlockScaleA);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        if (debugFirstExpertRow) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            StageDebug::LogBf16Pair(StageDebug::GMM1_OUTPUT_MARKER, gmmAddrInfo.gmm1OutGlobal,
+                                    config.outputN, gmmAddrInfo.debugRankId, expertIdx, 0U);
+        }
         if constexpr (TopkWeightsPrefetch) {
             NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         } else {
@@ -540,7 +590,7 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
         for (uint32_t weightBlock = 0; weightBlock < ACTIVATION_N_HALF; ++weightBlock) {
             auto nOffset = nLoc + weightBlock * config.outputN;
             blockPrologue(
-                gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kL1);
+                gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kBL1);
         }
     }
 }
