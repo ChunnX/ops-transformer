@@ -95,7 +95,11 @@ static ge::graphStatus InferShapeMsaIndexScore(gert::InferShapeContext *context)
             maxBlocks = (totalK + MSA_BLOCK_SIZE - 1) / MSA_BLOCK_SIZE;
         }
     }
-    OP_CHECK_IF(maxBlocks <= 0, OP_LOGE(context, "maxBlocksPerSeq must be positive."), return ge::GRAPH_FAILED);
+    // 全 kv_len=0：不拦截。按 1 个 dummy block 再 16 对齐，score 末维为 16；
+    // 核内跳过 QK，把该请求的 score 填 -inf（T1=0 时输出为空张量）。
+    if (maxBlocks <= 0) {
+        maxBlocks = 1;
+    }
 
     // maxpool 已经把一个 block 内的 blockSize 个 token 归约成 1 个分数，
     // 因此输出末维是 block 数（16 对齐）而不是 kv token 数。
