@@ -392,9 +392,6 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
     - attention_to_ffn_v2算子的通信域中不允许有其他算子。
     - 通信域各节点的驱动版本应当相同。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    - 该场景下单卡包含双DIE（简称为"晶粒"或"裸片"），因此参数说明里的"本卡"均表示单DIE。
-
 ## 确定性计算
 
 默认支持确定性计算。
