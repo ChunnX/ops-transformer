@@ -176,15 +176,8 @@ int main() {
 
     printf("start aclnnQuantFlashAttnMetadata\n");
     ret = aclnnQuantFlashAttnMetadataGetWorkspaceSize(
-        nullptr, nullptr,
-        nullptr, nullptr,
-        nullptr,
-        batchSize, qS, kvS,
-        numHeads, numKeyValueHeads,
-        headDim, quantMode, sparseMode, preTokens, nextTokens,
-        "BSND", "BSND", "BSND", "BSND",
-        metadataTensor,
-        &workspaceSize, &executor);
+        nullptr, nullptr, nullptr, nullptr, batchSize, qS, kvS, numHeads, numKeyValueHeads, headDim, headDim, quantMode,
+        sparseMode, preTokens, nextTokens, "BSND", "BSND", "BSND", "BSND", metadataTensor, &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
         printf("aclnnQuantFlashAttnMetadataGetWorkspaceSize %d\n", ret);
         return -1;

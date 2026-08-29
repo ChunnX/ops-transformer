@@ -51,6 +51,8 @@ constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3U;
 constexpr uint32_t FD_M_START_INDEX = 4U;
 constexpr uint32_t FD_M_NUM_INDEX = 5U;
 
+constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;
+
 namespace detail {
 struct FaMetaData {
     uint32_t sectionNum;
@@ -108,6 +110,16 @@ struct FaMetaData {
         assert(aivIdx < AIV_CORE_NUM);
         assert(metaIdx < FD_METADATA_SIZE);
         return fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx];
+    }
+};
+
+struct QuantFAGMetaData {
+    uint32_t *fagMedata;
+    explicit QuantFAGMetaData(void *metadataPtr) : fagMedata(static_cast<uint32_t *>(metadataPtr)) {}
+
+    void SetDeterMaxRound(uint32_t metaIdx, int64_t val)
+    {
+        fagMedata[metaIdx] = static_cast<uint32_t>(val);
     }
 };
 } // namespace detail
