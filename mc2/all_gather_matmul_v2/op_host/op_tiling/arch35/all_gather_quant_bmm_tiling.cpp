@@ -816,7 +816,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
         //DEBUG
         MutableTCubeLocalTilingWindowParam().mTailTile = 1;
         MutableTCubeLocalTilingWindowParam().nTailTile = 1;
-        std::cout << "ISPASS" << std::endl;
+        std::cout << "ISPASS LOCAL" << std::endl;
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
                        (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) :
@@ -826,6 +826,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     // 当N=0时，跳过matmul tiling，避免shape检查失败
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
+        // 与local debug处理一致
+        MutableTCubeTileTilingWindowParam().mTailTile = 1;
+        MutableTCubeTileTilingWindowParam().nTailTile = 1;
+        std::cout << "ISPASS GATHER" << std::endl;
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTileTilingData().M = tileMValue_;
