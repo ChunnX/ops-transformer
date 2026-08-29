@@ -435,7 +435,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);
             GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
             GROUPED_MATMUL::GmmWeightQuantSampleMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS,
-                                                         DTYPE_Y>(
+                                                         DTYPE_Y, IS_SINGLE_MULTI_SINGLE>(
                 x, weight, antiquantScale, bias, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);
 #else
             INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
