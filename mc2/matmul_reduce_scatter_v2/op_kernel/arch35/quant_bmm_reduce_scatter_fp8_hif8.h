@@ -137,24 +137,18 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess(
             hccl_.Wait(handles_[i]);
             runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
         }
-#if !defined(ASCENDC_DUMP) || ASCENDC_DUMP != 0
-        if constexpr (IS_MXFP8_DFX) {
-            // Print only workspace seg1 rows [0, 1], columns [0, 3].
-            if (rankId_ == 0 && debugMode_ != MC2_DEBUG_ONLY_CUBE && cfg.rankM >= 2 && cfg.rankN >= 4) {
-                for (uint32_t row = 0; row < 2; ++row) {
-                    GM_ADDR rowAddr = gmToFloat_ + static_cast<uint64_t>(row) * cfg.rankN * sizeof(CType);
-                    AscendC::GlobalTensor<uint8_t> cacheLine;
-                    cacheLine.SetGlobalBuffer(rowAddr, cfg.rankN * sizeof(CType));
-                    AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                                     AscendC::DcciDst::CACHELINE_OUT>(cacheLine);
-                    AscendC::GlobalTensor<CType> values;
-                    values.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(rowAddr), 4);
-                    AscendC::PRINTF("[MMRS_DFX] workspace_seg1 row=%u cols[0:3]=[%f, %f, %f, %f]\n", row,
-                                   values.GetValue(0), values.GetValue(1), values.GetValue(2), values.GetValue(3));
-                }
-            }
+        // Directly print workspace seg1 rows [0, 1], columns [0, 3].
+        for (uint32_t row = 0; row < 2; ++row) {
+            GM_ADDR rowAddr = gmToFloat_ + static_cast<uint64_t>(row) * cfg.rankN * sizeof(CType);
+            AscendC::GlobalTensor<uint8_t> cacheLine;
+            cacheLine.SetGlobalBuffer(rowAddr, cfg.rankN * sizeof(CType));
+            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                             AscendC::DcciDst::CACHELINE_OUT>(cacheLine);
+            AscendC::GlobalTensor<CType> values;
+            values.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(rowAddr), 4);
+            AscendC::PRINTF("[MMRS_DFX] rank=%u workspace_seg1 row=%u cols[0:3]=[%f, %f, %f, %f]\n", rankId_, row,
+                           values.GetValue(0), values.GetValue(1), values.GetValue(2), values.GetValue(3));
         }
-#endif
         // 终止hcclserver
         runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();

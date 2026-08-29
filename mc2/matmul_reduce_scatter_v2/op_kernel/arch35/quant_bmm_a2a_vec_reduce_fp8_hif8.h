@@ -232,36 +232,30 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
     // 等待执行完成后，最后终止hcclserver
     if (GetBlockIdx() == 0) {
         const auto &cfg = tilingData_->param;
-#if !defined(ASCENDC_DUMP) || ASCENDC_DUMP != 0
-        if constexpr (IS_MXFP8_DFX) {
-            // Print only workspace seg1/seg2 rows [0, 1], columns [0, 3].
-            if (rankId_ == 0 && debugMode_ != MC2_DEBUG_ONLY_CUBE && cfg.rankM >= 2 && cfg.rankN >= 4) {
-                for (uint32_t row = 0; row < 2; ++row) {
-                    const uint64_t rowOffset = static_cast<uint64_t>(row) * cfg.rankN * sizeof(CType);
-                    GM_ADDR sendRowAddr = sendBuf_ + rowOffset;
-                    GM_ADDR recvRowAddr = recvBuf_ + rowOffset;
-                    AscendC::GlobalTensor<uint8_t> sendCacheLine;
-                    sendCacheLine.SetGlobalBuffer(sendRowAddr, cfg.rankN * sizeof(CType));
-                    AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                                     AscendC::DcciDst::CACHELINE_OUT>(sendCacheLine);
-                    AscendC::GlobalTensor<uint8_t> recvCacheLine;
-                    recvCacheLine.SetGlobalBuffer(recvRowAddr, cfg.rankN * sizeof(CType));
-                    AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                                     AscendC::DcciDst::CACHELINE_OUT>(recvCacheLine);
-                    AscendC::GlobalTensor<CType> sendValues;
-                    sendValues.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(sendRowAddr), 4);
-                    AscendC::GlobalTensor<CType> recvValues;
-                    recvValues.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(recvRowAddr), 4);
-                    AscendC::PRINTF("[MMRS_DFX] workspace_seg1 row=%u cols[0:3]=[%f, %f, %f, %f]\n", row,
-                                   sendValues.GetValue(0), sendValues.GetValue(1), sendValues.GetValue(2),
-                                   sendValues.GetValue(3));
-                    AscendC::PRINTF("[MMRS_DFX] workspace_seg2 row=%u cols[0:3]=[%f, %f, %f, %f]\n", row,
-                                   recvValues.GetValue(0), recvValues.GetValue(1), recvValues.GetValue(2),
-                                   recvValues.GetValue(3));
-                }
-            }
+        // Directly print workspace seg1/seg2 rows [0, 1], columns [0, 3].
+        for (uint32_t row = 0; row < 2; ++row) {
+            const uint64_t rowOffset = static_cast<uint64_t>(row) * cfg.rankN * sizeof(CType);
+            GM_ADDR sendRowAddr = sendBuf_ + rowOffset;
+            GM_ADDR recvRowAddr = recvBuf_ + rowOffset;
+            AscendC::GlobalTensor<uint8_t> sendCacheLine;
+            sendCacheLine.SetGlobalBuffer(sendRowAddr, cfg.rankN * sizeof(CType));
+            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                             AscendC::DcciDst::CACHELINE_OUT>(sendCacheLine);
+            AscendC::GlobalTensor<uint8_t> recvCacheLine;
+            recvCacheLine.SetGlobalBuffer(recvRowAddr, cfg.rankN * sizeof(CType));
+            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                             AscendC::DcciDst::CACHELINE_OUT>(recvCacheLine);
+            AscendC::GlobalTensor<CType> sendValues;
+            sendValues.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(sendRowAddr), 4);
+            AscendC::GlobalTensor<CType> recvValues;
+            recvValues.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(recvRowAddr), 4);
+            AscendC::PRINTF("[MMRS_DFX] rank=%u workspace_seg1 row=%u cols[0:3]=[%f, %f, %f, %f]\n", rankId_, row,
+                           sendValues.GetValue(0), sendValues.GetValue(1), sendValues.GetValue(2),
+                           sendValues.GetValue(3));
+            AscendC::PRINTF("[MMRS_DFX] rank=%u workspace_seg2 row=%u cols[0:3]=[%f, %f, %f, %f]\n", rankId_, row,
+                           recvValues.GetValue(0), recvValues.GetValue(1), recvValues.GetValue(2),
+                           recvValues.GetValue(3));
         }
-#endif
         runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();
         runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
