@@ -411,6 +411,13 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (sendersPerRank_ > NUM_SLOTS) {
         sendersPerRank_ = NUM_SLOTS;
     }
+    // TEMP BISECTION (debug commit, revert after diagnosis): force the pre-merge
+    // single-sender topology. If grads pass with kForceSingleSender=true, the bug is
+    // inside the multi-sender comm; if they still fail, it is in the unique/accum path.
+    constexpr bool kForceSingleSender = true;
+    if (kForceSingleSender) {
+        sendersPerRank_ = 1U;
+    }
     numSendCores_ = sendersPerRank_ * numRanks_;
     if (numSendCores_ > halfBlocks) {
         numSendCores_ = halfBlocks;

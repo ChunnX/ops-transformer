@@ -614,6 +614,12 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
         directFlagBuf.SetValue(i, isNewUnique ? 1 : 0);
     }
     bool canDirectCopy = (inputDtype_ == outputDtype_);
+    // TEMP BISECTION (debug commit): set true to route every row through the accumulate
+    // path (FlushAccum) and disable FlushDirect entirely; isolates the direct-copy path.
+    constexpr bool kForceAllAccum = false;
+    if (kForceAllAccum) {
+        canDirectCopy = false;
+    }
     for (uint32_t i = 0; i < batchLen; i++) {
         int32_t flag = 0;
         if (canDirectCopy && directFlagBuf.GetValue(i) != 0) {
