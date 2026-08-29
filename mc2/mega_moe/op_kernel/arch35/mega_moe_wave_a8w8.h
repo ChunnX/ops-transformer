@@ -437,6 +437,34 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     int32_t vecSetSyncCom = 0;
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
 
+    /*
+     * 窗口 1 权重 L2 预取（独立预算，fp8 epb=1 经参数化传入）：仅 AIV0 构造游标，count 等待自旋
+     * 交付首份额 + wave 循环尾滑动补发（配额见 WEIGHT_L2_PREFETCH_WAVE_QUOTA_CHUNKS）。接续窗口 0
+     * 之后固定从 MAX_EXPERTS(=2) 号专家起覆盖 [2, min(E,4))，数据不重叠；E<=2 时无剩余专家、
+     * 预算为 0 不构造。跨机（>8P）才开——单机 fullmesh 关闭（等待窗极短无收益且挤带宽）。由
+     * WEIGHT_L2_PREFETCH_ENABLE_WINDOW1 控制，当前关闭。
+     */
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        uint32_t window1FirstExpert = WEIGHT_L2_PREFETCH_MAX_EXPERTS;
+        uint64_t window1BudgetBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank,
+            commonConfig_.worldSize, window1FirstExpert, PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE);
+        if (WEIGHT_L2_PREFETCH_ENABLE_WINDOW1 && IsWeightPrefetchRank(commonConfig_.worldSize) &&
+            GetSubBlockIdx() == 0U && window1BudgetBytes > 0U) {
+            WeightL2PrefetchInit(
+                weightPrefetchCursor, moeWeightTensorListAddrs_.weight1, gmmExecutionConfig_.isPerExpertWeightTensor,
+                commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank,
+                countWorkspace_.blockIdx, countWorkspace_.blockNum, window1BudgetBytes,
+                WeightL2PrefetchExpertSkipBytes(commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim,
+                                                window1FirstExpert,
+                                                PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE),
+                PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE, params_.tilingData->weightPrefetchUbOffset);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     ExpertTokenPosition waveBeginPosition{};
     ExpertTokenPosition dispatchPosition{};
     ExpertTokenPosition gmm1Position{};
@@ -457,7 +485,16 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 0U) {
-            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+            // 大循环前的 count 等待是 a8w8 的真实首等待（wave 循环内的等待因本次先执行而必然
+            // 零自旋）——窗口 1 预取首份额挂此处（剩余由波尾滑动补发）；cursor 为空（开关关/
+            // 8P/窗口 1 预算 0）时退化为原版等待。
+            if (weightPrefetch != nullptr) {
+                WaitForMoeExpertTokenCountReadyWithPrefetch(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+                                                            countWorkspace_, 0U, *weightPrefetch);
+            } else {
+                WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                                0U);
+            }
         }
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             for (uint32_t expertEnd = moeExpertPerRank_; expertEnd > 0U; --expertEnd) {
@@ -537,6 +574,22 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             startBlockIdx_ == waveStartBlockIndex && gmm1EndBlockIndex != waveStartBlockIndex;
         if (hasNextWave && fixedRoleResonance) {
             startBlockIdx_ = gmm1EndBlockIndex;
+        }
+
+        // 窗口 1 滑动补发：pre-loop count 自旋仅 μs 级（CrossRankSync 已保证远端 mask 就绪），
+        // 首份额必然欠交；剩余预算按 wave 边界小额补发——wave N+1 将消费的权重在 wave N 期间交付。
+        // 仅 AIV0 持游标（>8P rank 门控）；与 AIV1 的 dispatch pull 分属不同核 MTE2 队列。
+        if (hasNextWave && weightPrefetch != nullptr && WeightL2PrefetchHasRemaining(*weightPrefetch)) {
+            // 发射前清空流水：建立 V→MTE2 序，不依赖上游各 stage 协议覆盖面（波尾各流水本就
+            // 近乎空，屏障为数百 ns 级确认）。
+            PipeBarrier<PIPE_ALL>();
+            for (uint32_t issued = 0U; issued < WEIGHT_L2_PREFETCH_WAVE_QUOTA_CHUNKS; ++issued) {
+                if (!WeightL2PrefetchTryIssue(*weightPrefetch)) {
+                    break;
+                }
+            }
+            // 发射后清空流水：scratch 写（MTE2）全部落定，放行下一 wave 的 UB 使用。
+            PipeBarrier<PIPE_ALL>();
         }
 
         waveBeginPosition = waveEndPosition;
