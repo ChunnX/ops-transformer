@@ -286,7 +286,8 @@ inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
         int64_t poolArea = 0;
         int64_t singleArea = 0;
 
-        if (shape.m < 1 || shape.n < 1) {
+        // p + q >= 2 恰好等价于带宽非空，低于它的run不需要计算，轮次必须是0而不是负数
+        if (shape.m < 1 || shape.n < 1 || (isBand && shape.p + shape.q < NUM_TWO)) {
             const int64_t soloEnd = prefixSolo.back();
             for (int64_t runIdx = 0; runIdx < groupSize; ++runIdx) {
                 prefixSolo.push_back(soloEnd);
@@ -318,6 +319,13 @@ inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
                     singleMMax = std::max(singleMMax, shape.m);
                     singleNMax = std::max(singleNMax, shape.n);
                 }
+            } else if (!leftUp && runHasSingle && shape.m < std::min(k, shape.n)) {
+                // LINE的行错位是 x = (y + delta - 1) % m + 1，m < min(k, n)时同一轮内
+                // 会有两个核落到同一行，落单的那个头必须改走single池
+                runSolo = pairRounds;
+                singleArea = shape.m * shape.n;
+                singleMMax = std::max(singleMMax, shape.m);
+                singleNMax = std::max(singleNMax, shape.n);
             } else {
                 const int64_t singleRounds = runHasSingle ? (leftUp ? CalTNDSingleCausalRounds(k, shape.m, shape.n) :
                                                                       CeilDivideBy(shape.n, k) * shape.m) :

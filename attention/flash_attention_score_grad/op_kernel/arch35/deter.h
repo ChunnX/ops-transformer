@@ -2209,6 +2209,11 @@ __aicore__ inline int64_t CalTNDBandSoloRounds(int64_t k, int64_t n1, int64_t m,
 {
     isSmall = false;
     useLine = false;
+    // p + q >= 2 恰好等价于带宽非空。UpdateMNPQ的q<0修复会用负q改写p = p + q且不回查p，
+    // 此时p+q-1为负，narrow分支会算出负轮次并污染前缀和，殃及后面正常的batch
+    if (p + q < NUM_TWO) {
+        return 0;
+    }
     if (p >= m) {
         int64_t pairRounds = 0;
         ClassifyTNDPairCols(k, m, n, n1, isSmall, useLine, pairRounds);
@@ -2416,8 +2421,12 @@ __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlen
         bool isSmall = false;
         bool useLine = false;
         int64_t pairRounds = 0;
-        ClassifyTNDPairCols(k, pairVirtM, pairVirtN, n1 * (runEnd - runHead + 1) / NUM_TWO, isSmall, useLine,
-                            pairRounds);
+        const int64_t nRun = n1 * (runEnd - runHead + 1);
+        ClassifyTNDPairCols(k, pairVirtM, pairVirtN, nRun / NUM_TWO, isSmall, useLine, pairRounds);
+        // 与CalTNDCausalRunIndex的singleUnsafe保持一致：被挤出LINE的落单头由single池承接
+        if (!isSmall && virtMode == 1 && (nRun % NUM_TWO == 1) && cm < Min(k, cn)) {
+            return base;
+        }
         return isSmall ? base : 0;
     }
     return base;
@@ -2587,8 +2596,11 @@ __aicore__ inline void CalTNDCausalRunIndex(const __gm__ uint8_t *actualSeqQlenA
             bIdx = runEnd + 1;
             continue;
         }
-        const int64_t singleRounds =
-            (total % NUM_TWO == 1) ? (LEFT_UP ? CalTNDSingleCausalRounds(k, m, n) : (Ceil<int64_t>(n, k) * m)) : 0;
+        // LINE的行错位在 m < min(k, n) 时无法把k个核分到不同行，落单的头改走single池
+        const bool singleUnsafe = !LEFT_UP && (total % NUM_TWO == 1) && m < Min(k, n);
+        const int64_t singleRounds = (total % NUM_TWO == 1 && !singleUnsafe) ?
+                                         (LEFT_UP ? CalTNDSingleCausalRounds(k, m, n) : (Ceil<int64_t>(n, k) * m)) :
+                                         0;
         const int64_t runRounds = pairRounds + singleRounds;
         if (a <= runRounds) {
             if (a <= pairRounds && runPairs > 0) {
