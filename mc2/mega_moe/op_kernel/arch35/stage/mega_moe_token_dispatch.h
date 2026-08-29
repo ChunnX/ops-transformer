@@ -534,13 +534,14 @@ __aicore__ inline void DispatchExpertTokenSlice(const TokenDispatchConfig &conte
     //  - AIC-bound（n 大，如 N=6144 穿刺）：GMM 每 wave 时间 ∝ 行×h×n 远大于
     //    dispatch 每 wave ∝ 行×h，关键是供数节奏——跨 wave 大专家的专家域份额每
     //    wave 仅 ~窗口/份额 个核参与，供数掉 ~3 倍（A/B +679us），取 slice 域全核
-    //    均分。判据 n≥4096 是「计算/搬运比 ∝ n」的静态代理，锚两端实测。
+    //    均分。判据以 gmm1OutputDim（gate+up 拼接维 = 2n）≥8192 为「计算/搬运比
+    //    ∝ n」的静态代理（穿刺 n=6144→12288，泛化 n=3072→6144），锚两端实测。
     // 两种划分下各核区间之并 = [sliceRowBegin, sliceRowEnd) 且两两不交，
     // PublishGmm1TileReady 的行数累加（等值判定）契约不变。
     uint32_t sliceRows = sliceRowEnd - sliceRowBegin;
     int32_t coreDispatchRowBegin;
     int32_t coreDispatchRowEnd;
-    if (common.gmm1OutputDim >= 4096U && expertShareRows > sliceRows * 2U) {
+    if (common.gmm1OutputDim >= 8192U && expertShareRows > sliceRows * 2U) {
         int32_t rowsPerCore =
             Ops::Base::CeilDiv(static_cast<int32_t>(sliceRows), static_cast<int32_t>(dispatchCoreCount));
         coreDispatchRowBegin =
