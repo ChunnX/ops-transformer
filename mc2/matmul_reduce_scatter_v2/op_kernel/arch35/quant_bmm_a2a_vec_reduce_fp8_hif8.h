@@ -232,30 +232,13 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
     // 等待执行完成后，最后终止hcclserver
     if (GetBlockIdx() == 0) {
         const auto &cfg = tilingData_->param;
-        // Directly print workspace seg1/seg2 rows [0, 1], columns [0, 3].
-        for (uint32_t row = 0; row < 2; ++row) {
-            const uint64_t rowOffset = static_cast<uint64_t>(row) * cfg.rankN * sizeof(CType);
-            GM_ADDR sendRowAddr = sendBuf_ + rowOffset;
-            GM_ADDR recvRowAddr = recvBuf_ + rowOffset;
-            AscendC::GlobalTensor<uint8_t> sendCacheLine;
-            sendCacheLine.SetGlobalBuffer(sendRowAddr, cfg.rankN * sizeof(CType));
-            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                             AscendC::DcciDst::CACHELINE_OUT>(sendCacheLine);
-            AscendC::GlobalTensor<uint8_t> recvCacheLine;
-            recvCacheLine.SetGlobalBuffer(recvRowAddr, cfg.rankN * sizeof(CType));
-            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                             AscendC::DcciDst::CACHELINE_OUT>(recvCacheLine);
-            AscendC::GlobalTensor<CType> sendValues;
-            sendValues.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(sendRowAddr), 4);
-            AscendC::GlobalTensor<CType> recvValues;
-            recvValues.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(recvRowAddr), 4);
-            AscendC::PRINTF("[MMRS_DFX] rank=%u workspace_seg1 row=%u cols[0:3]=[%f, %f, %f, %f]\n", rankId_, row,
-                           sendValues.GetValue(0), sendValues.GetValue(1), sendValues.GetValue(2),
-                           sendValues.GetValue(3));
-            AscendC::PRINTF("[MMRS_DFX] rank=%u workspace_seg2 row=%u cols[0:3]=[%f, %f, %f, %f]\n", rankId_, row,
-                           recvValues.GetValue(0), recvValues.GetValue(1), recvValues.GetValue(2),
-                           recvValues.GetValue(3));
-        }
+        const uint64_t workspaceElemCnt = cfg.cToFloatLen / sizeof(CType);
+        AscendC::GlobalTensor<CType> sendDumpTensor;
+        sendDumpTensor.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(sendBuf_), workspaceElemCnt);
+        AscendC::DumpTensor(sendDumpTensor, 101, 64);
+        AscendC::GlobalTensor<CType> recvDumpTensor;
+        recvDumpTensor.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(recvBuf_), workspaceElemCnt);
+        AscendC::DumpTensor(recvDumpTensor, 102, 64);
         runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();
         runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_FINALIZE);
