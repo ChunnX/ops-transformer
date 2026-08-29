@@ -56,6 +56,8 @@ constexpr int COMM_PROTOCOL_UBG_VALUE = 9;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr uint64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL; // 1G大页大小，申请量需按1G向上对齐
+constexpr uint64_t HUGE1G_PAGE_TYPE = 1;
 constexpr int DIM_TWO = 2;
 constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
@@ -139,6 +141,15 @@ struct EngramContextResources {
     int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
+};
+
+struct MoeContextResources {
+    at::Tensor contextTensor;
+    int64_t cclBufferSize = 0;
+    uint32_t rankSizePerServer = 0;
+    void *deviceBufPtr = nullptr;
+    aclrtDrvMemHandle physicalMemHandle = nullptr;
+    HcclMemHandle memHandle = nullptr;
 };
 
 template <typename ContextT>
@@ -469,7 +480,7 @@ private:
 
 class MoeContextBuilder : public HcclContextBuilderBase {
 public:
-    at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize, uint32_t &rankSizePerServer)
+    MoeContextResources Build(const std::string &groupName, int64_t customCclBufferSize)
     {
         InitHcclEngineCtxFunctions();
 
@@ -479,14 +490,25 @@ public:
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         GetCommProtocol(hcclComm, protocol);
 
+        cclBufferSize_ = customCclBufferSize;
+        TORCH_CHECK(cclBufferSize_ > 0, "custom ccl buffer size must be greater than 0, got ", customCclBufferSize);
+        ASCEND_LOGI("MoeEp ccl buffer size is %ld bytes, group: %s", cclBufferSize_, groupName.c_str());
+
         MoeCommContext context;
+        int64_t cclBufferSize = 0;
         BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
         TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after building MoE context");
         context.rankSizePerServer = rankNumPerServer_;
-        rankSizePerServer = rankNumPerServer_;
 
-        return CreateCommContextTensor(context);
+        MoeContextResources resources;
+        resources.contextTensor = CreateCommContextTensor(context);
+        resources.cclBufferSize = cclBufferSize;
+        resources.rankSizePerServer = rankNumPerServer_;
+        resources.deviceBufPtr = deviceBufPtr_;
+        resources.physicalMemHandle = physicalMemHandle_;
+        resources.memHandle = memHandle_;
+        return resources;
     }
 
 private:
@@ -511,7 +533,12 @@ private:
 
         uint32_t rankSize = 0;
         GetRankInfo(commHandle, context->epRankId, rankSize);
-        GetHcclCommResource(commHandle, engine, protocol, *context, rankSize, hcclBufferSize);
+
+        std::string memBufferTag = contextTag + "_buffer";
+        CheckContextTag(memBufferTag);
+        AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
+
+        GetHcclCommResource(commHandle, engine, protocol, *context, rankSize, hcclBufferSize, memBufferTag);
 
         CopyContextToDevice(commHandle, contextTag, engine, context, contextSize);
     }
@@ -678,6 +705,8 @@ private:
                 channelDesc[channelId].notifyNum = MOE_CHANNEL_NOTIFY_NUM;
                 channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
                 channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+                channelDesc[channelId].memHandles = &memHandle_;
+                channelDesc[channelId].memHandleNum = 1;
             }
         }
     }
@@ -711,27 +740,91 @@ private:
     }
 
     void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                             MoeCommContext &context, uint32_t rankSize, uint64_t &hcclBufferSize)
+                             MoeCommContext &context, uint32_t rankSize, uint64_t &hcclBufferSize,
+                             const std::string &targetTag)
     {
         uint32_t rankId = context.epRankId;
         GetHcclCommChannel(commHandle, engine, rankSize, rankId, protocol, context);
 
-        for (uint32_t i = 0; i < rankSize; ++i) {
-            void *tempBuffer = nullptr;
-            uint64_t bufferSize = 0;
-            HcclResult hcclRet;
+        GetRegisteredCommResource(commHandle, context, rankSize, targetTag);
+        hcclBufferSize = static_cast<uint64_t>(cclBufferSize_);
+    }
 
-            if (i == rankId) {
-                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBufferSize);
-            } else {
-                uint32_t channelIndex = i * context.channelsPerRank;
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, context.hcommHandle[channelIndex], &tempBuffer,
-                                                       &bufferSize);
+    void AllocateAndRegisterDeviceBuffer(const HcclComm &commHandle, const std::string &memBufferTag)
+    {
+        TORCH_CHECK(cclBufferSize_ > 0, "ccl buffer size must be greater than 0, got ", cclBufferSize_);
+        uint64_t bufferSizeBytes = static_cast<uint64_t>(cclBufferSize_);
+        uint64_t allocSizeBytes = CeilDiv(bufferSizeBytes, HUGE1G_SIZE) * HUGE1G_SIZE;
+        if (deviceBufPtr_ == nullptr) {
+            // 1G大页物理内存: 预留虚拟地址 → 分配物理内存(HUGE1G) → 建立映射 → 设置访问权限
+            aclError ar = aclrtReserveMemAddress(&deviceBufPtr_, allocSizeBytes, 0, nullptr, HUGE1G_PAGE_TYPE);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtReserveMemAddress(", allocSizeBytes, ") failed, ret=", ar);
+
+            aclrtPhysicalMemProp prop = {};
+            prop.handleType = ACL_MEM_HANDLE_TYPE_NONE;
+            prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
+            prop.memAttr = ACL_MEM_HUGE1G;
+            int32_t deviceId = 0;
+            ar = aclrtGetDevice(&deviceId);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtGetDevice failed, ret=", ar);
+            prop.location.id = static_cast<uint32_t>(deviceId);
+            prop.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
+
+            ar = aclrtMallocPhysical(&physicalMemHandle_, allocSizeBytes, &prop, 0);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocPhysical(", allocSizeBytes, ") failed, ret=", ar);
+
+            ar = aclrtMapMem(deviceBufPtr_, allocSizeBytes, 0, physicalMemHandle_, 0);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMapMem(", allocSizeBytes, ") failed, ret=", ar);
+
+            aclrtMemAccessDesc accessDesc = {};
+            accessDesc.flags = ACL_RT_MEM_ACCESS_FLAGS_READWRITE;
+            accessDesc.location.id = static_cast<uint32_t>(deviceId);
+            accessDesc.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
+            ar = aclrtMemSetAccess(deviceBufPtr_, allocSizeBytes, &accessDesc, 1);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemSetAccess failed, ret=", ar);
+
+            // 按实际通信窗口大小清零（注册与kernel布局均使用bufferSizeBytes）
+            ar = aclrtMemset(deviceBufPtr_, allocSizeBytes, 0, bufferSizeBytes);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMemset(deviceBufPtr_) failed, ret=", ar);
+        }
+        if (memHandle_ == nullptr) {
+            CommMem mem;
+            mem.type = COMM_MEM_TYPE_DEVICE;
+            mem.addr = deviceBufPtr_;
+            mem.size = bufferSizeBytes;
+            auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &memHandle_);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", bufferSizeBytes,
+                        ") failed, ret=", hcclRet);
+        }
+    }
+
+    void GetRegisteredCommResource(const HcclComm &commHandle, MoeCommContext &context, uint32_t rankSize,
+                                   const std::string &targetTag)
+    {
+        uint32_t rankId = context.epRankId;
+        context.epHcclBuffer[rankId] = reinterpret_cast<uint64_t>(deviceBufPtr_);
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            if (peer == rankId) {
+                continue;
             }
-
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
-                        ", ret: ", hcclRet);
-            context.epHcclBuffer[i] = reinterpret_cast<uint64_t>(tempBuffer);
+            uint32_t memNum = 0;
+            CommMem *remoteMems = nullptr;
+            char **memTags = nullptr;
+            auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, context.hcommHandle[peer * context.channelsPerRank],
+                                                        &memNum, &remoteMems, &memTags);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", peer, ") failed, ret=", hcclRet);
+            bool hasTargetMem = false;
+            for (uint32_t j = 0; j < memNum; ++j) {
+                if (memTags == nullptr || remoteMems == nullptr) {
+                    break;
+                }
+                if (memTags[j] != nullptr && targetTag == memTags[j]) {
+                    context.epHcclBuffer[peer] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
+                    hasTargetMem = true;
+                    break;
+                }
+            }
+            TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
         }
     }
 
@@ -756,6 +849,10 @@ private:
     std::unordered_map<uint32_t, uint32_t> layerMap_;
     uint32_t rankNumPerUbDomain_ = 0;
     uint32_t rankNumPerServer_ = 2;
+    int64_t cclBufferSize_ = 0;
+    void *deviceBufPtr_ = nullptr;
+    aclrtDrvMemHandle physicalMemHandle_ = nullptr;
+    HcclMemHandle memHandle_ = nullptr;
 };
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
@@ -768,6 +865,7 @@ public:
     void EngramWrite(const at::Tensor &storage);
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
+    void InitMoeContext(int64_t customCclBufferSize);
 
     int64_t GetHostBufPtr() const
     {
@@ -851,7 +949,7 @@ public:
 
 private:
     void EnsureEngramContext();
-    void EnsureMoeContext();
+    void EnsureMoeContextReady();
     int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
     int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
 
@@ -872,8 +970,11 @@ private:
     bool engramContextInitialized_ = false;
 
     at::Tensor moeContextTensor_;
-    int64_t moeCclBufferSize_ = 0;
+    int64_t moeCclBufferSize_ = 0; // MoE 通信 buffer 大小（内部按算子参数计算并申请注册）
     uint32_t moeRankSizePerServer_ = 2;
+    void *moeDeviceBufPtr_ = nullptr;
+    aclrtDrvMemHandle moePhysicalMemHandle_ = nullptr;
+    HcclMemHandle moeMemHandle_ = nullptr;
     bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
@@ -941,15 +1042,27 @@ void ElasticBuffer::EnsureEngramContext()
     engramContextInitialized_ = true;
 }
 
-void ElasticBuffer::EnsureMoeContext()
+void ElasticBuffer::InitMoeContext(int64_t customCclBufferSize)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (moeContextInitialized_) {
         return;
     }
     MoeContextBuilder builder;
-    moeContextTensor_ = builder.Build(groupName_, moeCclBufferSize_, moeRankSizePerServer_);
+    MoeContextResources resources = builder.Build(groupName_, customCclBufferSize);
+    moeContextTensor_ = resources.contextTensor;
+    moeCclBufferSize_ = resources.cclBufferSize;
+    moeRankSizePerServer_ = resources.rankSizePerServer;
+    moeDeviceBufPtr_ = resources.deviceBufPtr;
+    moePhysicalMemHandle_ = resources.physicalMemHandle;
+    moeMemHandle_ = resources.memHandle;
     moeContextInitialized_ = true;
+}
+
+void ElasticBuffer::EnsureMoeContextReady()
+{
+    TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
+    TORCH_CHECK(moeContextInitialized_, "MoE context is not initialized, please call init_moe_context first");
 }
 
 int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
@@ -1172,6 +1285,27 @@ void ElasticBuffer::Destroy()
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
+    // MoE 通信 buffer 由内部按需申请注册，需主动释放
+    if (moeMemHandle_ != nullptr || moeDeviceBufPtr_ != nullptr) {
+        aclError aclRet = aclrtSynchronizeDevice();
+        TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
+    }
+    if (moeDeviceBufPtr_ != nullptr) {
+        // 1G大页物理内存释放: 解除映射 → 释放物理内存 → 释放虚拟地址区间
+        if (moePhysicalMemHandle_ != nullptr) {
+            aclError aclRet = aclrtUnmapMem(moeDeviceBufPtr_);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtUnmapMem failed, ret: ", aclRet);
+            aclRet = aclrtFreePhysical(moePhysicalMemHandle_);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtFreePhysical failed, ret: ", aclRet);
+            moePhysicalMemHandle_ = nullptr;
+        }
+        aclError aclRet = aclrtReleaseMemAddress(moeDeviceBufPtr_);
+        TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtReleaseMemAddress failed, ret: ", aclRet);
+        moeDeviceBufPtr_ = nullptr;
+    }
+    moeMemHandle_ = nullptr;
+    moeCclBufferSize_ = 0;
+
     if (engramHostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(engramHostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
@@ -1281,7 +1415,7 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    EnsureMoeContext();
+    EnsureMoeContextReady();
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1337,7 +1471,7 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     int64_t numMaxTokensPerRank, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
     const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
 {
-    EnsureMoeContext();
+    EnsureMoeContextReady();
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1379,7 +1513,7 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    EnsureMoeContext();
+    EnsureMoeContextReady();
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1394,7 +1528,7 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
     int64_t numExperts, int64_t numMaxTokensPerRank, at::Tensor &combinedX,
     const c10::optional<at::Tensor> &combinedTopkWeightsOpt)
 {
-    EnsureMoeContext();
+    EnsureMoeContextReady();
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1462,6 +1596,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
+        .def("init_moe_context", &Mc2Api::ElasticBuffer::InitMoeContext, pybind11::arg("customCclBufferSize"))
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
