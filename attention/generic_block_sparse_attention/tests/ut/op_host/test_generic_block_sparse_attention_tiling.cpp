@@ -309,9 +309,8 @@ TEST_F(generic_block_sparse_attention_tiling_ut, scale_value_zero_defaults_to_rs
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(kFp16Tiling910B));
     ASSERT_NE(tilingInfo.tilingData, nullptr);
-    // Raw tiling buffer is POD (same field order as kernel_common.hpp); host get_* APIs
-    // require a constructed TilingData object and must not be used on the raw buffer.
-    constexpr size_t kScaleValueOffset = 10U * sizeof(uint32_t); // after 10 leading uint32 fields
+    // scaleValue is the 11th field (10 uint32 ahead) in the POD tiling layout.
+    constexpr size_t kScaleValueOffset = 10U * sizeof(uint32_t);
     ASSERT_GT(tilingInfo.tilingDataSize, kScaleValueOffset + sizeof(float));
     float scaleValue = 0.0f;
     std::memcpy(&scaleValue, tilingInfo.tilingData.get() + kScaleValueOffset, sizeof(float));

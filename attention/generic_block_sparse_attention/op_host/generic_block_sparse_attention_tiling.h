@@ -132,7 +132,7 @@ private:
     uint64_t updateSize_ = 0;
     uint64_t workSpaceSize_ = 0;
 
-    uint32_t blockDim_ = 0; // set in GetNpuInfo from AIC core count
+    uint32_t blockDim_ = 0;
     uint32_t aicNum_ = 0;
     uint64_t libapiSize_ = 0;
     uint32_t socVer_ = 0;
