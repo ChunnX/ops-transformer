@@ -43,7 +43,7 @@ class BlockEpilogue {
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_high_prec.hpp"
 
 namespace NpuArch::Epilogue::Block {
-template <class OutDtype, class Tws, class ElementKV = OutDtype>
+template <class OutDtype, class Tws, class ElementKV>
 class BlockEpilogue<EpilogueRescaleOSplitKvArch35, OutDtype, Tws, ElementKV> {
 public:
     using DispatchPolicy = EpilogueRescaleOSplitKvArch35;
