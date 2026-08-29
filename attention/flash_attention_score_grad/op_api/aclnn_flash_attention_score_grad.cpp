@@ -125,7 +125,10 @@ static bool StrideLimited()
     return false;
 }
 
-static bool IsAscend950() { return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510; }
+static bool IsAscend950()
+{
+    return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
 
 static bool NeedTransposeSoftmaxTensor(const char *softmaxInLayout)
 {
@@ -2203,7 +2206,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2GetWorkspaceSize(
     OP_CHECK(executor != nullptr, OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "executor"),
              return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(inputLayout != nullptr, OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "inputLayout"),
-    return ACLNN_ERR_PARAM_NULLPTR);
+             return ACLNN_ERR_PARAM_NULLPTR);
     if (dqOut->IsEmpty() && dkOut->IsEmpty() && dvOut->IsEmpty()) {
         if (dpseOut == nullptr || dpseOut->IsEmpty()) {
             OP_LOGD("All out tensor is empty");
