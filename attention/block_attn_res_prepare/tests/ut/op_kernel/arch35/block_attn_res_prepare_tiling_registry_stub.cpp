@@ -14,7 +14,7 @@
 
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(BlockAttnResPrepareCubeTilingData)
+BEGIN_TILING_DATA_DEF(BlockAttnResPrepareMixTilingData)
 TILING_DATA_FIELD_DEF(uint64_t, qL1Elems);
 TILING_DATA_FIELD_DEF(uint64_t, vL1Elems);
 TILING_DATA_FIELD_DEF(uint64_t, eL1Elems);
@@ -47,6 +47,6 @@ TILING_DATA_FIELD_DEF(uint8_t, vL1BufferNum);
 TILING_DATA_FIELD_DEF(uint8_t, vUbBufferNum);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(BlockAttnResPrepare, BlockAttnResPrepareCubeTilingData)
+REGISTER_TILING_DATA_CLASS(BlockAttnResPrepare, BlockAttnResPrepareMixTilingData)
 
 } // namespace optiling

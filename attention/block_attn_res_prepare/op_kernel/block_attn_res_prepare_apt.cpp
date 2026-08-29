@@ -23,17 +23,17 @@ __global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR vali
                                                   GM_ADDR workspace, GM_ADDR tiling)
 {
     AscendC::InitSocState();
-    REGISTER_TILING_DEFAULT(optiling::BlockAttnResPrepareCubeTilingData);
+    REGISTER_TILING_DEFAULT(optiling::BlockAttnResPrepareMixTilingData);
     if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
         op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
         op.Process();
-    } else if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_MIX_CUBE) {
+    } else if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_MIX) {
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
-        GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
+        GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareMixTilingData, mixTilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareTensorApiBlazeKernel(blockRes, validBlocks, pseudoQuery, numerator,
-                                                                     logitMax, expSum, userWorkspace, cubeTilingData);
+                                                                     logitMax, expSum, userWorkspace, mixTilingData);
     }
 }

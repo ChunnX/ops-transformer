@@ -16,7 +16,7 @@
 namespace optiling {
 
 constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_KEY = 0UL;
-constexpr uint64_t BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY = 1UL;
+constexpr uint64_t BLOCK_ATTN_RES_PREPARE_MIX_KEY = 1UL;
 
 // Tiling data is deliberately declared as a plain struct.  The host writes
 // the scalar fields directly into the raw tiling buffer and the kernel reads
@@ -49,10 +49,10 @@ struct BlockAttnResPrepareTilingData {
     uint8_t oBufferNum;
 };
 
-// Cube has an independent data layout because its AIC/AIV work mapping and its L1/UB
+// The Mix template has an independent data layout because its AIC/AIV work mapping and its L1/UB
 // capacity plan are different from the Vector template. MM1 dot uses compact N rows,
 // while E uses nAlign rows for the second Cube matmul.
-struct BlockAttnResPrepareCubeTilingData {
+struct BlockAttnResPrepareMixTilingData {
     uint64_t qL1Elems;
     uint64_t vL1Elems;
     uint64_t eL1Elems;
