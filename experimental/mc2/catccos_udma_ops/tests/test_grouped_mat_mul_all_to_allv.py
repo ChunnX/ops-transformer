@@ -246,7 +246,16 @@ def test_target_order_get_completion_uses_host_epoch_and_per_peer_slots():
     assert "syncProducerReady" in target_order
     assert "syncConsumerDone" in target_order
     assert "TARGET_ORDER_SYNC_OFFSET_BYTES = 1024" in kernel
-    assert "stageIdx * SYNC_SLOT_RANKS + rankIdx" in target_order
+    assert "SIGNAL_CACHE_LINE_BYTES = 64" in kernel
+    assert "SIGNAL_CACHE_LINE_BYTES / sizeof(int32_t)" in kernel
+    assert "ConsumerDoneSlotOffset(stageIdx, rankIdx)" in target_order
+    assert "ConsumerDoneSlotOffset(stageIdx, dstRankIdx)" in target_order
+    assert "syncConsumerDone + slotOffset" in target_order
+    assert (
+        "WORKSPACE_STAGES * SYNC_SLOT_RANKS *\n"
+        "                    SIGNAL_CACHE_LINE_BYTES"
+    ) in kernel
+    assert "WORKSPACE_STAGES * SYNC_SLOT_RANKS * sizeof(int32_t)" not in kernel
     assert "scheduler.HasOutput(commIdx, dstRankIdx)" in target_order
     assert "FinalizeBlockLoopWithStatus()" in target_order
     assert "GET CQ failure" in target_order

@@ -63,6 +63,14 @@ public:
     static constexpr uint64_t SYMMETRIC_DATA_BYTES = SYMMETRIC_DATA_BYTES_;
     static constexpr bool TARGET_ORDER_STAGING = TARGET_ORDER_STAGING_;
     static constexpr uint32_t SYNC_SLOT_RANKS = 8;
+    // SHMEM's MTE SIGNAL_SET path performs a scalar store followed by a
+    // clean-and-invalidate of the entire 64-byte data-cache line. Therefore,
+    // completion slots written concurrently by different destination PEs must
+    // not share a cache line: one PE could otherwise write back a stale copy of
+    // another PE's slot and make the source wait forever.
+    static constexpr uint32_t SIGNAL_CACHE_LINE_BYTES = 64;
+    static constexpr uint32_t CONSUMER_DONE_SLOT_STRIDE =
+        SIGNAL_CACHE_LINE_BYTES / sizeof(int32_t);
     // UdmaRuntime reserves 4096 bytes after the shared data workspace. The
     // first 1 KiB belongs to AllToAllVGroupedMatMul (including its 64-bit
     // strong-ready slots), so this operator's generation protocol must not
@@ -72,6 +80,14 @@ public:
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
+
+    CATLASS_HOST_DEVICE
+    static constexpr uint32_t ConsumerDoneSlotOffset(
+        uint32_t stageIdx, uint32_t rankIdx)
+    {
+        return (stageIdx * SYNC_SLOT_RANKS + rankIdx) *
+            CONSUMER_DONE_SLOT_STRIDE;
+    }
 
     using MoeConstraints = typename BlockMmadScheduler::MoeConstraints;
 
@@ -179,16 +195,25 @@ public:
         auto syncCommFinish = args.ptrSymmetric + symmetricOffset;
         symmetricOffset = SYMMETRIC_DATA_BYTES + TARGET_ORDER_SYNC_OFFSET_BYTES;
         auto syncLaunchEpoch = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += SYNC_UNIT_SIZE;
+        symmetricOffset += SIGNAL_CACHE_LINE_BYTES;
         auto syncProducerReady = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += SYNC_UNIT_SIZE;
+        symmetricOffset += SIGNAL_CACHE_LINE_BYTES;
         auto syncConsumerDone = args.ptrSymmetric + symmetricOffset;
 
-        static_assert(WORKSPACE_STAGES * sizeof(int32_t) <= SYNC_UNIT_SIZE,
-            "producer-ready slots exceed one synchronization unit");
+        static_assert(SIGNAL_CACHE_LINE_BYTES % sizeof(int32_t) == 0,
+            "signal cache-line size must contain whole int32 slots");
+        static_assert(SYMMETRIC_DATA_BYTES % SIGNAL_CACHE_LINE_BYTES == 0,
+            "symmetric data workspace must end on a signal cache-line boundary");
         static_assert(
-            TARGET_ORDER_SYNC_OFFSET_BYTES + 2 * SYNC_UNIT_SIZE +
-                WORKSPACE_STAGES * SYNC_SLOT_RANKS * sizeof(int32_t) <=
+            TARGET_ORDER_SYNC_OFFSET_BYTES % SIGNAL_CACHE_LINE_BYTES == 0,
+            "target-order synchronization region must be cache-line aligned");
+        static_assert(
+            WORKSPACE_STAGES * sizeof(int32_t) <= SIGNAL_CACHE_LINE_BYTES,
+            "producer-ready slots exceed their cache-line region");
+        static_assert(
+            TARGET_ORDER_SYNC_OFFSET_BYTES + 2 * SIGNAL_CACHE_LINE_BYTES +
+                WORKSPACE_STAGES * SYNC_SLOT_RANKS *
+                    SIGNAL_CACHE_LINE_BYTES <=
                 RESERVED_SYNC_BYTES,
             "target-order synchronization slots exceed the reserved workspace");
 
@@ -574,10 +599,10 @@ private:
                     ACLSHMEM_SIGNAL_SET, rankIdx);
                 for (uint32_t dstRankIdx = 0;
                      dstRankIdx < rankSize; ++dstRankIdx) {
-                    uint32_t slotIdx =
-                        stageIdx * SYNC_SLOT_RANKS + dstRankIdx;
+                    uint32_t slotOffset =
+                        ConsumerDoneSlotOffset(stageIdx, dstRankIdx);
                     aclshmemx_signal_op(
-                        syncConsumerDone + slotIdx, 0,
+                        syncConsumerDone + slotOffset, 0,
                         ACLSHMEM_SIGNAL_SET, rankIdx);
                 }
             }
@@ -635,11 +660,11 @@ private:
                     // Each destination owns one slot on the source PE. A SET
                     // removes the aggregate-atomic hotspot and, unlike ADD,
                     // cannot be confused with a delayed prior-launch update.
-                    uint32_t slotIdx =
-                        stageIdx * SYNC_SLOT_RANKS + rankIdx;
+                    uint32_t slotOffset =
+                        ConsumerDoneSlotOffset(stageIdx, rankIdx);
                     aclshmem_fence();
                     aclshmemx_signal_op(
-                        syncConsumerDone + slotIdx, roundGeneration,
+                        syncConsumerDone + slotOffset, roundGeneration,
                         ACLSHMEM_SIGNAL_SET, srcRankIdx);
                 }
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
@@ -662,10 +687,10 @@ private:
                     if (!scheduler.HasOutput(commIdx, dstRankIdx)) {
                         continue;
                     }
-                    uint32_t slotIdx =
-                        stageIdx * SYNC_SLOT_RANKS + dstRankIdx;
+                    uint32_t slotOffset =
+                        ConsumerDoneSlotOffset(stageIdx, dstRankIdx);
                     aclshmem_signal_wait_until(
-                        syncConsumerDone + slotIdx,
+                        syncConsumerDone + slotOffset,
                         ACLSHMEM_CMP_EQ, roundGeneration);
                 }
             }
