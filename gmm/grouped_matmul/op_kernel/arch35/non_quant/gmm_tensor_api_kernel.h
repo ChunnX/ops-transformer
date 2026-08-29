@@ -41,7 +41,6 @@ __aicore__ inline void GmmNoQuantTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_A
     if ASCEND_IS_AIV {
         return;
     }
-    printf("enter blaze no quant!!!!");
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData, tiling);
 
