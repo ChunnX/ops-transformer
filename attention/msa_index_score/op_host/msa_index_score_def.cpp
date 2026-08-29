@@ -13,8 +13,8 @@
  * \brief MsaIndexScore 算子原型注册（对齐 docs/aclnnMsaIndexScore.md）。
  *
  * dtype 组合（按列表下标对齐）：
- *   A2/A3（3 组）：0 bf16/bf16、1 fp16/fp16、2 fp16/int8
- *   Ascend 950（6 组）：0–2 同上，3 hifloat8、4 fp8_e5m2、5 fp8_e4m3fn
+ *   A2/A3（3 组，全 ND）：0 bf16/bf16、1 fp16/fp16、2 fp16/int8
+ *   Ascend 950（6 组）：0–2 同上（ND），3 hifloat8、4 fp8_e5m2、5 fp8_e4m3fn
  *
  * A2/A3：PageAttention BBND/BNBD key 与 TND packed key；sparse_mode∈{0,3}。
  * Ascend 950：同功能 + query/key FP8 计算（无 scale）。

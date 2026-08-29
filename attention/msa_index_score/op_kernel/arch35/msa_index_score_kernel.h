@@ -84,7 +84,7 @@ public:
     static constexpr uint32_t UB_SIZE_CAST_I8 = MSA_BLOCK_SIZE * MSA_K_TILE * sizeof(int8_t);
     static constexpr uint32_t UB_OFF_CAST_FP = UB_OFF_CAST_I8 + UB_SIZE_CAST_I8;
     static constexpr uint32_t UB_SIZE_CAST_FP = MSA_BLOCK_SIZE * MSA_K_TILE * sizeof(half);
-    static_assert(UB_OFF_CAST_FP + UB_SIZE_CAST_FP <= ArchTag::UB_SIZE, "cast UB out of bounds");
+    static_assert(UB_OFF_CAST_FP + UB_SIZE_CAST_FP <= ArchTag::UB_SIZE, "int8 cast UB out of bounds");
 
     __aicore__ inline MsaIndexScoreKernel() {}
 
@@ -293,7 +293,7 @@ private:
                                                   uint32_t blk, uint64_t scratchOff)
     {
         AscendC::LocalTensor<int8_t> ubI8 = resource.ubBuf.template GetBufferByByte<int8_t>(UB_OFF_CAST_I8);
-        AscendC::LocalTensor<half> ubHalf = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_CAST_FP);
+        AscendC::LocalTensor<ElementQ> ubFp = resource.ubBuf.template GetBufferByByte<ElementQ>(UB_OFF_CAST_FP);
         const uint32_t headDim = tiling_->headDim;
         const uint32_t nElem = MSA_BLOCK_SIZE * headDim;
         const uint64_t kOffset = KeyBlockGmOffset(task, blk);
@@ -310,7 +310,7 @@ private:
                 }
             }
             if (copyN < nElem) {
-                AscendC::Duplicate(ubHalf, static_cast<half>(0), nElem);
+                AscendC::Duplicate(ubFp, static_cast<ElementQ>(0), nElem);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -323,11 +323,11 @@ private:
                 }
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-                AscendC::Cast(ubHalf, ubI8, AscendC::RoundMode::CAST_NONE, copyN);
+                AscendC::Cast(ubFp, ubI8, AscendC::RoundMode::CAST_NONE, copyN);
             }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-            AscendC::DataCopy(gKeyScratch_[scratchOff], ubHalf, nElem);
+            AscendC::DataCopy(gKeyScratch_[scratchOff], ubFp, nElem);
         } else {
             AscendC::LocalTensor<ElementQ> ubK = resource.ubBuf.template GetBufferByByte<ElementQ>(UB_OFF_CAST_FP);
             if (nValid < nElem) {

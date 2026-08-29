@@ -17,7 +17,7 @@
  * atten_mask 仅做 host 校验；device 侧按 sparse_mode 解析因果，不消费该 GM。
  */
 
-#include "kernel_operator.h" // force-rebuild-arch35-v42c-c2ub-f322f16-singledst
+#include "kernel_operator.h" // force-rebuild-arch35-v55-empty-seq
 #include "lib/matmul_intf.h"
 #include "msa_index_score_common.h"
 #if (__CCE_AICORE__ == 310)
