@@ -67,14 +67,14 @@
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
+      <td>表示对应公式中K和V的一部分，为原始不经压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。</td>
       <td>详见quant_mode</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
-      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。</td>
+      <td>表示对应公式中K和V的一部分，为经过压缩的量化KV，Key和Value共享同一份数据。由nope、rope、scale、padding拼接而成，详见quant_mode。单字节存储视图规则同ori_kv。</td>
       <td>详见quant_mode</td>
       <td>ND</td>
     </tr>
