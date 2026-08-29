@@ -61,9 +61,13 @@ private:
                               const gert::Shape &locationsShape, const gert::Shape &outShape) const;
     ge::graphStatus CheckRouteShape(const gert::Shape &indicesShape, const gert::Shape &locationsShape,
                                     const gert::Shape &outShape);
+    ge::graphStatus CheckShapeValues(const gert::Shape &xShape, const gert::Shape &yShape,
+                                     const gert::Shape &indicesShape, const gert::Shape &locationsShape,
+                                     const gert::Shape &outShape);
     ge::graphStatus CheckTensorSizes() const;
     ge::graphStatus SplitCore();
     ge::graphStatus SplitUb();
+    ge::graphStatus SolveZeroH(int64_t avail, int64_t &sBlock, int64_t &kBlock) const;
     ge::graphStatus SolveCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock);
     ge::graphStatus PostTiling();
 
@@ -71,6 +75,8 @@ private:
     bool GetTileBytes(int64_t sBlock, int64_t kBlock, int64_t &bytes) const;
     bool GetTreeLayout(int64_t hidden, int64_t &partialCount, int64_t &partialAlign, int64_t &bytes) const;
     bool TryNotCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock);
+    bool FindCutHFactor(int64_t budget, int64_t &hFactor, int64_t &partialAlign) const;
+    void SetShapeTilingData();
 
 private:
     gert::TilingContext *context_ = nullptr;

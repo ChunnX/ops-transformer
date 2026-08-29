@@ -136,11 +136,46 @@ TEST_F(MoeTutelCombineGatesTilingTest, empty_samples_is_supported)
     ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
+TEST_F(MoeTutelCombineGatesTilingTest, empty_samples_and_hidden_are_supported)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0, 0}, {2, 4, 0}, {1, 0}, {1, 0}, {1, 0}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
+}
+
 TEST_F(MoeTutelCombineGatesTilingTest, zero_hidden_is_supported)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara({8, 0}, {2, 4, 0}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
     ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, empty_samples_with_zero_experts_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0, 64}, {0, 4, 64}, {1, 0}, {1, 0}, {1, 0}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, empty_samples_with_zero_capacity_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0, 64}, {2, 0, 64}, {1, 0}, {1, 0}, {1, 0}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, empty_samples_with_zero_routes_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0, 64}, {2, 4, 64}, {0, 0}, {0, 0}, {0, 0}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, all_non_optional_axes_zero_fail)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0, 64}, {0, 0, 64}, {0, 0}, {0, 0}, {0, 0}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(MoeTutelCombineGatesTilingTest, capacity_may_exceed_samples)
@@ -203,6 +238,13 @@ TEST_F(MoeTutelCombineGatesTilingTest, invalid_y_grad_rank_fails)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara({8, 64}, {2, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, one_dimensional_empty_x_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0}, {2, 4, 64}, {1, 0}, {1, 0}, {1, 0}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
@@ -278,9 +320,44 @@ TEST_F(MoeTutelCombineGatesTilingTest, invalid_vector_length_fails)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
+TEST_F(MoeTutelCombineGatesTilingTest, non_integral_fp32_vector_length_fails)
+{
+    auto compileInfo = MakeCompileInfo(32, 262144, 258);
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
 TEST_F(MoeTutelCombineGatesTilingTest, insufficient_ub_fails)
 {
     auto compileInfo = MakeCompileInfo(32, 1024);
     auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, ub_larger_than_kernel_length_type_fails)
+{
+    const uint64_t oversizedUb = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+    auto compileInfo = MakeCompileInfo(32, oversizedUb);
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, cut_h_chunk_limit_boundary_succeeds)
+{
+    constexpr int64_t hFactorForMockedPlatform = 15936;
+    constexpr int64_t maxChunkCount = 1024;
+    const int64_t hidden = hFactorForMockedPlatform * maxChunkCount;
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({1, hidden}, {1, 1, hidden}, {1, 1}, {1, 1}, {1, 1}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_CUT_H);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, cut_h_chunk_limit_overflow_fails)
+{
+    constexpr int64_t hFactorForMockedPlatform = 15936;
+    constexpr int64_t maxChunkCount = 1024;
+    const int64_t hidden = hFactorForMockedPlatform * maxChunkCount + 1;
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({1, hidden}, {1, 1, hidden}, {1, 1}, {1, 1}, {1, 1}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }

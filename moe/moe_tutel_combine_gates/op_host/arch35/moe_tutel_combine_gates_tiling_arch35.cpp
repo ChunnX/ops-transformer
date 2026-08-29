@@ -105,10 +105,11 @@ ge::graphStatus MoeTutelCombineGatesTiling::GetPlatformInfo()
     vlFp32_ = static_cast<int64_t>(compileInfo->vectorLength) / static_cast<int64_t>(sizeof(float));
     ubBlockSize_ = static_cast<int64_t>(compileInfo->ubBlockSize);
 
-    const bool invalidPlatform = coreNum_ == 0 ||
-                                 coreNum_ > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
-                                 ubSize_ == 0 || ubSize_ > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
-                                 vlFp32_ <= 0 || ubBlockSize_ <= 0 || (vlFp32_ & (vlFp32_ - 1)) != 0;
+    const bool invalidPlatform =
+        coreNum_ == 0 || coreNum_ > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) || ubSize_ == 0 ||
+        ubSize_ > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) ||
+        compileInfo->vectorLength % sizeof(float) != 0 || vlFp32_ <= 0 || ubBlockSize_ <= 0 ||
+        (vlFp32_ & (vlFp32_ - 1)) != 0;
     OP_CHECK_IF(
         invalidPlatform,
         OP_LOGE(context_->GetNodeName(), "invalid platform info: coreNum=%lu, ubSize=%lu, vlFp32=%ld, ubBlockSize=%ld",
@@ -257,7 +258,14 @@ ge::graphStatus MoeTutelCombineGatesTiling::GetShapeAndCheck()
     if (CheckRank(xShape, yShape, indicesShape, locationsShape, outShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    return CheckShapeValues(xShape, yShape, indicesShape, locationsShape, outShape);
+}
 
+ge::graphStatus MoeTutelCombineGatesTiling::CheckShapeValues(const gert::Shape &xShape, const gert::Shape &yShape,
+                                                             const gert::Shape &indicesShape,
+                                                             const gert::Shape &locationsShape,
+                                                             const gert::Shape &outShape)
+{
     samples_ = xShape.GetDim(DIM_0);
     hidden_ = xShape.GetDim(DIM_1);
     experts_ = yShape.GetDim(DIM_0);
@@ -374,7 +382,6 @@ bool MoeTutelCombineGatesTiling::TryNotCutH(int64_t avail, int64_t &sBlock, int6
         int64_t totalBytes = 0;
         if (GetTileBytes(sBlock, kBlock, tileBytes) && CheckedAdd(inputBytes, tileBytes, totalBytes) &&
             CheckedAdd(totalBytes, treeBytes, totalBytes) && totalBytes <= avail) {
-            td_.vlPartialCount = static_cast<uint64_t>(partialCount);
             td_.vlPartialAlign = static_cast<uint64_t>(partialAlign);
             return true;
         }
@@ -388,6 +395,32 @@ bool MoeTutelCombineGatesTiling::TryNotCutH(int64_t avail, int64_t &sBlock, int6
     }
 }
 
+bool MoeTutelCombineGatesTiling::FindCutHFactor(int64_t budget, int64_t &hFactor, int64_t &partialAlign) const
+{
+    const int64_t bytesPerElement = dtypeSize_ * INPUT_BUFFER_NUM * DOUBLE_BUFFER;
+    hFactor = budget / bytesPerElement / vlFp32_ * vlFp32_;
+    for (; hFactor >= vlFp32_; hFactor -= vlFp32_) {
+        int64_t copyBytes = 0;
+        int64_t rowBytes = 0;
+        int64_t inputBytes = 0;
+        int64_t partialCount = 0;
+        int64_t treeBytes = 0;
+        int64_t totalBytes = 0;
+        const bool safe = CheckedMul(hFactor, dtypeSize_, copyBytes) &&
+                          copyBytes <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) &&
+                          GetRowBytes(hFactor, rowBytes) &&
+                          CheckedMul(rowBytes, INPUT_BUFFER_NUM * DOUBLE_BUFFER, inputBytes) &&
+                          GetTreeLayout(hFactor, partialCount, partialAlign, treeBytes) &&
+                          CheckedAdd(inputBytes, treeBytes, totalBytes) && totalBytes <= budget &&
+                          partialCount <= static_cast<int64_t>(std::numeric_limits<uint16_t>::max()) &&
+                          partialAlign <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        if (safe) {
+            return true;
+        }
+    }
+    return false;
+}
+
 ge::graphStatus MoeTutelCombineGatesTiling::SolveCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock)
 {
     sBlock = 1;
@@ -399,32 +432,10 @@ ge::graphStatus MoeTutelCombineGatesTiling::SolveCutH(int64_t avail, int64_t &sB
                 OP_LOGE(context_->GetNodeName(), "UB size %lu is too small for CUT_H output and tree buffers", ubSize_),
                 return ge::GRAPH_FAILED);
     const int64_t rowAndTreeBudget = avail - fixedBytes;
-    const int64_t bytesPerElement = dtypeSize_ * INPUT_BUFFER_NUM * DOUBLE_BUFFER;
-    int64_t hFactor = rowAndTreeBudget / bytesPerElement / vlFp32_ * vlFp32_;
-
-    int64_t partialCount = 0;
+    int64_t hFactor = 0;
     int64_t partialAlign = 0;
-    int64_t treeBytes = 0;
-    bool found = false;
-    for (; hFactor >= vlFp32_; hFactor -= vlFp32_) {
-        int64_t copyBytes = 0;
-        int64_t rowBytes = 0;
-        int64_t inputBytes = 0;
-        int64_t totalBytes = 0;
-        const bool safe = CheckedMul(hFactor, dtypeSize_, copyBytes) &&
-                          copyBytes <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) &&
-                          GetRowBytes(hFactor, rowBytes) &&
-                          CheckedMul(rowBytes, INPUT_BUFFER_NUM * DOUBLE_BUFFER, inputBytes) &&
-                          GetTreeLayout(hFactor, partialCount, partialAlign, treeBytes) &&
-                          CheckedAdd(inputBytes, treeBytes, totalBytes) && totalBytes <= rowAndTreeBudget &&
-                          partialCount <= static_cast<int64_t>(std::numeric_limits<uint16_t>::max()) &&
-                          partialAlign <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-        if (safe) {
-            found = true;
-            break;
-        }
-    }
-    OP_CHECK_IF(!found, OP_LOGE(context_->GetNodeName(), "cannot find a safe CUT_H factor for UB size %lu", ubSize_),
+    OP_CHECK_IF(!FindCutHFactor(rowAndTreeBudget, hFactor, partialAlign),
+                OP_LOGE(context_->GetNodeName(), "cannot find a safe CUT_H factor for UB size %lu", ubSize_),
                 return ge::GRAPH_FAILED);
 
     int64_t numChunks = 0;
@@ -447,9 +458,32 @@ ge::graphStatus MoeTutelCombineGatesTiling::SolveCutH(int64_t avail, int64_t &sB
     td_.hFactor = static_cast<uint64_t>(hFactor);
     td_.numChunks = static_cast<uint64_t>(numChunks);
     td_.hTail = static_cast<uint64_t>(hidden_ - usedHidden);
-    td_.vlPartialCount = static_cast<uint64_t>(partialCount);
     td_.vlPartialAlign = static_cast<uint64_t>(partialAlign);
     td_.chunkPartialAlign = static_cast<uint64_t>(chunkPartialAlign);
+    return ge::GRAPH_SUCCESS;
+}
+
+void MoeTutelCombineGatesTiling::SetShapeTilingData()
+{
+    td_.samples = static_cast<uint64_t>(samples_);
+    td_.hidden = static_cast<uint64_t>(hidden_);
+    td_.experts = static_cast<uint64_t>(experts_);
+    td_.capacity = static_cast<uint64_t>(capacity_);
+    td_.routes = static_cast<uint64_t>(routes_);
+}
+
+ge::graphStatus MoeTutelCombineGatesTiling::SolveZeroH(int64_t avail, int64_t &sBlock, int64_t &kBlock) const
+{
+    int64_t tileBytes = 0;
+    while ((!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail) && (sBlock > 1 || kBlock > 1)) {
+        if (sBlock > 1) {
+            sBlock = std::max<int64_t>(1, sBlock / 2);
+        } else {
+            kBlock = std::max<int64_t>(1, kBlock / 2);
+        }
+    }
+    OP_CHECK_IF(!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail,
+                OP_LOGE(context_->GetNodeName(), "UB is too small for H=0 output tile"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -459,11 +493,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
                 OP_LOGE(context_->GetNodeName(), "UB size %lu is too small", ubSize_), return ge::GRAPH_FAILED);
     const int64_t avail = static_cast<int64_t>(ubSize_) - UB_RESERVE_BYTES;
 
-    td_.samples = static_cast<uint64_t>(samples_);
-    td_.hidden = static_cast<uint64_t>(hidden_);
-    td_.experts = static_cast<uint64_t>(experts_);
-    td_.capacity = static_cast<uint64_t>(capacity_);
-    td_.routes = static_cast<uint64_t>(routes_);
+    SetShapeTilingData();
 
     if (samples_ == 0) {
         td_.sBlock = 1;
@@ -476,16 +506,9 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
     int64_t sBlock = std::min(S_BLOCK_INIT, samples_);
     int64_t kBlock = std::min(K_BLOCK_INIT, kBlockMax);
     if (hidden_ == 0) {
-        int64_t tileBytes = 0;
-        while ((!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail) && (sBlock > 1 || kBlock > 1)) {
-            if (sBlock > 1) {
-                sBlock = std::max<int64_t>(1, sBlock / 2);
-            } else {
-                kBlock = std::max<int64_t>(1, kBlock / 2);
-            }
+        if (SolveZeroH(avail, sBlock, kBlock) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
         }
-        OP_CHECK_IF(!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail,
-                    OP_LOGE(context_->GetNodeName(), "UB is too small for H=0 output tile"), return ge::GRAPH_FAILED);
     } else if (TryNotCutH(avail, sBlock, kBlock)) {
         td_.hFactor = static_cast<uint64_t>(hidden_);
         td_.numChunks = 1;
@@ -535,10 +558,9 @@ ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
 
     OP_LOGI(context_->GetNodeName(),
             "MoeTutelCombineGates tiling: S=%lu H=%lu E=%lu C=%lu K=%lu sCore=%lu sBlock=%lu "
-            "kBlock=%lu hFactor=%lu chunks=%lu vlPartial=%lu/%lu chunkPartialAlign=%lu key=%lu blockDim=%u",
+            "kBlock=%lu hFactor=%lu chunks=%lu vlPartialAlign=%lu chunkPartialAlign=%lu key=%lu blockDim=%u",
             td_.samples, td_.hidden, td_.experts, td_.capacity, td_.routes, td_.sCoreNum, td_.sBlock, td_.kBlock,
-            td_.hFactor, td_.numChunks, td_.vlPartialCount, td_.vlPartialAlign, td_.chunkPartialAlign, tilingKey_,
-            blockDim_);
+            td_.hFactor, td_.numChunks, td_.vlPartialAlign, td_.chunkPartialAlign, tilingKey_, blockDim_);
     return ge::GRAPH_SUCCESS;
 }
 

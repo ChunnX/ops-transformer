@@ -45,7 +45,6 @@ struct MoeTutelCombineGatesTilingData {
     uint64_t hFactorAlign;      // hFactor aligned to the fp32 vector length.
     uint64_t numChunks;         // ceil(hidden / hFactor), or zero when H is zero.
     uint64_t hTail;             // Logical H length of the last chunk.
-    uint64_t vlPartialCount;    // ceil(hFactor / VL_FP32).
     uint64_t vlPartialAlign;    // Power-of-two VL partial tree length, at least VL_FP32.
     uint64_t chunkPartialAlign; // Power-of-two chunk tree length, CUT_H only.
 };

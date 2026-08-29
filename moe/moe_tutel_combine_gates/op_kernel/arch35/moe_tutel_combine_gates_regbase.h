@@ -102,6 +102,12 @@ __aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::Init(GM_ADDR x, GM
     kRange_ = SolveCoreRange(blockIdx / sCoreNum, static_cast<int64_t>(tilingData->kPerCoreBase),
                              static_cast<int64_t>(tilingData->kCoreRemain));
 
+    // Empty S launches one no-op core. Skip GM binding and every UB allocation;
+    // the corresponding tiling fields intentionally remain zero.
+    if (samples_ == 0) {
+        return;
+    }
+
     xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(x), samples_ * hidden_);
     yGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(yGrad), experts_ * capacity_ * hidden_);
     indicesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(indices), routes_ * samples_);
