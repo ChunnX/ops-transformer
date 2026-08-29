@@ -698,14 +698,22 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
 
-            // Per-key-group gather + MTE3 store (baseline-proven). The previous SIMT scatter
-            // wrote GM via V-pipe stores whose visibility to other cores' MTE2 reads across
-            // SyncAll is not guaranteed: at byte-round boundaries a few elements were read
-            // stale, splitting runs (numUnique off by a few) and duplicating/losing
-            // contributions (op rows == golden/2). MTE3 stores are fully ordered against
-            // SyncAll and the next round's MTE2 reads.
-            AscendC::LocalTensor<int32_t> gatheredBuf =
+            // Per-key-group MTE3 scatter (baseline-proven ordering; the SIMT variant's V-pipe
+            // GM stores were not reliably visible to other cores' MTE2 reads across SyncAll).
+            // Perf: gather the whole tile into two compact UB buffers first, then issue all
+            // group copies back-to-back with a single S->MTE3 sync up front and a single
+            // MTE3->S wait at the end, so the DMA queue pipelines the copies (the previous
+            // per-group WaitPipe pair serialized every copy and doubled the sort stage).
+            AscendC::LocalTensor<int32_t> gatheredVals =
                 sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 3U * tileAlignBytes_);
+            AscendC::LocalTensor<int32_t> gatheredIdxs =
+                sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 4U * tileAlignBytes_);
+            for (uint32_t i = 0; i < tileLen; i++) {
+                uint32_t srcIdx = sortIndices.GetValue(i);
+                gatheredVals.SetValue(i, valueLocal.GetValue(srcIdx));
+                gatheredIdxs.SetValue(i, indexLocal.GetValue(srcIdx));
+            }
+            WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
             uint32_t keyStart = 0U;
             uint8_t curKey = sortedKey.GetValue(0);
             for (uint32_t i = 1U; i <= tileLen; i++) {
@@ -713,24 +721,15 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                     uint32_t keyCount = i - keyStart;
                     int32_t gmPos = basePosUb.GetValue(curKey);
                     AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-                    for (uint32_t k = 0U; k < keyCount; k++) {
-                        gatheredBuf.SetValue(k, valueLocal.GetValue(sortIndices.GetValue(keyStart + k)));
-                    }
-                    WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
-                    AscendC::DataCopyPad((*dstValue)[gmPos], gatheredBuf, dcp);
-                    WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
-                    for (uint32_t k = 0U; k < keyCount; k++) {
-                        gatheredBuf.SetValue(k, indexLocal.GetValue(sortIndices.GetValue(keyStart + k)));
-                    }
-                    WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
-                    AscendC::DataCopyPad((*dstIndex)[gmPos], gatheredBuf, dcp);
-                    WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+                    AscendC::DataCopyPad((*dstValue)[gmPos], gatheredVals[keyStart], dcp);
+                    AscendC::DataCopyPad((*dstIndex)[gmPos], gatheredIdxs[keyStart], dcp);
                     if (i < tileLen) {
                         curKey = sortedKey.GetValue(i);
                         keyStart = i;
                     }
                 }
             }
+            WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
         }
         AscendC::SyncAll<true>();
     }
