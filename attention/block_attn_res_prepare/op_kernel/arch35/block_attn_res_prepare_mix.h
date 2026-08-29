@@ -17,73 +17,99 @@
 #define BLOCK_ATTN_RES_PREPARE_MIX_H
 
 #include "block_attn_res_prepare_tiling_data.h"
-#include "blaze/attention/kernel/kernel_block_attn_res_prepare.h"
 #include "kernel_operator.h"
+#include "blaze/gemm/utils/common_utils.h"
+
+using namespace AscendC;
+using Blaze::Gemm::CeilAlign;
+
+#include "blaze/attention/kernel/kernel_universal.h"
 
 namespace BlockAttnResPrepare {
 
 namespace BlockAttnResPrepareMixDetail {
 using TensorApiKernel = Blaze::Attention::Kernel::KernelBlockAttnResPrepare;
 using Params = typename TensorApiKernel::Params;
+constexpr uint32_t MM1_L0_K_MAX = 64U;
+constexpr uint32_t SINGLE_STAGE = 1U;
 
-__aicore__ inline void AssembleShapeParams(Params &params,
-                                           const optiling::BlockAttnResPrepareMixTilingData &tiling)
-{
-    auto &apiTiling = params.tilingParams;
-    apiTiling.totalT = tiling.totalT;
-    apiTiling.totalN = tiling.totalN;
-    apiTiling.totalS = tiling.totalS;
-    apiTiling.totalWorkUnits = tiling.totalWorkUnits;
-    apiTiling.totalD = tiling.totalD;
-}
-
-__aicore__ inline void AssembleTileParams(Params &params,
-                                          const optiling::BlockAttnResPrepareMixTilingData &tiling)
-{
-    auto &apiTiling = params.tilingParams;
-    apiTiling.baseS = tiling.baseS;
-    apiTiling.baseT = tiling.baseT;
-    apiTiling.baseD = tiling.baseD;
-    apiTiling.baseDAlign = tiling.baseDAlign;
-    apiTiling.sTileNum = tiling.sTileNum;
-    apiTiling.dTileNum = tiling.dTileNum;
-    apiTiling.sAlign = tiling.sAlign;
-    apiTiling.nAlign = tiling.nAlign;
-    apiTiling.mm1NAlign = tiling.mm1NAlign;
-    apiTiling.mm1L1Stages =
-        tiling.qL1BufferNum < tiling.vL1BufferNum ? tiling.qL1BufferNum : tiling.vL1BufferNum;
-}
-
-__aicore__ inline void AssembleBufferParams(Params &params,
+__aicore__ inline void AssembleProblemShape(Params &params,
                                             const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
-    auto &apiTiling = params.tilingParams;
-    apiTiling.vUbBufferNum = tiling.vUbBufferNum;
-    apiTiling.eWorkspaceElems = tiling.eL1Elems;
-    apiTiling.vUbElems = tiling.vUbElems;
-    apiTiling.dotUbElems = tiling.dotUbElems;
-    apiTiling.reduceUbElems = tiling.reduceUbElems;
-    apiTiling.softmaxUbElems = tiling.softmaxUbElems;
-    apiTiling.workspacePerCoreElems = tiling.workspacePerCoreElems;
-    apiTiling.epsilon = tiling.eps;
+    params.problemShape = {static_cast<int64_t>(tiling.totalS), static_cast<int64_t>(tiling.totalN),
+                           static_cast<int64_t>(tiling.totalD), static_cast<int64_t>(tiling.totalT)};
 }
 
-__aicore__ inline void AssembleGmParams(Params &params, GM_ADDR blockRes, GM_ADDR validBlocks,
-                                        GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
-                                        GM_ADDR workspace)
+__aicore__ inline void AssembleMm1Params(Params &params, GM_ADDR blockRes, GM_ADDR pseudoQuery, GM_ADDR workspace,
+                                        const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
-    params.gmParams = {blockRes, pseudoQuery, validBlocks, logitMax, numerator, expSum, workspace};
+    auto &mm1 = params.mm1Params;
+    mm1.aGmAddr = pseudoQuery;
+    mm1.bGmAddr = blockRes;
+    mm1.cGmAddr = workspace;
+    mm1.workspaceGmAddr = workspace;
+    mm1.mL1 = tiling.sAlign;
+    mm1.nL1 = tiling.mm1NAlign;
+    mm1.kL1 = tiling.baseDAlign;
+    mm1.mL0 = tiling.sAlign;
+    mm1.nL0 = tiling.mm1NAlign;
+    mm1.kL0 = tiling.baseD < MM1_L0_K_MAX ? tiling.baseD : MM1_L0_K_MAX;
+    mm1.l1Stages = tiling.qL1BufferNum < tiling.vL1BufferNum ? tiling.qL1BufferNum : tiling.vL1BufferNum;
+    mm1.l0cStages = SINGLE_STAGE;
+}
+
+__aicore__ inline void AssembleMm2Params(Params &params, GM_ADDR blockRes, GM_ADDR numerator, GM_ADDR workspace,
+                                        const optiling::BlockAttnResPrepareMixTilingData &tiling)
+{
+    auto &mm2 = params.mm2Params;
+    mm2.aGmAddr = workspace;
+    mm2.bGmAddr = blockRes;
+    mm2.cGmAddr = numerator;
+    mm2.workspaceGmAddr = workspace;
+    mm2.mL1 = tiling.sAlign;
+    mm2.nL1 = tiling.baseDAlign;
+    mm2.kL1 = tiling.nAlign;
+    mm2.mL0 = tiling.sAlign;
+    mm2.nL0 = tiling.baseDAlign;
+    mm2.kL0 = tiling.nAlign;
+    mm2.l1Stages = SINGLE_STAGE;
+    mm2.l0cStages = SINGLE_STAGE;
+}
+
+__aicore__ inline void AssembleEpilogueParams(Params &params, GM_ADDR validBlocks, GM_ADDR numerator,
+                                              GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR workspace,
+                                              const optiling::BlockAttnResPrepareMixTilingData &tiling)
+{
+    auto &epilogue = params.epilogueParams;
+    epilogue.validBlocksGmAddr = validBlocks;
+    epilogue.softmaxMaxGmAddr = logitMax;
+    epilogue.weightedOutputGmAddr = numerator;
+    epilogue.softmaxSumGmAddr = expSum;
+    epilogue.workspaceGmAddr = workspace;
+    epilogue.totalD = tiling.totalD;
+    epilogue.baseD = tiling.baseD;
+    epilogue.baseDAlign = tiling.baseDAlign;
+    epilogue.dTileNum = tiling.dTileNum;
+    epilogue.sAlign = tiling.sAlign;
+    epilogue.vUbBufferNum = tiling.vUbBufferNum;
+    epilogue.eWorkspaceElems = tiling.eL1Elems;
+    epilogue.vUbElems = tiling.vUbElems;
+    epilogue.dotUbElems = tiling.dotUbElems;
+    epilogue.reduceUbElems = tiling.reduceUbElems;
+    epilogue.softmaxUbElems = tiling.softmaxUbElems;
+    epilogue.workspacePerCoreElems = tiling.workspacePerCoreElems;
+    epilogue.epsilon = tiling.eps;
 }
 
 __aicore__ inline void AssembleSchedulerParams(Params &params, const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
-    auto &apiTiling = params.tilingParams;
-    apiTiling.usedCoreNum = tiling.usedCoreNum;
-    if (apiTiling.usedCoreNum == 0U) {
-        return;
-    }
-    apiTiling.bigCoreNum = tiling.totalWorkUnits % apiTiling.usedCoreNum;
-    apiTiling.blockFactor = tiling.totalWorkUnits / apiTiling.usedCoreNum;
+    auto &scheduler = params.schedulerParams;
+    scheduler.totalWorkUnits = tiling.totalWorkUnits;
+    scheduler.usedCoreNum = tiling.usedCoreNum;
+    scheduler.baseT = tiling.baseT;
+    scheduler.baseS = tiling.baseS;
+    scheduler.sTileNum = tiling.sTileNum;
+    scheduler.mm1NAlign = tiling.mm1NAlign;
 }
 } // namespace BlockAttnResPrepareMixDetail
 
@@ -93,11 +119,11 @@ __aicore__ inline void BlockAttnResPrepareTensorApiBlazeKernel(GM_ADDR blockRes,
                                                                const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     BlockAttnResPrepareMixDetail::Params params{};
-    BlockAttnResPrepareMixDetail::AssembleGmParams(params, blockRes, validBlocks, pseudoQuery, numerator, logitMax,
-                                                   expSum, workspace);
-    BlockAttnResPrepareMixDetail::AssembleShapeParams(params, tiling);
-    BlockAttnResPrepareMixDetail::AssembleTileParams(params, tiling);
-    BlockAttnResPrepareMixDetail::AssembleBufferParams(params, tiling);
+    BlockAttnResPrepareMixDetail::AssembleProblemShape(params, tiling);
+    BlockAttnResPrepareMixDetail::AssembleMm1Params(params, blockRes, pseudoQuery, workspace, tiling);
+    BlockAttnResPrepareMixDetail::AssembleMm2Params(params, blockRes, numerator, workspace, tiling);
+    BlockAttnResPrepareMixDetail::AssembleEpilogueParams(params, validBlocks, numerator, logitMax, expSum, workspace,
+                                                        tiling);
     BlockAttnResPrepareMixDetail::AssembleSchedulerParams(params, tiling);
 
     BlockAttnResPrepareMixDetail::TensorApiKernel kernel;

@@ -27,6 +27,10 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     set(block_attn_res_prepare_cases_obj
         "block_attn_res_prepare_${block_attn_res_prepare_soc_version}_cases_obj")
     if(TARGET ${block_attn_res_prepare_cases_obj})
+        # The temporary tiling SO is loaded directly while generating the kernel-UT tiling header.
+        # Include the common opbase utility objects required by the tiling shape diagnostics.
+        target_sources(${block_attn_res_prepare_tiling_tmp} PRIVATE
+            $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>)
         target_link_libraries(${block_attn_res_prepare_tiling_tmp} PRIVATE
             -Wl,--whole-archive rt2_registry_static -Wl,--no-whole-archive register)
 
@@ -38,7 +42,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         endif()
 
         target_include_directories(${block_attn_res_prepare_cases_obj} PRIVATE
-            "${ops_tensor_kernel_ut_dir}" ${TENSOR_API} ${TENSOR_API}/include)
+            "${ops_tensor_kernel_ut_dir}" "${OPTENSOR_SOURCE_PATH}/include" ${TENSOR_API} ${TENSOR_API}/include)
         target_sources(${OP_KERNEL_MODULE_NAME}_${block_attn_res_prepare_soc_version}_cases_obj
                        PRIVATE "${ops_tensor_kernel_ut_dir}/k3_pvwrap.cpp")
     endif()

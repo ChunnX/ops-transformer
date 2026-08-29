@@ -228,6 +228,7 @@ private:
             tiling.totalD != param.d || tiling.totalWorkUnits != expectedWorkUnits) {
             throw std::runtime_error("tilingData dimensions do not match the CSV case");
         }
+        using BlockAttnResPrepareTilingKey::g_tilingDeclareParams;
         if (param.tilingKey != GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR)) {
             throw std::runtime_error("kernel UT currently supports the Vector tiling key only");
         }
