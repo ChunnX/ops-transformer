@@ -58,7 +58,9 @@ v18 在全 AI Block 稀疏任务记录基础上进一步改为：
 | AIV0/AIV1 | 量化 Combine 256-token group task | 当前 expert-local group 的 GMM2 N tile 全部 ready 后 | 本核在该 group 的远端 send 经 MTE3_S 桥接到 Scalar 后 |
 
 Combine 后的固定尾部区间按实际调用顺序显示，可直接区分本卡负载不均衡、慢 rank、
-共享专家路径以及本地 Unpermute。Unpermute 结束复用生产路径最终 `MTE3_V` drain，
+共享专家路径以及本地 Unpermute。量化路径的 final Combine drain 显示实际 row-ring 回收；
+非量化 pairwise 路径已在每个 tile 内回收 MTE3，因此 AIV0/AIV1 发布一个空 drain 区间，
+维持固定记录完整性而不新增生产 fence。Unpermute 结束复用生产路径最终 `MTE3_V` drain，
 不会把未完成的 y 写回藏进 `work_end` 前白色区间。
 
 GMM1/GMM2 为了量化真实工作与 tile 间空洞，在每个本核活跃 tile 末尾显式或复用

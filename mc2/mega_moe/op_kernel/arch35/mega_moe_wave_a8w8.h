@@ -1137,6 +1137,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         if constexpr (g_coreType == AIV) {
             if (!hasNextWave && CriticalPathTracePtr() != nullptr) {
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    // Pairwise AIV1 drains every tile send before returning from ProcessGmm2Wave, while AIV0 has no
+                    // Combine work. Publish an empty fixed span for both roles so the common trace record remains
+                    // complete without adding another production fence.
+                    criticalPathTrace_.BeginFinalCombineDrain();
+                    criticalPathTrace_.EndFinalCombineDrain();
+                }
                 // TRACE_POINT: moe_epilogue_begin_S
                 criticalPathTrace_.BeginMoeEpilogue();
             }

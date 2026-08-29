@@ -4,7 +4,7 @@
 - Phase: `plan`
 - Trace: `mega-moe-pr10302-token-group-wave-active-task-critical-path`
 - Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt_wave_interleave_trace`
-- Revision: `99b65637adac9456c313c505a7aa4a2b34e61058`
+- Revision: `9e291b1a6cc0f1ad14bac3e761bcac0164b69a07`
 - Branch: `codex/pr10302-wave-interleave-sendindex-critical-path-trace`
 - Dirty: `True`
 - Spec SHA-256: `779497cfb4e60978b8731351d09b6cb5f563c74291757d382a7ddc3ec1fc9c35`
@@ -13,22 +13,22 @@
 
 | Point | Roles | Resolved location | Target line | Placement | Boundary | Bridge | Why |
 |---|---|---|---:|---|---|---|---|
-| process_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1387 | 1387 | before | causal | program order | 提供同一 AI Block 内三角色共同参考起点。 |
-| input_buffer_init_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1397 | 1397 | before | causal | program order | 分离输入准备 UB 布局与后续 token 量化。 |
-| input_buffer_init_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1397 | 1397 | after | issue | program order only | 量化前单独显示 UB 地址构造和零张量发出成本。 |
-| input_quantize_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1417 | 1417 | before | causal | program order | 量化本卡输入 token 的固定成本独立可见。 |
-| input_quantize_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1417 | 1417 | after | actual | production MTE3_MTE2 ring drain | 区分 token 量化与后续 compact route-index 通信。 |
-| route_index_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1429 | 1429 | before | causal | program order | 单独量化 compact route index 构造、count 整理与跨 rank 发送。 |
-| route_index_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1429 | 1429 | after | actual | production ring drain | 把 compact route index/count 远端发送完成与 workspace 清零分开。 |
-| workspace_reset_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1441 | 1441 | before | causal | program order | 量化 flag/workspace 清零成本和同步等待。 |
-| workspace_reset_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1441 | 1441 | after | actual | tracing-only MTE3_S | 不把未完成的 MTE3 清零尾部错误归入后续本地 barrier。 |
-| local_prepare_sync_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1466 | 1466 | before | causal | program order | 直接量化 AIC 等待 AIV 输入准备和 flag 可见的本地 barrier。 |
-| local_prepare_sync_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1466 | 1466 | after | actual | production rendezvous | 区分单卡角色同步与随后跨 rank 同步。 |
-| cross_rank_sync_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1179 | 1179 | before | causal | program order | 直接量化 Dispatch 前由最慢 rank 决定的全卡等待。 |
-| cross_rank_sync_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1179 | 1179 | after | actual | production remote barrier | 把全 rank 等待与本地专家 buffer 初始化分开。 |
+| process_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1394 | 1394 | before | causal | program order | 提供同一 AI Block 内三角色共同参考起点。 |
+| input_buffer_init_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1404 | 1404 | before | causal | program order | 分离输入准备 UB 布局与后续 token 量化。 |
+| input_buffer_init_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1404 | 1404 | after | issue | program order only | 量化前单独显示 UB 地址构造和零张量发出成本。 |
+| input_quantize_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1424 | 1424 | before | causal | program order | 量化本卡输入 token 的固定成本独立可见。 |
+| input_quantize_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1424 | 1424 | after | actual | production MTE3_MTE2 ring drain | 区分 token 量化与后续 compact route-index 通信。 |
+| route_index_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1436 | 1436 | before | causal | program order | 单独量化 compact route index 构造、count 整理与跨 rank 发送。 |
+| route_index_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1436 | 1436 | after | actual | production ring drain | 把 compact route index/count 远端发送完成与 workspace 清零分开。 |
+| workspace_reset_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1448 | 1448 | before | causal | program order | 量化 flag/workspace 清零成本和同步等待。 |
+| workspace_reset_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1448 | 1448 | after | actual | tracing-only MTE3_S | 不把未完成的 MTE3 清零尾部错误归入后续本地 barrier。 |
+| local_prepare_sync_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1473 | 1473 | before | causal | program order | 直接量化 AIC 等待 AIV 输入准备和 flag 可见的本地 barrier。 |
+| local_prepare_sync_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1473 | 1473 | after | actual | production rendezvous | 区分单卡角色同步与随后跨 rank 同步。 |
+| cross_rank_sync_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1186 | 1186 | before | causal | program order | 直接量化 Dispatch 前由最慢 rank 决定的全卡等待。 |
+| cross_rank_sync_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1186 | 1186 | after | actual | production remote barrier | 把全 rank 等待与本地专家 buffer 初始化分开。 |
 | expert_buffer_init_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1031 | 1031 | before | causal | program order | 量化进入首轮 Dispatch/GMM 前的专家阶段 buffer 和状态初始化。 |
 | expert_buffer_init_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1038 | 1038 | after | actual | program order | 分离本地视图构造与后续 cursor/problem 状态建立及首个 Dispatch。 |
-| work_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1519 | 1519 | after | actual | production completion plus program order | 把有效工作与 tracing 终结同步/落盘分离。 |
+| work_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1526 | 1526 | after | actual | production completion plus program order | 把有效工作与 tracing 终结同步/落盘分离。 |
 | dispatch_task_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h:624 | 624 | before | causal | program order | 只绘制实际拥有 token 行的 Dispatch helper，排除 count/cursor 和无工作专家。 |
 | dispatch_task_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h:624 | 624 | after | actual | production helper's existing ring drain and MTE3_S | 只覆盖本核实际负责的专家行 Dispatch，不包住下一专家或 cursor 推进。 |
 | dispatch_scalar_gap_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h:624 | 624 | after | causal | program order after the existing Dispatch completion contract | 直接量化相邻有效 Dispatch 之间由专家 count 查询、rolling owner 规划、Wave cursor 推进以及相邻预取调用衔接产生的 Scalar 空隙。 |
@@ -53,266 +53,266 @@
 | combine_group_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:562 | 562 | before | actual | tracing-only MTE3_S | 只覆盖当前 Combine 工作单元，并在远端发送完成后结束。 |
 | final_combine_drain_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1009 | 1009 | before | causal | program order | 确认最后一个 Combine group 后是否仍有 row-ring MTE3 尾部需要回收。 |
 | final_combine_drain_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1009 | 1009 | after | actual | production MTE3_MTE2 event waits | 把 Combine 发送尾部与后续 MoE 收尾逻辑分开。 |
-| moe_epilogue_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1145 | 1145 | before | causal | program order | 显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。 |
-| moe_epilogue_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1152 | 1152 | after | actual | production helper completion | 定位 Combine 后非 barrier 的 V 核尾部成本。 |
-| moe_tail_sync_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1198 | 1198 | before | causal | program order | 直接量化快 V 核等待慢 V 核完成最终 Combine/尾部工作的时间。 |
-| moe_tail_sync_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1198 | 1198 | after | actual | production PIPE_ALL plus SyncAll | 把本卡负载不均衡等待与输出跨卡同步分开。 |
-| shared_expert_gmm2_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1217 | 1217 | before | causal | program order | 显示 V 侧在共享专家 GMM2 调用路径上的调度区间。 |
-| shared_expert_gmm2_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1217 | 1217 | after | issue | program order only | 区分共享专家调用开销与后续输出同步；共享结果等待可能继续落在 Unpermute 内。 |
-| output_cross_rank_sync_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1485 | 1485 | before | causal | program order | 直接量化本 rank 等待其他 rank 完成 Combine 发送的时间。 |
-| output_cross_rank_sync_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1485 | 1485 | after | actual | production rank handshake | 把慢 rank 的 Combine 尾部与本地 Unpermute 分开。 |
-| unpermute_init_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1499 | 1499 | before | causal | program order | 把 UB view/config 构造与 Unpermute 数据流水分开。 |
-| unpermute_init_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1499 | 1499 | after | actual | program order | 识别极端配置下 buffer 规划本身是否异常。 |
-| unpermute_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1508 | 1508 | before | causal | program order | 量化 Combine 接收数据、top-k/shared 累加与最终 y 写回的整体成本。 |
-| unpermute_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1508 | 1508 | after | actual | production MTE3_V event wait | 确认尾部慢点是否来自本地反量化/累加/写 y，而不是同步。 |
+| moe_epilogue_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1152 | 1152 | before | causal | program order | 显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。 |
+| moe_epilogue_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1159 | 1159 | after | actual | production helper completion | 定位 Combine 后非 barrier 的 V 核尾部成本。 |
+| moe_tail_sync_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1205 | 1205 | before | causal | program order | 直接量化快 V 核等待慢 V 核完成最终 Combine/尾部工作的时间。 |
+| moe_tail_sync_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1205 | 1205 | after | actual | production PIPE_ALL plus SyncAll | 把本卡负载不均衡等待与输出跨卡同步分开。 |
+| shared_expert_gmm2_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1224 | 1224 | before | causal | program order | 显示 V 侧在共享专家 GMM2 调用路径上的调度区间。 |
+| shared_expert_gmm2_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1224 | 1224 | after | issue | program order only | 区分共享专家调用开销与后续输出同步；共享结果等待可能继续落在 Unpermute 内。 |
+| output_cross_rank_sync_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1492 | 1492 | before | causal | program order | 直接量化本 rank 等待其他 rank 完成 Combine 发送的时间。 |
+| output_cross_rank_sync_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1492 | 1492 | after | actual | production rank handshake | 把慢 rank 的 Combine 尾部与本地 Unpermute 分开。 |
+| unpermute_init_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1506 | 1506 | before | causal | program order | 把 UB view/config 构造与 Unpermute 数据流水分开。 |
+| unpermute_init_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1506 | 1506 | after | actual | program order | 识别极端配置下 buffer 规划本身是否异常。 |
+| unpermute_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1515 | 1515 | before | causal | program order | 量化 Combine 接收数据、top-k/shared 累加与最终 y 写回的整体成本。 |
+| unpermute_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1515 | 1515 | after | actual | production MTE3_V event wait | 确认尾部慢点是否来自本地反量化/累加/写 y，而不是同步。 |
 
 ## Point evidence
 
 ### `process_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1387` in `MegaMoeA8W8Wave::Process`; `before` target line `1387`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1394` in `MegaMoeA8W8Wave::Process`; `before` target line `1394`.
 - Cardinality: 每个物理 AI Block 的 AIC/AIV0/AIV1 各一次。
 - Boundary claim: `causal` — Process 的第一条诊断指令，尚未执行正常算子语句。
 - Why: 提供同一 AI Block 内三角色共同参考起点。
 - Dependency: kernel role entered Process
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker precedes the first production statement
 - Perturbation: 每角色一次时钟读取和寄存器赋值。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1385  #endif
-  1386      // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。
-  1387      int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
-  1388      SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
-  1389  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1392  #endif
+  1393      // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。
+  1394      int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
+  1395      SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+  1396  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `input_buffer_init_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1397` in `MegaMoeA8W8Wave::Process`; `before` target line `1397`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1404` in `MegaMoeA8W8Wave::Process`; `before` target line `1404`.
 - Cardinality: 每个 AIV0/AIV1 各一次。
 - Boundary claim: `causal` — 即将构造 quant/route-index/reset 的 UB 视图并发出 resetTensor Duplicate。
 - Why: 分离输入准备 UB 布局与后续 token 量化。
 - Dependency: overflow mode configured
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker is immediately before SendAndQuantBuffInit
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1395      }
-  1396  #endif
-  1397      SendAndQuantBuffInit();
-  1398  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1399      if constexpr (g_coreType == AIV) {
+  1402      }
+  1403  #endif
+  1404      SendAndQuantBuffInit();
+  1405  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1406      if constexpr (g_coreType == AIV) {
 ```
 
 ### `input_buffer_init_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1397` in `MegaMoeA8W8Wave::Process`; `after` target line `1397`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1404` in `MegaMoeA8W8Wave::Process`; `after` target line `1404`.
 - Cardinality: 与 input_buffer_init_begin_S 一一对应。
 - Boundary claim: `issue` — UB 视图已构造且 Duplicate 已发出；Vector 尾部可继续运行。
 - Why: 量化前单独显示 UB 地址构造和零张量发出成本。
 - Dependency: SendAndQuantBuffInit returned
 - Pipeline proof: `Scalar plus Vector issue` → `Scalar` using `program order only` — no tracing-only Vector drain is inserted
 - Perturbation: 每个 AIV 一次时钟读取，不新增 Vector drain。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1395      }
-  1396  #endif
-  1397      SendAndQuantBuffInit();
-  1398  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1399      if constexpr (g_coreType == AIV) {
+  1402      }
+  1403  #endif
+  1404      SendAndQuantBuffInit();
+  1405  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1406      if constexpr (g_coreType == AIV) {
 ```
 
 ### `input_quantize_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1417` in `MegaMoeA8W8Wave::Process`; `before` target line `1417`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1424` in `MegaMoeA8W8Wave::Process`; `before` target line `1424`.
 - Cardinality: 每个 AIV0/AIV1 各一次。
 - Boundary claim: `causal` — 即将进入 QuantizeLocalTokens。
 - Why: 量化本卡输入 token 的固定成本独立可见。
 - Dependency: input UB views are configured
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker precedes QuantizeLocalTokens
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1415      }
-  1416  #endif
-  1417      QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-  1418          aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
-  1419  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1422      }
+  1423  #endif
+  1424      QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
+  1425          aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
+  1426  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `input_quantize_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1417` in `MegaMoeA8W8Wave::Process`; `after` target line `1417`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1424` in `MegaMoeA8W8Wave::Process`; `after` target line `1424`.
 - Cardinality: 与 input_quantize_begin_S 一一对应。
 - Boundary claim: `actual` — 本核负责 token 的量化结果已写回 GM。
 - Why: 区分 token 量化与后续 compact route-index 通信。
 - Dependency: QuantizeLocalTokens returned
 - Pipeline proof: `MTE2/Vector/MTE3` → `Scalar` using `production MTE3_MTE2 ring drain` — QuantizeLocalTokens waits both MTE3_MTE2 events before return
 - Perturbation: 每个 AIV 一次时钟读取；复用 helper 已有双 buffer MTE3 回收。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1415      }
-  1416  #endif
-  1417      QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-  1418          aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
-  1419  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1422      }
+  1423  #endif
+  1424      QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
+  1425          aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
+  1426  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `route_index_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1429` in `MegaMoeA8W8Wave::Process`; `before` target line `1429`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1436` in `MegaMoeA8W8Wave::Process`; `before` target line `1436`.
 - Cardinality: 每个 AIV0/AIV1 各一次。
 - Boundary claim: `causal` — 即将进入 GatherAndSendExpertCompactRoutes。
 - Why: 单独量化 compact route index 构造、count 整理与跨 rank 发送。
 - Dependency: input quantization helper returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes the compact route-index helper
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1427      }
-  1428  #endif
-  1429      GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-  1430                                       sendMaskScratch_);
-  1431  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1434      }
+  1435  #endif
+  1436      GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
+  1437                                       sendMaskScratch_);
+  1438  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `route_index_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1429` in `MegaMoeA8W8Wave::Process`; `after` target line `1429`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1436` in `MegaMoeA8W8Wave::Process`; `after` target line `1436`.
 - Cardinality: 与 route_index_begin_S 一一对应。
 - Boundary claim: `actual` — 本核所有 compact route/count ring 槽的 MTE3 写已完成。
 - Why: 把 compact route index/count 远端发送完成与 workspace 清零分开。
 - Dependency: GatherAndSendExpertCompactRoutes returned
 - Pipeline proof: `Vector/MTE3` → `Scalar` using `production ring drain` — helper returns after every active compact-route MTE3 slot is drained
 - Perturbation: 每个 AIV 一次时钟读取；复用 helper 生产事件。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1427      }
-  1428  #endif
-  1429      GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-  1430                                       sendMaskScratch_);
-  1431  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1434      }
+  1435  #endif
+  1436      GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
+  1437                                       sendMaskScratch_);
+  1438  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `workspace_reset_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1441` in `MegaMoeA8W8Wave::Process`; `before` target line `1441`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1448` in `MegaMoeA8W8Wave::Process`; `before` target line `1448`.
 - Cardinality: 每个 AIV0/AIV1 各一次。
 - Boundary claim: `causal` — 即将发出本核负责的 workspace 清零。
 - Why: 量化 flag/workspace 清零成本和同步等待。
 - Dependency: compact route-index helper returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes ResetSyncStatus
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1439      }
-  1440  #endif
-  1441      ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-  1442  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1443      if constexpr (g_coreType == AIV) {
+  1446      }
+  1447  #endif
+  1448      ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+  1449  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1450      if constexpr (g_coreType == AIV) {
 ```
 
 ### `workspace_reset_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1441` in `MegaMoeA8W8Wave::Process`; `after` target line `1441`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1448` in `MegaMoeA8W8Wave::Process`; `after` target line `1448`.
 - Cardinality: 与 workspace_reset_begin_S 一一对应。
 - Boundary claim: `actual` — 本核此前发出的 workspace 清零 MTE3 已完成。
 - Why: 不把未完成的 MTE3 清零尾部错误归入后续本地 barrier。
 - Dependency: ResetDispatchWorkspace returned
 - Pipeline proof: `MTE3` → `Scalar` using `tracing-only MTE3_S` — MTE3_S SetFlag/WaitFlag completes immediately before sampling
 - Perturbation: 诊断态每个 AIV 增加一次 MTE3_S；会把原本由随后 SyncAll 吸收的等待前移。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1439      }
-  1440  #endif
-  1441      ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-  1442  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1443      if constexpr (g_coreType == AIV) {
+  1446      }
+  1447  #endif
+  1448      ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+  1449  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1450      if constexpr (g_coreType == AIV) {
 ```
 
 ### `local_prepare_sync_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1466` in `MegaMoeA8W8Wave::Process`; `before` target line `1466`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1473` in `MegaMoeA8W8Wave::Process`; `before` target line `1473`.
 - Cardinality: 每个物理 AI Block 的三角色各一次。
 - Boundary claim: `causal` — 即将进入输入准备后的 SyncAll。
 - Why: 直接量化 AIC 等待 AIV 输入准备和 flag 可见的本地 barrier。
 - Dependency: role-local input preparation issued
 - Pipeline proof: `mixed local pipelines` → `Scalar` using `program order` — marker is immediately before the mixed AIC/AIV rendezvous
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1464      }
-  1465  #endif
-  1466      SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
-  1467  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1468      if (CriticalPathTracePtr() != nullptr) {
+  1471      }
+  1472  #endif
+  1473      SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
+  1474  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1475      if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `local_prepare_sync_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1466` in `MegaMoeA8W8Wave::Process`; `after` target line `1466`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1473` in `MegaMoeA8W8Wave::Process`; `after` target line `1473`.
 - Cardinality: 与 local_prepare_sync_begin_S 一一对应。
 - Boundary claim: `actual` — 本 AI Block 所有角色已越过输入准备 rendezvous。
 - Why: 区分单卡角色同步与随后跨 rank 同步。
 - Dependency: SyncAll returned
 - Pipeline proof: `mixed local pipelines` → `Scalar` using `production rendezvous` — sample occurs after SyncAll
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1464      }
-  1465  #endif
-  1466      SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
-  1467  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1468      if (CriticalPathTracePtr() != nullptr) {
+  1471      }
+  1472  #endif
+  1473      SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
+  1474  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1475      if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `cross_rank_sync_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1179` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `before` target line `1179`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1186` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `before` target line `1186`.
 - Cardinality: 每个物理 AI Block 的三角色各一次。
 - Boundary claim: `causal` — 即将进入 CrossRankSyncInWorldSize。
 - Why: 直接量化 Dispatch 前由最慢 rank 决定的全卡等待。
 - Dependency: local input preparation rendezvous completed
 - Pipeline proof: `Scalar/remote GM` → `Scalar` using `program order` — marker immediately precedes the first cross-rank barrier
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1177      }
-  1178  #endif
-  1179      CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-  1180  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1181      if (CriticalPathTracePtr() != nullptr) {
+  1184      }
+  1185  #endif
+  1186      CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+  1187  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1188      if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `cross_rank_sync_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1179` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `after` target line `1179`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1186` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `after` target line `1186`.
 - Cardinality: 与 cross_rank_sync_begin_S 一一对应。
 - Boundary claim: `actual` — 本角色已观察到所有 rank 输入准备完成。
 - Why: 把全 rank 等待与本地专家 buffer 初始化分开。
 - Dependency: CrossRankSyncInWorldSize returned
 - Pipeline proof: `Scalar/remote GM` → `Scalar` using `production remote barrier` — sample occurs after the cross-rank wait
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1177      }
-  1178  #endif
-  1179      CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-  1180  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1181      if (CriticalPathTracePtr() != nullptr) {
+  1184      }
+  1185  #endif
+  1186      CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+  1187  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1188      if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `expert_buffer_init_begin_S`
@@ -324,7 +324,7 @@
 - Dependency: cross-rank input barrier completed
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker precedes the three buffer initialization helpers
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
   1029      }
@@ -343,7 +343,7 @@
 - Dependency: all expert buffer helpers returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — helpers only bind buffer views and scalar fields
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
   1036          combineBufferConfig = InitCombineBuffers();
@@ -355,21 +355,21 @@
 
 ### `work_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1519` in `MegaMoeA8W8Wave::Process`; `after` target line `1519`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1526` in `MegaMoeA8W8Wave::Process`; `after` target line `1526`.
 - Cardinality: 每个物理 AI Block 的 AIC/AIV0/AIV1 各一次。
 - Boundary claim: `actual` — 正常 routed/shared 流水、跨 rank 尾部和 Unpermute 已结束，尚未进入 tracing rendezvous。
 - Why: 把有效工作与 tracing 终结同步/落盘分离。
 - Dependency: all production work for this role returned
 - Pipeline proof: `mixed production pipelines` → `Scalar` using `production completion plus program order` — sample is after ProcessGmmPipeline, final AIV cross-rank wait/Unpermute, and control restoration
 - Perturbation: 每角色一次时钟读取和寄存器赋值。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1517      // 恢复入口时保存的溢出模式。
-  1518      SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-  1519      exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
-  1520  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1521      if (CriticalPathTracePtr() != nullptr) {
+  1524      // 恢复入口时保存的溢出模式。
+  1525      SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+  1526      exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
+  1527  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1528      if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `dispatch_task_begin_S`
@@ -799,7 +799,7 @@
 - Dependency: final Wave Combine helpers returned
 - Pipeline proof: `MTE3` → `Scalar` using `program order` — marker is immediately before the production row-ring drain
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
   1007      }
@@ -818,7 +818,7 @@
 - Dependency: DrainCombineRowBuffers returned
 - Pipeline proof: `MTE3` → `Scalar` using `production MTE3_MTE2 event waits` — the helper consumes every active row-ring completion event before return
 - Perturbation: 每个 AIV 一次时钟读取，复用生产 drain。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
   1007      }
@@ -830,247 +830,240 @@
 
 ### `moe_epilogue_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1145` in `MegaMoeA8W8Wave::ProcessMoeExpertStages`; `before` target line `1145`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1152` in `MegaMoeA8W8Wave::ProcessMoeExpertStages`; `before` target line `1152`.
 - Cardinality: 每个 AIV 在最终 Combine 返回后一次。
 - Boundary claim: `causal` — 最终 Combine/drain 已返回，即将执行 MoE 专家阶段尾部逻辑。
 - Why: 显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。
 - Dependency: the final ProcessCombineWave returned
 - Pipeline proof: `mixed` → `Scalar` using `program order` — marker is gated by !hasNextWave immediately after ProcessCombineWave
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1143          }
-  1144  #endif
-  1145          waveBeginPosition = waveEndPosition;
-  1146      }
-  1147
+  1150          }
+  1151  #endif
+  1152          waveBeginPosition = waveEndPosition;
+  1153      }
+  1154
 ```
 
 ### `moe_epilogue_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1152` in `MegaMoeA8W8Wave::ProcessMoeExpertStages`; `after` target line `1152`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1159` in `MegaMoeA8W8Wave::ProcessMoeExpertStages`; `after` target line `1159`.
 - Cardinality: 与 moe_epilogue_begin_S 一一对应。
 - Boundary claim: `actual` — EndSync、ping-pong 复位和 compact expert count 导出均已返回。
 - Why: 定位 Combine 后非 barrier 的 V 核尾部成本。
 - Dependency: expert-count export returned
 - Pipeline proof: `Scalar/MTE2/MTE3` → `Scalar` using `production helper completion` — the only exporting AIV drains its MTE3 before return; other AIVs have no export work
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1150      }
-  1151      gmm1PingPongIdx_ = 0;
-  1152      ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-  1153  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1154      if constexpr (g_coreType == AIV) {
+  1157      }
+  1158      gmm1PingPongIdx_ = 0;
+  1159      ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+  1160  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1161      if constexpr (g_coreType == AIV) {
 ```
 
 ### `moe_tail_sync_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1198` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `before` target line `1198`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1205` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `before` target line `1205`.
 - Cardinality: 所有 AIV 在 MoE 专家阶段返回后一次。
 - Boundary claim: `causal` — 即将执行 MoE 尾部 PIPE_ALL 和本卡 AIV SyncAll。
 - Why: 直接量化快 V 核等待慢 V 核完成最终 Combine/尾部工作的时间。
 - Dependency: ProcessMoeExpertStages returned
 - Pipeline proof: `mixed local pipelines` → `Scalar` using `program order` — marker precedes the production PIPE_ALL/SyncAll pair
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1196  #endif
-  1197          PipeBarrier<PIPE_ALL>();
-  1198          SyncAll<true>();
-  1199  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1200          if (CriticalPathTracePtr() != nullptr) {
+  1203  #endif
+  1204          PipeBarrier<PIPE_ALL>();
+  1205          SyncAll<true>();
+  1206  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1207          if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `moe_tail_sync_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1198` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `after` target line `1198`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1205` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `after` target line `1205`.
 - Cardinality: 与 moe_tail_sync_begin_S 一一对应。
 - Boundary claim: `actual` — 本卡所有 AIV 已完成 MoE 专家流水并通过 SyncAll。
 - Why: 把本卡负载不均衡等待与输出跨卡同步分开。
 - Dependency: production AIV SyncAll returned
 - Pipeline proof: `all local AIV pipelines` → `Scalar` using `production PIPE_ALL plus SyncAll` — marker is immediately after the existing synchronization
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1196  #endif
-  1197          PipeBarrier<PIPE_ALL>();
-  1198          SyncAll<true>();
-  1199  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1200          if (CriticalPathTracePtr() != nullptr) {
+  1203  #endif
+  1204          PipeBarrier<PIPE_ALL>();
+  1205          SyncAll<true>();
+  1206  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1207          if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `shared_expert_gmm2_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1217` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `before` target line `1217`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1224` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `before` target line `1224`.
 - Cardinality: 每个 AIV 各一次；sharedExpertNum=0 时仅覆盖分支判断。
 - Boundary claim: `causal` — 即将判断并按需进入共享专家 GMM2 helper；实际 Cube 计算仍由 AIC 完成。
 - Why: 显示 V 侧在共享专家 GMM2 调用路径上的调度区间。
 - Dependency: MoE tail SyncAll returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes the sharedExpertNum branch on AIV roles
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1215      if (sharedExpertNum_ > 0) {
-  1216          exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
-  1217          ProcessSharedExpertGmm2();
-  1218      }
-  1219  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1222      if (sharedExpertNum_ > 0) {
+  1223          exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
+  1224          ProcessSharedExpertGmm2();
+  1225      }
+  1226  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `shared_expert_gmm2_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1217` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `after` target line `1217`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1224` in `MegaMoeA8W8Wave::ProcessGmmPipeline`; `after` target line `1224`.
 - Cardinality: 与 shared_expert_gmm2_begin_S 一一对应。
 - Boundary claim: `issue` — AIV 角色已从共享专家 GMM2 helper 返回。
 - Why: 区分共享专家调用开销与后续输出同步；共享结果等待可能继续落在 Unpermute 内。
 - Dependency: ProcessSharedExpertGmm2 returned on AIV
 - Pipeline proof: `Scalar control` → `Scalar` using `program order only` — no tracing-only completion event is inserted
 - Perturbation: 每个 AIV 一次时钟读取，不增加 Cube/FIX drain。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1215      if (sharedExpertNum_ > 0) {
-  1216          exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
-  1217          ProcessSharedExpertGmm2();
-  1218      }
-  1219  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1222      if (sharedExpertNum_ > 0) {
+  1223          exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
+  1224          ProcessSharedExpertGmm2();
+  1225      }
+  1226  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `output_cross_rank_sync_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1485` in `MegaMoeA8W8Wave::Process`; `before` target line `1485`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1492` in `MegaMoeA8W8Wave::Process`; `before` target line `1492`.
 - Cardinality: 所有 AIV 各一次。
 - Boundary claim: `causal` — 即将进入 Unpermute 前的输出跨 rank 同步。
 - Why: 直接量化本 rank 等待其他 rank 完成 Combine 发送的时间。
 - Dependency: local GMM pipeline returned
 - Pipeline proof: `Scalar/network` → `Scalar` using `program order` — marker immediately precedes the output rank handshake
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1483          }
-  1484  #endif
-  1485          CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-  1486  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1487          if (CriticalPathTracePtr() != nullptr) {
+  1490          }
+  1491  #endif
+  1492          CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+  1493  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1494          if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `output_cross_rank_sync_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1485` in `MegaMoeA8W8Wave::Process`; `after` target line `1485`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1492` in `MegaMoeA8W8Wave::Process`; `after` target line `1492`.
 - Cardinality: 与 output_cross_rank_sync_begin_S 一一对应。
 - Boundary claim: `actual` — 所有 rank 的输出握手已完成，本卡 Combine 接收区可读。
 - Why: 把慢 rank 的 Combine 尾部与本地 Unpermute 分开。
 - Dependency: CrossRankSyncInWorldSize returned
 - Pipeline proof: `Scalar/network` → `Scalar` using `production rank handshake` — marker is immediately after the existing cross-rank synchronization
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1483          }
-  1484  #endif
-  1485          CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-  1486  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1487          if (CriticalPathTracePtr() != nullptr) {
+  1490          }
+  1491  #endif
+  1492          CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+  1493  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1494          if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `unpermute_init_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1499` in `MegaMoeA8W8Wave::Process`; `before` target line `1499`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1506` in `MegaMoeA8W8Wave::Process`; `before` target line `1506`.
 - Cardinality: 所有 AIV 各一次。
 - Boundary claim: `causal` — 即将构造当前 AIV 的 Unpermute buffer 视图。
 - Why: 把 UB view/config 构造与 Unpermute 数据流水分开。
 - Dependency: output cross-rank sync returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes InitTokenUnpermuteBuffers
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1497          }
-  1498  #endif
-  1499          UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
-  1500  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1501          if (CriticalPathTracePtr() != nullptr) {
+  1504          }
+  1505  #endif
+  1506          UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
+  1507  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1508          if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `unpermute_init_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1499` in `MegaMoeA8W8Wave::Process`; `after` target line `1499`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1506` in `MegaMoeA8W8Wave::Process`; `after` target line `1506`.
 - Cardinality: 与 unpermute_init_begin_S 一一对应。
 - Boundary claim: `actual` — Unpermute UB view 和当前 job bufferConfig 已构造完成。
 - Why: 识别极端配置下 buffer 规划本身是否异常。
 - Dependency: InitTokenUnpermuteBuffers returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — helper only constructs local tensor views and returns synchronously
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1497          }
-  1498  #endif
-  1499          UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
-  1500  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1501          if (CriticalPathTracePtr() != nullptr) {
+  1504          }
+  1505  #endif
+  1506          UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
+  1507  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1508          if (CriticalPathTracePtr() != nullptr) {
 ```
 
 ### `unpermute_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1508` in `MegaMoeA8W8Wave::Process`; `before` target line `1508`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1515` in `MegaMoeA8W8Wave::Process`; `before` target line `1515`.
 - Cardinality: 所有 AIV 各一次。
 - Boundary claim: `causal` — Unpermute buffer 已构造，即将进入本核 token range。
 - Why: 量化 Combine 接收数据、top-k/shared 累加与最终 y 写回的整体成本。
 - Dependency: Unpermute buffer initialization completed
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes UnpermuteTokens
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1506          }
-  1507  #endif
-  1508          UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
-  1509              tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
-  1510  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1513          }
+  1514  #endif
+  1515          UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
+  1516              tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+  1517  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ### `unpermute_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1508` in `MegaMoeA8W8Wave::Process`; `after` target line `1508`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1515` in `MegaMoeA8W8Wave::Process`; `after` target line `1515`.
 - Cardinality: 与 unpermute_begin_S 一一对应。
 - Boundary claim: `actual` — 本核负责 token 的最终 y MTE3 已全部完成。
 - Why: 确认尾部慢点是否来自本地反量化/累加/写 y，而不是同步。
 - Dependency: UnpermuteTokens returned
 - Pipeline proof: `MTE2/Vector/MTE3` → `Scalar` using `production MTE3_V event wait` — UnpermuteTokens consumes its outputBufferEvent after the final batch before return
 - Perturbation: 每个 AIV 一次时钟读取，复用 UnpermuteTokens 的生产 MTE3_V drain。
-- Source SHA-256: `e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a`
+- Source SHA-256: `360b537e10aa3cc240f51111dabf18423f14d017e749a97315f01c7164016d8e`
 
 ```text
-  1506          }
-  1507  #endif
-  1508          UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
-  1509              tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
-  1510  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1513          }
+  1514  #endif
+  1515          UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
+  1516              tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+  1517  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 ```
 
 ## Working tree status
 
 ```text
-M mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h
- M mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h
- M mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h
- M mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h
+M mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h
  M mc2/mega_moe/tools/critical_path_trace/README.md
  M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json
  M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md
  M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json
  M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md
- M mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py
- M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py
  M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py
- M mc2/mega_moe/tools/critical_path_trace/trace-spec.json
- M mc2/mega_moe/tools/critical_path_trace/trace_tool.py
 ```

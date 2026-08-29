@@ -292,6 +292,26 @@ class TraceContractTests(unittest.TestCase):
             {"MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE": 1},
         )
 
+    def test_pairwise_combine_publishes_empty_final_drain_span(self) -> None:
+        source = (
+            REPO_ROOT / "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h"
+        ).read_text(encoding="utf-8")
+        guard = "if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {"
+        comment = "Pairwise AIV1 drains every tile send"
+        guard_offset = source.index(guard, source.index(comment) - len(guard) - 256)
+        begin_offset = source.index(
+            "criticalPathTrace_.BeginFinalCombineDrain();", guard_offset
+        )
+        end_offset = source.index(
+            "criticalPathTrace_.EndFinalCombineDrain();", begin_offset
+        )
+        epilogue_offset = source.index(
+            "criticalPathTrace_.BeginMoeEpilogue();", end_offset
+        )
+        self.assertLess(guard_offset, begin_offset)
+        self.assertLess(begin_offset, end_offset)
+        self.assertLess(end_offset, epilogue_offset)
+
     def test_run_artifacts_must_stay_outside_source_repo(self) -> None:
         with self.assertRaisesRegex(ContractError, "outside the source repository"):
             validate_artifact_destination(
