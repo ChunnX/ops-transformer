@@ -506,6 +506,51 @@ __aicore__ inline void DispatchExpertTokensByRows(const TokenDispatchConfig &con
         rankRange, gmm1TileRowCount);
 }
 
+/**
+ * Dispatch 第 1 层（wave 切片版）：把专家内 [sliceRowBegin, sliceRowEnd) 行均分给
+ * Dispatch core，段映射与逐 token 搬运复用 DispatchExpertTokensByRank。调用方须保证
+ * 专家内全部切片恰好覆盖 [0, 夹紧后行数) 一次——PublishGmm1TileReady 是加法契约，
+ * 多算/漏算都会破坏 GMM1 的等值放行；切片边界按 wave 重放推进天然对齐 256 行 tile。
+ */
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchExpertTokenSlice(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
+                                                const BlockJobContext &blockJob,
+                                                const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                                GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
+                                                uint32_t localExpertId, int32_t expertGlobalRowBegin,
+                                                uint32_t sliceRowBegin, uint32_t sliceRowEnd)
+{
+    if (sliceRowEnd <= sliceRowBegin) {
+        return;
+    }
+
+    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+    uint32_t dispatchCoreCount = blockJob.totalJobs == 0U ? 1U : blockJob.totalJobs;
+    int32_t rowsPerCore =
+        Ops::Base::CeilDiv(static_cast<int32_t>(sliceRowEnd - sliceRowBegin), static_cast<int32_t>(dispatchCoreCount));
+    int32_t coreDispatchRowBegin =
+        static_cast<int32_t>(sliceRowBegin) + static_cast<int32_t>(blockJob.jobIndex) * rowsPerCore;
+    int32_t coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
+    if (coreDispatchRowEnd > static_cast<int32_t>(sliceRowEnd)) {
+        coreDispatchRowEnd = static_cast<int32_t>(sliceRowEnd);
+    }
+    if (coreDispatchRowBegin >= coreDispatchRowEnd) {
+        return;
+    }
+
+    DispatchExpertRange expertRange{coreDispatchRowBegin, coreDispatchRowEnd};
+    DispatchExpertRankRange rankRange =
+        FindDispatchExpertRankRange(common.worldSize, scratch, localExpertId, expertGlobalRowBegin,
+                                    expertRange.coreExpertRowBegin, expertRange.coreExpertRowEnd);
+    if (rankRange.firstRankIdx == static_cast<int32_t>(common.worldSize) || rankRange.lastRankIdx < 0) {
+        return;
+    }
+
+    DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, common, syncLayout, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin, expertRange,
+        rankRange, gmm1TileRowCount);
+}
+
 // 计算一个专家的接收 token 数，并发布就绪 flag。
 template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
 __aicore__ inline void ComputeExpertTokenCountAndNotify(
