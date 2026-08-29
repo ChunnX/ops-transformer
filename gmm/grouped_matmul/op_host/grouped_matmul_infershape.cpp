@@ -1955,6 +1955,7 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context
     size_t numWeight = 0;
     int64_t lenGroupList = 0;
     OP_CHECK_IF(ParseAttrsAndCountInputs(context, gmmAttrs, numX, numWeight, lenGroupList) != GRAPH_SUCCESS,
+              OP_LOGE(context->GetNodeName(), "ParseAttrsAndCountInputs failed."),
               return GRAPH_FAILED);
     return ComputeAndSetOutputShape(context, gmmAttrs, numX, numWeight, lenGroupList);
 }

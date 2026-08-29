@@ -639,7 +639,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!SetMKN(*xShape, *wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!CheckDims(*xShape, *wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
-        if (!CheckMxPerGroupShape(*xScaleShape, wScaleShape, weightCount, isMultiWeightNz)) {
+        if (!CheckMxPerGroupShape(*xScaleShape, *wScaleShape, weightCount, isMultiWeightNz)) {
             return false;
         }
     }

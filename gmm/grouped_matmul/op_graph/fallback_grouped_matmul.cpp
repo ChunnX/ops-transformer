@@ -370,6 +370,7 @@ static graphStatus PreparePerTokenScaleList(const OpExecuteContext* host_api_ctx
 }
 
 static graphStatus ExecuteGmmApi(
+    OpExecuteContext* host_api_ctx,
     aclTensorList* aclTensorListX, aclTensorList* aclTensorListWeight,
     std::vector<const gert::Tensor*>& geTensorVectorBias, aclTensorList* aclTensorListScale,
     std::vector<const gert::Tensor*>& geTensorVectorOffset,
@@ -407,7 +408,8 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
 
   GmmExecuteAttrs attrs{};
   auto attrRet = GetGmmAttrs(host_api_ctx, attrs);
-  OP_CHECK_IF(attrRet != GRAPH_SUCCESS, return attrRet);
+  OP_CHECK_IF(attrRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetGmmAttrs failed, ret: %u", attrRet),
+              return attrRet);
 
     std::vector<const gert::Tensor *> geTensorVectorY;
     PrepareOutputTensorVector(host_api_ctx, geTensorVectorY, INDEX_GMM_OUTPUT_Y, numGeWeight, *splitItemGe);
@@ -448,7 +450,9 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
 
   std::vector<const aclTensor*> geTensorVectorPerTokenScale;
   auto ptsRet = PreparePerTokenScaleList(host_api_ctx, geTensorVectorPerTokenScale, *attrs.isXTransposed, isPerTile);
-  OP_CHECK_IF(ptsRet != GRAPH_SUCCESS, return ptsRet);
+  OP_CHECK_IF(ptsRet != GRAPH_SUCCESS,
+              OP_LOGE("aclnnfallback", "PreparePerTokenScaleList failed, ret: %u", ptsRet),
+              return ptsRet);
   auto aclTensorListPerTokenScale = aclCreateTensorList(geTensorVectorPerTokenScale.data(),
                                                         geTensorVectorPerTokenScale.size());
 
@@ -459,7 +463,7 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
   tuningConfig.reserve(1);
   tuningConfig.push_back(attrs.tuningConfigGe->GetData()[0]);
 
-  return ExecuteGmmApi(aclTensorListX, aclTensorListWeight, geTensorVectorBias, aclTensorListScale,
+  return ExecuteGmmApi(host_api_ctx, aclTensorListX, aclTensorListWeight, geTensorVectorBias, aclTensorListScale,
                        geTensorVectorOffset, geTensorVectorAntiquantScale, geTensorVectorAntiquantOffset,
                        aclTensorListPerTokenScale, groupListTensor,
                        *attrs.splitItemGe, *attrs.groupTypeGe, *attrs.groupListTypeGe, *attrs.actTypeGe,
