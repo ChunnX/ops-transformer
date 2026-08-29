@@ -398,10 +398,14 @@ private:
         Duplicate(minVreg, MIN_VALUE);
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign(srcVreg, srcUb + i * S2BaseSize);
-            Muls(srcVreg, srcVreg, dScale, pregFull);
+            if constexpr (!rescaleOnCube_) {
+                Muls(srcVreg, srcVreg, dScale, pregFull);
+            }
             Select(srcVreg, srcVreg, minVreg, pregTailN);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcUb + i * S2BaseSize, srcVreg, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize, srcVreg, pregTailN);
+            }
             ReduceMax(maxTmpVreg, srcVreg, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
         }
@@ -427,12 +431,14 @@ private:
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign(srcVreg0, srcUb + i * S2BaseSize);
             LoadAlign(srcVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
-            Muls(srcVreg0, srcVreg0, dScale, pregFull);
-            Muls(srcVreg1, srcVreg1, dScale, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcUb + i * S2BaseSize, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcUb + i * S2BaseSize + HALF_REP_SIZE, srcVreg1, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                Muls(srcVreg0, srcVreg0, dScale, pregFull);
+                Muls(srcVreg1, srcVreg1, dScale, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize + HALF_REP_SIZE, srcVreg1, pregTailN);
+            }
             Max<ElementInput, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTailN);
             ReduceMax(maxTmpVreg, srcVreg0, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
@@ -458,17 +464,21 @@ private:
             __ubuf__ ElementInput *srcRow = srcUb + i * S2BaseSize;
             LoadAlign(srcVreg0, srcRow);
             LoadAlign(srcVreg1, srcRow + HALF_REP_SIZE);
-            Muls(srcVreg0, srcVreg0, dScale, pregFull);
-            Muls(srcVreg1, srcVreg1, dScale, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            if constexpr (!rescaleOnCube_) {
+                Muls(srcVreg0, srcVreg0, dScale, pregFull);
+                Muls(srcVreg1, srcVreg1, dScale, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            }
             Max(rowMaxVreg, srcVreg0, srcVreg1, pregFull);
 
             LoadAlign(srcVreg0, srcRow + 2 * HALF_REP_SIZE);
-            Muls(srcVreg0, srcVreg0, dScale, pregTailN);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                Muls(srcVreg0, srcVreg0, dScale, pregTailN);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregTailN);
+            }
             Max<ElementInput, MaskMergeMode::MERGING>(rowMaxVreg, rowMaxVreg, srcVreg0, pregTailN);
             ReduceMax(maxTmpVreg, rowMaxVreg, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
@@ -494,21 +504,25 @@ private:
             __ubuf__ ElementInput *srcRow = srcUb + i * S2BaseSize;
             LoadAlign(srcVreg0, srcRow);
             LoadAlign(srcVreg1, srcRow + HALF_REP_SIZE);
-            Muls(srcVreg0, srcVreg0, dScale, pregFull);
-            Muls(srcVreg1, srcVreg1, dScale, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            if constexpr (!rescaleOnCube_) {
+                Muls(srcVreg0, srcVreg0, dScale, pregFull);
+                Muls(srcVreg1, srcVreg1, dScale, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            }
             Max(rowMaxVreg, srcVreg0, srcVreg1, pregFull);
 
             LoadAlign(srcVreg0, srcRow + 2 * HALF_REP_SIZE);
             LoadAlign(srcVreg1, srcRow + 3 * HALF_REP_SIZE);
-            Muls(srcVreg0, srcVreg0, dScale, pregFull);
-            Muls(srcVreg1, srcVreg1, dScale, pregTailN);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + 3 * HALF_REP_SIZE, srcVreg1, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                Muls(srcVreg0, srcVreg0, dScale, pregFull);
+                Muls(srcVreg1, srcVreg1, dScale, pregTailN);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 3 * HALF_REP_SIZE, srcVreg1, pregTailN);
+            }
             Max<ElementInput, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTailN);
             Max(rowMaxVreg, rowMaxVreg, srcVreg0, pregFull);
             ReduceMax(maxTmpVreg, rowMaxVreg, pregFull);

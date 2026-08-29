@@ -449,13 +449,19 @@ private:
         MaskReg pregFloatTailN = UpdateMask<float>(tailN);
 
         Duplicate(minVreg, MIN_VALUE);
-        Duplicate(scaleVreg, dScale);
+        if constexpr (!rescaleOnCube_) {
+            Duplicate(scaleVreg, dScale);
+        }
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign(srcVreg, srcUb + i * S2BaseSize);
-            Mul(srcVreg, srcVreg, scaleVreg, pregFull);
+            if constexpr (!rescaleOnCube_) {
+                Mul(srcVreg, srcVreg, scaleVreg, pregFull);
+            }
             Select(srcVreg, srcVreg, minVreg, pregTailN);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcUb + i * S2BaseSize, srcVreg, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize, srcVreg, pregTailN);
+            }
             Cast<float, ElementInput, castTraitZero>(maxFloatVreg0, srcVreg, pregFull);
             Cast<float, ElementInput, castTraitOne>(maxFloatVreg1, srcVreg, pregFull);
             ReduceMax(maxTmpFloatVreg0, maxFloatVreg0, pregFull);
@@ -504,16 +510,20 @@ private:
         MaskReg pregFloatTailN = UpdateMask<float>(tailN);
 
         Duplicate(minVreg, MIN_VALUE);
-        Duplicate(scaleVreg, dScale);
+        if constexpr (!rescaleOnCube_) {
+            Duplicate(scaleVreg, dScale);
+        }
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign(srcVreg0, srcUb + i * S2BaseSize);
             LoadAlign(srcVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
-            Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
-            Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcUb + i * S2BaseSize, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcUb + i * S2BaseSize + HALF_REP_SIZE, srcVreg1, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
+                Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize + HALF_REP_SIZE, srcVreg1, pregTailN);
+            }
             Max<ElementInput, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTailN);
 
             Cast<float, ElementInput, castTraitZero>(maxFloatVreg0, srcVreg0, pregFull);
@@ -550,21 +560,27 @@ private:
         MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
 
-        Duplicate(scaleVreg, dScale);
+        if constexpr (!rescaleOnCube_) {
+            Duplicate(scaleVreg, dScale);
+        }
         for (uint16_t i = 0; i < m; ++i) {
             __ubuf__ ElementInput *srcRow = srcUb + i * S2BaseSize;
             LoadAlign(srcVreg0, srcRow);
             LoadAlign(srcVreg1, srcRow + HALF_REP_SIZE);
-            Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
-            Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            if constexpr (!rescaleOnCube_) {
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
+                Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            }
             Max(rowMaxVreg, srcVreg0, srcVreg1, pregFull);
             LoadAlign(srcVreg0, srcRow + 2 * HALF_REP_SIZE);
-            Mul(srcVreg0, srcVreg0, scaleVreg, pregTailN);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregTailN);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregTailN);
+            }
             Max<ElementInput, MaskMergeMode::MERGING>(rowMaxVreg, rowMaxVreg, srcVreg0, pregTailN);
             Cast<float, ElementInput, castTraitZero>(maxFloatVreg0, rowMaxVreg, pregFull);
             Cast<float, ElementInput, castTraitOne>(maxFloatVreg1, rowMaxVreg, pregFull);
@@ -600,25 +616,31 @@ private:
         MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
 
-        Duplicate(scaleVreg, dScale);
+        if constexpr (!rescaleOnCube_) {
+            Duplicate(scaleVreg, dScale);
+        }
         for (uint16_t i = 0; i < m; ++i) {
             __ubuf__ ElementInput *srcRow = srcUb + i * S2BaseSize;
             LoadAlign(srcVreg0, srcRow);
             LoadAlign(srcVreg1, srcRow + HALF_REP_SIZE);
-            Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
-            Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            if constexpr (!rescaleOnCube_) {
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
+                Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            }
             Max(rowMaxVreg, srcVreg0, srcVreg1, pregFull);
             LoadAlign(srcVreg0, srcRow + 2 * HALF_REP_SIZE);
             LoadAlign(srcVreg1, srcRow + 3 * HALF_REP_SIZE);
-            Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
-            Mul(srcVreg1, srcVreg1, scaleVreg, pregTailN);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregFull);
-            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-                srcRow + 3 * HALF_REP_SIZE, srcVreg1, pregTailN);
+            if constexpr (!rescaleOnCube_) {
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
+                Mul(srcVreg1, srcVreg1, scaleVreg, pregTailN);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 3 * HALF_REP_SIZE, srcVreg1, pregTailN);
+            }
             Max<ElementInput, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTailN);
             Max(rowMaxVreg, rowMaxVreg, srcVreg0, pregFull);
             Cast<float, ElementInput, castTraitZero>(maxFloatVreg0, rowMaxVreg, pregFull);

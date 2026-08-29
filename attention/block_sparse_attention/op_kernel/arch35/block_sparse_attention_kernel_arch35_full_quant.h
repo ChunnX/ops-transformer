@@ -406,7 +406,7 @@ public:
                         curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
                     float kDequantScaleValue = gKDequantScale.GetValue(kvDequantScaleOffset);
                     float combinedDeqScalar = qDequantScaleValue * kDequantScaleValue;
-                    if constexpr (RESCALE_ON_CUBE && transposedMm1) {
+                    if constexpr (RESCALE_ON_CUBE) {
                         // Fold the attention scale into QK FixPipe so FP8 softmax consumes pre-scaled S.
                         combinedDeqScalar *= scaleValue_;
                     }
