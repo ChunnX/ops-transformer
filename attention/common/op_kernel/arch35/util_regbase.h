@@ -114,7 +114,7 @@ struct RunParamStr<true> { // 分核与切块需要使用到参数
     int64_t s1LoopTimes;
     int64_t gS1Idx;
     // BN循环生产的数据
-    int64_t s2InCurrentBatch; // Tensorlist场景，不同batch的S2长度，后续用计算KvStride
+    int64_t s2InCurrentBatch;                         // Tensorlist场景，不同batch的S2长度，后续用计算KvStride
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS;  // 左上顶点的pretoken
     int64_t nextTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的nexttoken
 
@@ -163,9 +163,9 @@ struct RunParamStr<true> { // 分核与切块需要使用到参数
     int32_t \
         firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 \
                                 size */ \
-    int32_t s2RealSize;     /* s2方向基本块的真实长度 */ \
-    int64_t s2AlignedSize;  /* s2方向基本块对齐到16之后的长度 */ \
-    int32_t vec2S1BaseSize; /* vector2侧开循环之后，经过切分的S1大小，例如把64切分成两份32 */ \
+    int32_t s2RealSize;      /* s2方向基本块的真实长度 */ \
+    int64_t s2AlignedSize;   /* s2方向基本块对齐到16之后的长度 */ \
+    int32_t vec2S1BaseSize;  /* vector2侧开循环之后，经过切分的S1大小，例如把64切分成两份32 */ \
     int32_t \
         vec2S1RealSize; /* vector2侧开循环之后，经过切分的S1的尾块大小，例如把63切分成两份32和31，第二份的实际大小是31 \
                          */ \
@@ -308,7 +308,7 @@ struct RunInfo<false> {
     bool softMaxCheckRes; \
     float keepProb; \
     float scaleValue; \
-    int64_t matmulMSize; /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
+    int64_t matmulMSize;            /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale; \
     float sinkValue = SINK_MIN_INF; \
