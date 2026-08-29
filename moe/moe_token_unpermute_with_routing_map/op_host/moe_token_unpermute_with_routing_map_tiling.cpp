@@ -163,11 +163,13 @@ static void InitSplitInfoPad(gert::TilingContext* context, TilingPadParams& para
   uint64_t maxNPerLoopForUb = maxUbSize / allSize; 
 
   param.loop_time_each_front_core = GetCeilInt(param.num_tokens_each_front_core, maxNPerLoopForUb);
-  param.num_tokens_front_core_each_loop = GetAlign(param.num_tokens_each_front_core, maxNPerLoopForUb);
+  param.num_tokens_front_core_each_loop = (param.num_tokens_each_front_core < maxNPerLoopForUb) ?
+      param.num_tokens_each_front_core : maxNPerLoopForUb;
   param.num_tokens_front_core_last_loop = GetDivRem(param.num_tokens_each_front_core, maxNPerLoopForUb);
 
   param.loop_time_each_tail_core = GetCeilInt(param.num_tokens_each_tail_core, maxNPerLoopForUb);
-  param.num_tokens_tail_core_each_loop = GetAlign(param.num_tokens_each_tail_core, maxNPerLoopForUb);
+  param.num_tokens_tail_core_each_loop = (param.num_tokens_each_tail_core < maxNPerLoopForUb) ?
+      param.num_tokens_each_tail_core : maxNPerLoopForUb;
   param.num_tokens_tail_core_last_loop = GetDivRem(param.num_tokens_each_tail_core, maxNPerLoopForUb);
 }
 
