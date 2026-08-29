@@ -35,7 +35,7 @@
 | A. 需求分析+精简方案 | ✅ | 2026-08-29 | REQUIREMENTS.md / DESIGN.md 产出，依赖闭包採查完成 |
 | B. 编码迁移 + pybind 打通 | ✅ | 2026-08-29 | 编译/安装/调用链路全通，详见开发记录 |
 | C. 测试验证（Python 接口 + NPU 精度） | ✅ | 2026-08-29 | tests/pybind/test.py 5/5 PASS（分层验证） |
-| 收尾：pre-commit + commit | ⬜ | | |
+| 收尾：pre-commit + commit | ✅ | 2026-08-29 | pre-commit 全 Passed（含 OAT/clang-format），commit 0d3921f92 |
 
 ## 交付物清单
 
