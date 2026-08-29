@@ -104,7 +104,8 @@ protected:
                                                    uint32_t &combineRowSequence, int32_t &gmmTileSequence,
                                                    bool isFinalCombine);
     template <bool WaitForTokenCountReady>
-    __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
+    __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx,
+                                                 WeightL2PrefetchCursor *weightPrefetch = nullptr);
     __aicore__ inline void ProcessSharedExpertGmm1();
     __aicore__ inline void ProcessSharedExpertGmm2();
     template <typename Derived>
@@ -129,6 +130,11 @@ protected:
     // Wave Combine 的逻辑任务分工（block 粒度，AIV1 门控在函数内）。
     AivJobContext waveCombineJob_{};
     TokenUnpermuteConfig tokenUnpermuteConfig_;
+
+    // 窗口 0（输入准备/SendMask 期间）权重 L2 预取游标：AIV0/AIV1 双 AIV 交错认领（均摊单核
+    // MTE2 指令数）；补发不 Drain，在飞块由 ProcessWave 内 SyncAll 前的 PipeBarrier<PIPE_ALL> 排空。
+    WeightL2PrefetchCursor window0PrefetchCursor_{};
+    WeightL2PrefetchCursor *window0PrefetchPtr_ = nullptr;
 
     uint32_t k_ = 0;
     uint32_t rankId_ = 0;
@@ -470,6 +476,34 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t sendCntAccAddr = routeRingAddr + routeRingBytes;
     sendMaskScratch_.sendCntAccTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntAccAddr, sendCntAccSize / sizeof(int32_t));
+
+    // 窗口 0 预取游标构造（AIV0/AIV1 双 AIV，门控=fp4 权重变体 + MTE 拓扑）；独立预算 = min(2 专家,
+    // 拓扑分档上限 16MB/8MB)，覆盖专家 [0, min(E,2))，与窗口 1 按专家边界分割、数据不重叠。各 AIV
+    // 以自身全局核编号（GetBlockIdx）作 workerIdx 独立认领（workerCount=AIV 总数=blockNum*2），
+    // 交错集合互斥，均摊单核 MTE2 指令数。
+    // 窗口 0 预取游标构造（AIV0/AIV1 双 AIV）：W4 族（A8W4/A4W4/A4W4_NZ）全拓扑常开，W8 族
+    // （GENERAL/A8W8_NZ）跨机（>8P）才开；独立预算 = min(2 专家, 拓扑分档上限 16MB/8MB)，覆盖
+    // 专家 [0, min(E,2))，与窗口 1 按专家边界分割、数据不重叠。epb 经 B_ELEMS_PER_BYTE 参数化
+    // （fp8=1 / fp4=2）。各 AIV 以自身全局核编号（GetBlockIdx）作 workerIdx 独立认领
+    // （workerCount=AIV 总数=blockNum*2），交错集合互斥，均摊单核 MTE2 指令数。
+    bool isW4Variant = gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                       gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                       gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+    bool isW8Variant = gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                       gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+    if ((isW4Variant || (isW8Variant && IsWeightPrefetchRank(commonConfig_.worldSize))) &&
+        WEIGHT_L2_PREFETCH_ENABLE_WINDOW0 && params_.tilingData->topoType == TOPO_TYPE_MTE) {
+        // 预算 = 窗口 0 独立预算（firstExpert=0，Init 按 workerCount 均摊）＝窗口 0 覆盖量。
+        uint64_t adaptiveTotalBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank,
+            commonConfig_.worldSize, 0U, B_ELEMS_PER_BYTE);
+        WeightL2PrefetchInit(window0PrefetchCursor_, moeWeightTensorListAddrs_.weight1,
+                             gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                             commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, GetBlockIdx(),
+                             countWorkspace_.blockNum * 2U, adaptiveTotalBytes, 0U, B_ELEMS_PER_BYTE,
+                             params_.tilingData->weightPrefetchUbOffset);
+        window0PrefetchPtr_ = &window0PrefetchCursor_;
+    }
 }
 
 // 在普通模板内构造 Unpermute 使用的 UB 视图，并返回当前 AIV 对应的 buffer 配置。
@@ -606,14 +640,31 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
+// weightPrefetch 非空（仅 AIV0 在开启预取时构造）且本核为 AIV 时，等待自旋间隙执行权重 L2 预取；
+// 其余调用方不传该参数，行为与原先完全一致。
 template <TemplateMegaMoeTypeClass>
 template <bool WaitForTokenCountReady>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(ExpertLoopState &state,
-                                                                               uint32_t expertIdx)
+                                                                               uint32_t expertIdx,
+                                                                               WeightL2PrefetchCursor *weightPrefetch)
 {
     if constexpr (WaitForTokenCountReady) {
         if (GetSubBlockIdx() == 0U && !state.expertCountTableReady) {
-            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+            // 主线语义：整表就绪 flag（0 号槽）一次等待，expertCountTableReady 保证仅首次进入。
+            // 预取挂在首次（e0）等待：自旋间隙逐块发射，flag 就绪后补齐剩余预算，并以 MTE2_V
+            // 事件排空收尾，无残留拷贝；expertCountTableReady 使 e1+ 直接读表。
+            bool prefetched = false;
+            if constexpr (g_coreType == AIV) {
+                if (weightPrefetch != nullptr) {
+                    WaitForMoeExpertTokenCountReadyWithPrefetch(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+                                                                countWorkspace_, 0U, *weightPrefetch);
+                    prefetched = true;
+                }
+            }
+            if (!prefetched) {
+                WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                                0U);
+            }
             state.expertCountTableReady = true;
         }
     }
@@ -628,8 +679,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     SendAndQuantBuffInit();
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantScratch_);
-    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_);
+    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_,
+                                     window0PrefetchPtr_);
+    if (window0PrefetchPtr_ != nullptr) {
+        // SendMask 返回后补足窗口 0 剩余块（批内钩子每批只发 1 块）：fire-and-forget 不 Drain，
+        // 在飞块由 ProcessWave 内 SyncAll 前的 PipeBarrier<PIPE_ALL> 排空（传输与 reset/共享准备重叠）。
+        while (WeightL2PrefetchTryIssue(*window0PrefetchPtr_)) {
+        }
+    }
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         // 可选：为共享专家拆分连续布局的输入数据与 scale。
