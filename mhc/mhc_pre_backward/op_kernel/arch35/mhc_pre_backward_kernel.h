@@ -252,8 +252,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     xGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x));
     xGradGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_phi));
-    // grad_phi会被多个T分块连续原子累加，使用常驻缓存降低重复读改写延迟。
-    gradPhiGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_PERSISTENT);
     alphaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_alpha));
     gradBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_bias));
     workSpaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
