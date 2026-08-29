@@ -64,6 +64,23 @@ constexpr uint32_t SYNC_EVENT_ID2 = 2;
 constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
+// A8W4/A4W4 权重 L2 预取（fire-and-forget，策略在 kernel 内写死）：
+//   - Drain 排空用 MTE2->V 事件 ID5（占用图：ID0=prologue、ID1=topkIds 读、ID2=unpermute，3-5 空闲取 5）；
+//   - 预取 scratch 的 UB 偏移 192K：位于 AIV0 prologue 权重区（[0,192K)，4bit 64KB + 8bit 128KB）之上，
+//     与输入准备布局（decode ~62K）之间有大量空洞；与 prologue 8bit 区 [64K,192K) 零重叠（用户裁定：
+//     窗口 1 已在该偏移验证功能 OK，先打通基本功能）；修改 prologue UB 布局时须同步校验；
+//   - chunk 为单次 fire-and-forget 拷贝粒度（与 prologue 的 MTE2 粒度一致）；
+//   - 预算上限防过量预热挤掉 L2 内有复用价值的数据，游标内部再夹紧到本卡专家权重总量；
+//   - 窗口 0（SendMask 期间）每 AIV 固定 32 chunk（512KB/AIV0，blockNum 个 AIV0 共 16MB）：仅 AIV0
+//     参与——MTE outstanding 是同 block 两 AIV 的共享资源，AIV1 加发不增有效带宽只增竞争；固定块数
+//     即终点、无截止条件；A/B 后可调。统一 workerCount 使窗口 1 的 lane 恰好无缝接续窗口 0。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID = 5U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_OFFSET = 192U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_CHUNK_BYTES = 16U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_BYTES = 16U * 1024U;
+// 窗口 1 会话预算（fp4/fp8 统一 16MB）：与窗口 0 覆盖量对称，两窗口合计约 32MB@32block。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_BUDGET_BYTES = 16U * 1024U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_AIV = 32U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
