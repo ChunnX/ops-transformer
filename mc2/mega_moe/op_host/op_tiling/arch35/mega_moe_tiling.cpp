@@ -707,14 +707,11 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
     OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
 
     int64_t maxRecvTokenNum = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex)));
+    // 只卡负数：上界"理论最大接收行数"本是省内存的提示，超出它只是多占 workspace，
+    // kernel 侧按容量截断后不会越界，故不再拦截。
     OP_TILING_CHECK(
-        maxRecvTokenNum < 0 ||
-            maxRecvTokenNum > numMaxTokensPerRank * epWorldSize * std::min(shape.topK, moeExpertPerRank),
-        OP_LOGE_FOR_INVALID_VALUE(
-            nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-            (std::string("should in [0, ") +
-             std::to_string(numMaxTokensPerRank * epWorldSize * std::min(shape.topK, moeExpertPerRank)) + "]")
-                .c_str()),
+        maxRecvTokenNum < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(), "should >= 0"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
