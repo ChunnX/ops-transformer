@@ -32,6 +32,7 @@ const static int64_t CS_PERFORMANCE_MODE_RANGE_MAX = 32LL;
 const static int64_t CS_COUNTING_SORT_THRESHOLD = 1536LL;
 const static int64_t CS_ASSIST_NUM = 256LL;
 const static int64_t NUM_32 = 32;
+const static int64_t AGGRBUFBYTES_A5 = 10 * 1024; //A5一次搬出数据量（较好带宽）
 
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetPlatformInfo()
 {
@@ -121,31 +122,20 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
     tilingDataPtr_->countingSortParamsOp.countingSortMode = 0;
     if (!isFullload_ && IsCountingSortApplicable()) {
         int64_t actualExpertNum = expertEnd_ - expertStart_;
-        // n<=1536 && scatter && ep1 && expertNum==256 && LE<=32 && unquant && k==8 && dropless && COUNT
-        // 时直接返回，不走计数排序
-        if (n_ <= CS_COUNTING_SORT_THRESHOLD && rowIdxType_ == ROW_IDX_SCATTER && ep_ == 1 &&
-            expertNum_ == CS_ASSIST_NUM && actualExpertNum <= CS_PERFORMANCE_MODE_RANGE_MAX &&
-            quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
-            dropPadMode_ == DROP_PAD_MODE_DROPLESS && expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT &&
-            actualExpertNum > 0) {
-            countingSortMode_ = 0;
-        } else {
-            // 模板1（FullLoad UB 全载）
-            int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
-            int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
-            bool expandDtypeValid = (expandedXDtype_ == ge::DT_INT8 || expandedXDtype_ == ge::DT_FLOAT16 ||
-                                     expandedXDtype_ == ge::DT_BF16 || expandedXDtype_ == ge::DT_FLOAT);
-            bool fullLoadCond = estUb > 0 && estUb <= availUbSize_ - LENGTH_1024 && ep_ == 1 &&
-                                quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
-                                dropPadMode_ == DROP_PAD_MODE_DROPLESS &&
-                                expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT &&
-                                actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0 &&
-                                ((expertEnd_ - expertStart_) <= NUM_32 && expandDtypeValid);
-            if (fullLoadCond) {
-                ComputeArch35CountingSortFullLoadTiling();
-                // 回读实际模式：Compute 内部 UB 校验失败会置 0
-                countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
-            }
+        // FullLoad UB 全载模版（ep1 && 非量化 && k = 8 && dropless &&）
+        int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
+        int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
+        bool expandDtypeValid = (expandedXDtype_ == ge::DT_INT8 || expandedXDtype_ == ge::DT_FLOAT16 ||
+                                    expandedXDtype_ == ge::DT_BF16 || expandedXDtype_ == ge::DT_FLOAT);
+        bool fullLoadCond = estUb > 0 && estUb <= availUbSize_ - LENGTH_1024 && ep_ == 1 &&
+                            quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
+                            dropPadMode_ == DROP_PAD_MODE_DROPLESS &&
+                            expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT &&
+                            actualExpertNum <= NUM_32 && expandDtypeValid;
+        if (fullLoadCond) {
+            ComputeArch35CountingSortFullLoadTiling();
+            // 回读实际模式：Compute 内部 UB 校验失败会置 0
+            countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
         }
     }
     tilingDataPtr_->countingSortParamsOp.countingSortMode = countingSortMode_;
@@ -1973,10 +1963,20 @@ bool MoeInitRoutingV3TilingArch35::IsCountingSortApplicable()
         return false;
     }
     int64_t actualExpertNum = expertEnd_ - expertStart_;
+
     if (actualExpertNum <= 0 || actualExpertNum > CS_MAX_ACTUAL_EXPERT_NUM) {
         // expertIdx 值域必须能映射到 uint8（actualExpertNum ≤ 256）
         return false;
     }
+
+    // n<=1536 && scatter && ep1 && expertNum==256 && LE<=32 && unquant && k==8 && dropless && COUNT 时直接返回，不走计数排序
+    if (n_ <= CS_COUNTING_SORT_THRESHOLD && rowIdxType_ == ROW_IDX_SCATTER && ep_ == 1 &&
+            expertNum_ == CS_ASSIST_NUM && actualExpertNum <= CS_PERFORMANCE_MODE_RANGE_MAX &&
+            quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
+            dropPadMode_ == DROP_PAD_MODE_DROPLESS && expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT) {
+        return false;
+    }
+
     // dropless 时要求 actualExpertNum*2 <= expertNum（实际专家数不超过一半，计数排序才有收益）
     if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
         if (actualExpertNum != expertNum_ && actualExpertNum * NUM_TWO > expertNum_) {
@@ -2042,15 +2042,17 @@ int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64
             total += Ops::Base::CeilAlign(colsAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
         }
     }
-    // 聚合搬出分桶区（csAggrEnable=1 时）：bucketBase(coreEntries int32) + offsetTbl(actualExpertNum int32) +
-    // countTbl(actualExpertNum int32) 容量上限按 coreEntries 估算（filteredCount_ <=
-    // coreEntries）。保守计入，确保聚合启用时不超 UB。
+    // 聚合搬出相关缓冲区仅在 csAggrEnable=1 时申请：bucketBase + offsetTbl + countTbl。
+    // 聚合搬出 gatherOutBuf 位于 UB 最前，固定预留 AGGRBUFBYTES_A5。
     int64_t actualExpertNum = expertEnd_ - expertStart_;
-    total += Ops::Base::CeilAlign(coreEntries * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    total += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_TWO;
-    // 聚合搬出 gatherOutBuf（csAggrEnable=1 时，UB 最前独立预留 10KB）
-    // 固定 10KB，aggrOutRows = 10KB / (colsAligned * dtypeSize)。保守计入。
-    total += Ops::Base::CeilAlign(static_cast<int64_t>(10 * 1024), UB_BLOCK_SIZE);
+    int64_t aggrOutRows = AGGRBUFBYTES_A5 / (colsAligned * inputXDtypeSize_);
+    bool aggrEnable = (aggrOutRows >= NUM_TWO) && (actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM) &&
+                      (quantMode_ == QUANT_MODE_UNQUANT);
+    if (aggrEnable) {
+        total += Ops::Base::CeilAlign(coreEntries * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+        total += Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_TWO;
+        total += Ops::Base::CeilAlign(static_cast<int64_t>(AGGRBUFBYTES_A5), UB_BLOCK_SIZE);
+    }
     return total;
 }
 
@@ -2062,12 +2064,6 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortFullLoadTiling()
     int64_t perCoreTokens = Ops::Base::CeilDiv(n_, aivCoreNum_);
     int64_t needCoreNum = Ops::Base::CeilDiv(n_, perCoreTokens);
     int64_t lastCoreTokens = n_ - perCoreTokens * (needCoreNum - 1);
-    // UB 预算校验：不通过则置 0 回退分阶段路径
-    int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokens);
-    if (estUb <= 0 || estUb > availUbSize_ - LENGTH_1024) {
-        cs->countingSortMode = 0;
-        return;
-    }
 
     cs->filterNeedCoreNum = needCoreNum;
     cs->filterPerCoreTokens = perCoreTokens;
@@ -2095,9 +2091,9 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortFullLoadTiling()
     cs->csAggrOutBufBytes = aggrEnable ? aggrBufBytes : 0;
 
     OP_LOGD(context_,
-            "CountingSort FullLoad: needCoreNum=%ld, perCoreTokens=%ld, coreEntries=%ld, estUb=%ld, "
+            "CountingSort FullLoad: needCoreNum=%ld, perCoreTokens=%ld, coreEntries=%ld "
             "csAggrEnable=%ld, csAggrOutRows=%ld, csAggrOutBufBytes=%ld",
-            needCoreNum, perCoreTokens, cs->coreEntries, estUb, cs->csAggrEnable, cs->csAggrOutRows,
+            needCoreNum, perCoreTokens, cs->coreEntries, cs->csAggrEnable, cs->csAggrOutRows,
             cs->csAggrOutBufBytes);
 }
 
@@ -2312,3 +2308,4 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutDropPadCompute()
 REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRoutingV3TilingArch35,
                              1000); // If 950, use this tiling class.
 } // namespace optiling
+

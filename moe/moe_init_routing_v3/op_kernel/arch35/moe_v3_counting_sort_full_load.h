@@ -283,26 +283,7 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWrite()
         int64_t tokenRow = static_cast<int64_t>(localFlatIdx) / k_;
         int64_t origFlatIdx = coreFlatStart_ + static_cast<int64_t>(localFlatIdx);
 
-        int64_t newPos;
-        if (dropPadMode_ == DROP_PAD_MODE) {
-            if (slot >= expertCapacity_) {
-                if (rowIdxType_ == GATHER) {
-                    LocalTensor<int32_t> dropIdxBuf =
-                        buf_.template Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
-                    DataCopyExtParams dropIdxCopyParams{static_cast<uint16_t>(1),
-                                                        static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
-                    dropIdxBuf.SetValue(0, static_cast<int32_t>(-1));
-                    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-                    DataCopyPad(expandedRowIdxGm_[origFlatIdx], dropIdxBuf, dropIdxCopyParams);
-                    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
-                }
-                continue;
-            }
-            newPos = (static_cast<int64_t>(expertOffset) + expertStart_) * expertCapacity_ + slot;
-        } else {
-            newPos = static_cast<int64_t>(slot);
-        }
-
+        int64_t newPos = static_cast<int64_t>(slot);
         GatherOneRow(newPos, tokenRow, origFlatIdx);
     }
 }
