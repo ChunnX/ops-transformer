@@ -316,8 +316,8 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            // BNSD/BSND: GM_KV_BNSD 使用带 parser 的 5 参重载
+            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 
@@ -340,8 +340,8 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kScaleGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            // BNSD/BSND: GM_KV_BNSD 使用带 parser 的 5 参重载
+            kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 
@@ -363,8 +363,8 @@ public:
         } else if constexpr (KV_NEEDS_WZH) {
             vScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
         } else {
-            vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            vScaleGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            // BNSD/BSND: GM_KV_BNSD 使用带 parser 的 5 参重载
+            vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, *this->kvSeqParserPtr_);
         }
     }
 

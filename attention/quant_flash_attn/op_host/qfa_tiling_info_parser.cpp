@@ -660,6 +660,8 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
 ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
 {
     OP_LOGI(qfaInfo.opName, "enter QfaInfoParser::Parse!");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, "input tensor", "",
+                                              "Empty tensor (containing a dimension of size 0) is not supported");
     if (context_ == nullptr) {
         OP_LOGE(qfaInfo.opName, "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
