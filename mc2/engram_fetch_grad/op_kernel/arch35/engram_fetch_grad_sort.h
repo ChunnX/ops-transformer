@@ -716,7 +716,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                 if (i == tileLen || sortedKey.GetValue(i) != curKey) {
                     uint32_t keyCount = i - keyStart;
                     for (uint32_t k = 0U; k < keyCount; k++) {
-                        padBuf[off + k] = valueLocal.GetValue(sortIndices.GetValue(keyStart + k));
+                        padBuf.SetValue(off + k, valueLocal.GetValue(sortIndices.GetValue(keyStart + k)));
                     }
                     off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
                     if (i < tileLen) {
@@ -750,7 +750,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                 if (i == tileLen || sortedKey.GetValue(i) != curKey) {
                     uint32_t keyCount = i - keyStart;
                     for (uint32_t k = 0U; k < keyCount; k++) {
-                        padBuf[off + k] = indexLocal.GetValue(sortIndices.GetValue(keyStart + k));
+                        padBuf.SetValue(off + k, indexLocal.GetValue(sortIndices.GetValue(keyStart + k)));
                     }
                     off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
                     if (i < tileLen) {
