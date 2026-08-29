@@ -72,7 +72,11 @@ constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 constexpr uint32_t META_INFO_SIZE = 8U;
+constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
+constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
+// a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。
+constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 
 constexpr uint32_t L1_TILE_M_256 = 256U;
