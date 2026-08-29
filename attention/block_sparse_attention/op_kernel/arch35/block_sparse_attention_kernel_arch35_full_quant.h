@@ -675,6 +675,12 @@ public:
             } else {
                 pExtraElemNum = Max(qBaseTilePerSubCore, kvBaseTilePerSubCore);
             }
+        } else if constexpr (RESCALE_ON_CUBE &&
+            AscendC::IsSameType<ElementP, fp8_e4m3fn_t>::value) {
+            // ND FP8 P inserts one 32-byte DataBlock gap between adjacent N fractals.
+            constexpr uint32_t P_ELE_NUM_PER_DATABLOCK = 32 / sizeof(ElementP);
+            uint32_t pNFractalNum = kvBaseTilePerSubCore / P_ELE_NUM_PER_DATABLOCK;
+            pExtraElemNum = (pNFractalNum - 1) * P_ELE_NUM_PER_DATABLOCK;
         }
         uint32_t sStartOffset = 0;
         uint32_t pStartOffset = sStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES;

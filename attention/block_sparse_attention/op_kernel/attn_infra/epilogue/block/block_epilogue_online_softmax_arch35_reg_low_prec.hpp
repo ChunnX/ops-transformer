@@ -132,13 +132,19 @@ public:
     {
         subBlockIdx_ = AscendC::GetSubBlockIdx();
         scaleValue = static_cast<ElementInput>(scaleValue_);
+        uint32_t pStageElemNum =
+            uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.kvBaseTilePerSubCore;
+        if constexpr (FULL_QUANT_FP8 && rescaleOnCube_) {
+            uint32_t pNFractalNum = uBufTileHelper.kvBaseTilePerSubCore / ELE_NUM_PER_C0_FP8;
+            pStageElemNum += (pNFractalNum - 1) * ELE_NUM_PER_C0_FP8;
+        }
         for (uint32_t i = 0; i < UB_S_P_BUF_STAGES; i++) {
             lsUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
                 uBufTileHelper.sStartOffset +
                 uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.kvBaseTilePerSubCore * sizeof(ElementInput) * i);
             lpUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOutput>(
                 uBufTileHelper.pStartOffset +
-                uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.kvBaseTilePerSubCore * sizeof(ElementOutput) * i);
+                pStageElemNum * sizeof(ElementOutput) * i);
         }
         for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
             dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
@@ -161,11 +167,10 @@ public:
 
     template <class TensorDst, class TensorSrc>
     __aicore__ inline
-    void CopyPUbToPL1(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m)
+    void CopyPUbToPL1(
+        TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m, uint32_t srcBlockStride)
     {
         const uint32_t blockCount = tla::get<1, 1>(srcTensor.shape());
-        const uint32_t blockLen = tla::get<0, 0>(srcTensor.shape()) * tla::get<0, 1>(srcTensor.shape());
-        const uint32_t dstOuterStrideCol = tla::get<1, 1>(dstTensor.stride());
 
         AscendC::DataCopyParams repeatParams;
 
@@ -177,7 +182,7 @@ public:
         }
         repeatParams.blockCount = blockCount;
         repeatParams.blockLen = m;
-        repeatParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / elementNumPerC0 - m;
+        repeatParams.srcStride = srcBlockStride - m;
         repeatParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / elementNumPerC0 - m;
 
         auto dstOffset = dstTensor.layout()(dstTensor.coord());
@@ -216,6 +221,9 @@ public:
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
         uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
         uint32_t blockStride = mRound;
+        if constexpr (FULL_QUANT_FP8 && rescaleOnCube_) {
+            blockStride += 1;
+        }
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
         int16_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
         uint32_t tailN = (n - 1) % vlSize + 1;
@@ -294,7 +302,7 @@ public:
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
-        CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
+        CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m, blockStride);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
         SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
