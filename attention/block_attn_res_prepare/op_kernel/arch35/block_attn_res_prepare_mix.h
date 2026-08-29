@@ -34,15 +34,14 @@ using TensorApiKernel =
     Blaze::Attention::Kernel::AttentionUniversal<ProblemShape, BlockMmadTuple, BlockEpilogue, BlockScheduler>;
 using Params = typename TensorApiKernel::Params;
 
-__aicore__ inline void AssembleProblemShape(Params &params,
-                                            const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+__aicore__ inline void AssembleProblemShape(Params &params, const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     params.problemShape = {static_cast<int64_t>(tiling.totalS), static_cast<int64_t>(tiling.totalN),
                            static_cast<int64_t>(tiling.totalD), static_cast<int64_t>(tiling.totalT)};
 }
 
 __aicore__ inline void AssembleMm1Params(Params &params, GM_ADDR pseudoQuery, GM_ADDR blockRes, GM_ADDR workspace,
-                                         const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+                                         const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     params.mm1Params.aGmAddr = pseudoQuery;
     params.mm1Params.bGmAddr = blockRes;
@@ -59,7 +58,7 @@ __aicore__ inline void AssembleMm1Params(Params &params, GM_ADDR pseudoQuery, GM
 }
 
 __aicore__ inline void AssembleMm2Params(Params &params, GM_ADDR blockRes, GM_ADDR numerator, GM_ADDR workspace,
-                                         const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+                                         const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     params.mm2Params.aGmAddr = workspace;
     params.mm2Params.bGmAddr = blockRes;
@@ -75,9 +74,9 @@ __aicore__ inline void AssembleMm2Params(Params &params, GM_ADDR blockRes, GM_AD
     params.mm2Params.l0cStages = SINGLE_STAGE;
 }
 
-__aicore__ inline void AssembleEpilogueParams(Params &params, GM_ADDR blockRes, GM_ADDR validBlocks,
-                                              GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR workspace,
-                                              const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+__aicore__ inline void AssembleEpilogueParams(Params &params, GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR numerator,
+                                              GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR workspace,
+                                              const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     params.epilogueParams.blockResidualGmAddr = blockRes;
     params.epilogueParams.validBlocksGmAddr = validBlocks;
@@ -100,8 +99,7 @@ __aicore__ inline void AssembleEpilogueParams(Params &params, GM_ADDR blockRes, 
     params.epilogueParams.epsilon = tiling.eps;
 }
 
-__aicore__ inline void AssembleSchedulerParams(Params &params,
-                                               const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+__aicore__ inline void AssembleSchedulerParams(Params &params, const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     params.schedulerParams.totalWorkUnits = tiling.totalWorkUnits;
     params.schedulerParams.usedCoreNum = tiling.usedCoreNum;
@@ -112,9 +110,10 @@ __aicore__ inline void AssembleSchedulerParams(Params &params,
 }
 } // namespace BlockAttnResPrepareMixDetail
 
-__aicore__ inline void BlockAttnResPrepareTensorApiBlazeKernel(
-    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
-    GM_ADDR workspace, const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+__aicore__ inline void BlockAttnResPrepareTensorApiBlazeKernel(GM_ADDR blockRes, GM_ADDR validBlocks,
+                                                               GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax,
+                                                               GM_ADDR expSum, GM_ADDR workspace,
+                                                               const optiling::BlockAttnResPrepareMixTilingData &tiling)
 {
     BlockAttnResPrepareMixDetail::Params params{};
     BlockAttnResPrepareMixDetail::AssembleProblemShape(params, tiling);
