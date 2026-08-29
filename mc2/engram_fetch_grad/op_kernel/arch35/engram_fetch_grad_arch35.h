@@ -924,7 +924,16 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
 
             uint32_t slotsRead = 0;
             uint32_t tokensRead = 0;
-            if (batchSlots < remainingChunks) {
+            // The contiguous multi-slot read assumes consecutive slots are exactly
+            // maxTokensPerSlot_*hiddenBytes_ apart. tokenSlotSize_ = tokenArea/numRanks_/
+            // NUM_SLOTS leaves a per-slot slack of tokenSlotSize_ % hiddenBytes_ bytes
+            // whenever tokenArea isn't a multiple of numRanks_*NUM_SLOTS*hiddenBytes_;
+            // reading contiguously then mixes never-written window memory into recvGrad
+            // and misaligns every following slot (grad rows zero/shifted while indices
+            // stay correct). Only batch when there is no slack; otherwise read per slot.
+            bool noSlotSlack =
+                (tokenSlotSize_ == static_cast<uint64_t>(maxTokensPerSlot_) * static_cast<uint64_t>(hiddenBytes_));
+            if (noSlotSlack && batchSlots < remainingChunks) {
                 uint32_t totalTokens = batchSlots * maxTokensPerSlot_;
                 uint32_t firstSegIdx = localReadCnt % slotsPerSender;
                 uint32_t firstSlotIdx = si * slotsPerSender + firstSegIdx;
