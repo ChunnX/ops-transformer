@@ -68,7 +68,7 @@ const static int64_t ROUTED_SCALING_FACTOR_ATTR_INDEX = 7;
 const static int64_t EPS_ATTR_INDEX = 8;
 const static int64_t DEFAULT_WORKSPACE_SIZE = static_cast<int64_t>(16 * 1024 * 1024); // 预留16M空间
 const static int64_t DEFAULT_BATCH_ROWS = 4;
-const static int64_t MAX_BATCH_ROWS = 16;
+const static int64_t MAX_BATCH_ROWS = 128;
 const static int64_t MAX_SINGLE_EXPERT_BATCH_ROWS = 4096;
 
 class MoeGatingTopKTilingRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -677,12 +677,6 @@ void MoeGatingTopKTilingRegbase::SplitRows()
             int64_t availableUb = static_cast<int64_t>(aicoreParams_.ubSize) - fixedUb;
             if (perRowUb > 0 && availableUb > 0) {
                 int64_t maxBatchByUb = availableUb / perRowUb;
-                batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
-            }
-        } else {
-            int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
-            if (perRowUbSize > 0) {
-                int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
                 batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
             }
         }
