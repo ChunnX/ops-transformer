@@ -61,7 +61,7 @@ const constexpr int32_t SCHEDULE_MODE = 1;
 const constexpr uint32_t C0_SET_SHAPE_M = 512;
 const constexpr uint32_t C0_SET_SHAPE_N = 128;
 const constexpr uint32_t C1_SET_SHAPE_M_BASE = 128;
-const constexpr uint32_t C1_SET_SHAPE_K = 1024;
+const constexpr uint32_t C1_SET_SHAPE_K = 512;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
