@@ -111,6 +111,32 @@ void MMAllReduceFitBalanceTiling::AdjustLongShortTileLen()
     tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
     SetCommBoundTile();
     AlignLongTileLen();
+
+    // AICPU + pertile量化场景：强制等分切分，降低通信膨胀开销
+    if (isAicpuMode_ && isPertileFp8_) {
+        uint64_t totalLen = mmInfo_.mValue;
+        uint64_t maxTileCnt = AICPU_PERTILE_MAX_TILE_CNT;
+        uint64_t alignBase = AICPU_PERTILE_ALIGN_BASE;
+        uint64_t alignedBlocks = (totalLen + alignBase - 1) / alignBase;
+        if (alignedBlocks >= maxTileCnt) {
+            uint64_t longTileLen = (alignedBlocks / maxTileCnt) * alignBase;
+            uint64_t tailLen = totalLen - longTileLen * (maxTileCnt - 1);
+            if (longTileLen > 0 && tailLen > 0) {
+                tilingM_.cutRes.longTileLen = longTileLen;
+                tilingM_.cutRes.numLongTile = maxTileCnt - 1;
+                tilingM_.cutRes.shortTileLen = tailLen;
+                tilingM_.cutRes.numShortTile = 1;
+                tilingM_.cutRes.shortTileAtBack = true;
+                tilingM_.cutRes.totalTileCnt = maxTileCnt;
+            }
+        }
+        OP_LOGD("MMAllReduceFitBalanceTiling",
+                "AICPU pertile equal split: M=%lu, longTileLen=%lu, numLongTile=%lu, "
+                "shortTileLen=%lu, numShortTile=%lu",
+                totalLen, tilingM_.cutRes.longTileLen, tilingM_.cutRes.numLongTile, tilingM_.cutRes.shortTileLen,
+                tilingM_.cutRes.numShortTile);
+    }
+
     // When the long and short tiles are equal, merge them
     if (tilingM_.cutRes.shortTileLen == tilingM_.cutRes.longTileLen) {
         tilingM_.cutRes.shortTileLen = 0U;
