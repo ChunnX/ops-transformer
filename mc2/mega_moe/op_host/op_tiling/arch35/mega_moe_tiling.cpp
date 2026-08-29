@@ -1342,7 +1342,12 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
+    // 预取开启（MTE 拓扑）时布局钳至 192K 之下，为预取 scratch 让位。
+    uint32_t sendMaskAvailableUbBytes = availableUbBytes;
+    if (tilingData->topoType == TOPO_TYPE_MTE && sendMaskAvailableUbBytes > WEIGHT_L2_PREFETCH_UB_OFFSET) {
+        sendMaskAvailableUbBytes = WEIGHT_L2_PREFETCH_UB_OFFSET;
+    }
+    SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sendMaskAvailableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);

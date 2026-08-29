@@ -101,7 +101,8 @@ private:
     __aicore__ inline ExpertTokenPosition DispatchNextWave(ExpertTokenPosition &dispatchPosition);
     __aicore__ inline ExpertTokenPosition ProcessGmm1Wave(ExpertTokenPosition &gmm1Position,
                                                           ExpertLoopState &gmm1ExpertState, GMMAddrInfo &gmm1AddrInfo,
-                                                          GmmRuntimeState &runtimeState);
+                                                          GmmRuntimeState &runtimeState,
+                                                          WeightL2PrefetchCursor *weightPrefetch);
     __aicore__ inline void AdvanceStartBlockIdxForSkippedGmm1(const ExpertTokenPosition &waveBeginPosition,
                                                               const ExpertTokenPosition &waveEndPosition);
     __aicore__ inline void ProcessGmm2Wave(ExpertTokenPosition &gmm2Position,
@@ -134,6 +135,9 @@ private:
     // Wave Combine 的逻辑任务分工（block 粒度，AIV1 门控在函数内）。
     AivJobContext waveCombineJob_{};
     TokenUnpermuteConfig tokenUnpermuteConfig_;
+    // 权重 L2 预取窗口 0（SendMask 期间）的游标与 AIV0 指针；仅 8bit 权重（fp8）的 MTE wave 路径构造。
+    WeightL2PrefetchCursor window0PrefetchCursor_{};
+    WeightL2PrefetchCursor *window0PrefetchPtr_ = nullptr;
 
     uint32_t k_ = 0;
     uint32_t rankId_ = 0;
@@ -453,6 +457,28 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
         sharedExpertPrepareScratch_.copyBuffer1 = quantProcessScratch_.xOutTensor1;
     }
     resetBatchElementCount_ = resetBatchElementCount;
+
+    /*
+     * 窗口 0 预取游标构造（仅 AIV0，rank 门控 >8P；fp8 epb=1 经参数化传入）。本类仅 MTE 拓扑
+     * 实例化，mode 与类一一对应，不重复判定门控。
+     */
+    if (gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+        gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+        if (GetSubBlockIdx() == 0U && IsW8WeightPrefetchRank(commonConfig_.worldSize)) {
+            // 预算 = min(自适应总量, 窗口 0 能力门限)（fp8 epb=1）；剩余总量由窗口 1 软预算接续。
+            uint64_t adaptiveTotalBytes = WeightL2PrefetchAdaptiveTotalBytes(
+                commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank,
+                PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE);
+            uint64_t window0Capacity = WeightL2PrefetchWindow0TotalBytes(countWorkspace_.blockNum);
+            WeightL2PrefetchInit(window0PrefetchCursor_, moeWeightTensorListAddrs_.weight1,
+                                 gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                                 commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx,
+                                 countWorkspace_.blockNum,
+                                 adaptiveTotalBytes < window0Capacity ? adaptiveTotalBytes : window0Capacity, 0U,
+                                 PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE);
+            window0PrefetchPtr_ = &window0PrefetchCursor_;
+        }
+    }
 }
 
 // ===============================================================
@@ -590,7 +616,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Advance
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmm1Wave(
     ExpertTokenPosition &gmm1Position, ExpertLoopState &gmm1ExpertState, GMMAddrInfo &gmm1AddrInfo,
-    GmmRuntimeState &runtimeState)
+    GmmRuntimeState &runtimeState, WeightL2PrefetchCursor *weightPrefetch)
 {
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
@@ -602,8 +628,15 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     while (gmm1Position.expertIdx < moeExpertPerRank_ && processedMGroupCount < mGroupsPerWave_) {
         if (gmm1Position.tokenIndexInExpert == 0U) {
             if (!gmm1ExpertState.expertCountTableReady) {
-                WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
-                                                0U);
+                // 主线语义：整表就绪 flag（0 号槽）一次等待；预取仅挂首次等待的自旋间隙
+                // （countWaitPrefetchUsed 一次性），e1+ 直接读表不再自旋。
+                if (weightPrefetch != nullptr) {
+                    WaitForMoeExpertTokenCountReadyWithPrefetch(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+                                                                countWorkspace_, 0U, *weightPrefetch);
+                } else {
+                    WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                                    0U);
+                }
                 gmm1ExpertState.expertCountTableReady = true;
             }
             uint32_t expertTokenCount =
@@ -846,6 +879,30 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     int32_t gmm2TileSequence = 0;
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
 
+    /*
+     * W8 窗口 1 预取（count 等待自旋）：与窗口 0 同款 rank 门控（worldSize > 8 跨机才开）——
+     * 单机 fullmesh 关闭（等待窗极短无收益且挤带宽），跨机开启。自适应总量经能力门限分解后
+     * 剩余 >0 才构造。W4 路径不受影响。
+     */
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        uint64_t adaptiveTotalBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank,
+            PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE);
+        uint64_t window0Capacity = WeightL2PrefetchWindow0TotalBytes(countWorkspace_.blockNum);
+        uint64_t window0Bytes = adaptiveTotalBytes < window0Capacity ? adaptiveTotalBytes : window0Capacity;
+        if (IsW8WeightPrefetchRank(commonConfig_.worldSize) && GetSubBlockIdx() == 0U &&
+            adaptiveTotalBytes > window0Bytes) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                                 commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx,
+                                 countWorkspace_.blockNum, adaptiveTotalBytes - window0Bytes, window0Bytes,
+                                 PackedElementTraits<Weight1Type>::ELEMENTS_PER_BYTE);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     ExpertTokenPosition waveBeginPosition{};
     ExpertTokenPosition dispatchPosition{};
     ExpertTokenPosition gmm1Position{};
@@ -877,7 +934,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
         const uint32_t waveStartBlockIndex = startBlockIdx_;
         ExpertTokenPosition waveEndPosition =
-            ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+            ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState, weightPrefetch);
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
                 waveEndPosition = hasPreparedWave ? preparedWaveEndPosition : DispatchNextWave(dispatchPosition);
@@ -961,13 +1018,24 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
-    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_);
+    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_,
+                                     window0PrefetchPtr_);
+    // 窗口 0 余量补发（fire-and-forget，不 Drain）：在飞块由 ProcessGmmPipeline 尾部 AIV 的
+    // PipeBarrier<PIPE_ALL> 排空；shared>0 分支另由 PrepareSharedExpertInput 尾部屏障兜底。
+    if (window0PrefetchPtr_ != nullptr) {
+        while (WeightL2PrefetchTryIssue(*window0PrefetchPtr_)) {
+        }
+    }
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         // 可选：为共享专家拆分连续布局的输入数据与 scale。
         PrepareSharedExpertInput<ActivationType, QuantScaleOutType, 1U>(
             aivJob_, commonConfig_, params_, quantProcessConfig_, sharedExpertPrepareScratch_);
+        // 防御性排空（见上方注释）：正常路径在 PrepareSharedExpertInput 尾部屏障之后 MTE2 已空，
+        // Drain 仅空转（~百 ns）；window0PrefetchPtr_ 仅 AIV0 构造，AIC/AIV1 零开销。
+        if (window0PrefetchPtr_ != nullptr) {
+            WeightL2PrefetchDrain();
+        }
     } else {
         if constexpr (g_coreType == AIV) {
             PipeBarrier<PIPE_ALL>();
