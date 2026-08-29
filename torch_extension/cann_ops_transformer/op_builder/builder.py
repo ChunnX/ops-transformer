@@ -133,6 +133,7 @@ class OpBuilder(ABC):
         args = [
             "-O3",
             "-w",
+            "-std=c++17",
             "-fPIC",
             "-fstack-protector-all",
             "-Wl,-z,relro,-z,now,-z,noexecstack",

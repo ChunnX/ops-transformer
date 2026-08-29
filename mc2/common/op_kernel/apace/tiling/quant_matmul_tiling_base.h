@@ -17,7 +17,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <optional>
 
 #include "../utils/apace_common_utils.h"
 #include "quant_matmul_tiling_common.h"
@@ -30,7 +29,7 @@ public:
     QuantMatmulTilingBase() = default;
     virtual ~QuantMatmulTilingBase() = default;
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB, QuantMatmulTilingData &tilingData)
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB, QuantMatmulTilingData& tilingData)
     {
         // Clear the cached state so one tiling object can safely be reused for
         // multiple shapes without leaking the previous decision.
@@ -47,25 +46,15 @@ public:
         PrintTilingData(tilingData);
     }
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData &tilingData)
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData& tilingData)
     {
         // Keep compatibility with the common sample default:
         // A is not transposed and B is transposed.
         GetTilingData(m, n, k, false, true, tilingData);
     }
 
-    void SetOptimizeEnable(bool enable)
-    {
-        isOpenOptimize_ = enable;
-    }
-    void SetMTailAlignEnable(bool enable)
-    {
-        enableMTailAlign_ = enable;
-    }
-    void SetPlatformInfoPtr(fe::PlatFormInfos *ptr)
-    {
-        platformInfoPtr_ = ptr;
-    }
+    void SetOptimizeEnable(bool enable) { isOpenOptimize_ = enable; }
+    void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
 
 protected:
     QuantMatmulArgs args_{};
@@ -74,14 +63,13 @@ protected:
 
     bool isOpenOptimize_{true};
     bool enableMTailAlign_{false};
-    fe::PlatFormInfos *platformInfoPtr_{nullptr};
 
-    virtual const char *TilingName() const = 0;
+    virtual const char* TilingName() const = 0;
 
-    virtual void DoOpTiling(QuantMatmulTilingData &tilingData) = 0;
+    virtual void DoOpTiling(QuantMatmulTilingData& tilingData) = 0;
 
 private:
-    void PrintTilingData(const QuantMatmulTilingData &tilingData) const
+    void PrintTilingData(const QuantMatmulTilingData& tilingData) const
     {
         printf("[QuantMatmul Strategy]\n");
         printf("  strategy           : %s\n", TilingName());
@@ -109,16 +97,7 @@ private:
     {
         // Query the platform once per tiling request so later decisions can
         // use the real cache sizes and core count of the current device.
-        // Prefer the context-injected platform info (UT-friendly); fall back
-        // to the global manager singleton for standalone host launchers.
-        std::optional<platform_ascendc::PlatformAscendC> ctxPlatform;
-        platform_ascendc::PlatformAscendC *ascendcPlatform = nullptr;
-        if (platformInfoPtr_ != nullptr) {
-            ctxPlatform.emplace(platformInfoPtr_);
-            ascendcPlatform = &(*ctxPlatform);
-        } else {
-            ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-        }
+        auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
         platformInfo_.aicNum = ascendcPlatform->GetCoreNumAic();
         platformInfo_.aivNum = ascendcPlatform->GetCoreNumAiv();
         platformInfo_.socVersion = ascendcPlatform->GetSocVersion();
@@ -140,3 +119,4 @@ private:
         args_.transB = transB;
     }
 };
+

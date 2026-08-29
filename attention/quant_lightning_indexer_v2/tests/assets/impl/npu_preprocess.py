@@ -23,32 +23,6 @@ OPERATOR = "quant_lightning_indexer_v2"
 METADATA_INDEX = 12
 QUANT_MODE_MXFP8 = 3
 QUANT_MODE_MXFP4 = 5
-QUANT_MODE_HIF4 = 6
-ACLNN_PARAMETER_NAMES = (
-    "query",
-    "key",
-    "weights",
-    "query_dequant_scale",
-    "key_dequant_scale",
-    "cu_seqlens_q",
-    "cu_seqlens_k",
-    "seqused_q",
-    "seqused_k",
-    "cmp_residual_k",
-    "block_table",
-    "output_idx_offset",
-    "metadata",
-    "topk",
-    "quant_mode",
-    "max_seqlen_q",
-    "layout_q",
-    "layout_k",
-    "mask_mode",
-    "cmp_ratio",
-    "return_value",
-    "sparse_indices_out",
-    "sparse_values_out",
-)
 
 
 def load_metadata_protocol():
@@ -117,8 +91,6 @@ def restore_mx_dtypes(query, key, query_scale, key_scale, quant_mode):
         ("query_dequant_scale", query_scale, scale_dtype),
         ("key_dequant_scale", key_scale, scale_dtype),
     ):
-        if not torch.is_tensor(tensor):
-            continue
         if tensor.dtype == dtype:
             continue
         if tensor.dtype != torch.uint8:
@@ -135,9 +107,7 @@ def build_metadata_arguments(
     k_shape = tuple(int(value) for value in key.shape)
     num_heads_q = q_shape[2] if layout_q == "BSND" else q_shape[1]
     num_heads_k = k_shape[1] if layout_k == "TND" else k_shape[2]
-    head_dim = q_shape[-1] * (
-        2 if int(quant_mode) in (QUANT_MODE_MXFP4, QUANT_MODE_HIF4) else 1
-    )
+    head_dim = q_shape[-1] * (2 if int(quant_mode) == QUANT_MODE_MXFP4 else 1)
     cu_q = kwargs.get("cu_seqlens_q")
     cu_k = kwargs.get("cu_seqlens_k")
     seq_q = kwargs.get("seqused_q")
@@ -212,8 +182,6 @@ def move_to_device(value, target):
 
 
 def run_metadata(arguments, metadata):
-    import cann_ops_transformer
-
     return torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_k"]),
@@ -273,8 +241,7 @@ def run(
     )
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
-    force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
-    if protocol.metadata_is_materialized(metadata) and not force_metadata_refresh:
+    if protocol.metadata_is_materialized(metadata):
         logging.info("[%s] reuse nonzero QLI_V2 metadata input", testcase_name)
         return None
     arguments = protocol.load_metadata_inputs(OPERATOR, testcase_name)
@@ -293,12 +260,7 @@ def run(
             arguments_kwargs,
         )
         source = "main API fallback (sidecar unavailable)"
-    logging.info(
-        "[%s] build QLI_V2 metadata from %s; forced=%s",
-        testcase_name,
-        source,
-        force_metadata_refresh,
-    )
+    logging.info("[%s] build QLI_V2 metadata from %s", testcase_name, source)
     generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
@@ -312,34 +274,3 @@ def run(
     if rewritten is not None:
         logging.info("[%s] rewrote QLI_V2 metadata input: %s", testcase_name, rewritten)
     return None
-
-
-def run_aclnn(*args, **kwargs):
-    """Adapt the ACLNN main API order to the shared Torch metadata hook."""
-    if len(args) != len(ACLNN_PARAMETER_NAMES):
-        raise ValueError(
-            f"QuantLightningIndexerV2 ACLNN hook expects {len(ACLNN_PARAMETER_NAMES)} arguments, got {len(args)}"
-        )
-    values = dict(zip(ACLNN_PARAMETER_NAMES, args))
-    host_metadata = values["metadata"]
-    metadata = move_to_device(host_metadata, torch.empty(0, device="npu"))
-    values["metadata"] = metadata
-    result = run(
-        values.pop("query"),
-        values.pop("key"),
-        values.pop("weights"),
-        values.pop("query_dequant_scale"),
-        values.pop("key_dequant_scale"),
-        values.pop("topk"),
-        values.pop("quant_mode"),
-        **values,
-        **kwargs,
-    )
-    if torch.is_tensor(host_metadata):
-        if host_metadata.device != metadata.device:
-            host_metadata.copy_(
-                metadata.to(dtype=host_metadata.dtype, device=host_metadata.device)
-            )
-    else:
-        host_metadata[...] = metadata.detach().cpu().numpy()
-    return result

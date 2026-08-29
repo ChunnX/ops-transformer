@@ -38,8 +38,7 @@ struct BSASelectBlockMaskCompileInfo {
 
 class BSASelectBlockMaskTilingBase : public TilingBaseClass {
 public:
-    explicit BSASelectBlockMaskTilingBase(gert::TilingContext *context)
-        : TilingBaseClass(context)
+    explicit BSASelectBlockMaskTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
     {
         Reset();
     }
@@ -71,11 +70,6 @@ protected:
         useActualBlockLenK = 0;
         useActualSeqLenQ = 0;
         useActualSeqLenK = 0;
-        usePostBlockShape = 0;
-        postBlockShapeX = 1;
-        postBlockShapeY = 1;
-        postXBlocks = 0;
-        postYBlocks = 0;
         queryLayout = nullptr;
         kvLayout = nullptr;
         opName = nullptr;
@@ -126,11 +120,6 @@ protected:
     uint8_t useActualBlockLenK;
     uint8_t useActualSeqLenQ;
     uint8_t useActualSeqLenK;
-    uint8_t usePostBlockShape;
-    uint16_t postBlockShapeX;
-    uint16_t postBlockShapeY;
-    uint32_t postXBlocks;
-    uint32_t postYBlocks;
 
     const char *opName;
     const char *queryLayout;

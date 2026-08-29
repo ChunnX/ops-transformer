@@ -27,38 +27,6 @@ import torch
 
 OPERATOR = "sparse_flash_mla"
 METADATA_INDEX = 17
-ACLNN_PARAMETER_NAMES = (
-    "q",
-    "ori_kv",
-    "cmp_kv",
-    "ori_sparse_indices",
-    "cmp_sparse_indices",
-    "ori_block_table",
-    "cmp_block_table",
-    "cu_seqlens_q",
-    "cu_seqlens_ori_kv",
-    "cu_seqlens_cmp_kv",
-    "seqused_q",
-    "seqused_ori_kv",
-    "seqused_cmp_kv",
-    "cmp_residual_kv",
-    "ori_topk_length",
-    "cmp_topk_length",
-    "sinks",
-    "metadata",
-    "softmax_scale",
-    "cmp_ratio",
-    "ori_mask_mode",
-    "cmp_mask_mode",
-    "ori_win_left",
-    "ori_win_right",
-    "layout_q",
-    "layout_kv",
-    "topk_value_mode",
-    "return_softmax_lse",
-    "attn_out",
-    "softmax_lse_out",
-)
 
 
 def load_metadata_protocol():
@@ -170,20 +138,12 @@ def build_metadata_arguments(q, ori_kv, cmp_kv, kwargs):
     cmp_topk = 0 if cmp_sparse_indices is None else int(cmp_sparse_indices.shape[-1])
 
     cmp_ratio = int(get_attribute(kwargs, "cmp_ratio", 1) or 1)
-    max_seqlen_q = max_sequence(
-        cu_q_values if cu_q_values is not None else cu_q,
-        seq_q_values if seq_q_values is not None else seq_q,
-        q_fallback,
-    )
+    max_seqlen_q = max_sequence(cu_q_values or cu_q, seq_q_values or seq_q, q_fallback)
     max_seqlen_ori_kv = max_sequence(
-        cu_ori_values if cu_ori_values is not None else cu_ori,
-        seq_ori_values if seq_ori_values is not None else seq_ori,
-        ori_fallback,
+        cu_ori_values or cu_ori, seq_ori_values or seq_ori, ori_fallback
     )
     max_seqlen_cmp_kv = max_sequence(
-        cu_cmp_values if cu_cmp_values is not None else cu_cmp,
-        seq_cmp_values if seq_cmp_values is not None else seq_cmp,
-        cmp_fallback,
+        cu_cmp_values or cu_cmp, seq_cmp_values or seq_cmp, cmp_fallback
     )
     return {
         "num_heads_q": int(get_attribute(kwargs, "num_heads_q", num_heads_q)),
@@ -237,8 +197,6 @@ def move_to_device(value, target):
 
 
 def run_metadata(arguments, metadata):
-    import cann_ops_transformer
-
     return torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_kv"]),
@@ -276,8 +234,7 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, **kwargs):
         raise ValueError("SparseFlashMla npu_preprocess requires metadata")
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
-    force_metadata_refresh = bool(get_attribute(kwargs, "metadata_refresh", False))
-    if protocol.metadata_is_materialized(metadata) and not force_metadata_refresh:
+    if protocol.metadata_is_materialized(metadata):
         logging.info("[%s] reuse nonzero SMLA metadata input", testcase_name)
         return None
 
@@ -287,12 +244,7 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, **kwargs):
     else:
         arguments = build_metadata_arguments(q, ori_kv, cmp_kv, kwargs)
         source = "main API fallback (sidecar unavailable)"
-    logging.info(
-        "[%s] build SMLA metadata from %s; forced=%s",
-        testcase_name,
-        source,
-        force_metadata_refresh,
-    )
+    logging.info("[%s] build SMLA metadata from %s", testcase_name, source)
     generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
@@ -309,25 +261,3 @@ def run(q, *, ori_kv=None, cmp_kv=None, metadata=None, **kwargs):
     if rewritten is not None:
         logging.info("[%s] rewrote SMLA metadata input: %s", testcase_name, rewritten)
     return None
-
-
-def run_aclnn(*args, **kwargs):
-    """Adapt the ACLNN main API order to the shared Torch metadata hook."""
-    if len(args) != len(ACLNN_PARAMETER_NAMES):
-        raise ValueError(
-            f"SparseFlashMla ACLNN hook expects {len(ACLNN_PARAMETER_NAMES)} arguments, got {len(args)}"
-        )
-    values = dict(zip(ACLNN_PARAMETER_NAMES, args))
-    host_metadata = values["metadata"]
-    metadata = move_to_device(host_metadata, torch.empty(0, device="npu"))
-    values["metadata"] = metadata
-    q = values.pop("q")
-    result = run(q, **values, **kwargs)
-    if torch.is_tensor(host_metadata):
-        if host_metadata.device != metadata.device:
-            host_metadata.copy_(
-                metadata.to(dtype=host_metadata.dtype, device=host_metadata.device)
-            )
-    else:
-        host_metadata[...] = metadata.detach().cpu().numpy()
-    return result
