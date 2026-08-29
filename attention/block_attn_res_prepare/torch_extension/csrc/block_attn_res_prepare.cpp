@@ -13,6 +13,7 @@
  * \brief PyTorch binding for BlockAttnResPrepare.
  */
 
+#include <cmath>
 #include <tuple>
 
 #include <torch/extension.h>
@@ -47,6 +48,18 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
                 "valid_blocks must have shape [1], but got ", validBlocks.sizes());
     TORCH_CHECK(pseudoQuery.dim() == PSEUDO_QUERY_RANK, "pseudo_query must be a 2D tensor, but got ", pseudoQuery.dim(),
                 "D");
+    TORCH_CHECK(blockRes.scalar_type() == at::kFloat, "block_res must have dtype float32, but got ",
+                blockRes.scalar_type());
+    TORCH_CHECK(validBlocks.scalar_type() == at::kLong, "valid_blocks must have dtype int64, but got ",
+                validBlocks.scalar_type());
+    TORCH_CHECK(pseudoQuery.scalar_type() == at::kFloat, "pseudo_query must have dtype float32, but got ",
+                pseudoQuery.scalar_type());
+    TORCH_CHECK(blockRes.device() == validBlocks.device() && blockRes.device() == pseudoQuery.device(),
+                "all inputs must be on the same device, but got block_res=", blockRes.device(),
+                ", valid_blocks=", validBlocks.device(), ", pseudo_query=", pseudoQuery.device());
+    TORCH_CHECK(blockRes.is_contiguous(), "block_res must be contiguous");
+    TORCH_CHECK(validBlocks.is_contiguous(), "valid_blocks must be contiguous");
+    TORCH_CHECK(pseudoQuery.is_contiguous(), "pseudo_query must be contiguous");
     TORCH_CHECK(blockRes.size(N_DIM_INDEX) >= MIN_BLOCK_NUM && blockRes.size(N_DIM_INDEX) <= MAX_BLOCK_NUM,
                 "block_res.size(1) must be in [1, 64], but got ", blockRes.size(N_DIM_INDEX));
     TORCH_CHECK(blockRes.size(D_DIM_INDEX) >= MIN_HEAD_DIM && blockRes.size(D_DIM_INDEX) <= MAX_HEAD_DIM,
@@ -55,15 +68,24 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
                 "block_res.size(2) must equal pseudo_query.size(1), but got block_res.size(2)=",
                 blockRes.size(D_DIM_INDEX), " and pseudo_query.size(1)=", pseudoQuery.size(PSEUDO_QUERY_D_DIM_INDEX));
 
+    const float epsValue = static_cast<float>(eps);
+    TORCH_CHECK(std::isfinite(epsValue) && epsValue > 0.0F,
+                "eps must be representable as a finite positive float, but got ", eps);
+
     const int64_t totalT = blockRes.size(T_DIM_INDEX);
     const int64_t totalS = pseudoQuery.size(S_DIM_INDEX);
     const int64_t totalD = blockRes.size(D_DIM_INDEX);
     const auto outputOptions = blockRes.options().dtype(at::kFloat);
-    at::Tensor numerator = at::empty({totalS, totalT, totalD}, outputOptions);
-    at::Tensor logitMax = at::empty({totalS, totalT}, outputOptions);
-    at::Tensor expSum = at::empty({totalS, totalT}, outputOptions);
+    at::Tensor numerator{nullptr};
+    at::Tensor logitMax{nullptr};
+    at::Tensor expSum{nullptr};
+    {
+        const c10::OptionalDeviceGuard deviceGuard(blockRes.device());
+        numerator = at::empty({totalS, totalT, totalD}, outputOptions);
+        logitMax = at::empty({totalS, totalT}, outputOptions);
+        expSum = at::empty({totalS, totalT}, outputOptions);
+    }
 
-    const float epsValue = static_cast<float>(eps);
     ACLNN_CMD(aclnnBlockAttnResPrepare, blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum, epsValue);
     return {numerator, logitMax, expSum};
 }
