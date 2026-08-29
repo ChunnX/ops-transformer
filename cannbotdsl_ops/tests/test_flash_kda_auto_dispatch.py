@@ -214,9 +214,19 @@ class _FakeTensor:
         return type(self)(shape, self.dtype, self.device)
 
 
-def _fake_native_inputs(module, *, layout="BNSD", key_heads=3, value_heads=3):
+def _fake_native_inputs(
+    module,
+    *,
+    layout="BNSD",
+    batch=1,
+    sequence=8192,
+    key_heads=3,
+    value_heads=3,
+    scale=0.125,
+    lower_bound=-1.0,
+):
     device = _FakeDevice()
-    batch, sequence, dim = 1, 8192, module.SUPPORTED_HEAD_DIM
+    dim = module.SUPPORTED_HEAD_DIM
     if layout == "BNSD":
         qk_shape = (batch, key_heads, sequence, dim)
         value_shape = (batch, value_heads, sequence, dim)
@@ -233,13 +243,13 @@ def _fake_native_inputs(module, *, layout="BNSD", key_heads=3, value_heads=3):
         "v": _FakeTensor(value_shape, low, device),
         "g": _FakeTensor(value_shape, low, device),
         "beta": _FakeTensor(beta_shape, low, device),
-        "scale": 0.125,
+        "scale": scale,
         "initial_state": _FakeTensor(
             (batch, value_heads, dim, dim), high, device
         ),
         "A_log": _FakeTensor((value_heads,), high, device),
         "dt_bias": _FakeTensor((value_heads, dim), high, device),
-        "lower_bound": -1.0,
+        "lower_bound": lower_bound,
         "layout_qkv": layout,
     }
 
@@ -338,6 +348,113 @@ def test_flash_kda_native_compiles_the_canonical_entry_with_complete_samples(
     assert len(observed["runtime_args"]) == 22
     assert out.shape == (1, 3, 8192, 128)
     assert state.shape == (1, 3, 128, 128)
+
+
+@pytest.mark.parametrize(
+    ("warm", "unsupported"),
+    [
+        (
+            {"batch": 1, "sequence": 32768, "value_heads": 3},
+            {"batch": 1, "sequence": 16384, "value_heads": 3},
+        ),
+        (
+            {"batch": 4, "sequence": 1024, "value_heads": 96},
+            {"batch": 3, "sequence": 1024, "value_heads": 96},
+        ),
+        (
+            {
+                "batch": 1,
+                "sequence": 32768,
+                "value_heads": 3,
+                "scale": 0.125,
+            },
+            {
+                "batch": 1,
+                "sequence": 32768,
+                "value_heads": 3,
+                "scale": float("nan"),
+            },
+        ),
+    ],
+)
+def test_flash_kda_warm_cache_revalidates_canonical_public_support(
+    monkeypatch,
+    warm,
+    unsupported,
+):
+    module = _load_operator()
+    native_entry = pytest.importorskip(
+        "cannbotdsl.core.compiler.native_entry"
+    )
+    compile_samples = []
+    runtime_samples = []
+
+    def fake_compile(
+        entry,
+        physical_args,
+        *,
+        sample_shapes,
+        sample_scalars,
+    ):
+        del entry, physical_args
+        compile_samples.append((sample_shapes, sample_scalars))
+
+        def invoke(*runtime_args):
+            runtime_samples.append(
+                (
+                    runtime_args[0].shape[0],
+                    runtime_args[0].shape[2],
+                    runtime_args[20],
+                    runtime_args[21],
+                )
+            )
+
+        return invoke
+
+    def fake_empty(*shape, dtype, device):
+        if len(shape) == 1 and isinstance(shape[0], tuple):
+            shape = shape[0]
+        return _FakeTensor(shape, dtype, device)
+
+    device = _FakeDevice()
+    workspace = SimpleNamespace(
+        K_restored=_FakeTensor((1,), module.LOW_DTYPE, device),
+        gamma_C=_FakeTensor((1,), module.HIGH_DTYPE, device),
+        Q_decayed=_FakeTensor((1,), module.LOW_DTYPE, device),
+        W=_FakeTensor((1,), module.LOW_DTYPE, device),
+        Mqk=_FakeTensor((1,), module.LOW_DTYPE, device),
+        U_pre=_FakeTensor((1,), module.LOW_DTYPE, device),
+        identity16=_FakeTensor((16, 16), module.torch.float16, device),
+    )
+    execution = SimpleNamespace(
+        workspace=workspace,
+        qk_exchange=_FakeTensor((1,), module.HIGH_DTYPE, device),
+        launch_lock=threading.Lock(),
+    )
+    monkeypatch.setattr(native_entry, "compile_native_entry_variant", fake_compile)
+    monkeypatch.setattr(module, "_device_block_num", lambda ref=None: 28)
+    monkeypatch.setattr(module.torch, "empty", fake_empty)
+    monkeypatch.setattr(
+        module._EXECUTION_CACHE,
+        "get_or_create",
+        lambda **kwargs: execution,
+    )
+    module._DYNAMIC_KERNEL_CACHE.clear()
+
+    warm["key_heads"] = warm["value_heads"]
+    unsupported["key_heads"] = unsupported["value_heads"]
+    module.flash_kda(**_fake_native_inputs(module, **warm))
+    assert len(compile_samples) == 1
+    assert len(runtime_samples) == 1
+
+    with pytest.raises(
+        (TypeError, ValueError),
+        match="supported public point|unsupported type",
+    ):
+        module.flash_kda(**_fake_native_inputs(module, **unsupported))
+
+    assert len(compile_samples) == 1
+    assert len(runtime_samples) == 1
 
 
 @pytest.mark.parametrize(

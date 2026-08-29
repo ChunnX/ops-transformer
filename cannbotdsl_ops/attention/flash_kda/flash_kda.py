@@ -2174,8 +2174,10 @@ def flash_kda(
             "canonical FlashKDA native support requires contiguous BNSD "
             f"layout, got {layout_qkv!r}"
         )
-    assert cu_seqlens is None, "cu_seqlens is not supported"
-    assert q.dim() == 4, "q/k/v must be rank-4"
+    if cu_seqlens is not None:
+        raise ValueError("cu_seqlens is not supported")
+    if q.dim() != 4:
+        raise ValueError("q/k/v must be rank-4")
     batch, dim = q.shape[0], q.shape[3]
     seq_len = q.shape[2]
     n_v = v.shape[1]
@@ -2185,33 +2187,76 @@ def flash_kda(
             "canonical FlashKDA native support requires Nk == Nv, "
             f"got Nk={n_kv}, Nv={n_v}"
         )
-    qk_shape = (batch, n_kv, seq_len, dim)
     v_shape = (batch, n_v, seq_len, dim)
-    beta_shape = (batch, n_v, seq_len)
-    assert tuple(q.shape) == qk_shape and tuple(k.shape) == qk_shape, "q/k shape does not match layout"
-    assert tuple(v.shape) == v_shape, "v shape does not match layout"
-    assert tuple(g.shape) == v_shape, "g shape does not match layout"
     # beta 对外接口是 3 维 BNS；末轴的 1 由内部补齐喂 kernel。
-    assert beta.dim() == 3 and tuple(beta.shape) == beta_shape, "beta must be 3-D BNS matching layout"
+    if beta.dim() != 3:
+        raise ValueError("beta must be 3-D BNS matching layout")
     beta = beta.unsqueeze(-1)                    # 内部补 1 → BNS1（kernel 期望 4 维）
-    assert tuple(initial_state.shape) == (batch, n_v, dim, dim), "initial_state must be (B, Nv, D, D)"
-    assert dim == SUPPORTED_HEAD_DIM, f"Flash KDA only supports D={SUPPORTED_HEAD_DIM}"
-    assert seq_len % CHUNK_SIZE == 0, f"S must be a multiple of {CHUNK_SIZE}"
 
-    assert q.dtype == LOW_DTYPE and k.dtype == LOW_DTYPE and v.dtype == LOW_DTYPE, "q/k/v must be bf16"
-    assert tuple(A_log.shape) == (n_v,), f"A_log must have shape ({n_v},)"
-    assert tuple(dt_bias.shape) == (n_v, dim), f"dt_bias must have shape ({n_v}, {dim})"
-    assert -5.0 <= float(lower_bound) <= 0.0, "lower_bound must be in [-5, 0]"
-    assert g.dtype == LOW_DTYPE, "g must be bf16"
-    assert beta.dtype == LOW_DTYPE, "beta must be bf16"
-    assert initial_state.dtype == torch.float32, "initial_state must be fp32"
-    assert A_log.dtype == HIGH_DTYPE, "A_log must be fp32"
-    assert dt_bias.dtype == HIGH_DTYPE, "dt_bias must be fp32"
-    tensors = (q, k, v, g, beta, initial_state, A_log, dt_bias)
-    assert all(t.device == q.device for t in tensors), "all inputs must be on the same device"
-    assert all(t.is_contiguous() for t in tensors), "all inputs must be contiguous"
+    public_inputs = {
+        "K": k,
+        "V": v,
+        "Q": q,
+        "beta": beta,
+        "g": g,
+        "A_log": A_log,
+        "dt_bias": dt_bias,
+        "st_in": initial_state,
+    }
+    expected_dtypes = {
+        "K": LOW_DTYPE,
+        "V": LOW_DTYPE,
+        "Q": LOW_DTYPE,
+        "beta": LOW_DTYPE,
+        "g": LOW_DTYPE,
+        "A_log": HIGH_DTYPE,
+        "dt_bias": HIGH_DTYPE,
+        "st_in": HIGH_DTYPE,
+    }
+    for name, tensor in public_inputs.items():
+        if tensor.dtype != expected_dtypes[name]:
+            raise TypeError(
+                f"canonical FlashKDA input {name} has dtype {tensor.dtype}, "
+                f"expected {expected_dtypes[name]}"
+            )
+        if tensor.device != q.device:
+            raise ValueError("all inputs must be on the same device")
+        if not tensor.is_contiguous():
+            raise ValueError(
+                "canonical FlashKDA native support requires contiguous "
+                f"BNSD tensors; {name} is non-contiguous"
+            )
 
-    scale_value = float(scale)
+    sample_shapes = {
+        name: tuple(tensor.shape) for name, tensor in public_inputs.items()
+    }
+    sample_shapes.update(
+        {
+            "o": v_shape,
+            "st_out": (batch, n_v, dim, dim),
+        }
+    )
+    sample_scalars = {
+        "scale": scale,
+        "lower_bound": lower_bound,
+    }
+    # Use the exact selector owned by the native-entry trust boundary on every
+    # call.  A warm callable cache must not bypass public support or attribute
+    # validation merely because an unsupported point shares a physical key.
+    from cannbotdsl.core.compiler.native_entry import (
+        compile_native_entry_variant,
+        validate_native_entry_samples,
+    )
+
+    validated_samples = validate_native_entry_samples(
+        flash_kda_l0_entry,
+        sample_shapes=sample_shapes,
+        sample_scalars=sample_scalars,
+    )
+    sample_shapes = validated_samples.shapes
+    sample_scalars = validated_samples.scalars
+    scale_value = sample_scalars["scale"]
+    lower_bound_value = sample_scalars["lower_bound"]
     bn_total = batch * n_v
     group = get_group_config(bn_total, seq_len)
     eff_group = min(seq_len // CHUNK_SIZE, group)
@@ -2247,9 +2292,6 @@ def flash_kda(
         scratch_tokens = sym_batch * n_v * group * CHUNK_SIZE
         gamma_rows = sym_batch * n_v * group * dim
         fake = cannbotdsl.TensorSpec
-        from cannbotdsl.core.compiler.native_entry import (
-            compile_native_entry_variant,
-        )
 
         physical_args = (
             _dynamic_sequence_tensor(
@@ -2291,26 +2333,11 @@ def flash_kda(
             dv_base,
             block_num,
         )
-        sample_shapes = {
-            "K": (batch, n_kv, seq_len, dim),
-            "V": (batch, n_v, seq_len, dim),
-            "Q": (batch, n_kv, seq_len, dim),
-            "beta": (batch, n_v, seq_len, 1),
-            "g": (batch, n_v, seq_len, dim),
-            "A_log": (n_v,),
-            "dt_bias": (n_v, dim),
-            "st_in": (batch, n_v, dim, dim),
-            "o": (batch, n_v, seq_len, dim),
-            "st_out": (batch, n_v, dim, dim),
-        }
         fn = compile_native_entry_variant(
             flash_kda_l0_entry,
             physical_args,
             sample_shapes=sample_shapes,
-            sample_scalars={
-                "scale": scale_value,
-                "lower_bound": float(lower_bound),
-            },
+            sample_scalars=sample_scalars,
         )
         _DYNAMIC_KERNEL_CACHE[_kernel_key] = fn
     execution = _EXECUTION_CACHE.get_or_create(
@@ -2331,6 +2358,6 @@ def flash_kda(
             ws.K_restored, ws.gamma_C, ws.Q_decayed, ws.W, ws.Mqk,
             ws.U_pre, out, initial_state, final_state, ws.identity16,
             bn_total, seq_len, scale_value,
-            float(lower_bound),
+            lower_bound_value,
         )
     return out, final_state
