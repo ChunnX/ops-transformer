@@ -101,8 +101,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR context
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantReduceScatterMte<TemplateType>::ParseTilingInfo(const QuantReduceScatterTilingData *tilingData)
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::ParseTilingInfo(
+    const QuantReduceScatterTilingData *tilingData)
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
     totalWinSize_ = info.totalWinSize;
@@ -117,15 +117,15 @@ QuantReduceScatterMte<TemplateType>::ParseTilingInfo(const QuantReduceScatterTil
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(const QuantReduceScatterTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(
+    const QuantReduceScatterTilingData *tilingData, TPipe *tPipe)
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
 
     // 固定开销：不随 xPerBlock_ 变化的 buffer
-    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +                      // scaleQueue_
-                                 UB_ALIGN_BYTES +                                  // winFlagsBuf_
-                                 UB_ALIGN_BYTES +                                  // writeStateBuf_
+    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +             // scaleQueue_
+                                 UB_ALIGN_BYTES +                         // winFlagsBuf_
+                                 UB_ALIGN_BYTES +                         // writeStateBuf_
                                  mteComm_.rankDimHccl_ * UB_ALIGN_BYTES + // readStateBuf_
                                  mteComm_.rankDimHccl_ * UB_ALIGN_BYTES;  // stateResetBuf_
 
@@ -241,7 +241,6 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
     xInQueue_.FreeTensor(xTmpTensor);
     scaleInQue_.FreeTensor(scaleTmpTensor);
 }
-
 
 template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::ClearSumTensor()

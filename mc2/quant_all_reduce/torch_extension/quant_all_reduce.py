@@ -50,7 +50,9 @@ TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
 
 class QuantAllReduceOpBuilder(OpBuilder):
     def __init__(self):
-        super(QuantAllReduceOpBuilder, self).__init__("npu_quant_all_reduce", category="mc2")
+        super(QuantAllReduceOpBuilder, self).__init__(
+            "npu_quant_all_reduce", category="mc2"
+        )
 
     def sources(self):
         """Path to C++ source code."""
@@ -69,25 +71,40 @@ class QuantAllReduceOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
+
         @impl(get_as_library(), self.name, "Meta")
-        def npu_quant_all_reduce_meta(context, x, scales, hccl_buffer_size, world_size, reduce_op='sum',
-                                      output_dtype=None, x_dtype=None, scales_dtype=None):
+        def npu_quant_all_reduce_meta(
+            context,
+            x,
+            scales,
+            hccl_buffer_size,
+            world_size,
+            reduce_op="sum",
+            output_dtype=None,
+            x_dtype=None,
+            scales_dtype=None,
+        ):
             torch._check(
                 x is not None,
-                lambda: "x cannot be None, please input some value" + ops_error(ErrCode.TYPE),
+                lambda: "x cannot be None, please input some value"
+                + ops_error(ErrCode.TYPE),
             )
             torch._check(
                 scales is not None,
-                lambda: "scales cannot be None, please input some value" + ops_error(ErrCode.TYPE),
+                lambda: "scales cannot be None, please input some value"
+                + ops_error(ErrCode.TYPE),
             )
-            
+
             world_size_list = [2, 4, 8]
             torch._check(
                 world_size in world_size_list,
-                lambda: "world_size must be in " + str(world_size_list) + ", but actual value is: "
-                        + str(world_size) + ops_error(ErrCode.VALUE),
+                lambda: "world_size must be in "
+                + str(world_size_list)
+                + ", but actual value is: "
+                + str(world_size)
+                + ops_error(ErrCode.VALUE),
             )
-            
+
             size = x.size()
             dtype = x.dtype
             if output_dtype is not None:
@@ -95,7 +112,7 @@ class QuantAllReduceOpBuilder(OpBuilder):
             else:
                 dtype = torch.bfloat16
 
-            return torch.empty(size, dtype=dtype, device='meta')
+            return torch.empty(size, dtype=dtype, device="meta")
 
 
 # Instantiate the builder
@@ -104,27 +121,55 @@ quant_all_reduce_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), quant_all_reduce_op_builder.name, "PrivateUse1")
-def npu_quant_all_reduce(context, x, scales, hccl_buffer_size, world_size, reduce_op='sum',
-                         output_dtype=None, x_dtype=None, scales_dtype=None):
+def npu_quant_all_reduce(
+    context,
+    x,
+    scales,
+    hccl_buffer_size,
+    world_size,
+    reduce_op="sum",
+    output_dtype=None,
+    x_dtype=None,
+    scales_dtype=None,
+):
     """
     Dispatcher implementation for NPU.
     'PrivateUse1' is the dispatch key for custom NPU backends.
     """
     # Compiles/loads the .so file
     op_module = quant_all_reduce_op_builder.load()
-    return op_module.npu_quant_all_reduce(context, x, scales, hccl_buffer_size, world_size, reduce_op,
-                                          output_dtype, x_dtype, scales_dtype)
+    return op_module.npu_quant_all_reduce(
+        context,
+        x,
+        scales,
+        hccl_buffer_size,
+        world_size,
+        reduce_op,
+        output_dtype,
+        x_dtype,
+        scales_dtype,
+    )
 
 
 class QuantAllReduceBuffer:
-    def __init__(self, group, world_size: int, x: torch.Tensor, scales: torch.Tensor,
-                 op_name: str = "quant_all_reduce"):
+    def __init__(
+        self,
+        group,
+        world_size: int,
+        x: torch.Tensor,
+        scales: torch.Tensor,
+        op_name: str = "quant_all_reduce",
+    ):
         self.group = group
         self.world_size = world_size
         self.rank_id = torch.distributed.get_rank(group)
-        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
-        required_ccl_buffer_size = _get_quant_all_reduce_ccl_buffer_size(x, scales, world_size)
-        
+        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
+            self.rank_id, init_comm=False
+        )
+        required_ccl_buffer_size = _get_quant_all_reduce_ccl_buffer_size(
+            x, scales, world_size
+        )
+
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.world_size,
@@ -141,21 +186,26 @@ class QuantAllReduceBuffer:
         self._ctx_manager.destroy()
 
 
-def get_quant_all_reduce_buffer(group, world_size, x, scales,
-                                op_name: str = "quant_all_reduce") -> QuantAllReduceBuffer:
+def get_quant_all_reduce_buffer(
+    group, world_size, x, scales, op_name: str = "quant_all_reduce"
+) -> QuantAllReduceBuffer:
     return QuantAllReduceBuffer(group, world_size, x, scales, op_name=op_name)
 
 
-def _get_quant_all_reduce_ccl_buffer_size(x: torch.Tensor, scales: torch.Tensor, world_size: int) -> int:
+def _get_quant_all_reduce_ccl_buffer_size(
+    x: torch.Tensor, scales: torch.Tensor, world_size: int
+) -> int:
     def inline_align(value, base):
         return (value + base - 1) // base * base
 
     WIN_ADDR_ALIGN = 32
     MB_SIZE = 1024 * 1024
     HCCL_BUFFSIZE_FACTOR = 2
-    
+
     x_data_size = inline_align(x.numel() * x.element_size(), WIN_ADDR_ALIGN)
-    scales_data_size = inline_align(scales.numel() * scales.element_size(), WIN_ADDR_ALIGN)
+    scales_data_size = inline_align(
+        scales.numel() * scales.element_size(), WIN_ADDR_ALIGN
+    )
     actual_win_size = (x_data_size + scales_data_size) * world_size + MB_SIZE
     return HCCL_BUFFSIZE_FACTOR * actual_win_size
 
@@ -165,8 +215,14 @@ _context_data_cache: dict[tuple, list[int]] = {}
 _buffer_seq = 0
 
 
-def _get_or_create_buffer(hcom: str, group, world_size: int, x: torch.Tensor, scales: torch.Tensor,
-                          op_name: str = "quant_all_reduce") -> QuantAllReduceBuffer:
+def _get_or_create_buffer(
+    hcom: str,
+    group,
+    world_size: int,
+    x: torch.Tensor,
+    scales: torch.Tensor,
+    op_name: str = "quant_all_reduce",
+) -> QuantAllReduceBuffer:
     """
     按hcom字符串查找缓存：未命中或现有buffer尺寸不足时新建并缓存旧buffer后销毁
     """
@@ -194,6 +250,7 @@ def _cleanup_all_buffers():
     _buffer_cache.clear()
     _context_data_cache.clear()
 
+
 atexit.register(_cleanup_all_buffers)
 
 
@@ -207,7 +264,7 @@ def quant_all_reduce(
     hcom: str,
     world_size: int,
     *,
-    reduce_op: Optional[str] = 'sum',
+    reduce_op: Optional[str] = "sum",
     output_dtype: Optional[int] = None,
     x_dtype: Optional[int] = None,
     scales_dtype: Optional[int] = None,
@@ -220,10 +277,24 @@ def quant_all_reduce(
     _buffer_seq += 1
     op_name = f"quant_all_reduce_{_buffer_seq}"
     group = torch.distributed.distributed_c10d._get_default_group()
-    group_name = hcom if isinstance(hcom, str) else group._get_backend(torch.device("npu")).get_hccl_comm_name(
-        torch.distributed.get_rank(group), init_comm=False)
-    buffer = _get_or_create_buffer(group_name, group, world_size, x, scales, op_name=op_name)
-    return torch.ops.cann_ops_transformer.npu_quant_all_reduce(buffer.context, x, scales,
-                                                               buffer.hccl_buffer_size, buffer.world_size,
-                                                               reduce_op=reduce_op, output_dtype=output_dtype,
-                                                               x_dtype=x_dtype, scales_dtype=scales_dtype)
+    group_name = (
+        hcom
+        if isinstance(hcom, str)
+        else group._get_backend(torch.device("npu")).get_hccl_comm_name(
+            torch.distributed.get_rank(group), init_comm=False
+        )
+    )
+    buffer = _get_or_create_buffer(
+        group_name, group, world_size, x, scales, op_name=op_name
+    )
+    return torch.ops.cann_ops_transformer.npu_quant_all_reduce(
+        buffer.context,
+        x,
+        scales,
+        buffer.hccl_buffer_size,
+        buffer.world_size,
+        reduce_op=reduce_op,
+        output_dtype=output_dtype,
+        x_dtype=x_dtype,
+        scales_dtype=scales_dtype,
+    )

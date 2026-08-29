@@ -60,8 +60,8 @@ static ge::graphStatus QuantAllReduceExecuteFunc(gert::OpExecuteContext *host_ap
     OPS_ERR_IF(output == nullptr, OPS_LOG_E(QuantAllReduceInfo, "output is null"), return ge::GRAPH_FAILED);
 
     // 执行回调
-    const auto ret = EXEC_OPAPI_CMD(aclnnQuantAllReduce, context, x, scales, *hccl_buffer_size, *world_size,
-                                    reduce_op, output);
+    const auto ret =
+        EXEC_OPAPI_CMD(aclnnQuantAllReduce, context, x, scales, *hccl_buffer_size, *world_size, reduce_op, output);
     OPS_ERR_IF(ret != ge::GRAPH_SUCCESS, OPS_LOG_E(QuantAllReduceInfo, "Aclnn api error code %d", ret),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

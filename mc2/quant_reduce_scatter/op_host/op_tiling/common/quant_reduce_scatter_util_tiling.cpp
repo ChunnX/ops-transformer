@@ -710,8 +710,7 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckTilingFunc(gert::TilingContex
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK(SetHcclBufferSize(context, runInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "set hcclBufferSize failed."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "set hcclBufferSize failed."), return ge::GRAPH_FAILED);
     // set rankSize
     OP_TILING_CHECK(SetRankSize(context, runInfo) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "set rankSize failed."),
                     return ge::GRAPH_FAILED);

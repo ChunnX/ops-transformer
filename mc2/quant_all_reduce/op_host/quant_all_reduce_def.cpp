@@ -17,7 +17,8 @@
 namespace ops {
 class QuantAllReduce : public OpDef {
 public:
-    explicit QuantAllReduce(const char *name) : OpDef(name)
+    explicit QuantAllReduce(const char *name)
+        : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)

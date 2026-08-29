@@ -17,7 +17,8 @@
 namespace ops {
 class QuantReduceScatter : public OpDef {
 public:
-    explicit QuantReduceScatter(const char *name) : OpDef(name)
+    explicit QuantReduceScatter(const char *name)
+        : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)

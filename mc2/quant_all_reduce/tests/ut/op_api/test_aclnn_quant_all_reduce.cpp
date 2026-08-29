@@ -527,8 +527,8 @@ static void TestOneParamCase(const QuantAllReduceAclnnTestParam &param)
     int64_t hcclBufferSize = 2097152;
     int64_t worldSize = 2;
     const char *reduceOp = "sum";
-    auto ut = OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, reduceOp),
-                        OUTPUT(output));
+    auto ut =
+        OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, reduceOp), OUTPUT(output));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -570,8 +570,7 @@ TEST_F(TestAclnnQuantAllReduce, NullptrInputTest)
     int64_t hcclBufferSize = 2097152;
     int64_t worldSize = 2;
     auto ut = OP_API_UT(aclnnQuantAllReduce,
-                        INPUT(context, (aclTensor *)nullptr, scales, hcclBufferSize, worldSize, "sum"),
-                        OUTPUT(output));
+                        INPUT(context, (aclTensor *)nullptr, scales, hcclBufferSize, worldSize, "sum"), OUTPUT(output));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -601,8 +600,8 @@ TEST_F(TestAclnnQuantAllReduce, ReFormatXTest)
     auto output = TensorDesc({96, 4096}, ACL_FLOAT, ACL_FORMAT_ND);
     int64_t hcclBufferSize = 2097152;
     int64_t worldSize = 2;
-    auto ut = OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, "sum"),
-                        OUTPUT(output));
+    auto ut =
+        OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, "sum"), OUTPUT(output));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -617,8 +616,8 @@ TEST_F(TestAclnnQuantAllReduce, ReFormatScalesTest)
     auto output = TensorDesc({96, 4096}, ACL_FLOAT, ACL_FORMAT_ND);
     int64_t hcclBufferSize = 2097152;
     int64_t worldSize = 2;
-    auto ut = OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, "sum"),
-                        OUTPUT(output));
+    auto ut =
+        OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, "sum"), OUTPUT(output));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -633,8 +632,8 @@ TEST_F(TestAclnnQuantAllReduce, ReFormatOutputTest)
     auto output = TensorDesc({96, 4096}, ACL_FLOAT, ACL_FORMAT_NCHW);
     int64_t hcclBufferSize = 2097152;
     int64_t worldSize = 2;
-    auto ut = OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, "sum"),
-                        OUTPUT(output));
+    auto ut =
+        OP_API_UT(aclnnQuantAllReduce, INPUT(context, x, scales, hcclBufferSize, worldSize, "sum"), OUTPUT(output));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);

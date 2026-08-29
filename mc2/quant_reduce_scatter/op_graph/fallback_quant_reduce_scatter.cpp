@@ -35,7 +35,7 @@ static ge::graphStatus QuantReduceScatterExecuteFunc(gert::OpExecuteContext *hos
 {
     OPS_LOG_D(QuantReduceScatterInfo, "Start to fallback for quant_reduce_scatter.");
     OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(QuantReduceScatterInfo, "host_api_ctx is null"),
-            return ge::GRAPH_FAILED);
+               return ge::GRAPH_FAILED);
 
     // 校验tensor
     const auto context = host_api_ctx->GetInputTensor(static_cast<size_t>(CONTEXT_IDX));
@@ -60,10 +60,10 @@ static ge::graphStatus QuantReduceScatterExecuteFunc(gert::OpExecuteContext *hos
     OPS_ERR_IF(world_size == nullptr, OPS_LOG_E(QuantReduceScatterInfo, "world_size is null"), return ge::GRAPH_FAILED);
 
     // 执行回调
-    const auto ret = EXEC_OPAPI_CMD(aclnnQuantReduceScatter, context, x, scales, *hccl_buffer_size, *world_size,
-                                    reduce_op, output);
+    const auto ret =
+        EXEC_OPAPI_CMD(aclnnQuantReduceScatter, context, x, scales, *hccl_buffer_size, *world_size, reduce_op, output);
     OPS_ERR_IF(ret != ge::GRAPH_SUCCESS, OPS_LOG_E(QuantReduceScatterInfo, "Aclnn api error code %d", ret),
-            return ge::GRAPH_FAILED);
+               return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -178,8 +178,8 @@ __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
     tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 用于输出的OutPutTensor
     tPipe->InitBuffer(winFlagsBuf_, UB_ALIGN_BYTES);                               // 用于读取0/1分区的标志位
     tPipe->InitBuffer(writeStateBuf_, UB_ALIGN_BYTES);                             // 状态位每一个按32B对齐
-    tPipe->InitBuffer(readStateBuf_, rankDimHccl_ * UB_ALIGN_BYTES);      // 每次读 rankDim 个状态位
-    tPipe->InitBuffer(stateResetBuf_, rankDimHccl_ * UB_ALIGN_BYTES);     // 用于清理状态区
+    tPipe->InitBuffer(readStateBuf_, rankDimHccl_ * UB_ALIGN_BYTES);               // 每次读 rankDim 个状态位
+    tPipe->InitBuffer(stateResetBuf_, rankDimHccl_ * UB_ALIGN_BYTES);              // 用于清理状态区
 
     stateResetTensor_ = stateResetBuf_.Get<float>();
     Duplicate<float>(stateResetTensor_, (float)0.0,
@@ -330,8 +330,7 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
         GlobalTensor<float> stateGMTensor;
         stateGMTensor.SetGlobalBuffer((__gm__ float *)remoteWinStateGM);
         // 不同卡上的核的状态写到相邻位置，读时可以一次读rankDim个状态, 状态区大小设计为 aivNum * ranDim
-        uint64_t curOffset =
-            (coreOffset + rankIdHccl_) * FLOAT_UB_ALIGN_NUM; // 当前核偏移 + 卡偏移， 按32B对齐
+        uint64_t curOffset = (coreOffset + rankIdHccl_) * FLOAT_UB_ALIGN_NUM; // 当前核偏移 + 卡偏移， 按32B对齐
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
         SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -350,11 +349,10 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
 {
     GM_ADDR stateGM = GetWinStatusAddrGm(rankIdHccl_, winBufferFlags_); // 获取本卡的状态区用于读取
     GlobalTensor<float> selfStatusWinTensor;
-    uint32_t offset =
-        aivId_ * rankDimHccl_ * FLOAT_UB_ALIGN_NUM; // 获取当前核所需读取状态位的头地址，状态按32B对齐
+    uint32_t offset = aivId_ * rankDimHccl_ * FLOAT_UB_ALIGN_NUM; // 获取当前核所需读取状态位的头地址，状态按32B对齐
     selfStatusWinTensor.SetGlobalBuffer((__gm__ float *)(stateGM));
     LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
-    float flag = 0;                                                  // 用于计算状态和
+    float flag = 0;                                         // 用于计算状态和
     uint32_t statusCnt = rankDimHccl_ * FLOAT_UB_ALIGN_NUM; // 一次读rankDim个，按32B对齐
     SumParams sumParams{1, statusCnt, statusCnt};
     float minTarget = rankDimHccl_ - (float)0.5;
