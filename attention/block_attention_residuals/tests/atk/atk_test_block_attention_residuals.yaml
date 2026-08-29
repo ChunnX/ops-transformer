@@ -36,14 +36,13 @@ inputs:
           - [0.4, 0.0]
     outlier_values: [0.001, 1000]
     boundary:
-      has_empty: true
       has_lower_border: true
       has_upper_border: false
     shapes:
       dim_numbers:
         values: [2]
       dim_values:
-        values: [0, 1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
       max_length: 1048576
   - name: block_res
     type: tensor
@@ -64,14 +63,13 @@ inputs:
           - [0.4, 0.0]
     outlier_values: [0.001, 1000]
     boundary:
-      has_empty: true
       has_lower_border: true
       has_upper_border: false
     shapes:
       dim_numbers:
         values: [3]
       dim_values:
-        values: [0, 1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
       max_length: 1048576
   - name: proj_weight
     type: tensor

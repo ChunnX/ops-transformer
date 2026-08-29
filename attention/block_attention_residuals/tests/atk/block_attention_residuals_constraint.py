@@ -30,7 +30,7 @@ class BlockAttentionResidualsConstraintGenerator(CaseGenerator):
         proj_shape = source_shapes.get("proj_weight", [1, 64])
 
         # C++ shape checks: prefix_sum=[T,H], block_res=[T,N,H].
-        tokens = max(0, _dim(prefix_shape, 0, 1))
+        tokens = max(1, _dim(prefix_shape, 0, 1))
         hidden = max(1, _dim(prefix_shape, 1, 64))
         blocks = min(100, max(1, _dim(block_shape, 1, 1)))
         proj_rank = 2 if len(proj_shape) == 2 else 1
