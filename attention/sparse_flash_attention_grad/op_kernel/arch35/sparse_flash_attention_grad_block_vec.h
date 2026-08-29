@@ -67,8 +67,8 @@ public:
     __aicore__ inline void ScatterAddHead64(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
                                             const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                             const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
-                                            const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor,
-                                            LocalTensor<CALC_TYPE> &dvInTensor, FagConstInfo &constInfo, FagRunInfo &runInfo);
+                                            const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm, FagConstInfo &constInfo,
+                                            FagRunInfo &runInfo);
     __aicore__ inline void ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
@@ -548,20 +548,30 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
                                                                     const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                                                     const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
                                                                     const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
-                                                                    LocalTensor<CALC_TYPE> &dkInTensor,
-                                                                    LocalTensor<CALC_TYPE> &dvInTensor,
                                                                     FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    // N<=64: shrink the per-loop tile to 4 rows so ping(4 rows) + pong(4 rows)
-    // fit in the first 16KB of the opposite mm1/mm2 slot and do not reach the
-    // [16KB,32KB) region that the next task's mm12 rewrites.
-    int64_t UB_ROW_SIZE = 4;
+    // Dedicated scratch in dSOutQue/pOutQue (idle after Gather/Softmax FreeTensor).
+    // Rope HEAD_DIM_ALIGN=576: ping+pong 4-row dk is 18KB and does not fit in the
+    // first 16KB of mm1/mm2; borrowing that slot collides with live mm12.
+    constexpr uint32_t SCATTER_UB_ROWS = 4;
+    constexpr uint32_t SCATTER_DK_BYTES =
+        2 * SCATTER_UB_ROWS * HEAD_DIM_ALIGN * static_cast<uint32_t>(sizeof(CALC_TYPE));
+    constexpr uint32_t SCATTER_DV_BYTES =
+        2 * SCATTER_UB_ROWS * 512 * static_cast<uint32_t>(sizeof(CALC_TYPE));
+    constexpr uint32_t DS_QUE_BYTES = VECTOR_BASEM * VREG_SIZE + VREG_SIZE + DETER_EXCEED_USE_SIZE;
+    constexpr uint32_t P_QUE_BYTES = VECTOR_BASEM * VREG_SIZE + VREG_SIZE;
+    static_assert(SCATTER_DK_BYTES <= DS_QUE_BYTES, "ScatterAddHead64 dk ping-pong exceeds dSOutQue");
+    static_assert(SCATTER_DV_BYTES <= P_QUE_BYTES, "ScatterAddHead64 dv ping-pong exceeds pOutQue");
+
+    int64_t UB_ROW_SIZE = SCATTER_UB_ROWS;
     int64_t s2RealSize = runInfo.commonRunInfo.s2RealSize;
     int64_t firstCoreKSize = s2RealSize / 2;
     int64_t currentCoreKSize = (vSubBlockIdx == 0) ? firstCoreKSize : (s2RealSize - firstCoreKSize);
     if (currentCoreKSize == 0) {
         return;
     }
+    LocalTensor<CALC_TYPE> dkInTensor = dSOutQue.AllocTensor<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> dvInTensor = pOutQue.AllocTensor<CALC_TYPE>();
 
     uint64_t gmOffset = runInfo.t1Index * (constInfo.n2Size * constInfo.selectedBlockCount) +
                         vSubBlockIdx * firstCoreKSize + runInfo.blkCntOffset;
@@ -583,8 +593,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
     int64_t currentMm5SrcOffset =
         runInfo.mm5ResWsAddr + vSubBlockIdx * firstCoreKSize * constInfo.selectedBlockSize * 512;
 
-    // 4-row ping/pong inside the first 16KB of the opposite mm1/mm2 slot.
-    // dk uses mm1Res[0,8KB)+[8KB,16KB), dv uses mm2Res[0,8KB)+[8KB,16KB).
+    // 4-row ping/pong in dedicated dSOutQue (dk) / pOutQue (dv).
     uint32_t dkSlot = static_cast<uint32_t>(UB_ROW_SIZE * HEAD_DIM_ALIGN);
     uint32_t dvSlot = static_cast<uint32_t>(UB_ROW_SIZE * 512);
     uint32_t pingPong = 0;
@@ -644,6 +653,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
     }
     SetFlag<HardEvent::MTE3_MTE2>(backEvent);
     SetAtomicNone();
+    dSOutQue.FreeTensor(dkInTensor);
+    pOutQue.FreeTensor(dvInTensor);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -962,8 +973,7 @@ public:
     __aicore__ inline void ScatterAddHead64(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
                                             const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                             const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
-                                            const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor,
-                                            LocalTensor<CALC_TYPE> &dvInTensor, FagConstInfo &constInfo,
+                                            const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm, FagConstInfo &constInfo,
                                             FagRunInfo &runInfo){};
     __aicore__ inline void ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
