@@ -39,7 +39,8 @@ class BlockAttentionResidualsAtk(BaseApi):
 
         if self.device == "cpu":
             return golden.apply_attn_res_cust(
-                prefix_sum, block_res, proj_weight, norm_weight, norm_eps
+                prefix_sum, block_res, proj_weight, norm_weight, norm_eps,
+                is_benchmark_task=bool(self.task_result.is_benchmark_task),
             )
         if self.device == "npu":
             op = torch_runner.get_block_attention_residuals_fn()

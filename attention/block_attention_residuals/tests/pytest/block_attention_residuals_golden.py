@@ -37,13 +37,15 @@ def apply_attn_res_cust(
     proj_weight: torch.Tensor,
     norm_weight: torch.Tensor,
     norm_eps: float = DEFAULT_NORM_EPS,
+    is_benchmark_task: bool = False,
 ) -> torch.Tensor:
     """Golden from code/analyse/attenres.py:59-72."""
     v = torch.cat((block_res, prefix_sum.unsqueeze(1)), dim=1)
-    v_float = v.float()
+    compute_dtype = torch.float64 if is_benchmark_task else torch.float32
+    v_float = v.to(compute_dtype)
     variance = v_float.pow(2).mean(-1, keepdim=True)
     k = v_float * torch.rsqrt(variance + norm_eps)
-    score_weight = norm_weight.float() * proj_weight.squeeze(0).float()
+    score_weight = norm_weight.to(compute_dtype) * proj_weight.squeeze(0).to(compute_dtype)
     scores = (k * score_weight).sum(-1)
     probs = scores.softmax(-1).unsqueeze(1)
     hidden_states = (probs.unsqueeze(-1) * v_float.unsqueeze(1)).sum(dim=2).squeeze(1)

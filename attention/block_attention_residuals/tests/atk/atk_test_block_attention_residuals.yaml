@@ -6,10 +6,14 @@ aclnn_api_type: pyaclnn_block_attention_residuals_atk
 version: v2.1
 generate: block_attention_residuals_constraint
 standard:
-  acc: default
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 5
+      avg_re_ratio: 1.5
+      root_mean_squared_ratio: 1.5
   perf: not_key
-dtype_numbers: 3
-extra_numbers: 100
+dtype_numbers: 900
+extra_numbers: 0
 shape_distributions:
   - [0, 1.0]
 inputs:
@@ -20,7 +24,17 @@ inputs:
       values: [bf16, fp16, fp32]
     ranges:
       valid:
-        values: [[-5, 5]]
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
     boundary:
       has_empty: true
       has_lower_border: true
@@ -38,7 +52,17 @@ inputs:
       values: [bf16, fp16, fp32]
     ranges:
       valid:
-        values: [[-5, 5]]
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
     boundary:
       has_empty: true
       has_lower_border: true
@@ -56,7 +80,17 @@ inputs:
       values: [bf16, fp16, fp32]
     ranges:
       valid:
-        values: [[-5, 5]]
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
     boundary:
       has_lower_border: true
       has_upper_border: false
@@ -73,7 +107,17 @@ inputs:
       values: [bf16, fp16, fp32]
     ranges:
       valid:
-        values: [[-5, 5]]
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
     boundary:
       has_lower_border: true
       has_upper_border: false
