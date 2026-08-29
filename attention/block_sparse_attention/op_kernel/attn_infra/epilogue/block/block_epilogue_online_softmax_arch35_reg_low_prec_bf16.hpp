@@ -969,8 +969,6 @@ private:
 
         RegTensor<ElementOutput> pVreg0;
         RegTensor<ElementOutput> pVreg1;
-        RegTensor<ElementOutput> deInterleaveVreg0;
-        RegTensor<ElementOutput> deInterleaveVreg1;
 
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
@@ -998,9 +996,10 @@ private:
             Cast<ElementOutput, float, castTraitTwoRINT>(pVreg1, expDstFloatVreg1, pRegFp32All);
 
             Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg1, (RegTensor<uint16_t> &)pVreg0);
 
-            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, deInterleaveVreg0,
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg1,
                                                                      blockStride, pRegUint8VL128);
             ReduceSum(expSumVreg, expSumVreg, pRegBf16All);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
@@ -1067,10 +1066,6 @@ private:
         RegTensor<ElementOutput> pVreg1;
         RegTensor<ElementOutput> pVreg2;
         RegTensor<ElementOutput> pVreg3;
-        RegTensor<ElementOutput> deInterleaveVreg0;
-        RegTensor<ElementOutput> deInterleaveVreg1;
-        RegTensor<ElementOutput> deInterleaveVreg2;
-        RegTensor<ElementOutput> deInterleaveVreg3;
 
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
@@ -1111,14 +1106,16 @@ private:
 
             Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
             Or((RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVreg2, pVreg2);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg1, (RegTensor<uint16_t> &)pVreg0);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg3, (RegTensor<uint16_t> &)pVreg2);
 
-            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, deInterleaveVreg0,
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg1,
                                                                      blockStride, pRegUint8VL128);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8 +
                                                                          blockStride * HALF_VECTOR_SIZE,
-                                                                     deInterleaveVreg2, blockStride, pRegUint8VL128);
+                                                                     pVreg3, blockStride, pRegUint8VL128);
             ReduceSum(expSumVreg, expSumVreg, pRegBf16All);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
@@ -1145,7 +1142,6 @@ private:
         RegTensor<float> expDstFloatVreg0, expDstFloatVreg1, expDstFloatVreg2, expDstFloatVreg3;
         RegTensor<float> expSumVreg, maxVreg;
         RegTensor<ElementOutput> pVreg0, pVreg1, pVreg2, pVreg3;
-        RegTensor<ElementOutput> deInterleaveVreg0, deInterleaveVreg1, deInterleaveVreg2, deInterleaveVreg3;
         UnalignReg expSumUreg;
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
@@ -1186,12 +1182,14 @@ private:
                 (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
             Or((RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg2,
                 (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVreg2, pVreg2);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg1, (RegTensor<uint16_t> &)pVreg0);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg3, (RegTensor<uint16_t> &)pVreg2);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow, deInterleaveVreg0, blockStride, pRegUint8VL128);
+                dstRow, pVreg1, blockStride, pRegUint8VL128);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow + blockStride * HALF_VECTOR_SIZE, deInterleaveVreg2, blockStride, pRegUint8VL128);
+                dstRow + blockStride * HALF_VECTOR_SIZE, pVreg3, blockStride, pRegUint8VL128);
 
             LoadAlign(expVreg0, srcRow + 2 * HALF_REP_SIZE);
             Cast<float, ElementInput, castTraitZeroUNKNOWN>(expFloatVreg0, expVreg0, pRegBf16All);
@@ -1206,9 +1204,10 @@ private:
             Cast<ElementOutput, float, castTraitTwoRINT>(pVreg1, expDstFloatVreg1, pRegFp32All);
             Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0,
                 (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg1, (RegTensor<uint16_t> &)pVreg0);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow + 2 * blockStride * HALF_VECTOR_SIZE, deInterleaveVreg0, blockStride, pRegUint8VL128);
+                dstRow + 2 * blockStride * HALF_VECTOR_SIZE, pVreg1, blockStride, pRegUint8VL128);
             ReduceSum(expSumVreg, expSumVreg, pRegBf16All);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
@@ -1235,7 +1234,6 @@ private:
         RegTensor<float> expDstFloatVreg0, expDstFloatVreg1, expDstFloatVreg2, expDstFloatVreg3;
         RegTensor<float> expSumVreg, maxVreg;
         RegTensor<ElementOutput> pVreg0, pVreg1, pVreg2, pVreg3;
-        RegTensor<ElementOutput> deInterleaveVreg0, deInterleaveVreg1, deInterleaveVreg2, deInterleaveVreg3;
         UnalignReg expSumUreg;
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
@@ -1276,12 +1274,14 @@ private:
                 (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
             Or((RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg2,
                 (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVreg2, pVreg2);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg1, (RegTensor<uint16_t> &)pVreg0);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg3, (RegTensor<uint16_t> &)pVreg2);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow, deInterleaveVreg0, blockStride, pRegUint8VL128);
+                dstRow, pVreg1, blockStride, pRegUint8VL128);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow + blockStride * HALF_VECTOR_SIZE, deInterleaveVreg2, blockStride, pRegUint8VL128);
+                dstRow + blockStride * HALF_VECTOR_SIZE, pVreg3, blockStride, pRegUint8VL128);
 
             LoadAlign(expVreg0, srcRow + 2 * HALF_REP_SIZE);
             LoadAlign(expVreg1, srcRow + 3 * HALF_REP_SIZE);
@@ -1309,12 +1309,14 @@ private:
                 (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
             Or((RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg2,
                 (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVreg2, pVreg2);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg1, (RegTensor<uint16_t> &)pVreg0);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVreg3, (RegTensor<uint16_t> &)pVreg2);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow + 2 * blockStride * HALF_VECTOR_SIZE, deInterleaveVreg0, blockStride, pRegUint8VL128);
+                dstRow + 2 * blockStride * HALF_VECTOR_SIZE, pVreg1, blockStride, pRegUint8VL128);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                dstRow + 3 * blockStride * HALF_VECTOR_SIZE, deInterleaveVreg2, blockStride, pRegUint8VL128);
+                dstRow + 3 * blockStride * HALF_VECTOR_SIZE, pVreg3, blockStride, pRegUint8VL128);
             ReduceSum(expSumVreg, expSumVreg, pRegBf16All);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
