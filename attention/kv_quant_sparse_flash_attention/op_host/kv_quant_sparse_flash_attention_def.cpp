@@ -15,7 +15,6 @@
 
 #include "register/op_def_registry.h"
 
-constexpr uint32_t KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION_TWO = 2;
 namespace ops {
 class KvQuantSparseFlashAttention : public OpDef {
 public:
@@ -63,12 +62,6 @@ public:
         this->Input("actual_seq_lengths_kv")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("sinks")
-            .ParamType(OPTIONAL)
-            .Version(KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION_TWO)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("attention_out")
@@ -142,12 +135,6 @@ public:
         aicore_config_95.Input("actual_seq_lengths_kv")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        aicore_config_95.Input("sinks")
-            .ParamType(OPTIONAL)
-            .Version(KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION_TWO)
-            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Output("attention_out")
