@@ -83,7 +83,7 @@ from cannbotdsl.tensor import (
     make_partition_tiler,
     mem_copy,
 )
-from cannbotdsl import ChannelKind, MemLoc, PIPE, Tensor, permute
+from cannbotdsl import ChannelKind, MemLoc, PIPE, Tensor
 from cannbotdsl.vf import vf
 
 CHUNK_SIZE = 64
@@ -94,7 +94,7 @@ MAX_GROUP_CHUNKS = 8
 LOW_DTYPE = torch.bfloat16
 HIGH_DTYPE = torch.float32
 _DYNAMIC_KERNEL_CACHE: dict[
-    tuple[int, int, int, str, int, int, bool, int], object
+    tuple[int, int, int, int, int, int], object
 ] = {}
 
 
@@ -118,13 +118,6 @@ def get_group_config(heads: int, seq_len: int) -> int:
     while heads * g < 32 and g < chunks:     # 下界：填满 32 核
         g *= 2
     return max(1, g)
-
-
-def get_group_config_bn(bn: int) -> int:
-    """动态 S 版 group：按 bn(=heads) 选，**不依赖 seq_len**（末尾 group 由 group_count 运行时夹到实际
-    chunks，效果同 static 的 chunks 夹取）。传一个足够大的 seq 让 get_group_config 的 chunks 夹取不生效，
-    得到纯 heads-based g（L2 足迹 heads*g≤861 由其 heads 表保证）。这样 group 只随 bn 变、S 仍可复用。"""
-    return get_group_config(bn, 512 * CHUNK_SIZE)
 
 
 def get_dv_base_config(bn: int, seq_len: int) -> int:
@@ -1931,71 +1924,6 @@ class flash_kda_kernel:
                     _stage_boundary_reset(STAGE2_BOUNDARY_FLAG_ID)
 
 
-@jit
-def flash_kda_provider(
-    K: Tensor,
-    V: Tensor,
-    Q: Tensor,
-    beta: Tensor,
-    g: Tensor,
-    qk_exchange: Tensor,
-    A_log: Tensor,
-    dt_bias: Tensor,
-    kr: Tensor,
-    gamma: Tensor,
-    qd: Tensor,
-    w: Tensor,
-    mqk: Tensor,
-    u: Tensor,
-    st_in: Tensor,
-    ident: Tensor,
-    o: Tensor,
-    st_out: Tensor,
-    bnt: int,
-    s: int,
-    scale: float,
-    lower_bound: float,
-    head_dim: cannbotdsl.Constexpr[int] = SUPPORTED_HEAD_DIM,
-    group: cannbotdsl.Constexpr[int] = MAX_GROUP_CHUNKS,
-    layout_qkv: cannbotdsl.Constexpr[str] = "BNSD",
-    dv_base: cannbotdsl.Constexpr[int] = SUPPORTED_HEAD_DIM,
-    block_num: cannbotdsl.Constexpr[int] = ALGORITHM_MAX_BLOCK_NUM,
-):
-    """Physical Provider AOT root shared by native and ACLNN delivery."""
-    if const_expr(layout_qkv == "BSND"):
-        K = permute(K, (0, 2, 1, 3))
-        V = permute(V, (0, 2, 1, 3))
-        Q = permute(Q, (0, 2, 1, 3))
-        beta = permute(beta, (0, 2, 1, 3))
-        g = permute(g, (0, 2, 1, 3))
-        o = permute(o, (0, 2, 1, 3))
-    op = flash_kda_kernel(head_dim, group, dv_base)
-    op[block_num](
-        K,
-        V,
-        Q,
-        beta,
-        g,
-        qk_exchange,
-        A_log,
-        dt_bias,
-        kr,
-        gamma,
-        qd,
-        w,
-        mqk,
-        u,
-        o,
-        st_in,
-        st_out,
-        ident,
-        bnt,
-        s,
-        scale,
-        lower_bound,
-    )
-
-
 def _flash_kda_support_case(
     *,
     batch: int,
@@ -2003,22 +1931,26 @@ def _flash_kda_support_case(
     sequence_min: int,
     sequence_max: int,
 ) -> cannbotdsl.PublicSupportDomain:
+    batch_dim = cannbotdsl.Dim("B", min=batch, max=batch)
     sequence = cannbotdsl.Dim(
         "S", min=sequence_min, max=sequence_max, multiple_of=CHUNK_SIZE
     )
     tensor = cannbotdsl.TensorSpec
     sequence_tensor = tensor(
-        (batch, heads, sequence, SUPPORTED_HEAD_DIM), dtypes.bfloat16
+        (batch_dim, heads, sequence, SUPPORTED_HEAD_DIM), dtypes.bfloat16
     )
     state = tensor(
-        (batch, heads, SUPPORTED_HEAD_DIM, SUPPORTED_HEAD_DIM), dtypes.float32
+        (batch_dim, heads, SUPPORTED_HEAD_DIM, SUPPORTED_HEAD_DIM),
+        dtypes.float32,
     )
     return cannbotdsl.support(
         inputs={
             "K": sequence_tensor,
             "V": sequence_tensor,
             "Q": sequence_tensor,
-            "beta": tensor((batch, heads, sequence, 1), dtypes.bfloat16),
+            "beta": tensor(
+                (batch_dim, heads, sequence, 1), dtypes.bfloat16
+            ),
             "g": sequence_tensor,
             "A_log": tensor((heads,), dtypes.float32),
             "dt_bias": tensor((heads, SUPPORTED_HEAD_DIM), dtypes.float32),
@@ -2129,75 +2061,30 @@ def flash_kda_l0_entry(
         "identity16", size=16, dtype=dtypes.float16
     )
 
-    ctx.provider.call(
-        flash_kda_provider,
-        K=K,
-        V=V,
-        Q=Q,
-        beta=beta,
-        g=g,
-        qk_exchange=qk_exchange,
-        A_log=A_log,
-        dt_bias=dt_bias,
-        kr=K_restored,
-        gamma=gamma_C,
-        qd=Q_decayed,
-        w=W,
-        mqk=Mqk,
-        u=U_pre,
-        o=o,
-        st_in=st_in,
-        st_out=st_out,
-        ident=identity16,
-        bnt=bn_total,
-        s=seq_len,
-        scale=scale,
-        lower_bound=lower_bound,
-        head_dim=SUPPORTED_HEAD_DIM,
-        group=group,
-        layout_qkv="BNSD",
-        dv_base=dv_base,
-        block_num=block_num,
+    flash_kda_kernel(SUPPORTED_HEAD_DIM, group, dv_base)[block_num](
+        K,
+        V,
+        Q,
+        beta,
+        g,
+        qk_exchange,
+        A_log,
+        dt_bias,
+        K_restored,
+        gamma_C,
+        Q_decayed,
+        W,
+        Mqk,
+        U_pre,
+        o,
+        st_in,
+        st_out,
+        identity16,
+        bn_total,
+        seq_len,
+        scale,
+        lower_bound,
     )
-
-
-
-
-class FlashKDA:
-    """Compatibility wrapper carrying Provider compile-time configuration."""
-
-    def __init__(
-        self,
-        head_dim: int = SUPPORTED_HEAD_DIM,
-        group: int = MAX_GROUP_CHUNKS,
-        layout_qkv: str = "BNSD",
-        dv_base: int = SUPPORTED_HEAD_DIM,
-        block_num: Optional[int] = None,
-    ):
-        self.head_dim = head_dim
-        self.group = int(group)
-        self.layout_qkv = layout_qkv
-        self.dv_base = int(dv_base)
-        self.block_num = _device_block_num() if block_num is None else int(block_num)
-        if not 1 <= self.block_num <= ALGORITHM_MAX_BLOCK_NUM:
-            raise ValueError(
-                "block_num must be in "
-                f"[1, {ALGORITHM_MAX_BLOCK_NUM}], got {self.block_num}"
-            )
-
-    @jit
-    def run(self, K: Tensor, V: Tensor, Q: Tensor, beta: Tensor, g: Tensor,
-            qk_exchange: Tensor, A_log: Tensor, dt_bias: Tensor,
-            kr: Tensor, gamma: Tensor, qd: Tensor, w: Tensor, mqk: Tensor,
-            u: Tensor, o: Tensor, st_in: Tensor, st_out: Tensor,
-            ident: Tensor,
-            bnt: int, s: int, scale: float, lower_bound: float):
-        flash_kda_provider(
-            K, V, Q, beta, g, qk_exchange, A_log, dt_bias, kr, gamma, qd,
-            w, mqk, u, st_in, ident, o, st_out, bnt, s,
-            scale, lower_bound, self.head_dim, self.group, self.layout_qkv,
-            self.dv_base, self.block_num,
-        )
 
 
 def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
@@ -2232,25 +2119,11 @@ def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
     return min(cube_core_num, ALGORITHM_MAX_BLOCK_NUM)
 
 
-def _dynamic_sequence_tensor(dtype, batch, seq_len, heads, width, layout_qkv):
-    shape = (batch, heads, seq_len, width)
-    if layout_qkv == "BNSD":
-        return cannbotdsl.TensorSpec(shape, dtype)
-    batch_stride = seq_len * heads * width
-    head_stride = batch_stride if heads == 1 else width
+def _dynamic_sequence_tensor(dtype, batch, seq_len, heads, width):
     return cannbotdsl.TensorSpec(
-        shape,
+        (batch, heads, seq_len, width),
         dtype,
-        stride=(batch_stride, head_stride, heads * width, 1),
     )
-
-
-def _dynamic_workspace_tokens(
-    batch, seq_len, heads, group, scratch_uses_sequence
-):
-    if scratch_uses_sequence:
-        return batch * heads * seq_len
-    return batch * heads * group * CHUNK_SIZE
 
 
 def flash_kda(
@@ -2269,48 +2142,58 @@ def flash_kda(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """FlashKDA forward (Flash Kimi Delta Attention).
         Args:
-            q (torch.Tensor): Query, bf16, shape ``[batch_size, seqlens, head_num, head_dim_qk]``.
-            k (torch.Tensor): Key, bf16, shape ``[batch_size, seqlens, head_num, head_dim_qk]``.
-            v (torch.Tensor): Value, bf16, shape ``[batch_size, seqlens, head_num_v, head_dim_v]``.
-            g (torch.Tensor): Raw gate input, bf16, shape ``[batch_size, seqlens, head_num_v, head_dim_qk]``.
-            beta (torch.Tensor): Raw beta logits, bf16, shape ``[batch_size, seqlens, head_num_v]``.
+            q (torch.Tensor): Query, bf16, BNSD shape
+                ``[batch_size, head_num, seqlens, head_dim_qk]``.
+            k (torch.Tensor): Key, bf16, BNSD shape
+                ``[batch_size, head_num, seqlens, head_dim_qk]``.
+            v (torch.Tensor): Value, bf16, BNSD shape
+                ``[batch_size, head_num_v, seqlens, head_dim_v]``.
+            g (torch.Tensor): Raw gate input, bf16, BNSD shape
+                ``[batch_size, head_num_v, seqlens, head_dim_qk]``.
+            beta (torch.Tensor): Raw beta logits, bf16, BNS shape
+                ``[batch_size, head_num_v, seqlens]``.
             scale (float): Scaling factor.
             initial_state (torch.Tensor, optional): Initial recurrent state, fp32, shape ``[batch_size, head_num_v, head_dim_v, head_dim_qk]``,
-            layout_qkv (str):  "BSND" "BNSD" "TND".
+            layout_qkv (str): ``"BNSD"``.  The canonical six-variant native
+                support does not describe BSND strides.
             cu_seqlens (torch.Tensor, optional): Cumulative sequence lengths, int32, shape ``[batch_size+1]``.
 
         Return:
-            out (torch.Tensor): Output, bf16, shape ``[batch_size, seqlens, head_num_v, head_dim_v]``.
+            out (torch.Tensor): Output, bf16, BNSD shape
+                ``[batch_size, head_num_v, seqlens, head_dim_v]``.
             final_state (torch.Tensor): Final recurrent state, same dtype/shape rules as ``initial_state``.
         Notes:
-            * Currently requires ``head_dim_qk = head_num_v = 128``.
+            * Currently requires ``head_dim_qk = head_dim_v = 128``.
             * All input tensors must be NPU, contiguous, and have the dtypes listed above.
             * head_num_v <= 96
-            * head_num_v % head_num_qk == 0
+            * ``head_num_v == head_num_qk``
             * lower_bound is in [-5, 0]
     """
-    assert layout_qkv in ("BNSD", "BSND"), f"layout_qkv must be BNSD or BSND, got {layout_qkv!r}"
+    if layout_qkv != "BNSD":
+        raise ValueError(
+            "canonical FlashKDA native support requires contiguous BNSD "
+            f"layout, got {layout_qkv!r}"
+        )
     assert cu_seqlens is None, "cu_seqlens is not supported"
     assert q.dim() == 4, "q/k/v must be rank-4"
     batch, dim = q.shape[0], q.shape[3]
-    seq_len = q.shape[1] if layout_qkv == "BSND" else q.shape[2]
-    n_v = v.shape[2] if layout_qkv == "BSND" else v.shape[1]
-    n_kv = q.shape[2] if layout_qkv == "BSND" else q.shape[1]
-    assert n_v % n_kv == 0, f"GQA requires Nv % Nk == 0, got Nv={n_v}, Nk={n_kv}"
-    if layout_qkv == "BSND":
-        qk_shape = (batch, seq_len, n_kv, dim)
-        v_shape = (batch, seq_len, n_v, dim)
-        beta_shape = (batch, seq_len, n_v)      # 对外 beta 只收 3 维 BSN
-    else:
-        qk_shape = (batch, n_kv, seq_len, dim)
-        v_shape = (batch, n_v, seq_len, dim)
-        beta_shape = (batch, n_v, seq_len)      # 对外 beta 只收 3 维 BNS
+    seq_len = q.shape[2]
+    n_v = v.shape[1]
+    n_kv = q.shape[1]
+    if n_kv != n_v:
+        raise ValueError(
+            "canonical FlashKDA native support requires Nk == Nv, "
+            f"got Nk={n_kv}, Nv={n_v}"
+        )
+    qk_shape = (batch, n_kv, seq_len, dim)
+    v_shape = (batch, n_v, seq_len, dim)
+    beta_shape = (batch, n_v, seq_len)
     assert tuple(q.shape) == qk_shape and tuple(k.shape) == qk_shape, "q/k shape does not match layout"
     assert tuple(v.shape) == v_shape, "v shape does not match layout"
     assert tuple(g.shape) == v_shape, "g shape does not match layout"
-    # beta 对外接口是 3 维 BNS/BSN，校验也只按 3 维；末轴的 1 由内部补齐喂 kernel。
-    assert beta.dim() == 3 and tuple(beta.shape) == beta_shape, "beta must be 3-D BNS/BSN matching layout"
-    beta = beta.unsqueeze(-1)                    # 内部补 1 → BNS1/BSN1（kernel 期望 4 维）
+    # beta 对外接口是 3 维 BNS；末轴的 1 由内部补齐喂 kernel。
+    assert beta.dim() == 3 and tuple(beta.shape) == beta_shape, "beta must be 3-D BNS matching layout"
+    beta = beta.unsqueeze(-1)                    # 内部补 1 → BNS1（kernel 期望 4 维）
     assert tuple(initial_state.shape) == (batch, n_v, dim, dim), "initial_state must be (B, Nv, D, D)"
     assert dim == SUPPORTED_HEAD_DIM, f"Flash KDA only supports D={SUPPORTED_HEAD_DIM}"
     assert seq_len % CHUNK_SIZE == 0, f"S must be a multiple of {CHUNK_SIZE}"
@@ -2330,75 +2213,60 @@ def flash_kda(
 
     scale_value = float(scale)
     bn_total = batch * n_v
-    group = int(os.environ.get("KDA_GROUP") or get_group_config_bn(bn_total))
+    group = get_group_config(bn_total, seq_len)
     eff_group = min(seq_len // CHUNK_SIZE, group)
-    if layout_qkv == "BSND":
-        out_physical = torch.empty(batch, seq_len, n_v, dim, dtype=LOW_DTYPE, device=q.device)
-        out = out_physical.transpose(1, 2)
-        if n_v == 1:
-            fixed_stride = list(out.stride())
-            fixed_stride[1] = seq_len * n_v * dim
-            out = torch.as_strided(out, out.shape, tuple(fixed_stride))
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-        g = g.transpose(1, 2)
-        beta = beta.transpose(1, 2)
-    else:
-        out = torch.empty(batch, n_v, seq_len, dim, dtype=LOW_DTYPE, device=q.device)
-        out_physical = out
+    out = torch.empty(
+        batch, n_v, seq_len, dim, dtype=LOW_DTYPE, device=q.device
+    )
     final_state = torch.empty(
         initial_state.shape,
         dtype=initial_state.dtype,
         device=initial_state.device,
     )
-    # group / dv_base 均按实际 bn 分桶（dv_base：少头切 Dv；group：少头用大 group 减 barrier），
-    # 一并作为下面动态 kernel 缓存的 key；B/S 仍动态复用（末尾 group 由 group_count 运行时夹取）。
-    dv_base = int(os.environ.get("KDA_DV_BASE") or get_dv_base_config(bn_total, seq_len))
-
-    # min(S / CHUNK_SIZE, group) 不属于 Dim 表达式。按 min 的两个分支分别
-    # specialization，既保持 B/S 动态复用，也让 workspace 与输入关系精确可校验。
-    scratch_uses_sequence = seq_len // CHUNK_SIZE <= group
-    # block_num 决定 launch grid，必须入 key，防止跨设备误复用。
-    # FlashKDA 恒 layout_qkv="BNSD"：BSND 由 host 转置 + _dynamic_sequence_tensor 的 stride 表达，
-    # 不走 run 内的 const_expr swap；fake 张量按实际 layout_qkv 编码 stride。
+    # group / dv_base come from the same concrete public point as the entry;
+    # environment state is deliberately not a specialization authority.
+    dv_base = get_dv_base_config(bn_total, seq_len)
     block_num = _device_block_num(q)
+    if block_num != ASCEND950PR_PACKAGE_BLOCK_NUM:
+        raise RuntimeError(
+            "canonical FlashKDA native support targets Ascend950PR "
+            f"block_num={ASCEND950PR_PACKAGE_BLOCK_NUM}, got {block_num}"
+        )
     _kernel_key = (
         n_kv,
         n_v,
         dim,
-        layout_qkv,
         dv_base,
         group,
-        scratch_uses_sequence,
         block_num,
     )
     fn = _DYNAMIC_KERNEL_CACHE.get(_kernel_key)
     if fn is None:
         sym_batch = cannbotdsl.Dim("B")
         sym_seq = cannbotdsl.Dim("S", multiple_of=CHUNK_SIZE)
-        scratch_tokens = _dynamic_workspace_tokens(
-            sym_batch,
-            sym_seq,
-            n_v,
-            group,
-            scratch_uses_sequence,
-        )
-        gamma_rows = (scratch_tokens // CHUNK_SIZE) * dim
+        scratch_tokens = sym_batch * n_v * group * CHUNK_SIZE
+        gamma_rows = sym_batch * n_v * group * dim
         fake = cannbotdsl.TensorSpec
-        op = FlashKDA(
-            dim,
-            group=group,
-            layout_qkv="BNSD",
-            dv_base=dv_base,
-            block_num=block_num,
+        from cannbotdsl.core.compiler.native_entry import (
+            compile_native_entry_variant,
         )
-        fn = op.run.compile(
-            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim, layout_qkv),
-            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, dim, layout_qkv),
-            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim, layout_qkv),
-            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, 1, layout_qkv),
-            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, dim, layout_qkv),
+
+        physical_args = (
+            _dynamic_sequence_tensor(
+                dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim
+            ),
+            _dynamic_sequence_tensor(
+                dtypes.bfloat16, sym_batch, sym_seq, n_v, dim
+            ),
+            _dynamic_sequence_tensor(
+                dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim
+            ),
+            _dynamic_sequence_tensor(
+                dtypes.bfloat16, sym_batch, sym_seq, n_v, 1
+            ),
+            _dynamic_sequence_tensor(
+                dtypes.bfloat16, sym_batch, sym_seq, n_v, dim
+            ),
             fake((block_num, 2, CHUNK_SIZE, D_HALF), dtypes.float32),
             fake((n_v,), dtypes.float32),
             fake((n_v, dim), dtypes.float32),
@@ -2408,7 +2276,9 @@ def flash_kda(
             fake((scratch_tokens, dim), dtypes.bfloat16),
             fake((scratch_tokens, CHUNK_SIZE), dtypes.bfloat16),
             fake((scratch_tokens, dim), dtypes.bfloat16),
-            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, dim, layout_qkv),
+            _dynamic_sequence_tensor(
+                dtypes.bfloat16, sym_batch, sym_seq, n_v, dim
+            ),
             fake((sym_batch, n_v, dim, dim), dtypes.float32),
             fake((sym_batch, n_v, dim, dim), dtypes.float32),
             fake((16, 16), dtypes.float16),
@@ -2416,6 +2286,31 @@ def flash_kda(
             dtypes.int64,
             dtypes.float32,
             dtypes.float32,
+            dim,
+            group,
+            dv_base,
+            block_num,
+        )
+        sample_shapes = {
+            "K": (batch, n_kv, seq_len, dim),
+            "V": (batch, n_v, seq_len, dim),
+            "Q": (batch, n_kv, seq_len, dim),
+            "beta": (batch, n_v, seq_len, 1),
+            "g": (batch, n_v, seq_len, dim),
+            "A_log": (n_v,),
+            "dt_bias": (n_v, dim),
+            "st_in": (batch, n_v, dim, dim),
+            "o": (batch, n_v, seq_len, dim),
+            "st_out": (batch, n_v, dim, dim),
+        }
+        fn = compile_native_entry_variant(
+            flash_kda_l0_entry,
+            physical_args,
+            sample_shapes=sample_shapes,
+            sample_scalars={
+                "scale": scale_value,
+                "lower_bound": float(lower_bound),
+            },
         )
         _DYNAMIC_KERNEL_CACHE[_kernel_key] = fn
     execution = _EXECUTION_CACHE.get_or_create(
@@ -2438,4 +2333,4 @@ def flash_kda(
             bn_total, seq_len, scale_value,
             float(lower_bound),
         )
-    return out_physical, final_state
+    return out, final_state
