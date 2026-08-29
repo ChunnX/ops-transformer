@@ -13,9 +13,10 @@
 
 ## 功能说明
 
-> 本目录新增的Kernel与Host Tiling注册仅面向Ascend 950；表中A2/A3产品继续使用存量实现，本次不覆盖，也不改写其既有契约。
+> 本目录新增的 Kernel 与 Host Tiling 注册仅面向 Ascend 950；表中的 Atlas A2、Atlas A3
+> 训练/推理系列产品继续使用存量实现，本次不覆盖，也不改写其既有契约。
 
-### Ascend 950功能语义
+### Ascend 950 功能语义
 
 - **算子功能**：Tutel MoE`combine`的反向算子之一，求门控权重`gates`的梯度。按`indices`、`locations`给出的路由，从`y_grad`中取出对应的一行，与`x`中对应token的一行沿隐藏维`H`做点积，得到一个标量写入`gates_grad`。路由越界时该位置输出0。
 
@@ -49,7 +50,7 @@
 
 ## 参数说明
 
-> 下表描述本次Ascend 950实现的参数语义。A2/A3产品的参数约束以对应存量实现及其配套资料为准。
+> 下表描述各支持产品共有的参数角色、数据类型和数据格式；产品专属 shape 与行为见“产品差异说明”。
 
 <table style="table-layout: auto; width: 100%">
   <thead>
@@ -65,40 +66,47 @@
     <tr>
       <td>x</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>x</code>，表示combine正向输出的上游梯度。</li><li>shape为2维（S，H）。</li></ul></td>
+      <td>公式中的<code>x</code>，表示combine正向输出的上游梯度。</td>
       <td>FLOAT32、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>y_grad</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>yGrad</code>，表示正向被combine的dispatch结果。</li><li>shape为3维（E，C，H），最后一维必须与<code>x</code>的第2维相同。</li></ul></td>
+      <td>公式中的<code>yGrad</code>，表示正向被combine的dispatch结果。</td>
       <td>FLOAT32、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>indices</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>indices</code>，表示每个（路由，token）对应的专家序号。</li><li>shape为2维（K，S）。</li></ul></td>
+      <td>公式中的<code>indices</code>，表示每个（路由，token）对应的专家序号。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>locations</td>
       <td>输入</td>
-      <td><ul><li>公式中的<code>locations</code>，表示token在该专家capacity内的槽位序号。</li><li>shape与<code>indices</code>完全相同。</li></ul></td>
+      <td>公式中的<code>locations</code>，表示token在该专家capacity内的槽位序号。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>gates_grad</td>
       <td>输出</td>
-      <td><ul><li>公式中的<code>gatesGrad</code>，表示门控权重<code>gates</code>的梯度。</li><li>shape与<code>indices</code>相同，为（K，S）；数据类型与<code>x</code>一致。</li></ul></td>
+      <td>公式中的<code>gatesGrad</code>，表示门控权重<code>gates</code>的梯度。</td>
       <td>FLOAT32、FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
   </tbody>
 </table>
+
+### 产品差异说明
+
+| 产品 | 调用通路 | 静态 shape 格式 | 动态 shape 格式 | shape、rank 及行为边界 |
+| --- | --- | --- | --- | --- |
+| <term>Ascend 950PR/Ascend 950DT</term> | GE 图模式 | ND | ND | `x[S,H]`、`y_grad[E,C,H]`、`indices/locations/gates_grad[K,S]`，`1 <= K <= E`；支持 `S=0`、`H=0` 和逐 route 越界置 0。 |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | GE 图模式（存量实现） | ND | ND | 公共 `REG_OP` 未声明精确 rank、shape、空 Tensor 或非法 route 行为；上行 Ascend 950 补充契约不改变存量产品的公开边界。 |
 
 ## 约束说明
 
@@ -114,16 +122,15 @@
 - Tiling阶段要求所有维度已具体化且为非负数；所有张量元素数、字节数、步长和偏移计算必须能由有符号64位整数表示。
 - 当H需要切分时，Tiling根据设备UB、数据类型和向量长度自动计算`hFactor`，并要求`ceil(H / hFactor) <= 1024`；超出该确定性分块归约上限时返回失败。
 
-### A2/A3
+### 存量产品
 
-- A2/A3产品沿用存量实现；其shape范围、非法路由、空Tensor及数值行为以对应存量契约为准，本次Ascend 950开发不新增相关保证。
-
-### 调用方式
-
-- 本算子不提供aclnn单算子接口，仅支持Kernel直调与GE图模式调用。
+- Atlas A2、Atlas A3 训练/推理系列产品的公共 `REG_OP` 未声明精确 shape、空 Tensor 与非法 route
+  行为。本次只新增 Ascend 950 实现，不把 Ascend 950 的补充契约反向写入存量产品。
 
 ## 调用说明
 
-| 调用方式  | 样例代码                                                                              | 说明                                                                    |
-| --------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| 图模式接口 | [test_geir_moe_tutel_combine_gates](examples/test_geir_moe_tutel_combine_gates.cpp) | 通过GE图模式构建MoeTutelCombineGates算子图并执行RunGraph验证。 |
+| 调用方式 | 调用样例 | 说明 |
+| --- | --- | --- |
+| GE 图模式 | [test_geir_moe_tutel_combine_gates](examples/test_geir_moe_tutel_combine_gates.cpp) | 公共入口定义见 [MoeTutelCombineGates REG_OP](../../common/include/op_graph/op_transformer_proto_extend.h)；样例通过 GE 构图并执行 RunGraph。 |
+
+本算子不提供 aclnn 或 PyTorch 单算子接口。

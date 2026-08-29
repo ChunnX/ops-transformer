@@ -158,14 +158,35 @@ def _kernel_golden(x, y_grad, indices, locations, **kwargs):
 
 
 class _MoeTutelCombineGatesCompose:
-    """Independent competitor composition of the public math contract."""
+    """Supplementary Torch competitor, independent from the CPU golden path."""
 
     def __init__(self, **kwargs):
         del kwargs  # The proto declares no attributes.
 
     def __call__(self, x, y_grad, indices, locations, **kwargs):
         del kwargs
-        out = _combine_gates(x, y_grad, indices, locations, torch.float32)
+        experts, capacity, hidden = y_grad.shape
+        valid = torch.logical_and(
+            torch.logical_and(torch.ge(indices, 0), torch.lt(indices, experts)),
+            torch.logical_and(torch.ge(locations, 0), torch.lt(locations, capacity)),
+        )
+
+        # Keep this path structurally separate from the CPU golden's flattened
+        # index_select/mul/sum implementation. Advanced indexing plus einsum
+        # provides an independent native Torch expression
+        # of the same public contract without mirroring the NPU reduction tree.
+        safe_experts = torch.where(valid, indices, torch.zeros_like(indices)).to(
+            torch.int64
+        )
+        safe_locations = torch.where(valid, locations, torch.zeros_like(locations)).to(
+            torch.int64
+        )
+        if x.shape[0] == 0 or hidden == 0:
+            dots = torch.zeros(indices.shape, dtype=torch.float32, device=x.device)
+        else:
+            rows = y_grad.to(torch.float32)[safe_experts, safe_locations, :]
+            dots = torch.einsum("ksh,sh->ks", rows, x.to(torch.float32))
+        out = torch.where(valid, dots, torch.zeros_like(dots))
         # The NPU stores gates_grad in the input floating dtype; align the
         # competitor output the same way (this is the single output-side cast).
         return [out.to(dtype=x.dtype)]
