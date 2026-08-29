@@ -775,15 +775,14 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     }
     // antiquant 不支持 keyRope 非连续（kRopeStrides 不处理），key/value 放行到下方布局级检查
     if (enableAntiQuant_) {
-        OP_CHECK_IF(
-            keyRopeDim != -1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                fiaInfo.opName, "keyRope",
-                ("In anti-quant scenarios, PA does not support non-contiguous keyRope tensors, "
-                 "but the first non-contiguous dimension is index " +
-                 std::to_string(keyRopeDim) + ".")
-                    .c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim != -1,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        fiaInfo.opName, "keyRope",
+                        ("In anti-quant scenarios, PA does not support non-contiguous keyRope tensors, "
+                         "but the first non-contiguous dimension is index " +
+                         std::to_string(keyRopeDim) + ".")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
