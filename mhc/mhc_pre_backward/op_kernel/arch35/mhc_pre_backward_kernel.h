@@ -246,6 +246,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     hPreGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_pre));
     hPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_post));
     xGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x));
+    xGradGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_phi));
     alphaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_alpha));
     gradBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_bias));
