@@ -816,15 +816,9 @@ ge::graphStatus QSFAV2TilingCheck::CheckSingleParaSparseIndices() const
 
 ge::graphStatus QSFAV2TilingCheck::CheckSingleParaSinks() const
 {
-    if (opParamInfo_.sinks.tensor == nullptr or opParamInfo_.sinks.desc == nullptr) {
+    if (opParamInfo_.sinks.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-
-    OP_CHECK_IF(
-        !isA5_,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            opName_, SINKS_NAME.c_str(), "sinks is not supported on the current platform. It should be nullptr."),
-        return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sinks.desc, SINKS_NAME)) {
         return ge::GRAPH_FAILED;

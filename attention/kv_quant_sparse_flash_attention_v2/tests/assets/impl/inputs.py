@@ -206,7 +206,8 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
         self.copy_sequence(
             actual_seq_lengths_kv, params["actualseqlengthskv"], "actual_seq_lengths_kv"
         )
-        self.copy_tensor(sinks, generated.get("sinks"), "sinks")
+        if sinks is not None:
+            self.copy_tensor(sinks, generated.get("sinks"), "sinks")
 
         golden_module.CASE_DATA.put(
             testcase_name,

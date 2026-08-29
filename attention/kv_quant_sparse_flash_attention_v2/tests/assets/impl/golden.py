@@ -99,7 +99,7 @@ class KvQuantSparseFlashAttentionV2PytestAdapter:
     def load_error(cls, module_path, exc):
         versions = (
             f"python={sys.version.split()[0]}, "
-            f"tensorflow={cls.package_version('tensorflow', 'tensorflow-cpu')}, "
+            f"torch={cls.package_version('torch')}, "
             f"numpy={cls.package_version('numpy')}"
         )
         return RuntimeError(

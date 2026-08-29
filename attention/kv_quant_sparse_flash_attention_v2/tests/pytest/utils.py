@@ -24,7 +24,6 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_v2_golden
 import result_compare_method
 import traceback
-import tensorflow as tf
 import json
 
 
@@ -548,24 +547,33 @@ def convert_param_combination_to_cs_format(param_combination):
 
 
 def get_np_dtype(type_str):
-    type_dict = {
-        "fp32": np.float32,
-        "fp16": np.float16,
-        "int32": np.int32,
-        "int8": np.int8,
-        "uint8": np.uint8,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
-        "float32": np.float32,
-        "float16": np.float16,
-        "hifloat8": np.uint8,
+    torch_to_np = {
+        torch.float32: np.float32,
+        torch.float16: np.float16,
+        torch.int32: np.int32,
+        torch.int8: np.int8,
+        torch.uint8: np.uint8,
+    }
+    torch_dtype_map = {
+        "fp32": torch.float32,
+        "fp16": torch.float16,
+        "int32": torch.int32,
+        "int8": torch.int8,
+        "uint8": torch.uint8,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+        "float32": torch.float32,
+        "float16": torch.float16,
+        "hifloat8": torch.uint8,
     }
     if type_str == "float8_e4m3fn":
         from ml_dtypes import float8_e4m3fn
 
         return float8_e4m3fn
-    else:
-        return type_dict[type_str]
+    torch_dtype = torch_dtype_map[type_str]
+    if torch_dtype in torch_to_np:
+        return torch_to_np[torch_dtype]
+    return np.float32
 
 
 def convert_tensor_data(data_pool, data_path, type_str, params=None):
@@ -653,12 +661,8 @@ def modify_alcnn_input_file(
         tensor_dtype = get_tensor_dtype(tensors, data_dtype)
         if torch.is_tensor(tensors):
             if tensor_dtype == "bf16":
-                out_tensor = np.array(
-                    tensors.float()
-                    .detach()
-                    .cpu()
-                    .numpy()
-                    .astype(tf.bfloat16.as_numpy_dtype)
+                out_tensor = (
+                    tensors.detach().cpu().to(torch.float32).numpy()
                 )
             else:
                 out_tensor = tensors.detach().cpu().numpy()

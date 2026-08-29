@@ -21,6 +21,7 @@ import time
 import math
 import random
 from utils import get_torch_dtype
+from cann_ops_transformer.ops import kv_quant_sparse_flash_attention
 
 
 def _load_inputs_to_npu(input_dict):
@@ -39,15 +40,14 @@ def _get_kv_torch_dtype(kv_dtype_str):
 
 
 def call_npu_eager(torch_tensor_dict, params):
-    return torch_npu.npu_kv_quant_sparse_flash_attention_v2(
+    npu_result = kv_quant_sparse_flash_attention(
         torch_tensor_dict["query_cache"],
         torch_tensor_dict["key_cache"],
         torch_tensor_dict["value_cache"],
-        sparse_indices=torch_tensor_dict["sparse_indices"],
-        scale_value=params.get("scalevalue", 1),
-        sparse_block_size=params.get("sparse_blocksize", 0),
-        key_quant_mode=params.get("key_quant_mode", 2),
-        value_quant_mode=params.get("value_quant_mode", 2),
+        torch_tensor_dict["sparse_indices"],
+        params.get("scalevalue", 1),
+        params.get("key_quant_mode", 2),
+        params.get("value_quant_mode", 2),
         key_dequant_scale=None,
         value_dequant_scale=None,
         block_table=torch_tensor_dict["block_table"]
@@ -59,19 +59,22 @@ def call_npu_eager(torch_tensor_dict, params):
         actual_seq_lengths_kv=torch.tensor(
             params["actualseqlengthskv"], dtype=torch.int32
         ).to("npu"),
+        sparse_block_size=params.get("sparse_blocksize", 0),
         layout_query=params.get("layout_query", "BSND"),
         layout_kv=params.get("layout_kv", "PA_BSND"),
         sparse_mode=params.get("sparsemode", 0),
+        pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
+        next_tokens=params.get("next_tokens", (1 << 63) - 1),
         attention_mode=params.get("attention_mode", 2),
         quant_scale_repo_mode=params.get("quant_scale_repo_mode", 1),
         tile_size=params.get("tile_size", 128),
         rope_head_dim=params.get("rope_head_dim", 64),
-        pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
-        next_tokens=params.get("next_tokens", (1 << 63) - 1),
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
         sinks=torch_tensor_dict.get("sinks", None),
     )
+    assert npu_result is not None, "kv_quant_sparse_flash_attention returned None"
+    return npu_result
 
 
 def call_npu(input_tensor_dict, params):
@@ -103,17 +106,17 @@ class Network(torch.nn.Module):
         layout_query,
         layout_kv,
         sparse_mode,
+        pre_tokens,
+        next_tokens,
         attention_mode,
         quant_scale_repo_mode,
         tile_size,
         rope_head_dim,
         key_dtype,
         value_dtype,
-        pre_tokens,
-        next_tokens,
         sinks,
     ):
-        return torch_npu.npu_kv_quant_sparse_flash_attention_v2(
+        return kv_quant_sparse_flash_attention(
             query=query,
             key=key,
             value=value,
@@ -130,14 +133,14 @@ class Network(torch.nn.Module):
             layout_query=layout_query,
             layout_kv=layout_kv,
             sparse_mode=sparse_mode,
+            pre_tokens=pre_tokens,
+            next_tokens=next_tokens,
             attention_mode=attention_mode,
             quant_scale_repo_mode=quant_scale_repo_mode,
             tile_size=tile_size,
             rope_head_dim=rope_head_dim,
             key_dtype=key_dtype,
             value_dtype=value_dtype,
-            pre_tokens=pre_tokens,
-            next_tokens=next_tokens,
             sinks=sinks,
         )
 
@@ -157,16 +160,15 @@ def call_npu_graph(torch_tensor_dict, params):
         npu_model, fullgraph=True, backend=npu_backend, dynamic=False
     )
 
-    print("npu_kv_quant_sparse_flash_attention_v2 (graph mode) ...")
-    return npu_model(
+    print("kv_quant_sparse_flash_attention (graph mode) ...")
+    npu_result = npu_model(
         torch_tensor_dict["query_cache"],
         torch_tensor_dict["key_cache"],
         torch_tensor_dict["value_cache"],
-        sparse_indices=torch_tensor_dict["sparse_indices"],
-        scale_value=params.get("scalevalue", 1),
-        sparse_block_size=params.get("sparse_blocksize", 0),
-        key_quant_mode=params.get("key_quant_mode", 2),
-        value_quant_mode=params.get("value_quant_mode", 2),
+        torch_tensor_dict["sparse_indices"],
+        params.get("scalevalue", 1),
+        params.get("key_quant_mode", 2),
+        params.get("value_quant_mode", 2),
         key_dequant_scale=None,
         value_dequant_scale=None,
         block_table=torch_tensor_dict["block_table"]
@@ -178,16 +180,19 @@ def call_npu_graph(torch_tensor_dict, params):
         actual_seq_lengths_kv=torch.tensor(
             params["actualseqlengthskv"], dtype=torch.int32
         ).to("npu"),
+        sparse_block_size=params.get("sparse_blocksize", 0),
         layout_query=params.get("layout_query", "BSND"),
         layout_kv=params.get("layout_kv", "PA_BSND"),
         sparse_mode=params.get("sparsemode", 0),
+        pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
+        next_tokens=params.get("next_tokens", (1 << 63) - 1),
         attention_mode=params.get("attention_mode", 2),
         quant_scale_repo_mode=params.get("quant_scale_repo_mode", 1),
         tile_size=params.get("tile_size", 128),
         rope_head_dim=params.get("rope_head_dim", 64),
-        pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
-        next_tokens=params.get("next_tokens", (1 << 63) - 1),
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
         sinks=torch_tensor_dict.get("sinks", None),
     )
+    assert npu_result is not None, "kv_quant_sparse_flash_attention (graph) returned None"
+    return npu_result

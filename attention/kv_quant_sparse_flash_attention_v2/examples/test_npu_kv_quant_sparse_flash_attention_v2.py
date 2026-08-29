@@ -16,6 +16,8 @@ import numpy as np
 import random
 import math
 
+from cann_ops_transformer.ops import kv_quant_sparse_flash_attention
+
 # 生成随机数据，并发送到npu
 query_type = torch.bfloat16
 scale_value = 0.041666666666666664
@@ -65,23 +67,25 @@ block_table = (
 )
 
 # 调用qsfa算子
-out = torch_npu.npu_kv_quant_sparse_flash_attention_v2(
+out = kv_quant_sparse_flash_attention(
     query,
     key,
     value,
     sparse_indices,
-    scale_value=scale_value,
-    sparse_block_size=sparse_block_size,
+    scale_value,
+    key_quant_mode=2,
+    value_quant_mode=2,
+    block_table=block_table,
     actual_seq_lengths_query=act_seq_q,
     actual_seq_lengths_kv=act_seq_kv,
+    sparse_block_size=sparse_block_size,
     layout_query="BSND",
     layout_kv="PA_BSND",
     sparse_mode=3,
-    block_table=block_table,
     attention_mode=2,
     quant_scale_repo_mode=1,
     tile_size=tile_size,
-    key_quant_mode=2,
-    value_quant_mode=2,
     rope_head_dim=64,
 )
+assert out is not None, "kv_quant_sparse_flash_attention returned None"
+print(f"output shape: {out.shape}, dtype: {out.dtype}")

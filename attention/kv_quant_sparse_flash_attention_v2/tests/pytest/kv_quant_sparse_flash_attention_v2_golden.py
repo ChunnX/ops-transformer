@@ -921,25 +921,20 @@ def gatherKV(
     return emptyFlag, k_sparse, v_sparse
 
 
-def softmax(x):
+def softmax(x, sinks=None):
     x = x.float()
-    x_max = x.max(dim=-1, keepdim=True).values
+    if sinks is not None:
+        sinks = sinks.float().unsqueeze(1)
+        x_max = torch.max(torch.cat([x, sinks], dim=-1), dim=-1, keepdim=True).values
+    else:
+        x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x - x_max
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdim=True)
+    if sinks is not None:
+        x_sum = x_sum + torch.exp(sinks - x_max)
     ans = y / x_sum
-    return ans
-
-
-def softmax_sinks(x, sinks):
-    x = x.float()
-    sinks = sinks.unsqueeze(1)
-    x_concat = torch.cat([x, sinks], dim=-1)
-    x_max = x_concat.max(dim=-1, keepdim=True).values
-    y = torch.exp(x - x_max)
-    x_sum = y.sum(dim=-1, keepdim=True) + torch.exp(sinks - x_max)
-    ans = y / x_sum
-    return ans
+    return ans, x_max, x_sum
 
 
 def _t_increattention_bnsd(fa_param):
@@ -1013,25 +1008,22 @@ def _t_increattention_bnsd(fa_param):
                     curr_actualSeq_q,
                     sparse_mode,
                 )
+                cur_sinks = None
+                if sinks_tensor is not None:
+                    cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
                 if emptyFlag:
                     continue
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
-                if sinks_tensor is None:
-                    softmax_res = softmax(scaleRes)
-                else:
-                    cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
-                    softmax_res = softmax_sinks(scaleRes, cur_sinks)
+                softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
+                exp_unnorm = torch.exp(scaleRes - x_max)
                 if fa_param["q_dtype"] == "float16":
-                    bmm2Res = torch.matmul(
-                        softmax_res.to(torch.float16).float(), v_sparse.float()
-                    )
+                    exp_quantized = exp_unnorm.to(torch.float16).float()
                 elif fa_param["q_dtype"] == "bfloat16":
-                    bmm2Res = torch.matmul(
-                        softmax_res.to(torch.bfloat16).float(), v_sparse.float()
-                    )
+                    exp_quantized = exp_unnorm.to(torch.bfloat16).float()
                 else:
-                    bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
+                    exp_quantized = exp_unnorm
+                bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
                 y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
     return y
 

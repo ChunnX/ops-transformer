@@ -157,7 +157,7 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
-    GlobalTensor<float> sinksGm;
+    GlobalTensor<T> sinksGm;
     GlobalTensor<uint32_t> kvPhyAddrGm;
 
     TBuf<> commonTBuf; // common的复用空间
@@ -179,7 +179,7 @@ private:
     int64_t qsfaSparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
-    bool hasSinks = false;
+    bool isSinks = false;
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetRealCmpS2Idx(
@@ -639,7 +639,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
     outputBuf.SetCrossCore();
-    if (runInfo.s2LoopCount != 0 || hasSinks) {
+    if (runInfo.s2LoopCount != 0 || isSinks) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, qsfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
 }
@@ -649,7 +649,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispa
     LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
     LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if (runInfo.s2LoopCount == 0 && !hasSinks) {
+    if (runInfo.s2LoopCount == 0 && !isSinks) {
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -664,7 +664,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispa
                 runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         }
     } else {
-        if (runInfo.s2LoopCount == 0 && hasSinks) {
+        if (runInfo.s2LoopCount == 0 && isSinks) {
             // vec0: 0 ~ halfMRealSize - 1, vec1: firstHalfMRealSize ~ gSize
             int64_t sinksOffset = runInfo.goIdx;
             if (constInfo.subBlockIdx == 1) {
@@ -817,8 +817,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
     if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ float *)sinks);
-        this->hasSinks = true;
+        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        this->isSinks = true;
     }
 }
 
@@ -872,8 +872,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-    if (this->hasSinks) {
-        tPipe->InitBuffer(sinksBuf, 512);
+    tPipe->InitBuffer(sinksBuf, 512);   // sinksBuf内存申请512B
+    if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
 }
