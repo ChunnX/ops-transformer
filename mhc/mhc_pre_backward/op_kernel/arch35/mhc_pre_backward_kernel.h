@@ -49,7 +49,8 @@ public:
     __aicore__ inline void ProcessV0MainLoop(uint32_t vecRunTimes, float alphaPre, float alphaPost, float alphaComb,
                                              LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId);
-    __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t runBSStart, uint32_t runBSEnd);
+    __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, LocalTensor<uint8_t> &tmpBuf,
+                                        uint32_t runBSStart, uint32_t runBSEnd);
     __aicore__ inline void AllocV0V1Buffers(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers);
     __aicore__ inline void ProcessV0(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers, float alphaPre,
                                      float alphaPost, float alphaComb);
@@ -91,9 +92,13 @@ public:
     __aicore__ inline void ProcessV3BiasGrad();
 
     // 向量化计算函数 (VFDo*)
+    template <bool reuseGradHInFp32>
     __aicore__ inline void VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
-                                            __ubuf__ T *gradHInB16InAddr, uint16_t curLenN, uint32_t lenD, uint32_t i,
-                                            uint32_t j, uint32_t runBSStart);
+                                            __ubuf__ T *gradHInB16InAddr, __ubuf__ P *gradHInFp32InAddr,
+                                            uint16_t curLenN, uint32_t lenD, uint32_t i, uint32_t j,
+                                            uint32_t runBSStart);
+    __aicore__ inline void VFDoCastGradHIn(__ubuf__ P *gradHInFp32Addr, __ubuf__ T *gradHInB16Addr,
+                                           uint32_t lenD);
     __aicore__ inline void VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr, __ubuf__ P *gradHInAddr,
                                           uint32_t totalElem);
     __aicore__ inline void VFDoV0ProcessGradHPost(__ubuf__ P *hPostIn, __ubuf__ P *gradHPostIn,
@@ -367,10 +372,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
-                                                                    __ubuf__ T *gradHInB16InAddr, uint16_t curLenN,
-                                                                    uint32_t lenD, uint32_t i, uint32_t j,
-                                                                    uint32_t runBSStart)
+template <bool reuseGradHInFp32>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(
+    __ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr, __ubuf__ T *gradHInB16InAddr,
+    __ubuf__ P *gradHInFp32InAddr, uint16_t curLenN, uint32_t lenD, uint32_t i, uint32_t j, uint32_t runBSStart)
 {
     uint16_t eleNumPerVf = 64;
     uint16_t dLoopCnt = (lenD + eleNumPerVf - 1) / eleNumPerVf;
@@ -391,9 +396,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                                                                                            vfBlockIdx * eleNumPerVf);
                 MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
 
-                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    gradHInB16InReg, gradHInB16InAddr + vfBlockIdx * eleNumPerVf);
-                MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(gradHInFp32Reg, gradHInB16InReg, mask);
+                if constexpr (reuseGradHInFp32) {
+                    MicroAPI::LoadAlign(gradHInFp32Reg, gradHInFp32InAddr + vfBlockIdx * eleNumPerVf);
+                } else {
+                    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                        gradHInB16InReg, gradHInB16InAddr + vfBlockIdx * eleNumPerVf);
+                    MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(gradHInFp32Reg, gradHInB16InReg, mask);
+                }
 
                 MicroAPI::Mul(mulReg, xFp32Reg, gradHInFp32Reg, mask); // mulReg[1,lenD] 0-63
                 MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(tmpSumPerVfReg, mulReg,
@@ -407,8 +416,29 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t runBSStart,
-                                                                uint32_t runBSEnd)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoCastGradHIn(
+    __ubuf__ P *gradHInFp32Addr, __ubuf__ T *gradHInB16Addr, uint32_t lenD)
+{
+    uint16_t loopCnt = CeilDiv(lenD, static_cast<uint32_t>(eleNumPerVf_));
+    uint32_t curLen = lenD;
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> gradHInB16Reg;
+        MicroAPI::RegTensor<P> gradHInFp32Reg;
+        for (uint16_t vfBlockIdx = 0; vfBlockIdx < loopCnt; ++vfBlockIdx) {
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLen);
+            uint32_t offset = vfBlockIdx * eleNumPerVf_;
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInB16Reg, gradHInB16Addr + offset);
+            MicroAPI::Cast<P, T, ctHalf2Fp32Zero>(gradHInFp32Reg, gradHInB16Reg, mask);
+            MicroAPI::StoreAlign(gradHInFp32Addr + offset, gradHInFp32Reg, mask);
+        }
+    }
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &hPreGradBuf,
+                                                                LocalTensor<uint8_t> &tmpBuf,
+                                                                uint32_t runBSStart, uint32_t runBSEnd)
 {
     uint32_t maxDLen = MAX_D_LEN;
     uint32_t queueCopySize = INOUT_QUEUE_SIZE / sizeof(T);
@@ -418,6 +448,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
     DataCopyParams dataCopyParams;
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
+    LocalTensor<P> gradHInFp32Buf = tmpBuf.template ReinterpretCast<P>();
+    bool reuseGradHInFp32 = gradHInFp32Buf.GetSize() >= copySizeD;
 
     for (uint32_t i = runBSStart; i < runBSEnd; i++) {
         uint64_t inputOffset = static_cast<uint64_t>(i) * N_ * copySizeD;
@@ -431,6 +463,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
         DataCopyPad(gradHInInput, gradHInGm_[i * copySizeD], dataCopyParams, dataCopyPadParams);
         vecInQueue1_.EnQue(gradHInInput);
         LocalTensor<T> gradHInInputBuf = vecInQueue1_.DeQue<T>();
+        if (reuseGradHInFp32) {
+            // 临时区足够时每行只转换一次，后续N路点积复用同一份FP32数据。
+            VFDoCastGradHIn((__ubuf__ P *)gradHInFp32Buf.GetPhyAddr(),
+                            (__ubuf__ T *)gradHInInputBuf.GetPhyAddr(), copySizeD);
+            PipeBarrier<PIPE_V>();
+        }
 
         for (uint32_t j = 0; j < N_; j += lenN) {
             uint32_t curLenN = static_cast<uint32_t>(j + lenN > N_ ? N_ - j : lenN);
@@ -447,7 +485,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
             __ubuf__ T *xB16InAddr = (__ubuf__ T *)bf16InputBuf.GetPhyAddr();
             __ubuf__ T *gradHInB16InAddr = (__ubuf__ T *)gradHInInputBuf.GetPhyAddr();
             __ubuf__ P *hPreGradAddr = (__ubuf__ P *)hPreGradBuf.GetPhyAddr();
-            VFDoPreProcessV0(hPreGradAddr, xB16InAddr, gradHInB16InAddr, curLenN, copySizeD, i, j, runBSStart);
+            if (reuseGradHInFp32) {
+                VFDoPreProcessV0<true>(hPreGradAddr, xB16InAddr, gradHInB16InAddr,
+                                       (__ubuf__ P *)gradHInFp32Buf.GetPhyAddr(), curLenN, copySizeD, i, j,
+                                       runBSStart);
+            } else {
+                VFDoPreProcessV0<false>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, nullptr, curLenN, copySizeD, i, j,
+                                        runBSStart);
+            }
 
             inputOffset += copySizeD * curLenN;
             vecInQueue0_.FreeTensor(bf16InputBuf);
@@ -487,7 +532,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainLoop(uint32_t ve
         uint32_t currentDealBsNum = runBSEnd - runBSStart;
         V0V1Buffers<P> buffers;
         AllocV0V1Buffers(runBSStart, runBSEnd, buffers);
-        PreProcessV0(buffers.hPreGradBuf, runBSStart, runBSEnd);
+        PreProcessV0(buffers.hPreGradBuf, buffers.brcbTmpBuf, runBSStart, runBSEnd);
         ProcessV0(runBSStart, runBSEnd, buffers, alphaPre, alphaPost, alphaComb);
         ProcessV1(runBSStart, runBSEnd, buffers, cIdx, sumBuf);
     }
