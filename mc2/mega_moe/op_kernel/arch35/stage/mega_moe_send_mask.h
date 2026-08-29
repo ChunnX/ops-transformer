@@ -55,7 +55,7 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
                                                             GlobalTensor<int32_t> &topkIdsGm,
                                                             GlobalTensor<int32_t> &dstRouteIndexGm,
                                                             int32_t ownedExpertBegin, int32_t ownedExpertNum,
-                                                            int32_t batchIdx)
+                                                            int32_t batchIdx, WeightL2PrefetchCursor *w0Prefetch)
 {
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     const uint32_t compareMaskBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) / BITS_PER_BYTE;
@@ -75,6 +75,13 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
         DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
         CreateVecIndex(scratch.topkIndexTensor, batchStart, validLen);
+    }
+    // 窗口 0 预取钩子：本批 topkIds 读完成后（上方 if 内 MTE2_V 已同步，队列干净）一次性倾泻
+    // 全部剩余预算块——首批即发完，后续批 TryIssue 耗尽空转；预取块与后续各批的 mask 计算+MTE3
+    // 及 reset/共享准备重叠（MTE2 同队列按序，后续批的 topkIds 读排在预取块之后）。
+    if (w0Prefetch != nullptr) {
+        while (WeightL2PrefetchTryIssue(*w0Prefetch)) {
+        }
     }
 
     int32_t batchRingBegin = batchIdx * ownedExpertNum;
@@ -185,7 +192,8 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
 __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                         const Params &params, GM_ADDR *winRankAddr,
-                                                        const SendMaskConfig &config, SendMaskScratch &scratch)
+                                                        const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                        WeightL2PrefetchCursor *w0Prefetch = nullptr)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -218,7 +226,7 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
     }
     for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
         GatherAndSendExpertCompactRouteBatch(common, winRankAddr, config, scratch, topkIdsGm, dstRouteIndexGm,
-                                             ownedExpertBegin, ownedExpertNum, batchIdx);
+                                             ownedExpertBegin, ownedExpertNum, batchIdx, w0Prefetch);
     }
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
