@@ -27,16 +27,10 @@ public:
     {}
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMaxBaseM(uint64_t v)
-    {
-        maxBaseM_ = v;
-    }
+    void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
 
 protected:
-    const char *TilingName() const override
-    {
-        return "swat";
-    }
+    const char *TilingName() const override { return "swat"; }
 
     void DoOpTiling(QuantMatmulTilingData &tilingData) override
     {
