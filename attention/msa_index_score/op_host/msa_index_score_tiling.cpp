@@ -203,15 +203,10 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
                 OP_LOGE(context, "numQHeads(%u) must be divisible by numKvHeads(%u).", info.numQHeads, info.numKvHeads),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(info.batch == 0, OP_LOGE(context, "batch must be positive."), return ge::GRAPH_FAILED);
-    if (!info.isAscend950) {
-        // A2/A3：整 batch 空序列仍拒绝。950：q_len/kv_len 全 0 跳过计算（FIA PR 9246）。
-        OP_CHECK_IF(info.totalQ == 0 || info.maxBlocksPerBatch == 0,
-                    OP_LOGE(context, "batch/totalQ/maxBlocksPerBatch must be positive."), return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(info.maxBlocksPerBatch == 0,
-                    OP_LOGE(context, "maxBlocksPerBatch must be positive (empty kv uses aligned score stride)."),
-                    return ge::GRAPH_FAILED);
-    }
+    // A2/A3 与 950：q_len/kv_len 全 0 跳过计算（FIA PR 9246）。InferShape 已把空 KV 的 score 末维钳到 16。
+    OP_CHECK_IF(info.maxBlocksPerBatch == 0,
+                OP_LOGE(context, "maxBlocksPerBatch must be positive (empty kv uses aligned score stride)."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(info.keyLayout != MSA_KEY_LAYOUT_TND && info.numPages == 0,
                 OP_LOGE(context, "PA numPages must be positive."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<uint32_t>(startLocShape->GetStorageShape().GetDim(MSA_DIM_0)) != info.batch,
@@ -379,8 +374,8 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     // MIX 1AIC:2AIV：CalcTschBlockDim 的 sliceNum 按 AIV 计数，内部再 / (aiv/aic)。
     // 传入 aicNum 会再除一次得到 blockDim=aic/2（910B3: 20→10），只能打一半 Cube。
     // 与 LightningIndexer 等 MIX 算子一致：sliceNum = aivNum → 910B3 blockDim=20。
-    // 950 整 batch q_len=0：对齐 FIA PR 9246（queryS==0 → BlockDim=1），避免 totalTaskNum=0。
-    if (info.isAscend950 && info.totalQ == 0U) {
+    // 整 batch q_len=0：对齐 FIA PR 9246（queryS==0 → BlockDim=1），避免 totalTaskNum=0。A2/A3 与 950 相同。
+    if (info.totalQ == 0U) {
         context->SetBlockDim(1);
     } else {
         context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));

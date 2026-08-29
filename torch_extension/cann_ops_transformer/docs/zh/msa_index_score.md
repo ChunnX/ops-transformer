@@ -25,7 +25,7 @@ $$
 - `start_loc[B]`：当前 query 所在逻辑 block 索引，用于 `local_mask`。
 - `init_blocks` / `local_blocks`：Maxpool 之后的强制高分块；与 Triton raw score 对齐时置 0。默认 `0` / `1`。
 - Ascend 950 额外支持 query/key 同型 `torch.float8_e4m3fn` / `torch.float8_e5m2` / `torch_npu.hifloat8`（无 `scale`）。`hifloat8.npu()` 当前不安全，测试脚本跳过；kernel 已注册。
-- Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 为 `-inf`。
+- A2/A3 与 Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 为 `-inf`。
 
 ## 函数原型
 
