@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v3_tiling_arch35.h
@@ -131,7 +131,8 @@ constexpr int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
 constexpr uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
 constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
-const static int64_t CS_FULLLOAD_UNQUANT_TILINGKEY_BASE = 400000LL; // 计数排序全载模板
+const static int64_t CS_FULLLOAD_UNQUANTIZED = 400000LL;    // 计数排序全载模板
+const static int64_t CS_FULLLOAD_UNQUANTIZED_S = 401000ULL; // 计数排序全载模板
 
 inline static int64_t CeilLog4(int64_t x)
 {
@@ -357,6 +358,8 @@ private:
     ge::graphStatus CheckSetEmptyTensor();
     ge::graphStatus CheckOutputs();
     ge::graphStatus GetEmptyTensorWorkspaceSize();
+    ge::graphStatus GetCountingSortWorkspaceSize();
+    ge::graphStatus GetNormalWorkspaceSize();
 
     // CheckInputShape使用的子函数
     ge::graphStatus CheckInputX();
@@ -421,6 +424,7 @@ private:
 
     // CountingSort 性能模板
     bool IsCountingSortApplicable();
+    void ComputeCountingSortMode();
     int64_t EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens);
     void ComputeArch35CountingSortFullLoadTiling();
     void ComputeArch35CountingSortCutOriginTiling();
