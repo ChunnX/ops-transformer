@@ -678,7 +678,12 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
     if constexpr (IsWaveFlagGrained && g_coreType == AscendC::AIC) {
-        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config, allowWeightL2Bypass, gmB, gmScaleB);
+        // W8 权重预取 rank 门控内聚于此（实测裁定）：>8P（跨机，epWorldSize 即 rank 数）预取生效时
+        // 权重读必须 NORMAL——DISABLE(no-allocate) 读不命中预取行，预取依赖 NORMAL，故在 bypass
+        // 判定之前无条件短路，不依赖调用方传参纪律；<=8P 保持调用方原判定（DISABLE 防 L2 污染）。
+        // W4 的 generic 路径 allowWeightL2Bypass 恒 false，不受影响。
+        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(
+            config, allowWeightL2Bypass && !IsW8WeightPrefetchRank(params.tilingData->epWorldSize), gmB, gmScaleB);
     }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);

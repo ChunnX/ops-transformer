@@ -688,6 +688,9 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
     if constexpr (Config::IS_WAVE_FLAG_GRAINED && g_coreType == AscendC::AIC) {
+        // W8 权重预取 rank 门控（同 Gmm1ExecGeneric）：a8w8 的 GMM2 走 RunGmm2ByMode 默认
+        // allowWeightL2Bypass=false（恒 NORMAL），当前无需 rank 短路；本函数无 params 可取
+        // epWorldSize，未来若有调用方显式传 true，须同步 Gmm1ExecGeneric 的门控方式。
         SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config, allowWeightL2Bypass, gmB, gmScaleB);
     }
     auto gmBias =

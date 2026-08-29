@@ -66,6 +66,32 @@ constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
+// W8/W4 权重 L2 预取（A8W8/A8W4/A4W4 三个 Wave 变体，fire-and-forget，策略在 kernel 内写死）：
+//   - Drain 排空用 MTE2->V 事件 ID5（静态占用图：ID0=prologue/epilogue C-tile、ID1=topkIds 读、
+//     ID2=unpermute 权重 cast、ID4=combine token-group 量化，ID3 静态空闲，故取 5；unpermute 运行时
+//     动态使用 0..N-1（N<=6，可取到 5），但其 Set/Wait 紧邻配对与 Drain 之间隔 PipeBarrier+SyncAll
+//     全屏障，无并发冲突）；
+//   - 预取 scratch 的 UB 偏移 192K：位于 AIV0 prologue 权重区（[0,192K)，4bit 64KB + 8bit 128KB）之上，
+//     与输入准备布局（decode ~62K）之间有大量空洞；与 prologue 8bit 区 [64K,192K) 零重叠（用户裁定：
+//     窗口 1 已在该偏移验证功能 OK，先打通基本功能）；修改 prologue UB 布局时须同步校验；
+//     host 侧已按 topoType==MTE 将 SendMask 布局预算钳至本偏移（mega_moe_tiling.cpp
+//     SetAdaptiveBufferConfigs），防止 prefill 大 batch 扩张越界——修改本常量须同步该钳位；
+//   - chunk 为单次 fire-and-forget 拷贝粒度（与 prologue 的 MTE2 粒度一致）；
+//   - 预算上限防过量预热挤掉 L2 内有复用价值的数据，游标内部再夹紧到本卡专家权重总量；
+//   - 窗口 0（SendMask 期间）每 AIV 固定 32 chunk（512KB/AIV0，合计 32*16KB*blockNum，32 block 时
+//     16MB）：仅 AIV0 参与——MTE outstanding 是同 block 两 AIV 的共享资源，AIV1 加发不增有效带宽只增
+//     竞争；固定块数即终点、无截止条件；A/B 后可调。统一 workerCount 使窗口 1 的 lane 接续窗口 0
+//     （区域字节数为 16KB 整除时精确无缝，否则接缝处每 worker 最多 1 chunk 重复/漏预热，L2 去重）。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID = 5U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_OFFSET = 192U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_CHUNK_BYTES = 16U * 1024U;
+// 窗口 1 会话预算（fp4/fp8 统一 16MB）：与窗口 0 覆盖量对称，两窗口合计约 32MB@32block。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_BUDGET_BYTES = 16U * 1024U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_AIV = 32U;
+// W8 权重预取 rank 门控阈值（实测裁定）：worldSize > 8（跨机，如双机 16P）才使能——跨机 count
+// flag RTT 长、等待窗口足以让预取收益显形；单机 fullmesh（<=8P）RTT 短、flag 很快就绪，预取
+// 窗口不足且挤带宽，保持关闭（权重 L2 hint 亦维持主线判定）。W4 路径不受此门控约束。
+constexpr uint32_t W8_WEIGHT_PREFETCH_MIN_WORLD_SIZE = 8U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
