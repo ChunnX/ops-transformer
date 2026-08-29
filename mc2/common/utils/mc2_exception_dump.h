@@ -728,8 +728,9 @@ inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const 
         OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
         return;
     }
-    OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u, xnAddr=0x%lx, ckeAddr=0x%lx",
-            winContext->rankId, winContext->rankDim, winContext->xnAddr, winContext->ckeAddr);
+    OP_LOGE(OP_NAME, "HcclCombinOpParam: workSpace=0x%lx, workSpaceSize=%lu, rankId=%u, rankDim=%u, "
+            "xnAddr=0x%lx, ckeAddr=0x%lx", winContext->workSpace, winContext->workSpaceSize, winContext->rankId,
+            winContext->rankDim, winContext->xnAddr, winContext->ckeAddr);
 
     // 6. 解析 HcclCombinOpParam，拿到 xnAddr 和 ckeAddr，分别做 D2H copy 并落盘
     auto acldumpGetPathFunc = GetAcldumpGetPathFunc();

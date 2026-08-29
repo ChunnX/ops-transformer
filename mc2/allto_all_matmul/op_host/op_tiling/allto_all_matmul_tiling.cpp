@@ -65,7 +65,7 @@ inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *u
         offsetof(AlltoAllMatmulTilingData, alltoAllMatmulTilingInfo.x1QuantMode),  // quantModeOffset
         offsetof(AlltoAllMatmulTilingData, workspaceLayout),                       // wsLayoutOffsetNonQuant
         offsetof(AlltoAllQuantMatmulTilingData, workspaceLayout),                 // wsLayoutOffsetQuant
-        offsetof(hcommAllToAllMatmulTilingData, workspaceLayout));                // wsLayoutOffsetApace
+        offsetof(Apace::hcommAllToAllMatmulTilingData, workspaceLayout));        // wsLayoutOffsetApace
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulExceptionFunc()

@@ -806,7 +806,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
             context_->GetTilingData<Apace::hcommAllToAllMatmulTilingData>();
         hcommTilingData_.workspaceLayout = workspaceLayout_;
         hcommTilingData_.quantMode = static_cast<uint32_t>(X1_QUANTMODE_VALUES);
-        hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
         OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK((tilingBufCap < sizeof(hcommTilingData_)),
