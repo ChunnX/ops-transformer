@@ -333,7 +333,7 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *p_de
     // ====================== Y1 大循环：第 0 ~ 127 行 ======================
     softmax_with_group_max_qs128_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
         p_dest, s, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, 0, validRowsY1, validRowsY1Invalid);
-
+    
     // ====================== Y2 大循环：第 128 ~ 255 行 ======================
     softmax_with_group_max_qs128_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
         p_dest, s, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, 1, validRowsY2, validRowsY2Invalid);
@@ -358,6 +358,28 @@ __aicore__ inline void SoftmaxWithGroupMaxQs128Kvs256CallVF(const LocalTensor<T2
     softmax_with_group_max_qs128_kvs256_vf<MX_QUANT_MODE, clear_gmax, T, T2, KvsBase, QsBase>(
         p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, validRowsY1, validRowsY2,
         validRowsY1Invalid, validRowsY2Invalid);
+}
+
+// 单 chunk(128 行)入口: 供 dispatch 按 chunk 有效行数分流时单独下发有效 chunk。
+// 用于 kvs256 部分 chunk 无效(Y1==0 或 Y2==0)的场景, 无效 chunk 由 allInvalid 模板处理。
+// chunkY 为模板参数(0/1), 保持与原 full VF 相同的编译期常量代码生成。
+template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
+          uint16_t QsBase = 128, uint16_t chunkY = 0>
+__aicore__ inline void SoftmaxWithGroupMaxQs128Kvs256ChunkCallVF(const LocalTensor<T2> &dstTensor,
+                                                  const LocalTensor<T> &srcTensor,
+                                                  const LocalTensor<T> &localGroupMax,
+                                                  const LocalTensor<T> &globalMax,
+                                                  const LocalTensor<uint8_t> &indexesBuf,
+                                                  const T NEG_LOG2_CX, const uint16_t effY)
+{
+    __ubuf__ T2 *p_dest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
+    __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *local_group_max = (__ubuf__ T*)localGroupMax.GetPhyAddr();
+    __ubuf__ T *global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
+    __ubuf__ uint8_t * indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
+
+    softmax_with_group_max_qs128_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
+        p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, false);
 }
 
 }

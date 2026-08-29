@@ -20,13 +20,15 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-// 通用 chunk 全0 模板：pDest 清 0 + local_group_max 填 MIN_VALUE + global_max 置 -60000
+// 通用 chunk 全0 模板：pDest 清 0 + local_group_max 填 MIN_VALUE + global_max 置极负
 // HAS_HIGH_OFF: qs128 布局有高位远端(16256/16384), qs64 无; local_group_max 每组固定 128 元素
 // LGM_GROUPS: local_group_max 覆盖组数(0=默认 CHUNKS*GROUPS)。kvs32_single(尾<=32)场景原主 VF 会
 //   额外写 padding 组(GROUP_COUNT*QsBase 偏移, "GroupMaxpadding到64 使 pscale=0"), 故传 2;
 //   P 清零仍只按 GROUPS 组写, 避免越界。
+// CHUNK_START: 起始 chunk 偏移(0=chunk0, 1=chunk1), 用于 kvs256 部分 chunk 无效时只清指定 chunk 的
+//   P/LGM 区域(global_max 每次整体置极负)。
 template <typename T, bool HAS_HIGH_OFF = true, uint16_t GROUPS = 4, uint16_t CHUNKS = 2,
-          uint16_t LGM_GROUPS = 0>
+          uint16_t LGM_GROUPS = 0, uint16_t CHUNK_START = 0>
 __simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, __ubuf__ T *local_group_max,
                                                      __ubuf__ T *global_max)
 {
@@ -45,10 +47,10 @@ __simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, _
     RegTensor<T> min_reg, neg_reg;
     Duplicate(zero8, static_cast<uint8_t>(0));
     Duplicate(min_reg, MIN_VALUE);
-    Duplicate(neg_reg, static_cast<T>(-60000));
+    Duplicate(neg_reg, static_cast<T>(MIN_VALUE));
 
     // pDest 全 0（组循环 + 高低位写，与主 VF padding 分支一致）
-    for (uint16_t c = 0; c < CHUNKS; ++c) {
+    for (uint16_t c = CHUNK_START; c < CHUNK_START + CHUNKS; ++c) {
         const uint16_t groupBase = c * GROUPS;
         for (uint16_t g = 0; g < GROUPS; ++g) {
             for (uint16_t j = 0; j < 8; j += 2) {
@@ -69,7 +71,8 @@ __simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, _
     }
     // local_group_max 填 MIN_VALUE（LGM_GROUPS 组 × LGM_GROUP; 默认 CHUNKS*GROUPS 组）
     constexpr uint16_t lgmGroups = (LGM_GROUPS == 0) ? CHUNKS * GROUPS : LGM_GROUPS;
-    for (uint16_t i = 0; i < lgmGroups * LGM_GROUP; i += 128) {
+    constexpr uint16_t lgmBase = CHUNK_START * GROUPS * LGM_GROUP;
+    for (uint16_t i = lgmBase; i < lgmBase + lgmGroups * LGM_GROUP; i += 128) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + i, min_reg, preg_all_16);
     }
     // global_max 置极负有限值（对齐 golden 全 -inf block 的 max safe 处理）
@@ -77,12 +80,12 @@ __simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, _
 }
 
 template <typename T, bool HAS_HIGH_OFF = true, uint16_t GROUPS = 4, uint16_t CHUNKS = 2,
-          uint16_t LGM_GROUPS = 0>
+          uint16_t LGM_GROUPS = 0, uint16_t CHUNK_START = 0>
 __aicore__ inline void SoftmaxAllInvalidCallVF(const LocalTensor<uint8_t> &pDest,
                                                const LocalTensor<T> &localGroupMax,
                                                const LocalTensor<T> &localGlobalMax)
 {
-    softmax_all_invalid_chunk_vf<T, HAS_HIGH_OFF, GROUPS, CHUNKS, LGM_GROUPS>(
+    softmax_all_invalid_chunk_vf<T, HAS_HIGH_OFF, GROUPS, CHUNKS, LGM_GROUPS, CHUNK_START>(
         (__ubuf__ uint8_t *)pDest.GetPhyAddr(), (__ubuf__ T *)localGroupMax.GetPhyAddr(),
         (__ubuf__ T *)localGlobalMax.GetPhyAddr());
 }

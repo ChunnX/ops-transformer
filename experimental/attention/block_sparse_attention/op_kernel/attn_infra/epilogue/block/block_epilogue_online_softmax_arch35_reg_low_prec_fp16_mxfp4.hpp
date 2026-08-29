@@ -21,6 +21,7 @@
 #include "../../../tla/layout_bsa.hpp"
 #include "block_epilogue_arch35_utils.hpp"
 #include "mxfp4_vf/vf_init_nd2nz_indexes_duplicate_mxfp4.h"
+#include "mxfp4_vf/vf_mask_invalid_rows_mxfp4.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_qs128_kvs256.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_qs64_kvs256.h"
 #include "mxfp4_vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"
@@ -98,38 +99,74 @@ public:
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
         if (actKvsTile == MXFP4::KVS_BASE_SIZE) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
-                if (tileInfo.validRowsY1 == 0 && tileInfo.validRowsY2 == 0) {
-                    // 全部行无效(blockEffRows=0): 专用模板, P 填 0 + local_group_max 填 MIN_VALUE
-                    // + global_max 置极负有限值, 避免主 VF 主循环不执行导致 global max 未写回
-                    Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 2>(
+                // qs=128, kvs=256 按 chunk 分流: Y==0 -> allInvalid(P/LGM 兜底 + global_max 置极负),
+                // Y!=0 -> -inf mask + 单 chunk softmax。
+                // allInvalid 必须全部先于有效 chunk 的 softmax: 先给出 global_max 极负基值,
+                // 有效 chunk softmax 从基值 max 上来; 否则 Y1>0&&Y2==0 时 chunk1 的 allInvalid
+                // 会覆盖 chunk0 已写回的 global_max(反之亦然)。
+                if (tileInfo.validRowsY1 == 0) {
+                    Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 1, 0, 0>(
                         pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                         localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
-                } else {
-                    // qs=128, kvs=256 softmax，两个 128 行大块的有效行数由 blockEffRows(attenMask) 经
-                    // tileInfo.validRowsY1/validRowsY2 传入（无 attenMask 时为 128，与原行为一致）
-                    Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
-                        MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
-                        pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
-                        localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, NEG_LOG2_CX_,
-                        tileInfo.validRowsY1, tileInfo.validRowsY2,
-                        tileInfo.validRowsY1 == 0, tileInfo.validRowsY2 == 0);
+                }
+                if (tileInfo.validRowsY2 == 0) {
+                    Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 1, 0, 1>(
+                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+                if (tileInfo.validRowsY1 != 0) {
+                    Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, false>(
+                        sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1, MXFP4::KVS_BASE_SIZE / 2);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256ChunkCallVF<MX_QUANT_MODE, true, ElementInput,
+                        ElementDisguiseP, MXFP4::QS_BASE_SIZE, 0>(
+                        pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
+                        tileInfo.validRowsY1);
+                }
+                if (tileInfo.validRowsY2 != 0) {
+                    Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, false>(
+                        sUBTensor[spBuffIdx], 128, tileInfo.validRowsY2, MXFP4::KVS_BASE_SIZE / 2);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256ChunkCallVF<MX_QUANT_MODE, true, ElementInput,
+                        ElementDisguiseP, MXFP4::QS_BASE_SIZE, 1>(
+                        pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
+                        tileInfo.validRowsY2);
                 }
             } else {
-                // qs=64, kvs=256 softmax，两个 128 行大块的有效行数由 blockEffRows(attenMask) 经
-                // tileInfo.validRowsY1/validRowsY2 传入（无 attenMask 时为 128，与原行为一致）
-                if (tileInfo.validRowsY1 == 0 && tileInfo.validRowsY2 == 0) {
-                    Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 2>(
+                // qs=64, kvs=256 按 chunk 分流, 同 qs=128 (每行仅 64 half, HAS_HIGH_OFF=false)。
+                if (tileInfo.validRowsY1 == 0) {
+                    Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 1, 0, 0>(
                         pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                         localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
-                } else {
-                    Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
-                        MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
-                        pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
-                        localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, NEG_LOG2_CX_,
-                        tileInfo.validRowsY1, tileInfo.validRowsY2,
-                        tileInfo.validRowsY1 == 0, tileInfo.validRowsY2 == 0);
+                }
+                if (tileInfo.validRowsY2 == 0) {
+                    Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 1, 0, 1>(
+                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+                if (tileInfo.validRowsY1 != 0) {
+                    Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, true>(
+                        sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1, MXFP4::KVS_BASE_SIZE / 2);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256ChunkCallVF<MX_QUANT_MODE, true, ElementInput,
+                        ElementDisguiseP, MXFP4::QS_BASE_SIZE, 0>(
+                        pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
+                        tileInfo.validRowsY1);
+                }
+                if (tileInfo.validRowsY2 != 0) {
+                    Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, true>(
+                        sUBTensor[spBuffIdx], 128, tileInfo.validRowsY2, MXFP4::KVS_BASE_SIZE / 2);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256ChunkCallVF<MX_QUANT_MODE, true, ElementInput,
+                        ElementDisguiseP, MXFP4::QS_BASE_SIZE, 1>(
+                        pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
+                        tileInfo.validRowsY2);
                 }
             }
 
@@ -159,6 +196,26 @@ public:
                             localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
                     } else {
                         // softmax padding 32, qs=128
+                        // [DBG] mask 上移到 softmax VF 前的独立 VF: 行 [validRowsY1, min((ceil(Y1/32)+1)*32,32)) 置 MIN_VALUE, 确保对 VF 预计算可见
+                        Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, false>(
+                            sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1, MXFP4::DATA_BLOCK_BYTE);
+                        // ===== [EXP] 实测: 读 UB 是否受同步影响 =====
+                        {
+                            uint16_t expR = (tileInfo.validRowsY1 < MXFP4::DATA_BLOCK_BYTE)
+                                                ? tileInfo.validRowsY1 : MXFP4::DATA_BLOCK_BYTE - 1;
+                            // A) 掩码写完后、屏障前: 无同步直接读(GetValue 走 S 标量流水) + DumpTensor
+                            // [DBG] AscendC::DumpTensor(sUBTensor[spBuffIdx], 90, actKvsTile * 128);
+                            float expNoB = (float)sUBTensor[spBuffIdx].GetValue(expR * 256);
+                            AscendC::PRINTF("[EXP] effY=%u r=%u noBarrier=%f\n",
+                                            (uint32_t)tileInfo.validRowsY1, (uint32_t)expR, expNoB);
+                            // B) 加 PIPE_V 屏障后再读
+                            AscendC::PipeBarrier<PIPE_V>();
+                            // [DBG] AscendC::DumpTensor(sUBTensor[spBuffIdx], 91, actKvsTile * 128);
+                            float expB = (float)sUBTensor[spBuffIdx].GetValue(expR * 256);
+                            AscendC::PRINTF("[EXP] effY=%u r=%u afterBarrier=%f\n",
+                                            (uint32_t)tileInfo.validRowsY1, (uint32_t)expR, expB);
+                        }
+                        AscendC::PipeBarrier<PIPE_V>();
                         Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput,
                                                                           ElementDisguiseP>(
                             pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
@@ -173,6 +230,10 @@ public:
                             localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
                     } else {
                         // softmax padding 32, qs=64
+                        // [DBG] mask 上移到 softmax VF 前的独立 VF: 行 [validRowsY1,32) 置 MIN_VALUE, 确保对 VF 预计算可见 (qs=64: 每行仅 64 half)
+                        Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, true>(
+                            sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1, MXFP4::DATA_BLOCK_BYTE);
+                        AscendC::PipeBarrier<PIPE_V>();
                         Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32CallVF<MX_QUANT_MODE, true, ElementInput,
                                                                          ElementDisguiseP>(
                             pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
@@ -197,6 +258,18 @@ public:
                         }
                     } else {
                         // softmax padding 32 multi >= 64, qs=128
+                        // [DBG] mask 上移到 softmax VF 前的独立 VF: chunk0 行 [Y1, min((ceil(Y1/32)+1)*32, rows0)) +
+                        // chunk1 行 [128+Y2, 128+min((ceil(Y2/32)+1)*32, rows1)) 置 MIN_VALUE
+                        // (rows0=min(actKvsTile,128), rows1=actKvsTile-128, 不超过块 KVS; validRows==0 不写)
+                        Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, false>(
+                            sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1,
+                            static_cast<uint16_t>(actKvsTile < 128 ? actKvsTile : 128));
+                        if (actKvsTile > 128) {
+                            Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, false>(
+                                sUBTensor[spBuffIdx], 128, tileInfo.validRowsY2,
+                                static_cast<uint16_t>(actKvsTile - 128));
+                        }
+                        AscendC::PipeBarrier<PIPE_V>();
                         Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput,
                                                                                ElementDisguiseP, MXFP4::QS_BASE_SIZE>(
                             pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
@@ -218,6 +291,17 @@ public:
                         }
                     } else {
                         // softmax padding 32 multi >= 64, qs=64
+                        // [DBG] mask 上移到 softmax VF 前的独立 VF: chunk0/chunk1 行 [effY, min((ceil(effY/32)+1)*32, rows)) 置 MIN_VALUE
+                        // (qs=64: 每行仅 64 half; rows 为块行数上限, validRows==0 不写)
+                        Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, true>(
+                            sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1,
+                            static_cast<uint16_t>(actKvsTile < 128 ? actKvsTile : 128));
+                        if (actKvsTile > 128) {
+                            Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, true>(
+                                sUBTensor[spBuffIdx], 128, tileInfo.validRowsY2,
+                                static_cast<uint16_t>(actKvsTile - 128));
+                        }
+                        AscendC::PipeBarrier<PIPE_V>();
                         Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput,
                                                                               ElementDisguiseP, MXFP4::QS_BASE_SIZE>(
                             pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
