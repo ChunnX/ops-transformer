@@ -1,0 +1,545 @@
+From b8c50ed7b942077d2d44e6843ff92d344de55275 Mon Sep 17 00:00:00 2001
+From: z00947845 <z00947845@huawei.com>
+Date: Mon, 24 Aug 2026 12:46:33 +0800
+Subject: [PATCH] DTS:AR20260814067008
+
+Description:v121 gmm mx blaze
+
+Team:HISI_SW
+Feature or Bugfix:Feature
+
+Change-Id: I1f16ea19d36982d796c4df34a121dfd8f454bc41
+Signed-off-by: z00947845 <z00947845@huawei.com>
+---
+ .gitignore                                    |   2 +
+ CMakeLists.txt                                |   2 +
+ cmake/custom_build.cmake                      |  17 ++-
+ cmake/func.cmake                              |   5 +
+ cmake/scripts/util/ascendc_impl_build.py      |   2 +
+ cmake/third_party/ops-tensor.cmake            | 136 ++++++++++++++++++
+ cmake/variables.cmake                         |   3 +-
+ .../op_host/grouped_matmul_host_util.h        |   1 +
+ .../arch35/grouped_matmul_tiling_data_apt.h   |   3 +-
+ .../gqmm_tensor_api_mx_kernel.h               | 100 +++++++++++++
+ .../op_kernel/grouped_matmul_apt.cpp          |  79 ++++++++--
+ 11 files changed, 334 insertions(+), 16 deletions(-)
+ create mode 100644 cmake/third_party/ops-tensor.cmake
+ create mode 100644 gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h
+
+diff --git a/.gitignore b/.gitignore
+index 8951636933..a9f1104a22 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -37,6 +37,8 @@ MANIFEST.in
+ 
+ # third_party
+ third_party/
++!cmake/third_party/
++!cmake/third_party/ops-tensor.cmake
+ 
+ # ai
+ .agents/
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0e97475628..b973e20996 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -150,6 +150,7 @@ if (BUILD_OPEN_PROJECT)
+         message(STATUS "Start building custom package.")
+         include(ExternalProject)
+         include(cmake/dependencies.cmake)
++        include(cmake/third_party/ops-tensor.cmake)
+         include(cmake/variables.cmake)
+         include(cmake/obj_func.cmake)
+         include(cmake/third_party/eigen.cmake)
+@@ -186,6 +187,7 @@ if (BUILD_OPEN_PROJECT)
+     endif()
+ else()
+     include(cmake/dependencies.cmake)
++    include(cmake/third_party/ops-tensor.cmake)
+     include(cmake/variables.cmake)
+     include(cmake/opbuild.cmake)
+     include(cmake/rty_obj_func.cmake)
+diff --git a/cmake/custom_build.cmake b/cmake/custom_build.cmake
+index 8a5c117a00..809bd8c1ab 100644
+--- a/cmake/custom_build.cmake
++++ b/cmake/custom_build.cmake
+@@ -954,6 +954,21 @@ if (NOT ENABLE_AICPU_KERNEL)
+     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
+             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+     )
++    install(DIRECTORY ${BLAZE}
++            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
++    )
++    install(DIRECTORY ${TENSOR_API}/impl/tensor_api
++            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
++    )
++    install(DIRECTORY ${TENSOR_API}/include/tensor_api
++            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
++    )
++    install(DIRECTORY ${TENSOR_API}/impl/c_api
++            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
++    )
++    install(DIRECTORY ${TENSOR_API}/include/c_api
++            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
++    )
+     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
+             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+     )
+@@ -1120,4 +1135,4 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
+     endif()
+     set(CPACK_EXTERNAL_BUILT_PACKAGES ${CPACK_PACKAGE_DIRECTORY}/_CPack_Packages/Linux/External/${CPACK_PACKAGE_FILE_NAME}/${CPACK_PACKAGE_FILE_NAME})
+     include(CPack)
+-endif ()
+\ No newline at end of file
++endif ()
+diff --git a/cmake/func.cmake b/cmake/func.cmake
+index 81c155dc56..e79225dfde 100644
+--- a/cmake/func.cmake
++++ b/cmake/func.cmake
+@@ -388,6 +388,11 @@ function(add_ops_src_copy)
+                     COMMAND cp -rf ${OPS_CGMCT}/* ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                     COMMAND cp -rf ${OPS_GMM_COMMON_KERNEL_INC}/* ${OPS_UTILS_INC_KERNEL_DIR}
+                     COMMAND cp -rf ${OPS_ADV_UTILS_KERNEL_INC}/david/*.* ${OPS_UTILS_INC_KERNEL_DIR}/david
++                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
++                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/tensor_api
++                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/tensor_api
++                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/c_api
++                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/c_api
+             )
+ 
+             add_custom_target(${OPS_UTILS_INC_KERNEL_TARGET}
+diff --git a/cmake/scripts/util/ascendc_impl_build.py b/cmake/scripts/util/ascendc_impl_build.py
+index 621f0a8ba2..f662431a52 100644
+--- a/cmake/scripts/util/ascendc_impl_build.py
++++ b/cmake/scripts/util/ascendc_impl_build.py
+@@ -204,6 +204,8 @@ def {}({}, kernel_name="{}"{}):
+         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
+     else:
+         tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
++    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
++    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
+     options.append("-I" + tikcpp_path)
+     options.append("-I" + os.path.join(tikcpp_path, "..", "..", "include"))
+     options.append("-I" + os.path.join(tikcpp_path, "tikcfw"))
+diff --git a/cmake/third_party/ops-tensor.cmake b/cmake/third_party/ops-tensor.cmake
+new file mode 100644
+index 0000000000..b1fbf65b6d
+--- /dev/null
++++ b/cmake/third_party/ops-tensor.cmake
+@@ -0,0 +1,136 @@
++# ----------------------------------------------------------------------------
++# Copyright (c) 2026 Huawei Technologies Co., Ltd.
++# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
++# CANN Open Software License Agreement Version 2.0 (the "License").
++# Please refer to the License for details. You may not use this file except in compliance with the License.
++# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
++# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
++# See LICENSE in the root of the software repository for the full text of the License.
++# ----------------------------------------------------------------------------
++set(OPTENSOR_TAG_ID 602d648ae62e0bb7b51494451e32e5c7bd50c1c3)
++
++if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
++  get_filename_component(OPTENSOR_SOURCE_PATH
++                         ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
++  message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
++  get_filename_component(TENSOR_API
++                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
++elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
++  get_filename_component(OPTENSOR_SOURCE_PATH
++                         ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
++  message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
++
++  execute_process(
++    COMMAND git fetch origin ${OPTENSOR_TAG_ID} --depth=1
++    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
++    TIMEOUT 20
++    RESULT_VARIABLE FETCH_RESULT
++    ERROR_VARIABLE FETCH_ERROR
++    OUTPUT_QUIET
++  )
++
++  if(FETCH_RESULT EQUAL 0)
++    set(CHECKOUT_REF "FETCH_HEAD")
++    message(STATUS "ops-tensor fetched ${OPTENSOR_TAG_ID}")
++  else()
++    set(CHECKOUT_REF "${OPTENSOR_TAG_ID}")
++    message(WARNING "Git fetch failed (network unavailable?), checkout to cached ${OPTENSOR_TAG_ID}")
++  endif()
++
++  execute_process(
++    COMMAND git checkout ${CHECKOUT_REF}
++    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
++    RESULT_VARIABLE CHECKOUT_RESULT
++    ERROR_VARIABLE CHECKOUT_ERROR
++    OUTPUT_QUIET
++  )
++  if(NOT CHECKOUT_RESULT EQUAL 0)
++    message(FATAL_ERROR "Git checkout failed: ${CHECKOUT_ERROR}")
++  endif()
++
++  # Submodule: try local cache first (offline-friendly), fall back to network
++  execute_process(
++    COMMAND git submodule update --init --recursive --no-fetch
++    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
++    RESULT_VARIABLE SUBMODULE_RESULT
++    OUTPUT_QUIET ERROR_QUIET
++  )
++  if(NOT SUBMODULE_RESULT EQUAL 0)
++    message(STATUS "ops-tensor submodule: local cache insufficient, fetching from remote")
++    execute_process(
++      COMMAND git submodule update --init --recursive
++      WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
++      TIMEOUT 20
++      RESULT_VARIABLE SUBMODULE_RESULT
++      ERROR_VARIABLE SUBMODULE_ERROR
++      OUTPUT_QUIET
++    )
++    if(NOT SUBMODULE_RESULT EQUAL 0)
++      message(WARNING "ops-tensor submodule update failed: ${SUBMODULE_ERROR}")
++    else()
++      message(STATUS "ops-tensor submodule update")
++    endif()
++  endif()
++  get_filename_component(TENSOR_API
++                         ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
++else()
++  set(OPTENSOR_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
++  set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
++
++  execute_process(
++    COMMAND git ls-remote ${OPTENSOR_GIT_URL} HEAD
++    TIMEOUT 20
++    RESULT_VARIABLE GIT_RESULT
++    ERROR_VARIABLE GIT_ERROR
++    OUTPUT_QUIET
++  )
++  if(NOT "${GIT_RESULT}" STREQUAL "0")
++    message(WARNING
++            "[ThirdPartyLib][ops-tensor] failed to access ${OPTENSOR_GIT_URL}, "
++            "trying fallback protocol: ${OPTENSOR_FALLBACK_GIT_URL}")
++    execute_process(
++      COMMAND git ls-remote ${OPTENSOR_FALLBACK_GIT_URL} HEAD
++      TIMEOUT 20
++      RESULT_VARIABLE FALLBACK_GIT_RESULT
++      ERROR_VARIABLE FALLBACK_GIT_ERROR
++      OUTPUT_QUIET
++    )
++    if(NOT "${FALLBACK_GIT_RESULT}" STREQUAL "0")
++      message(FATAL_ERROR
++              "[ThirdPartyLib][ops-tensor] failed to access ops-tensor with both protocols.\n"
++              "Primary (${OPTENSOR_GIT_URL}): ${GIT_ERROR}\n"
++              "Fallback (${OPTENSOR_FALLBACK_GIT_URL}): ${FALLBACK_GIT_ERROR}")
++    endif()
++    set(OPTENSOR_GIT_URL "${OPTENSOR_FALLBACK_GIT_URL}")
++  endif()
++  message(STATUS "[ThirdPartyLib][ops-tensor] using repository: ${OPTENSOR_GIT_URL}")
++
++  include(FetchContent)
++
++  FetchContent_Declare(
++    ops-tensor
++    GIT_REPOSITORY ${OPTENSOR_GIT_URL}
++    GIT_TAG ${OPTENSOR_TAG_ID}
++    GIT_PROGRESS TRUE
++    SOURCE_DIR ${CANN_3RD_LIB_PATH}/ops-tensor)
++
++  FetchContent_Populate(ops-tensor)
++
++  set(OPTENSOR_SOURCE_PATH ${CANN_3RD_LIB_PATH}/ops-tensor)
++
++  execute_process(
++    COMMAND git submodule update --init --recursive
++    WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
++    RESULT_VARIABLE SUBMODULE_RESULT
++    ERROR_VARIABLE SUBMODULE_ERROR
++    OUTPUT_QUIET
++  )
++  if(NOT SUBMODULE_RESULT EQUAL 0)
++    message(FATAL_ERROR "[ThirdPartyLib][ops-tensor] Git submodule update failed: ${SUBMODULE_ERROR}")
++  else()
++    message(STATUS "[ThirdPartyLib][ops-tensor] Git submodule update")
++    get_filename_component(TENSOR_API
++                           ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
++  endif()
++
++endif()
+diff --git a/cmake/variables.cmake b/cmake/variables.cmake
+index 8b840b4453..1f317f4275 100644
+--- a/cmake/variables.cmake
++++ b/cmake/variables.cmake
+@@ -44,6 +44,7 @@ get_filename_component(OPS_TRANSFORMER_COMMON_INC_EXTERNAL "${OPS_TRANSFORMER_CO
+ get_filename_component(OPS_TRANSFORMER_COMMON_INC_HEADERS  "${OPS_TRANSFORMER_COMMON_INC_EXTERNAL}/aclnn_kernels"       REALPATH)
+ get_filename_component(OPS_KERNEL_BINARY_SCRIPT     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_script"       REALPATH)
+ get_filename_component(OPS_KERNEL_BINARY_CONFIG     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_config"       REALPATH)
++get_filename_component(BLAZE                        "${OPTENSOR_SOURCE_PATH}/include/blaze"                     REALPATH)
+ 
+ # python
+ if(NOT DEFINED ASCEND_PYTHON_EXECUTABLE)
+@@ -328,4 +329,4 @@ else()
+         OUTPUT_VARIABLE SYS_VERSION
+         OUTPUT_STRIP_TRAILING_WHITESPACE
+     )
+-endif()
+\ No newline at end of file
++endif()
+diff --git a/gmm/grouped_matmul/op_host/grouped_matmul_host_util.h b/gmm/grouped_matmul/op_host/grouped_matmul_host_util.h
+index 8fafd87042..bd178049e9 100644
+--- a/gmm/grouped_matmul/op_host/grouped_matmul_host_util.h
++++ b/gmm/grouped_matmul/op_host/grouped_matmul_host_util.h
+@@ -17,6 +17,7 @@
+ #define GROUPED_MATMUL_HOST_UTIL_H
+ 
+ #include <map>
++#include <cstdint>
+ 
+ namespace GroupedMatmul {
+ constexpr uint32_t X_INDEX = 0;
+diff --git a/gmm/grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h b/gmm/grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h
+index 7d769297cb..ea9ef94042 100644
+--- a/gmm/grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h
++++ b/gmm/grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h
+@@ -74,7 +74,8 @@ struct QuantBasicApiMMTiling {
+     uint32_t scaleKBL1 = 0;
+     uint8_t isBias = 0;
+     uint8_t dbL0C = 0;
+-    uint16_t reserved1 = 0;
++    uint8_t l1BufferStage = 0;
++    uint8_t reserved1 = 0;
+     uint32_t reserved2 = 0;
+ };
+ #pragma pack(pop)
+diff --git a/gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h b/gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h
+new file mode 100644
+index 0000000000..a0e1e1b8bc
+--- /dev/null
++++ b/gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h
+@@ -0,0 +1,100 @@
++/**
++ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
++ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
++ * CANN Open Software License Agreement Version 2.0 (the "License").
++ * Please refer to the License for details. You may not use this file except in compliance with the License.
++ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
++ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
++ * See LICENSE in the root of the software repository for the full text of the License.
++ */
++
++/*!
++ * \file gqmm_tensor_api_mx_kernel.h
++ * \brief
++ */
++
++#ifndef GQMM_TENSOR_API_MX_KERNEL_H
++#define GQMM_TENSOR_API_MX_KERNEL_H
++
++
++#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
++#include "blaze/gemm/kernel/kernel_qgmm_mx.h"
++#include "../../grouped_matmul_utils.h"
++#include "../grouped_matmul_tiling_data_apt.h"
++
++using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
++using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
++
++template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType, class xLayout,
++          class wLayout, class yLayout, class l0cType>
++__aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
++                                            GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
++                                            const GMMQuantParams *gmmBaseParamsIn,
++                                            const QuantBasicApiMMTiling *mmTilingDataIn, AscendC::TPipe *que)
++{
++    (void)workspace;
++    (void)que;
++    if ASCEND_IS_AIV {
++        return;
++    }
++    using AType = xType;
++    using BType = wType;
++    using BiasType = biasType;
++    using YType = yType;
++    using LayoutA = xLayout;
++    using LayoutB = wLayout;
++    using LayoutC = yLayout;
++    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
++    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
++    using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
++                                                        BiasType, LayoutC>;
++    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
++    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
++    using QgmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
++    using Params = typename QgmmKernel::Params;
++    using GMMTiling = typename QgmmKernel::GMMTiling;
++
++    GMMTiling gmmParams{static_cast<uint32_t>(gmmBaseParamsIn->groupNum),
++                        static_cast<int64_t>(mmTilingDataIn->m),
++                        static_cast<int64_t>(mmTilingDataIn->n),
++                        static_cast<int64_t>(mmTilingDataIn->k),
++                        static_cast<uint32_t>(mmTilingDataIn->baseM),
++                        static_cast<uint32_t>(mmTilingDataIn->baseN),
++                        static_cast<uint32_t>(mmTilingDataIn->baseK),
++                        static_cast<uint32_t>(mmTilingDataIn->kAL1),
++                        static_cast<uint32_t>(mmTilingDataIn->kBL1),
++                        static_cast<uint32_t>(mmTilingDataIn->scaleKAL1),
++                        static_cast<uint32_t>(mmTilingDataIn->scaleKBL1),
++                        static_cast<uint8_t>(mmTilingDataIn->isBias),
++                        static_cast<uint8_t>(mmTilingDataIn->dbL0C),
++                        static_cast<uint8_t>(mmTilingDataIn->l1BufferStage),
++                        static_cast<int8_t>(gmmBaseParamsIn->groupType),
++                        static_cast<uint8_t>(gmmBaseParamsIn->groupListType),
++                        static_cast<uint8_t>(gmmBaseParamsIn->singleW)};
++
++    GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
++    GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1 ?
++                            reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight)) :
++                            weight;
++    GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
++    GM_ADDR biasDataAddr = mmTilingDataIn->isBias == 1 ?
++                               reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias)) :
++                               nullptr;
++    GM_ADDR perTokenScaleDataAddr = perTokenScale;
++    GM_ADDR scaleDataAddr = gmmBaseParamsIn->singleW == 1
++                                ? reinterpret_cast<GM_ADDR>(
++                                      GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale))
++                                : scale;
++    GM_ADDR groupListDataAddr = groupList;
++ 
++    Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
++                     {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
++                     {},
++                     groupListDataAddr,
++                     gmmParams};
++ 
++    QgmmKernel gmm;
++    gmm(params);
++}
++ 
++#endif
+diff --git a/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp b/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp
+index 9849386400..9f51b2d102 100644
+--- a/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp
++++ b/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp
+@@ -13,6 +13,13 @@
+  * \brief
+  */
+ 
++#if defined(ASC_DEVKIT_MAJOR) && defined(ASC_DEVKIT_MINOR) && ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
++#define IS_BLAZE true
++#else
++#define IS_BLAZE false
++#endif
++
++#include "tensor_api/tensor.h"
+ #include "grouped_matmul_utils.h"
+ #include "arch35/grouped_matmul_tiling_data_apt.h"
+ using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingData;
+@@ -25,7 +32,12 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
+ #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
+ #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h"
+ #endif
+-#if defined(V310_GMM_QUANT_MX) || defined(V9201_GMM_QUANT_HIFP4)
++#if defined(V310_GMM_QUANT_MX) && IS_BLAZE
++#include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
++#elif defined(V310_GMM_QUANT_MX)
++#include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
++#endif
++#if defined(V9201_GMM_QUANT_HIFP4)
+ #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
+ #endif
+ #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) || defined(V9201_GMM_QUANT_HIFP4)
+@@ -218,7 +230,28 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
+                                              &gmmQuantParams_, &mmTilingData_, &tPipe);                                \
+     } while (0)
+ 
+-#define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(xLayout, wLayout, yLayout)                                                   \
++#if IS_BLAZE
++#define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
++    do {                                                                                                               \
++        GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
++        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
++        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
++        GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
++                             yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
++                                                       &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
++    } while (0)
++#else
++#define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)                   \
++    do {                                                                                                               \
++        GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
++        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
++        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
++        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,   \
++                         cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,    \
++                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                     \
++    } while (0)
++#endif
++#define GMM_QUANT_HIF4_BASIC_API_IMPL_CLASS(xLayout, wLayout, yLayout)                                                   \
+     do {                                                                                                               \
+         GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
+         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
+@@ -252,33 +285,53 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
+ #ifndef __CCE_KT_TEST__
+ #if defined(V310_GMM_QUANT) // Quant: A8W8, A4W4
+ REGISTER_TILING_DEFAULT(GMMQuantTilingData);
+-#if defined(V310_GMM_QUANT_MX) || defined(V9201_GMM_QUANT_HIFP4) // mx
++#if defined(V310_GMM_QUANT_MX) // mx
+ if constexpr (wFormat == CubeFormat::ND) {
+     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+-        GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
+-                                          Cgmct::Gemm::layout::RowMajor);
++        GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
++                                Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
++                                AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+-        GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor,
+-                                          Cgmct::Gemm::layout::RowMajor);
++        GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor,
++                                Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
++                                AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+     } else if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_TRANS &&
+                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+         if ASCEND_IS_AIV {
+             GMM_QUANT_BASIC_API_EMPTY_TENSOR_WITHOUT_BIAS_IMPL_CLASS();
+         }
+         if ASCEND_IS_AIC {
+-            GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
+-                                              Cgmct::Gemm::layout::RowMajor);
++            GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
++                                    Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::DNExtLayoutPtn,
++                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+         }
+     }
+ } else {
+     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+-        GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz,
+-                                          Cgmct::Gemm::layout::RowMajor);
++        GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, Cgmct::Gemm::layout::RowMajorAlign,
++                                AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+-        GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn,
+-                                          Cgmct::Gemm::layout::RowMajor);
++        GMM_QUANT_MX_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, Cgmct::Gemm::layout::RowMajorAlign,
++                                AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn, AscendC::Te::NDExtLayoutPtn);
++    }
++}
++#endif
++#if defined(V9201_GMM_QUANT_HIFP4) // hif4
++if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
++    GMM_QUANT_HIF4_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
++                                        Cgmct::Gemm::layout::RowMajor);
++} else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
++    GMM_QUANT_HIF4_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor,
++                                        Cgmct::Gemm::layout::RowMajor);
++} else if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
++    if ASCEND_IS_AIV {
++        GMM_QUANT_BASIC_API_EMPTY_TENSOR_WITHOUT_BIAS_IMPL_CLASS();
++    }
++    if ASCEND_IS_AIC {
++        GMM_QUANT_HIF4_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
++                                Cgmct::Gemm::layout::RowMajor);
+     }
+ }
+ #endif
+-- 
+2.51.2.huawei.11
