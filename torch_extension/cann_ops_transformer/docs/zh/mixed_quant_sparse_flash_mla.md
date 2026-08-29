@@ -187,8 +187,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | tensor | 必选 | 表示公式中的q | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode为1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。 | int32 | - | -
-| ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
-| cmp_kv | tensor | 可选 | 表示压缩量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
+| ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据。使用uint8传入时，每个uint8元素必须承载对应float8_e4m3fn元素的原始位模式，接口按float8_e4m3fn解释，不进行数值转换 | float8_e4m3fn、uint8 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
+| cmp_kv | tensor | 可选 | 表示压缩量化KV输入，Key和Value共享同一份数据。uint8承载规则同ori_kv | float8_e4m3fn、uint8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
 | cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
 | ori_block_table | tensor | 可选 | 表示PageAttention场景下ori_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(ori_kv_s_max/ori_kv_block_size))</li></ul>
@@ -309,7 +309,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td rowspan="4">
             <ul>
                 <li>q、attention_out的dtype、shape需相同</li>
-                <li>若cmp_kv传入，ori_kv与cmp_kv的dtype需一致</li>
+                <li>ori_kv和cmp_kv的逻辑数据类型均为float8_e4m3fn；二者可分别使用float8_e4m3fn或uint8传入，uint8仅作为float8_e4m3fn原始位模式的承载类型</li>
                 <li>layout_kv不为PA_BBND时，layout_q和layout_kv需保持一致</li>
                 <li>layout_kv为PA_BBND时，layout_q可为BSND或TND</li>
             </ul>
@@ -339,7 +339,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>ori_kv</td>
         <td>
             <ul>
-                <li>dtype支持fp8_e4m3</li>
+                <li>dtype支持float8_e4m3fn、uint8；uint8数据按float8_e4m3fn原始位模式解释，不进行数值转换</li>
                 <li>layout_kv为BSND时，ori_kv的shape为(b, ori_kv_s, kv_n, kv_d)</li>
                 <li>layout_kv为TND时，ori_kv的shape为(ori_kv_t, kv_n, kv_d)</li>
                 <li>layout_kv为PA_BBND时，ori_kv的shape为(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li>
@@ -366,7 +366,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
         <td>cmp_kv</td>
         <td>
             <ul>
-                <li>dtype支持fp8_e4m3</li>
+                <li>dtype支持float8_e4m3fn、uint8；uint8数据按float8_e4m3fn原始位模式解释，不进行数值转换</li>
                 <li>layout_kv为BSND时，cmp_kv的shape为(b, cmp_kv_s, kv_n, kv_d)</li>
                 <li>layout_kv为TND时，cmp_kv的shape为(cmp_kv_t, kv_n, kv_d)</li>
                 <li>layout_kv为PA_BBND时，cmp_kv的shape为(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li>
@@ -1002,6 +1002,8 @@ metadata校验
 
 ### SWA，BSND输入
 
+以下示例使用`torch.uint8`承载`torch.float8_e4m3fn`的原始位模式。已有FP8 Tensor应通过`view(torch.uint8)`按位重解释，不能使用`to(torch.uint8)`做数值转换。
+
 ```python
 import torch
 import torch_npu
@@ -1011,7 +1013,7 @@ import cann_ops_transformer
 torch_npu.npu.set_device(0)
 
 qDtype = torch.bfloat16
-kvDtype = torch.float8_e4m3fn
+kvDtype = torch.uint8
 B = 1
 S1 = 16
 S2 = 64
@@ -1026,7 +1028,7 @@ seqused_q = torch.tensor([16], dtype=torch.int32, device="npu")
 seqused_ori_kv = torch.tensor([64], dtype=torch.int32, device="npu")
 
 q = torch.randn(B, S1, N1, Dq, dtype=qDtype, device="npu")
-ori_kv = torch.randn(B, S2, N2, Dkv, dtype=qDtype, device="npu").to(kvDtype)
+ori_kv = torch.randn(B, S2, N2, Dkv, dtype=qDtype, device="npu").to(torch.float8_e4m3fn).view(kvDtype)
 cmp_kv = None
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 

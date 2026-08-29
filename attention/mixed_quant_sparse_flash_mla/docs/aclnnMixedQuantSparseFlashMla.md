@@ -191,8 +191,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>原始KV输入张量，Key与Value共享同一份数据。</td>
-      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quant_mode为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，量化模式2仅支持layout_kv为PA_BBND。</td>
-      <td>详见quantMode</td>
+      <td>SWA/CSA/HCA场景必须传入。量化KV布局由quantMode决定：quantMode为1时，依次由rope（64，bfloat16）、nope（448，FLOAT8_E4M3FN）、scale（7，bfloat16）、pad（18B）拼接而成；quantMode为2时，依次由nope（448，FLOAT8_E4M3FN）、rope（64，bfloat16）、scale（7，FLOAT8_E8M0）、pad（1B）拼接而成。当前仅支持1和2，量化模式2仅支持layoutKv为PA_BBND。传入UINT8时，每个UINT8元素必须承载对应FLOAT8_E4M3FN元素的原始位模式，接口按FLOAT8_E4M3FN解释，不进行数值转换。</td>
+      <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
       <td>
         <ul>
@@ -208,8 +208,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td>CSA/HCA场景必须传入，SWA场景不传入。量化KV布局由quantMode决定，同oriKvOptional。</td>
-      <td>详见quantMode</td>
+      <td>CSA/HCA场景必须传入，SWA场景不传入。量化KV布局和UINT8承载规则同oriKvOptional。</td>
+      <td>FLOAT8_E4M3FN、UINT8</td>
       <td>ND</td>
       <td>
         <ul>
@@ -742,7 +742,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td rowspan="4">
             <ul>
                 <li>q、attnOutOut的dtype、shape需相同</li>
-                <li>若cmpKvOptional传入，oriKvOptional与cmpKvOptional的dtype需一致</li>
+                <li>oriKvOptional和cmpKvOptional的逻辑数据类型均为FLOAT8_E4M3FN；二者可分别使用FLOAT8_E4M3FN或UINT8传入，UINT8仅作为FLOAT8_E4M3FN原始位模式的承载类型</li>
                 <li>layoutKv不为PA_BBND时，layoutQ和layoutKv需保持一致</li>
                 <li>layoutKv为PA_BBND时，layoutQ可为BSND或TND</li>
             </ul>
@@ -772,7 +772,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>oriKvOptional</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT8_E4M3FN</li>
+                <li>dtype支持FLOAT8_E4M3FN、UINT8；UINT8数据按FLOAT8_E4M3FN原始位模式解释，不进行数值转换</li>
                 <li>layoutKv为BSND时，oriKvOptional的shape为(b, oriKvS, kvN, kvD)</li>
                 <li>layoutKv为TND时，oriKvOptional的shape为(oriKvT, kvN, kvD)</li>
                 <li>layoutKv为PA_BBND时，oriKvOptional的shape为(oriKvBlockNums, oriKvBlockSize, kvN, kvD)</li>
@@ -799,7 +799,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
         <td>cmpKvOptional</td>
         <td>
             <ul>
-                <li>dtype支持FLOAT8_E4M3FN</li>
+                <li>dtype支持FLOAT8_E4M3FN、UINT8；UINT8数据按FLOAT8_E4M3FN原始位模式解释，不进行数值转换</li>
                 <li>layoutKv为BSND时，cmpKvOptional的shape为(b, cmpKvS, kvN, kvD)</li>
                 <li>layoutKv为TND时，cmpKvOptional的shape为(cmpKvT, kvN, kvD)</li>
                 <li>layoutKv为PA_BBND时，cmpKvOptional的shape为(cmpKvBlockNums, cmpKvBlockSize, kvN, kvD)</li>
@@ -1698,9 +1698,10 @@ int main()
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_BF16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(oriKvHostData, oriKvShape, &oriKvDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &oriKv);
+  // UINT8仅承载FLOAT8_E4M3FN的原始位模式，接口内部按FLOAT8_E4M3FN解释。
+  ret = CreateAclTensor(oriKvHostData, oriKvShape, &oriKvDeviceAddr, aclDataType::ACL_UINT8, &oriKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(cmpKvHostData, cmpKvShape, &cmpKvDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &cmpKv);
+  ret = CreateAclTensor(cmpKvHostData, cmpKvShape, &cmpKvDeviceAddr, aclDataType::ACL_UINT8, &cmpKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cmpSparseIndicesHostData, cmpSparseIndicesShape, &cmpSparseIndicesDeviceAddr,
                         aclDataType::ACL_INT32, &cmpSparseIndices);
