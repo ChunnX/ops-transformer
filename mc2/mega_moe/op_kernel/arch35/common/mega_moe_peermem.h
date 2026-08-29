@@ -74,9 +74,8 @@ HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSize(const MegaMoeTilingData *til
 
 HOST_DEVICE bool UseMteGroupCombineReady(int64_t topoType, uint8_t groupedMatmulMode)
 {
-    constexpr uint8_t groupedMatmulModeGeneral = 0U;
     return topoType == TOPO_TYPE_MTE &&
-           (groupedMatmulMode == groupedMatmulModeGeneral || groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+           (groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL || groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
 }
 
 // MTE Wave 的三个模板统一使用 compact route index。Combine 的 group-ready 协议仍由
