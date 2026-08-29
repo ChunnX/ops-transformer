@@ -311,16 +311,32 @@ public:
         l1_offset_ = v_sub_core_idx_ * half_s1_process_align_ * C0_SIZE;
         data_size = half_s1_process_align_ * s2_process_align_;
 
-        if (half_s1_process_real_ > 0) {
-            lse_tensor_ = pingpong_idx == 0 ? lse_tensor_ping_ : lse_tensor_pong_;
-            sftg_front_tensor_ = pingpong_idx == 0 ? sftg_front_tensor_ping_ : sftg_front_tensor_pong_;
-            event_id = pingpong_idx == 0 ? event_ping_ : event_pong_;
+        // Always arm event_id + WAIT so SoftmaxGrad can always SET (incl. pad-only AIV).
+        lse_tensor_ = pingpong_idx == 0 ? lse_tensor_ping_ : lse_tensor_pong_;
+        sftg_front_tensor_ = pingpong_idx == 0 ? sftg_front_tensor_ping_ : sftg_front_tensor_pong_;
+        event_id = pingpong_idx == 0 ? event_ping_ : event_pong_;
+        WAIT_FLAG(V, MTE2, event_id);
 
-            WAIT_FLAG(V, MTE2, event_id);
-            // Design §3.5: Gather_UB lse/sftg by sparse idx (KV2Q)
+        // Zero pad / invalid rows so SoftmaxGrad (align-sized) does not see garbage.
+        const int32_t packElems = half_s1_process_align_ * static_cast<int32_t>(BLOCK_FP32);
+        Duplicate(lse_tensor_, 0.0f, packElems);
+        Duplicate(sftg_front_tensor_, 0.0f, packElems);
+        SET_FLAG(V, MTE2, EVENT_ID0);
+        WAIT_FLAG(V, MTE2, EVENT_ID0);
+
+        if (half_s1_process_real_ > 0) {
+            // Prefetch sparse idx tile into UB (reuse softmax NZ staging; not live yet).
+            // Softmax VF expects [row, 8] with DIST_BRC on element 0 — gather via MTE2
+            // instead of per-element GM GetValue/SetValue (PIPE_S hotspot).
+            LocalTensor<int32_t> idxUb = softmax_res_nz_tensor_.template ReinterpretCast<int32_t>();
             const int32_t rowStart = v_sub_core_idx_ * half_s1_process_align_;
+            // half_s1_process_align_ is mAlign/2 (16-aligned m → 8-aligned); pad slots are -1.
+            DataCopy(idxUb, sparse_idx_gm_[runTimeInfo.sparseIdxOffset + rowStart], half_s1_process_align_);
+            SET_FLAG(MTE2, S, EVENT_ID1);
+            WAIT_FLAG(MTE2, S, EVENT_ID1);
+
             for (int32_t r = 0; r < half_s1_process_real_; ++r) {
-                const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowStart + r);
+                const int32_t qTok = idxUb.GetValue(r);
                 if (qTok < 0 || qTok >= runTimeInfo.cur_q_seq_len) {
                     continue;
                 }
@@ -329,7 +345,8 @@ public:
                 if constexpr (INPUT_LAYOUT == TND) {
                     // LSE user tensor is TND [T, N]; sftg workspace is written as
                     // prefix*N*8 + n1*S*8 + t*8 (same as GetSftgGmOffset / SendVecSftgFront).
-                    lseOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ + runTimeInfo.n1Idx;
+                    lseOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ +
+                             runTimeInfo.n1Idx;
                     sftgOff = GetSftgGmOffset<INPUT_LAYOUT>(
                         static_cast<int64_t>(runTimeInfo.last_q_seq_sum),
                         static_cast<int64_t>(runTimeInfo.cur_q_seq_len), q_head_num_,
@@ -340,21 +357,25 @@ public:
                              runTimeInfo.n1Idx * runTimeInfo.cur_q_seq_len + qTok;
                     sftgOff = lseOff * 8;
                 }
-                // Pack into [row, 8] layout expected by SimpleSoftmax / SoftmaxGrad
-                float lseVal = lse_gm_.GetValue(lseOff);
-                for (int32_t c = 0; c < 8; ++c) {
-                    lse_tensor_.SetValue(r * 8 + c, lseVal);
-                    sftg_front_tensor_.SetValue(r * 8 + c, sftg_workspace_.GetValue(sftgOff + c));
-                }
+                SET_FLAG(S, MTE2, EVENT_ID1);
+                WAIT_FLAG(S, MTE2, EVENT_ID1);
+                // sftg: 8 fp32 = 32B block — one DataCopy replaces 8x GetValue+SetValue.
+                DataCopy(sftg_front_tensor_[r * static_cast<int32_t>(BLOCK_FP32)], sftg_workspace_[sftgOff],
+                         BLOCK_FP32);
+                // lse: Softmax DIST_BRC only needs slot [r*8]; DataCopyPad 1 fp32 (no 8x SetValue).
+                DataCopyPad(lse_tensor_[r * static_cast<int32_t>(BLOCK_FP32)], lse_gm_[lseOff],
+                            {static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0},
+                            {false, 0, 0, 0});
             }
-            // SetValue is PIPE_S; Softmax VF must see packed LSE/sftg (MTE2_V is wrong here).
-            SET_FLAG(S, V, EVENT_ID0);
-            WAIT_FLAG(S, V, EVENT_ID0);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
         }
     }
 
     /**
      * RIGHT_DOWN_CAUSAL: origin at bottom-right; valid when k <= q + (S2 - S1).
+     * Invalid columns form a contiguous tail per row — Duplicate(NEG_INF) on
+     * 32B-aligned spans; unaligned head of the tail uses SetValue.
      */
     __aicore__ inline void ApplyCausalAttenMask(const LocalTensor<float> &sUb, const RunTimeInfo &runTimeInfo)
     {
@@ -364,15 +385,45 @@ public:
         constexpr float NEG_INF = -1.0e30f;
         const int32_t rowStart = v_sub_core_idx_ * half_s1_process_align_;
         const int32_t s2Start = runTimeInfo.s2Idx;
+        const int32_t s2Len = static_cast<int32_t>(runTimeInfo.s2Len);
         const int32_t causalOffset = runTimeInfo.cur_kv_seq_len - runTimeInfo.cur_q_seq_len;
+
+        // Prefetch sparse idx (softmax NZ staging not live until CastND2NZ after Softmax).
+        LocalTensor<int32_t> idxUb = softmax_res_nz_tensor_.template ReinterpretCast<int32_t>();
+        DataCopy(idxUb, sparse_idx_gm_[runTimeInfo.sparseIdxOffset + rowStart], half_s1_process_align_);
+        SET_FLAG(MTE2, S, EVENT_ID1);
+        WAIT_FLAG(MTE2, S, EVENT_ID1);
+
         for (int32_t r = 0; r < half_s1_process_real_; ++r) {
-            const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowStart + r);
-            for (int32_t c = 0; c < static_cast<int32_t>(runTimeInfo.s2Len); ++c) {
-                const int32_t kTok = s2Start + c;
-                if (kTok > qTok + causalOffset) {
-                    sUb.SetValue(r * s2_process_align_ + c, NEG_INF);
-                }
+            const int32_t qTok = idxUb.GetValue(r);
+            // first c where kTok = s2Start+c > qTok+causalOffset
+            int32_t firstInvalid = qTok + causalOffset - s2Start + 1;
+            if (firstInvalid < 0) {
+                firstInvalid = 0;
             }
+            if (firstInvalid >= s2Len) {
+                continue;
+            }
+            const int32_t rowBase = r * s2_process_align_;
+            // Duplicate requires 32B-aligned UB offset for fp32 → align start up.
+            const int32_t firstAlign = RoundUp(firstInvalid, static_cast<int32_t>(BLOCK_FP32));
+            for (int32_t c = firstInvalid; c < firstAlign && c < s2Len; ++c) {
+                sUb.SetValue(rowBase + c, NEG_INF);
+            }
+            if (firstAlign >= s2Len) {
+                continue;
+            }
+            int32_t nMask = s2Len - firstAlign;
+            int32_t nMaskAlign = RoundUp(nMask, static_cast<int32_t>(BLOCK_FP32));
+            if (firstAlign + nMaskAlign > s2_process_align_) {
+                nMaskAlign = s2_process_align_ - firstAlign;
+            }
+            if (nMaskAlign <= 0) {
+                continue;
+            }
+            SET_FLAG(S, V, EVENT_ID1);
+            WAIT_FLAG(S, V, EVENT_ID1);
+            Duplicate(sUb[rowBase + firstAlign], NEG_INF, nMaskAlign);
         }
     }
 
@@ -380,13 +431,27 @@ public:
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                           const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
+        // Pad-only AIV (m < 16 → AIV1): still write zeros into this half of P L1.
         if (half_s1_process_real_ <= 0) {
+            const int32_t zeroElems = half_s1_process_align_ * s2_process_align_;
+            Duplicate(src_ub_tensor, 0.0f, zeroElems);
+            PipeBarrier<PIPE_V>();
+            CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+            DataCopyParams dataCopyParams;
+            dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
+            dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride =
+                (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+            DataCopy(dst_l1_tensor[l1_offset_], softmax_res_nz_tensor_, dataCopyParams);
             return;
         }
 
         runTimeMaskType_ = runTimeInfo.mask_type;
         ApplyCausalAttenMask(src_ub_tensor, runTimeInfo);
-        // SetValue is PIPE_S; SimpleSoftmax VF is PIPE_V — must sync or mask is raced.
+        // Mask may end on PIPE_S (idx GetValue / skip-only rows); Softmax is PIPE_V.
         SET_FLAG(S, V, EVENT_ID1);
         WAIT_FLAG(S, V, EVENT_ID1);
         PipeBarrier<PIPE_V>();
@@ -423,7 +488,22 @@ public:
          * out shape:   [s1LenAlign / 2, s2LenAlign]
          * dtype:       float
          */
+        // Pad-only AIV: zero dS L1 half and still SET_FLAG(V,MTE2) for event balance.
         if (half_s1_process_real_ <= 0) {
+            const int32_t zeroElems = half_s1_process_align_ * s2_process_align_;
+            Duplicate(src_ub_tensor, 0.0f, zeroElems);
+            PipeBarrier<PIPE_V>();
+            CastND2NZ<INPUT_TYPE>(sftg_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+            DataCopyParams dataCopyParams;
+            dataCopyParams.blockCount = s2_process_align_ / C0_SIZE;
+            dataCopyParams.blockLen = half_s1_process_align_ * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride =
+                (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+            DataCopy(dst_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
+            SET_FLAG(V, MTE2, event_id);
             return;
         }
         // Pad rows beyond real must be 0 so align-sized SoftmaxGrad/Cast stay in-bounds.
@@ -455,7 +535,7 @@ public:
 
     /**
      * SFAG-style ScatterAdd for dQ_sel: Cube Fixpiped [mAlign,D] to GM scratch;
-     * AIV0/AIV1 each take half of real rows, batch 8 rows GM->UB, then AtomicAdd to dq.
+     * AIV0/AIV1 each take half of real rows, batch rows GM->UB, then AtomicAdd to dq.
      * Event chain: MTE3<->MTE2 (UB reuse) + MTE2<->MTE3 (load->atomic).
      */
     __aicore__ inline void ScatterDqSel(const RunTimeInfo &runTimeInfo, TBuf<TPosition::VECCALC> &ub_buffer,
@@ -469,7 +549,8 @@ public:
             return;
         }
 
-        constexpr int32_t UB_ROW_SIZE = 8;
+        // 16 rows × D=128 fp32 ≈ 8KB; fewer outer loops / MTE syncs than UB_ROW_SIZE=8.
+        constexpr int32_t UB_ROW_SIZE = 16;
         // Same half split as Softmax dualDst / Gather (mAlign/2), not m/2.
         const int32_t mAlign = runTimeInfo.s1LenAlign;
         const int32_t halfAlign = mAlign / 2;
@@ -491,6 +572,24 @@ public:
         constexpr uint32_t SCATTER_UB_OFFSET = 200 * 1024;
         LocalTensor<float> batchUb =
             ub_buffer.GetWithOffset<float>(UB_ROW_SIZE * head_dim_align_, SCATTER_UB_OFFSET);
+
+        // Layout bases outside the per-row loop.
+        const int64_t n1Dim = static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
+        int64_t layoutBase = 0;
+        int64_t qTokStride = head_dim_;
+        if constexpr (INPUT_LAYOUT == TND) {
+            layoutBase = static_cast<int64_t>(runTimeInfo.last_q_seq_sum) * q_head_num_ * head_dim_ + n1Dim;
+            qTokStride = static_cast<int64_t>(q_head_num_) * head_dim_;
+        } else if constexpr (INPUT_LAYOUT == BSND) {
+            layoutBase = static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ +
+                         n1Dim;
+            qTokStride = static_cast<int64_t>(q_head_num_) * head_dim_;
+        } else {
+            layoutBase = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len * head_dim_ +
+                         static_cast<int64_t>(runTimeInfo.n1Idx) * runTimeInfo.cur_q_seq_len * head_dim_;
+            qTokStride = head_dim_;
+        }
+
         const int64_t slotOff = static_cast<int64_t>(ping_pong_idx) * dq_sel_core_elems_;
         const int32_t maxLoops = CeilDiv(currentRows, UB_ROW_SIZE);
         const int32_t tailRows = currentRows - (maxLoops - 1) * UB_ROW_SIZE;
@@ -511,21 +610,7 @@ public:
                 if (qTok < 0 || qTok >= runTimeInfo.cur_q_seq_len) {
                     continue;
                 }
-                int64_t gmOff = 0;
-                if constexpr (INPUT_LAYOUT == TND) {
-                    gmOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ * head_dim_ +
-                            static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
-                } else if constexpr (INPUT_LAYOUT == BSND) {
-                    gmOff =
-                        static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ +
-                        static_cast<int64_t>(qTok) * q_head_num_ * head_dim_ +
-                        static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
-                } else {
-                    gmOff =
-                        static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len * head_dim_ +
-                        static_cast<int64_t>(runTimeInfo.n1Idx) * runTimeInfo.cur_q_seq_len * head_dim_ +
-                        static_cast<int64_t>(qTok) * head_dim_;
-                }
+                const int64_t gmOff = layoutBase + static_cast<int64_t>(qTok) * qTokStride;
                 DataCopy(dq_workspace_[gmOff], batchUb[row * head_dim_], head_dim_);
             }
             SET_FLAG(MTE3, MTE2, EVENT_ID0);

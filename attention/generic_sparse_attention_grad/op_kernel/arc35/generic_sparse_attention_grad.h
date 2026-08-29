@@ -73,11 +73,10 @@ private:
     static constexpr int32_t L1_SIZE = 512 * 1024;
 
     // AIV0/AIV1 row partition: must match Softmax dualDst (mAlign/2) and CopyQAndDoutToL1.
+    // Always split by mAlign/2 (including m < 16): AIV1 may own an all-pad half and still
+    // must zero-fill L1 + SetFlag gather so Cube sync never deadlocks.
     __aicore__ inline int32_t GatherAivRowCount(int32_t m, int32_t mAlign, int32_t aivHalfIdx) const
     {
-        if (m < static_cast<int32_t>(C0_SIZE)) {
-            return aivHalfIdx == 0 ? m : 0;
-        }
         const int32_t halfAlign = mAlign / 2;
         const int32_t rowBegin = aivHalfIdx * halfAlign;
         int32_t rowCount = m - rowBegin;
@@ -92,7 +91,10 @@ private:
 
     __aicore__ inline bool GatherNeedAiv1(int32_t m, int32_t mAlign) const
     {
-        return GatherAivRowCount(m, mAlign, 1) > 0;
+        (void)m;
+        (void)mAlign;
+        // Both AIVs always participate in gather SetFlag (pad half writes zeros).
+        return true;
     }
 
     __aicore__ inline void SetGsagC1(uint32_t pingPongIdx)
@@ -130,12 +132,13 @@ private:
             CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_GATHER_ARM);
         }
         CopyQAndDoutToL1(curr, currIdx);
-        if (GatherAivRowCount(m, mAlign, aivHalfIdx) > 0) {
-            const uint32_t gatherFlagBase = currIdx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
-            const uint32_t gatherFlag =
-                gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(gatherFlag);
-        }
+        // Always signal — including AIV with 0 real rows (zero-filled pad half).
+        const uint32_t gatherFlagBase = currIdx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
+        const uint32_t gatherFlag =
+            gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(gatherFlag);
+        (void)m;
+        (void)mAlign;
     }
 
     /** SFAG ProcessNotFirst: Softmax(last) on AIV — overlaps Cube MM12(curr). */
@@ -373,35 +376,20 @@ public:
 
         // MIX_AIC_1_2: AIV subblock 0/1. Partition MUST match Cube Fixpipe dualDstCtl=1
         // and Vec Softmax (half = mAlign/2). Align16(m/2) diverges when m%32!=0 (e.g. m=68).
+        // For m < 16, AIV1 still owns the pad half [8,16) and writes zeros (do NOT AIV0-only
+        // copyRows=mAlign — that DataCopy shape hangs MTE on some SoCs).
         const int32_t aivHalfIdx = static_cast<int32_t>(GetSubBlockIdx());
         const int32_t halfAlign = mAlign / 2;
         const int32_t totalAlign = mAlign;
-        int32_t rowBegin = 0;
-        int32_t shardAlign = halfAlign;
-        int32_t rowCount = 0;
-        if (m < static_cast<int32_t>(C0_SIZE)) {
-            // Only AIV0 writes the full mAlign tile (zero-padded) for Cube LoadData.
-            if (aivHalfIdx != 0) {
-                return;
-            }
-            rowBegin = 0;
-            shardAlign = mAlign;
-            rowCount = m;
-        } else {
-            rowBegin = aivHalfIdx * halfAlign;
-            rowCount = m - rowBegin;
-            if (rowCount < 0) {
-                rowCount = 0;
-            }
-            if (rowCount > halfAlign) {
-                rowCount = halfAlign;
-            }
-            shardAlign = halfAlign;
+        const int32_t rowBegin = aivHalfIdx * halfAlign;
+        int32_t rowCount = m - rowBegin;
+        if (rowCount < 0) {
+            rowCount = 0;
         }
-
-        if (rowCount <= 0) {
-            return;
+        if (rowCount > halfAlign) {
+            rowCount = halfAlign;
         }
+        const int32_t shardAlign = halfAlign;
         // Dedicated events — avoid EVENT_ID0 (Vector) and EVENT_ID3/4 (vec/cube ping-pong).
         constexpr event_t evtGatherVmte2 = EVENT_ID2;
         constexpr event_t evtGatherMte2v = EVENT_ID5;
