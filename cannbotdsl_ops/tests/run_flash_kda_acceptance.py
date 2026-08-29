@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # Licensed under CANN Open Software License Agreement Version 2.0.
-"""Run the complete FlashKDA mixed-package device acceptance matrix."""
+"""Run the complete FlashKDA Provider-only or mixed device acceptance."""
 
 from __future__ import annotations
 
@@ -22,7 +22,10 @@ from typing import Any
 _TEST_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_TEST_DIR))
 
-from verify_mixed_run import verify_run_package  # noqa: E402
+from verify_mixed_run import PACKAGE_MODES, verify_run_package  # noqa: E402
+
+
+_DEFAULT_TRADITIONAL_KERNEL_COUNT = {"provider-only": 0, "mixed": 8}
 
 
 _TIMING_PATTERN = re.compile(
@@ -356,9 +359,10 @@ def _git_head(path: Path) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the FlashKDA mixed-package device acceptance matrix"
+        description="Run the FlashKDA Provider-only or mixed device acceptance"
     )
     parser.add_argument("--run", required=True, type=Path)
+    parser.add_argument("--package-mode", required=True, choices=PACKAGE_MODES)
     parser.add_argument("--smoke", required=True, type=Path)
     parser.add_argument("--opbase-library", required=True, type=Path)
     parser.add_argument("--cannbotdsl-source", required=True, type=Path)
@@ -367,18 +371,26 @@ def main() -> int:
     parser.add_argument("--library-dir", action="append", type=Path, default=[])
     parser.add_argument("--timing-waves", type=int, default=3)
     parser.add_argument("--soak-waves", type=int, default=20)
-    parser.add_argument("--expected-traditional-kernel-count", type=int, default=8)
+    parser.add_argument("--expected-traditional-kernel-count", type=int)
     arguments = parser.parse_args()
+    expected_traditional_kernel_count = (
+        arguments.expected_traditional_kernel_count
+        if arguments.expected_traditional_kernel_count is not None
+        else _DEFAULT_TRADITIONAL_KERNEL_COUNT[arguments.package_mode]
+    )
 
     report: dict[str, Any] = {
         "schema_version": 1,
         "passed": False,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "package_mode": arguments.package_mode,
     }
     try:
         if arguments.timing_waves <= 0 or arguments.soak_waves <= 0:
             raise ValueError("timing and soak waves must be positive")
-        run_file = _require_file(arguments.run, "mixed .run package")
+        run_file = _require_file(
+            arguments.run, f"{arguments.package_mode} .run package"
+        )
         smoke = _require_file(arguments.smoke, "FlashKDA smoke executable")
         opbase = _require_file(arguments.opbase_library, "Provider ABI libnnopbase")
         verifier = _require_file(
@@ -396,10 +408,9 @@ def main() -> int:
             verified_run = verify_run_package(
                 run_file,
                 extract_root,
+                package_mode=arguments.package_mode,
                 expected_provider_count=6,
-                expected_traditional_kernel_count=(
-                    arguments.expected_traditional_kernel_count
-                ),
+                expected_traditional_kernel_count=expected_traditional_kernel_count,
             )
             opapi = verified_run.opapi
             environment = _runtime_environment(

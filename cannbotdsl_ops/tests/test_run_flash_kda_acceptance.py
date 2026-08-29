@@ -340,8 +340,12 @@ def test_delivery_dump_path_rejects_existing_symlink_escape(tmp_path):
         runner._delivery_dump_path(tmp_path, region)
 
 
-def test_acceptance_stops_at_shared_verifier_failure_before_device_work(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("package_mode", "expected_traditional_kernel_count"),
+    (("provider-only", 0), ("mixed", 8)),
+)
+def test_acceptance_passes_explicit_package_mode_to_shared_verifier(
+    tmp_path, monkeypatch, package_mode, expected_traditional_kernel_count
 ):
     run_file = tmp_path / "flash-kda.run"
     smoke = tmp_path / "smoke"
@@ -354,6 +358,11 @@ def test_acceptance_stops_at_shared_verifier_failure_before_device_work(
         path.touch()
 
     def reject_corruption(*args, **kwargs):
+        assert kwargs["package_mode"] == package_mode
+        assert (
+            kwargs["expected_traditional_kernel_count"]
+            == expected_traditional_kernel_count
+        )
         raise PackageIntegrityError("VariantManifest predicate overlap")
 
     def forbidden_device_work(*args, **kwargs):
@@ -378,6 +387,8 @@ def test_acceptance_stops_at_shared_verifier_failure_before_device_work(
             str(runtime_root),
             "--report",
             str(report),
+            "--package-mode",
+            package_mode,
         ],
     )
 
@@ -481,6 +492,8 @@ def test_acceptance_report_and_dump_paths_retain_case_and_content_identity(
             str(runtime_root),
             "--report",
             str(report),
+            "--package-mode",
+            "provider-only",
             "--timing-waves",
             "1",
             "--soak-waves",

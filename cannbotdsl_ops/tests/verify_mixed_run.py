@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # Licensed under CANN Open Software License Agreement Version 2.0.
-"""Verify a mixed traditional AscendC and CANNBotDSL Provider run package."""
+"""Verify a final FlashKDA Provider-only or mixed run package."""
 
 from __future__ import annotations
 
@@ -43,15 +43,22 @@ REQUIRED_PUBLIC_HEADERS = [
     "aclnn_custom_flash_kda.h",
     "aclnn_flash_kda.h",
 ]
-REQUIRED_SYMBOLS = [
-    "aclnnChunkKdaFwd",
-    "aclnnChunkKdaFwdGetWorkspaceSize",
+PACKAGE_MODES = ("provider-only", "mixed")
+_PROVIDER_ONLY_REQUIRED_SYMBOLS = (
     "aclnnCustomFlashKda",
     "aclnnCustomFlashKdaGetWorkspaceSize",
     "aclnnFlashKda",
     "aclnnFlashKdaGetWorkspaceSize",
     "l0op::FlashKda(",
-]
+)
+_REQUIRED_SYMBOLS_BY_PACKAGE_MODE = {
+    "provider-only": _PROVIDER_ONLY_REQUIRED_SYMBOLS,
+    "mixed": _PROVIDER_ONLY_REQUIRED_SYMBOLS
+    + (
+        "aclnnChunkKdaFwd",
+        "aclnnChunkKdaFwdGetWorkspaceSize",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -339,9 +346,18 @@ def _verify_provider_package(
 
 def _verify_mixed_contents(
     vendor_root: pathlib.Path,
-    minimum_traditional_kernel_count: int,
+    minimum_traditional_kernel_count: int | None,
     expected_traditional_kernel_count: int | None,
+    package_mode: str,
 ) -> tuple[int, pathlib.Path, list[str]]:
+    (
+        minimum_traditional_kernel_count,
+        expected_traditional_kernel_count,
+    ) = _resolve_traditional_kernel_policy(
+        package_mode,
+        minimum_traditional_kernel_count,
+        expected_traditional_kernel_count,
+    )
     traditional_root = vendor_root / "op_impl/ai_core/tbe/kernel"
     traditional_kernels = sorted(traditional_root.glob("**/*.o"))
     if len(traditional_kernels) < minimum_traditional_kernel_count:
@@ -371,13 +387,64 @@ def _verify_mixed_contents(
         capture_output=True,
         text=True,
     ).stdout
-    _verify_required_symbols(symbols)
+    _verify_required_symbols(symbols, package_mode=package_mode)
     return len(traditional_kernels), opapi, list(REQUIRED_PUBLIC_HEADERS)
 
 
-def _verify_required_symbols(symbols: str) -> None:
+def _required_symbols(package_mode: str) -> tuple[str, ...]:
+    try:
+        return _REQUIRED_SYMBOLS_BY_PACKAGE_MODE[package_mode]
+    except KeyError as error:
+        raise ValueError(
+            f"package mode must be one of {PACKAGE_MODES!r}, got {package_mode!r}"
+        ) from error
+
+
+def _resolve_traditional_kernel_policy(
+    package_mode: str,
+    minimum_traditional_kernel_count: int | None,
+    expected_traditional_kernel_count: int | None,
+) -> tuple[int, int | None]:
+    _required_symbols(package_mode)
+    if (
+        minimum_traditional_kernel_count is not None
+        and minimum_traditional_kernel_count < 0
+    ):
+        raise ValueError("minimum traditional kernel count must be non-negative")
+    if (
+        expected_traditional_kernel_count is not None
+        and expected_traditional_kernel_count < 0
+    ):
+        raise ValueError("expected traditional kernel count must be non-negative")
+
+    if package_mode == "provider-only":
+        if minimum_traditional_kernel_count not in (None, 0):
+            raise ValueError(
+                "provider-only package mode requires minimum traditional "
+                "kernel count 0"
+            )
+        if expected_traditional_kernel_count not in (None, 0):
+            raise ValueError(
+                "provider-only package mode requires exact traditional "
+                "kernel count 0"
+            )
+        return 0, 0
+
+    minimum = max(2, minimum_traditional_kernel_count or 0)
+    if (
+        expected_traditional_kernel_count is not None
+        and expected_traditional_kernel_count < minimum
+    ):
+        raise ValueError(
+            "mixed package mode exact traditional kernel count must be at "
+            f"least its minimum {minimum}"
+        )
+    return minimum, expected_traditional_kernel_count
+
+
+def _verify_required_symbols(symbols: str, *, package_mode: str) -> None:
     symbol_lines = symbols.splitlines()
-    for symbol in REQUIRED_SYMBOLS:
+    for symbol in _required_symbols(package_mode):
         if "(" in symbol:
             present = any(symbol in line for line in symbol_lines)
         else:
@@ -415,9 +482,10 @@ def verify_run_package(
     run_file: pathlib.Path,
     extract_root: pathlib.Path,
     *,
+    package_mode: str,
     package_name: str = "ops-transformer-flash-kda",
     expected_provider_count: int = 6,
-    minimum_traditional_kernel_count: int = 2,
+    minimum_traditional_kernel_count: int | None = None,
     expected_traditional_kernel_count: int | None = None,
 ) -> VerifiedMixedRun:
     run_file = run_file.resolve()
@@ -428,13 +496,14 @@ def verify_run_package(
         raise NotADirectoryError(extract_root)
     if expected_provider_count <= 0:
         raise ValueError("expected Provider count must be positive")
-    if minimum_traditional_kernel_count <= 0:
-        raise ValueError("minimum traditional kernel count must be positive")
-    if (
-        expected_traditional_kernel_count is not None
-        and expected_traditional_kernel_count <= 0
-    ):
-        raise ValueError("expected traditional kernel count must be positive")
+    (
+        minimum_traditional_kernel_count,
+        expected_traditional_kernel_count,
+    ) = _resolve_traditional_kernel_policy(
+        package_mode,
+        minimum_traditional_kernel_count,
+        expected_traditional_kernel_count,
+    )
     if any(extract_root.iterdir()):
         raise ValueError(f"extract root must be empty: {extract_root}")
 
@@ -447,12 +516,14 @@ def verify_run_package(
         vendor_root,
         minimum_traditional_kernel_count,
         expected_traditional_kernel_count,
+        package_mode,
     )
     report = {
         "archive_sha256": _sha256(run_file),
         "archive_size": run_file.stat().st_size,
         "checked_package_files": checked_files,
         "opapi": str(opapi.relative_to(extract_root)),
+        "package_mode": package_mode,
         "public_acl_nn_headers": public_headers,
         "provider_binaries": provider_count,
         "traditional_kernel_objects": traditional_count,
@@ -477,12 +548,13 @@ def verify_run_package(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Verify a mixed AscendC and CANNBotDSL Provider .run package"
+        description="Verify a FlashKDA Provider-only or mixed .run package"
     )
     parser.add_argument("--run", required=True, type=pathlib.Path)
+    parser.add_argument("--package-mode", required=True, choices=PACKAGE_MODES)
     parser.add_argument("--package-name", default="ops-transformer-flash-kda")
     parser.add_argument("--expected-provider-count", type=int, default=6)
-    parser.add_argument("--minimum-traditional-kernel-count", type=int, default=2)
+    parser.add_argument("--minimum-traditional-kernel-count", type=int)
     parser.add_argument("--expected-traditional-kernel-count", type=int)
     arguments = parser.parse_args()
 
@@ -491,6 +563,7 @@ def main() -> int:
         verified = verify_run_package(
             arguments.run,
             extract_root,
+            package_mode=arguments.package_mode,
             package_name=arguments.package_name,
             expected_provider_count=arguments.expected_provider_count,
             minimum_traditional_kernel_count=(

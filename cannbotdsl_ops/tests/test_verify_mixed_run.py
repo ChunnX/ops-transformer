@@ -4,6 +4,7 @@ from copy import deepcopy
 import importlib.util
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,40 +20,236 @@ sys.modules[_SPEC.name] = verifier
 _SPEC.loader.exec_module(verifier)
 
 
-def test_required_symbols_cover_l0_standalone_and_custom_l2_delivery():
-    required = set(verifier.REQUIRED_SYMBOLS)
-    assert {
-        "l0op::FlashKda(",
-        "aclnnFlashKda",
-        "aclnnFlashKdaGetWorkspaceSize",
-        "aclnnCustomFlashKda",
-        "aclnnCustomFlashKdaGetWorkspaceSize",
-    } <= required
+_PROVIDER_ONLY_SYMBOLS = (
+    "aclnnCustomFlashKda",
+    "aclnnCustomFlashKdaGetWorkspaceSize",
+    "aclnnFlashKda",
+    "aclnnFlashKdaGetWorkspaceSize",
+    "l0op::FlashKda(",
+)
+_MIXED_SYMBOLS = _PROVIDER_ONLY_SYMBOLS + (
+    "aclnnChunkKdaFwd",
+    "aclnnChunkKdaFwdGetWorkspaceSize",
+)
+
+
+def test_provider_only_symbol_verifier_accepts_delivery_without_chunk_kda():
+    verifier._verify_required_symbols(
+        "\n".join(_PROVIDER_ONLY_SYMBOLS), package_mode="provider-only"
+    )
     assert "aclnn_custom_flash_kda.h" in verifier.REQUIRED_PUBLIC_HEADERS
+
+
+def test_mixed_symbol_verifier_rejects_delivery_without_chunk_kda():
+    with pytest.raises(AssertionError, match="aclnnChunkKdaFwd"):
+        verifier._verify_required_symbols(
+            "\n".join(_PROVIDER_ONLY_SYMBOLS), package_mode="mixed"
+        )
+
+
+def test_mixed_symbol_verifier_accepts_complete_delivery_surface():
+    verifier._verify_required_symbols(
+        "\n".join(_MIXED_SYMBOLS), package_mode="mixed"
+    )
 
 
 def test_symbol_verifier_rejects_missing_custom_l2_export():
     symbols = "\n".join(
         symbol
-        for symbol in verifier.REQUIRED_SYMBOLS
+        for symbol in _PROVIDER_ONLY_SYMBOLS
         if symbol != "aclnnCustomFlashKdaGetWorkspaceSize"
     )
     with pytest.raises(AssertionError, match="aclnnCustomFlashKdaGetWorkspaceSize"):
-        verifier._verify_required_symbols(symbols)
+        verifier._verify_required_symbols(symbols, package_mode="provider-only")
 
 
 def test_get_workspace_prefix_does_not_mask_missing_execute_export():
     symbols = "\n".join(
         symbol
-        for symbol in verifier.REQUIRED_SYMBOLS
+        for symbol in _PROVIDER_ONLY_SYMBOLS
         if symbol != "aclnnCustomFlashKda"
     )
     with pytest.raises(AssertionError, match="'aclnnCustomFlashKda'"):
-        verifier._verify_required_symbols(symbols)
+        verifier._verify_required_symbols(symbols, package_mode="provider-only")
 
 
-def test_symbol_verifier_accepts_complete_delivery_surface():
-    verifier._verify_required_symbols("\n".join(verifier.REQUIRED_SYMBOLS))
+def test_provider_only_zero_kernel_count_is_an_exact_proof(tmp_path, monkeypatch):
+    run_file = tmp_path / "flash-kda.run"
+    run_file.touch()
+    extract_root = tmp_path / "extract"
+    extract_root.mkdir()
+    vendor_root = extract_root / "packages/vendors/custom_transformer"
+    opapi = vendor_root / "op_api/lib/libcust_opapi.so"
+    recorded = []
+
+    def extract_run(*args):
+        opapi.parent.mkdir(parents=True)
+        opapi.touch()
+
+    monkeypatch.setattr(verifier, "_extract_run", extract_run)
+    monkeypatch.setattr(verifier, "_find_vendor_root", lambda root: vendor_root)
+    monkeypatch.setattr(
+        verifier,
+        "_verify_provider_package",
+        lambda *args: (6, 12, ()),
+    )
+
+    def verify_contents(root, minimum, expected, package_mode):
+        recorded.append((root, minimum, expected, package_mode))
+        return 0, opapi, list(verifier.REQUIRED_PUBLIC_HEADERS)
+
+    monkeypatch.setattr(verifier, "_verify_mixed_contents", verify_contents)
+    monkeypatch.setattr(verifier, "_sha256", lambda path: "a" * 64)
+
+    verified = verifier.verify_run_package(
+        run_file,
+        extract_root,
+        package_mode="provider-only",
+    )
+
+    assert recorded == [(vendor_root, 0, 0, "provider-only")]
+    assert verified.report["package_mode"] == "provider-only"
+    assert verified.report["traditional_kernel_objects"] == 0
+
+
+def test_mixed_omitted_kernel_count_restores_minimum_two(tmp_path, monkeypatch):
+    run_file = tmp_path / "flash-kda.run"
+    run_file.touch()
+    extract_root = tmp_path / "extract"
+    extract_root.mkdir()
+    vendor_root = extract_root / "packages/vendors/custom_transformer"
+    opapi = vendor_root / "op_api/lib/libcust_opapi.so"
+    recorded = []
+
+    def extract_run(*args):
+        opapi.parent.mkdir(parents=True)
+        opapi.touch()
+
+    monkeypatch.setattr(verifier, "_extract_run", extract_run)
+    monkeypatch.setattr(verifier, "_find_vendor_root", lambda root: vendor_root)
+    monkeypatch.setattr(
+        verifier,
+        "_verify_provider_package",
+        lambda *args: (6, 12, ()),
+    )
+
+    def verify_contents(root, minimum, expected, package_mode):
+        recorded.append((root, minimum, expected, package_mode))
+        return 2, opapi, list(verifier.REQUIRED_PUBLIC_HEADERS)
+
+    monkeypatch.setattr(verifier, "_verify_mixed_contents", verify_contents)
+    monkeypatch.setattr(verifier, "_sha256", lambda path: "a" * 64)
+
+    verified = verifier.verify_run_package(
+        run_file,
+        extract_root,
+        package_mode="mixed",
+    )
+
+    assert recorded == [(vendor_root, 2, None, "mixed")]
+    assert verified.report["package_mode"] == "mixed"
+    assert verified.report["traditional_kernel_objects"] == 2
+
+
+@pytest.mark.parametrize(
+    ("package_mode", "minimum", "expected"),
+    (
+        ("provider-only", 1, None),
+        ("provider-only", None, 1),
+        ("mixed", None, 0),
+    ),
+)
+def test_package_mode_rejects_conflicting_kernel_count_policy_before_extract(
+    tmp_path, monkeypatch, package_mode, minimum, expected
+):
+    run_file = tmp_path / "flash-kda.run"
+    run_file.touch()
+    extract_root = tmp_path / "extract"
+    extract_root.mkdir()
+    monkeypatch.setattr(
+        verifier,
+        "_extract_run",
+        lambda *args: pytest.fail("conflicting count reached package extraction"),
+    )
+    counts = {}
+    if minimum is not None:
+        counts["minimum_traditional_kernel_count"] = minimum
+    if expected is not None:
+        counts["expected_traditional_kernel_count"] = expected
+
+    with pytest.raises(ValueError, match="package mode"):
+        verifier.verify_run_package(
+            run_file,
+            extract_root,
+            package_mode=package_mode,
+            **counts,
+        )
+
+
+def _installed_surface(tmp_path, *, kernel_count, symbols):
+    vendor_root = tmp_path / "vendor"
+    kernel_root = vendor_root / "op_impl/ai_core/tbe/kernel"
+    kernel_root.mkdir(parents=True)
+    for index in range(kernel_count):
+        (kernel_root / f"kernel-{index}.o").touch()
+    opapi = vendor_root / "op_api/lib/libcust_opapi.so"
+    opapi.parent.mkdir(parents=True)
+    opapi.touch()
+    include_root = vendor_root / "op_api/include/aclnnop"
+    include_root.mkdir(parents=True)
+    for header in verifier.REQUIRED_PUBLIC_HEADERS:
+        (include_root / header).touch()
+    return vendor_root, SimpleNamespace(stdout="\n".join(symbols))
+
+
+def test_provider_only_innermost_content_check_defaults_to_exact_zero(
+    tmp_path, monkeypatch
+):
+    vendor_root, nm_result = _installed_surface(
+        tmp_path, kernel_count=1, symbols=_PROVIDER_ONLY_SYMBOLS
+    )
+    monkeypatch.setattr(verifier.subprocess, "run", lambda *args, **kwargs: nm_result)
+
+    with pytest.raises(AssertionError, match="exactly 0"):
+        verifier._verify_mixed_contents(vendor_root, 0, None, "provider-only")
+
+
+def test_mixed_innermost_content_check_defaults_to_minimum_two(
+    tmp_path, monkeypatch
+):
+    vendor_root, nm_result = _installed_surface(
+        tmp_path, kernel_count=0, symbols=_MIXED_SYMBOLS
+    )
+    monkeypatch.setattr(verifier.subprocess, "run", lambda *args, **kwargs: nm_result)
+
+    with pytest.raises(AssertionError, match="at least 2"):
+        verifier._verify_mixed_contents(vendor_root, 0, None, "mixed")
+
+
+@pytest.mark.parametrize("count", [-1, -2])
+def test_provider_only_rejects_negative_traditional_kernel_counts(
+    tmp_path, count
+):
+    run_file = tmp_path / "flash-kda.run"
+    run_file.touch()
+    extract_root = tmp_path / "extract"
+    extract_root.mkdir()
+
+    with pytest.raises(ValueError, match="non-negative"):
+        verifier.verify_run_package(
+            run_file,
+            extract_root,
+            package_mode="provider-only",
+            minimum_traditional_kernel_count=count,
+        )
+
+    with pytest.raises(ValueError, match="non-negative"):
+        verifier.verify_run_package(
+            run_file,
+            extract_root,
+            package_mode="provider-only",
+            expected_traditional_kernel_count=count,
+        )
 
 
 _SUPPORT_DIGEST = "a" * 64

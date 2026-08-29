@@ -45,6 +45,7 @@ option(OP_KERNEL_AICPU_UT         "Enable aicpu kernel ut"          OFF)
 option(UT_TEST_ALL                "Enable all ut"                   OFF)
 option(ENABLE_OOM                 "Enable kernel oom"               OFF)
 option(ENABLE_CANNBOTDSL_PROVIDER_ACLNN "Package CANNBotDSL Provider L0 operators into cust_opapi" OFF)
+option(CANNBOTDSL_PROVIDER_ONLY   "Build only the CANNBotDSL FlashKDA Provider package" OFF)
 option(ENABLE_MSSANITIZER         "Enable mssanitizer mode"         OFF)
 option(ENABLE_DUMP_CCE            "Enable dump_cce mode"            OFF)
 option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
@@ -70,6 +71,32 @@ set(CANNBOTDSL_RUNTIME_ROOT "" CACHE PATH
 set(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY "" CACHE FILEPATH
     "Provider ABI v1 libnnopbase.so used to validate and link the mixed package")
 set_property(CACHE PACKAGE_TYPE PROPERTY STRINGS run rpm deb all)
+
+if(CANNBOTDSL_PROVIDER_ONLY)
+  if(NOT ENABLE_CANNBOTDSL_PROVIDER_ACLNN)
+    message(FATAL_ERROR
+      "CANNBOTDSL_PROVIDER_ONLY requires ENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON")
+  endif()
+  if(NOT "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+    message(FATAL_ERROR
+      "CANNBOTDSL_PROVIDER_ONLY requires ASCEND_COMPUTE_UNIT=ascend950")
+  endif()
+  string(REPLACE "," ";" _cannbotdsl_provider_only_ops "${ASCEND_OP_NAME}")
+  if(NOT "${_cannbotdsl_provider_only_ops}" STREQUAL "flash_kda")
+    message(FATAL_ERROR
+      "CANNBOTDSL_PROVIDER_ONLY requires exactly one ASCEND_OP_NAME=flash_kda")
+  endif()
+
+  # Provider artifacts carry their own executable kernels. The traditional
+  # pre-build, OpDef generation, and tiling-sink paths stay out of this graph.
+  # Shadow the cache for this configure only. Keeping the user's cached
+  # choices intact lets a later CANNBOTDSL_PROVIDER_ONLY=OFF reconfigure
+  # restore the traditional graph without manually repairing three options.
+  set(ENABLE_OPS_KERNEL OFF)
+  set(ENABLE_OPS_HOST OFF)
+  set(ENABLE_TILING_SINK OFF)
+endif()
+
 set(SUPPORTED_PACKAGE_TYPES run rpm deb all)
 if(NOT PACKAGE_TYPE IN_LIST SUPPORTED_PACKAGE_TYPES)
   message(FATAL_ERROR "PACKAGE_TYPE only supports run/rpm/deb/all, got: ${PACKAGE_TYPE}")

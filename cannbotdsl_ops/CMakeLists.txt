@@ -155,19 +155,32 @@ if(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE)
         "FlashKDA acceptance .run and report paths must be absolute")
     endif()
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(CANNBOTDSL_PROVIDER_ONLY)
+      set(_cannbotdsl_package_mode provider-only)
+      set(_cannbotdsl_expected_traditional_kernel_count 0)
+      set(_cannbotdsl_acceptance_description
+        "Running final FlashKDA Provider-only device acceptance")
+    else()
+      set(_cannbotdsl_package_mode mixed)
+      set(_cannbotdsl_expected_traditional_kernel_count 8)
+      set(_cannbotdsl_acceptance_description
+        "Running final FlashKDA mixed-package device acceptance")
+    endif()
     add_custom_target(cannbotdsl_flash_kda_acceptance
       COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_LIST_DIR}/tests/run_flash_kda_acceptance.py"
         --run "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN}"
+        --package-mode ${_cannbotdsl_package_mode}
         --smoke "$<TARGET_FILE:cannbotdsl_flash_kda_aclnn_smoke>"
         --opbase-library "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
         --cannbotdsl-source "${CANNBOTDSL_SOURCE_DIR}"
         --runtime-root "${CANNBOTDSL_RUNTIME_ROOT}"
         --library-dir "$<TARGET_FILE_DIR:opapi_math>"
         --report "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT}"
-        --expected-traditional-kernel-count 8
+        --expected-traditional-kernel-count
+          ${_cannbotdsl_expected_traditional_kernel_count}
       DEPENDS cannbotdsl_flash_kda_aclnn_smoke
-      COMMENT "Running final FlashKDA mixed-package device acceptance"
+      COMMENT "${_cannbotdsl_acceptance_description}"
       USES_TERMINAL
       VERBATIM)
   endif()

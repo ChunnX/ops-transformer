@@ -1,9 +1,10 @@
-# CANNBotDSL Provider 混合算子包
+# CANNBotDSL FlashKDA Provider-only 算子包
 
-本目录把 CANNBotDSL 原生 Provider 算子并入 ops-transformer 的自定义 OPP。开启
-`ENABLE_CANNBOTDSL_PROVIDER_ACLNN` 后，传统 AscendC 算子和 Provider 算子共用
-`libcust_opapi.so` 与 vendor 安装目录；这表示同一个包中可混合两类 L0，而不是为
-同一个算子同时生成两种实现。
+本目录把 CANNBotDSL 原生 Provider 算子并入 ops-transformer 的自定义 OPP。
+开启 `ENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON` 与显式
+`CANNBOTDSL_PROVIDER_ONLY=ON` 后，交付包只保留 FlashKDA Provider 的
+registry、adapter、L0/L2 API 和基础 OPP 布局，不生成 FlashKDA 或 ChunkKDA
+的传统 OpDef、proto、tiling 或 AscendC kernel 目标。
 
 当前首个接入算子是 FlashKDA：
 
@@ -18,7 +19,7 @@
 - `aclnnCustomFlashKdaGetWorkspaceSize` / `aclnnCustomFlashKda` 是随包交付的
   L2 示例/产品入口，在独立 executor 中仅通过公共 `l0op::FlashKda` 组图；
 - L0 executor 内同时包含生成的 workspace 分配、`CopyToNpu`/`CreateView`
-  常量与 view 准备以及 Provider 节点，因而验证了混合执行拓扑，而非仅把
+  常量与 view 准备以及 Provider 节点，因而验证了完整 executor 拓扑，而非仅把
   两类文件放在同一个安装目录。
 
 ## 依赖与 ABI
@@ -57,7 +58,7 @@ SoC 固定 constexpr，三者都不进入 L0 公共签名。新生成包只序�
 `content_key` 分别表示完整物理编译身份和真实 AOT 内容身份，三者不会混用。
 registry 生成阶段会把 binding plan、VariantManifest 与 Provider
 sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape
-或六个 artifact 间的公共 entry 身份任一漂移都会使混合包构建失败。schema v5
+或六个 artifact 间的公共 entry 身份任一漂移都会使 Provider 包构建失败。schema v5
 显式声明 `output_parameters=["o", "st_out"]`；当前生成器已据此生成
 并接入 `FlashKdaEntryArguments`、`PrepareFlashKdaProviderArguments`、
 `FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
@@ -93,13 +94,17 @@ v4 只保留在 CANNBotDSL 框架兼容测试中。
 先构建 CANNBotDSL Python runtime，然后在 ops-transformer 根目录配置：
 
 ```bash
-cmake -S . -B build-provider \
+cmake -S . -B build-provider -G Ninja \
   -DBUILD_OPEN_PROJECT=ON \
   -DBUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG=ON \
   -DASCEND_COMPUTE_UNIT=ascend950 \
+  -DASCEND_OP_NAME=flash_kda \
   -DENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON \
+  -DCANNBOTDSL_PROVIDER_ONLY=ON \
   -DENABLE_BUILD_PKG=ON \
-  -DCANN_3RD_LIB_PATH=/path/to/preinstalled/third_party \
+  -DCANN_3RD_LIB_PATH=/home/z00947297/WORK/CODE/opbase/third_party \
+  -DHOST_PROTOBUF_STATIC_LIB=/home/z00947297/WORK/ENV/cann-9.2.0/x86_64-linux/lib64/libhost_ascend_protobuf.a \
+  -DHOST_PROTOBUF_STATIC_INCLUDE=/home/z00947297/WORK/CODE/opbase/third_party/lib_cache/protobuf_static/include \
   -DCANNBOTDSL_SOURCE_DIR=/path/to/cannbot-dsl \
   -DCANNBOTDSL_RUNTIME_ROOT=/path/to/cannbot-dsl/build/python_packages \
   -DCANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR=/path/to/opbase \
@@ -111,6 +116,20 @@ cmake --build build-provider --target cust_opapi -j
 cmake --install build-provider --prefix /path/to/stage
 cmake --build build-provider --target package -j
 ```
+
+Provider-only 配置会在 configure 阶段 fail-closed：Provider ACLNN 必须开启，
+SoC 必须精确为 `ascend950`，逗号归一化后的 `ASCEND_OP_NAME` 必须精确
+为单个 `flash_kda`。模式内部会关闭传统 host/kernel/tiling-sink 分支，但保留
+`cust_opapi`、`cust_proto`、`cust_opmaster`、`optiling_compat`、Provider registry、
+smoke、acceptance 和 package 目标。未开启 `CANNBOTDSL_PROVIDER_ONLY` 时，原有构建
+模式不受这些严格条件限制。
+
+上述三个 third-party/protobuf 参数是当前服务器的 Ninja configure 规避项，
+不是 FlashKDA 产品依赖。上游 cann-cmake 在 protobuf ExternalProject 的
+`BUILD_COMMAND` 中写入了字面量 `$(MAKE)`；缓存缺失时会生成 Ninja
+`bad $-escape`。此处显式复用 opbase 缓存与 CANN 9.2 host protobuf，避免
+进入该 ExternalProject 构建分支。应由 cann-cmake 上游修复 Ninja 可移植性，
+正式产品配置不应把这些用户目录硬编码路径视为依赖契约。
 
 离线打包时，`CANN_3RD_LIB_PATH` 下可预置 `makeself/makeself.sh`；CPack 会优先
 复用该目录，不要求在 ops-transformer 源码树内另建 `third_party/makeself`。
@@ -159,7 +178,8 @@ python cannbotdsl_ops/tests/verify_flash_kda_aclnn_dump.py \
   --all-golden-samples --summary-only
 ```
 
-正式交付验收应直接消费最终混合 `.run`，而不是手工拼接 build-tree 动态库。配置
+正式交付验收应直接消费最终 Provider-only `.run`，而不是手工拼接 build-tree
+动态库。配置
 时同时指定归档即可生成单一设备验收 target：
 
 ```bash
@@ -204,18 +224,21 @@ packages/vendors/<vendor>_transformer/
         └── artifacts/ascend950pr/<variant-id>/provider.so
 ```
 
-### 混合 `.run` 离线验收
+### Provider-only `.run` 离线验收
 
-`package` 目标生成的同一个自解压包必须同时包含传统 AscendC 算子和 Provider
-算子。建议在安装前使用只解包模式完成归档、内容和 ABI 三层检查：
+`package` 目标生成的自解压包必须包含 Provider 产物和基础 OPP/API 布局，
+且传统 kernel 对象数必须精确为 0。建议在安装前使用只解包模式完成
+归档、内容和 ABI 三层检查：
 
 ```bash
 run_file=/path/to/cann-ops-transformer-<vendor>_linux-<arch>.run
-python cannbotdsl_ops/tests/verify_mixed_run.py --run "${run_file}"
-
-# 发布配置需要锁定传统 kernel 变体数时，可增加精确数量门禁
 python cannbotdsl_ops/tests/verify_mixed_run.py --run "${run_file}" \
-  --expected-traditional-kernel-count 8
+  --package-mode provider-only
+
+# Provider-only 发布必须用精确的零计数证明没有传统 kernel
+python cannbotdsl_ops/tests/verify_mixed_run.py --run "${run_file}" \
+  --package-mode provider-only \
+  --expected-traditional-kernel-count 0
 
 # 下列命令用于按层排查验收失败
 extract_dir=$(mktemp -d /tmp/ops-transformer-run.XXXXXX)
@@ -227,8 +250,13 @@ provider_pkg="${extract_dir}/packages/vendors/<vendor>_transformer/op_impl/cannb
 (cd "${provider_pkg}" && sha256sum -c checksums.sha256)
 
 nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcust_opapi.so" \
-  | grep -E 'aclnn(ChunkKdaFwd|CustomFlashKda|FlashKda)|l0op::FlashKda'
+  | grep -E 'aclnn(CustomFlashKda|FlashKda)|l0op::FlashKda'
 ```
+
+`--package-mode` 同时绑定符号与传统 kernel 数量策略：`provider-only`
+即使省略数量参数也会强制 exact 0，并拒绝显式非零策略；`mixed`
+直接 verifier 默认至少 2 个传统 kernel，CMake/acceptance 发布路径则进一步
+锁定 exact 8。因此 mode 不能只用来切换符号检查。
 
 该 makeself 封装的单独 `--check` 会继续执行内嵌 `install.sh`；内嵌脚本又会忽略
 未知的 `--check` 参数，因此它不是只读检查。必须同时传入 `--noexec` 和
@@ -240,13 +268,17 @@ flattener 返回的同一对象同时完成 predicate、SoC/support/operator 绑
 `(variant_id, content_key)` 双向、重复敏感的身份闭合；v4 只在 CANNBotDSL 框架的
 只读兼容测试中保留。最终检查仍需覆盖 12 个公共参数、2 个输出参数、无公开
 internal/provider 参数、2 个编译器生成态值、覆盖/互斥证明、artifact/content
-身份、包内 checksum、传统 kernel 数量约束、Provider DSO 数量、混合导出符号以及
+身份、包内 checksum、传统 kernel 精确零数量约束、Provider DSO 数量、Provider 导出
+符号以及
 L0/Custom L2 两个公开头文件。
-发布配置还可用命令行参数锁定传统 kernel 的精确数量。
+发布配置和 CMake acceptance target 都会传入
+`--expected-traditional-kernel-count 0`；这是可检验的零对象证明，而不是关闭数量检查。
 
-## 实机验证
+## 历史混合模式实机基线（非当前 Provider-only 验收）
 
-Ascend950PR 上已完成以下验证：
+以下数据来自之前同时包含 ChunkKDA 传统 kernel 的混合包，仅作为 Ascend950PR
+历史功能/时延参考，不能作为当前 CANN 9.2 Provider-only 干净构建、零传统 kernel
+或设备验收已通过的证据：
 
 - 正式矩阵通过 `aclnnCustomFlashKdaGetWorkspaceSize` 组装 L2 executor，最小
   shape 返回 29,430,272 字节；`aclnnCustomFlashKda` 成功入队并同步；
@@ -310,7 +342,6 @@ workspace 分配和 D2H finite/确定性检查。它是当前 Ascend950PR 工程
 - 7 个内部临时张量由 executor workspace 分配并在 launch 前回填地址；
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
-- 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局、六变体最小
-  shape 的完整 CPU golden/代表性 native 对拍、六 shape 基础时延、10 类错误
-  注入，以及双 stream × 20 waves。产品目标输入域确认与扩展、SLA/基线对比、
-  更长 soak 和目标发布包安装验收仍是量产项。
+- 当前 Provider-only 路径已有独立的 configure contract、目标图和零传统 kernel
+  包验收契约；CANN 9.2 单算子全量 AOT、打包、安装与设备验收仍需在后续
+  阶段完成，不引用上述历史混合包结果替代。
