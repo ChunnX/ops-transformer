@@ -24,7 +24,9 @@ namespace NpuArch::Epilogue::Block {
 
 enum class KvBaseTileRegSplitStagesBf16 {
     ONE,
-    TWO
+    TWO,
+    THREE,
+    FOUR
 };
 
 template <
@@ -266,6 +268,12 @@ public:
         } else if (kvBaseTileRegStages == 2) {
             ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::TWO>(
                 sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
+        } else if (kvBaseTileRegStages == 3) {
+            ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::THREE>(
+                sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
+        } else if (kvBaseTileRegStages == 4) {
+            ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::FOUR>(
+                sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
         }
 
         if (!isFirstKvSTile) {
@@ -290,6 +298,16 @@ public:
             } else {
                 ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m,
                                                                       tailN, blockStride, nRound, tailNOdd, tailNEven);
+            }
+        } else if (kvBaseTileRegStages == 3) {
+            if constexpr (FULL_QUANT_FP8) {
+                ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::THREE>(
+                    pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
+            }
+        } else if (kvBaseTileRegStages == 4) {
+            if constexpr (FULL_QUANT_FP8) {
+                ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::FOUR>(
+                    pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
             }
         }
 
@@ -387,8 +405,10 @@ private:
                                                uint16_t S2BaseSize)
     {
         static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO,
-                      "ComputeScaleAndMax only supports ONE Or TWO stages, please use the specialized versions.");
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::THREE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::FOUR,
+                      "ComputeScaleAndMax only supports ONE to FOUR stages, please use the specialized versions.");
     }
 
     template <>
@@ -504,6 +524,87 @@ private:
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpFloatVreg, maxUreg, 1);
         }
         vstas(maxUreg, newMaxUb, 0, POST_UPDATE);
+    }
+
+    template <uint32_t stageNum>
+    __simd_vf__ inline void ComputeScaleAndMaxLarge(__ubuf__ ElementInput *srcUb, __ubuf__ float *newMaxUb,
+        uint16_t m, uint32_t tailN, ElementInput dScale, uint16_t S2BaseSize)
+    {
+        static_assert(stageNum == 3 || stageNum == 4, "Large ND softmax only supports THREE or FOUR stages.");
+        using namespace AscendC::MicroAPI;
+        constexpr static CastTrait castTraitZero = {
+            RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        constexpr static CastTrait castTraitOne = {
+            RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+
+        RegTensor<ElementInput> srcVreg0;
+        RegTensor<ElementInput> srcVreg1;
+        RegTensor<ElementInput> rowMaxVreg;
+        RegTensor<ElementInput> scaleVreg;
+        RegTensor<float> maxFloatVreg0;
+        RegTensor<float> maxFloatVreg1;
+        RegTensor<float> maxTmpFloatVreg;
+        RegTensor<float> maxTmpFloatVreg0;
+        RegTensor<float> maxTmpFloatVreg1;
+        UnalignReg maxUreg;
+        MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
+        MaskReg pregFloatFull = CreateMask<float, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
+
+        Duplicate(scaleVreg, dScale);
+        for (uint16_t i = 0; i < m; ++i) {
+            __ubuf__ ElementInput *srcRow = srcUb + i * S2BaseSize;
+            LoadAlign(srcVreg0, srcRow);
+            LoadAlign(srcVreg1, srcRow + HALF_REP_SIZE);
+            Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
+            Mul(srcVreg1, srcVreg1, scaleVreg, pregFull);
+            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(srcRow, srcVreg0, pregFull);
+            StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                srcRow + HALF_REP_SIZE, srcVreg1, pregFull);
+            Max(rowMaxVreg, srcVreg0, srcVreg1, pregFull);
+
+            LoadAlign(srcVreg0, srcRow + 2 * HALF_REP_SIZE);
+            if constexpr (stageNum == 3) {
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregTailN);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregTailN);
+                Max<ElementInput, MaskMergeMode::MERGING>(
+                    rowMaxVreg, rowMaxVreg, srcVreg0, pregTailN);
+            } else {
+                LoadAlign(srcVreg1, srcRow + 3 * HALF_REP_SIZE);
+                Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
+                Mul(srcVreg1, srcVreg1, scaleVreg, pregTailN);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 2 * HALF_REP_SIZE, srcVreg0, pregFull);
+                StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
+                    srcRow + 3 * HALF_REP_SIZE, srcVreg1, pregTailN);
+                Max<ElementInput, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTailN);
+                Max(rowMaxVreg, rowMaxVreg, srcVreg0, pregFull);
+            }
+            Cast<float, ElementInput, castTraitZero>(maxFloatVreg0, rowMaxVreg, pregFull);
+            Cast<float, ElementInput, castTraitOne>(maxFloatVreg1, rowMaxVreg, pregFull);
+            ReduceMax(maxTmpFloatVreg0, maxFloatVreg0, pregFloatFull);
+            ReduceMax(maxTmpFloatVreg1, maxFloatVreg1, pregFloatFull);
+            Max(maxTmpFloatVreg, maxTmpFloatVreg0, maxTmpFloatVreg1, pregFloatFull);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpFloatVreg, maxUreg, 1);
+        }
+        vstas(maxUreg, newMaxUb, 0, POST_UPDATE);
+    }
+
+    template <>
+    __simd_vf__ inline void ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::THREE>(
+        __ubuf__ ElementInput *srcUb, __ubuf__ float *newMaxUb,
+        uint16_t m, uint32_t tailN, uint32_t, ElementInput dScale, uint16_t S2BaseSize)
+    {
+        ComputeScaleAndMaxLarge<3>(srcUb, newMaxUb, m, tailN, dScale, S2BaseSize);
+    }
+
+    template <>
+    __simd_vf__ inline void ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::FOUR>(
+        __ubuf__ ElementInput *srcUb, __ubuf__ float *newMaxUb,
+        uint16_t m, uint32_t tailN, uint32_t, ElementInput dScale, uint16_t S2BaseSize)
+    {
+        ComputeScaleAndMaxLarge<4>(srcUb, newMaxUb, m, tailN, dScale, S2BaseSize);
     }
 
     template <typename ElementS>
@@ -759,8 +860,10 @@ private:
                                                   uint32_t tailNOdd, uint32_t tailNEven)
     {
         static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO,
-                      "ComputeExpSubSum16FP8 only supports ONE Or TWO stages, please use the specialized versions.");
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::THREE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::FOUR,
+                      "ComputeExpSubSum16FP8 only supports ONE to FOUR stages, please use the specialized versions.");
     }
 
     template <>
@@ -966,6 +1069,173 @@ private:
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+    }
+
+    template <uint32_t stageNum>
+    __simd_vf__ inline void ComputeExpSubSum16FP8Large(__ubuf__ ElementOutput *expUb,
+        __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
+        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
+        uint32_t tailNOdd, uint32_t tailNEven)
+    {
+        static_assert(stageNum == 3 || stageNum == 4, "Large ND softmax only supports THREE or FOUR stages.");
+        using namespace AscendC::MicroAPI;
+        constexpr static CastTrait castTraitZeroUNKNOWN = {
+            RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        constexpr static CastTrait castTraitOneUNKNOWN = {
+            RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        constexpr static CastTrait castTraitZeroRINT = {
+            RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+        constexpr static CastTrait castTraitTwoRINT = {
+            RegLayout::TWO, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
+        RegTensor<ElementInput> expVreg0;
+        RegTensor<ElementInput> expVreg1;
+        RegTensor<float> expFloatVreg0;
+        RegTensor<float> expFloatVreg1;
+        RegTensor<float> expFloatVreg2;
+        RegTensor<float> expFloatVreg3;
+        RegTensor<float> expDstFloatVreg0;
+        RegTensor<float> expDstFloatVreg1;
+        RegTensor<float> expDstFloatVreg2;
+        RegTensor<float> expDstFloatVreg3;
+        RegTensor<float> expSumVreg;
+        RegTensor<float> maxVreg;
+        RegTensor<ElementOutput> pVreg0;
+        RegTensor<ElementOutput> pVreg1;
+        RegTensor<ElementOutput> pVreg2;
+        RegTensor<ElementOutput> pVreg3;
+        RegTensor<ElementOutput> deInterleaveVreg0;
+        RegTensor<ElementOutput> deInterleaveVreg1;
+        RegTensor<ElementOutput> deInterleaveVreg2;
+        RegTensor<ElementOutput> deInterleaveVreg3;
+        UnalignReg expSumUreg;
+
+        MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
+        MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
+        MaskReg pRegBf16All = CreateMask<ElementInput, MaskPattern::ALL>();
+        MaskReg pRegFp32All = CreateMask<float, MaskPattern::ALL>();
+        MaskReg pregFp32TailNOdd = UpdateMask<float>(tailNOdd);
+        MaskReg pregFp32TailNEven = UpdateMask<float>(tailNEven);
+        constexpr float maxValueFP8 = 448.0f;
+
+        for (uint16_t i = 0; i < m; ++i) {
+            __ubuf__ ElementInput *srcRow = srcUb + i * S2BaseSize;
+            __ubuf__ ElementOutput *dstRow = expUb + i * ELE_NUM_PER_C0_FP8;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
+            Duplicate(expSumVreg, 0);
+
+            // First 256 columns: both segments are full.
+            LoadAlign(expVreg0, srcRow);
+            LoadAlign(expVreg1, srcRow + HALF_REP_SIZE);
+            Cast<float, ElementInput, castTraitZeroUNKNOWN>(expFloatVreg0, expVreg0, pRegBf16All);
+            Cast<float, ElementInput, castTraitOneUNKNOWN>(expFloatVreg1, expVreg0, pRegBf16All);
+            Cast<float, ElementInput, castTraitZeroUNKNOWN>(expFloatVreg2, expVreg1, pRegBf16All);
+            Cast<float, ElementInput, castTraitOneUNKNOWN>(expFloatVreg3, expVreg1, pRegBf16All);
+            FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pRegFp32All);
+            FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pRegFp32All);
+            FusedExpSub(expDstFloatVreg2, expFloatVreg2, maxVreg, pRegFp32All);
+            FusedExpSub(expDstFloatVreg3, expFloatVreg3, maxVreg, pRegFp32All);
+            Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg0, pRegFp32All);
+            Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg1, pRegFp32All);
+            Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg2, pRegFp32All);
+            Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg3, pRegFp32All);
+            Muls(expDstFloatVreg0, expDstFloatVreg0, maxValueFP8, pRegFp32All);
+            Muls(expDstFloatVreg1, expDstFloatVreg1, maxValueFP8, pRegFp32All);
+            Muls(expDstFloatVreg2, expDstFloatVreg2, maxValueFP8, pRegFp32All);
+            Muls(expDstFloatVreg3, expDstFloatVreg3, maxValueFP8, pRegFp32All);
+            Cast<ElementOutput, float, castTraitZeroRINT>(pVreg0, expDstFloatVreg0, pRegFp32All);
+            Cast<ElementOutput, float, castTraitTwoRINT>(pVreg1, expDstFloatVreg1, pRegFp32All);
+            Cast<ElementOutput, float, castTraitZeroRINT>(pVreg2, expDstFloatVreg2, pRegFp32All);
+            Cast<ElementOutput, float, castTraitTwoRINT>(pVreg3, expDstFloatVreg3, pRegFp32All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0,
+                (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg2,
+                (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
+            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
+            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVreg2, pVreg2);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                dstRow, deInterleaveVreg0, blockStride, pRegUint8VL128);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                dstRow + blockStride * HALF_VECTOR_SIZE, deInterleaveVreg2, blockStride, pRegUint8VL128);
+
+            // Remaining 128 or 256 columns reuse the same conversion registers.
+            LoadAlign(expVreg0, srcRow + 2 * HALF_REP_SIZE);
+            Cast<float, ElementInput, castTraitZeroUNKNOWN>(expFloatVreg0, expVreg0, pRegBf16All);
+            Cast<float, ElementInput, castTraitOneUNKNOWN>(expFloatVreg1, expVreg0, pRegBf16All);
+            if constexpr (stageNum == 4) {
+                LoadAlign(expVreg1, srcRow + 3 * HALF_REP_SIZE);
+                Cast<float, ElementInput, castTraitZeroUNKNOWN>(expFloatVreg2, expVreg1, pRegBf16All);
+                Cast<float, ElementInput, castTraitOneUNKNOWN>(expFloatVreg3, expVreg1, pRegBf16All);
+                FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pRegFp32All);
+                FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pRegFp32All);
+                FusedExpSub(expDstFloatVreg2, expFloatVreg2, maxVreg, pregFp32TailNEven);
+                FusedExpSub(expDstFloatVreg3, expFloatVreg3, maxVreg, pregFp32TailNOdd);
+            } else {
+                FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pregFp32TailNEven);
+                FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pregFp32TailNOdd);
+            }
+            if constexpr (stageNum == 4) {
+                Add<float, MaskMergeMode::MERGING>(
+                    expSumVreg, expSumVreg, expDstFloatVreg0, pRegFp32All);
+                Add<float, MaskMergeMode::MERGING>(
+                    expSumVreg, expSumVreg, expDstFloatVreg1, pRegFp32All);
+                Add<float, MaskMergeMode::MERGING>(
+                    expSumVreg, expSumVreg, expDstFloatVreg2, pregFp32TailNEven);
+                Add<float, MaskMergeMode::MERGING>(
+                    expSumVreg, expSumVreg, expDstFloatVreg3, pregFp32TailNOdd);
+                Muls(expDstFloatVreg0, expDstFloatVreg0, maxValueFP8, pRegFp32All);
+                Muls(expDstFloatVreg1, expDstFloatVreg1, maxValueFP8, pRegFp32All);
+            } else {
+                Add<float, MaskMergeMode::MERGING>(
+                    expSumVreg, expSumVreg, expDstFloatVreg0, pregFp32TailNEven);
+                Add<float, MaskMergeMode::MERGING>(
+                    expSumVreg, expSumVreg, expDstFloatVreg1, pregFp32TailNOdd);
+                Muls(expDstFloatVreg0, expDstFloatVreg0, maxValueFP8, pregFp32TailNEven);
+                Muls(expDstFloatVreg1, expDstFloatVreg1, maxValueFP8, pregFp32TailNOdd);
+            }
+            Cast<ElementOutput, float, castTraitZeroRINT>(pVreg0, expDstFloatVreg0, pRegFp32All);
+            Cast<ElementOutput, float, castTraitTwoRINT>(pVreg1, expDstFloatVreg1, pRegFp32All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0,
+                (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
+            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVreg0, pVreg0);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                dstRow + 2 * blockStride * HALF_VECTOR_SIZE, deInterleaveVreg0, blockStride, pRegUint8VL128);
+
+            if constexpr (stageNum == 4) {
+                Muls(expDstFloatVreg2, expDstFloatVreg2, maxValueFP8, pregFp32TailNEven);
+                Muls(expDstFloatVreg3, expDstFloatVreg3, maxValueFP8, pregFp32TailNOdd);
+                Cast<ElementOutput, float, castTraitZeroRINT>(pVreg2, expDstFloatVreg2, pRegFp32All);
+                Cast<ElementOutput, float, castTraitTwoRINT>(pVreg3, expDstFloatVreg3, pRegFp32All);
+                Or((RegTensor<uint8_t> &)pVreg2, (RegTensor<uint8_t> &)pVreg2,
+                    (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
+                DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVreg2, pVreg2);
+                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                    dstRow + 3 * blockStride * HALF_VECTOR_SIZE, deInterleaveVreg2, blockStride, pRegUint8VL128);
+            }
+            ReduceSum(expSumVreg, expSumVreg, pRegBf16All);
+            StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
+        }
+        vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+    }
+
+    template <>
+    __simd_vf__ inline void ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::THREE>(
+        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb,
+        __ubuf__ float *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
+        uint32_t tailNOdd, uint32_t tailNEven)
+    {
+        ComputeExpSubSum16FP8Large<3>(
+            expUb, srcUb, nowMaxUb, expSumUb, m, tailN, blockStride, S2BaseSize, tailNOdd, tailNEven);
+    }
+
+    template <>
+    __simd_vf__ inline void ComputeExpSubSum16FP8<KvBaseTileRegSplitStagesBf16::FOUR>(
+        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb,
+        __ubuf__ float *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
+        uint32_t tailNOdd, uint32_t tailNEven)
+    {
+        ComputeExpSubSum16FP8Large<4>(
+            expUb, srcUb, nowMaxUb, expSumUb, m, tailN, blockStride, S2BaseSize, tailNOdd, tailNEven);
     }
 
     __simd_vf__ inline void UpdateExpSumAndExpMax(__ubuf__ float *sumUb, __ubuf__ float *expMaxUb,

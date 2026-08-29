@@ -230,7 +230,10 @@ public:
         auto l1QTensorTla = tla::MakeTensor(l1QTensor[0], l1QLayoutTla, Arch::PositionL1{});
 
         // P full base tile already on L1
-        uint32_t nL1LoopNum = CeilDiv(kSTile, l1BTileN);
+        uint32_t nL1LoopNumAct = CeilDiv(kSTile, l1BTileN);
+        uint32_t nL1LoopNumBase = CeilDiv(kvSBaseTile, l1BTileN);
+        uint32_t nL0LoopNumPerL1Tile = CeilDiv(l1BTileN, L0_TILE_N);
+        uint32_t nL0LoopNumBase = CeilDiv(kvSBaseTile, L0_TILE_N);
         uint32_t mL0LoopNum = CeilDiv(qSTile, L0_TILE_M);
         uint32_t kL0LoopNum = CeilDiv(embed, L0_TILE_K);
 
@@ -239,9 +242,10 @@ public:
         // which means a column in l0C cannot be chunked and processed by dualMode FixPipe seperately.
         // therefore, FixPipe won't launch until each portion(chunked only by columns, based on nbuffer strategy)
         // of the base tile is ready on l0C
-        for (uint32_t nL1Itr = 0; nL1Itr < nL1LoopNum; nL1Itr++) {
-            uint32_t l1TileNAct = (nL1Itr == nL1LoopNum - 1) ? (kSTile - nL1Itr * l1BTileN) : l1BTileN;
-            uint32_t nLoopCounterL1 = GetCurLoopCounter(gatheredKvSTileIdx, nL1LoopNum, nL1Itr);
+        for (uint32_t nL1Itr = 0; nL1Itr < nL1LoopNumAct; nL1Itr++) {
+            uint32_t l1TileNAct =
+                (nL1Itr == nL1LoopNumAct - 1) ? (kSTile - nL1Itr * l1BTileN) : l1BTileN;
+            uint32_t nLoopCounterL1 = gatheredKvSTileIdx * nL1LoopNumBase + nL1Itr;
             uint32_t l1KBufId = nLoopCounterL1 % l1KBufNum;
             uint32_t l1BEventId = l1KBufId + 1;
             auto l1KLayoutTla = tla::MakeLayout<ElementK, LayoutTagL1B>(embed, l1TileNAct);
@@ -255,9 +259,9 @@ public:
             uint32_t nL0LoopNum = CeilDiv(l1TileNAct, L0_TILE_N);
             for (uint32_t nL0Itr = 0; nL0Itr < nL0LoopNum; nL0Itr++) {
                 uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (l1TileNAct - nL0Itr * L0_TILE_N) : L0_TILE_N;
-                uint32_t nLoopCounterL0 = GetCurLoopCounter(nL1Itr, nL0LoopNum, nL0Itr);
+                uint32_t nLoopCounterL0 = nL1Itr * nL0LoopNumPerL1Tile + nL0Itr;
                 // l0C nbuffer chunked only in n loop
-                uint32_t l0CLoopCounter = GetCurLoopCounter(nLoopCounterL1, nL0LoopNum, nL0Itr);
+                uint32_t l0CLoopCounter = gatheredKvSTileIdx * nL0LoopNumBase + nLoopCounterL0;
                 uint32_t l0CBufId = l0CLoopCounter % L0_STAGES;
                 uint32_t l0CEventId = l0CBufId;
                 auto l0CLayoutTla = tla::MakeLayoutL0C(qSTile, l0TileNAct);
@@ -320,14 +324,15 @@ public:
                             l0TileNAct,
                             l0TileKAct,
                             initMmad);
-                        if (l1ToL0ANoRepeatFlag && (nL1Itr == nL1LoopNum - 1) && (nL0Itr == nL0LoopNum - 1)) {
+                        if (l1ToL0ANoRepeatFlag && (nL1Itr == nL1LoopNumAct - 1) &&
+                            (nL0Itr == nL0LoopNum - 1)) {
                             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                         }
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                     }
                 }
                 // fixpipe
-                if (nL0Itr == 0) {
+                if ((nL1Itr == 0) && (nL0Itr == 0)) {
                     // reverse crossCoreSync, do fixPipe only after ubCTensor is fully released
                     WaitCrossCoreSync<4, PIPE_FIX>(mm1ToSmFlag);
                 }
@@ -339,8 +344,9 @@ public:
                 // valid rows in AIV1: [mFixPAligned8 / 2, qSTile - 1]
                 uint32_t mPerSubCore = RESCALE_ON_CUBE ? RoundUp(qSTile, 64) / 2 : RoundUp(qSTile, 8) / 2;
                 uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
+                uint32_t nGlobalOffset = nL1Itr * l1BTileN + nL0Itr * L0_TILE_N;
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
-                    tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mPerSubCore, nFixPAligned16));
+                    tla::MakeCoord(0, nGlobalOffset), tla::MakeShape(mPerSubCore, nFixPAligned16));
                 auto l0CTensorTlaTileSub0 = GetTile(l0CTensorTla,
                         tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
                 auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,

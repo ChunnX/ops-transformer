@@ -860,10 +860,10 @@ bool BSATiling::IsFp8NdRescaleOnCubeEnabled() const
 {
     if (dataType_ != ge::DT_FLOAT8_E4M3FN ||
         embeddingSize_ > D_SIZE_128 || maskType_ != 0 ||
-        blockShapeY_ < TILE_SIZE_256 || blockShapeY_ % TILE_SIZE_256 != 0) {
+        blockShapeY_ < TILE_SIZE_512 || blockShapeY_ % TILE_SIZE_512 != 0) {
         return false;
     }
-    uint32_t blockShapeRatio = static_cast<uint32_t>(blockShapeY_) / TILE_SIZE_256;
+    uint32_t blockShapeRatio = static_cast<uint32_t>(blockShapeY_) / TILE_SIZE_512;
     return (blockShapeRatio & (blockShapeRatio - 1)) == 0;
 }
 
@@ -871,7 +871,7 @@ void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
     if (IsFp8NdRescaleOnCubeEnabled()) {
-        kvBaseTile_ = TILE_SIZE_256;
+        kvBaseTile_ = TILE_SIZE_512;
     } else if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
         kvBaseTile_ = TILE_SIZE_256;
     } else {
@@ -1022,7 +1022,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         kL1BufNum_ = DUO_BUF;
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发。
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;
+        mm2L1TileKLeft_ = IsFp8NdRescaleOnCubeEnabled() ? TILE_SIZE_512 : TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
