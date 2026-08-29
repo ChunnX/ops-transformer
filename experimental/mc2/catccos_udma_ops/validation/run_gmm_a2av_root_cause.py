@@ -49,55 +49,56 @@ DEFAULT_CASES = HERE / "cases" / "grouped_mat_mul_all_to_allv.yaml"
 # if it hangs, every discriminating result and the single-generation reuse
 # manifest have already been flushed to disk.
 DIAGNOSTIC_MODES = (
-    "serialized_default",
-    "serialized_delay",
-    "serialized_fix_bypass",
-    "serialized_mte_republish",
-    "rolling_udma_ack",
-    "rolling_fix_bypass",
-    "rolling_bypass_udma_ack",
+    "official_barrier_exact",
+    "peer_generation_release_acquire",
+    "peer_generation_acquire_sync",
+    "peer_generation_release_fence",
+    "peer_generation_baseline",
     "production",
 )
 
 MODE_DESCRIPTIONS = {
-    "serialized_default": {
-        "schedule": "per-round all-PE producer and consumer barriers",
+    "official_barrier_exact": {
+        "schedule": (
+            "official pre-GET and stage-reuse all-PE barriers; no explicit "
+            "SyncAll; repeat-safe tail drain"
+        ),
         "fix_staging_l2": "default",
-        "consumer_ack": "global round barrier",
+        "producer_ready": "official all-PE barrier",
+        "consumer_ack": "official all-PE stage-reuse barrier",
     },
-    "serialized_delay": {
-        "schedule": "serialized plus one extra pre-GET all-PE barrier",
+    "peer_generation_release_acquire": {
+        "schedule": "rolling stages with both isolated ordering edges",
         "fix_staging_l2": "default",
-        "consumer_ack": "global round barrier",
+        "producer_ready": "epoch+round slots with source release fence",
+        "consumer_acquire": "post-ready local all-AIV SyncAll",
+        "consumer_ack": "epoch+round slots after checked GET quiet",
     },
-    "serialized_fix_bypass": {
-        "schedule": "per-round all-PE producer and consumer barriers",
-        "fix_staging_l2": "CACHE_MODE_DISABLE on FIX destination",
-        "consumer_ack": "global round barrier",
-    },
-    "serialized_mte_republish": {
-        "schedule": "per-round all-PE producer and consumer barriers",
-        "fix_staging_l2": "default; FIX output is republished GM->UB->shadow GM",
-        "consumer_ack": "global round barrier",
-    },
-    "rolling_udma_ack": {
-        "schedule": "production rolling stages",
+    "peer_generation_acquire_sync": {
+        "schedule": "rolling stages; destination acquire edge only",
         "fix_staging_l2": "default",
-        "consumer_ack": "UDMA WRITE_WITH_NOTIFY 64-bit generation",
+        "producer_ready": "epoch+round slots without source fence",
+        "consumer_acquire": "post-ready local all-AIV SyncAll",
+        "consumer_ack": "epoch+round slots after checked GET quiet",
     },
-    "rolling_fix_bypass": {
-        "schedule": "production rolling stages",
-        "fix_staging_l2": "CACHE_MODE_DISABLE on FIX destination",
-        "consumer_ack": "MTE SIGNAL_SET generation",
+    "peer_generation_release_fence": {
+        "schedule": "rolling stages; source release edge only",
+        "fix_staging_l2": "default",
+        "producer_ready": "epoch+round slots with source release fence",
+        "consumer_acquire": "same-core signal wait then GET",
+        "consumer_ack": "epoch+round slots after checked GET quiet",
     },
-    "rolling_bypass_udma_ack": {
-        "schedule": "production rolling stages",
-        "fix_staging_l2": "CACHE_MODE_DISABLE on FIX destination",
-        "consumer_ack": "UDMA WRITE_WITH_NOTIFY 64-bit generation",
+    "peer_generation_baseline": {
+        "schedule": "rolling stages; no extra release/acquire edge",
+        "fix_staging_l2": "default",
+        "producer_ready": "epoch+round slots without source fence",
+        "consumer_acquire": "same-core signal wait then GET",
+        "consumer_ack": "epoch+round slots after checked GET quiet",
     },
     "production": {
-        "schedule": "production rolling stages",
+        "schedule": "current production rolling stages",
         "fix_staging_l2": "default",
+        "producer_ready": "clear + launch epoch + round slot",
         "consumer_ack": "MTE SIGNAL_SET generation",
     },
 }
@@ -144,7 +145,7 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
                 "production path fails; input and Golden reuse was verified."
             ),
         }
-    if not production_available and timed_out_mode != "production":
+    if not production_available and timed_out_mode is None:
         return {
             "classification": "infrastructure_or_preproduction_timeout",
             "conclusive": False,
@@ -153,96 +154,103 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
                 "torchrun.log, and runtime_logs before drawing a kernel conclusion."
             ),
         }
-
-    ack = passed("rolling_udma_ack")
-    bypass = passed("rolling_fix_bypass")
-    combined = passed("rolling_bypass_udma_ack")
-    if ack and not bypass:
+    if timed_out_mode and timed_out_mode != "production":
         return {
-            "classification": "consumer_ack_publication_or_stage_reuse",
-            "conclusive": True,
-            "next_action": (
-                "Promote the 64-bit UDMA WRITE_WITH_NOTIFY consumer ack while "
-                "keeping the default FIX/L2 policy."
-            ),
-        }
-    if bypass and not ack:
-        return {
-            "classification": "fix_staging_l2_visibility",
-            "conclusive": True,
-            "next_action": (
-                "The rolling schedule is correct only when FIX staging bypasses "
-                "L2. Narrow the cache treatment before accepting its performance cost."
-            ),
-        }
-    if combined and not ack and not bypass:
-        return {
-            "classification": "combined_fix_visibility_and_ack_ordering",
-            "conclusive": True,
-            "next_action": (
-                "Neither isolated change is sufficient; retain both in the next "
-                "candidate and then measure the independent performance costs."
-            ),
-        }
-    if ack and bypass:
-        return {
-            "classification": "multiple_independent_timing_mitigations",
+            "classification": "diagnostic_protocol_timeout",
             "conclusive": False,
+            "evidence_modes": [timed_out_mode],
+            "successful_modes": [
+                mode for mode in DIAGNOSTIC_MODES
+                if passed(mode)
+            ],
             "next_action": (
-                "Both isolated rolling changes pass. Repeat more launches before "
-                "choosing one: either may be masking a timing-sensitive producer edge."
+                "The persistent run stopped inside a diagnostic mode before the "
+                "production comparison. Inspect progress.json and runtime logs; "
+                "completed earlier modes remain valid and reuse the same data."
             ),
         }
 
-    serialized = passed("serialized_default")
-    delayed = passed("serialized_delay")
-    serialized_bypass = passed("serialized_fix_bypass")
-    republished = passed("serialized_mte_republish")
-    if serialized:
+    official = passed("official_barrier_exact")
+    strong = passed("peer_generation_release_acquire")
+    acquire = passed("peer_generation_acquire_sync")
+    release = passed("peer_generation_release_fence")
+    baseline = passed("peer_generation_baseline")
+
+    if baseline:
         return {
-            "classification": "rolling_stage_lifecycle_or_cross_rank_ordering",
+            "classification": "legacy_clear_barrier_or_aba_protocol",
             "conclusive": True,
+            "evidence_modes": ["peer_generation_baseline"],
             "next_action": (
-                "Data/layout and default L2 are correct under strict round "
-                "lifecycle. Repair the rolling producer/consumer protocol; do "
-                "not add global barriers to the production fast path."
+                "Adopt epoch+round ready and completion slots without clearing "
+                "them at launch entry. The extra release/acquire edges are not "
+                "needed by this result."
             ),
         }
-    if delayed and not serialized:
+    if acquire and release:
         return {
-            "classification": "fix_to_udma_visibility_latency",
-            "conclusive": True,
+            "classification": "multiple_independent_ordering_mitigations",
+            "conclusive": False,
+            "evidence_modes": [
+                "peer_generation_acquire_sync",
+                "peer_generation_release_fence",
+            ],
             "next_action": (
-                "A rendezvous alone is insufficient but an additional device "
-                "interval works, proving a missing FIX-to-UDMA publication edge."
+                "Both isolated edges pass while the baseline fails. Increase "
+                "launches before choosing the lower-cost edge because either "
+                "may be timing-mask rather than the unique missing guarantee."
             ),
         }
-    if serialized_bypass and not serialized:
+    if acquire:
         return {
-            "classification": "fix_staging_l2_visibility",
+            "classification": "missing_destination_acquire_sync",
             "conclusive": True,
+            "evidence_modes": ["peer_generation_acquire_sync"],
             "next_action": (
-                "Serialized default fails while FIX cache bypass passes; focus on "
-                "the producer's staging visibility, not GET completion ack."
+                "Keep the epoch+round protocol and add the post-ready local "
+                "all-AIV SyncAll before UDMA GET; a source release fence is not "
+                "required by the isolated comparison."
             ),
         }
-    if republished and not serialized:
+    if release:
         return {
-            "classification": "fix_output_publication_path",
+            "classification": "missing_source_release_fence",
             "conclusive": True,
+            "evidence_modes": ["peer_generation_release_fence"],
             "next_action": (
-                "GM->UB->shadow-GM republish makes the same values readable. Add "
-                "the narrowest explicit FIX publication mechanism or redesign "
-                "the staging writer."
+                "Keep the epoch+round protocol and publish producer-ready only "
+                "after the source release fence; the extra destination SyncAll "
+                "is not required by the isolated comparison."
+            ),
+        }
+    if strong:
+        return {
+            "classification": "missing_release_and_acquire_edges",
+            "conclusive": True,
+            "evidence_modes": ["peer_generation_release_acquire"],
+            "next_action": (
+                "Neither isolated edge is sufficient. Retain both source release "
+                "and destination acquire edges, then measure their combined cost."
+            ),
+        }
+    if official:
+        return {
+            "classification": "peer_signal_protocol_lacks_barrier_guarantee",
+            "conclusive": True,
+            "evidence_modes": ["official_barrier_exact"],
+            "next_action": (
+                "The official all-PE protocol proves the GMM payload, layout, "
+                "and GET path. The peer signal protocol still lacks a guarantee "
+                "that neither tested release/acquire edge supplies alone."
             ),
         }
     return {
-        "classification": "not_isolated_by_synchronization_matrix",
+        "classification": "not_isolated_by_release_acquire_matrix",
         "conclusive": False,
         "next_action": (
-            "All synchronized variants failed. Investigate target-order layout, "
-            "route offsets, GMM production, or Golden construction using the "
-            "per-segment and Top-K artifacts."
+            "Even the official barrier and strongest peer-generation protocol "
+            "failed. Investigate target-order layout, route offsets, GMM output, "
+            "or Golden construction using the per-segment and Top-K artifacts."
         ),
     }
 
@@ -424,8 +432,8 @@ def main():
         raise ValueError("this matrix supports grouped_mat_mul_all_to_allv only")
     if case["route"] != "balanced":
         raise ValueError(
-            "serialized modes require route: balanced; use ordinary accuracy "
-            "tests for imbalanced-route validation"
+            "official_barrier_exact requires route: balanced; use ordinary "
+            "accuracy tests for imbalanced-route validation"
         )
 
     built_wheel = _build_and_install() if args.build_install else None

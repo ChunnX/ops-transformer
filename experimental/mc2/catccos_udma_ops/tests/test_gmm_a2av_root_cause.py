@@ -24,73 +24,102 @@ def _results(**overrides):
     ]
 
 
-def test_production_runs_last_after_all_safe_discriminators():
-    assert DIAGNOSTIC_MODES[-1] == "production"
-    assert DIAGNOSTIC_MODES[:4] == (
-        "serialized_default",
-        "serialized_delay",
-        "serialized_fix_bypass",
-        "serialized_mte_republish",
+def _method_body(source, method, next_method):
+    start = source.index("void {}".format(method))
+    end = source.index("void {}".format(next_method), start)
+    return source[start:end]
+
+
+def test_safe_protocols_run_first_and_production_runs_last():
+    assert DIAGNOSTIC_MODES == (
+        "official_barrier_exact",
+        "peer_generation_release_acquire",
+        "peer_generation_acquire_sync",
+        "peer_generation_release_fence",
+        "peer_generation_baseline",
+        "production",
     )
 
 
-def test_udma_ack_isolated_pass_selects_ack_publication_fix():
-    decision = classify_results(_results(rolling_udma_ack=True))
+def test_peer_baseline_pass_is_epoch_clear_or_aba_protocol():
+    decision = classify_results(_results(peer_generation_baseline=True))
+    assert decision["classification"] == "legacy_clear_barrier_or_aba_protocol"
+    assert decision["conclusive"]
+
+
+def test_acquire_only_pass_selects_destination_acquire_sync():
+    decision = classify_results(
+        _results(peer_generation_acquire_sync=True)
+    )
+    assert decision["classification"] == "missing_destination_acquire_sync"
+    assert decision["conclusive"]
+
+
+def test_release_only_pass_selects_source_release_fence():
+    decision = classify_results(
+        _results(peer_generation_release_fence=True)
+    )
+    assert decision["classification"] == "missing_source_release_fence"
+    assert decision["conclusive"]
+
+
+def test_only_combined_mode_passes_requires_both_edges():
+    decision = classify_results(
+        _results(peer_generation_release_acquire=True)
+    )
+    assert decision["classification"] == "missing_release_and_acquire_edges"
+    assert decision["conclusive"]
+
+
+def test_official_only_pass_is_signal_protocol_gap():
+    decision = classify_results(_results(official_barrier_exact=True))
     assert decision["classification"] == (
-        "consumer_ack_publication_or_stage_reuse"
+        "peer_signal_protocol_lacks_barrier_guarantee"
     )
     assert decision["conclusive"]
 
 
-def test_fix_bypass_isolated_pass_selects_staging_visibility():
-    decision = classify_results(_results(rolling_fix_bypass=True))
-    assert decision["classification"] == "fix_staging_l2_visibility"
-    assert decision["conclusive"]
-
-
-def test_only_combined_rolling_mode_passes_is_classified_as_combined():
-    decision = classify_results(_results(rolling_bypass_udma_ack=True))
+def test_both_isolated_edges_passing_is_timing_sensitive():
+    decision = classify_results(_results(
+        peer_generation_acquire_sync=True,
+        peer_generation_release_fence=True,
+    ))
     assert decision["classification"] == (
-        "combined_fix_visibility_and_ack_ordering"
+        "multiple_independent_ordering_mitigations"
     )
-    assert decision["conclusive"]
-
-
-def test_serialized_default_pass_is_stage_lifecycle():
-    decision = classify_results(_results(serialized_default=True))
-    assert decision["classification"] == (
-        "rolling_stage_lifecycle_or_cross_rank_ordering"
-    )
-    assert decision["conclusive"]
-
-
-def test_serialized_delay_only_pass_is_visibility_latency():
-    decision = classify_results(_results(serialized_delay=True))
-    assert decision["classification"] == "fix_to_udma_visibility_latency"
-    assert decision["conclusive"]
-
-
-def test_mte_republish_only_pass_is_fix_publication_path():
-    decision = classify_results(_results(serialized_mte_republish=True))
-    assert decision["classification"] == "fix_output_publication_path"
-    assert decision["conclusive"]
+    assert not decision["conclusive"]
 
 
 def test_cq_status_overrides_accuracy_results():
-    results = _results(serialized_default=True)
+    results = _results(official_barrier_exact=True)
     results[0]["cq_failure_count"] = 1
     decision = classify_results(results)
     assert decision["classification"] == "udma_get_cq_or_transport_failure"
     assert decision["conclusive"]
 
 
+def test_production_pass_means_failure_did_not_reproduce():
+    decision = classify_results(_results(production=True))
+    assert decision["classification"] == "production_did_not_reproduce"
+    assert not decision["conclusive"]
+
+
 def test_production_timeout_can_still_use_prior_matrix():
-    results = _results(rolling_udma_ack=True)[:-1]
+    results = _results(peer_generation_acquire_sync=True)[:-1]
     decision = classify_results(results, timed_out_mode="production")
-    assert decision["classification"] == (
-        "consumer_ack_publication_or_stage_reuse"
-    )
+    assert decision["classification"] == "missing_destination_acquire_sync"
     assert decision["conclusive"]
+
+
+def test_diagnostic_timeout_is_not_overclassified_from_partial_matrix():
+    results = _results(official_barrier_exact=True)[:2]
+    results[1].update({"passed": False, "timed_out": True})
+    decision = classify_results(
+        results, timed_out_mode="peer_generation_release_acquire"
+    )
+    assert decision["classification"] == "diagnostic_protocol_timeout"
+    assert not decision["conclusive"]
+    assert decision["successful_modes"] == ["official_barrier_exact"]
 
 
 def test_worker_generates_inputs_and_golden_before_the_mode_loop():
@@ -117,7 +146,39 @@ def test_runner_uses_one_persistent_torchrun_and_one_wheel():
     assert '"--build-install", action="store_true"' in runner
 
 
-def test_kernel_exposes_runtime_modes_and_nonprintf_status():
+def test_kernel_keeps_official_and_peer_protocols_disjoint():
+    kernel = (
+        PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" /
+        "catccos" / "dgemm" / "kernel" /
+        "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    official = _method_body(
+        kernel, "RunOfficialBarrierAiv", "RunPeerGenerationAiv"
+    )
+    peer = _method_body(
+        kernel, "RunPeerGenerationAiv", "RunProductionAiv"
+    )
+    production = kernel[kernel.index("void RunProductionAiv"):]
+
+    assert official.count("aclshmemx_barrier_all_vec()") >= 2
+    assert "FinalizeBlockLoopWithStatus" in official
+    assert "AscendC::SyncAll" not in official
+    assert "aclshmem_fence" not in official
+
+    assert "aclshmemx_barrier_all_vec" not in peer
+    assert peer.count("AscendC::SyncAll<true>()") == 3
+    assert "GmmA2avDiagnosticUsesAcquireSync" in peer
+    assert "GmmA2avDiagnosticUsesReleaseFence" in peer
+    assert "ProducerReadyEpochOffset" in peer
+    assert "ProducerReadyRoundOffset" in peer
+    assert "ConsumerDoneEpochOffset" in peer
+    assert "ConsumerDoneRoundOffset" in peer
+
+    assert "aclshmemx_barrier_all_vec()" in production
+    assert "AscendC::SyncAll<true>()" in production
+
+
+def test_kernel_and_host_expose_the_new_runtime_matrix():
     kernel = (
         PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" /
         "catccos" / "dgemm" / "kernel" /
@@ -130,8 +191,9 @@ def test_kernel_exposes_runtime_modes_and_nonprintf_status():
     for mode in DIAGNOSTIC_MODES:
         assert 'value == "{}"'.format(mode) in host
     assert "GMM_A2AV_DIAGNOSTIC_PRODUCTION = 0" in kernel
-    assert "GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH" in kernel
-    assert "aclshmemx_udma_put_signal_nbi<uint8_t, PIPE_S>" in kernel
+    assert "GMM_A2AV_DIAGNOSTIC_OFFICIAL_BARRIER_EXACT" in kernel
+    assert "GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_ACQUIRE" in kernel
+    assert "GMM_A2AV_DIAGNOSTIC_SERIALIZED" not in kernel
     assert "syncDiagnosticStatus" in kernel
     assert "DIAGNOSTIC_STATUS_OFFSET_BYTES" in host
     assert "_grouped_mat_mul_all_to_allv_diagnostic_status" in host

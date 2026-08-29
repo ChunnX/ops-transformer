@@ -41,33 +41,27 @@ uint32_t GroupedMatMulAllToAllVDiagnosticModeFromEnv()
     if (value == "production") {
         return GMM_A2AV_DIAGNOSTIC_PRODUCTION;
     }
-    if (value == "serialized_default") {
-        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_DEFAULT;
+    if (value == "official_barrier_exact") {
+        return GMM_A2AV_DIAGNOSTIC_OFFICIAL_BARRIER_EXACT;
     }
-    if (value == "serialized_delay") {
-        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_DELAY;
+    if (value == "peer_generation_baseline") {
+        return GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_BASELINE;
     }
-    if (value == "serialized_fix_bypass") {
-        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_FIX_BYPASS;
+    if (value == "peer_generation_acquire_sync") {
+        return GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_ACQUIRE_SYNC;
     }
-    if (value == "serialized_mte_republish") {
-        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH;
+    if (value == "peer_generation_release_fence") {
+        return GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_FENCE;
     }
-    if (value == "rolling_udma_ack") {
-        return GMM_A2AV_DIAGNOSTIC_ROLLING_UDMA_ACK;
-    }
-    if (value == "rolling_fix_bypass") {
-        return GMM_A2AV_DIAGNOSTIC_ROLLING_FIX_BYPASS;
-    }
-    if (value == "rolling_bypass_udma_ack") {
-        return GMM_A2AV_DIAGNOSTIC_ROLLING_BYPASS_UDMA_ACK;
+    if (value == "peer_generation_release_acquire") {
+        return GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_ACQUIRE;
     }
     TORCH_CHECK(false,
         "CATCCOS_UDMA_GMM_A2AV_DIAGNOSTIC_MODE must be one of "
-        "production, serialized_default, serialized_delay, "
-        "serialized_fix_bypass, serialized_mte_republish, "
-        "rolling_udma_ack, rolling_fix_bypass, or "
-        "rolling_bypass_udma_ack; got ", value);
+        "production, official_barrier_exact, "
+        "peer_generation_baseline, peer_generation_acquire_sync, "
+        "peer_generation_release_fence, or "
+        "peer_generation_release_acquire; got ", value);
     return GMM_A2AV_DIAGNOSTIC_PRODUCTION;
 }
 
@@ -316,18 +310,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
                 "kernel tiling requires ", requiredWorkspaceBytes,
                 " symmetric workspace bytes, exceeding ",
                 GroupedMatMulAllToAllVUdmaDefaultConfig::kSymmetricDataBytes);
-    if (diagnosticMode == Catccos::DGemm::Kernel::
-            GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH) {
-        TORCH_CHECK(requiredWorkspaceBytes <=
-                        GroupedMatMulAllToAllVUdmaDefaultConfig::
-                            kSymmetricDataBytes / 2,
-                    "serialized_mte_republish requires the ordinary staging "
-                    "footprint to fit in half of symmetric workspace; required ",
-                    requiredWorkspaceBytes, " bytes, half-workspace capacity ",
-                    GroupedMatMulAllToAllVUdmaDefaultConfig::
-                        kSymmetricDataBytes / 2);
-    }
-
     // This fused direction consumes sum(global_tokens) rows and returns
     // sum(local_tokens) rows. Use the caller-provided capacity on the reusable
     // out path to avoid a device-to-host reduction in the hot launch path.

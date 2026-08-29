@@ -452,7 +452,7 @@ def main():
         raise ValueError("root-cause worker supports grouped_mat_mul_all_to_allv only")
     if case["route"] != "balanced":
         raise ValueError(
-            "serialized per-round modes require a balanced route with identical "
+            "official_barrier_exact requires a balanced route with identical "
             "communication-loop counts on every rank"
         )
 

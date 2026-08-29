@@ -24,39 +24,38 @@ using Catlass::MatrixCoord;
 using Catlass::GemmCoord;
 
 // Runtime-selectable, single-wheel diagnostics for the FIX -> symmetric GM ->
-// UDMA GET pipeline.  Production is deliberately zero so the normal launch
-// path does not acquire any diagnostic synchronization or cache policy.
+// UDMA GET pipeline. Production is deliberately zero so the normal launch
+// path remains byte-for-byte selectable from the public operator. The five
+// diagnostic modes form a release/acquire matrix around the protocol used by
+// the official MatMulAllToAll example.
 enum GroupedMatmulAllToAllVDiagnosticMode : uint32_t {
     GMM_A2AV_DIAGNOSTIC_PRODUCTION = 0,
-    GMM_A2AV_DIAGNOSTIC_SERIALIZED_DEFAULT = 1,
-    GMM_A2AV_DIAGNOSTIC_SERIALIZED_DELAY = 2,
-    GMM_A2AV_DIAGNOSTIC_SERIALIZED_FIX_BYPASS = 3,
-    GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH = 4,
-    GMM_A2AV_DIAGNOSTIC_ROLLING_UDMA_ACK = 5,
-    GMM_A2AV_DIAGNOSTIC_ROLLING_FIX_BYPASS = 6,
-    GMM_A2AV_DIAGNOSTIC_ROLLING_BYPASS_UDMA_ACK = 7,
+    GMM_A2AV_DIAGNOSTIC_OFFICIAL_BARRIER_EXACT = 1,
+    GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_BASELINE = 2,
+    GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_ACQUIRE_SYNC = 3,
+    GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_FENCE = 4,
+    GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_ACQUIRE = 5,
 };
 
 CATLASS_HOST_DEVICE
-constexpr bool GmmA2avDiagnosticIsSerialized(uint32_t mode)
+constexpr bool GmmA2avDiagnosticIsPeerGeneration(uint32_t mode)
 {
-    return mode >= GMM_A2AV_DIAGNOSTIC_SERIALIZED_DEFAULT &&
-        mode <= GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH;
+    return mode >= GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_BASELINE &&
+        mode <= GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_ACQUIRE;
 }
 
 CATLASS_HOST_DEVICE
-constexpr bool GmmA2avDiagnosticUsesFixBypass(uint32_t mode)
+constexpr bool GmmA2avDiagnosticUsesAcquireSync(uint32_t mode)
 {
-    return mode == GMM_A2AV_DIAGNOSTIC_SERIALIZED_FIX_BYPASS ||
-        mode == GMM_A2AV_DIAGNOSTIC_ROLLING_FIX_BYPASS ||
-        mode == GMM_A2AV_DIAGNOSTIC_ROLLING_BYPASS_UDMA_ACK;
+    return mode == GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_ACQUIRE_SYNC ||
+        mode == GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_ACQUIRE;
 }
 
 CATLASS_HOST_DEVICE
-constexpr bool GmmA2avDiagnosticUsesUdmaAck(uint32_t mode)
+constexpr bool GmmA2avDiagnosticUsesReleaseFence(uint32_t mode)
 {
-    return mode == GMM_A2AV_DIAGNOSTIC_ROLLING_UDMA_ACK ||
-        mode == GMM_A2AV_DIAGNOSTIC_ROLLING_BYPASS_UDMA_ACK;
+    return mode == GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_FENCE ||
+        mode == GMM_A2AV_DIAGNOSTIC_PEER_GENERATION_RELEASE_ACQUIRE;
 }
 
 template <
@@ -121,8 +120,6 @@ public:
         SYNC_SLOT_RANKS * SIGNAL_CACHE_LINE_BYTES;
     static constexpr uint64_t DIAGNOSTIC_STATUS_BYTES =
         SYNC_SLOT_RANKS * SIGNAL_CACHE_LINE_BYTES;
-    static constexpr uint64_t REPUBLISH_SHADOW_OFFSET_BYTES =
-        SYMMETRIC_DATA_BYTES / 2;
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
@@ -133,6 +130,36 @@ public:
     {
         return (stageIdx * SYNC_SLOT_RANKS + rankIdx) *
             CONSUMER_DONE_SLOT_STRIDE;
+    }
+
+    // Peer-generation diagnostics never clear shared ready slots. Instead,
+    // each cache-line-isolated slot carries a Host launch epoch and a round
+    // generation. The round is committed first and the epoch last, so a
+    // receiver cannot accept a partially published value from a prior launch.
+    CATLASS_HOST_DEVICE
+    static constexpr uint32_t ProducerReadyEpochOffset(uint32_t stageIdx)
+    {
+        return stageIdx * 2;
+    }
+
+    CATLASS_HOST_DEVICE
+    static constexpr uint32_t ProducerReadyRoundOffset(uint32_t stageIdx)
+    {
+        return ProducerReadyEpochOffset(stageIdx) + 1;
+    }
+
+    CATLASS_HOST_DEVICE
+    static constexpr uint32_t ConsumerDoneEpochOffset(
+        uint32_t stageIdx, uint32_t rankIdx)
+    {
+        return ConsumerDoneSlotOffset(stageIdx, rankIdx);
+    }
+
+    CATLASS_HOST_DEVICE
+    static constexpr uint32_t ConsumerDoneRoundOffset(
+        uint32_t stageIdx, uint32_t rankIdx)
+    {
+        return ConsumerDoneEpochOffset(stageIdx, rankIdx) + 1;
     }
 
     using MoeConstraints = typename BlockMmadScheduler::MoeConstraints;
@@ -269,14 +296,12 @@ public:
             TARGET_ORDER_SYNC_OFFSET_BYTES % SIGNAL_CACHE_LINE_BYTES == 0,
             "target-order synchronization region must be cache-line aligned");
         static_assert(
-            WORKSPACE_STAGES * sizeof(int32_t) <= SIGNAL_CACHE_LINE_BYTES,
+            WORKSPACE_STAGES * 2 * sizeof(int32_t) <= SIGNAL_CACHE_LINE_BYTES,
             "producer-ready slots exceed their cache-line region");
         static_assert(
             DIAGNOSTIC_STATUS_OFFSET_BYTES + DIAGNOSTIC_STATUS_BYTES <=
                 RESERVED_SYNC_BYTES,
             "target-order synchronization slots exceed the reserved workspace");
-        static_assert(SYMMETRIC_DATA_BYTES % 2 == 0,
-            "MTE republish shadow must split the symmetric data workspace evenly");
 
         typename BlockComm::TileRemoteCopy::Params tileParams{args.commTileShape};
         BlockCommParams blockCommParams{args.commBlockShape, tileParams};
@@ -536,13 +561,6 @@ private:
         for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
             gmSymmetricList[stageIdx].SetGlobalBuffer(
                 ptrSymmetric + stageIdx * layoutTagSymmetric.Capacity());
-            if (GmmA2avDiagnosticUsesFixBypass(params.diagnosticMode)) {
-                // This diagnostic changes only the FIX destination policy. It
-                // tests whether a cached FIX write is not yet observable by a
-                // remote UDMA GET when the local CrossCore flag is consumed.
-                gmSymmetricList[stageIdx].SetL2CacheHint(
-                    AscendC::CacheMode::CACHE_MODE_DISABLE);
-            }
         }
 
         BlockMmad blockMmad(resource);
@@ -604,7 +622,370 @@ private:
     }
 
     CATLASS_DEVICE
+    void ClearTargetOrderDiagnosticStatus(
+        Params const &params, uint32_t rankIdx, uint32_t rankSize,
+        bool isSyncCore)
+    {
+        if (!isSyncCore) {
+            return;
+        }
+        auto syncDiagnosticStatus =
+            reinterpret_cast<__gm__ int32_t *>(params.syncDiagnosticStatus);
+        for (uint32_t srcIdx = 0; srcIdx < rankSize; ++srcIdx) {
+            uint32_t statusOffset = srcIdx * CONSUMER_DONE_SLOT_STRIDE;
+            for (uint32_t fieldIdx = 0; fieldIdx < 4; ++fieldIdx) {
+                aclshmemx_signal_op(
+                    syncDiagnosticStatus + statusOffset + fieldIdx,
+                    0, ACLSHMEM_SIGNAL_SET, rankIdx);
+            }
+        }
+    }
+
+    CATLASS_DEVICE
+    void RecordTargetOrderQuietFailure(
+        Params const &params, uint32_t rankIdx, uint32_t srcRankIdx,
+        uint32_t commIdx, uint32_t quietStatus)
+    {
+        auto syncDiagnosticStatus =
+            reinterpret_cast<__gm__ int32_t *>(params.syncDiagnosticStatus);
+        uint32_t statusOffset = srcRankIdx * CONSUMER_DONE_SLOT_STRIDE;
+        aclshmemx_signal_op(
+            syncDiagnosticStatus + statusOffset,
+            static_cast<int32_t>(quietStatus),
+            ACLSHMEM_SIGNAL_SET, rankIdx);
+        aclshmemx_signal_op(
+            syncDiagnosticStatus + statusOffset + 1,
+            static_cast<int32_t>(commIdx + 1),
+            ACLSHMEM_SIGNAL_SET, rankIdx);
+        aclshmemx_signal_op(
+            syncDiagnosticStatus + statusOffset + 2,
+            static_cast<int32_t>(srcRankIdx + 1),
+            ACLSHMEM_SIGNAL_SET, rankIdx);
+        aclshmemx_signal_op(
+            syncDiagnosticStatus + statusOffset + 3,
+            static_cast<int32_t>(params.diagnosticMode),
+            ACLSHMEM_SIGNAL_SET, rankIdx);
+    }
+
+    CATLASS_DEVICE
     void RunTargetOrderAiv(Params const &params)
+    {
+        if (params.diagnosticMode ==
+                GMM_A2AV_DIAGNOSTIC_OFFICIAL_BARRIER_EXACT) {
+            RunOfficialBarrierAiv(params);
+            return;
+        }
+        if (GmmA2avDiagnosticIsPeerGeneration(params.diagnosticMode)) {
+            RunPeerGenerationAiv(params);
+            return;
+        }
+        RunProductionAiv(params);
+    }
+
+    // Exact control-flow analogue of the official Ascend950
+    // MatMulAllToAll UDMA example: FIX completion -> all-PE barrier -> GET +
+    // quiet -> all-PE stage-reuse barrier. SHMEM barrier already contains its
+    // own local AIV rendezvous, so this path deliberately contains no
+    // AscendC::SyncAll. A final all-PE barrier drains the non-reused tail
+    // stages and makes the protocol safe across repeated PyTorch launches.
+    CATLASS_DEVICE
+    void RunOfficialBarrierAiv(Params const &params)
+    {
+        uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
+        uint32_t rankSize = params.problemShape.rankSize();
+        uint32_t rankIdx = params.problemShape.rankIdx();
+        uint32_t srcRankIdx = aicoreIdx;
+        uint32_t srcEpIdx = srcRankIdx % params.problemShape.epSize();
+
+        uint32_t blockPerComm = AscendC::GetBlockNum() * params.commInterval;
+        uint32_t tilePerCommInRank = blockPerComm / rankSize;
+        uint32_t nLoops = CeilDiv(params.problemShape.n(), L1_TILE_N);
+        uint32_t groupsPerCommInRank =
+            Max<uint32_t>(1U, tilePerCommInRank / nLoops);
+        uint32_t stageRows = groupsPerCommInRank * L1_TILE_M;
+        GemmCoord diagnosticMmadBlockShape{L1_TILE_M, L1_TILE_N, L1_TILE_K};
+        MatrixCoord commBlockShape = params.blockCommParams.BlockShape();
+        MatrixCoord commCoreSplit =
+            params.blockCommSchedulerParams.CoreSplit();
+        BlockCommScheduler scheduler{
+            params.problemShape, groupsPerCommInRank, srcEpIdx,
+            diagnosticMmadBlockShape.GetCoordMN(), commBlockShape,
+            commCoreSplit};
+        BlockComm blockRemoteCopy(resource, params.blockCommParams);
+
+        auto layoutSymmetric =
+            Catlass::layout::RowMajor(stageRows, params.problemShape.n());
+        auto ptrSymmetric =
+            reinterpret_cast<__gm__ ElementC *>(params.ptrSymmetric);
+        AscendC::GlobalTensor<ElementC> gmSymmetricList[WORKSPACE_STAGES];
+        for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
+            uint32_t stageRankIdx = stageIdx * rankSize + rankIdx;
+            gmSymmetricList[stageIdx].SetGlobalBuffer(
+                ptrSymmetric +
+                stageRankIdx * layout::Capacity(layoutSymmetric));
+        }
+
+        AscendC::GlobalTensor<ElementC> gmC;
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(params.ptrC));
+        auto const &layoutC = params.layoutTagComm;
+        bool isSyncCore = (subcoreIdx == 0) && (srcRankIdx == rankIdx);
+        bool isCommCore = (subcoreIdx == 0) && (srcRankIdx < rankSize);
+        ClearTargetOrderDiagnosticStatus(
+            params, rankIdx, rankSize, isSyncCore);
+
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+        bool quietFailureReported = false;
+#endif
+        uint32_t commLoops = scheduler.GetCommLoops();
+        for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
+            uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            scheduler.UpdateCommContext(commIdx);
+
+            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
+            aclshmemx_barrier_all_vec();
+
+            if (isCommCore && scheduler.HasInput()) {
+                uint32_t actualRows = scheduler.GetActualRows();
+                MatrixCoord actualShape{
+                    actualRows, params.problemShape.n()};
+                auto const &gmBlockSrc = gmSymmetricList[stageIdx];
+                auto layoutBlockSrc =
+                    layoutSymmetric.GetTileLayout(actualShape);
+                MatrixCoord outputOffset{
+                    scheduler.GetOutputRowOffset(), 0};
+                auto gmBlockDst = gmC[layoutC.GetOffset(outputOffset)];
+                auto layoutBlockDst = layoutC.GetTileLayout(actualShape);
+
+                blockRemoteCopy.InitBlockLoop();
+                blockRemoteCopy(
+                    gmBlockSrc, layoutBlockSrc,
+                    gmBlockDst, layoutBlockDst,
+                    actualShape, srcRankIdx);
+                uint32_t quietStatus =
+                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                if (quietStatus != 0) {
+                    RecordTargetOrderQuietFailure(
+                        params, rankIdx, srcRankIdx, commIdx, quietStatus);
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+                    if (!quietFailureReported) {
+                        AscendC::printf(
+                            "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
+                            "rank=%u source=%u comm=%u status=0x%x\n",
+                            rankIdx, srcRankIdx, commIdx, quietStatus);
+                        quietFailureReported = true;
+                    }
+#endif
+                }
+            }
+
+            if (commIdx + WORKSPACE_STAGES < commLoops) {
+                aclshmemx_barrier_all_vec();
+                Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
+                    flagAivFinishComm[stageIdx]);
+            }
+        }
+        // The example has no repeated launch and can leave tail stages
+        // unacknowledged. A reusable PyTorch operator needs this exit drain.
+        aclshmemx_barrier_all_vec();
+    }
+
+    // Fine-grained counterpart to the official barriers. Producer and
+    // consumer slots carry (Host epoch, communication round), so no shared
+    // slot clearing or all-PE entry barrier is required. The four modes form
+    // a 2x2 matrix: source release fence absent/present and destination local
+    // acquire rendezvous absent/present. This function contains no SHMEM
+    // barrier, so imbalanced per-rank communication schedules cannot deadlock
+    // on a collective round count.
+    CATLASS_DEVICE
+    void RunPeerGenerationAiv(Params const &params)
+    {
+        uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
+        uint32_t rankSize = params.problemShape.rankSize();
+        uint32_t rankIdx = params.problemShape.rankIdx();
+        uint32_t srcRankIdx = aicoreIdx;
+        uint32_t srcEpIdx = srcRankIdx % params.problemShape.epSize();
+
+        uint32_t blockPerComm = AscendC::GetBlockNum() * params.commInterval;
+        uint32_t tilePerCommInRank = blockPerComm / rankSize;
+        uint32_t nLoops = CeilDiv(params.problemShape.n(), L1_TILE_N);
+        uint32_t groupsPerCommInRank =
+            Max<uint32_t>(1U, tilePerCommInRank / nLoops);
+        uint32_t stageRows = groupsPerCommInRank * L1_TILE_M;
+        GemmCoord diagnosticMmadBlockShape{L1_TILE_M, L1_TILE_N, L1_TILE_K};
+        MatrixCoord commBlockShape = params.blockCommParams.BlockShape();
+        MatrixCoord commCoreSplit =
+            params.blockCommSchedulerParams.CoreSplit();
+        BlockCommScheduler scheduler{
+            params.problemShape, groupsPerCommInRank, srcEpIdx,
+            diagnosticMmadBlockShape.GetCoordMN(), commBlockShape,
+            commCoreSplit};
+        BlockComm blockRemoteCopy(resource, params.blockCommParams);
+
+        auto layoutSymmetric =
+            Catlass::layout::RowMajor(stageRows, params.problemShape.n());
+        auto ptrSymmetric =
+            reinterpret_cast<__gm__ ElementC *>(params.ptrSymmetric);
+        AscendC::GlobalTensor<ElementC> gmSymmetricList[WORKSPACE_STAGES];
+        for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
+            uint32_t stageRankIdx = stageIdx * rankSize + rankIdx;
+            gmSymmetricList[stageIdx].SetGlobalBuffer(
+                ptrSymmetric +
+                stageRankIdx * layout::Capacity(layoutSymmetric));
+        }
+
+        AscendC::GlobalTensor<ElementC> gmC;
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(params.ptrC));
+        auto const &layoutC = params.layoutTagComm;
+        bool isSyncCore = (subcoreIdx == 0) && (srcRankIdx == rankIdx);
+        bool isCommCore = (subcoreIdx == 0) && (srcRankIdx < rankSize);
+        bool useAcquireSync =
+            GmmA2avDiagnosticUsesAcquireSync(params.diagnosticMode);
+        bool useReleaseFence =
+            GmmA2avDiagnosticUsesReleaseFence(params.diagnosticMode);
+
+        auto syncProducerReady =
+            reinterpret_cast<__gm__ int32_t *>(params.syncProducerReady);
+        auto syncConsumerDone =
+            reinterpret_cast<__gm__ int32_t *>(params.syncConsumerDone);
+        auto remoteProducerReady = syncProducerReady;
+        if (isCommCore) {
+            remoteProducerReady = static_cast<__gm__ int32_t *>(
+                aclshmem_ptr(params.syncProducerReady, srcRankIdx));
+        }
+        int32_t launchEpoch = static_cast<int32_t>(params.launchEpoch);
+        ClearTargetOrderDiagnosticStatus(
+            params, rankIdx, rankSize, isSyncCore);
+
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+        bool quietFailureReported = false;
+#endif
+        uint32_t commLoops = scheduler.GetCommLoops();
+        for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
+            uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            int32_t roundGeneration = static_cast<int32_t>(commIdx + 1);
+            scheduler.UpdateCommContext(commIdx);
+
+            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
+            // Join every local AIV after it has observed the AIC FIX flag.
+            AscendC::SyncAll<true>();
+
+            if (isSyncCore) {
+                if (useReleaseFence) {
+                    // Isolated source release edge under test. It executes
+                    // after local FIX completion and before the ready commit.
+                    aclshmem_fence();
+                }
+                // Round first, epoch last: epoch is the commit marker across
+                // launches; round disambiguates reuse of the same stage.
+                aclshmemx_signal_op(
+                    syncProducerReady +
+                        ProducerReadyRoundOffset(stageIdx),
+                    roundGeneration, ACLSHMEM_SIGNAL_SET, rankIdx);
+                aclshmemx_signal_op(
+                    syncProducerReady +
+                        ProducerReadyEpochOffset(stageIdx),
+                    launchEpoch, ACLSHMEM_SIGNAL_SET, rankIdx);
+            }
+
+            if (isCommCore && scheduler.HasInput()) {
+                aclshmem_signal_wait_until(
+                    remoteProducerReady +
+                        ProducerReadyEpochOffset(stageIdx),
+                    ACLSHMEM_CMP_EQ, launchEpoch);
+                aclshmem_signal_wait_until(
+                    remoteProducerReady +
+                        ProducerReadyRoundOffset(stageIdx),
+                    ACLSHMEM_CMP_EQ, roundGeneration);
+            }
+
+            if (useAcquireSync) {
+                // All local AIVs execute this, including cores with no source
+                // rows. It is the local exit rendezvous provided implicitly
+                // by the official SHMEM barrier before any UDMA GET starts.
+                AscendC::SyncAll<true>();
+            }
+
+            if (isCommCore && scheduler.HasInput()) {
+                uint32_t actualRows = scheduler.GetActualRows();
+                MatrixCoord actualShape{
+                    actualRows, params.problemShape.n()};
+                auto const &gmBlockSrc = gmSymmetricList[stageIdx];
+                auto layoutBlockSrc =
+                    layoutSymmetric.GetTileLayout(actualShape);
+                MatrixCoord outputOffset{
+                    scheduler.GetOutputRowOffset(), 0};
+                auto gmBlockDst = gmC[layoutC.GetOffset(outputOffset)];
+                auto layoutBlockDst = layoutC.GetTileLayout(actualShape);
+
+                blockRemoteCopy.InitBlockLoop();
+                blockRemoteCopy(
+                    gmBlockSrc, layoutBlockSrc,
+                    gmBlockDst, layoutBlockDst,
+                    actualShape, srcRankIdx);
+                uint32_t quietStatus =
+                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
+
+                if (quietStatus == 0) {
+                    uint32_t doneRoundOffset =
+                        ConsumerDoneRoundOffset(stageIdx, rankIdx);
+                    uint32_t doneEpochOffset =
+                        ConsumerDoneEpochOffset(stageIdx, rankIdx);
+                    // GET quiet is complete before this release. Preserve the
+                    // existing destination fence while varying only the
+                    // producer release and consumer acquire edges.
+                    aclshmem_fence();
+                    aclshmemx_signal_op(
+                        syncConsumerDone + doneRoundOffset,
+                        roundGeneration, ACLSHMEM_SIGNAL_SET, srcRankIdx);
+                    aclshmemx_signal_op(
+                        syncConsumerDone + doneEpochOffset,
+                        launchEpoch, ACLSHMEM_SIGNAL_SET, srcRankIdx);
+                } else {
+                    RecordTargetOrderQuietFailure(
+                        params, rankIdx, srcRankIdx, commIdx, quietStatus);
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+                    if (!quietFailureReported) {
+                        AscendC::printf(
+                            "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
+                            "rank=%u source=%u comm=%u status=0x%x; "
+                            "stage will not be released\n",
+                            rankIdx, srcRankIdx, commIdx, quietStatus);
+                        quietFailureReported = true;
+                    }
+#endif
+                }
+            }
+
+            if (isSyncCore) {
+                for (uint32_t dstRankIdx = 0;
+                     dstRankIdx < rankSize; ++dstRankIdx) {
+                    if (!scheduler.HasOutput(commIdx, dstRankIdx)) {
+                        continue;
+                    }
+                    uint32_t doneEpochOffset =
+                        ConsumerDoneEpochOffset(stageIdx, dstRankIdx);
+                    uint32_t doneRoundOffset =
+                        ConsumerDoneRoundOffset(stageIdx, dstRankIdx);
+                    aclshmem_signal_wait_until(
+                        syncConsumerDone + doneEpochOffset,
+                        ACLSHMEM_CMP_EQ, launchEpoch);
+                    aclshmem_signal_wait_until(
+                        syncConsumerDone + doneRoundOffset,
+                        ACLSHMEM_CMP_EQ, roundGeneration);
+                }
+            }
+            AscendC::SyncAll<true>();
+            if (commIdx + WORKSPACE_STAGES < commLoops) {
+                Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
+                    flagAivFinishComm[stageIdx]);
+            }
+        }
+    }
+
+    CATLASS_DEVICE
+    void RunProductionAiv(Params const &params)
     {
         uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
         uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
@@ -626,52 +1007,14 @@ private:
             mmadBlockShape.GetCoordMN(), commBlockShape, commCoreSplit};
         BlockComm blockRemoteCopy(resource, params.blockCommParams);
 
-        bool serialized = GmmA2avDiagnosticIsSerialized(
-            params.diagnosticMode);
-        bool serializedDelay = params.diagnosticMode ==
-            GMM_A2AV_DIAGNOSTIC_SERIALIZED_DELAY;
-        bool mteRepublish = params.diagnosticMode ==
-            GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH;
-        bool useUdmaAck = GmmA2avDiagnosticUsesUdmaAck(
-            params.diagnosticMode);
-
         auto layoutSymmetric = Catlass::layout::RowMajor(stageRows, params.problemShape.n());
         auto ptrSymmetric = reinterpret_cast<__gm__ ElementC *>(params.ptrSymmetric);
-        auto ptrRemoteRead = mteRepublish ?
-            reinterpret_cast<__gm__ ElementC *>(
-                params.ptrSymmetric + REPUBLISH_SHADOW_OFFSET_BYTES) :
-            ptrSymmetric;
         AscendC::GlobalTensor<ElementC> gmSymmetricList[WORKSPACE_STAGES];
         for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
             uint32_t stageRankIdx = stageIdx * rankSize + rankIdx;
             gmSymmetricList[stageIdx].SetGlobalBuffer(
-                ptrRemoteRead +
+                ptrSymmetric +
                 stageRankIdx * layout::Capacity(layoutSymmetric));
-            if (GmmA2avDiagnosticUsesFixBypass(params.diagnosticMode)) {
-                gmSymmetricList[stageIdx].SetL2CacheHint(
-                    AscendC::CacheMode::CACHE_MODE_DISABLE);
-            }
-        }
-
-        // In the republish diagnostic each of the first rankSize AIV cores
-        // copies one destination slice from the FIX-written half of the
-        // workspace to a disjoint shadow half through GM -> UB -> GM. Remote
-        // GETs then read only the shadow. This isolates FIX publication from
-        // the UDMA and route/layout logic without changing tensor inputs.
-        uint32_t republishRankIdx = srcRankIdx < rankSize ? srcRankIdx : 0;
-        AscendC::GlobalTensor<ElementC> gmRepublishSrc[WORKSPACE_STAGES];
-        AscendC::GlobalTensor<ElementC> gmRepublishDst[WORKSPACE_STAGES];
-        auto ptrRepublishShadow = reinterpret_cast<__gm__ ElementC *>(
-            params.ptrSymmetric + REPUBLISH_SHADOW_OFFSET_BYTES);
-        for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
-            uint32_t stageRankIdx =
-                stageIdx * rankSize + republishRankIdx;
-            uint64_t elementOffset = static_cast<uint64_t>(stageRankIdx) *
-                layout::Capacity(layoutSymmetric);
-            gmRepublishSrc[stageIdx].SetGlobalBuffer(
-                ptrSymmetric + elementOffset);
-            gmRepublishDst[stageIdx].SetGlobalBuffer(
-                ptrRepublishShadow + elementOffset);
         }
 
         AscendC::GlobalTensor<ElementC> gmC;
@@ -686,10 +1029,6 @@ private:
             reinterpret_cast<__gm__ int32_t *>(params.syncProducerReady);
         auto syncConsumerDone =
             reinterpret_cast<__gm__ int32_t *>(params.syncConsumerDone);
-        auto syncAckPayload =
-            reinterpret_cast<__gm__ uint8_t *>(params.syncAckPayload);
-        auto syncDiagnosticStatus =
-            reinterpret_cast<__gm__ int32_t *>(params.syncDiagnosticStatus);
         auto remoteLaunchEpoch = syncLaunchEpoch;
         auto remoteProducerReady = syncProducerReady;
         if (isCommCore) {
@@ -718,21 +1057,6 @@ private:
                         ACLSHMEM_SIGNAL_SET, rankIdx);
                 }
             }
-            if (params.diagnosticMode != GMM_A2AV_DIAGNOSTIC_PRODUCTION) {
-                for (uint32_t srcIdx = 0; srcIdx < rankSize; ++srcIdx) {
-                    uint32_t statusOffset = srcIdx *
-                        CONSUMER_DONE_SLOT_STRIDE;
-                    aclshmemx_signal_op(
-                        reinterpret_cast<__gm__ int32_t *>(
-                            syncAckPayload) + statusOffset,
-                        0, ACLSHMEM_SIGNAL_SET, rankIdx);
-                    for (uint32_t fieldIdx = 0; fieldIdx < 4; ++fieldIdx) {
-                        aclshmemx_signal_op(
-                            syncDiagnosticStatus + statusOffset + fieldIdx,
-                            0, ACLSHMEM_SIGNAL_SET, rankIdx);
-                    }
-                }
-            }
         }
         aclshmemx_barrier_all_vec();
 
@@ -753,56 +1077,21 @@ private:
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             int32_t roundGeneration = static_cast<int32_t>(commIdx + 1);
-            uint64_t roundGeneration64 =
-                (params.launchEpoch << 32) |
-                static_cast<uint64_t>(commIdx + 1);
             scheduler.UpdateCommContext(commIdx);
 
             Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
             AscendC::SyncAll<true>();
 
-            if (mteRepublish) {
-                bool isRepublishCore =
-                    subcoreIdx == 0 && srcRankIdx < rankSize;
-                if (isRepublishCore) {
-                    MatrixCoord republishShape{
-                        stageRows, params.problemShape.n()};
-                    auto republishLayout =
-                        layoutSymmetric.GetTileLayout(republishShape);
-                    blockRemoteCopy.InitBlockLoop();
-                    blockRemoteCopy(
-                        gmRepublishSrc[stageIdx], republishLayout,
-                        gmRepublishDst[stageIdx], republishLayout,
-                        republishShape, rankIdx);
-                    blockRemoteCopy.FinalizeBlockLoop();
-                }
-                AscendC::SyncAll<true>();
-            }
-
-            if (serialized) {
-                // Every rank reaches the same communication round only in the
-                // balanced-route root-cause harness. This pair of barriers
-                // removes producer-ready and consumer-ack publication from
-                // the experiment while preserving the exact input/Golden.
-                aclshmemx_barrier_all_vec();
-                if (serializedDelay) {
-                    // A second network rendezvous deliberately widens the
-                    // FIX-complete -> remote-GET interval without printf or a
-                    // host-side sleep changing the device schedule.
-                    aclshmemx_barrier_all_vec();
-                }
-            } else if (isSyncCore) {
+            if (isSyncCore) {
                 aclshmemx_signal_op(
                     syncProducerReady + stageIdx, roundGeneration,
                     ACLSHMEM_SIGNAL_SET, rankIdx);
             }
 
             if (isCommCore && scheduler.HasInput()) {
-                if (!serialized) {
-                    aclshmem_signal_wait_until(
-                        remoteProducerReady + stageIdx,
-                        ACLSHMEM_CMP_EQ, roundGeneration);
-                }
+                aclshmem_signal_wait_until(
+                    remoteProducerReady + stageIdx,
+                    ACLSHMEM_CMP_EQ, roundGeneration);
 
                 uint32_t actualRows = scheduler.GetActualRows();
                 MatrixCoord actualShape{actualRows, params.problemShape.n()};
@@ -819,60 +1108,19 @@ private:
                 uint32_t quietStatus =
                     blockRemoteCopy.FinalizeBlockLoopWithStatus();
 
-                if (quietStatus == 0 && !serialized) {
+                if (quietStatus == 0) {
                     // Each destination owns one slot on the source PE. A SET
                     // removes the aggregate-atomic hotspot and, unlike ADD,
                     // cannot be confused with a delayed prior-launch update.
                     uint32_t slotOffset =
                         ConsumerDoneSlotOffset(stageIdx, rankIdx);
-                    if (useUdmaAck && srcRankIdx != rankIdx) {
-                        // GET has completed locally. Send one harmless byte
-                        // back to the source and publish the 64-bit ack in the
-                        // same WRITE_WITH_NOTIFY WQE. This diagnoses whether
-                        // the separate MTE SIGNAL_SET can release a source
-                        // stage before the notification is globally visible.
-                        auto ackSignal =
-                            reinterpret_cast<__gm__ uint64_t *>(
-                                syncConsumerDone + slotOffset);
-                        auto ackByte = syncAckPayload +
-                            rankIdx * SIGNAL_CACHE_LINE_BYTES;
-                        aclshmemx_udma_put_signal_nbi<uint8_t, PIPE_S>(
-                            ackByte, ackByte, 1,
-                            ackSignal, roundGeneration64, srcRankIdx,
-                            static_cast<__ubuf__ uint8_t *>(nullptr), 0);
-                    } else if (!useUdmaAck) {
-                        aclshmem_fence();
-                        aclshmemx_signal_op(
-                            syncConsumerDone + slotOffset, roundGeneration,
-                            ACLSHMEM_SIGNAL_SET, srcRankIdx);
-                    }
-                } else if (quietStatus != 0 &&
-                           params.diagnosticMode !=
-                               GMM_A2AV_DIAGNOSTIC_PRODUCTION) {
-                    // Persist one compact record per source rank. Reading it
-                    // is an explicit post-kernel D2D copy in the diagnostic
-                    // harness, so production builds need no AscendC::printf.
-                    uint32_t statusOffset = srcRankIdx *
-                        CONSUMER_DONE_SLOT_STRIDE;
+                    aclshmem_fence();
                     aclshmemx_signal_op(
-                        syncDiagnosticStatus + statusOffset,
-                        static_cast<int32_t>(quietStatus),
-                        ACLSHMEM_SIGNAL_SET, rankIdx);
-                    aclshmemx_signal_op(
-                        syncDiagnosticStatus + statusOffset + 1,
-                        static_cast<int32_t>(commIdx + 1),
-                        ACLSHMEM_SIGNAL_SET, rankIdx);
-                    aclshmemx_signal_op(
-                        syncDiagnosticStatus + statusOffset + 2,
-                        static_cast<int32_t>(srcRankIdx + 1),
-                        ACLSHMEM_SIGNAL_SET, rankIdx);
-                    aclshmemx_signal_op(
-                        syncDiagnosticStatus + statusOffset + 3,
-                        static_cast<int32_t>(params.diagnosticMode),
-                        ACLSHMEM_SIGNAL_SET, rankIdx);
+                        syncConsumerDone + slotOffset, roundGeneration,
+                        ACLSHMEM_SIGNAL_SET, srcRankIdx);
                 }
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-                else if (quietStatus != 0 && !quietFailureReported) {
+                else if (!quietFailureReported) {
                     AscendC::printf(
                         "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
                         "rank=%u source=%u comm=%u status=0x%x; "
@@ -883,13 +1131,7 @@ private:
 #endif
             }
 
-            if (serialized) {
-                // All local GET workers have completed (or returned a checked
-                // CQ error) before the global round barrier. No source stage
-                // can be reused while a peer is still consuming this round.
-                AscendC::SyncAll<true>();
-                aclshmemx_barrier_all_vec();
-            } else if (isSyncCore) {
+            if (isSyncCore) {
                 // Do not recycle this source stage until every destination
                 // that actually owns rows in the round has completed its GET.
                 for (uint32_t dstRankIdx = 0;
@@ -897,29 +1139,14 @@ private:
                     if (!scheduler.HasOutput(commIdx, dstRankIdx)) {
                         continue;
                     }
-                    if (useUdmaAck && dstRankIdx == rankIdx) {
-                        // The self MTE copy is already joined by the local AIV
-                        // SyncAll below and therefore needs no UDMA loopback.
-                        continue;
-                    }
                     uint32_t slotOffset =
                         ConsumerDoneSlotOffset(stageIdx, dstRankIdx);
-                    if (useUdmaAck) {
-                        auto ackSignal =
-                            reinterpret_cast<__gm__ uint64_t *>(
-                                syncConsumerDone + slotOffset);
-                        aclshmemi_signal_wait_until_eq<uint64_t>(
-                            ackSignal, roundGeneration64);
-                    } else {
-                        aclshmem_signal_wait_until(
-                            syncConsumerDone + slotOffset,
-                            ACLSHMEM_CMP_EQ, roundGeneration);
-                    }
+                    aclshmem_signal_wait_until(
+                        syncConsumerDone + slotOffset,
+                        ACLSHMEM_CMP_EQ, roundGeneration);
                 }
             }
-            if (!serialized) {
-                AscendC::SyncAll<true>();
-            }
+            AscendC::SyncAll<true>();
             if (commIdx + WORKSPACE_STAGES < commLoops) {
                 Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
                     flagAivFinishComm[stageIdx]);
