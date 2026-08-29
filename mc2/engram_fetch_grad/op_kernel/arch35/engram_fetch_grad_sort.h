@@ -700,29 +700,76 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             // Per-key-group MTE3 scatter (baseline-proven ordering; the SIMT variant's V-pipe
             // GM stores were not reliably visible to other cores' MTE2 reads across SyncAll).
-            // Perf: gather the whole tile into two compact UB buffers first, then issue all
-            // group copies back-to-back with a single S->MTE3 sync up front and a single
-            // MTE3->S wait at the end, so the DMA queue pipelines the copies (the previous
-            // per-group WaitPipe pair serialized every copy and doubled the sort stage).
-            AscendC::LocalTensor<int32_t> gatheredVals =
-                sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 3U * tileAlignBytes_);
-            AscendC::LocalTensor<int32_t> gatheredIdxs =
-                sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 4U * tileAlignBytes_);
-            for (uint32_t i = 0; i < tileLen; i++) {
-                uint32_t srcIdx = sortIndices.GetValue(i);
-                gatheredVals.SetValue(i, valueLocal.GetValue(srcIdx));
-                gatheredIdxs.SetValue(i, indexLocal.GetValue(srcIdx));
-            }
-            WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+            // Perf: gather each group into its OWN 32B-aligned UB slot (DataCopyPad's MTE3
+            // source must be 32B aligned; a compact layout would start copies at unaligned
+            // group offsets -> device fault), then issue all group copies back-to-back with
+            // one S->MTE3 sync per pass and one MTE3->S wait, so the DMA queue pipelines.
+            // Worst-case pad: tileLen*4 + 256 bins*28B <= 23.5KB, fits the 32KB region.
+            constexpr uint32_t kSlotAlign = 32U;
+            constexpr uint32_t kSlotAlignElems = kSlotAlign / sizeof(int32_t);
+            AscendC::LocalTensor<int32_t> padBuf =
+                sortWorkspace_.GetWithOffset<int32_t>(2U * (tileAlignBytes_ / sizeof(int32_t)), 3U * tileAlignBytes_);
             uint32_t keyStart = 0U;
             uint8_t curKey = sortedKey.GetValue(0);
+            uint32_t off = 0U;
+            for (uint32_t i = 1U; i <= tileLen; i++) {
+                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                    uint32_t keyCount = i - keyStart;
+                    for (uint32_t k = 0U; k < keyCount; k++) {
+                        padBuf[off + k] = valueLocal.GetValue(sortIndices.GetValue(keyStart + k));
+                    }
+                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                    if (i < tileLen) {
+                        curKey = sortedKey.GetValue(i);
+                        keyStart = i;
+                    }
+                }
+            }
+            WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+            off = 0U;
+            keyStart = 0U;
+            curKey = sortedKey.GetValue(0);
             for (uint32_t i = 1U; i <= tileLen; i++) {
                 if (i == tileLen || sortedKey.GetValue(i) != curKey) {
                     uint32_t keyCount = i - keyStart;
                     int32_t gmPos = basePosUb.GetValue(curKey);
                     AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-                    AscendC::DataCopyPad((*dstValue)[gmPos], gatheredVals[keyStart], dcp);
-                    AscendC::DataCopyPad((*dstIndex)[gmPos], gatheredIdxs[keyStart], dcp);
+                    AscendC::DataCopyPad((*dstValue)[gmPos], padBuf[off], dcp);
+                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                    if (i < tileLen) {
+                        curKey = sortedKey.GetValue(i);
+                        keyStart = i;
+                    }
+                }
+            }
+            WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+            keyStart = 0U;
+            curKey = sortedKey.GetValue(0);
+            off = 0U;
+            for (uint32_t i = 1U; i <= tileLen; i++) {
+                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                    uint32_t keyCount = i - keyStart;
+                    for (uint32_t k = 0U; k < keyCount; k++) {
+                        padBuf[off + k] = indexLocal.GetValue(sortIndices.GetValue(keyStart + k));
+                    }
+                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                    if (i < tileLen) {
+                        curKey = sortedKey.GetValue(i);
+                        keyStart = i;
+                    }
+                }
+            }
+            WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+            off = 0U;
+            keyStart = 0U;
+            curKey = sortedKey.GetValue(0);
+            for (uint32_t i = 1U; i <= tileLen; i++) {
+                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                    uint32_t keyCount = i - keyStart;
+                    int32_t gmPos = basePosUb.GetValue(curKey);
+                    AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
+                    AscendC::DataCopyPad((*dstIndex)[gmPos], padBuf[off], dcp);
+                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
                     if (i < tileLen) {
                         curKey = sortedKey.GetValue(i);
                         keyStart = i;
