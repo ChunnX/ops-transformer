@@ -19,6 +19,7 @@
 #endif
 #include "kda_prolog_template_tiling_key.h"
 
+template <bool TransWeightQkv, bool TransWeightBeta, bool TransWeightGate, bool TransWeightG>
 __global__ __aicore__ void kda_prolog(__gm__ uint8_t *x, __gm__ uint8_t *weightQkv, __gm__ uint8_t *weightBeta,
                                       __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG, __gm__ uint8_t *scaleQkv,
                                       __gm__ uint8_t *qkv, __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
@@ -31,8 +32,9 @@ __global__ __aicore__ void kda_prolog(__gm__ uint8_t *x, __gm__ uint8_t *weightQ
     GET_TILING_DATA_WITH_STRUCT(optiling::KdaPrologTilingData, tilingDataIn, tiling);
     const optiling::KdaPrologTilingData *__restrict tilingData = &tilingDataIn;
     __gm__ uint8_t *userWorkspace = AscendC::GetUserWorkspace(workspace);
-    KdaProlog::KdaPrologKernel<KdaProlog::KdaPrologType> op(x, weightQkv, weightBeta, weightGate, weightG, scaleQkv, qkv,
-                                                           beta, gate, g, userWorkspace, tilingData);
+    KdaProlog::KdaPrologKernel<
+        KdaProlog::KdaPrologType<TransWeightQkv, TransWeightBeta, TransWeightGate, TransWeightG>>
+        op(x, weightQkv, weightBeta, weightGate, weightG, scaleQkv, qkv, beta, gate, g, userWorkspace, tilingData);
     op.Process();
 #endif
 #endif

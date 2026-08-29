@@ -31,9 +31,16 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "kda_prolog_tiling_data.h"
 
-// 当前无通过 tilingkey 配置的模板参数；dtype/format 由编译框架 ORIG_DTYPE_* / DTYPE_* / FORMAT_* 注入
-ASCENDC_TPL_ARGS_DECL(KdaProlog, );
+// bit:0-3 trans_weight_{qkv,beta,gate,g}：0-不转置 1-转置；dtype/format 由 ORIG_DTYPE_* / DTYPE_* 注入
+ASCENDC_TPL_ARGS_DECL(KdaProlog, ASCENDC_TPL_BOOL_DECL(TRANS_WEIGHT_QKV, 0, 1),
+                      ASCENDC_TPL_BOOL_DECL(TRANS_WEIGHT_BETA, 0, 1),
+                      ASCENDC_TPL_BOOL_DECL(TRANS_WEIGHT_GATE, 0, 1),
+                      ASCENDC_TPL_BOOL_DECL(TRANS_WEIGHT_G, 0, 1));
 
-ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_TILING_STRUCT_SEL(optiling::KdaPrologTilingData)));
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(TRANS_WEIGHT_QKV, 0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(TRANS_WEIGHT_BETA, 0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(TRANS_WEIGHT_GATE, 0, 1),
+                                     ASCENDC_TPL_BOOL_SEL(TRANS_WEIGHT_G, 0, 1),
+                                     ASCENDC_TPL_TILING_STRUCT_SEL(optiling::KdaPrologTilingData)));
 
 #endif // KDA_PROLOG_TEMPLATE_TILING_KEY_H
