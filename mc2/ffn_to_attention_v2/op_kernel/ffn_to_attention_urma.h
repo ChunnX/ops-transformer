@@ -24,13 +24,21 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "ffn_to_attention_v2_tiling.h"
 
-#if __has_include("../ffn_to_attention/ffn_to_attention.h")
-#include "../ffn_to_attention/ffn_to_attention.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../common/attention_ffn_context.h"
+#include "../common/mc2_kernel_utils.h"
 #else
-#include "../../ffn_to_attention/op_kernel/ffn_to_attention.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/attention_ffn_context.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 namespace FFNToAttentionImpl {
+
+constexpr uint8_t URMA_BUFFER_NUM = 2U;
+constexpr uint32_t URMA_UB_ALIGN = 32U;
+constexpr uint64_t URMA_WIN_ADDR_ALIGN = 512UL;
 
 constexpr uint32_t URMA_HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t URMA_FLAG_SLOT_SIZE = 32U;
@@ -153,14 +161,14 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + static_cast<uint64_t>(aivNum_) * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
-    tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hSize_);
-    tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, hSize_);
+    tpipe_->InitBuffer(statusBuf_, URMA_UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
 
     batchSizeSendCnt_ = static_cast<uint64_t>(axisBS_) * expertNumPerToken_;
     winTokenInfoTableSize_ =
-        Ceil(static_cast<uint64_t>(microBatchNum_) * batchSizeSendCnt_ * sizeof(int32_t), WIN_ADDR_ALIGN) *
-        WIN_ADDR_ALIGN;
+        Ceil(static_cast<uint64_t>(microBatchNum_) * batchSizeSendCnt_ * sizeof(int32_t), URMA_WIN_ADDR_ALIGN) *
+        URMA_WIN_ADDR_ALIGN;
     const uint64_t totalSlotNum = static_cast<uint64_t>(microBatchNum_) * axisBS_ * expertNumPerToken_;
     requiredWindowSize_ = winTokenInfoTableSize_ + totalSlotNum * axisHS_ * sizeof(xType);
 }
