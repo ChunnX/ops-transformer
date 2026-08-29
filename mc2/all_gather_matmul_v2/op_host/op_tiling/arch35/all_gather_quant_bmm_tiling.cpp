@@ -816,6 +816,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
         //DEBUG
         MutableTCubeLocalTilingWindowParam().mTailTile = 1;
         MutableTCubeLocalTilingWindowParam().nTailTile = 1;
+        std::cout << "ISPASS" << std::endl;
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
                        (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) :
