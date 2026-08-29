@@ -1303,8 +1303,12 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
     }
 
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
+    // sendCntAccTensor_ 按本卡 MoE 专家数分配，与 kernel 地址布局一致。SendMask 已收缩到单 AIV
+    // 平面（blockAivNum/2 核，与下方 combineCoreCount 同款推导）均摊专家段（kernel
+    // ProcessInputPreparationStage），分核基数同步使用该平面核数。
+    uint32_t sendMaskPlaneCoreCount = tilingData->blockAivNum / 2U;
     uint32_t maxExpertCountPerCore =
-        ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, tilingData->blockAivNum);
+        ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, sendMaskPlaneCoreCount);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
@@ -1326,12 +1330,17 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
         tilingData, moeActivationElementsPerByte, sharedActivationElementsPerByte, needsIndependentSharedQuant);
 
     /*
-     * 与 kernel topK 有效下标发送的 expert 连续均衡分核一一对应。前 remainder 个 AIV job
-     * 各多处理一个 expert，因此只需预计算两套配置。
+     * 与 kernel topK 有效下标发送的 expert 连续均衡分核一一对应。SendMask 由单 AIV 平面
+     * （sendMaskPlaneCoreCount 核）执行：totalExpertCount 除以该核数后，前 remainder 个 job
+     * 各多处理一个 expert，其余 job 处理 quotient 个 expert，因此这里只需预计算两套配置。
+     * Dispatch/Combine 的 wave 内 token 轮转由各自阶段完成，与这里的一次性发送分核无关。
+     *
+     * 若修改发送阶段的 expert 分核方式、ownedExpertCount 或 routePushCount 计算，必须同步更新
+     * 这里的两类 core 划分和 kernel 配置选择条件。
      */
     uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->moeExpertPerRank;
-    uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / tilingData->blockAivNum;
-    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % tilingData->blockAivNum;
+    uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / sendMaskPlaneCoreCount;
+    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % sendMaskPlaneCoreCount;
     uint32_t expertCountPerCoreWithExtraExpert = expertCountPerCoreWithoutExtraExpert + 1U;
     tilingData->sendMaskConfigForCoreWithExtraExpert = CalcTopkValidIndexBufferConfig(
         tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
@@ -1392,8 +1401,14 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
+    // 预取 scratch 落在 UB 顶部 [weightPrefetchUbOffset, ubSize)：偏移由平台 ubSize 动态推导
+    // （ubSize − 16KB chunk）——布局钳到该偏移之下即为 scratch 留出整个顶部 chunk。
+    tilingData->weightPrefetchUbOffset = availableUbBytes > static_cast<uint32_t>(WEIGHT_L2_PREFETCH_CHUNK_BYTES) ?
+                                             availableUbBytes - static_cast<uint32_t>(WEIGHT_L2_PREFETCH_CHUNK_BYTES) :
+                                             0U;
+    uint32_t sendMaskAvailableUbBytes = tilingData->weightPrefetchUbOffset;
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
-                                   needsIndependentSharedQuant, availableUbBytes);
+                                   needsIndependentSharedQuant, sendMaskAvailableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
