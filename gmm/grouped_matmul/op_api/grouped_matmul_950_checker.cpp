@@ -746,7 +746,7 @@ AclnnGroupedMatmulDAV3510Checker<T>::ExtractMxTypeMDims(const TensorDimInfo &dim
 
 template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMScaleShape(const MxTypeMDims &dims,
-                                                                        const TensorDimInfo &tensorIndex) const
+                                                                        const TensorIndexInfo &tensorIndex) const
 {
     auto weightNIndex = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDimNum() - 1;
     if (IsWeightNzMultiTensorLayout()) {
@@ -795,7 +795,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMScaleShape(const Mx
 
 template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMPerTokenAndScaleLastDim(
-    const MxTypeMDims &dims, const TensorDimInfo &tensorIndex) const
+    const MxTypeMDims &dims, const TensorIndexInfo &tensorIndex) const
 {
     GMM_CHECK_REPORT(dims.pertokenScaleKDimValue == dims.inferedScaleKDimValue,
                      OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
