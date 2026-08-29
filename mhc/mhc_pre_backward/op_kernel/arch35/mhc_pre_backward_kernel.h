@@ -1636,10 +1636,19 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV3ProcessAlphaGrad(__ubuf
         MicroAPI::Duplicate(sumReg, 0);
         uint32_t dealMask = ALPHA_GRAD_PADDING;
         MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(dealMask);
-        for (uint16_t vcIdx = 0; vcIdx < static_cast<uint16_t>(usedVecCoreNum_); ++vcIdx) {
+        uint16_t vcIdx = 0;
+        // 相邻两核先求和再累加，缩短FP32串行依赖链，降低跨核归约的舍入误差。
+        for (; vcIdx + 1 < static_cast<uint16_t>(usedVecCoreNum_); vcIdx += 2) {
             uint32_t elemOffset = vcIdx * ALPHA_GRAD_PADDING;
+            MicroAPI::RegTensor<P> alphaGradInReg0, alphaGradInReg1, pairSumReg;
+            MicroAPI::LoadAlign(alphaGradInReg0, alphaGradIn + elemOffset);
+            MicroAPI::LoadAlign(alphaGradInReg1, alphaGradIn + elemOffset + ALPHA_GRAD_PADDING);
+            MicroAPI::Add(pairSumReg, alphaGradInReg0, alphaGradInReg1, mask);
+            MicroAPI::Add(sumReg, sumReg, pairSumReg, mask);
+        }
+        if (vcIdx < static_cast<uint16_t>(usedVecCoreNum_)) {
             MicroAPI::RegTensor<P> alphaGradInReg;
-            MicroAPI::LoadAlign(alphaGradInReg, alphaGradIn + elemOffset);
+            MicroAPI::LoadAlign(alphaGradInReg, alphaGradIn + vcIdx * ALPHA_GRAD_PADDING);
             MicroAPI::Add(sumReg, sumReg, alphaGradInReg, mask);
         }
         MicroAPI::StoreAlign(alphaGradOut, sumReg, mask);
