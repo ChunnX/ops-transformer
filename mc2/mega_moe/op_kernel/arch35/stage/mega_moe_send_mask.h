@@ -58,7 +58,7 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const AivJobContext &job, co
                                                     GM_ADDR *winRankAddr, const SendMaskConfig &config,
                                                     SendMaskScratch &scratch, GlobalTensor<int32_t> &topkIdsGm,
                                                     GlobalTensor<uint8_t> &dstMaskGm, int32_t ownedExpertNum,
-                                                    int32_t batchIdx)
+                                                    int32_t batchIdx, WeightL2PrefetchCursor *w0Prefetch)
 {
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     uint32_t maskSlotSize = config.maskSlotSize;
@@ -91,6 +91,11 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const AivJobContext &job, co
         DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
     }
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+    // 窗口 0 权重预取钩子：本批 topkIds 读已完成（MTE2 队列此刻干净），在此间隙发 1 个预取块——
+    // 其执行被本批后续的 Vector mask 计算 + MTE3 推送流水掩盖；预算写死 4 块/核，TryIssue 自动封顶。
+    if (w0Prefetch != nullptr) {
+        (void)WeightL2PrefetchTryIssue(*w0Prefetch);
+    }
 
     int32_t jobIndex = static_cast<int32_t>(job.jobIndex);
     int32_t totalJobs = static_cast<int32_t>(job.totalJobs);
@@ -137,7 +142,8 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const AivJobContext &job, co
 // Prototype: MegaMoe::SendMaskCal. Builds and sends per-expert masks for one logical AIV job using route batches.
 __aicore__ inline void GatherAndSendExpertMasks(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                 const Params &params, GM_ADDR *winRankAddr,
-                                                const SendMaskConfig &config, SendMaskScratch &scratch)
+                                                const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                WeightL2PrefetchCursor *w0Prefetch = nullptr)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -167,7 +173,7 @@ __aicore__ inline void GatherAndSendExpertMasks(const AivJobContext &job, const 
 
     for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
         GatherAndSendExpertMaskBatch(job, common, winRankAddr, config, scratch, topkIdsGm, dstMaskGm, ownedExpertNum,
-                                     batchIdx);
+                                     batchIdx, w0Prefetch);
     }
 
     for (int32_t bufIdx = 0; bufIdx < bufferConfig.bufferCount; ++bufIdx) {
