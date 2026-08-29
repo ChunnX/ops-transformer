@@ -2161,21 +2161,21 @@ def cpu_mxfp8_golden(
         QUANT_GROUP_SIZE,
     )
 
-    blocks_per_task = max(
-        1, int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE
-    )
+    blocks_per_task = max(1, int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE)
     progress_total = 0
     for progress_batch_idx, progress_q_len in enumerate(q_lengths):
         progress_qb_count = math.ceil(int(progress_q_len) / SPARSE_BLOCK_SIZE)
-        block_counts = sparse_seq_len[
-            progress_batch_idx, :, :progress_qb_count
-        ].to(torch.int64)
+        block_counts = sparse_seq_len[progress_batch_idx, :, :progress_qb_count].to(
+            torch.int64
+        )
         progress_total += int(
             torch.div(
                 block_counts + blocks_per_task - 1,
                 blocks_per_task,
                 rounding_mode="floor",
-            ).sum().item()
+            )
+            .sum()
+            .item()
         )
 
     progress_done = 0
@@ -2189,8 +2189,10 @@ def cpu_mxfp8_golden(
         if force and progress_done == progress_last_done:
             return
         now = time.monotonic()
-        percent = 100.0 if progress_total == 0 else min(
-            100.0, 100.0 * progress_done / progress_total
+        percent = (
+            100.0
+            if progress_total == 0
+            else min(100.0, 100.0 * progress_done / progress_total)
         )
         if not force and progress_done < progress_total:
             if percent < progress_next_percent and now - progress_last_log < 30.0:
