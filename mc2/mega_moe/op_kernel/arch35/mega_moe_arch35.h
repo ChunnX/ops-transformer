@@ -99,7 +99,8 @@ protected:
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
     template <bool WaitForTokenCountReady>
-    __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
+    __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx,
+                                                 WeightL2PrefetchCursor *weightPrefetch = nullptr);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
     __aicore__ inline void ProcessSharedExpertGmm2();
     template <typename Derived>
@@ -123,6 +124,14 @@ protected:
     QuantTokenBufferConfig quantTokenBufferConfig_;
     AivJobContext waveCombineJob_{};
     TokenUnpermuteConfig tokenUnpermuteConfig_;
+
+    // 窗口 0（输入准备/SendMask 期间）权重 L2 预取游标：仅 AIV0 参与（MTE outstanding 为同 block
+    // 两 AIV 共享资源，AIV1 加发不增有效带宽只增竞争，且避免挤占 AIV1 的 topkIds 读），workerId=
+    // blockIdx 与窗口 1 同粒度，每 AIV 固定 chunk 数（预算写死即终点）；补发为 fire-and-forget 不
+    // Drain，在飞块由紧随输入准备段之后的 PipeBarrier<PIPE_ALL>（ProcessWave 内 SyncAll 前）排空，
+    // 窗口 1 由 wave 侧独立游标接续（见 WeightL2PrefetchWindow0TotalBytes 的精确性说明）。
+    WeightL2PrefetchCursor window0PrefetchCursor_{};
+    WeightL2PrefetchCursor *window0PrefetchPtr_ = nullptr;
 
     uint32_t k_ = 0;
     uint32_t rankId_ = 0;
@@ -454,6 +463,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t sendCntAccAddr = sendGatherOutAddr + sendGatherOutSize;
     sendMaskScratch_.sendCntAccTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntAccAddr, sendCntAccSize / sizeof(int32_t));
+
+    // 窗口 0 权重预取游标构造（仅 AIV0）：scratch 位于 [192K,192K+16K)（与窗口 1 同偏移，decode 输入
+    // 准备布局 ~62K 与其有大量空洞）；门控=fp4 权重变体 + MTE 拓扑（a8w8/layered 零影响）；workerId/
+    // workerCount 与窗口 1 同粒度（blockIdx/blockNum），保证窗口 1 lane 无缝接续。
+    if (gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+        gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+        gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        if (params_.tilingData->topoType == TOPO_TYPE_MTE && GetSubBlockIdx() == 0U) {
+            WeightL2PrefetchInit(window0PrefetchCursor_, moeWeightTensorListAddrs_.weight1,
+                                 moeWeightTensorListAddrs_.weight2, gmmExecutionConfig_.isPerExpertWeightTensor,
+                                 commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim,
+                                 commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx, countWorkspace_.blockNum,
+                                 // 预算为全局总量（Init 按 workerCount 均摊）＝窗口 0 覆盖总量。
+                                 WeightL2PrefetchWindow0TotalBytes(countWorkspace_.blockNum), 0U);
+            window0PrefetchPtr_ = &window0PrefetchCursor_;
+        }
+    }
 }
 
 // 在普通模板内构造 Unpermute 使用的 UB 视图，并返回当前 AIV 对应的 buffer 配置。
@@ -539,14 +565,31 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(u
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
+// weightPrefetch 非空（仅 AIV0 在开启预取时构造）且本核为 AIV 时，等待自旋间隙执行权重 L2 预取；
+// 其余调用方不传该参数，行为与原先完全一致。
 template <TemplateMegaMoeTypeClass>
 template <bool WaitForTokenCountReady>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(ExpertLoopState &state,
-                                                                               uint32_t expertIdx)
+                                                                               uint32_t expertIdx,
+                                                                               WeightL2PrefetchCursor *weightPrefetch)
 {
     if constexpr (WaitForTokenCountReady) {
         if (GetSubBlockIdx() == 0U && !state.expertCountTableReady) {
-            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+            // 主线语义：整表就绪 flag（0 号槽）一次等待，expertCountTableReady 保证仅首次进入。
+            // 预取挂在首次（e0）等待的自旋间隙：游标跨等待窗口持续使用（预算结转），
+            // 每个窗口以 Drain 收尾，无残留拷贝；countWaitPrefetchUsed 一次性使 e1+ 直接读表。
+            bool prefetched = false;
+            if constexpr (g_coreType == AIV) {
+                if (weightPrefetch != nullptr) {
+                    WaitForMoeExpertTokenCountReadyWithPrefetch(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+                                                                countWorkspace_, 0U, *weightPrefetch);
+                    prefetched = true;
+                }
+            }
+            if (!prefetched) {
+                WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                                0U);
+            }
             state.expertCountTableReady = true;
         }
     }
@@ -561,7 +604,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     SendAndQuantBuffInit();
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantScratch_);
-    GatherAndSendExpertMasks(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
+    GatherAndSendExpertMasks(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_,
+                             window0PrefetchPtr_);
+    if (window0PrefetchPtr_ != nullptr) {
+        // SendMask 返回后补足窗口 0 剩余块（批内钩子每批只发 1 块，单批场景余量集中在此）：fire-
+        // and-forget 发完即返回，不做 Drain——scratch [192K,208K) 与 reset（V+MTE3，无 MTE2）、共享
+        // 专家准备（quantScratch [0,~60K]）、prologue（[0,192K)）全部零重叠，在飞块由紧随本段之后
+        // 的 PipeBarrier<PIPE_ALL>（见 ProcessWave，SyncAll 前）自然排空，其传输与 reset/共享准备
+        // 执行重叠；若在此 Drain 会把全部块传输串行加到输入准备关键路径（单核 256KB@15-50GB/s=5-17µs）。
+        while (WeightL2PrefetchTryIssue(*window0PrefetchPtr_)) {
+        }
+    }
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         PrepareSharedExpertInput<ActivationType, QuantScaleOutType, A_ELEMS_PER_BYTE>(

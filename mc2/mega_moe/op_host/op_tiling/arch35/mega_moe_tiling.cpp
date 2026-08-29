@@ -1338,7 +1338,17 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
+    // 权重 L2 预取开启（topoType==MTE，与 kernel 侧窗口 0 构造门控同源：三个 MTE Wave 变体在
+    // AIV0 上均构造窗口 0 游标）时，SendMask 布局须为预取 scratch [WEIGHT_L2_PREFETCH_UB_OFFSET,
+    // +WEIGHT_L2_PREFETCH_CHUNK_BYTES) 让位：batch 扩张后布局尾部的 sendGatherOut/mask ring 可越过
+    // 192K，与窗口 0 批内预取（MTE2 fire-and-forget 写 scratch）形成跨队列并发写。Dispatch 布局
+    // 在 AIV1 独立 UB、unpermute 时序在预取排空之后，均无需让位。钳位后基准批（12288 item）最坏
+    // 规格合计约 171KB 仍低于 192KB，双 buffer 下限不受影响。
+    uint32_t sendMaskAvailableUbBytes = availableUbBytes;
+    if (tilingData->topoType == TOPO_TYPE_MTE && sendMaskAvailableUbBytes > WEIGHT_L2_PREFETCH_UB_OFFSET) {
+        sendMaskAvailableUbBytes = WEIGHT_L2_PREFETCH_UB_OFFSET;
+    }
+    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, sendMaskAvailableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);

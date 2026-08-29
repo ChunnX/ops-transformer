@@ -401,7 +401,10 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
      * K 方向物理字节数为 128B 整数倍时才允许绕过 L2。统一要求 256 个 logical element：
      * packed FP4 恰为 128B，FP8 为 256B；对 FP8 比最低 128-element 要求更保守，但不会误开 bypass。
      */
-    bool bypassWeightL2 = hasNoLaterWeightReuse;
+    // [E1-EXPERIMENT] 强制 NORMAL：判定 CACHE_MODE_DISABLE(no-allocate) 读能否命中权重 L2 预取行
+    // （W8 预取无收益反劣化 vs W4 +30% 的唯一路径差异）。allowWeightL2Bypass 仅 a8w8 显式传 true，
+    // a4w4 generic 恒 false，故本改动不影响 W4 对照。实验结论得出后还原本行或转为正式互斥逻辑。
+    bool bypassWeightL2 = false;
     if constexpr (!IsWeightNz) {
         bypassWeightL2 = bypassWeightL2 && config.k % 256U == 0U;
     }
