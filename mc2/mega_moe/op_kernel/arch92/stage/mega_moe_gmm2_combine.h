@@ -23,7 +23,9 @@
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
+#include "c_api/asc_simd.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_stage_debug.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
@@ -509,7 +511,7 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
 // Notifies all AIV consumers assigned to the completed GMM2 token group.
 __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset,
                                                               const GroupSyncSlotLayout &slotLayout,
-                                                              __gm__ int32_t *expertCounterBase)
+                                                              const GMMAddrInfo &gmmAddrInfo)
 {
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -519,7 +521,9 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
     uint32_t syncSlotCount = 0;
     GetGroupSyncSlotRange(tokenGroupIndex, slotLayout, firstSyncSlot, syncSlotCount);
     for (uint32_t syncSlot = firstSyncSlot; syncSlot < firstSyncSlot + syncSlotCount; ++syncSlot) {
-        AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, syncSlot), int32_t(1));
+        __gm__ int32_t *counterAddress =
+            GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlot);
+        AscendC::AtomicAdd(counterAddress, int32_t(1));
     }
 }
 
@@ -582,6 +586,13 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
         }
 
+        bool debugFirstExpertRow = false;
+        if constexpr (!IsShared && !IsLayered) {
+            debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
+                                  rowOffsetInExpert == 0U &&
+                                  mLoc == 0U && nLoc == 0U && kLoc == 0U;
+        }
+
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
 
@@ -591,15 +602,24 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-            if (rowOffsetInExpert + mLoc == 0U && nLoc == 0U) {
-                blockMmad.EnableOneShotDebug(912101U, true);
-            }
+        if (debugFirstExpertRow) {
+            StageDebug::LogGmm2WeightDependencyHashes(
+                reinterpret_cast<GM_ADDR>(gmBlockB.Data().Get()),
+                reinterpret_cast<GM_ADDR>(gmBlockScaleB.Data().Get()),
+                config.k, config.scaleK,
+                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
         }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+        if (debugFirstExpertRow) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            StageDebug::LogBf16(StageDebug::GMM2_OUTPUT_MARKER,
+                                reinterpret_cast<GM_ADDR>(gmBlockC.Data().Get()),
+                                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+        }
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
-                                                   gmmAddrInfo.gmm2CombineSyncCounter);
+                                                   gmmAddrInfo);
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
@@ -646,7 +666,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
-            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
+            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo);
         } else if constexpr (IsShared) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
@@ -717,7 +737,7 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
         blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n,
-                      config.blockMmadTiling.l1Params.kL1);
+                      config.blockMmadTiling.l1Params.kBL1);
     }
 }
 
@@ -1008,6 +1028,7 @@ __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
         weights.weightScales2, context.isPerExpertWeightTensor, expertIdx,
         static_cast<uint64_t>(expertIdx) * tokenHiddenDim * activationScaleWidth);
+    gmmAddrInfo.debugExpertIdx = expertIdx;
     if constexpr (ConfigureCombineCounter) {
         uint64_t syncSlotOffset = static_cast<uint64_t>(expertIdx) * context.combineSyncSlotCountPerExpert;
         gmmAddrInfo.gmm2CombineSyncCounter =
@@ -1118,6 +1139,7 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
         gmmAddrInfo.gmm2CombineSyncCounter =
             reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
+        gmmAddrInfo.debugExpertIdx = expertIdx;
     }
     gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagActivationToGmm2Ptr) +
                                        Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.activationFlagSlotsPerExpert +
@@ -1302,8 +1324,11 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
         uint32_t syncSlotIndex = groupCount <= context.job.totalJobs ? context.job.jobIndex : groupIndex;
         __gm__ int32_t *syncCounterAddress =
             GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlotIndex);
-        while (AscendC::ReadGmByPassDCache(syncCounterAddress) !=
-               static_cast<int32_t>(gmm2NTilesPerGroup)) {
+        while (true) {
+            int32_t observedCounter = AscendC::ReadGmByPassDCache(syncCounterAddress);
+            if (observedCounter == static_cast<int32_t>(gmm2NTilesPerGroup)) {
+                break;
+            }
             int64_t waitStartCycle = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
             }

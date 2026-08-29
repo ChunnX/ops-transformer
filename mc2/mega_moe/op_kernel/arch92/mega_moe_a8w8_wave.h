@@ -19,7 +19,7 @@ namespace MegaMoeImpl {
 constexpr uint32_t ARCH92_GMM1_TILES_PER_JOB_TARGET = 2U;
 
 template <uint32_t TileM>
-__aicore__ inline uint32_t AdvanceArch92ExpertTokenPositionInWave(
+__aicore__ inline uint32_t  AdvanceArch92ExpertTokenPositionInWave(
     uint32_t expertTokenCount, uint32_t waveMGroupTarget, uint32_t &waveMGroupCount,
     ExpertTokenPosition &position)
 {
@@ -187,6 +187,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
                                     TopkWeightsPrefetch, ArchitecturePolicy::USE_GM_HANDOFF>(
         gmm1Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_, gmmAddrInfo,
         state, expertIdx, tokenStartIndexInExpert, gmm1TilesPerMGroup);
+    gmmAddrInfo.debugRankId = gmm1Config_.common.rankId;
 
     int32_t unusedVecSync = 0;
     Gmm1ActivationState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence};
@@ -216,6 +217,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
                                configureCombineCounter>(
         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
         expertIdx, tokenStartIndexInExpert);
+    gmmAddrInfo.debugRankId = gmm2Config_.common.rankId;
 
     int32_t unusedVecSync = 0;
     Gmm2RuntimeState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence, gmm2PingPongIdx_};

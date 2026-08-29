@@ -1722,49 +1722,33 @@ class GenInputAndGolden():
             sample = np.asarray(values).reshape(-1)[:count].astype(np.float32).tolist()
         print(f"[golden {marker}] {name}: {sample}")
 
-    def print_gmm1_debug_values(self, gmm1_row):
-        half_width = gmm1_row.shape[-1] // 2
-        gate_row = gmm1_row[:half_width]
-        self.print_golden_debug_values(910002, "gmm1_gate", gate_row, 20)
-        self.print_golden_debug_values(910002, "gmm1_up", gmm1_row[half_width:], 20)
-        self.print_golden_debug_values(912201, "gmm1_fixpipe_control", gate_row, 20)
+    @staticmethod
+    def _word_hash(values):
+        raw = np.ascontiguousarray(np.asarray(values)).view(np.uint8).reshape(-1)
+        if raw.size % 4 != 0:
+            raise ValueError(f"word hash input must be 4-byte aligned, got {raw.size} bytes")
+        hash_value = 2166136261
+        for word in raw.view("<u4"):
+            hash_value = ((hash_value ^ int(word)) * 16777619) & 0xFFFFFFFF
+        return hash_value
 
-    def print_activation_debug_values(self, swiglu_row, quant_row, scale_row):
-        self.print_golden_debug_values(910003, "swiglu", swiglu_row, 20)
-        self.print_golden_debug_values(910003, "quant_data", quant_row, 20)
-        self.print_golden_debug_values(910003, "quant_scale", scale_row, 8)
-
-    def print_gmm2_partial_debug_values(
-        self, quant_input, weight, weight_scale, input_scale, unit_weight_scale
-    ):
-        input_dequant = _dequant_qbmm_input(quant_input, input_scale)
-        weight_dequant = _dequant_qbmm_weight(
-            weight, weight_scale, unit_weight_scale
-        )
-        input_tensor = torch.from_numpy(input_dequant[:1]).to(torch.float32)
-        weight_tensor = torch.from_numpy(weight_dequant).to(torch.float32)
-        partial = torch.zeros((1, weight_tensor.shape[-1]), dtype=torch.float32)
-        chunk_k = 128
-        marker = 912101
-        for k_start in range(0, input_tensor.shape[-1], chunk_k):
-            k_end = min(k_start + chunk_k, input_tensor.shape[-1])
-            chunk = torch.matmul(
-                input_tensor[:, k_start:k_end], weight_tensor[k_start:k_end, :]
-            )
-            partial += chunk
-            self.print_golden_debug_values(
-                marker,
-                f"gmm2_partial_k{k_end}",
-                partial[0].to(torch.bfloat16),
-                20,
-            )
-            self.print_golden_debug_values(
-                marker + 10,
-                f"gmm2_isolated_chunk_k{k_start}_{k_end}",
-                chunk[0].to(torch.bfloat16),
-                20,
-            )
-            marker += 1
+    def print_gmm2_weight_dependency_hashes(self, weight_storage, weight_scale_storage):
+        k = self.n // 2
+        output_columns = 20
+        weight = np.asarray(weight_storage)
+        weight_scale = np.asarray(weight_scale_storage)
+        if self.transpose_weight:
+            weight_block = weight[0, :output_columns, :k]
+            weight_scale_block = weight_scale[0, :output_columns].reshape(output_columns, -1)
+        else:
+            weight_block = weight[0, :k, :output_columns]
+            weight_scale_block = weight_scale[0, :, :output_columns]
+        hashes = {
+            "b_n0_19_k_all": self._word_hash(weight_block),
+            "scale_b_n0_19_k_all": self._word_hash(weight_scale_block),
+        }
+        formatted = {name: f"0x{value:08x}" for name, value in hashes.items()}
+        print(f"[golden 910010] gmm2_dependency_hashes: {formatted}")
 
     def __init__(self, **kwargs):
         self.bs = kwargs['bs']
@@ -1815,6 +1799,7 @@ class GenInputAndGolden():
         self.quant_mode = kwargs['quant_mode']
         self.transpose_weight = kwargs['transpose_weight']
         self.is_interleaved = bool(kwargs.get('is_interleaved', False))
+        self.a8w8_is_nz = bool(kwargs.get('a8w8_is_nz', False))
         validate_interleaved_weight_dimensions(self.h, self.n, self.is_interleaved)
         self.comm_quant_mode = kwargs['comm_quant_mode']
         self.weight_dtype = kwargs['weight_dtype']
@@ -2236,8 +2221,6 @@ class GenInputAndGolden():
                         a_quant_list.append(np.empty((0,) + x_quant_all.shape[1:], dtype=x_quant_all.dtype))
                         a_scale_list.append(np.empty((0,) + x_scale_all.shape[1:], dtype=x_scale_all.dtype))
                 expert_token_nums_per_rank.append(torch.tensor(rank_token_nums, dtype=torch.int64))
-            if a_quant_list and a_quant_list[0].shape[0] > 0:
-                self.print_golden_debug_values(910001, "dispatch_data", a_quant_list[0][0], 20)
             return a_quant_list, token_indices_list, expert_pos_list, prob_list, a_scale_list, expert_token_nums_per_rank
 
         a_reordered_list = []
@@ -2325,8 +2308,6 @@ class GenInputAndGolden():
                 expert_workers=1,
             )[0]
             output1 = output1.to(torch.bfloat16).to(torch.float32)
-            if global_expert_idx == 0:
-                self.print_gmm1_debug_values(output1[0])
             stage_times["gmm1"] = time.perf_counter() - stage_start
 
             stage_start = time.perf_counter()
@@ -2360,21 +2341,11 @@ class GenInputAndGolden():
             per_token_scale = quant_scale_output.reshape(
                 quant_scale_output.shape[0], quant_scale_output.shape[1] * 2
             )
-            if global_expert_idx == 0:
-                self.print_activation_debug_values(
-                    swiglu_out[0], quant_output[0], per_token_scale[0]
-                )
             stage_times["swiglu_quant"] = time.perf_counter() - stage_start
 
             stage_start = time.perf_counter()
             if global_expert_idx == 0:
-                self.print_gmm2_partial_debug_values(
-                    quant_output,
-                    weight2[0],
-                    weight_scale2[0],
-                    per_token_scale,
-                    use_fast_random_weight,
-                )
+                self.print_gmm2_weight_dependency_hashes(w2_npu, weight_scale2_npu)
             output2 = qbmm_mx_golden_calculate(
                 [quant_output],
                 [weight2[0]],
@@ -2881,7 +2852,7 @@ class GenInputAndGolden():
             weight2_scale_list = list(weight_scale2)
             x_list = self.a_reordered_list[start:end]
             x_scale_list = self.a_scale_list[start:end]
-
+            debug_expert_zero = start == 0 and len(x_list) > 0 and x_list[0].shape[0] > 0
             output1 = qbmm_mx_golden_calculate(
                 x_list, weight1_list, weight1_scale_list, x_scale_list,
                 batch_matmul=self.golden_batch_matmul,
@@ -2899,9 +2870,6 @@ class GenInputAndGolden():
                 output2 = [torch.empty(0, self.h, dtype=torch.float32) for _ in range(cur_expert_num)]
             else:
                 output1[0] = output1[0].to(torch.bfloat16).to(torch.float32)
-                debug_expert_zero = start == 0 and split_sizes[0] > 0
-                if debug_expert_zero:
-                    self.print_gmm1_debug_values(output1[0][0])
                 swiglu_out = apply_golden_activation(
                     output1[0],
                     self.activation_type,
@@ -2938,22 +2906,13 @@ class GenInputAndGolden():
                 )
                 perTokenScale_input = transpose_last_two_dim(perTokenScale_input, x_transpose_flag)
                 if debug_expert_zero:
-                    self.print_activation_debug_values(
-                        swiglu_out[0], quant_output[0], perTokenScale_input[0]
-                    )
+                    self.print_gmm2_weight_dependency_hashes(
+                        w2_npu[0:1], weight_scale2_npu_cpu[0:1])
                 del output1, swiglu_out
                 quant_output = [quant_output[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)]
                 quant_scale_output = [
                     perTokenScale_input[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)
                 ]
-                if debug_expert_zero:
-                    self.print_gmm2_partial_debug_values(
-                        quant_output[0],
-                        weight2_list[0],
-                        weight2_scale_list[0],
-                        quant_scale_output[0],
-                        use_fast_random_weight,
-                    )
                 output2 = qbmm_mx_golden_calculate(
                     quant_output, weight2_list, weight2_scale_list, quant_scale_output,
                     batch_matmul=self.golden_batch_matmul,
@@ -3131,42 +3090,11 @@ class GenInputAndGolden():
         c2_scale_broadcast = c2_scale_broadcast[..., :c2_quant.shape[-1]]
         return torch.from_numpy(c2_quant.astype(np.float32) * c2_scale_broadcast.astype(np.float32))
 
-    def print_combine_receive_debug_values(self, global_expert_idx, c2_rows):
-        if self.is_shared_expert_slot(global_expert_idx):
-            return
-        token_indices = self.token_indices_list[global_expert_idx]
-        expert_positions = self.expert_pos_list[global_expert_idx]
-        route_rows = torch.nonzero(
-            (token_indices == 0) & (expert_positions == 0), as_tuple=False
-        ).flatten()
-        if route_rows.numel() == 0:
-            return
-
-        c2_row = c2_rows[route_rows[0].item()].to(torch.bfloat16).to(torch.float32)
-        is_quantized = self.comm_quant_mode in (3, 4)
-        self.print_golden_debug_values(
-            910005, "combine_mode", np.asarray([int(is_quantized)], dtype=np.int32), 1
-        )
-        if not is_quantized:
-            self.print_golden_debug_values(910005, "combine_data", c2_row, 20)
-            return
-
-        w_dtype = "float8_e4m3fn" if self.comm_quant_mode == 4 else "float8_e5m2"
-        c2_quant, _ = dispatch_mx_quantize(
-            c2_row.unsqueeze(0).numpy(),
-            mx_ele_dtype=w_dtype,
-            axis=-1,
-            block_size=32,
-            round_mode="rint"
-        )
-        self.print_golden_debug_values(910005, "combine_data", c2_quant[0], 20)
-
     def accumulate_combine_golden(self, output2, expert_start, expert_scales, expert_ids):
         for local_g, c2_rows in enumerate(output2):
             g = expert_start + local_g
             if len(self.token_indices_list[g]) == 0:
                 continue
-            self.print_combine_receive_debug_values(g, c2_rows)
             indices = self.token_indices_list[g]
             if self.is_shared_expert_slot(g):
                 self.combine_golden_accumulator.index_add_(0, indices, c2_rows)

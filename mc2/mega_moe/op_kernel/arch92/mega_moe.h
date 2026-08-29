@@ -29,6 +29,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_core_context.h"
 #include "common/mega_moe_utils.h"
+#include "common/mega_moe_stage_debug.h"
 #include "common/mega_moe_mxfp8_utils.h"
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../arch35/stage/mega_moe_token_quant.h"
