@@ -247,7 +247,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnRainFusionAttentionGetWo
     
     L2_DFX_PHASE_1(aclnnRainFusionAttention,
                    DFX_IN(query, key, value, selectIdx, selectNumIdx, blockShape, attenMaskOptional, actualSeqLengthsOptional,
-                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, qInputLayout, numKeyValueHeads,
+                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
                           maskType, scaleValue, innerPrecise, blockSize, attentionOut, softmaxLseOptional),
                    DFX_OUT(attentionOut, softmaxLseOptional));
 
