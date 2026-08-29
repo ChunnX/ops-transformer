@@ -66,7 +66,7 @@ const constexpr size_t SYSTEM_WORKSPACE = 20 * 1024 * 1024;
 
 // Runtime scheduling configuration.
 const constexpr uint32_t SCHEDULE_MODE = 1;
-const constexpr uint32_t NUM_TWO = 2U;
+const constexpr uint32_t AIV_AIC_RATIO = 2U;
 
 // Attributes and their accepted values.
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
@@ -573,7 +573,7 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
     OP_CHECK_IF(
-        aivBlockDim_ != blockDim_ * NUM_TWO,
+        aivBlockDim_ != blockDim_ * AIV_AIC_RATIO,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum", std::to_string(aivBlockDim_).c_str(),
                                               "MhcPre only support aivNum == aicNum * 2"),
         return ge::GRAPH_FAILED);
