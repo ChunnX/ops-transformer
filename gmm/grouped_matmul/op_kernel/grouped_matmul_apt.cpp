@@ -92,9 +92,6 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #else
 #include "arch35/non_quant/grouped_matmul_kernel.h"
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
-#if IS_BLAZE
-#include "arch35/non_quant/gmm_tensor_api_kernel.h"
-#endif
 #endif
 
 using namespace AscendC;
@@ -347,10 +344,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) // scale64/perTensor/double perTensor
-    // IS_BLAZE（Ascend950）走 Blaze 高阶 kernel（gqmm_cube_tensor_api_kernel.h），读同一份
-    // GMMQuantTilingData（含 GMMArray 多组 shape）；非 blaze 平台回落 cgmct GmmASWKernel。
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
-#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
+#if IS_BLAZE
         if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
@@ -373,7 +368,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
-#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
+#if IS_BLAZE
         if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
@@ -602,21 +597,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
-    // IS_BLAZE（DEVKIT >= 9.1，Ascend950）走 Blaze 高阶 kernel（gmm_tensor_api_kernel.h），读同一份
-    // GMMNoQuantTilingData；非 blaze 平台回落旧 cgmct GmmNoQuantAswt。
-    // 开发期对照：定义 GMM_NOQUANT_FORCE_CGMCT 时强制走旧路径（blaze/旧实现双跑一致性验证，正式发布不定义）。
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
-#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
-        if constexpr (wFormat == CubeFormat::NZ) {
-            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
-                                      AscendC::Te::NZLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
-                x, weight, bias, groupList, y, workspace, tiling);
-        } else {
-            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
-                                      AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
-                x, weight, bias, groupList, y, workspace, tiling);
-        }
-#else
         if constexpr (wFormat == CubeFormat::NZ) {
             GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
                                                                                        tiling);
@@ -624,40 +605,15 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList, y,
                                                                                           tiling);
         }
-#endif
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
-<<<<<<< HEAD
         if constexpr (wFormat == CubeFormat::NZ) {
             GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
                                                                                        tiling);
         } else {
             GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList, y,
                                                                                           tiling);
-=======
-        if ASCEND_IS_AIV {
-            EmptyTensor<DTYPE_Y>(x, weight, groupList, y, tiling);
-        }
-        if ASCEND_IS_AIC {
-            // (0,1) 是 MIX_AIC_1_1（A-trans），不在 AIC_ONLY 升级范围，AIC 保持旧 cgmct 路径。
-            if constexpr (wFormat == CubeFormat::NZ) {
-                GmmNoQuantAswt<layout::ColumnMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
-            } else {
-                GmmNoQuantAswt<layout::ColumnMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
-            }
->>>>>>> 779276340 (add blaze cube only)
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
-#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
-        if constexpr (wFormat == CubeFormat::NZ) {
-            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
-                                      AscendC::Te::ZNLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
-                x, weight, bias, groupList, y, workspace, tiling);
-        } else {
-            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
-                                      AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
-                x, weight, bias, groupList, y, workspace, tiling);
-        }
-#else
         if constexpr (wFormat == CubeFormat::NZ) {
             GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn>(x, weight, bias, groupList, y,
                                                                                        tiling);
@@ -665,7 +621,6 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(x, weight, bias, groupList, y,
                                                                                           tiling);
         }
-#endif
     }
 #endif
 #endif
