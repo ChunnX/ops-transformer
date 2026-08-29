@@ -19,11 +19,6 @@
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 #include "mc2_comm_utils.h"
 
-// AICPU通信场景下，pertile量化等分切分上限
-constexpr uint64_t AICPU_PERTILE_MAX_TILE_CNT = 2U;
-constexpr uint64_t AICPU_PERTILE_ALIGN_BASE = 256U;
-constexpr uint64_t AICPU_PERTILE_MIN_RANK_DIM = 8U;
-
 class MMAllReduceFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MMAllReduceFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
@@ -57,6 +52,12 @@ public:
     uint64_t Align256(uint64_t value) const;
 
 private:
+    static constexpr uint64_t AICPU_PERTILE_MAX_TILE_CNT = 2U;
+    static constexpr uint64_t AICPU_PERTILE_ALIGN_BASE = 256U;
+    static constexpr uint64_t AICPU_PERTILE_MIN_RANK_DIM = 8U;
+
+    void AdjustAicpuPertileEqualSplit();
+
     bool isAlign_ = false;
     bool isAicpuMode_ = false;
     bool isPertileFp8_ = false;
