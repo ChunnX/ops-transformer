@@ -195,10 +195,7 @@ ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetScenarioInfo()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QuantCompressorTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus QuantCompressorTiling::SetTemplateId()
 {
@@ -909,10 +906,7 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredAttrExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::CheckFeature() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QuantCompressorTiling::CheckFeature() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus QuantCompressorTiling::LogErrorShapeConsistency(const std::string &name,
                                                                 const gert::StorageShape *shape, const uint32_t &dimNum,

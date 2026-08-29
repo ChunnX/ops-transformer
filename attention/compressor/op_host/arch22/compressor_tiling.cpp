@@ -211,10 +211,7 @@ ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetScenarioInfo()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus CompressorTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus CompressorTiling::SetTemplateId()
 {
@@ -841,10 +838,7 @@ ge::graphStatus CompressorTiling::CheckRequiredAttrExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::CheckFeature() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus CompressorTiling::CheckFeature() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus CompressorTiling::LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
                                                            const uint32_t &dimNum, const std::string &subName,

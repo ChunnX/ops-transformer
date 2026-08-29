@@ -45,14 +45,8 @@ std::string Compressor_tiling_A3SocInfo = "{\n"
 
 class CompressorTilingArch22 : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "CompressorTilingArch22 SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "CompressorTilingArch22 TearDown" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "CompressorTilingArch22 SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "CompressorTilingArch22 TearDown" << std::endl; }
 };
 
 // C4A bf16: B=2, S=8, H=4096, D=512, coff=2, cmp_ratio=4
