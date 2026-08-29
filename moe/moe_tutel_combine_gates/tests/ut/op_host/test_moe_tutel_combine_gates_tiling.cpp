@@ -10,160 +10,277 @@
 
 /*!
  * \file test_moe_tutel_combine_gates_tiling.cpp
- * \brief arch35 tiling UT：模板选择 + 各条非法输入的失败路径。
+ * \brief Ascend 950 tiling contract and branch tests.
  */
 
 #include <gtest/gtest.h>
+
+#include <limits>
 #include <string>
 #include <vector>
 
-#include "../../../op_host/moe_tutel_combine_gates_tiling.h"
-#include "tiling_context_faker.h"
+#include "../../../op_host/arch35/moe_tutel_combine_gates_tiling.h"
 #include "tiling_case_executor.h"
+#include "tiling_context_faker.h"
 
 using namespace std;
 
 namespace {
-const std::string kA5SocInfo = "{\n"
-                               "  \"hardware_info\": {\n"
-                               "    \"UB_SIZE\": 262144,\n"
-                               "    \"CORE_NUM\": 32,\n"
-                               "    \"socVersion\": \"Ascend910_95\"\n"
-                               "  }\n"
-                               "}";
+const std::string kAscend950SocInfo = "{\n"
+                                      "  \"hardware_info\": {\n"
+                                      "    \"UB_SIZE\": 262144,\n"
+                                      "    \"CORE_NUM\": 32,\n"
+                                      "    \"socVersion\": \"Ascend910_95\"\n"
+                                      "  }\n"
+                                      "}";
 
 constexpr size_t SYS_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
-// x[S,H] / y_grad[E,C,H] / indices[E,S] / locations[E,S] -> gates_grad[E,S]
+struct TensorMeta {
+    ge::DataType yType = ge::DT_UNDEFINED;
+    ge::DataType outType = ge::DT_UNDEFINED;
+    ge::DataType indicesType = ge::DT_INT32;
+    ge::DataType locationsType = ge::DT_INT32;
+    ge::Format xFormat = ge::FORMAT_ND;
+    ge::Format yFormat = ge::FORMAT_ND;
+    ge::Format indicesFormat = ge::FORMAT_ND;
+    ge::Format locationsFormat = ge::FORMAT_ND;
+    ge::Format outFormat = ge::FORMAT_ND;
+};
+
+optiling::MoeTutelCombineGatesCompileInfo MakeCompileInfo(uint64_t coreNum = 32, uint64_t ubSize = 262144,
+                                                          uint32_t vectorLength = 256, uint32_t ubBlockSize = 32)
+{
+    optiling::MoeTutelCombineGatesCompileInfo info;
+    info.coreNum = coreNum;
+    info.ubSize = ubSize;
+    info.vectorLength = vectorLength;
+    info.ubBlockSize = ubBlockSize;
+    info.workspaceSize = SYS_WORKSPACE_SIZE;
+    return info;
+}
+
+gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
+{
+    gert::StorageShape shape;
+    for (const int64_t dim : dims) {
+        shape.MutableOriginShape().AppendDim(dim);
+        shape.MutableStorageShape().AppendDim(dim);
+    }
+    return shape;
+}
+
+// x[S,H], y_grad[E,C,H], and route/output tensors [K,S].
 gert::TilingContextPara MakePara(const vector<int64_t> &xShape, const vector<int64_t> &yShape,
                                  const vector<int64_t> &indicesShape, const vector<int64_t> &locationsShape,
                                  const vector<int64_t> &outShape, ge::DataType floatType,
                                  optiling::MoeTutelCombineGatesCompileInfo *compileInfo,
-                                 ge::DataType yType = ge::DT_UNDEFINED)
+                                 const TensorMeta &meta = TensorMeta())
 {
-    const ge::DataType realYType = (yType == ge::DT_UNDEFINED) ? floatType : yType;
-    return gert::TilingContextPara("MoeTutelCombineGates",
-                                   {
-                                       {{xShape, xShape}, floatType, ge::FORMAT_ND},
-                                       {{yShape, yShape}, realYType, ge::FORMAT_ND},
-                                       {{indicesShape, indicesShape}, ge::DT_INT32, ge::FORMAT_ND},
-                                       {{locationsShape, locationsShape}, ge::DT_INT32, ge::FORMAT_ND},
-                                   },
-                                   {
-                                       {{outShape, outShape}, floatType, ge::FORMAT_ND},
-                                   },
-                                   {}, compileInfo, "Ascend950", kA5SocInfo, 4096);
+    const ge::DataType yType = meta.yType == ge::DT_UNDEFINED ? floatType : meta.yType;
+    const ge::DataType outType = meta.outType == ge::DT_UNDEFINED ? floatType : meta.outType;
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.emplace_back(MakeStorageShape(xShape), floatType, meta.xFormat);
+    inputs.emplace_back(MakeStorageShape(yShape), yType, meta.yFormat);
+    inputs.emplace_back(MakeStorageShape(indicesShape), meta.indicesType, meta.indicesFormat);
+    inputs.emplace_back(MakeStorageShape(locationsShape), meta.locationsType, meta.locationsFormat);
+
+    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    outputs.emplace_back(MakeStorageShape(outShape), outType, meta.outFormat);
+    return gert::TilingContextPara("MoeTutelCombineGates", inputs, outputs,
+                                   std::vector<gert::TilingContextPara::OpAttr>{}, compileInfo, "Ascend950",
+                                   kAscend950SocInfo, 4096);
+}
+
+void ExpectSuccess(gert::TilingContextPara &para, uint64_t tilingKey)
+{
+    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, tilingKey, "", expectWorkspaces);
 }
 } // namespace
 
 class MoeTutelCombineGatesTilingTest : public testing::Test {};
 
-// H 可全载 -> NOT_CUT_H
-TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_float32)
+TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_float32_top1)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {2, 4, 64}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
-TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_float16)
+TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_float16_k_less_than_e)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({100, 1024}, {4, 16, 1024}, {4, 100}, {4, 100}, {4, 100}, ge::DT_FLOAT16, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({100, 1024}, {4, 16, 1024}, {2, 100}, {2, 100}, {2, 100}, ge::DT_FLOAT16, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
-TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_bfloat16)
+TEST_F(MoeTutelCombineGatesTilingTest, not_cut_h_bfloat16_k_equals_e)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
+    auto compileInfo = MakeCompileInfo();
     auto para = MakePara({7, 33}, {3, 5, 33}, {3, 7}, {3, 7}, {3, 7}, ge::DT_BF16, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
-// H 超 UB 预算 -> CUT_H（fp32 下 H = 65536 需要 512KB/行，单核 UB 只有 256KB）
 TEST_F(MoeTutelCombineGatesTilingTest, cut_h_float32_large_hidden)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({4, 65536}, {2, 3, 65536}, {2, 4}, {2, 4}, {2, 4}, ge::DT_FLOAT, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_CUT_H, "", expectWorkspaces);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({4, 65536}, {2, 3, 65536}, {1, 4}, {1, 4}, {1, 4}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_CUT_H);
 }
 
-// 空 Tensor：S == 0
-TEST_F(MoeTutelCombineGatesTilingTest, empty_samples)
+TEST_F(MoeTutelCombineGatesTilingTest, empty_samples_is_supported)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({0, 64}, {2, 4, 64}, {2, 0}, {2, 0}, {2, 0}, ge::DT_FLOAT, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({0, 64}, {2, 4, 64}, {1, 0}, {1, 0}, {1, 0}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
-// 空 Tensor：E == 0（专家数为 0，输出元素数为 0）
-TEST_F(MoeTutelCombineGatesTilingTest, empty_experts)
+TEST_F(MoeTutelCombineGatesTilingTest, zero_hidden_is_supported)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {0, 4, 64}, {0, 8}, {0, 8}, {0, 8}, ge::DT_FLOAT, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 0}, {2, 4, 0}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
-// 空 Tensor：C == 0（capacity 为 0，任何 location 都越界 → 全部路由非法）
-TEST_F(MoeTutelCombineGatesTilingTest, empty_capacity)
+TEST_F(MoeTutelCombineGatesTilingTest, capacity_may_exceed_samples)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {2, 0, 64}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({2, 64}, {3, 8, 64}, {2, 2}, {2, 2}, {2, 2}, ge::DT_FLOAT16, &compileInfo);
+    ExpectSuccess(para, optiling::MTCG_TILING_KEY_NOT_CUT_H);
 }
 
-// 空内积：H == 0
-TEST_F(MoeTutelCombineGatesTilingTest, zero_hidden)
+TEST_F(MoeTutelCombineGatesTilingTest, route_count_greater_than_experts_fails)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 0}, {2, 4, 0}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
-    std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, optiling::MTCG_TILING_KEY_NOT_CUT_H, "", expectWorkspaces);
-}
-
-// K != E：canndev 在此会对 gates_grad 越界写，950 判非法。
-TEST_F(MoeTutelCombineGatesTilingTest, invalid_route_axis_not_equal_experts)
-{
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
+    auto compileInfo = MakeCompileInfo();
     auto para = MakePara({8, 64}, {2, 4, 64}, {3, 8}, {3, 8}, {3, 8}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// indices 与 locations shape 不一致
-TEST_F(MoeTutelCombineGatesTilingTest, invalid_indices_locations_shape_mismatch)
+TEST_F(MoeTutelCombineGatesTilingTest, zero_route_count_fails)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {2, 4, 64}, {2, 8}, {2, 4}, {2, 8}, ge::DT_FLOAT, &compileInfo);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 64}, {0, 8}, {0, 8}, {0, 8}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// x.shape[1] != y_grad.shape[2]
-TEST_F(MoeTutelCombineGatesTilingTest, invalid_hidden_mismatch)
+TEST_F(MoeTutelCombineGatesTilingTest, zero_expert_count_fails)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {2, 4, 32}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {0, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// rank 不符：y_grad 必须是 3 维
-TEST_F(MoeTutelCombineGatesTilingTest, invalid_rank)
+TEST_F(MoeTutelCombineGatesTilingTest, zero_capacity_fails)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {2, 64}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 0, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// 混合浮点 dtype：x 为 fp32、y_grad 为 fp16
-TEST_F(MoeTutelCombineGatesTilingTest, invalid_mixed_float_dtype)
+TEST_F(MoeTutelCombineGatesTilingTest, indices_locations_shape_mismatch_fails)
 {
-    optiling::MoeTutelCombineGatesCompileInfo compileInfo = {32, 262144, 256, 32};
-    auto para = MakePara({8, 64}, {2, 4, 64}, {2, 8}, {2, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo, ge::DT_FLOAT16);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 4}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, output_shape_mismatch_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {2, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, hidden_mismatch_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 32}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, invalid_y_grad_rank_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, invalid_route_rank_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 64}, {8}, {8}, {8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, mixed_input_float_dtype_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    TensorMeta meta;
+    meta.yType = ge::DT_FLOAT16;
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo, meta);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, mismatched_output_dtype_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    TensorMeta meta;
+    meta.outType = ge::DT_FLOAT16;
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo, meta);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, non_int32_route_dtype_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    TensorMeta meta;
+    meta.indicesType = ge::DT_INT64;
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo, meta);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, non_nd_format_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    TensorMeta meta;
+    meta.xFormat = ge::FORMAT_NCHW;
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo, meta);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, unknown_dimension_fails_at_tiling)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({8, 64}, {2, 4, 64}, {-1, 8}, {-1, 8}, {-1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, tensor_element_count_overflow_fails)
+{
+    auto compileInfo = MakeCompileInfo();
+    constexpr int64_t huge = std::numeric_limits<int64_t>::max();
+    auto para = MakePara({huge, 2}, {1, 1, 2}, {1, huge}, {1, huge}, {1, huge}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, zero_core_count_fails)
+{
+    auto compileInfo = MakeCompileInfo(0);
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, invalid_vector_length_fails)
+{
+    auto compileInfo = MakeCompileInfo(32, 262144, 192);
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, insufficient_ub_fails)
+{
+    auto compileInfo = MakeCompileInfo(32, 1024);
+    auto para = MakePara({8, 64}, {2, 4, 64}, {1, 8}, {1, 8}, {1, 8}, ge::DT_FLOAT, &compileInfo);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }

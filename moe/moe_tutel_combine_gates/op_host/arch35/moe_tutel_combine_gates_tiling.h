@@ -10,17 +10,20 @@
 
 /*!
  * \file moe_tutel_combine_gates_tiling.h
- * \brief
+ * \brief MoeTutelCombineGates Ascend 950 tiling declaration.
  */
 #ifndef OPS_TRANSFORMER_MOE_TUTEL_COMBINE_GATES_TILING_H
 #define OPS_TRANSFORMER_MOE_TUTEL_COMBINE_GATES_TILING_H
+
+#include <cstddef>
+#include <cstdint>
 
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_common/op_host/util/platform_util.h"
-#include "../op_kernel/arch35/moe_tutel_combine_gates_tiling_data.h"
+#include "../../op_kernel/arch35/moe_tutel_combine_gates_tiling_data.h"
 
 namespace optiling {
 
@@ -38,10 +41,9 @@ struct MoeTutelCombineGatesCompileInfo {
     uint64_t ubSize = 0;
     uint32_t vectorLength = 0;
     uint32_t ubBlockSize = 0;
+    uint64_t workspaceSize = 0;
 };
 
-// 单模板 tiling：先按 NOT_CUT_H 试，UB 放不下再退到 CUT_H。
-// 分核为二维（sCoreNum × kCoreNum），s 外层 k 内层，让 x 的一行在 k 窗口内复用。
 class MoeTutelCombineGatesTiling {
 public:
     explicit MoeTutelCombineGatesTiling(gert::TilingContext *context)
@@ -52,39 +54,43 @@ public:
 
 private:
     ge::graphStatus GetPlatformInfo();
-    ge::graphStatus GetShapeAndCheck();
     ge::graphStatus CheckDtype();
+    ge::graphStatus CheckFormat() const;
+    ge::graphStatus GetShapeAndCheck();
     ge::graphStatus CheckRank(const gert::Shape &xShape, const gert::Shape &yShape, const gert::Shape &indicesShape,
                               const gert::Shape &locationsShape, const gert::Shape &outShape) const;
     ge::graphStatus CheckRouteShape(const gert::Shape &indicesShape, const gert::Shape &locationsShape,
-                                    const gert::Shape &outShape) const;
+                                    const gert::Shape &outShape);
+    ge::graphStatus CheckTensorSizes() const;
     ge::graphStatus SplitCore();
     ge::graphStatus SplitUb();
-    int64_t RowBytesOf(int64_t len) const;
-    int64_t TileBytesOf(int64_t sBlock, int64_t kBlock) const;
-    // NOT_CUT_H 路径：尝试 H 全载，放不下依次缩 s 分块、k 窗口；返回是否放得下。
-    bool TryNotCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock) const;
-    // CUT_H 路径：tile 收到最小，把 UB 让给 H 分块与部分和缓冲。
     ge::graphStatus SolveCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock);
     ge::graphStatus PostTiling();
+
+    bool GetRowBytes(int64_t len, int64_t &bytes) const;
+    bool GetTileBytes(int64_t sBlock, int64_t kBlock, int64_t &bytes) const;
+    bool GetTreeLayout(int64_t hidden, int64_t &partialCount, int64_t &partialAlign, int64_t &bytes) const;
+    bool TryNotCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock);
 
 private:
     gert::TilingContext *context_ = nullptr;
 
     uint64_t coreNum_ = 0;
     uint64_t ubSize_ = 0;
-    int64_t vlFp32_ = 0;      // 一个 VREG 能装的 fp32 个数
-    int64_t ubBlockSize_ = 0; // UB 对齐粒度（字节）
-    int64_t dtypeSize_ = 0;   // 浮点张量的元素字节数
+    uint64_t workspaceSize_ = 0;
+    int64_t vlFp32_ = 0;
+    int64_t ubBlockSize_ = 0;
+    int64_t dtypeSize_ = 0;
 
-    int64_t samples_ = 0;  // S
-    int64_t hidden_ = 0;   // H
-    int64_t experts_ = 0;  // E
-    int64_t capacity_ = 0; // C
+    int64_t samples_ = 0;
+    int64_t hidden_ = 0;
+    int64_t experts_ = 0;
+    int64_t capacity_ = 0;
+    int64_t routes_ = 0;
 
     uint64_t tilingKey_ = MTCG_TILING_KEY_NOT_CUT_H;
     uint32_t blockDim_ = 1;
-    MoeTutelCombineGatesTilingData td_;
+    MoeTutelCombineGatesTilingData td_{};
 };
 
 } // namespace optiling

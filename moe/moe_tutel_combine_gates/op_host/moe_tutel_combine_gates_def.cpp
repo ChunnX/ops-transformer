@@ -16,10 +16,8 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-// 原型与 REG_OP(MoeTutelCombineGates) 逐项一致：
-//   x / y_grad / gates_grad 为同一浮点 dtype（bf16 / fp16 / fp32），indices / locations 恒 int32。
-//   不开放混合 dtype —— 与 canndev OpDef 的铺排完全相同。
-// 本仓只交付 Ascend950（arch35）；A2 / A3 由 canndev 侧已上库实现承载，此处不加 config（★A5 不碰 A2★）。
+// The public ABI is unchanged: x/y_grad/gates_grad share one floating dtype,
+// while indices and locations are int32. This repository adds Ascend 950 only.
 class MoeTutelCombineGates : public OpDef {
 public:
     explicit MoeTutelCombineGates(const char *name)
@@ -50,9 +48,6 @@ public:
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-
-        // 本算子无属性。
-
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)

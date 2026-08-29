@@ -46,8 +46,9 @@ using std::vector;
 namespace {
 constexpr int64_t SAMPLES = 8;  // S
 constexpr int64_t HIDDEN = 64;  // H
-constexpr int64_t EXPERTS = 2;  // E（同时是路由轴长度）
+constexpr int64_t EXPERTS = 2;  // E
 constexpr int64_t CAPACITY = 4; // C
+constexpr int64_t ROUTES = 1;   // K; Top-1 demonstrates that K may be less than E.
 
 string GetTime()
 {
@@ -146,8 +147,8 @@ int main(int argc, char *argv[])
     (void)MakeFloatTensor({EXPERTS, CAPACITY, HIDDEN}, floatDtype, FORMAT_ND, tensorY, descY);
 
     // 路由值刻意混入越界项（-1 与 EXPERTS / CAPACITY），这些位置期望输出 0。
-    vector<int32_t> indicesValues(static_cast<size_t>(EXPERTS * SAMPLES), 0);
-    vector<int32_t> locationsValues(static_cast<size_t>(EXPERTS * SAMPLES), 0);
+    vector<int32_t> indicesValues(static_cast<size_t>(ROUTES * SAMPLES), 0);
+    vector<int32_t> locationsValues(static_cast<size_t>(ROUTES * SAMPLES), 0);
     for (size_t i = 0; i < indicesValues.size(); i++) {
         if (i % 4 == 0) {
             indicesValues[i] = -1; // index 负越界
@@ -163,8 +164,8 @@ int main(int argc, char *argv[])
             locationsValues[i] = static_cast<int32_t>(i % CAPACITY);
         }
     }
-    (void)MakeInt32Tensor({EXPERTS, SAMPLES}, indicesValues, tensorIndices, descIndices);
-    (void)MakeInt32Tensor({EXPERTS, SAMPLES}, locationsValues, tensorLocations, descLocations);
+    (void)MakeInt32Tensor({ROUTES, SAMPLES}, indicesValues, tensorIndices, descIndices);
+    (void)MakeInt32Tensor({ROUTES, SAMPLES}, locationsValues, tensorLocations, descLocations);
 
     auto xData = op::Data("placeholder_x").set_attr_index(0);
     xData.update_input_desc_x(descX);

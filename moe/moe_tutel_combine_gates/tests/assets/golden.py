@@ -11,28 +11,23 @@
 
 """MoeTutelCombineGates multi-path golden in the TTK TestSpec format.
 
-Contract (frozen from the canndev implementation plus its official UT data
-generator; that module ships no InferShape, so the shapes below are the only
-authoritative reading):
+Contract:
 
     x          : [S, H]      upstream gradient of the combine output
     y_grad     : [E, C, H]   the dispatched activations saved by the forward
-    indices    : [E, S]      expert id per (route, token)
-    locations  : [E, S]      slot id inside the expert capacity
-    gates_grad : [E, S]
+    indices    : [K, S]      expert id per (route, token)
+    locations  : [K, S]      slot id inside the expert capacity
+    gates_grad : [K, S]
 
     valid[e,s]      = 0 <= indices[e,s] < E and 0 <= locations[e,s] < C
     gates_grad[e,s] = dot(x[s,:], y_grad[indices[e,s], locations[e,s], :]) if valid else 0
 
-The routing axis length equals the expert count (K == E): canndev derives its
-task count as ``samples * y_grad.shape[0]`` and its UT builds the routing
-tensors as ``[batchSize, samples]``.
+K is independent of E and satisfies 1 <= K <= E.
 
 The reference math is composed from Torch competitor operators
 (``index_select`` / ``mul`` / ``sum`` / ``where``), never a hand-rolled NumPy
-formula.  As an H-axis reduction the CPU true-value core accumulates in FP64;
-the separate third-party path replays the FP32 arithmetic the kernel actually
-performs so that cross_check stays algorithm-equivalent.
+formula. Inputs are promoted to FP32 for the multiply/reduce and cast once to
+the output dtype, as required by the public numerical contract.
 """
 
 import numpy as np
@@ -43,11 +38,6 @@ __spec__ = {
     # kernel + GEIR share this snake-case key and this one Spec class.
     "moe_tutel_combine_gates": "MoeTutelCombineGatesKernelSpec",
 }
-
-__golden__ = {
-    "kernel": {"moe_tutel_combine_gates": "moe_tutel_combine_gates_golden"},
-}
-
 
 _TOL = {
     "float32": {"standard": "cross_check", "level": "L1"},
@@ -129,17 +119,13 @@ def _combine_gates(x, y_grad, indices, locations, compute_dtype):
     # stays legal instead of tripping the ambiguous -1 dimension.
     y_work = y_grad.to(compute_dtype).reshape(y_grad.shape[0] * y_grad.shape[1], hidden)
 
-    # C == 0 (and E == 0) leave y_grad with no rows at all, so every route is
-    # out of range by definition and the whole output is 0.  Short-circuit here:
-    # index_select refuses a zero-length indexing axis even when the clamped
-    # index would be discarded afterwards ("self indexing axis dim should be
-    # positive"), which would turn a legal empty-tensor case into a crash.
-    if y_work.shape[0] == 0:
-        return torch.zeros(tuple(indices.shape), dtype=compute_dtype)
-
-    rows = torch.index_select(y_work, 0, safe_flat.reshape(-1))  # [E * S, H]
+    rows = torch.index_select(y_work, 0, safe_flat.reshape(-1))  # [K * S, H]
     tokens = torch.index_select(
-        x_work, 0, torch.arange(x.shape[0], dtype=torch.int64).repeat(indices.shape[0])
+        x_work,
+        0,
+        torch.arange(x.shape[0], dtype=torch.int64, device=x_work.device).repeat(
+            indices.shape[0]
+        ),
     )
     products = torch.mul(rows, tokens)
     dots = torch.sum(products, dim=-1).reshape(indices.shape)
@@ -148,9 +134,10 @@ def _combine_gates(x, y_grad, indices, locations, compute_dtype):
 
 
 def _compute(x, y_grad, indices, locations, **kwargs):
-    """CPU true value: FP64 accumulation over the contracted H axis."""
+    """Semantic reference with FP32 accumulation and one output cast."""
     del kwargs  # MoeTutelCombineGates has no attributes.
-    return [_combine_gates(x, y_grad, indices, locations, torch.float64)]
+    out = _combine_gates(x, y_grad, indices, locations, torch.float32)
+    return [out.to(dtype=x.dtype)]
 
 
 def _kernel_golden(x, y_grad, indices, locations, **kwargs):
@@ -171,14 +158,7 @@ def _kernel_golden(x, y_grad, indices, locations, **kwargs):
 
 
 class _MoeTutelCombineGatesCompose:
-    """Independent A100 composition replaying the kernel's FP32 arithmetic.
-
-    The CPU golden above stays an FP64 true value.  This third-party path runs
-    the same Torch operators in FP32 on the competitor GPU, matching what the
-    arch35 kernel does (FP16/BF16 promoted to FP32, one cast back on store), so
-    cross_check compares an algorithm-equivalent implementation rather than
-    reusing NPU output data.
-    """
+    """Independent competitor composition of the public math contract."""
 
     def __init__(self, **kwargs):
         del kwargs  # The proto declares no attributes.
@@ -202,15 +182,5 @@ class MoeTutelCombineGatesKernelSpec:
     tolerance = _TOL
 
 
-def moe_tutel_combine_gates_golden(x, y_grad, indices, locations, *args, **kwargs):
-    """Compatibility entry for the historical ``__golden__`` kernel loader."""
-    del args
-    legacy_kwargs = dict(kwargs)
-    if not legacy_kwargs.get("output_dtypes"):
-        legacy_kwargs["output_dtypes"] = [[str(getattr(x, "dtype", "float32"))]]
-    return _kernel_golden(x, y_grad, indices, locations, **legacy_kwargs)[0]
-
-
-# 【不存在】ACLNN 通路：op_host/CMakeLists.txt 显式配置 ACLNNTYPE aclnn_exclude；
-# 本算子无同名 public aclnn 接口，也没有 op_host/op_api 与 aclnn 接口文档。
-# 【不存在】e2e 通路：不交付 ACLNN 符号，torch_npu 无对应绑定入口，支持面为 Kernel + GE 图模式。
+# This operator has no ACLNN or torch_npu E2E entry. The supported paths are
+# kernel direct invocation and GE graph mode, both covered by the spec above.

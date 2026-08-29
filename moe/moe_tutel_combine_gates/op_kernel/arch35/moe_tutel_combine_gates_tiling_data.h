@@ -10,7 +10,7 @@
 
 /*!
  * \file moe_tutel_combine_gates_tiling_data.h
- * \brief Host 与 Kernel 共用的 TilingData 定义（arch35 / Ascend950）
+ * \brief Host and Kernel shared tiling data for Ascend 950.
  */
 #ifndef MOE_TUTEL_COMBINE_GATES_TILING_DATA_H_
 #define MOE_TUTEL_COMBINE_GATES_TILING_DATA_H_
@@ -18,31 +18,36 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-// 轴命名：
-//   S = x.shape[0]（token 数）      H = x.shape[1] = y_grad.shape[2]（被收缩的隐藏维）
-//   E = y_grad.shape[0]（专家数，同时是路由轴长度）  C = y_grad.shape[1]（每专家 capacity）
-//   indices / locations / gates_grad 形状恒为 [E, S]
+// Axis names:
+//   S = x.shape[0], H = x.shape[1] = y_grad.shape[2]
+//   E = y_grad.shape[0], C = y_grad.shape[1]
+//   K = indices.shape[0] = locations.shape[0] = gates_grad.shape[0]
+// Route tensors are [K, S]. K is independent of E except for 1 <= K <= E.
 //
-// 分核：blockDim = sCoreNum * kCoreNum；blockIdx b -> (cs, ck) = (b % sCoreNum, b / sCoreNum)。
-// s 外层、k 内层，使 x 的一行在本核的整个 k 区间内只搬运一次。
+// Core mapping: blockDim = sCoreNum * kCoreNum and
+// blockIdx b -> (cs, ck) = (b % sCoreNum, b / sCoreNum).
 namespace optiling {
 struct MoeTutelCombineGatesTilingData {
-    uint64_t samples;      // S
-    uint64_t hidden;       // H
-    uint64_t experts;      // E
-    uint64_t capacity;     // C
-    uint64_t sCoreNum;     // s 方向核数（k 方向核数 = blockDim / sCoreNum，kernel 无需单独下发）
-    uint64_t sPerCoreBase; // S / sCoreNum
-    uint64_t sCoreRemain;  // S % sCoreNum，前 sCoreRemain 个 s 分片各多 1
-    uint64_t kPerCoreBase; // E / kCoreNum
-    uint64_t kCoreRemain;  // E % kCoreNum，前 kCoreRemain 个 k 分片各多 1
-    uint64_t sBlock;       // 输出 tile 在 s 方向的宽度（元素数）
-    uint64_t sBlockAlign;  // sBlock 按 VL(fp32) 向上对齐后的元素数（tile 行距；VF 整段读写要求）
-    uint64_t kBlock;       // 输出 tile 在 k 方向的高度（行数），用于把 tile 的 UB 占用封顶
-    uint64_t hFactor;      // 单次载入的 H 长度；NOT_CUT_H 时 == hidden
-    uint64_t hFactorAlign; // hFactor 按 VL(fp32) 向上对齐后的元素数，即 UB 行长
-    uint64_t numChunks;    // ceil(hidden / hFactor)；NOT_CUT_H 时 == 1（hidden == 0 时为 0）
-    uint64_t hTail;        // 最后一块的实际长度；NOT_CUT_H 时 == hidden
+    uint64_t samples;           // S
+    uint64_t hidden;            // H
+    uint64_t experts;           // E
+    uint64_t capacity;          // C
+    uint64_t routes;            // K
+    uint64_t sCoreNum;          // Number of cores along S; kCoreNum = blockDim / sCoreNum.
+    uint64_t sPerCoreBase;      // S / sCoreNum
+    uint64_t sCoreRemain;       // S % sCoreNum.
+    uint64_t kPerCoreBase;      // K / kCoreNum.
+    uint64_t kCoreRemain;       // K % kCoreNum.
+    uint64_t sBlock;            // Logical output tile width along S.
+    uint64_t sBlockAlign;       // sBlock aligned to the fp32 vector length.
+    uint64_t kBlock;            // Output tile height along K.
+    uint64_t hFactor;           // H elements copied per chunk; hidden on NOT_CUT_H.
+    uint64_t hFactorAlign;      // hFactor aligned to the fp32 vector length.
+    uint64_t numChunks;         // ceil(hidden / hFactor), or zero when H is zero.
+    uint64_t hTail;             // Logical H length of the last chunk.
+    uint64_t vlPartialCount;    // ceil(hFactor / VL_FP32).
+    uint64_t vlPartialAlign;    // Power-of-two VL partial tree length, at least VL_FP32.
+    uint64_t chunkPartialAlign; // Power-of-two chunk tree length, CUT_H only.
 };
 } // namespace optiling
 
