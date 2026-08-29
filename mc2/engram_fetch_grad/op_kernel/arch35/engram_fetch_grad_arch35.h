@@ -1075,29 +1075,27 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
 
     int64_t sAccum = 0;
     int64_t rAccum = 0;
-    DataCopyParams displParams = {1U, static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
+    // Batch: build all per-rank 32B displ slots in UB (value in [0,8B), tail ignored by
+    // readers), then one MTE3 per array — replaces numRanks*2 serialized MTE3 round trips.
+    LocalTensor<int64_t> sdisplUb = tempBuf_.Get<int64_t>();
+    LocalTensor<int64_t> rdisplUb = sdisplUb[numRanks_ * (UB_ALIGN / sizeof(int64_t))];
     for (uint32_t r = 0; r < numRanks_; r++) {
         int32_t sCount = countsBuf.GetValue(sendUbIdx * SENDCOUNT_STRIDE_RATIO + r * SENDCOUNT_STRIDE_RATIO);
         int32_t rCount = countsBuf.GetValue(r);
-
-        LocalTensor<int64_t> displVal = tempBuf_.Get<int64_t>();
-        displVal.SetValue(0, sAccum);
-        EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
-        GlobalTensor<int64_t> sdGM;
-        sdGM.SetGlobalBuffer((__gm__ int64_t *)(sdisplsGM_ + r * UB_ALIGN));
-        DataCopyPad(sdGM, displVal, displParams);
-        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-
-        displVal.SetValue(0, rAccum);
-        EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
-        GlobalTensor<int64_t> rdGM;
-        rdGM.SetGlobalBuffer((__gm__ int64_t *)(rdisplsGM_ + r * UB_ALIGN));
-        DataCopyPad(rdGM, displVal, displParams);
-        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-
+        sdisplUb.SetValue(r * (UB_ALIGN / sizeof(int64_t)), sAccum);
+        rdisplUb.SetValue(r * (UB_ALIGN / sizeof(int64_t)), rAccum);
         sAccum += sCount;
         rAccum += rCount;
     }
+    EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
+    DataCopyParams displParams = {1U, static_cast<uint16_t>(numRanks_ * UB_ALIGN), 0U, 0U};
+    GlobalTensor<int64_t> sdGM;
+    sdGM.SetGlobalBuffer((__gm__ int64_t *)sdisplsGM_);
+    DataCopyPad(sdGM, sdisplUb, displParams);
+    GlobalTensor<int64_t> rdGM;
+    rdGM.SetGlobalBuffer((__gm__ int64_t *)rdisplsGM_);
+    DataCopyPad(rdGM, rdisplUb, displParams);
+    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::ClearWinCounters()
@@ -1168,16 +1166,16 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         SendGradToPeers();
         uint64_t sendEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        RecvGradFromPeers();
-        DrainAndSendFlags();
-        SyncAll<true>();
-
+        // PR10464 flow: the grad recv (FinishExchangeGrad) runs AFTER the entry-only
+        // phases (initCompanion/sort/count/zero), overlapping the cross-rank data flight
+        // with local compute; scatterCast is the only consumer of recvGradGM_.
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
         uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         if (numRecv == 0) {
+            FinishExchangeGrad();
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
             AscendC::printf("ENGRAM core=%uu numRecv=0\n", aivId_);
         } else {
@@ -1220,7 +1218,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
             uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-            SyncAll<true>();
+            FinishExchangeGrad();
             uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
