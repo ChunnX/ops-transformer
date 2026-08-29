@@ -1450,8 +1450,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
     }
     bool copyOutMergedLse = false;
     if constexpr (!HIGH_PERF) {
-        copyOutMergedLse = constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid &&
-                                !runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit;
+        copyOutMergedLse = constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && !runInfo.isCrossCoreSplit &&
+                           runInfo.s2LoopCount == runInfo.s2LoopLimit;
     }
     WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
     WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRAATTN_MTE3_MTE2(runInfo.multiCoreIdxMod2));
@@ -1477,8 +1477,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
             INNERCORE_INTRAPARTIALO_V_MTE2, INNERCORE_REDUCE_MTE2_V);
 
         AttentionCommon::StageBroadcastMaxSum(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
-                                                stagingMOffset + startRow, dealRowCount, lseBroadcastUb,
-                                                sumBroadcastUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+                                              stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
+                                              INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
         if constexpr (!HIGH_PERF) {
             if (copyOutMergedLse) {
                 DataCopyExtParams lseParams;
@@ -1494,8 +1494,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunI
         }
         if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
             AttentionCommon::StageBroadcastMaxSum(crossLayout, crossCoreCombineBase, crossWorkspaceIdx,
-                                                    stagingMOffset + startRow, dealRowCount, lseBroadcastUb,
-                                                    sumBroadcastUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+                                                  stagingMOffset + startRow, dealRowCount, lseBroadcastUb,
+                                                  sumBroadcastUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
         }
         startRow += intraLayout.chunkRows;
     }
