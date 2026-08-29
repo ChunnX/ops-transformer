@@ -108,7 +108,7 @@ struct AttentionToFfnTokenMetaData {
     GM_ADDR remoteFlagAddr;
 };
 
-#define TemplateAttentionToFfnUrmaTypeClass                                                              \
+#define TemplateAttentionToFfnUrmaTypeClass \
     typename XType, typename XOutType, uint32_t QuantMode, bool isSync, bool isActiveMask
 #define TemplateAttentionToFfnUrmaTypeFunc XType, XOutType, QuantMode, isSync, isActiveMask
 
@@ -116,18 +116,16 @@ using namespace AscendC;
 template <TemplateAttentionToFfnUrmaTypeClass>
 class AttentionToFfnUrma {
 public:
-    using StorageXOutType = typename std::conditional<
-        (Std::IsSame<XOutType, fp4x2_e2m1_t>::value) || (Std::IsSame<XOutType, fp4x2_e1m2_t>::value),
-        uint8_t, XOutType>::type;
+    using StorageXOutType = typename std::conditional<(Std::IsSame<XOutType, fp4x2_e2m1_t>::value) ||
+                                                          (Std::IsSame<XOutType, fp4x2_e1m2_t>::value),
+                                                      uint8_t, XOutType>::type;
     using StorageXInType = typename std::conditional<
-        (Std::IsSame<XType, fp4x2_e2m1_t>::value) || (Std::IsSame<XType, fp4x2_e1m2_t>::value),
-        uint8_t, XType>::type;
+        (Std::IsSame<XType, fp4x2_e2m1_t>::value) || (Std::IsSame<XType, fp4x2_e1m2_t>::value), uint8_t, XType>::type;
 
     __aicore__ inline AttentionToFfnUrma(){};
-    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId,
-                                GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable,
-                                GM_ADDR scales, GM_ADDR active_mask, GM_ADDR workspaceGM, TPipe *pipe,
-                                const AttentionToFfnV2TilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
+                                GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask,
+                                GM_ADDR workspaceGM, TPipe *pipe, const AttentionToFfnV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -244,13 +242,10 @@ private:
 };
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void
-AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionId,
-                                                              GM_ADDR microBatchId, GM_ADDR layerId,
-                                                              GM_ADDR expertIds, GM_ADDR expertRankTable,
-                                                              GM_ADDR scales, GM_ADDR active_mask,
-                                                              GM_ADDR workspaceGM, TPipe *pipe,
-                                                              const AttentionToFfnV2TilingData *tilingData)
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Init(
+    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds,
+    GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask, GM_ADDR workspaceGM, TPipe *pipe,
+    const AttentionToFfnV2TilingData *tilingData)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -337,13 +332,13 @@ AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     }
 
     winOffset_[0] = 0;
-    winOffset_[1] = Ceil(attentionWorkerNum_ * microBatchNum_ * infoTableLastDimNum_ * sizeof(int32_t), WIN_ALIGN) *
-                    WIN_ALIGN;
-    winInfoTableOffset_ = (sessionId_ * microBatchNum_ * infoTableLastDimNum_ + microBatchId_ * infoTableLastDimNum_) *
-                          sizeof(int32_t);
-    winTokenDataOffset_ = (static_cast<uint64_t>(sessionId_) * microBatchNum_ * axisBS_ *
-                           (axisK_ + sharedExpertNum_) * axisHS_) +
-                          (static_cast<uint64_t>(microBatchId_) * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_);
+    winOffset_[1] =
+        Ceil(attentionWorkerNum_ * microBatchNum_ * infoTableLastDimNum_ * sizeof(int32_t), WIN_ALIGN) * WIN_ALIGN;
+    winInfoTableOffset_ =
+        (sessionId_ * microBatchNum_ * infoTableLastDimNum_ + microBatchId_ * infoTableLastDimNum_) * sizeof(int32_t);
+    winTokenDataOffset_ =
+        (static_cast<uint64_t>(sessionId_) * microBatchNum_ * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_) +
+        (static_cast<uint64_t>(microBatchId_) * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_);
 
     dataWorkspaceStride_ = Ceil(hCommuSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
     const uint64_t urmaWorkspaceOffset = tilingData->attentionToFfnV2Info.urmaWorkspaceOffset;
@@ -391,9 +386,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void
-AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ReduceMaxInplace(const LocalTensor<float> &srcLocal,
-                                                                          uint32_t count)
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ReduceMaxInplace(
+    const LocalTensor<float> &srcLocal, uint32_t count)
 {
     uint64_t repsFp32 = count >> 6;
     uint64_t offsetsFp32 = repsFp32 << 6;
@@ -427,7 +421,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
             smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
             DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(axisH_ * sizeof(float)), 0U, 0U, 0U};
             DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
-            DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams, copyPadExtParams);
+            DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesCopyInParams,
+                        copyPadExtParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             Mul(floatLocalTemp, floatLocalTemp, smoothScalesTensor_, axisH_);
             PipeBarrier<PIPE_V>();
@@ -492,8 +487,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
         __ubuf__ uint16_t *mxScaleLocalAddr = (__ubuf__ uint16_t *)xOutTensor_[axisH_ * 1U].GetPhyAddr();
         Quant::ComputeMaxExpClip(srcAddr, maxExpAddr, axisH_);
         Quant::ComputeScaleClip<XOutType, StorageXInType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-        Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC,
-                              AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        Quant::ComputeFp8Data<StorageXInType, XOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
+            srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         PipeBarrier<PIPE_V>();
         xInQueue_.FreeTensor<XType>(xInTensor_);
     }
@@ -550,7 +545,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::F
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         expertRankTableGMTensor_[expRankTableOffset]);
     uint32_t rankCnt = expertRankTableGMTensor_.GetValue(expRankTableOffset);
-    if (rankCnt == 0) { return; }
+    if (rankCnt == 0) {
+        return;
+    }
     uint32_t rankOffset = (sessionId_ % rankCnt) * RANK_OFFSET_STRIDE + 1;
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         expertRankTableGMTensor_[expRankTableOffset + rankOffset]);
@@ -562,8 +559,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::F
 
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SplitToCore(
-    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId,
-    uint32_t &sendTokenNum)
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
     sendTokenNum = curSendCnt / curUseAivNum;
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum;
@@ -611,9 +607,8 @@ __aicore__ inline uint64_t AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void
-AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ReadTokenMetaData(AttentionToFfnTokenMetaData &metaData,
-                                                                            uint32_t tokenOffset)
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ReadTokenMetaData(
+    AttentionToFfnTokenMetaData &metaData, uint32_t tokenOffset)
 {
     metaData.tokenId = tokenOffset / (axisK_ + sharedExpertNum_);
     metaData.topkId = tokenOffset % (axisK_ + sharedExpertNum_);
@@ -635,14 +630,12 @@ AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::ReadTokenMetaData(Attent
                                (static_cast<uint64_t>(metaData.tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
                                (static_cast<uint64_t>(metaData.topkId) * axisHS_);
     metaData.remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
-    metaData.remoteFlagAddr = toRankAddr + winInfoTableOffset_ +
-                              (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
+    metaData.remoteFlagAddr = toRankAddr + winInfoTableOffset_ + (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void
-AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SendToLocal(const AttentionToFfnTokenMetaData &metaData,
-                                                                      const DataCopyExtParams &xCopyParams)
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SendToLocal(
+    const AttentionToFfnTokenMetaData &metaData, const DataCopyExtParams &xCopyParams)
 {
     DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams hCommuCopyParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
@@ -682,9 +675,8 @@ AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SendToLocal(const Attent
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void
-AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::StageRemoteData(const AttentionToFfnTokenMetaData &metaData,
-                                                                          const DataCopyExtParams &xCopyParams)
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::StageRemoteData(
+    const AttentionToFfnTokenMetaData &metaData, const DataCopyExtParams &xCopyParams)
 {
     DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams hCommuCopyParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
@@ -725,16 +717,14 @@ AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::StageRemoteData(const At
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void
-AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SendToRemote(uint32_t sourceAivId,
-                                                                       const AttentionToFfnTokenMetaData &metaData)
+__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SendToRemote(
+    uint32_t sourceAivId, const AttentionToFfnTokenMetaData &metaData)
 {
     GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(sourceAivId) * dataWorkspaceStride_;
     GM_ADDR sourceFlagAddr = localFlagAddr_ + static_cast<uint64_t>(sourceAivId) * URMA_FLAG_SLOT_SIZE;
     uint64_t channel = GetUrmaCommHandle(static_cast<uint32_t>(metaData.toRankId));
 
-    int32_t ret = hcomm_.WriteNbi(channel, metaData.remoteDataAddr, sourceDataAddr,
-                                  static_cast<int64_t>(hCommuSize_));
+    int32_t ret = hcomm_.WriteNbi(channel, metaData.remoteDataAddr, sourceDataAddr, static_cast<int64_t>(hCommuSize_));
     ret = hcomm_.Drain(channel);
 
     ret = hcomm_.WriteNbi(channel, metaData.remoteFlagAddr, sourceFlagAddr, static_cast<int64_t>(sizeof(int32_t)));
@@ -800,8 +790,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
     statusTensor_.SetValue(0, URMA_FLAG_VALUE);
     statusTensor_.SetValue(1, static_cast<int32_t>(layerId_));
     SyncFunc<HardEvent::S_MTE3>();
-    DataCopyExtParams statusParams = {1U, static_cast<uint32_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT),
-                                      0U, 0U, 0U};
+    DataCopyExtParams statusParams = {1U, static_cast<uint32_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT), 0U,
+                                      0U, 0U};
     if (startFFNId >= ffnNum_) {
         return;
     }
@@ -825,13 +815,13 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         LocalTensor<float> ffnStatusTensorFloat = ffnStatusTensor_.ReinterpretCast<float>();
         const uint32_t shape[] = {aivNum_, static_cast<uint32_t>(sentFFNNumAlignSize / sizeof(float))};
         AscendC::ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(ffnStatusTensorFloat,
-                                                                       syncStatusWorkspaceTensorFloat, shape, true);
+                                                                      syncStatusWorkspaceTensorFloat, shape, true);
         SyncFunc<AscendC::HardEvent::V_S>();
     }
 
     for (uint32_t ffnIdx = startFFNId; ffnIdx < endFFNId; ++ffnIdx) {
         if constexpr (isSync) {
-            if (ffnStatusTensor_.GetValue(ffnIdx - ffnStartRankId_) == 0) {
+            if (ffnStatusTensor_.GetValue(ffnIdx - startFFNId) == 0) {
                 continue;
             }
         }
@@ -848,9 +838,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             DataCopyPad(localFlagGMTensor, statusTensor_, statusParams);
             PipeBarrier<PIPE_MTE3>();
             uint64_t channel = GetUrmaCommHandle(ffnIdx);
-            int32_t ret = hcomm_.WriteNbi(
-                channel, tableFlagGM, localFlagAddr_,
-                static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
+            int32_t ret = hcomm_.WriteNbi(channel, tableFlagGM, localFlagAddr_,
+                                          static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
             ret = hcomm_.Drain(channel);
         }
     }
