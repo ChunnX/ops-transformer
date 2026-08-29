@@ -1879,6 +1879,9 @@ def compressor_grad(
                 pl.system.wait_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=db_idx,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+
+
+                    
                 if pre_deal_tc_size < round_blocks:
                     _phase2_matmul(round_idx, db_idx, deal_tc_size, tiling.hidden_size, tiling.head_dim,
                                    tiling.deal_sc_num, tiling.cube_m_base_size, tiling.cmp_ratio,
