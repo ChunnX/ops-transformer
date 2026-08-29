@@ -18,7 +18,14 @@ def test_kernel_keeps_inputs_and_output_in_regular_npu_memory():
     assert "at::empty({outputRows64, n64}, x.options())" in source
     assert "runtime.IsSymmetric(output.data_ptr())" not in source
     assert "AllocateSymmetricTensor(x, {m64, n64}" not in source
-    assert "aclrtMemcpyAsync" not in source
+    operator_impl = source[
+        source.index("at::Tensor GroupedMatMulAllToAllVUdmaImpl("):
+        source.index("at::Tensor ReadGroupedMatMulAllToAllVDiagnosticStatus(")
+    ]
+    assert "aclrtMemcpyAsync" not in operator_impl
+    # The private root-cause status reader copies only the bounded status
+    # cache lines; it is not part of the operator's data path.
+    assert "ACL_MEMCPY_DEVICE_TO_DEVICE" in source
 
 
 def test_validation_uses_regular_reusable_output():
@@ -28,7 +35,8 @@ def test_validation_uses_regular_reusable_output():
     performance = (PROJECT_ROOT / "validation" / "performance_worker.py").read_text(
         encoding="utf-8"
     )
-    assert "reusable_out = torch.empty((m, n)" in accuracy
+    assert "reusable_out = torch.empty(" in accuracy
+    assert "expected.shape, dtype=torch.bfloat16" in accuracy
     assert "reusable_out = udma.empty_symmetric" not in accuracy
     assert "out = udma.empty_symmetric" not in performance
 
@@ -251,19 +259,19 @@ def test_target_order_get_completion_uses_host_epoch_and_per_peer_slots():
     assert "ConsumerDoneSlotOffset(stageIdx, rankIdx)" in target_order
     assert "ConsumerDoneSlotOffset(stageIdx, dstRankIdx)" in target_order
     assert "syncConsumerDone + slotOffset" in target_order
-    assert (
-        "WORKSPACE_STAGES * SYNC_SLOT_RANKS *\n"
-        "                    SIGNAL_CACHE_LINE_BYTES"
-    ) in kernel
+    assert "WORKSPACE_STAGES * SYNC_SLOT_RANKS * SIGNAL_CACHE_LINE_BYTES" in kernel
     assert "WORKSPACE_STAGES * SYNC_SLOT_RANKS * sizeof(int32_t)" not in kernel
     assert "scheduler.HasOutput(commIdx, dstRankIdx)" in target_order
     assert "FinalizeBlockLoopWithStatus()" in target_order
     assert "GET CQ failure" in target_order
     assert "ACLSHMEM_SIGNAL_ADD" not in target_order
-    assert "CACHE_MODE_DISABLE" not in target_order
-    # The repair reuses the existing entry barrier and adds no per-round
-    # device-wide synchronization.
-    assert target_order.count("aclshmemx_barrier_all_vec()") == 1
+    assert "GmmA2avDiagnosticUsesFixBypass(params.diagnosticMode)" in target_order
+    assert "CACHE_MODE_DISABLE" in target_order
+    assert "GMM_A2AV_DIAGNOSTIC_PRODUCTION = 0" in kernel
+    # Production executes only the entry barrier. Extra per-round barriers are
+    # runtime-gated behind the balanced-route root-cause modes.
+    assert "if (serialized)" in target_order
+    assert target_order.count("aclshmemx_barrier_all_vec()") == 4
     assert "NextGroupedMatMulAllToAllVEpoch" in runtime_header
 
 

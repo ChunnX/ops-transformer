@@ -18,8 +18,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <mutex>
+#include <string>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
@@ -28,6 +30,46 @@ enum class KernelVariant {
     kM0_128,
     kM0_256,
 };
+
+uint32_t GroupedMatMulAllToAllVDiagnosticModeFromEnv()
+{
+    using namespace Catccos::DGemm::Kernel;
+    const char *raw = std::getenv(
+        "CATCCOS_UDMA_GMM_A2AV_DIAGNOSTIC_MODE");
+    const std::string value = raw == nullptr || raw[0] == '\0' ?
+        "production" : raw;
+    if (value == "production") {
+        return GMM_A2AV_DIAGNOSTIC_PRODUCTION;
+    }
+    if (value == "serialized_default") {
+        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_DEFAULT;
+    }
+    if (value == "serialized_delay") {
+        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_DELAY;
+    }
+    if (value == "serialized_fix_bypass") {
+        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_FIX_BYPASS;
+    }
+    if (value == "serialized_mte_republish") {
+        return GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH;
+    }
+    if (value == "rolling_udma_ack") {
+        return GMM_A2AV_DIAGNOSTIC_ROLLING_UDMA_ACK;
+    }
+    if (value == "rolling_fix_bypass") {
+        return GMM_A2AV_DIAGNOSTIC_ROLLING_FIX_BYPASS;
+    }
+    if (value == "rolling_bypass_udma_ack") {
+        return GMM_A2AV_DIAGNOSTIC_ROLLING_BYPASS_UDMA_ACK;
+    }
+    TORCH_CHECK(false,
+        "CATCCOS_UDMA_GMM_A2AV_DIAGNOSTIC_MODE must be one of "
+        "production, serialized_default, serialized_delay, "
+        "serialized_fix_bypass, serialized_mte_republish, "
+        "rolling_udma_ack, rolling_fix_bypass, or "
+        "rolling_bypass_udma_ack; got ", value);
+    return GMM_A2AV_DIAGNOSTIC_PRODUCTION;
+}
 
 template <class T>
 struct TypeTag {
@@ -246,6 +288,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const TilingProfile &tiling = SelectTiling(
         k, n, static_cast<uint32_t>(worldSize),
         static_cast<uint32_t>(expertNum));
+    const uint32_t diagnosticMode =
+        GroupedMatMulAllToAllVDiagnosticModeFromEnv();
     TORCH_CHECK((static_cast<uint64_t>(blockDim) * tiling.commInterval) % worldSize == 0,
                 "AI-core count * comm_interval must be divisible by world_size");
 
@@ -272,6 +316,17 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
                 "kernel tiling requires ", requiredWorkspaceBytes,
                 " symmetric workspace bytes, exceeding ",
                 GroupedMatMulAllToAllVUdmaDefaultConfig::kSymmetricDataBytes);
+    if (diagnosticMode == Catccos::DGemm::Kernel::
+            GMM_A2AV_DIAGNOSTIC_SERIALIZED_MTE_REPUBLISH) {
+        TORCH_CHECK(requiredWorkspaceBytes <=
+                        GroupedMatMulAllToAllVUdmaDefaultConfig::
+                            kSymmetricDataBytes / 2,
+                    "serialized_mte_republish requires the ordinary staging "
+                    "footprint to fit in half of symmetric workspace; required ",
+                    requiredWorkspaceBytes, " bytes, half-workspace capacity ",
+                    GroupedMatMulAllToAllVUdmaDefaultConfig::
+                        kSymmetricDataBytes / 2);
+    }
 
     // This fused direction consumes sum(global_tokens) rows and returns
     // sum(local_tokens) rows. Use the caller-provided capacity on the reusable
@@ -346,6 +401,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
             commTileShape,
             static_cast<uint32_t>(outputRows64),
             launchEpoch,
+            diagnosticMode,
         };
 
         SelectedDeviceOp deviceOp;
@@ -390,6 +446,37 @@ at::Tensor GroupedMatMulAllToAllVUdmaOutNpu(
         epSize, expertNum, output);
 }
 
+at::Tensor ReadGroupedMatMulAllToAllVDiagnosticStatus(
+    const at::Tensor &deviceAnchor)
+{
+    TORCH_CHECK(deviceAnchor.defined() &&
+                    deviceAnchor.device().type() ==
+                        c10::DeviceType::PrivateUse1,
+                "device_anchor must be an NPU tensor");
+    const c10::OptionalDeviceGuard guard(deviceAnchor.device());
+    UdmaRuntime &runtime = UdmaRuntime::Instance();
+    runtime.EnsureInitialized();
+    using DiagnosticKernel =
+        GroupedMatMulAllToAllVUdmaDefaultConfig::Kernel;
+    const int64_t bytes = static_cast<int64_t>(runtime.WorldSize()) *
+        DiagnosticKernel::SIGNAL_CACHE_LINE_BYTES;
+    at::Tensor result = at::empty(
+        {bytes}, deviceAnchor.options().dtype(at::kByte));
+    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
+    runtime.RecordStream(stream);
+    const uint8_t *source = runtime.Workspace() +
+        UdmaRuntime::kKernelWorkspaceDataBytes +
+        DiagnosticKernel::DIAGNOSTIC_STATUS_OFFSET_BYTES;
+    const aclError copyStatus = aclrtMemcpyAsync(
+        result.data_ptr(), static_cast<size_t>(bytes),
+        source, static_cast<size_t>(bytes),
+        ACL_MEMCPY_DEVICE_TO_DEVICE, stream);
+    TORCH_CHECK(copyStatus == ACL_SUCCESS,
+                "failed to copy grouped-matmul diagnostic status: ",
+                copyStatus);
+    return result;
+}
+
 at::Tensor GroupedMatMulAllToAllVUdmaMeta(
     const at::Tensor &x, const at::Tensor &weight,
     const at::Tensor &, const at::Tensor &,
@@ -424,6 +511,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaOutMeta(
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("_empty_symmetric(Tensor device_anchor, int[] size, ScalarType dtype) -> Tensor");
+    m.def("_grouped_mat_mul_all_to_allv_diagnostic_status(Tensor device_anchor) -> Tensor");
     m.def("grouped_mat_mul_all_to_allv_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num) -> Tensor");
     m.def("grouped_mat_mul_all_to_allv_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
@@ -434,6 +522,8 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("_empty_symmetric", EmptySymmetric);
+    m.impl("_grouped_mat_mul_all_to_allv_diagnostic_status",
+           ReadGroupedMatMulAllToAllVDiagnosticStatus);
     m.impl("grouped_mat_mul_all_to_allv_udma", GroupedMatMulAllToAllVUdmaNpu);
     m.impl("grouped_mat_mul_all_to_allv_udma_out", GroupedMatMulAllToAllVUdmaOutNpu);
 }
