@@ -951,7 +951,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetShapeAttrsIn
     fBaseParams.mm2IsNZOut = false;
     if (queryType != ge::DT_FLOAT) {
         bool mm1NzRangeS2 = (fBaseParams.s2 % S2_NZ_SIZE != 0 && fBaseParams.s2 < MM12_ND2NZ_SIZE);
-        fBaseParams.mm1IsNZOut = (fBaseParams.layoutType != INPUT_FORMAT_TND) && mm1NzRangeS2;
+        fBaseParams.mm1IsNZOut = mm1NzRangeS2;
         // d为72, 80, 88, 96时支持NZ输出
         bool mm2NzRangeD =
             ((fBaseParams.d == 72) || (fBaseParams.d == 80) || (fBaseParams.d == 88) || (fBaseParams.d == 96));

@@ -231,7 +231,7 @@ bool FlashAttentionScoreGraTilingMla::IsShapeCapable()
         return false;
     }
 
-    if (fBaseParams.t1 != fBaseParams.t2 || !fBaseParams.eaqualActSeqLen || fBaseParams.s1 > S_MAX) {
+    if (fBaseParams.t1 != fBaseParams.t2 || !fBaseParams.eaqualActSeqLen || fBaseParams.s1 > S_MAX || fBaseParams.t1 > 2 * S_MAX) {
         return false;
     }
 
