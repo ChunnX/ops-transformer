@@ -10,7 +10,7 @@
 
 /*!
  * \file moe_tutel_combine_gates.cpp
- * \brief MoeTutelCombineGates kernel 入口（仅 Ascend950 / arch35）
+ * \brief MoeTutelCombineGates kernel entry for Ascend 950.
  */
 
 #include "kernel_operator.h"
@@ -18,10 +18,7 @@
 
 using namespace AscendC;
 
-// 必须是宏而非 constexpr 变量：opc 在预处理后的源码上扫 TILING_KEY_IS 的实参来切分
-// binary 子核（kernelList 里的 <kernel>_<tilingKey>）。写成 constexpr 时实参仍是标识符，
-// opc 识别不出 key 集合，只会产出单个 <kernel>_0，运行期按 tilingKey 找符号必然失败
-// （RTS_BINARY_FAILURE: Expected symbol ..._10001 does not exist）。仓内同族算子同此写法。
+// OPC discovers binary variants from literal TILING_KEY_IS macro arguments.
 #define TILING_KEY_NOT_CUT_H 10001
 #define TILING_KEY_CUT_H 10002
 

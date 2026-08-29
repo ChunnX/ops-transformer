@@ -21,12 +21,13 @@ using namespace ge;
 
 namespace ops {
 namespace {
+constexpr size_t INPUT_X_INDEX = 0;
 constexpr size_t INPUT_INDICES_INDEX = 2;
 constexpr size_t OUTPUT_GATES_GRAD_INDEX = 0;
 } // namespace
 
-// gates_grad 与路由张量同形（[E, S]）。canndev 侧没有 InferShape，本形状由其 tiling / kernel 的
-// taskNum = samples * y_grad.shape[0] 与官方 UT gen_data.py 的 [batchSize, samples] 造数共同确定。
+// gates_grad follows the routing tensor shape [K, S]. Shape constraints that
+// need all inputs are checked by concrete-shape tiling.
 static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape4MoeTutelCombineGates");
@@ -36,8 +37,6 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
     gert::Shape *gatesGradShape = context->GetOutputShape(OUTPUT_GATES_GRAD_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gatesGradShape);
 
-    // def.cpp 声明了 DynamicRankSupportFlag(true)：indices 为 -2（UNKNOWN_RANK）时不能按普通 shape 拷贝，
-    // 否则会把 -2 这个标记值当成真实维度传下去，推出非法输出形状。
     if (Ops::Base::IsUnknownRank(*indicesShape)) {
         Ops::Base::SetUnknownRank(*gatesGradShape);
         OP_LOGD(context->GetNodeName(), "indices is unknown rank, set gates_grad to unknown rank");
@@ -50,7 +49,16 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
     return GRAPH_SUCCESS;
 }
 
-// InferDataType 仅图场景使用，已按交付件划分挪到
-// op_graph/moe_tutel_combine_gates_graph_infer.cpp；此处只挂图与单算子共用的 InferShape。
-IMPL_OP_INFERSHAPE(MoeTutelCombineGates).InferShape(InferShape4MoeTutelCombineGates);
+// Keep InferDataType on the host registration: the vendor package path links
+// this object, while its graph-plugin object is not linked. Host UT and the
+// GEIR smoke test cover this packaging-specific registration.
+static ge::graphStatus InferDataType4MoeTutelCombineGates(gert::InferDataTypeContext *context)
+{
+    context->SetOutputDataType(OUTPUT_GATES_GRAD_INDEX, context->GetInputDataType(INPUT_X_INDEX));
+    return GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFERSHAPE(MoeTutelCombineGates)
+    .InferShape(InferShape4MoeTutelCombineGates)
+    .InferDataType(InferDataType4MoeTutelCombineGates);
 } // namespace ops

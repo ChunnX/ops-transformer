@@ -10,11 +10,7 @@
 
 /*!
  * \file test_moe_tutel_combine_gates_infershape.cpp
- * \brief InferShape UT。
- *
- * 说明：InferDataType 实现落在 op_graph/moe_tutel_combine_gates_graph_infer.cpp，
- * 该目录只在 BUILD_OPEN_PROJECT 下随 graph plugin 编译，不参与 op_host UT 构建树，
- * 因此这里不写 InferDataType 用例（该部分做本地验证，不上库 UT）。
+ * \brief InferShape and InferDataType UT.
  */
 
 #include <gtest/gtest.h>
@@ -22,7 +18,9 @@
 #include <vector>
 
 #include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 class MoeTutelCombineGatesProto : public testing::Test {
 protected:
@@ -37,7 +35,7 @@ protected:
     }
 };
 
-// gates_grad 与 indices 同形：[E, S]。
+// K is independent of E: this is a Top-1 route tensor with E == 2.
 TEST_F(MoeTutelCombineGatesProto, shape_infer_normal)
 {
     gert::InfershapeContextPara infershapeContextPara(
@@ -45,90 +43,127 @@ TEST_F(MoeTutelCombineGatesProto, shape_infer_normal)
         {
             {{{8, 64}, {8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},       // x     [S, H]
             {{{2, 4, 64}, {2, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // y_grad[E, C, H]
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},         // indices  [E, S]
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},         // locations[E, S]
+            {{{1, 8}, {1, 8}}, ge::DT_INT32, ge::FORMAT_ND},         // indices  [K, S]
+            {{{1, 8}, {1, 8}}, ge::DT_INT32, ge::FORMAT_ND},         // locations[K, S]
         },
         {
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 8}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 8}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-// S == 0 的空 Tensor：输出同形 [E, 0]，空进空出。
+// S == 0 propagates as [K, 0].
 TEST_F(MoeTutelCombineGatesProto, shape_infer_empty_samples)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "MoeTutelCombineGates",
-        {
-            {{{0, 64}, {0, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 4, 64}, {2, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 0}, {2, 0}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2, 0}, {2, 0}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 0}};
+    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineGates",
+                                                      {
+                                                          {{{0, 64}, {0, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{2, 4, 64}, {2, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{1, 0}, {1, 0}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                          {{{1, 0}, {1, 0}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 0}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-// 动态 rank：indices 为 -2（UNKNOWN_RANK）时输出也必须是 UNKNOWN_RANK，
-// 不能把 -2 当成真实维度推下去。def.cpp 声明了 DynamicRankSupportFlag(true)，此路必须真验。
+// Unknown rank propagates without interpreting -2 as a physical dimension.
 TEST_F(MoeTutelCombineGatesProto, shape_infer_unknown_rank)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "MoeTutelCombineGates",
-        {
-            {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{-2}, {-2}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{-2}, {-2}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {});
+    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineGates",
+                                                      {
+                                                          {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{-2}, {-2}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                          {{{-2}, {-2}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {});
     std::vector<std::vector<int64_t>> expectOutputShape = {{-2}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-// E == 0 的空 Tensor：输出 [0, S]。
-TEST_F(MoeTutelCombineGatesProto, shape_infer_empty_experts)
+// Unknown dimensions propagate; concrete contract validation belongs to tiling.
+TEST_F(MoeTutelCombineGatesProto, shape_infer_unknown_dimension)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "MoeTutelCombineGates",
-        {
-            {{{8, 64}, {8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{0, 4, 64}, {0, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{0, 8}, {0, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{0, 8}, {0, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{0, 8}};
+    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineGates",
+                                                      {
+                                                          {{{8, 64}, {8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{2, 4, 64}, {2, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{-1, 8}, {-1, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                          {{{-1, 8}, {-1, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-1, 8}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-// H == 0 的空内积：shape 推导不受影响。
+// H == 0 does not affect route-shape inference; K may still be less than E.
 TEST_F(MoeTutelCombineGatesProto, shape_infer_zero_hidden)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "MoeTutelCombineGates",
-        {
-            {{{8, 0}, {8, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{3, 5, 0}, {3, 5, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{3, 8}, {3, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3, 8}, {3, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{3, 8}};
+    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineGates",
+                                                      {
+                                                          {{{8, 0}, {8, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{3, 5, 0}, {3, 5, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                          {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {});
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 8}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// InferDataType follows x and is required by GE graph mode.
+static void CheckInferDataType(ge::DataType floatType)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto dataTypeFunc = spaceRegistry->GetOpImpl("MoeTutelCombineGates")->infer_datatype;
+    ASSERT_NE(dataTypeFunc, nullptr);
+
+    ge::DataType intType = ge::DT_INT32;
+    ge::DataType outType = ge::DT_UNDEFINED;
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .IrInputNum(4)
+                             .NodeIoNum(4, 1)
+                             .NodeInputTd(0, floatType, ge::FORMAT_ND, ge::FORMAT_ND)    // x
+                             .NodeInputTd(1, floatType, ge::FORMAT_ND, ge::FORMAT_ND)    // y_grad
+                             .NodeInputTd(2, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND) // indices
+                             .NodeInputTd(3, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND) // locations
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&floatType, &floatType, &intType, &intType})
+                             .OutputDataTypes({&outType})
+                             .Build();
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_NE(context, nullptr);
+    EXPECT_EQ(dataTypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), floatType);
+}
+
+TEST_F(MoeTutelCombineGatesProto, infer_datatype_float32)
+{
+    CheckInferDataType(ge::DT_FLOAT);
+}
+
+TEST_F(MoeTutelCombineGatesProto, infer_datatype_float16)
+{
+    CheckInferDataType(ge::DT_FLOAT16);
+}
+
+TEST_F(MoeTutelCombineGatesProto, infer_datatype_bfloat16)
+{
+    CheckInferDataType(ge::DT_BF16);
 }
