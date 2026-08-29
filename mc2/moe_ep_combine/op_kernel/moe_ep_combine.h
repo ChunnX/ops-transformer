@@ -80,8 +80,8 @@ static constexpr uint32_t ADDRESS_ENTRY_UB_BYTES = UB_ALIGN;
 static constexpr uint32_t ADDRESS_ENTRY_GM_BYTES = WIN_ADDR_ALIGN;
 static constexpr uint32_t ADDRESS_TABLE_BUFFER_BYTES = 40U * 1024U;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
-static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -534,8 +534,11 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
     if (preparedWriteCount_ != 0) {
-        (void)hcomm_.BatchCommit(activeBatchHandle_);
+        int32_t commitRet = hcomm_.BatchCommit(activeBatchHandle_);
+        ascendc_assert(commitRet == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", commitRet);
         preparedWriteCount_ = 0;
+        int32_t drainRet = hcomm_.Drain(activeBatchHandle_);
+        ascendc_assert(drainRet == HCOMM_SUCCESS, "Batch Drain failed, ret=%d", drainRet);
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
@@ -621,8 +624,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
+    // Drain all payload writes before publishing the completion flag. Drain requires CQE-enabled WQEs; otherwise
+    // the batch handle's cqHead does not advance and polling cannot prove completion of the current batch.
+    FlushPreparedWrites();
     BeginPreparedWrites(dstRank);
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+    FlushPreparedWrites();
 }
 
 template <TemplateMoeEpCombineTypeClass>
