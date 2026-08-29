@@ -127,6 +127,32 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
+    // 窗口 1 权重 L2 预取（独立预算）：仅 AIV0 构造游标（AIC/AIV1 传空指针保持原行为），在 count
+    // 等待自旋处交付首份额（剩余由 wave 循环尾滑动补发）。固定从 MAX_EXPERTS(=2) 号专家起接续
+    // 窗口 0 覆盖 [2, min(E,4))，起始偏移跳过窗口 0 的完整专家区域，数据不重叠；E<=2 时无剩余
+    // 专家、预算为 0 不构造。跨机（>8P）才开（与窗口 0 统一，单机全关；本类仅 MTE 拓扑实例化）。
+    // A4W4 的 GMM1 走 generic，W1 预取命中其权重读。由 WEIGHT_L2_PREFETCH_ENABLE_WINDOW1 控制，
+    // 当前关闭。
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        uint32_t window1FirstExpert = WEIGHT_L2_PREFETCH_MAX_EXPERTS;
+        uint64_t window1BudgetBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank,
+            commonConfig_.worldSize, window1FirstExpert);
+        if (WEIGHT_L2_PREFETCH_ENABLE_WINDOW1 && IsWeightPrefetchRank(commonConfig_.worldSize) &&
+            GetSubBlockIdx() == 0U && window1BudgetBytes > 0U) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                                 commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx,
+                                 countWorkspace_.blockNum, window1BudgetBytes,
+                                 WeightL2PrefetchExpertSkipBytes(commonConfig_.gmm1OutputDim,
+                                                                 commonConfig_.tokenHiddenDim, window1FirstExpert),
+                                 2U, params_.tilingData->weightPrefetchUbOffset);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，按相同调用顺序推进并始终保持一致；
     // MoE GMM1 与 GMM2 沿用该游标持续滚动。
     int32_t vecSetSyncCom = 0;
@@ -202,7 +228,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx, weightPrefetch);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
@@ -246,6 +272,23 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+
+        // 窗口 1 滑动补发：count 自旋仅 μs 级，首份额必然欠交；剩余预算按 wave 边界小额补发——
+        // wave N+1 将消费的权重在 wave N 期间交付，匹配逐 wave pull 的消费节奏。仅 AIV0 持游标
+        // （其余核空指针零执行）；与 AIV1 的 dispatch pull 分属不同核 MTE2 队列，仅共享 DDR 带宽。
+        if (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank && weightPrefetch != nullptr &&
+            WeightL2PrefetchHasRemaining(*weightPrefetch)) {
+            // 发射前清空流水：建立 V→MTE2 序，不依赖上游各 stage 协议覆盖面（波尾各流水本就
+            // 近乎空，屏障为数百 ns 级确认）。
+            PipeBarrier<PIPE_ALL>();
+            for (uint32_t issued = 0U; issued < WEIGHT_L2_PREFETCH_WAVE_QUOTA_CHUNKS; ++issued) {
+                if (!WeightL2PrefetchTryIssue(*weightPrefetch)) {
+                    break;
+                }
+            }
+            // 发射后清空流水：scratch 写（MTE2）全部落定，放行下一 wave 的 UB 使用。
+            PipeBarrier<PIPE_ALL>();
+        }
     }
 
     if constexpr (!TopkWeightsPrefetch) {
