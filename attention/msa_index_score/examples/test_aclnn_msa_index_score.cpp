@@ -751,7 +751,7 @@ int main()
          false,
          kSparseModeRightDown,
          KeyLayout::TND},
-        // 整 batch 空序列：host 跳过计算（950）。
+        // 整 batch 空序列：host 跳过计算（A2/A3 与 950）。
         {"L0-all-q0", 8, 128, 8, {0}, {256}, {1}, false, false},
         {"L0-all-kv0", 8, 128, 8, {32}, {0}, {0}, false, false},
         {"L0-all-q0-kv0", 8, 128, 8, {0}, {0}, {0}, false, false},
@@ -762,16 +762,28 @@ int main()
     };
 
     size_t passed = 0;
-    (void)printf("running %zu MsaIndexScore cases\n", cases.size());
+    size_t ran = 0;
+    size_t skipped = 0;
+    const char *socName = aclrtGetSocName();
+    const std::string soc = (socName == nullptr) ? "" : socName;
+    const bool isAscend950 = (soc.find("950") != std::string::npos) || (soc.find("910_95") != std::string::npos);
+    (void)printf("running %zu MsaIndexScore cases (soc=%s)\n", cases.size(), soc.empty() ? "?" : soc.c_str());
     for (const auto &tc : cases) {
+        if (tc.fp8Kind != 0 && !isAscend950) {
+            (void)printf("  [%s] SKIP: FP8 is Ascend 950 only\n", tc.name.c_str());
+            ++skipped;
+            continue;
+        }
+        ++ran;
         if (RunCase(tc, stream)) {
             ++passed;
         }
     }
-    (void)printf("%s: %zu/%zu cases passed\n", passed == cases.size() ? "[PASS]" : "[FAIL]", passed, cases.size());
+    const std::string extra = (skipped == 0) ? "" : (" (skipped " + std::to_string(skipped) + " FP8)");
+    (void)printf("%s: %zu/%zu cases passed%s\n", passed == ran ? "[PASS]" : "[FAIL]", passed, ran, extra.c_str());
 
     (void)aclrtDestroyStream(stream);
     (void)aclrtResetDevice(deviceId);
     (void)aclFinalize();
-    return passed == cases.size() ? 0 : -1;
+    return passed == ran ? 0 : -1;
 }
