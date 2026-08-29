@@ -162,7 +162,6 @@ private:
     GlobalTensor<P> hPreGm_;              // 前向预计算 h_pre
     GlobalTensor<P> hPostGm_;             // 前向输出 h_post
     GlobalTensor<P> workSpaceGm_;
-    GlobalTensor<P> hMixGradGm_;          // C0/C1读取的h_mix_grad workspace视图
     WorkspaceBuffer<P> workspaceBuf_; // Workspace buffer管理接口
 
     GlobalTensor<T> xGradGm_;     // 输出 grad_x
@@ -256,9 +255,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     alphaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_alpha));
     gradBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_bias));
     workSpaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
-    hMixGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
-    // h_mix_grad体积小且被C0和C1重复读取，仅将该workspace子区设为常驻缓存。
-    hMixGradGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_PERSISTENT);
     withGamma_ = (initParams.gamma != nullptr);
     withGradXPost_ = (initParams.grad_x_post_optional != nullptr);
     if (withGradXPost_) {
@@ -991,7 +987,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
     mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
     // h_mix_grad @ phi
-    mm0.SetTensorA(hMixGradGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
+    mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // 计算
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
@@ -1018,7 +1014,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
     mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
     // h_mix_grad^T @ x_rs
-    mm1.SetTensorA(hMixGradGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
+    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
     mm1.SetTensorB(workSpaceGm_[offsetXs], false);                                 // [BS, NDBlock]
     // 计算
     bool enAtomic = (offsetBS != 0);
