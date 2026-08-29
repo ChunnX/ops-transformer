@@ -802,16 +802,17 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
     constexpr uint64_t elemBytes = 1UL;
     constexpr uint64_t scaleElemBytes = sizeof(uint64_t);
     auto AlignUpL = [](uint64_t v, uint64_t a) -> uint64_t { return (v + a - 1UL) / a * a; };
-    auto GetAL1Bytes = [this](uint64_t kAL1) -> uint64_t {
+    auto GetAL1Bytes = [this, &AlignUpL](uint64_t kAL1) -> uint64_t {
         return AlignUpL(s4s4Tiling_.baseM, CUBE_BLOCK) * AlignUpL(kAL1, INT8_C0) * elemBytes;
     };
-    auto GetBL1Bytes = [this](uint64_t kBL1) -> uint64_t {
+    auto GetBL1Bytes = [this, &AlignUpL](uint64_t kBL1) -> uint64_t {
         return AlignUpL(kBL1, INT8_C0) * AlignUpL(s4s4Tiling_.baseN, CUBE_BLOCK) * elemBytes;
     };
-    auto GetScaleL1Bytes = [this]() -> uint64_t {
+    auto GetScaleL1Bytes = [this, &AlignUpL]() -> uint64_t {
         return AlignUpL(s4s4Tiling_.baseN * scaleElemBytes, DATA_BLOCK_BYTES);
     };
-    auto GetL1StageBytes = [this](uint64_t kAL1, uint64_t kBL1) -> uint64_t {
+    auto GetL1StageBytes = [this, &AlignUpL, &GetAL1Bytes, &GetBL1Bytes, &GetScaleL1Bytes](uint64_t kAL1,
+                                                                                          uint64_t kBL1) -> uint64_t {
         return AlignUpL(GetAL1Bytes(kAL1), DATA_BLOCK_BYTES) +
                AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) + GetScaleL1Bytes();
     };
