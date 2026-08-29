@@ -22,6 +22,20 @@
 #include "../qfa_tiling_info.h"
 #include "paged_attention_checker_quant_flash_attn.h"
 
+// 当前 log.h 未提供 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON，此处本地补充定义
+#ifndef OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON
+#define OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, paramName, reason)                                     \
+    do {                                                                                                        \
+        std::string _safe_opName_(opName);                                                                      \
+        std::string _safe_paramName_(paramName);                                                                \
+        std::string _safe_reason_(reason);                                                                      \
+        OP_LOGE_WITHOUT_REPORT(_safe_opName_.c_str(), "Parameter %s of operator %s is invalid. Reason: %s.",    \
+                                _safe_paramName_.c_str(), _safe_opName_.c_str(), _safe_reason_.c_str());        \
+        REPORT_INNER_ERR_MSG("EZ9999", "Parameter %s of operator %s is invalid. Reason: %s.",                   \
+                             _safe_paramName_.c_str(), _safe_opName_.c_str(), _safe_reason_.c_str());           \
+    } while (0)
+#endif
+
 namespace optiling {
 namespace quant_flash_attn {
 using std::map;

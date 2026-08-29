@@ -30,6 +30,7 @@ PARAM_MAP = {
     "max_seqlen_kv": "MAX_SEQLEN_KV",
     "enable_pa": "ENABLE_PA",
     "kv_cache_layout": "KV_CACHE_LAYOUT",
+    "input_layout": "INPUT_LAYOUT",
     "block_size": "BLOCK_SIZE",
     "mask_mode": "SPARSE_MODE",
     "q_scale_layout": "Q_SCALE_LAYOUT",
@@ -184,8 +185,12 @@ def execute_test(params, mode, cdir=None):
             # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
             lse_cmp = lse_cmp.squeeze(-1).permute(1, 0).contiguous()
         else:
-            lse_cmp = golden.convert_q_bnsd_to_layout(
-                cpu_lse, act_seqused_q, compare_layout
+            # BNSD/BSND: LSE 输出固定为 (B, N, S) 排布 (与 layout_out 无关, 由 infershape 决定)
+            # CPU golden lse 为 [B, N, S, 1], 转成 BNSD 后 squeeze 掉末维对齐
+            lse_cmp = (
+                golden.convert_q_bnsd_to_layout(cpu_lse, act_seqused_q, "BNSD")
+                .squeeze(-1)
+                .contiguous()
             )
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
