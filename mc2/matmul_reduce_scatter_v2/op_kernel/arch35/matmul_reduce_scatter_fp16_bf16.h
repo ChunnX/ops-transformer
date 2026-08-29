@@ -90,7 +90,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     rankId_ = context_->rankId;
 
     // 划分workspace
-    gmToFloat_ = workspaceGM;
+    gmToFloat_ = workspaceGM; // WS_SEG_MM_RESULT: Matmul output / ReduceScatter send buffer
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
@@ -184,6 +184,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
         mmv3.Process(isLast && (i == (count - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
+        if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
+        }
         runtimeInfo_.WritePositionByPassDCache(shift + i + 1, POS_COMM_BEFORE);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,

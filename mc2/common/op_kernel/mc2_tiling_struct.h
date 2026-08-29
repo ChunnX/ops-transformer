@@ -179,12 +179,12 @@ enum WorkspaceSegType : uint8_t {
     WS_SEG_COMM_OUT      = 5,   // AlltoAll 通信结果空间
     WS_SEG_PERMUTE_OUT   = 6,   // AlltoAll 重排空间
     WS_SEG_BIAS          = 7,   // bias 空间
-    WS_SEG_MM_RESULT     = 8,   // matmul 结果暂存空间
-    WS_SEG_RECV_BUF      = 9,   // ReduceScatter 接收缓冲 (a2a 路径)
+    WS_SEG_MM_RESULT     = 8,   // MMRS Matmul 输出；A2A 路径同时作为 send buffer
+    WS_SEG_RECV_BUF      = 9,   // MMRS AllToAll 接收缓冲，供 Vector ReduceSum 使用
     WS_SEG_COMM_INT8     = 10,  // int8 通信 workspace
     WS_SEG_DYNAMIC_QUANT = 11,  // 动态量化临时空间
     WS_SEG_RUNTIME_INFO  = 12,  // 运行时信息段 (64KB)
-    WS_SEG_MM_WORKSPACE  = 13,  // matmul 用户临时空间
+    WS_SEG_MM_WORKSPACE  = 13,  // MMRS 量化 Matmul helper 用户临时空间
     WS_SEG_RESERVED      = 255,
 };
 

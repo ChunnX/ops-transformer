@@ -46,6 +46,13 @@ public:
     __aicore__ inline void Process();
 
 private:
+    static constexpr bool IS_MXFP8_DFX =
+        AscendC::IsSameType<ScaleType, fp8_e8m0_t>::value &&
+        (AscendC::IsSameType<AType, fp8_e4m3fn_t>::value ||
+         AscendC::IsSameType<AType, fp8_e5m2_t>::value) &&
+        (AscendC::IsSameType<BType, fp8_e4m3fn_t>::value ||
+         AscendC::IsSameType<BType, fp8_e5m2_t>::value);
+
     __aicore__ inline void InnerProcess();
     __aicore__ inline void MatMulReduceScatterSerial();
     __aicore__ inline void MatMulComputReduceScatter(GM_ADDR aGM, GM_ADDR cGM, GM_ADDR x1ScaleGM,
@@ -90,12 +97,16 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
 {
     tilingData_ = tilingData;
     auto &&cfg = tilingData_->param;
-    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum, Mc2Tiling::RT_PHASE_RESERVED);
+    if constexpr (IS_MXFP8_DFX) {
+        runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum, Mc2Tiling::RT_PHASE_RESERVED);
+    }
     const void *hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_INIT);
+    if constexpr (IS_MXFP8_DFX) {
+        runtimeInfo_.WritePhaseByPassDCache(Mc2Tiling::RT_PHASE_COMM_INIT);
+    }
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;
@@ -111,8 +122,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
         batchWeight_[j] = j;
     }
     // 划分workspace
-    gmToFloat_ = workspaceGM;
-    workspaceGM_ = gmToFloat_ + cfg.cToFloatLen;
+    gmToFloat_ = workspaceGM; // WS_SEG_MM_RESULT: Matmul output / ReduceScatter send buffer
+    workspaceGM_ = gmToFloat_ + cfg.cToFloatLen; // optional WS_SEG_MM_WORKSPACE
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -126,6 +137,24 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess(
             hccl_.Wait(handles_[i]);
             runtimeInfo_.IncWaitCount(Mc2Tiling::RT_PHASE_COMM_WAIT);
         }
+#if !defined(ASCENDC_DUMP) || ASCENDC_DUMP != 0
+        if constexpr (IS_MXFP8_DFX) {
+            // Print only workspace seg1 rows [0, 1], columns [0, 3].
+            if (rankId_ == 0 && debugMode_ != MC2_DEBUG_ONLY_CUBE && cfg.rankM >= 2 && cfg.rankN >= 4) {
+                for (uint32_t row = 0; row < 2; ++row) {
+                    GM_ADDR rowAddr = gmToFloat_ + static_cast<uint64_t>(row) * cfg.rankN * sizeof(CType);
+                    AscendC::GlobalTensor<uint8_t> cacheLine;
+                    cacheLine.SetGlobalBuffer(rowAddr, cfg.rankN * sizeof(CType));
+                    AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                                     AscendC::DcciDst::CACHELINE_OUT>(cacheLine);
+                    AscendC::GlobalTensor<CType> values;
+                    values.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(rowAddr), 4);
+                    AscendC::PRINTF("[MMRS_DFX] workspace_seg1 row=%u cols[0:3]=[%f, %f, %f, %f]\n", row,
+                                   values.GetValue(0), values.GetValue(1), values.GetValue(2), values.GetValue(3));
+                }
+            }
+        }
+#endif
         // 终止hcclserver
         runtimeInfo_.WritePositionByPassDCache(cfg.tileCnt + cfg.tailCnt, POS_FINALIZE_BEFORE);
         hccl_.Finalize();

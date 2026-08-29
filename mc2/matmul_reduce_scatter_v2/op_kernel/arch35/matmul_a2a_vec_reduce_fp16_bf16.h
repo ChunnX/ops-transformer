@@ -117,9 +117,8 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     aivNum_ = cfg.aicCoreNum * GetTaskRation(); // 启用的AIV 数量, 此模板会全启用
 
     // all2all 通信相关参数, 划分workspace
-    sendBuf_ = workspaceGM;
-    // Match the aligned MM_RESULT/RECV_BUF boundaries recorded by host tiling.
-    recvBuf_ = sendBuf_ + cfg.cToFloatLen;
+    sendBuf_ = workspaceGM;               // WS_SEG_MM_RESULT: Matmul output / AllToAll send buffer
+    recvBuf_ = sendBuf_ + cfg.cToFloatLen; // WS_SEG_RECV_BUF: AllToAll receive / Vector ReduceSum input
 }
 
 TEMPLATE_CLASS_PARAMS
