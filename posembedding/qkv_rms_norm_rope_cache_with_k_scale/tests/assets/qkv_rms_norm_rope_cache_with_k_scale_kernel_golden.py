@@ -725,8 +725,12 @@ SCALE_FP32_RTOL = 1e-3
 SCALE_FP32_ATOL = 1e-8
 SCALE_FP32_PTOL = 1e-3
 INT8_MAX_ABS_DIFF = 1
-PTA_FUNCTIONAL_API = "cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale"
-PTA_INPLACE_API = "cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_"
+PTA_FUNCTIONAL_API = (
+    "cann_ops_transformer.ops.qkv_rms_norm_rope_cache_with_k_scale"
+)
+PTA_INPLACE_API = (
+    "cann_ops_transformer.ops.qkv_rms_norm_rope_cache_with_k_scale_"
+)
 
 TOLERANCE = {
     "bfloat16": {"standard": "stat_rel_err"},

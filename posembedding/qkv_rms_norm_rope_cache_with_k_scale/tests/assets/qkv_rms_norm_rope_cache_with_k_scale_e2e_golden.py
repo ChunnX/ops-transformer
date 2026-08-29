@@ -211,6 +211,6 @@ class PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec:
 
 
 __spec__ = {
-    "cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale": "PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec",
-    "cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_": "PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec",
+    "cann_ops_transformer.ops.qkv_rms_norm_rope_cache_with_k_scale": "PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec",
+    "cann_ops_transformer.ops.qkv_rms_norm_rope_cache_with_k_scale_": "PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec",
 }
