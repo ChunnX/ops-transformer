@@ -40,5 +40,6 @@ struct alignas(8) AllGatherMxMatmulUrmaTilingData {
     uint8_t isBias{0};
     Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
     uint64_t peermemDataSize{0};
+    Mc2Tiling::PeermemLayoutInfo peermemLayout{};
 };
 #pragma pack(pop)

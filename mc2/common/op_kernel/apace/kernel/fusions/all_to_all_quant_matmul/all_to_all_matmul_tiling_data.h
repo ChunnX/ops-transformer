@@ -29,6 +29,7 @@ struct allToAllMatmulTilingData {
     uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
     Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
     uint64_t peermemDataSize{0};
+    Mc2Tiling::PeermemLayoutInfo peermemLayout{};
 };
 
 struct CommContext {

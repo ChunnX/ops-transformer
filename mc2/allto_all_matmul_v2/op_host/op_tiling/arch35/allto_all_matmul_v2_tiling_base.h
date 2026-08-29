@@ -715,8 +715,15 @@ protected:
 
         double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
         uint64_t scaleKDim = (k_ + 63UL) / 64UL;
-        td->peermemDataSize = worldSize_ * m_ *
-            (static_cast<uint64_t>(static_cast<double>(k_) * typeSize) + scaleKDim * 2UL);
+        uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
+        uint64_t scaleRegionBytes = worldSize_ * m_ * scaleKDim * 2UL;
+        td->peermemDataSize = dataRegionBytes + scaleRegionBytes;
+        td->peermemLayout.totalSize = td->peermemDataSize;
+        td->peermemLayout.segCount = 2;
+        td->peermemLayout.segments[0] = {0UL, dataRegionBytes,
+                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
+        td->peermemLayout.segments[1] = {dataRegionBytes, scaleRegionBytes,
+                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
 
         return ge::GRAPH_SUCCESS;
     }

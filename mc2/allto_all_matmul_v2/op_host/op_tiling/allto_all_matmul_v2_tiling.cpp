@@ -78,7 +78,11 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
         0U,   // contextArgIdx
         0U,   // argsOffset
         9U,   // tilingGmArgIdx
-        offsetof(allToAllMatmulTilingData, peermemDataSize));
+        offsetof(allToAllMatmulTilingData, peermemDataSize),
+        offsetof(allToAllMatmulTilingData, peermemLayout));
+    Mc2Exception::Mc2DumpSqCqContext(args, "AlltoAllMatmulV2",
+        0U,   // contextArgIdx
+        0U);  // argsOffset
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()

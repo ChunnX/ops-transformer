@@ -207,6 +207,35 @@ struct WorkspaceLayoutInfo {
     WorkspaceSegInfo segments[MAX_WORKSPACE_SEGMENTS]; // 段数组 (按 offset 升序)
 };
 
+// ==================== Peermem 段布局信息 ====================
+
+constexpr uint32_t MAX_PEERMEM_SEGMENTS = 8U;
+
+// Peermem 段类型
+enum PeermemSegType : uint8_t {
+    PEERMEM_SEG_DATA     = 0,   // A data 区
+    PEERMEM_SEG_SCALE    = 1,   // A scale 区
+    PEERMEM_SEG_BIAS     = 2,   // bias 区 (预留)
+    PEERMEM_SEG_FLAG     = 3,   // flag/counter 区 (预留)
+    PEERMEM_SEG_RESERVED = 255,
+};
+
+// 单个段描述 (24 bytes)
+struct PeermemSegInfo {
+    uint64_t offset;      // 相对 peermem 窗口基地址的偏移 (字节)
+    uint64_t size;        // 该段大小 (字节)
+    uint8_t  type;        // PeermemSegType
+    uint8_t  reserved[7]; // 对齐
+};
+
+// Peermem 布局信息 (208 bytes)
+struct PeermemLayoutInfo {
+    uint64_t totalSize;                                // peermem 总大小 (== peermemDataSize)
+    uint32_t segCount;                                 // 实际段数
+    uint32_t reserved;                                 // 对齐
+    PeermemSegInfo segments[MAX_PEERMEM_SEGMENTS];     // 段数组 (按 offset 升序)
+};
+
 // ==================== Runtime Info ====================
 
 constexpr uint32_t RUNTIME_INFO_CORE_MAX = 128U;       // 最大核数

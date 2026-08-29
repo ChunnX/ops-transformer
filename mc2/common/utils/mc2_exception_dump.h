@@ -35,6 +35,7 @@
 #include <mutex>
 #include "./mc2_hcom_topo_info.h"
 #include "../op_kernel/mc2_exception_dump.h"
+#include "./mc2_hcomm_dfx_types.h"
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的
 // weight 值, 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
@@ -959,7 +960,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
 
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
                                uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
-                               uint32_t peermemSizeOffset = 0U)
+                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -1042,10 +1043,10 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
 
     // 4. 确定 peermem dump 大小
     uint32_t peermemDumpSize = WIN_SIZE;
+    uint64_t tilingGM = 0U;
     if (tilingGmArgIdx != 0U && peermemSizeOffset != 0U) {
         uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
         if (tilingGmOffset + sizeof(uint64_t) <= devArgsLen) {
-            uint64_t tilingGM = 0U;
             if (aclrtMemcpy(&tilingGM, sizeof(uint64_t),
                             reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
                             sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS && tilingGM != 0U) {
@@ -1065,18 +1066,335 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     }
     OP_LOGE(OP_NAME, "peermemDumpSize=%u", peermemDumpSize);
 
-    // 5. D2H 拷贝 peermem 窗口 -> peermem_window
-    std::vector<uint8_t> winBuf(peermemDumpSize, 0);
-    if (aclrtMemcpy(winBuf.data(), peermemDumpSize, reinterpret_cast<void *>(selfWinAddr), peermemDumpSize,
-                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy peermem window failed.");
-        return;
+    // 5. D2H 拷贝 peermem 窗口 -> 分段落盘或单文件落盘
+    //    当 peermemLayoutOffset != 0 时，从 tiling 读取 PeermemLayoutInfo，逐段 D2H + 落盘
+    //    否则回退到原有单文件 peermem_window_ dump
+    bool segDumped = false;
+    if (peermemLayoutOffset != 0U && tilingGM != 0U) {
+        Mc2Tiling::PeermemLayoutInfo peermemLayout;
+        std::memset(&peermemLayout, 0, sizeof(peermemLayout));
+        if (aclrtMemcpy(&peermemLayout, sizeof(peermemLayout),
+                        reinterpret_cast<void *>(tilingGM + peermemLayoutOffset),
+                        sizeof(peermemLayout), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS &&
+            peermemLayout.segCount > 0 && peermemLayout.segCount <= Mc2Tiling::MAX_PEERMEM_SEGMENTS) {
+            OP_LOGE(OP_NAME, "Peermem segmented dump: segCount=%u, totalSize=%lu",
+                    peermemLayout.segCount, peermemLayout.totalSize);
+            for (uint32_t i = 0; i < peermemLayout.segCount; i++) {
+                auto &seg = peermemLayout.segments[i];
+                if (seg.size == 0) {
+                    continue;
+                }
+                uint32_t segDumpSize = static_cast<uint32_t>(
+                    std::min<uint64_t>(seg.size, MAX_PEERMEM_DUMP_SIZE));
+                std::vector<uint8_t> segBuf(segDumpSize, 0);
+                void *srcAddr = reinterpret_cast<void *>(selfWinAddr + seg.offset);
+                OP_LOGE(OP_NAME, "peermem seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%u, srcAddr=0x%lx",
+                        i, seg.type, seg.offset, seg.size, segDumpSize,
+                        static_cast<uint64_t>(selfWinAddr + seg.offset));
+                if (aclrtMemcpy(segBuf.data(), segDumpSize, srcAddr, segDumpSize,
+                                ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+                    OP_LOGE(OP_NAME, "aclrtMemcpy peermem seg[%u] failed, offset=%lu, size=%u.",
+                            i, seg.offset, segDumpSize);
+                    continue;
+                }
+                std::string segPrefix = "peermem_seg" + std::to_string(i) + "_type" +
+                                        std::to_string(seg.type) + "_";
+                std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
+                if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId,
+                                       segBuf.data(), segDumpSize) != 0) {
+                    OP_LOGE(OP_NAME, "Failed to dump peermem seg[%u].", i);
+                }
+            }
+            segDumped = true;
+        } else {
+            OP_LOGE(OP_NAME, "PeermemLayoutInfo read failed or invalid, falling back to single dump.");
+        }
     }
-    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "peermem_window_"), deviceId,
-                           winBuf.data(), peermemDumpSize) != 0) {
-        OP_LOGE(OP_NAME, "Failed to dump peermem window.");
+
+    if (!segDumped) {
+        std::vector<uint8_t> winBuf(peermemDumpSize, 0);
+        if (aclrtMemcpy(winBuf.data(), peermemDumpSize, reinterpret_cast<void *>(selfWinAddr), peermemDumpSize,
+                        ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy peermem window failed.");
+            return;
+        }
+        if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "peermem_window_"),
+                               deviceId, winBuf.data(), peermemDumpSize) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump peermem window.");
+        }
     }
     OP_LOGE(OP_NAME, "UrmaContext dump done: op=%s, deviceId=%u.", op, deviceId);
+}
+
+// ---------------------------------------------------------------------------
+// Mc2DumpSqCqContext: dump SQ/CQ context + WQE/CQE raw for URMA channels.
+//
+// Called from the exception callback after Mc2DumpUrmaContext. Reads the
+// CommContext from the exception args (same contextArgIdx), then for each
+// non-zero channelHandle:
+//   1. D2H copy ChannelEntity (engine, protocol, sqNum, cqNum, head/tail)
+//   2. D2H copy each SqContext (sqVa, sqDepth, wqeSize, headAddr, tailAddr)
+//   3. D2H copy each CqContext (scqVa, cqDepth, cqeSize, headAddr, tailAddr)
+//   4. D2H copy live head/tail counters from headAddr/tailAddr
+//   5. Best-effort D2H copy WQE/CQE raw bytes from sqVa/scqVa
+//      (may fail for UB-resident queues; failure is logged, not fatal)
+// All results are logged via OP_LOGE and dumped to files.
+// ---------------------------------------------------------------------------
+
+constexpr uint32_t MC2_SQ_CQ_MAX_CHANNELS = 8U;
+constexpr uint32_t MC2_SQ_CQ_MAX_QUEUE_CONTEXTS = 8U;
+constexpr uint32_t MC2_SQ_CQ_MAX_ENTRIES = 8U;
+constexpr uint32_t MC2_SQ_CQ_ENTRY_BYTES = 256U;
+constexpr uint32_t MC2_SQ_CQ_LEADING_WINDOW = 4U;
+
+inline bool Mc2DfxCopyFromDevice(uint64_t addr, void *dst, uint32_t size, const char *name)
+{
+    if (addr == 0 || dst == nullptr || size == 0) {
+        return false;
+    }
+    aclError ret = aclrtMemcpy(dst, size, reinterpret_cast<const void *>(addr), size, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "copy %s failed addr=0x%lx size=%u ret=%d", name, addr, size, ret);
+        return false;
+    }
+    return true;
+}
+
+inline void Mc2DumpSqContexts(aclrtExceptionInfo *args, uint32_t peer, uint64_t sqCtxAddr, uint32_t sqNum,
+                              const std::string &dumpPath, uint32_t deviceId, const char *op)
+{
+    if (sqCtxAddr == 0 || sqNum == 0) {
+        OP_LOGE(OP_NAME, "SqContexts: peer=%u sqCtxAddr=0 skip.", peer);
+        return;
+    }
+    uint32_t limit = std::min<uint32_t>(sqNum, MC2_SQ_CQ_MAX_QUEUE_CONTEXTS);
+    for (uint32_t idx = 0; idx < limit; ++idx) {
+        AscendC::SqContext ctx;
+        std::memset(&ctx, 0, sizeof(ctx));
+        uint64_t addr = sqCtxAddr + static_cast<uint64_t>(idx) * sizeof(AscendC::SqContext);
+        if (!Mc2DfxCopyFromDevice(addr, &ctx, sizeof(ctx), "SqContext")) {
+            continue;
+        }
+        // dump raw SqContext
+        std::string sqName = "sq_context_peer" + std::to_string(peer) + "_idx" + std::to_string(idx) + "_";
+        DumpToFileWithSize(dumpPath, GenDumpFileNameWithPrefix(args, op, sqName.c_str()), deviceId,
+                           &ctx, sizeof(ctx));
+
+        if (ctx.type != AscendC::SQ_CONTEXT_TYPE_UB_JFS) {
+            OP_LOGE(OP_NAME, "[SqContext] peer=%u idx=%u type=%d (non-URMA, raw only)", peer, idx,
+                    static_cast<int32_t>(ctx.type));
+            continue;
+        }
+        const auto &jfs = ctx.contextInfo.ubJfs;
+        // read live head/tail
+        uint32_t head = 0, tail = 0;
+        bool headOk = Mc2DfxCopyFromDevice(jfs.headAddr, &head, sizeof(head), "SqHead");
+        bool tailOk = Mc2DfxCopyFromDevice(jfs.tailAddr, &tail, sizeof(tail), "SqTail");
+        OP_LOGE(OP_NAME, "[SqContext] peer=%u idx=%u type=UB_JFS jfsID=%u sqVa=0x%lx depth=%u wqeSize=%u "
+                "head=%u(%d) tail=%u(%d)", peer, idx, jfs.jfsID, jfs.sqVa, jfs.sqDepth, jfs.wqeSize,
+                head, headOk ? 1 : 0, tail, tailOk ? 1 : 0);
+
+        // best-effort WQE raw read
+        if (jfs.sqVa == 0 || jfs.sqDepth == 0 || jfs.wqeSize == 0) {
+            continue;
+        }
+        uint32_t readBytes = jfs.wqeSize;
+        if (readBytes <= MC2_SQ_CQ_ENTRY_BYTES / 2U) {
+            readBytes = readBytes * 2U;
+        }
+        readBytes = std::min<uint32_t>(readBytes, MC2_SQ_CQ_ENTRY_BYTES);
+        uint32_t sampleCnt = std::min<uint32_t>(jfs.sqDepth, MC2_SQ_CQ_LEADING_WINDOW);
+        for (uint32_t sIdx = 0; sIdx < sampleCnt; ++sIdx) {
+            uint64_t wqeAddr = jfs.sqVa + static_cast<uint64_t>(sIdx) * jfs.wqeSize;
+            uint8_t wqeBuf[MC2_SQ_CQ_ENTRY_BYTES];
+            std::memset(wqeBuf, 0, readBytes);
+            bool wqeOk = Mc2DfxCopyFromDevice(wqeAddr, wqeBuf, readBytes, "WQE_raw");
+            if (wqeOk) {
+                AscendC::HcommUrmaSqeCtx sqe;
+                std::memset(&sqe, 0, sizeof(sqe));
+                std::memcpy(&sqe, wqeBuf, std::min<uint32_t>(readBytes, sizeof(sqe)));
+                OP_LOGE(OP_NAME, "[WQE] peer=%u qIdx=%u slot=%u addr=0x%lx opcode=0x%x sqeBbIdx=%u tpId=0x%x "
+                        "sgeNum=%u inlineMsgLen=%u rmtEid=0x%lx%016lx", peer, idx, sIdx, wqeAddr,
+                        sqe.opcode, sqe.sqeBbIdx, sqe.tpId, sqe.sgeNum, sqe.inlineMsgLen,
+                        sqe.rmtEidH, sqe.rmtEidL);
+                std::string wqeName = "wqe_raw_peer" + std::to_string(peer) + "_q" + std::to_string(idx) +
+                                      "_slot" + std::to_string(sIdx) + "_";
+                DumpToFileWithSize(dumpPath, GenDumpFileNameWithPrefix(args, op, wqeName.c_str()),
+                                   deviceId, wqeBuf, readBytes);
+            } else {
+                OP_LOGE(OP_NAME, "[WQE] peer=%u qIdx=%u slot=%u addr=0x%lx read FAILED (UB-resident?)",
+                        peer, idx, sIdx, wqeAddr);
+            }
+        }
+    }
+}
+
+inline void Mc2DumpCqContexts(aclrtExceptionInfo *args, uint32_t peer, uint64_t cqCtxAddr, uint32_t cqNum,
+                              const std::string &dumpPath, uint32_t deviceId, const char *op)
+{
+    if (cqCtxAddr == 0 || cqNum == 0) {
+        OP_LOGE(OP_NAME, "CqContexts: peer=%u cqCtxAddr=0 skip.", peer);
+        return;
+    }
+    uint32_t limit = std::min<uint32_t>(cqNum, MC2_SQ_CQ_MAX_QUEUE_CONTEXTS);
+    for (uint32_t idx = 0; idx < limit; ++idx) {
+        AscendC::CqContext ctx;
+        std::memset(&ctx, 0, sizeof(ctx));
+        uint64_t addr = cqCtxAddr + static_cast<uint64_t>(idx) * sizeof(AscendC::CqContext);
+        if (!Mc2DfxCopyFromDevice(addr, &ctx, sizeof(ctx), "CqContext")) {
+            continue;
+        }
+        std::string cqName = "cq_context_peer" + std::to_string(peer) + "_idx" + std::to_string(idx) + "_";
+        DumpToFileWithSize(dumpPath, GenDumpFileNameWithPrefix(args, op, cqName.c_str()), deviceId,
+                           &ctx, sizeof(ctx));
+
+        if (ctx.type != AscendC::CQ_CONTEXT_TYPE_UB_JFC) {
+            OP_LOGE(OP_NAME, "[CqContext] peer=%u idx=%u type=%d (non-URMA, raw only)", peer, idx,
+                    static_cast<int32_t>(ctx.type));
+            continue;
+        }
+        const auto &jfc = ctx.contextInfo.ubJfc;
+        uint32_t head = 0, tail = 0;
+        bool headOk = Mc2DfxCopyFromDevice(jfc.headAddr, &head, sizeof(head), "CqHead");
+        bool tailOk = Mc2DfxCopyFromDevice(jfc.tailAddr, &tail, sizeof(tail), "CqTail");
+        OP_LOGE(OP_NAME, "[CqContext] peer=%u idx=%u type=UB_JFC jfcID=%u cqVa=0x%lx depth=%u cqeSize=%u "
+                "head=%u(%d) tail=%u(%d)", peer, idx, jfc.jfcID, jfc.scqVa, jfc.cqDepth, jfc.cqeSize,
+                head, headOk ? 1 : 0, tail, tailOk ? 1 : 0);
+
+        if (jfc.scqVa == 0 || jfc.cqDepth == 0 || jfc.cqeSize == 0) {
+            continue;
+        }
+        uint32_t sampleCnt = std::min<uint32_t>(jfc.cqDepth, MC2_SQ_CQ_LEADING_WINDOW);
+        for (uint32_t sIdx = 0; sIdx < sampleCnt; ++sIdx) {
+            uint64_t cqeAddr = jfc.scqVa + static_cast<uint64_t>(sIdx) * jfc.cqeSize;
+            uint8_t cqeBuf[MC2_SQ_CQ_ENTRY_BYTES];
+            std::memset(cqeBuf, 0, jfc.cqeSize);
+            bool cqeOk = Mc2DfxCopyFromDevice(cqeAddr, cqeBuf, jfc.cqeSize, "CQE_raw");
+            if (cqeOk) {
+                AscendC::HcommUrmaJfcCqeCtx cqe;
+                std::memset(&cqe, 0, sizeof(cqe));
+                std::memcpy(&cqe, cqeBuf, std::min<uint32_t>(jfc.cqeSize, sizeof(cqe)));
+                OP_LOGE(OP_NAME, "[CQE] peer=%u qIdx=%u slot=%u addr=0x%lx status=%u substatus=%u opcode=%u "
+                        "sR=%u entryIdx=%u byteCnt=%u tpn=0x%x", peer, idx, sIdx, cqeAddr,
+                        cqe.status, cqe.substatus, cqe.opcode, cqe.sR, cqe.entryIdx, cqe.byteCnt, cqe.tpn);
+                std::string cqeName = "cqe_raw_peer" + std::to_string(peer) + "_q" + std::to_string(idx) +
+                                      "_slot" + std::to_string(sIdx) + "_";
+                DumpToFileWithSize(dumpPath, GenDumpFileNameWithPrefix(args, op, cqeName.c_str()),
+                                   deviceId, cqeBuf, jfc.cqeSize);
+            } else {
+                OP_LOGE(OP_NAME, "[CQE] peer=%u qIdx=%u slot=%u addr=0x%lx read FAILED (UB-resident?)",
+                        peer, idx, sIdx, cqeAddr);
+            }
+        }
+    }
+}
+
+inline void Mc2DumpSqCqContext(aclrtExceptionInfo *args, const char *op,
+                               uint32_t contextArgIdx, uint32_t argsOffset = 0U)
+{
+    if (args == nullptr || op == nullptr) {
+        return;
+    }
+
+    auto getArgsFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (getArgsFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function for SqCq dump.");
+        return;
+    }
+
+    void *devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0U;
+    if (getArgsFunc(args, &devArgsPtr, &devArgsLen) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed for SqCq dump.");
+        return;
+    }
+
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGE(OP_NAME, "SqCqContext dump start: op=%s, contextArgIdx=%u, deviceId=%u", op, contextArgIdx, deviceId);
+
+    uint32_t contextOffset = argsOffset + contextArgIdx * sizeof(uint64_t);
+    if (contextOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "contextOffset=%u + 8 > devArgsLen=%u for SqCq dump.", contextOffset, devArgsLen);
+        return;
+    }
+
+    auto dumpPathFunc = GetAcldumpGetPathFunc();
+    if (dumpPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath for SqCq dump.");
+        return;
+    }
+    const char *dumpPath = dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL for SqCq dump.");
+        return;
+    }
+    std::string dumpPathStr(dumpPath);
+
+    // 1. read context pointer (arg contextArgIdx)
+    uint64_t contextAddr = 0U;
+    if (aclrtMemcpy(&contextAddr, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + contextOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy context pointer failed for SqCq dump, offset=%u.", contextOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "SqCq contextAddr=0x%lx", contextAddr);
+    if (contextAddr == 0U) {
+        OP_LOGE(OP_NAME, "contextAddr is 0, skip SqCq dump.");
+        return;
+    }
+
+    // 2. D2H copy CommContext (UrmaCommContextForDump) to get channelHandles[]
+    constexpr uint32_t ctxDumpSize = sizeof(UrmaCommContextForDump);
+    std::vector<uint8_t> ctxBuf(ctxDumpSize, 0);
+    if (aclrtMemcpy(ctxBuf.data(), ctxDumpSize, reinterpret_cast<void *>(contextAddr), ctxDumpSize,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy UrmaCommContext failed for SqCq dump.");
+        return;
+    }
+    UrmaCommContextForDump *urmaCtx = reinterpret_cast<UrmaCommContextForDump *>(ctxBuf.data());
+    OP_LOGE(OP_NAME, "SqCq urmaCtx: rankId=%u, rankSize=%u", urmaCtx->rankId, urmaCtx->rankSize);
+
+    // 3. for each non-zero channelHandle, D2H copy ChannelEntity + SqContext + CqContext
+    uint32_t channelCnt = 0;
+    for (uint32_t peer = 0; peer < URMA_MAX_RANK_NUM; ++peer) {
+        uint64_t handle = urmaCtx->channelHandles[peer];
+        if (handle == 0) {
+            continue;
+        }
+        if (channelCnt >= MC2_SQ_CQ_MAX_CHANNELS) {
+            OP_LOGE(OP_NAME, "SqCq: reached max channels=%u, skipping remaining peers.", MC2_SQ_CQ_MAX_CHANNELS);
+            break;
+        }
+        channelCnt++;
+
+        // D2H copy ChannelEntity
+        AscendC::ChannelEntity entity;
+        std::memset(&entity, 0, sizeof(entity));
+        if (!Mc2DfxCopyFromDevice(handle, &entity, sizeof(entity), "ChannelEntity")) {
+            OP_LOGE(OP_NAME, "[Channel] peer=%u handle=0x%lx D2H FAILED", peer, handle);
+            continue;
+        }
+
+        OP_LOGE(OP_NAME, "[Channel] peer=%u handle=0x%lx engine=%d protocol=%d sqNum=%u cqNum=%u "
+                "sqHead=%u sqTail=%u cqHead=%u cqTail=%u", peer, handle,
+                static_cast<int32_t>(entity.engine), static_cast<int32_t>(entity.protocol),
+                entity.sqNum, entity.cqNum, entity.sqHead, entity.sqTail, entity.cqHead, entity.cqTail);
+
+        // dump raw ChannelEntity
+        std::string chName = "channel_entity_peer" + std::to_string(peer) + "_";
+        DumpToFileWithSize(dumpPathStr, GenDumpFileNameWithPrefix(args, op, chName.c_str()), deviceId,
+                           &entity, sizeof(entity));
+
+        // dump SQ contexts + WQE raw
+        Mc2DumpSqContexts(args, peer, reinterpret_cast<uint64_t>(entity.sqContextAddr), entity.sqNum,
+                          dumpPathStr, deviceId, op);
+
+        // dump CQ contexts + CQE raw
+        Mc2DumpCqContexts(args, peer, reinterpret_cast<uint64_t>(entity.cqContextAddr), entity.cqNum,
+                          dumpPathStr, deviceId, op);
+    }
+    OP_LOGE(OP_NAME, "SqCqContext dump done: op=%s, deviceId=%u, channels=%u.", op, deviceId, channelCnt);
 }
 #else  // !MC2_DFX_ENABLE
 inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op) {}
@@ -1086,7 +1404,9 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                             uint32_t wsLayoutOffsetQuant = 0U, uint32_t wsLayoutOffsetApace = 0U) {}
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
                                uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
-                               uint32_t peermemSizeOffset = 0U) {}
+                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U) {}
+inline void Mc2DumpSqCqContext(aclrtExceptionInfo *args, const char *op,
+                               uint32_t contextArgIdx, uint32_t argsOffset = 0U) {}
 #endif // MC2_DFX_ENABLE
  
 } // namespace Mc2Exception
