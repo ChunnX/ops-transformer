@@ -13,24 +13,6 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
-#include "simt_api/asc_simt.h"
-
-constexpr uint32_t SIMT_THREAD_NUM = 1024;
-
-__simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
-__aicore__ inline void ScatterWithPosSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
-                                          __ubuf__ uint32_t *binStart, __ubuf__ uint32_t *basePos,
-                                          __ubuf__ int32_t *value, __ubuf__ int32_t *index, __gm__ int32_t *dstValueGm,
-                                          __gm__ int32_t *dstIndexGm)
-{
-    for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
-        uint8_t k = sortedKey[i];
-        uint32_t gmPos = basePos[k] + i - binStart[k];
-        uint32_t srcIdx = sortedIndex[i];
-        dstValueGm[gmPos] = value[srcIdx];
-        dstIndexGm[gmPos] = index[srcIdx];
-    }
-}
 
 namespace EngramFetchGradSort {
 
@@ -635,9 +617,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
     event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_S));
     event_t evtVS2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
-    event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
     event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
-    event_t evtVMte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE2));
 
     // uint64_t mte2Total = 0;
     // uint64_t keyTotal = 0;
@@ -712,45 +692,45 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
 
-            // Recompute binStart (within-tile exclusive prefix per bin) as uint32 (k*4 is 4B
-            // aligned; uint16 at k*2 triggered VEC UB alignment err 340) by scanning sorted keys.
-            AscendC::LocalTensor<uint32_t> binStartUbT =
-                sortWorkspace_.GetWithOffset<uint32_t>(HISTOGRAM_BINS, 4U * tileAlignBytes_);
-            if (tileLen > 0U) {
-                uint8_t prev = sortedKey.GetValue(0);
-                binStartUbT.SetValue(prev, (uint32_t)0);
-                for (uint32_t i = 1U; i < tileLen; i++) {
-                    uint8_t k = sortedKey.GetValue(i);
-                    if (k != prev) {
-                        binStartUbT.SetValue(k, (uint32_t)i);
-                        prev = k;
-                    }
-                }
-            }
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
-
-            AscendC::PipeBarrier<PIPE_V>();
-
             AscendC::LocalTensor<int32_t> basePosUb = histWideBuffer_.Get<int32_t>();
             AscendC::Add(basePosUb, prefixLocal, offsetLocal, HISTOGRAM_BINS);
 
-            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
 
-            __gm__ int32_t *dstValPtr = (__gm__ int32_t *)(*dstValue).GetPhyAddr();
-            __gm__ int32_t *dstIdxPtr = (__gm__ int32_t *)(*dstIndex).GetPhyAddr();
-            __ubuf__ uint8_t *sortedKeyUb = (__ubuf__ uint8_t *)sortedKey.GetPhyAddr();
-            __ubuf__ uint32_t *sortedIdxUb = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
-            __ubuf__ uint32_t *binStartUb = (__ubuf__ uint32_t *)binStartUbT.GetPhyAddr();
-            __ubuf__ uint32_t *basePosPtr = (__ubuf__ uint32_t *)basePosUb.GetPhyAddr();
-            __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
-            __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
-
-            asc_vf_call<ScatterWithPosSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedKeyUb, sortedIdxUb, binStartUb,
-                                            basePosPtr, valUb, idxUb, dstValPtr, dstIdxPtr);
-
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+            // Per-key-group gather + MTE3 store (baseline-proven). The previous SIMT scatter
+            // wrote GM via V-pipe stores whose visibility to other cores' MTE2 reads across
+            // SyncAll is not guaranteed: at byte-round boundaries a few elements were read
+            // stale, splitting runs (numUnique off by a few) and duplicating/losing
+            // contributions (op rows == golden/2). MTE3 stores are fully ordered against
+            // SyncAll and the next round's MTE2 reads.
+            AscendC::LocalTensor<int32_t> gatheredBuf =
+                sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 3U * tileAlignBytes_);
+            uint32_t keyStart = 0U;
+            uint8_t curKey = sortedKey.GetValue(0);
+            for (uint32_t i = 1U; i <= tileLen; i++) {
+                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                    uint32_t keyCount = i - keyStart;
+                    int32_t gmPos = basePosUb.GetValue(curKey);
+                    AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
+                    for (uint32_t k = 0U; k < keyCount; k++) {
+                        gatheredBuf.SetValue(k, valueLocal.GetValue(sortIndices.GetValue(keyStart + k)));
+                    }
+                    WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+                    AscendC::DataCopyPad((*dstValue)[gmPos], gatheredBuf, dcp);
+                    WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+                    for (uint32_t k = 0U; k < keyCount; k++) {
+                        gatheredBuf.SetValue(k, indexLocal.GetValue(sortIndices.GetValue(keyStart + k)));
+                    }
+                    WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+                    AscendC::DataCopyPad((*dstIndex)[gmPos], gatheredBuf, dcp);
+                    WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+                    if (i < tileLen) {
+                        curKey = sortedKey.GetValue(i);
+                        keyStart = i;
+                    }
+                }
+            }
         }
         AscendC::SyncAll<true>();
     }
