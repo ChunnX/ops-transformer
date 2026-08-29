@@ -543,7 +543,6 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
                                           static_cast<int32_t>(scratch.cumsumRevCntInRank));
     }
 
-    // max_recv_token_num 给小时，不再因 flag 死等而卡住。
     uint64_t expertGlobalRowBegin = GetExpertGlobalRowBegin(scratch, localExpertId, common.worldSize);
     sendCnt = static_cast<uint32_t>(ClampDispatchRowCount(expertGlobalRowBegin, sendCnt, context.maxOutputSize));
 
