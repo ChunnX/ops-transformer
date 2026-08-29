@@ -66,7 +66,11 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 template <LayOutTypeEnum LAYOUT, bool useDn = false, bool isPerTokenHead = false>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+        // BSND: scale 与数据同排布 (B-S-N-G-D)
+        return GmFormat::BSNGD;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+        // BNSD: scale 与数据同排布 (B-N-G-S-D)
         return GmFormat::BNGSD;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         if constexpr (isPerTokenHead) {
