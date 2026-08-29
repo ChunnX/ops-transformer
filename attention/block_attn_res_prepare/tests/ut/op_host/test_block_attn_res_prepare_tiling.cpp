@@ -38,7 +38,7 @@ constexpr uint64_t ASCEND_950_L0B_SIZE = 64UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0C_SIZE = 256UL * 1024UL;
 constexpr uint64_t FAKE_L2_SIZE = 4096UL;
 constexpr uint32_t VECTOR_TILING_DATA_SIZE = 48U;
-constexpr uint32_t CUBE_TILING_DATA_SIZE = 136U;
+constexpr uint32_t MIX_TILING_DATA_SIZE = 136U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
 constexpr size_t T_DIM_INDEX = 0U;
 constexpr size_t D_DIM_INDEX = 2U;
@@ -66,7 +66,7 @@ struct VectorTilingDataView {
     uint8_t oBufferNum;
 };
 
-struct CubeTilingDataView {
+struct MixTilingDataView {
     uint64_t qL1Elems;
     uint64_t vL1Elems;
     uint64_t eL1Elems;
@@ -100,7 +100,7 @@ struct CubeTilingDataView {
 };
 
 static_assert(sizeof(VectorTilingDataView) == VECTOR_TILING_DATA_SIZE);
-static_assert(sizeof(CubeTilingDataView) == CUBE_TILING_DATA_SIZE);
+static_assert(sizeof(MixTilingDataView) == MIX_TILING_DATA_SIZE);
 
 void ExpectValueIfSpecified(uint64_t actual, int64_t expected, const std::string &fieldName,
                             const std::string &caseName)
@@ -160,10 +160,10 @@ struct BlockAttnResPrepareTilingCase {
         ExpectValueIfSpecified(tilingData->vCacheRows, expectVCacheRows, "vCacheRows", caseName);
     }
 
-    void CheckCubeTiling(const TilingInfo &tilingInfo) const
+    void CheckMixTiling(const TilingInfo &tilingInfo) const
     {
-        ASSERT_GE(tilingInfo.tilingDataSize, sizeof(CubeTilingDataView));
-        const auto *tilingData = reinterpret_cast<const CubeTilingDataView *>(tilingInfo.tilingData.get());
+        ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MixTilingDataView));
+        const auto *tilingData = reinterpret_cast<const MixTilingDataView *>(tilingInfo.tilingData.get());
         ASSERT_NE(tilingData, nullptr);
         ExpectValueIfSpecified(tilingData->baseT, expectBaseT, "baseT", caseName);
         ExpectValueIfSpecified(tilingData->baseS, expectBaseS, "baseS", caseName);
@@ -191,8 +191,8 @@ struct BlockAttnResPrepareTilingCase {
         ASSERT_EQ(tilingInfo.tilingKey, static_cast<uint64_t>(expectTilingKey)) << "case=" << caseName;
         if (checkMode == "vector") {
             CheckVectorTiling(tilingInfo);
-        } else if (checkMode == "cube") {
-            CheckCubeTiling(tilingInfo);
+        } else if (checkMode == "mix") {
+            CheckMixTiling(tilingInfo);
         }
     }
 

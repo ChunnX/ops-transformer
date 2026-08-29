@@ -36,31 +36,21 @@ protected:
     TilingDataView GetTilingDataView() const override;
 
 private:
+    struct TileCandidate;
+    struct ResourceUsage;
+
     bool SelectMixTileShape();
+    bool TrySelectTileForS(uint64_t sCandidate, uint64_t mixedCoreNum, uint64_t usableL1Bytes, uint64_t usableUbBytes);
+    bool TrySelectTileForT(uint64_t sCandidate, uint64_t candidateT, uint64_t usableL1Bytes, uint64_t usableUbBytes);
+    TileCandidate BuildTileCandidate(uint64_t sCandidate, uint64_t candidateT, uint64_t candidateD) const;
+    ResourceUsage CalculateResourceUsage(const TileCandidate &candidate) const;
+    bool DoesCandidateFit(const ResourceUsage &usage, uint64_t usableL1Bytes, uint64_t usableUbBytes) const;
+    void ApplyTileCandidate(const TileCandidate &candidate);
+    ge::graphStatus CalculateMixWork(uint64_t &totalWorkUnits);
+    ge::graphStatus CalculateWorkspaceSize();
+    void FillTilingData(uint64_t totalWorkUnits);
 
-    uint32_t baseT_ = 1;
-    uint32_t baseS_ = 0;
-    uint32_t baseD_ = 0;
-    uint32_t baseDAlign_ = 0;
-    uint32_t sTileNum_ = 0;
-    uint32_t dTileNum_ = 0;
-    uint32_t sAlign_ = 0;
-    uint32_t nAlign_ = 0;
-    uint32_t mm1NAlign_ = 0;
-    uint32_t dAlign_ = 0;
-    uint32_t qL1BufferNum_ = 1;
-    uint32_t vL1BufferNum_ = 1;
-    uint32_t vUbBufferNum_ = 1;
-    uint64_t qL1Elems_ = 0;
-    uint64_t vL1Elems_ = 0;
-    uint64_t eL1Elems_ = 0;
-    uint64_t vUbElems_ = 0;
-    uint64_t dotUbElems_ = 0;
-    uint64_t reduceUbElems_ = 0;
-    uint64_t softmaxUbElems_ = 0;
-    uint64_t workspacePerCoreElems_ = 0;
-
-    BlockAttnResPrepareCubeTilingData tilingData_{};
+    BlockAttnResPrepareMixTilingData tilingData_{};
 };
 
 } // namespace optiling
