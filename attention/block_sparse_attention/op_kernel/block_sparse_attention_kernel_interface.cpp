@@ -227,10 +227,15 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using LayoutK = layout::ColumnMajor;
     // S is rowMajor on UB(dst)
     using LayoutS = layout::RowMajor;
-    // LayoutPDummy/LayoutV are used by the ordinary PV TileCopy. The exact ND and DN
-    // RescaleOnCube specializations define their L1/L0 layouts in dedicated PV files.
+    // PType keeps the OnlineSoftmax output layout. PV operand layouts are selected
+    // independently because RescaleOnCube computes V^T * P^T for both ND and DN MM1.
     using LayoutPDummy = std::conditional_t<transposedMm1, layout::nZ, layout::zN>;
     using LayoutV = layout::RowMajor;
+    using LayoutPvA = std::conditional_t<rescaleOnCube, layout::ColumnMajor, LayoutPDummy>;
+    using LayoutPvB = std::conditional_t<
+        rescaleOnCube,
+        std::conditional_t<transposedMm1, layout::RowMajor, layout::ColumnMajor>,
+        LayoutV>;
     using LayoutO = layout::RowMajor;
     // OTmp is rowMajor on UB(dst)
     using LayoutOTmp = layout::RowMajor;
@@ -261,7 +266,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     // mmad pv
     using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV<transposedMm1, rescaleOnCube>;
     using TileCopyPV =
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPvA, ElementV, LayoutPvB, ElementOTmp, LayoutOTmp,
                                           void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
                                           Gemm::Tile::ScaleGranularity::PER_TENSOR>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,

@@ -41,16 +41,16 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
 
-    // FP8 rescaleOnCube path. The matrix orientation is selected independently
-    // by transposedMm1, so both ND and transposed implementations can use it.
+    // FP8 RescaleOnCube: MM1/OnlineSoftmax may be ND or transposed, while MM2
+    // consistently computes V^T * P^T and keeps O^T on L0C.
     static constexpr bool RESCALE_ON_CUBE = BlockMmadPV::rescaleOnCube;
 
     using LayoutQ = std::conditional_t<transposedMm1, layout::ColumnMajor, layout::RowMajor>;
     using LayoutK = std::conditional_t<transposedMm1, layout::RowMajor, layout::ColumnMajor>;
     using LayoutS = layout::RowMajor;
     using LayoutP = layout::RowMajor;
-    // Only the transposed implementation reads V as ColumnMajor [D, kvS].
-    using LayoutV = std::conditional_t<RESCALE_ON_CUBE && transposedMm1, layout::ColumnMajor, layout::RowMajor>;
+    // RescaleOnCube keeps MM2 transposed even when MM1 and OnlineSoftmax are ND.
+    using LayoutV = std::conditional_t<RESCALE_ON_CUBE, layout::ColumnMajor, layout::RowMajor>;
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
@@ -317,7 +317,7 @@ public:
                 kShapeRow = strideKVS;
                 vShapeCol = strideKVS;
             }
-            if constexpr (RESCALE_ON_CUBE && transposedMm1) {
+            if constexpr (RESCALE_ON_CUBE) {
                 // V 以 ColumnMajor [D, kvS] 进 L1（A=(V)^T 直接读，与 Q 的 DN 加载同构）
                 vShapeRow = vShapeCol;
                 vShapeCol = kvBaseTile_;
@@ -509,13 +509,12 @@ public:
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&vDequantScaleValue));
                     if constexpr (RESCALE_ON_CUBE) {
-                        // go 的 UB TLA：NZ2DN 输出为 ColumnMajor（DN）布局（仅末块实际使用，供 CopyL0CToDst<TensorC> 匹配特化）
+                        // GO UB uses the ColumnMajor view required by the transposed MM2 FixPipe path.
                         // 半区固定 64（与 S 的 sShapeCol=64 一致）：FixPipe 的 nSize 需 16 倍数，
                         // 尾块实际列 < 64 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
-                        using LayoutGoUb = std::conditional_t<transposedMm1,
-                            NpuArch::layout::ColumnMajor, NpuArch::layout::RowMajor>;
-                        uint32_t goUbRows = transposedMm1 ? embed_ : 64;
-                        uint32_t goUbCols = transposedMm1 ? 64 : embedRound;
+                        using LayoutGoUb = NpuArch::layout::ColumnMajor;
+                        uint32_t goUbRows = embed_;
+                        uint32_t goUbCols = 64;
                         auto ubGoLayoutTla = tla::MakeLayout<float, LayoutGoUb>(goUbRows, goUbCols);
                         auto ubGoTensorTla = tla::MakeTensor(ubGoTensor, ubGoLayoutTla, Arch::PositionUB{});
                         // GO^T 的 L1 TLA：zN [D, qS]，固定 qBaseTile_ 保证 FixPipe 的 nSize 为 16 倍数（尾块实际列
@@ -523,8 +522,8 @@ public:
                         // 旧路径（FP8 ND）不构造（避免未使用告警与无谓寻址）
                         AscendC::LocalTensor<float> l1GoTensor =
                             resource.l1Buf.template GetBufferByByte<float>(l1GoAddrStart_);
-                        uint32_t goL1Rows = transposedMm1 ? embed_ : qBaseTile_;
-                        uint32_t goL1Cols = transposedMm1 ? qBaseTile_ : embed_;
+                        uint32_t goL1Rows = embed_;
+                        uint32_t goL1Cols = qBaseTile_;
                         auto l1GoLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(goL1Rows, goL1Cols);
                         auto l1GoTensorTla = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionL1{});
                         // 写侧 C1 视图（DataCopy CO1→C1 要求 C1 位置标签；与 A1 视图同一物理 L1，零拷贝双视图）
@@ -626,7 +625,7 @@ public:
         mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
                           mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
         if constexpr (RESCALE_ON_CUBE) {
-            // GO^T [qS, D] fp32 1 份 + diag 块 [qS/2, qS/2] fp32 3 份，追加在 V 段之后（旧路径不需要，不计算）
+            // GO^T [D, qS] FP32 plus three packed DIAGDM stages are placed after V.
             uint32_t mm2PTotalSize = mm2L1TileM_ * mm2L1TileKLeft_ * pL1BufNum_ * sizeof(ElementP);
             uint32_t mm2VTotalSize = mm2L1TileKRight_ * mm2L1TileN_ * vL1BufNum_ * sizeof(ElementV);
             l1GoAddrStart_ = mm2L1AddrStart_ + mm2PTotalSize + mm2VTotalSize;
@@ -643,21 +642,15 @@ public:
             mm1L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadQK::L0_TILE_N) *
                 CeilDiv(embed_, BlockMmadQK::L0_TILE_K);
         }
-        if constexpr (RESCALE_ON_CUBE && transposedMm1) {
-            // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 批数（批宽与 S_trans 双子核切分一致、
+        if constexpr (RESCALE_ON_CUBE) {
+            // Transposed PV: per-tile L0A/L0B usage includes PV^T plus the two
+            // OnlineSoftmax sub-blocks used by RE.
             // diag 对角 16×16 块紧凑打包到 1 个 L0B stage；与 PV 内部 counter 结构严格对应）
             mm2L0ATotalStages_ = CeilDiv(embed_, BlockMmadPV::L0_TILE_M) *
                 CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) +
                 CeilDiv(qBaseTile_, qBaseTile_ / 2) * CeilDiv(embed_, BlockMmadPV::L0_TILE_M);
             mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) *
                 CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_N) + 1;
-        } else if constexpr (RESCALE_ON_CUBE) {
-            // ND PV uses L0A for P/DIAG and L0B for V/GO. DIAG occupies one
-            // additional stage and the two AIV row regions occupy at most two GO stages.
-            mm2L0ATotalStages_ = CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_M) *
-                CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) + 1;
-            mm2L0BTotalStages_ = CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K) *
-                CeilDiv(embed_, BlockMmadPV::L0_TILE_N) + 2;
         } else {
             mm2L0ATotalStages_ = CeilDiv(qBaseTile_, BlockMmadPV::L0_TILE_M) *
                 CeilDiv(kvBaseTile_, BlockMmadPV::L0_TILE_K);
