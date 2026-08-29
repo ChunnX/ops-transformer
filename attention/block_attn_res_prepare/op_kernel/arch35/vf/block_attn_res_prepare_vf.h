@@ -131,37 +131,6 @@ __simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ floa
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-template <bool FIRST_D_TILE>
-__simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *sumSquareAddr, uint32_t validD,
-                                         uint32_t nIndex)
-{
-    RegTensor<float> vReg;
-    RegTensor<float> squareReg;
-    RegTensor<float> squareAccReg;
-    RegTensor<float> squareReduceReg;
-    MaskReg allMask = CreateMask<float, MaskPattern::ALL>();
-    MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
-    Duplicate(squareAccReg, 0.0F, allMask);
-
-    uint32_t remaining = validD;
-    const uint16_t loopCount = static_cast<uint16_t>((validD + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS);
-    for (uint16_t loop = 0; loop < loopCount; ++loop) {
-        MaskReg validMask = UpdateMask<float, RegTraitNumOne>(remaining);
-        const uint32_t offset = static_cast<uint32_t>(loop) * FP32_REG_ELEMS;
-        LoadAlign<float, LoadDist::DIST_NORM>(vReg, vAddr + offset);
-        Mul<float, MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
-        Add<float, MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
-    }
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(squareReduceReg, squareAccReg, allMask);
-    if constexpr (!FIRST_D_TILE) {
-        RegTensor<float> oldValueReg;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg, sumSquareAddr + nIndex);
-        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg, oneMask);
-    }
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(sumSquareAddr + nIndex, squareReduceReg, oneMask);
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-}
-
 __simd_vf__ inline void FinalizeSingleBlock(__ubuf__ float *statAddr, float reciprocalD, float eps)
 {
     RegTensor<float> sumSquareReg;
