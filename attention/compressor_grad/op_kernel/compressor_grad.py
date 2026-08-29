@@ -196,7 +196,7 @@ def _vf_scatter_backward(
                 vreg_t = vf.add(vreg_w, vreg_y, mask)
                 vreg_c = vf.sub(vreg_t, vreg_w, mask)
                 vreg_c = vf.sub(vreg_c, vreg_y, mask)
-                vreg_w = vreg_t
+                vreg_w = vf.move(vreg_t, mask)
                 vreg_wcomp = vf.add(vreg_c, vreg_p_lo, mask)
 
             vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
@@ -341,8 +341,8 @@ def _vf_reduce_dscore_to_ape(
                 vreg_t = vf.add(ape_reg, vreg_y, mask)
                 vreg_c = vf.sub(vreg_t, ape_reg, mask)
                 vreg_c = vf.sub(vreg_c, vreg_y, mask)
-                ape_reg = vreg_t
-                ape_comp = vreg_c
+                ape_reg = vf.move(vreg_t, mask)
+                ape_comp = vf.move(vreg_c, mask)
             vf.store_align(ape_tile + ape_off, ape_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
