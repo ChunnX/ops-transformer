@@ -988,11 +988,9 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         innerPrecise_ = *attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
     }
     if (socVer_ == SOC_VER_950_CODE) {
-        if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "On chip 950, only innerPrec = 4 is supported, "
-                    "but got %u.",
-                    innerPrecise_);
+        if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED && innerPrecise_ != BsaInnerCalcPrec::ALL_HIGH) {
+            OP_LOGE(bsaContext->GetNodeName(), "On chip 950, only innerPrec = 0 or 4 is supported, "
+                "but got %u.", innerPrecise_);
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -1142,6 +1140,16 @@ void BSATiling::CalcBaseTileTilingParams950()
     } else {
         kvBaseTile_ = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
     }
+}
+
+void BSATiling::TransposedMatmulConfig950()
+{
+    if (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0) {
+        transposedMm1_ = true;
+    } else {
+        transposedMm1_ = false;
+    }
+    transposedMm2_ = false;
 }
 
 void BSATiling::CalcSplitCoreTilingParams950()
@@ -1456,6 +1464,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 100000000ULL; // 1 for lse out
     }
 
+    // matmul是否转置
+    if (transposedMm1_) {
+        tilingKey += 1000000000ULL;
+    }
+
     return tilingKey;
 }
 
@@ -1490,6 +1503,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
     if (socVer_ == SOC_VER_950_CODE) {
         CalcSplitCoreTilingParams950();
         CalcMatmulPhaseL1TileInfo950();
+        TransposedMatmulConfig950();
         CalcWorkspaceTilingParams950(bsaContext);
     } else {
         ret = CalculateTaskSplit(bsaContext);
