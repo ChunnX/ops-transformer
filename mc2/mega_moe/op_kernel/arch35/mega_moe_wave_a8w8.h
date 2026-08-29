@@ -45,6 +45,9 @@
 
 namespace MegaMoeImpl {
 
+constexpr uint32_t GMM2_LAG_MIN_TOKEN_NUM = 4096U;
+
+
 using namespace AscendC;
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
@@ -806,6 +809,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertTokenPosition gmm2Position{};
     ExpertTokenPosition dispatchEndPosition{};
     // GMM2 的滞后消费目标（见循环内注释）；首轮为零位置，GMM2 空转一轮。
+    // 形状门控：滞后收益来自消除 AIC 等激活（随 wave 数放大），代价是流水尾部固定多一个
+    // GMM2 wave 深度——小 bs 下 wave 少、尾深占比大，实测 bs2048 净劣化（中位数 +45us）而
+    // bs8192 净收益（-820us），故仅在每卡 token 数达到阈值时启用；2048/8192 之间未实测，
+    // 阈值取中点偏保守，中间形状合入前需补测。
+    const bool gmm2LagActive = commonConfig_.tokenNum >= GMM2_LAG_MIN_TOKEN_NUM;
     ExpertTokenPosition gmm2LaggedTarget{};
     uint32_t combineBeginExpertIndex = 0U;
 
@@ -842,7 +850,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
          */
         int32_t gmm2TileSequence = 0;
         GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
-        ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
+        ProcessGmm2Wave(gmm2Position, gmm2LagActive ? gmm2LaggedTarget : waveEndPosition, gmm2ExpertState,
+                        gmm2AddrInfo, gmm2RuntimeState);
         gmm2LaggedTarget = waveEndPosition;
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
         gmm2LaggedTarget = waveEndPosition;
@@ -863,7 +872,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     // 滞后流水收尾：仅 AIC 补跑最后一个 wave 的 GMM2（AIV 的 GMM2 状态机未滞后，无需补；
     // combine 已在循环内按 per-expert flag 全量收齐）。
-    if (!IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
+    if (gmm2LagActive && !IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
         int32_t gmm2TailTileSequence = 0;
         GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TailTileSequence, gmm2PingPongIdx_};
         ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState);
