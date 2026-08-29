@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cmath>
 #include "quant_flash_attn_metadata_aicpu.h"
+#include "../../quant_flash_attn/op_host/qfa_adjust_sinner_souter.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
@@ -195,82 +196,129 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.queryHeadNum = numHeadsQ_;
     bool isDecode = (layoutQDescale_ == "N2TGD");
     baseInfo.kvHeadNum = isDecode ? numHeadsKv_ : numHeadsQ_;
-    baseInfo.headDim = headDim_;
+    baseInfo.headDimQk = headDim_;
+    baseInfo.headDimV = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
-    if (quantMode_ == 1 || quantMode_ == 6) {
+    if (quantMode_ == 1 || quantMode_ == 6 || quantMode_ == 0) {
         baseInfo.queryType = load_balance::DataType::INT8;
         baseInfo.kvType = load_balance::DataType::INT8;
     }
-    if (quantMode_ == 1) { // TODO：用adjust函数代替
-        if (baseInfo.headDim == 256) {
-            mBaseSize_ = 64U;
-            s2BaseSize_ = 256U;
-        } else {
-            mBaseSize_ = 64U;
-            s2BaseSize_ = 512U;
-        }
-    } else if (quantMode_ == 6) { // GQA FP8 fullquant: s2BaseSize=256
-        mBaseSize_ = 64U;
-        s2BaseSize_ = 256U;
-    }
+    uint32_t sOuterFactor = 0;
+    uint32_t sInnerFactor = 0;
+    optiling::quant_flash_attn::qfa_tiling_util::AdjustSinnerAndSouter(
+        static_cast<uint32_t>(headDim_), static_cast<int64_t>(maxSeqlenQ_), static_cast<int64_t>(maxSeqlenKv_),
+        maskMode_, static_cast<int64_t>(winLeft_), static_cast<int64_t>(winRight_),
+        optiling::quant_flash_attn::qfa_tiling_util::LAYOUT_BSND, static_cast<uint32_t>(quantMode_), sOuterFactor,
+        sInnerFactor);
+    mBaseSize_ = sOuterFactor;
+    s2BaseSize_ = sInnerFactor;
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.l2Byte = 0;
     param.fdTolerance = 300;
     param.fdOn = 0;
+    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
 
-    // 校验 v_descale: TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
-    if (vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
-        if (quantMode_ == 6) {
-            // GQA FP8 fullquant: v_descale 为 1D [N2], per-head
-            int64_t vDescaleDimNum = vDescale_->GetTensorShape()->GetDims();
-            int64_t vDescaleDim0 = vDescale_->GetTensorShape()->GetDimSize(0);
-            if (vDescaleDimNum != 1) {
-                KERNEL_LOG_ERROR("v_descale should be 1D [N2] for GQA FP8 fullquant (quant_mode=6), but got %ldD",
-                                 vDescaleDimNum);
-                return false;
-            }
-            if (vDescaleDim0 != numHeadsKv_) {
-                KERNEL_LOG_ERROR("v_descale dim0 should be num_heads_kv=%d for GQA FP8 fullquant, but got %ld",
-                                 numHeadsKv_, vDescaleDim0);
-                return false;
-            }
-        } else {
-            const int64_t V_DESCALE_GROUP_SIZE = 64;
-            bool isTndLayout = (layoutKv_ == "TND");
-            if (isTndLayout) {
-                int64_t vDescaleT = vDescale_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
-                int64_t expectedT = 0;
-                if (baseInfo.isCumulativeKvSeq && batchSize_ > 0 &&
-                    static_cast<int64_t>(baseInfo.actualKvSeqSize.size()) >= batchSize_) {
-                    int64_t prev = 0;
-                    for (int32_t i = 0; i < batchSize_; ++i) {
-                        int64_t seqUsed = baseInfo.actualKvSeqSize[i] - prev;
-                        prev = baseInfo.actualKvSeqSize[i];
-                        expectedT += (seqUsed + V_DESCALE_GROUP_SIZE - 1) / V_DESCALE_GROUP_SIZE;
-                    }
+    // 校验 v_descale: quantMode=1(MxFp8) 且 TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
+    // HIF8 (quantMode=0): v_descale 为 per-tensor 标量, 不需要校验
+    if (quantMode_ == 1 && vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
+        const int64_t V_DESCALE_GROUP_SIZE = 64;
+        bool isTndLayout = (layoutKv_ == "TND");
+        if (isTndLayout) {
+            int64_t vDescaleT = vDescale_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
+            int64_t expectedT = 0;
+            if (baseInfo.isCumulativeKvSeq && batchSize_ > 0 &&
+                static_cast<int64_t>(baseInfo.actualKvSeqSize.size()) >= batchSize_) {
+                int64_t prev = 0;
+                for (int32_t i = 0; i < batchSize_; ++i) {
+                    int64_t seqUsed = baseInfo.actualKvSeqSize[i] - prev;
+                    prev = baseInfo.actualKvSeqSize[i];
+                    expectedT += (seqUsed + V_DESCALE_GROUP_SIZE - 1) / V_DESCALE_GROUP_SIZE;
                 }
-                if (expectedT > 0 && expectedT != vDescaleT) {
-                    KERNEL_LOG_ERROR(
-                        "v_descale dim0 should be sum(ceil(seqused_kv[i]/64)) = %ld when layout is TND, but got %ld",
-                        expectedT, vDescaleT);
-                    return false;
-                }
+            }
+            if (expectedT > 0 && expectedT != vDescaleT) {
+                KERNEL_LOG_ERROR(
+                    "v_descale dim0 should be sum(ceil(seqused_kv[i]/64)) = %ld when layout is TND, but got %ld",
+                    expectedT, vDescaleT);
+                return false;
             }
         }
     }
+    needInitOutput_ = CheckNeedInitOutput();
     return true;
 }
 
 bool QuantFlashAttnMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 {
     return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
+{
+    const bool hasCuQ = cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr;
+    const bool hasCuKv = cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr;
+    const bool hasSeqQ = sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr;
+    const bool hasSeqKv = sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr;
+    const uint32_t bSize = static_cast<uint32_t>(batchSize_);
+    const bool hasVarlen = hasCuQ || hasCuKv || hasSeqQ || hasSeqKv;
+    if (!hasVarlen || bSize == 0) {
+        // 无 varlen 信息时用全局长度兜底
+        return maskMode_ == 3 && baseInfo.querySeqSize > baseInfo.kvSeqSize;
+    }
+    // 直接读原始 varlen 数据 (cu_seqlens 长度为 b+1 且首元素为 0, seqused 长度为 b),
+    // 不使用 ParamsInit 中被累加覆盖的 actualQuerySeqSize/actualKvSeqSize
+    std::vector<int64_t> cuSeqlensQ;
+    std::vector<int64_t> cuSeqlensKv;
+    std::vector<int64_t> seqUsedQ;
+    std::vector<int64_t> seqUsedKv;
+    if (hasCuQ) {
+        cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, bSize + 1);
+    }
+    if (hasCuKv) {
+        cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, bSize + 1);
+    }
+    if (hasSeqQ) {
+        seqUsedQ = GetTensorDataAsInt64(sequsedQ_, bSize);
+    }
+    if (hasSeqKv) {
+        seqUsedKv = GetTensorDataAsInt64(sequsedKv_, bSize);
+    }
+    for (uint32_t bIdx = 0; bIdx < bSize; ++bIdx) {
+        // Q 侧: cu_seqlens_q 差分为 0 → 零长 batch
+        int64_t qAllocLen = hasCuQ ? cuSeqlensQ[bIdx + 1] - cuSeqlensQ[bIdx] : -1;
+        if (qAllocLen == 0) {
+            return true;
+        }
+        // Q 侧: seqused_q 为 0, 或小于 cu_seqlens_q 分配长度 → 输出存在 padding 行, 需要清零
+        int64_t qUsedLen = hasSeqQ ? seqUsedQ[bIdx] : (qAllocLen > 0 ? qAllocLen : baseInfo.querySeqSize);
+        if (qUsedLen == 0) {
+            return true;
+        }
+        if (qAllocLen > 0 && qUsedLen < qAllocLen) {
+            return true;
+        }
+        // KV 侧: cu_seqlens_kv 差分为 0 → 零长 batch
+        int64_t kvAllocLen = hasCuKv ? cuSeqlensKv[bIdx + 1] - cuSeqlensKv[bIdx] : -1;
+        if (kvAllocLen == 0) {
+            return true;
+        }
+        // KV 侧: seqused_kv 为 0 → 该 batch 无有效 kv, 输出应全 0
+        int64_t kvLen = hasSeqKv ? seqUsedKv[bIdx] : (kvAllocLen > 0 ? kvAllocLen : baseInfo.kvSeqSize);
+        if (kvLen == 0) {
+            return true;
+        }
+        // CAUSAL 下单 batch q > kv → 产生全 mask 行, 输出应为 0
+        if (maskMode_ == 3 && qUsedLen > kvLen) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
@@ -296,16 +344,16 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
 
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
+            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_START_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX, 0U);
+            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_END_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
         }
         for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, 0U);
+            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX, 0U);
@@ -316,20 +364,20 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
         auto faSplitRes = splitRes.sectionFaResult[sectionId];
         for (uint32_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
             if (i > 0) {
-                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, faSplitRes.bN2End[i - 1]);
-                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, faSplitRes.gS1End[i - 1]);
+                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_START_INDEX, faSplitRes.bNEnd[i - 1]);
+                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, faSplitRes.mEnd[i - 1]);
                 faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
             } else if (sectionId > 0) {
                 auto preFaSplitRes = splitRes.sectionFaResult[sectionId - 1];
-                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX,
-                                         preFaSplitRes.bN2End[preFaSplitRes.usedCoreNum - 1]);
+                faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_START_INDEX,
+                                         preFaSplitRes.bNEnd[preFaSplitRes.usedCoreNum - 1]);
                 faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX,
-                                         preFaSplitRes.gS1End[preFaSplitRes.usedCoreNum - 1]);
+                                         preFaSplitRes.mEnd[preFaSplitRes.usedCoreNum - 1]);
                 faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX,
                                          preFaSplitRes.s2End[preFaSplitRes.usedCoreNum - 1]);
             }
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX, faSplitRes.bN2End[i]);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, faSplitRes.gS1End[i]);
+            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_END_INDEX, faSplitRes.bNEnd[i]);
+            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, faSplitRes.mEnd[i]);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, faSplitRes.s2End[i]);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
                                      faSplitRes.firstFdDataWorkspaceIdx[i]);
@@ -338,8 +386,8 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
         for (uint32_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
             uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, fdSplitRes.bN2Idx[curTaskIdx]);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, fdSplitRes.gS1Idx[curTaskIdx]);
+            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN_IDX_INDEX, fdSplitRes.bNIdx[curTaskIdx]);
+            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, fdSplitRes.mIdx[curTaskIdx]);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX,
                                      fdSplitRes.workspaceIdx[curTaskIdx]);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX, fdSplitRes.s2SplitNum[curTaskIdx]);
@@ -347,6 +395,7 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
         }
     }
+    faMetadata.SetHeadMedata(optiling::HEAD_NEED_INIT_OUTPUT_INDEX, needInitOutput_ ? 1U : 0U);
     return true;
 }
 

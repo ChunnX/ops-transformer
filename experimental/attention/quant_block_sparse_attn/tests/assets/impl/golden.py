@@ -64,6 +64,12 @@ def _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse):
     return [attention_out, softmax_lse if return_softmax_lse else None]
 
 
+def _as_bool(value):
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "off", "")
+    return bool(value)
+
+
 def cpu_quant_block_sparse_attn(
     query,
     key,
@@ -93,6 +99,7 @@ def cpu_quant_block_sparse_attn(
     layout_out="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     return_softmax_lse=False,
+    quant_matmul=False,
     **kwargs,
 ):
     """Map the shared 16-input CSV signature to the existing pytest golden."""
@@ -135,6 +142,7 @@ def cpu_quant_block_sparse_attn(
             softmax_scale,
             sparse_block_size_q,
             sparse_block_size_kv,
+            quant_matmul=quant_matmul,
             **common_kwargs,
         )
 
@@ -204,8 +212,13 @@ def _mxfp8_normalize_data_range(data_range):
                 f"data_range must be a scalar or [min, max], got: {data_range}"
             )
         low, high = float(data_range[0]), float(data_range[1])
-        if not math.isfinite(low) or not math.isfinite(high):
-            raise ValueError(f"data_range bounds must be finite, got: [{low}, {high}]")
+        if math.isnan(low) or math.isnan(high):
+            if not (math.isnan(low) and math.isnan(high)):
+                raise ValueError(
+                    "nan data_range bounds must describe a constant nan value, "
+                    f"got: [{low}, {high}]"
+                )
+            return [low, high]
         if low > high:
             raise ValueError(
                 f"data_range min must not exceed max, got: [{low}, {high}]"
@@ -213,7 +226,9 @@ def _mxfp8_normalize_data_range(data_range):
         return [low, high]
 
     radius = float(data_range)
-    if not math.isfinite(radius) or radius < 0:
+    if not math.isfinite(radius):
+        return radius
+    if radius < 0:
         raise ValueError(
             f"scalar data_range must be finite and non-negative, got: {radius}"
         )
@@ -248,6 +263,7 @@ def _mxfp8_cpu_golden(
     return_softmax_lse=False,
     sparse_mode="dense",
     seed=0,
+    quant_matmul=False,
     **kwargs,
 ):
     """Run the original pytest CPU reference on the exact customized inputs."""
@@ -342,6 +358,7 @@ def _mxfp8_cpu_golden(
         data["sparse_indices"],
         data["sparse_seq_len"],
         data["block_table"],
+        use_quant_matmul=_as_bool(quant_matmul),
     )
     attention_out = attention_out.to(torch.bfloat16)
     return _format_golden_outputs(attention_out, softmax_lse, return_softmax_lse)

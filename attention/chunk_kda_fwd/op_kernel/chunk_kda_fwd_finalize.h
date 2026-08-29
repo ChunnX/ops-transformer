@@ -230,7 +230,10 @@ public:
         ReleaseVectorEvents();
     }
 
-    __aicore__ inline void ProcessAic() { ProcessOutAic(); }
+    __aicore__ inline void ProcessAic()
+    {
+        ProcessOutAic();
+    }
 
 private:
     __aicore__ inline void AllocVectorEvents()
@@ -273,7 +276,10 @@ private:
         return ((b * T_ + t) * HV_ + hv) * V_ + d;
     }
 
-    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const { return (b * HV_ + hv) * T_ + t; }
+    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const
+    {
+        return (b * HV_ + hv) * T_ + t;
+    }
 
     __aicore__ inline uint64_t AOffset(uint64_t b, uint64_t hv, uint64_t t, uint64_t j) const
     {
@@ -304,7 +310,10 @@ private:
         return (((solveCoreIdx_ * KDA_SCORE_QUEUE_DEPTH + slot) * KDA_SCORE_SCRATCH_PLANES + plane) * BT_ + t) * K_ + d;
     }
 
-    __aicore__ inline uint64_t ScoreRefBlockSize() const { return KDA_SCORE_REF_BC; }
+    __aicore__ inline uint64_t ScoreRefBlockSize() const
+    {
+        return KDA_SCORE_REF_BC;
+    }
 
     __aicore__ inline uint64_t ScoreRowBlockCount(uint64_t curT, uint64_t rowBegin) const
     {

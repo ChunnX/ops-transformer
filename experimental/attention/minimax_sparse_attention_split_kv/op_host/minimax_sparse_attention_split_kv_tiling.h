@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -7,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 
 #ifndef MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H
 #define MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H
@@ -24,19 +23,13 @@ namespace optiling {
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BASE_TILING = 20000;
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_TILING = 20001;
 // innerPrecise==1: O_partial written/read as bf16 (Phase1 PV fixpipe F322BF16, Phase2
-// regbase-cast bf16->fp32 before combine). Any other innerPrecise (attr default 4)
-// uses the fp32 O_partial path (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING). This flag
-// selects workspace dtype only; softmax is always the same BF16 online template.
+// regbase-cast bf16->fp32 before combine). innerPrecise==4 (default) uses bf16 S +
+// fp32 O_partial (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING). innerPrecise==0 uses fp32 S
+// + fp32 O_partial (MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING).
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING = 20002;
-constexpr uint64_t MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING = 20003;
-
-// Current kernel templates only implement D=128 / blockSize=128.
-constexpr uint32_t MINIMAX_SA_SPLIT_KV_HEAD_DIM = 128U;
-constexpr uint32_t MINIMAX_SA_SPLIT_KV_BLOCK_SIZE = 128U;
-// innerPrecise==1: BF16 O_partial (BF16 input only). innerPrecise==4 is the attr
-// default for FP32 O_partial; FP8 currently only implements that FP32 path.
-constexpr uint32_t MINIMAX_SA_SPLIT_KV_INNER_PRECISE_LOW = 1U;
-constexpr uint32_t MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH = 4U;
+constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_HIGH_TILING = 20003;
+// FP8 Q/K/V + FP32 O_partial + BF16 out (same softmax template as 20001).
+constexpr uint64_t MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING = 20004;
 
 BEGIN_TILING_DATA_DEF(MinimaxSparseAttentionSplitKvTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);
@@ -58,6 +51,15 @@ TILING_DATA_FIELD_DEF(uint64_t, accumOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, lseStatSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
+// 1: paged KV cache (block_table + 4D key/value). 0: contiguous dense K/V.
+TILING_DATA_FIELD_DEF(uint32_t, isPageAttention);
+// 1: write softmax LSE to the softmaxLse output. 0: skip (output shape [0]).
+TILING_DATA_FIELD_DEF(uint32_t, softmaxLseFlag);
+// 0: TND [T, N, D]. 1: BNSD [B, N, S, D]. 2: BSND [B, S, N, D].
+TILING_DATA_FIELD_DEF(uint32_t, layoutType);
+// BNSD/BSND padded S from query/key shape. 0 when layout is TND.
+TILING_DATA_FIELD_DEF(uint32_t, qSeqLen);
+TILING_DATA_FIELD_DEF(uint32_t, kvSeqLen);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MinimaxSparseAttentionSplitKv, MinimaxSparseAttentionSplitKvTilingData)
 
@@ -76,21 +78,19 @@ public:
     MinimaxSparseAttentionSplitKvTiling() = default;
     ~MinimaxSparseAttentionSplitKvTiling() = default;
 
-    ge::graphStatus GetTiling(gert::TilingContext *context,
-                              MinimaxSparseAttentionSplitKvTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context,
-                                  MinimaxSparseAttentionSplitKvTilingData &tilingData);
+    ge::graphStatus GetTiling(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
 
 private:
     ge::graphStatus GetNpuInfo(gert::TilingContext *context);
     ge::graphStatus ParseAttrs(gert::TilingContext *context);
     ge::graphStatus ParseInputTensors(gert::TilingContext *context);
+    ge::graphStatus CheckTilingConstraints(gert::TilingContext *context);
     ge::graphStatus ParseSeqlens(gert::TilingContext *context);
     ge::graphStatus CalculateReverseIndexMeta(gert::TilingContext *context);
     ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
     ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
     ge::graphStatus FillTilingData(gert::TilingContext *context);
-    uint64_t GenerateTilingKey() const;
 
 private:
     uint32_t batch_ = 0;
@@ -98,14 +98,19 @@ private:
     uint32_t kvHeads_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t embeddingSize_ = 0;
-    uint32_t blockSize_ = MINIMAX_SA_SPLIT_KV_BLOCK_SIZE;
+    uint32_t blockSize_ = 128;
     uint32_t topK_ = 8;
     uint32_t totalQTokens_ = 0;
     uint32_t numKvBlocks_ = 0;
     uint32_t maxBlocksPerBatch_ = 0;
     uint32_t k2qNnzUpperBound_ = 0;
     float scaleValue_ = 0.0f;
-    uint32_t innerPrecise_ = 0;
+    uint32_t innerPrecise_ = 4;
+    uint32_t isPageAttention_ = 1;
+    uint32_t softmaxLseFlag_ = 0;
+    uint32_t layoutType_ = 0;
+    uint32_t qSeqLen_ = 0;
+    uint32_t kvSeqLen_ = 0;
 
     const int32_t *qSeqLenList_ = nullptr;
     const int32_t *kvSeqLenList_ = nullptr;
@@ -126,6 +131,6 @@ private:
     MinimaxSparseAttentionSplitKvTilingData *tilingData_ = nullptr;
 };
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H
+#endif // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILING_H

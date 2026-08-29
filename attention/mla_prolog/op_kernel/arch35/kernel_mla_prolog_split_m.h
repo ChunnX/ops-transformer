@@ -16,15 +16,15 @@
 #ifndef KERNEL_MLA_PROLOG_SPLIT_M_H
 #define KERNEL_MLA_PROLOG_SPLIT_M_H
 
-#include "mla_prolog_comm.h"
-#include "mla_prolog_vector_comm.h"
-#include "service_matmul.h"
-#include "service_rms_norm.h"
-#include "service_gather_sin_cos.h"
-#include "service_rotary_position_embedding.h"
-#include "service_scatter_cache.h"
-#include "service_dequant.h"
-#include "service_dynamic_quant_qn_mul_qr.h"
+#include "mla_prolog_comm_arch35.h"
+#include "mla_prolog_vector_comm_arch35.h"
+#include "service_matmul_arch35.h"
+#include "service_rms_norm_arch35.h"
+#include "service_gather_sin_cos_arch35.h"
+#include "service_rotary_position_embedding_arch35.h"
+#include "service_scatter_cache_arch35.h"
+#include "service_dequant_arch35.h"
+#include "service_dynamic_quant_qn_mul_qr_arch35.h"
 #include "../mla_prolog_tiling_data.h"
 #include "../mla_prolog_template_tiling_key.h"
 
@@ -481,7 +481,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::VectorBufferInit()
 
     if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>()) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                      (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
+                      std::is_same<mmCkvKrOutputType, float>::value) {
             pipe_->InitBuffer(quantScaleCkvBuffer_, ALIGN_BLOCK_SIZE);
         } else {
             pipe_->InitBuffer(quantScaleCkvBuffer_, baseParams_->headSizeCkv * sizeof(float)); // [1, 512]
@@ -1063,6 +1063,9 @@ template <typename MLAPT>
 __aicore__ inline void MlaPrologV3SplitM<MLAPT>::CopyInSinCos(int64_t tokenIndex, int64_t curVecToken,
                                                               int64_t batchOffset, int64_t curMSize)
 {
+    if constexpr (!MLAPT::enableRope) {
+        return;
+    }
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     if constexpr (MLAPT::enableDequantOpt) {
         // 如果是切N场景，mm3的每个C核都会做rope
@@ -1098,7 +1101,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::CopyGlobalParams()
 
     if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>() && !isPertile) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                      (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
+                      std::is_same<mmCkvKrOutputType, float>::value) {
             DataCopyExtParams quantCopyParams{1, sizeof(float), 0, 0, 0};
             DataCopyPadExtParams<float> quantPadParams{false, 0, 0, 0};
             DataCopyPad(quantScaleCkvLocal_, quantScaleCkvGm_, quantCopyParams, quantPadParams);
@@ -1124,6 +1127,11 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormCq(int64_t tokenIndex, i
                                                            int64_t rmsNormCqResOffset, int64_t curVecToken,
                                                            int64_t curBlockTokenOffset)
 {
+    // curMSize==1 && cvRatio==2 can yield curVecToken==0 on one vector core;
+    // DataCopy with blockCount=0 is undefined / can hang on Ascend NPU.
+    if (curVecToken == 0) {
+        return;
+    }
     if (blockIdx_ < 0 || blockIdx_ >= cvRatio_ * baseParams_->mm1BlockNum) {
         return;
     }
@@ -1219,12 +1227,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::ComputeBlkScatterOffsets(Global
         batchSeqSize = baseParams_->seq1Size;
         batchIndexOffset = batchIndex * CeilDivT(batchSeqSize, static_cast<int64_t>(baseParams_->blockSize));
     } else {
-        while (actSeqState_.curBatch + 1 < static_cast<int64_t>(baseParams_->batchSize) &&
+        while (actSeqState_.curBatch < static_cast<int64_t>(baseParams_->batchSize) &&
                tokenIndex >= actSeqState_.curPrefix) {
-            actSeqState_.curBatch += 1;
             actSeqState_.prevPrefix = actSeqState_.curPrefix;
-            actSeqState_.curPrefix = actualSeqLenGm_(actSeqState_.curBatch);
             actSeqState_.prevIndexOffset = actSeqState_.curIndexOffset;
+            actSeqState_.curPrefix = actualSeqLenGm_(actSeqState_.curBatch);
+            actSeqState_.curBatch += 1;
             actSeqState_.curIndexOffset += CeilDivT(actSeqState_.curPrefix - actSeqState_.prevPrefix,
                                                     static_cast<int64_t>(baseParams_->blockSize));
         }
@@ -1432,10 +1440,9 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RopeAndScatterKr(LocalTensor<fl
     if constexpr ((std::is_same<mmCkvKrOutputType, int32_t>::value ||
                    (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) &&
                   std::is_same<krCacheType, bfloat16_t>::value) {
-        LocalTensor<uint8_t> sharedBuf =
-            ropeShareTmpUb.ReinterpretCast<uint8_t>()[baseParams_->dimHeadRope * sizeof(ropeSinCosType)];
+        LocalTensor<uint8_t> sharedBuf = ropeShareTmpUb;
         // input为int32_t需在rope中做反量化, intput为float根据模板参数判断是否做反量化
-        RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, krCacheType, true>(
+        RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, krCacheType, true, MLAPT::enableRope>(
             outputKrLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, sharedBuf, ropeParams,
             dequantScaleWDkvKrLocal_[baseParams_->headSizeCkv], dequantScaleXLocal);
     } else if constexpr (std::is_same<krCacheType, int8_t>::value) {
@@ -1443,12 +1450,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RopeAndScatterKr(LocalTensor<fl
         LocalTensor<uint8_t> sharedBuf =
             ropeShareTmpUb.ReinterpretCast<uint8_t>()[baseParams_->dimHeadRope * sizeof(ropeSinCosType)];
         RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, ropeSinCosType,
-                              !std::is_same<mmCkvKrOutputType, bfloat16_t>::value>(
+                              !std::is_same<mmCkvKrOutputType, bfloat16_t>::value, MLAPT::enableRope>(
             inputLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, sharedBuf, ropeParams);
         RopePostQuantPerChannel(outputKrLocal, inputLocal, quantScaleCkrLocal_, sharedBuf,
                                 vectorRow_ * baseParams_->dimHeadRope);
     } else {
-        RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, krCacheType, false>(
+        RotaryPosEmbPerTensor<mmCkvKrOutputType, ropeComputType, krCacheType, false, MLAPT::enableRope>(
             outputKrLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, ropeShareTmpUb,
             ropeParams);
     }
@@ -1521,6 +1528,10 @@ template <typename MLAPT>
 __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormRopeScatterCkvKr(int64_t tokenIndex, int64_t rmsNormCkvOffset,
                                                                          int64_t ropeKrOffset, int64_t curVecToken)
 {
+    // Avoid DataCopy/GatherSinCos with count 0 when this vector core owns no tokens.
+    if (curVecToken == 0) {
+        return;
+    }
     if (blockIdx_ < 0 || blockIdx_ >= cvRatio_ * baseParams_->mm2BlockNum) {
         return;
     }
@@ -1530,7 +1541,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormRopeScatterCkvKr(int64_t
     LocalTensor<ropeComputType> sinLocalCkvKr = cosLocalCkvKr[baseParams_->dimHeadRope * curVecToken];
     LocalTensor<uint8_t> shareTmpUb =
         sinLocalCkvKr[baseParams_->dimHeadRope * curVecToken].template ReinterpretCast<uint8_t>();
-    if constexpr (MLAPT::enableDequantOpt) {
+    if constexpr (MLAPT::enableDequantOpt && MLAPT::enableRope) {
         GatherSinCos<ropeSinCosType, ropeComputType>(cosLocalCkvKr, sinLocalCkvKr, ropeCosGm_, ropeSinGm_, tokenIndex,
                                                      curVecToken, shareTmpUb, vectorRow_, baseParams_->dimHeadRope);
     }
@@ -1578,6 +1589,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
                                                            int64_t mmQnPreDequantResOffset, int64_t ropeQrOffset,
                                                            int64_t ropeQrResOffset)
 {
+    // Avoid DataCopyParams with blockCount=0 when this vector core owns no tokens.
+    if (curVecToken == 0) {
+        return;
+    }
     if (cubeBlockIdx_ >= baseParams_->mm3BlockNum) {
         return;
     }
@@ -1689,7 +1704,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
             WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
 
-            RotaryPosEmbPerHead<mmQcQrOutputType, ropeComputType, ropeOutputType, false>(
+            RotaryPosEmbPerHead<mmQcQrOutputType, ropeComputType, ropeOutputType, false, MLAPT::enableRope>(
                 outputLocalRope, mmQcQrResGm_[ropeQrOffset], cosLocal_, sinLocal_, ropeShareTmpUb, ropeParams,
                 ropeStride);
 

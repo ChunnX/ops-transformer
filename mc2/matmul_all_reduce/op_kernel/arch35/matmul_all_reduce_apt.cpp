@@ -19,7 +19,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 #include "matmul_all_reduce_empty_tensor_k_general_arch35.h"
 #include "matmul_all_reduce_apt_tiling_key.h"
 
@@ -52,7 +52,7 @@ static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig VEC_ANT
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) ||                                  \
     ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
 #include "matmul_all_reduce_quant_pertoken.h"
-#include "matmul_all_reduce_quant_pertoken_comm_int8.h"
+#include "matmul_all_reduce_quant_pertoken_comm_int8_arch35.h"
 #include "matmul_all_reduce_quant_arch35.h"
 #include "matmul_all_reduce_quant_comm_int8.h"
 #include "matmul_all_reduce_quant_perblock.h"

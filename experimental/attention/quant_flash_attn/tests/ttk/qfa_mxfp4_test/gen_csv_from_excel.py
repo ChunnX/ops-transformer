@@ -9,12 +9,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""
-python3 gen_csv_from_excel.py [--excel B008QFA_红线用例.xlsx]
-                              [--sheet mxfp4]
-                              [--output qfa_mxfp4.csv]
-
-"""
 
 import argparse
 import csv
@@ -27,15 +21,26 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-API_NAME = "qfa_mxfp4_wrapper.npu_qfa_mxfp4"
+# 3 个 csv 的 api_name 和 testcase_name 后缀 (对齐参考工程 CSV_PROFILES)
+CSV_PROFILES = [
+    ("qfa_mxfp4.csv", "qfa_mxfp4_wrapper.npu_qfa_mxfp4", ""),
+    ("qfa_mxfp4_metadata.csv", "qfa_mxfp4_metadata_wrapper.run_metadata", "_metadata"),
+    ("qfa_mxfp4_main.csv", "qfa_mxfp4_main_wrapper.run_main", "_main"),
+]
 
 # 字段 key -> Excel 表头名 (列位置无关, 启动时按表头名动态查列号)
 # 注意: Excel C-I 列 (B/Q_N/KV_N/Q_S/KV_S/D/G) 是给开发人员看的汇总信息, 不读取;
 #       实际从 batch_size/num_heads_q/num_heads_kv/head_dim (BU-CC 列) 取值.
 HEADER = {
     "name": "testcase_name",
+    "custom_info": "custom_info",
     # 基本信息 (从 J 列起, 跳过 C-I 汇总列)
     "out_dtype": "attn_out_dtype",
+    # 输出信息 (透传查看用, 实际输出 shape/dtype 由算子决定)
+    "attn_out_shape": "attn_out_shape",
+    "attn_out_datarange": "attn_out_datarange",
+    "softmax_lse_shape": "softmax_lse_shape",
+    "softmax_lse_datarange": "softmax_lse_datarange",
     # q/k/v 数据
     "q_shape": "q_shape",
     "q_dtype": "q_dtype",
@@ -49,13 +54,17 @@ HEADER = {
     # q/k/v descale
     "q_descale_shape": "q_descale_shape",
     "q_descale_dtype": "q_descale_dtype",
+    "q_descale_datarange": "q_descale_datarange",
     "k_descale_shape": "k_descale_shape",
     "k_descale_dtype": "k_descale_dtype",
+    "k_descale_datarange": "k_descale_datarange",
     "v_descale_shape": "v_descale_shape",
     "v_descale_dtype": "v_descale_dtype",
+    "v_descale_datarange": "v_descale_datarange",
     # 可选 tensor 入参 (shape 为空 -> golden 传 None)
     "block_table_shape": "block_table_shape",
     "block_table_dtype": "block_table_dtype",
+    "block_table_datarange": "block_table_datarange",
     "p_scale_value": "p_scale_value",
     "p_scale_shape": "p_scale_shape",
     "p_scale_dtype": "p_scale_dtype",
@@ -66,15 +75,27 @@ HEADER = {
     "attn_mask_shape": "attn_mask_shape",
     "attn_mask_dtype": "attn_mask_dtype",
     "attn_mask_datarange": "attn_mask_datarange",
-    # seq 信息
+    # metadata (main wrapper 伪 tensor 入参: shape/dtype 来自表格, golden 按此构造)
+    "metadata_shape": "metadata_shape",
+    "metadata_dtype": "metadata_dtype",
+    "metadata_datarange": "metadata_datarange",
+    # seq 信息 (value 是实际内容, shape/datarange 透传查看用)
     "cu_seqlens_q_value": "cu_seqlens_q_value",
+    "cu_seqlens_q_shape": "cu_seqlens_q_shape",
     "cu_seqlens_q_dtype": "cu_seqlens_q_dtype",
+    "cu_seqlens_q_datarange": "cu_seqlens_q_datarange",
     "cu_seqlens_kv_value": "cu_seqlens_kv_value",
+    "cu_seqlens_kv_shape": "cu_seqlens_kv_shape",
     "cu_seqlens_kv_dtype": "cu_seqlens_kv_dtype",
+    "cu_seqlens_kv_datarange": "cu_seqlens_kv_datarange",
     "seqused_q_value": "seqused_q_value",
+    "seqused_q_shape": "seqused_q_shape",
     "seqused_q_dtype": "seqused_q_dtype",
+    "seqused_q_datarange": "seqused_q_datarange",
     "seqused_kv_value": "seqused_kv_value",
+    "seqused_kv_shape": "seqused_kv_shape",
     "seqused_kv_dtype": "seqused_kv_dtype",
+    "seqused_kv_datarange": "seqused_kv_datarange",
     # softmax_lse 输出 dtype
     "softmax_lse_dtype": "softmax_lse_dtype",
     # 算子配置
@@ -194,10 +215,12 @@ def _build_col_map(ws):
     return col_map
 
 
-def excel_row_to_csv_row(ws, row_idx, col_map):
+def excel_row_to_csv_row(ws, row_idx, col_map, api_name, testcase_suffix):
     """读 Excel 一行 -> CSV 行 (10 列).
 
     col_map: _build_col_map 返回的 字段key -> 列号 映射 (含可选精度列).
+    api_name: 本行使用的 wrapper api 名 (qfa_mxfp4_wrapper.npu_qfa_mxfp4 / qfa_mxfp4_metadata_wrapper.run_metadata / qfa_mxfp4_main_wrapper.run_main)
+    testcase_suffix: testcase_name 后缀 ("", "_metadata", "_main")
     """
 
     def g(key):
@@ -207,7 +230,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
         col = col_map.get(key)
         return ws.cell(row=row_idx, column=col).value if col is not None else None
 
-    name = str(g("name")).strip()
+    name = str(g("name")).strip() + testcase_suffix
     B = int(g("batch_size"))
     N_q = int(g("num_heads_q"))
     N_kv = int(g("num_heads_kv"))
@@ -252,15 +275,13 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     q_descale_shape = _parse_shape(g("q_descale_shape"))
     k_descale_shape = _parse_shape(g("k_descale_shape"))
 
-    # v_descale: golden 重算校验, 不一致则用 golden 并告警
     v_descale_excel = _parse_shape(g("v_descale_shape"))
     v_descale_golden = _compute_v_descale_shape(B, N_kv, V_D, skv, max_seqlen_kv)
     if v_descale_excel != v_descale_golden:
         print(
-            f"[WARN] {name}: Excel v_descale={v_descale_excel} 与 golden={v_descale_golden} "
-            f"不一致, 使用 golden (Excel 公式疑似用 v_shape 的 S 而非 max(seqused_kv))"
+            f"[WARN] {name}: Excel v_descale={v_descale_excel} 与 golden={v_descale_golden} 不一致, 保留 Excel 值"
         )
-    v_descale_shape = v_descale_golden
+    v_descale_shape = v_descale_excel
 
     block_table_shape = (
         0,
@@ -327,8 +348,42 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
     else:
         p_scale_value = None
 
+    def _raw_str(v):
+        """Excel 单元格 -> 原样字符串, None/空 -> None."""
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s != "" else None
+
     # enable_mask: attn_mask_shape 有值 -> True, 否则 False
     enable_mask = len(attn_mask_info["shape"]) > 0
+
+    # metadata: main wrapper 伪 tensor 入参, shape/dtype 直接取表格 (空 -> 默认 4096/int32)
+    metadata_shape = list(_parse_shape(g("metadata_shape"))) or [4096]
+    metadata_dtype = _norm_dtype(g("metadata_dtype")) or "int32"
+
+    # 全表透传列 (含表格里原先没读的 shape/datarange 列), 统一进 attrs:
+    # QFA_PASS_THROUGH=1 时 golden/wrapper 按这些值构造入参, 其余场景供查看/比对.
+    passthrough_extra = {
+        "custom_info": _raw_str(g("custom_info")) or "",
+        "attn_out_shape": list(_parse_shape(g("attn_out_shape"))),
+        "attn_out_datarange": _raw_str(g("attn_out_datarange")),
+        "softmax_lse_shape": list(_parse_shape(g("softmax_lse_shape"))),
+        "softmax_lse_datarange": _raw_str(g("softmax_lse_datarange")),
+        "q_descale_datarange": _raw_str(g("q_descale_datarange")),
+        "k_descale_datarange": _raw_str(g("k_descale_datarange")),
+        "v_descale_datarange": _raw_str(g("v_descale_datarange")),
+        "block_table_datarange": _raw_str(g("block_table_datarange")),
+        "cu_seqlens_q_shape": list(_parse_shape(g("cu_seqlens_q_shape"))),
+        "cu_seqlens_q_datarange": _raw_str(g("cu_seqlens_q_datarange")),
+        "cu_seqlens_kv_shape": list(_parse_shape(g("cu_seqlens_kv_shape"))),
+        "cu_seqlens_kv_datarange": _raw_str(g("cu_seqlens_kv_datarange")),
+        "seqused_q_shape": list(_parse_shape(g("seqused_q_shape"))),
+        "seqused_q_datarange": _raw_str(g("seqused_q_datarange")),
+        "seqused_kv_shape": list(_parse_shape(g("seqused_kv_shape"))),
+        "seqused_kv_datarange": _raw_str(g("seqused_kv_datarange")),
+        "metadata_datarange": _raw_str(g("metadata_datarange")),
+    }
 
     attrs = {
         "B": B,
@@ -378,6 +433,9 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
         "attn_mask_shape": attn_mask_info["shape"],
         "attn_mask_dtype": attn_mask_info["dtype"],
         "attn_mask_datarange": attn_mask_info["datarange"],
+        # metadata (main wrapper 按此 shape/dtype 构造伪 tensor)
+        "metadata_shape": metadata_shape,
+        "metadata_dtype": metadata_dtype,
         # dtype 透传 (表格不传 -> None, golden 侧用默认值)
         "q_descale_dtype": _norm_dtype(g("q_descale_dtype")),
         "k_descale_dtype": _norm_dtype(g("k_descale_dtype")),
@@ -391,6 +449,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
         "data_range_k": str(g("k_datarange")) if g("k_datarange") is not None else 1.0,
         "data_range_v": str(g("v_datarange")) if g("v_datarange") is not None else 1.0,
     }
+    attrs.update(passthrough_extra)
     attributes = repr(attrs)
 
     # 精度阈值: Excel 有对应列则原样透传字符串, 否则用默认值
@@ -405,7 +464,7 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
 
     return [
         name,
-        API_NAME,
+        api_name,
         tensor_view_shapes,
         tensor_dtypes,
         "",
@@ -419,18 +478,19 @@ def excel_row_to_csv_row(ws, row_idx, col_map):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Excel mxfp4 sheet -> TTK e2e CSV (批量转换交付件)"
+        description="Excel mxfp4 sheet -> TTK e2e CSV (批量转换交付件, 输出 3 个 csv: e2e/metadata/main)"
     )
     parser.add_argument("--excel", default="B008QFA_红线用例.xlsx", help="Excel 路径")
     parser.add_argument("--sheet", default="mxfp4", help="sheet 名 (默认 mxfp4)")
-    parser.add_argument("--output", default="qfa_mxfp4.csv", help="输出 CSV 路径")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="输出 CSV 路径 (已废弃, 现固定输出 3 个 csv: qfa_mxfp4.csv / qfa_mxfp4_metadata.csv / qfa_mxfp4_main.csv)",
+    )
     args = parser.parse_args()
 
     excel_path = (
         args.excel if os.path.isabs(args.excel) else os.path.join(_HERE, args.excel)
-    )
-    out_path = (
-        args.output if os.path.isabs(args.output) else os.path.join(_HERE, args.output)
     )
 
     wb = openpyxl.load_workbook(excel_path, data_only=True)
@@ -462,21 +522,30 @@ def main():
         "precision_tolerances",
         "absolute_precision",
     ]
-    rows = []
     name_col = col_map["name"]
-    for r in range(2, ws.max_row + 1):
-        if ws.cell(row=r, column=name_col).value is None:
-            continue
-        rows.append(excel_row_to_csv_row(ws, r, col_map))
-        print(f"[Excel] {rows[-1][0]}")
+    data_row_indices = [
+        r
+        for r in range(2, ws.max_row + 1)
+        if ws.cell(row=r, column=name_col).value is not None
+    ]
 
-    with open(out_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
-        for row in rows:
-            writer.writerow(row)
+    # 输出 3 个 csv (e2e / metadata / main), 每个用相同 Excel 数据但不同 api_name + 后缀
+    for fname, api_name, suffix in CSV_PROFILES:
+        out_path = os.path.join(_HERE, fname)
+        rows = []
+        for r in data_row_indices:
+            row = excel_row_to_csv_row(ws, r, col_map, api_name, suffix)
+            rows.append(row)
+            print(f"[Excel] {row[0]}")
 
-    print(f"\n生成 {len(rows)} 条用例 -> {out_path}")
+        with open(out_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            for row in rows:
+                writer.writerow(row)
+        print(f"-> wrote {out_path} ({len(rows)} cases, api_name={api_name})")
+
+    print(f"\n3 csv files written, each with {len(data_row_indices)} case rows.")
 
 
 if __name__ == "__main__":

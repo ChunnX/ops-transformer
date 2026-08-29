@@ -467,8 +467,7 @@ class SMLAInfoParser {
 public:
     explicit SMLAInfoParser(gert::TilingContext *context)
         : context_(context)
-    {
-    }
+    {}
     ~SMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -513,6 +512,7 @@ public:
     uint64_t GetOptionalInputStride0(uint32_t inputIndex) const;
     void GenerateInfo(SMLATilingInfo &smlaInfo);
     ge::graphStatus Parse(SMLATilingInfo &smlaInfo);
+    std::vector<uint64_t> GetKvstride(const gert::Shape &shape, const SMLALayout &layout) const;
     ge::graphStatus CheckContiguous() const; // A5
 
     gert::TilingContext *context_ = nullptr;
@@ -523,7 +523,7 @@ public:
     bool HasAxis(const SMLAAxis &axis, const SMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const SMLAAxis &axis, const SMLALayout &layout) const;
     uint32_t GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
+    static constexpr uint32_t invalidDimValue_ = std::numeric_limits<uint32_t>::min();
 
     // BaseParams
     uint32_t bSize_ = 0;
