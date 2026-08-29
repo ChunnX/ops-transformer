@@ -6,13 +6,19 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import tempfile
+from types import MappingProxyType
 from typing import Any
+
+from cannbotdsl.package.variant_manifest import flatten_variant_manifest
 
 
 PUBLIC_PARAMETERS = [
@@ -51,6 +57,7 @@ class VerifiedMixedRun:
     report: dict[str, Any]
     vendor_root: pathlib.Path
     opapi: pathlib.Path
+    variant_rules: tuple[Mapping[str, Any], ...]
 
 
 def _load_json(path: pathlib.Path) -> dict[str, Any]:
@@ -125,11 +132,123 @@ def _find_vendor_root(extract_root: pathlib.Path) -> pathlib.Path:
     return candidates[0]
 
 
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _validated_variant_rules(
+    manifest: dict[str, Any], *, expected_provider_count: int
+) -> tuple[Mapping[str, Any], ...]:
+    """Validate one final FlashKDA v5 entry and close its outer identity join."""
+
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or len(artifacts) != expected_provider_count:
+        raise AssertionError(
+            f"expected {expected_provider_count} Provider artifacts, "
+            f"found {len(artifacts) if isinstance(artifacts, list) else 'invalid'}"
+        )
+    compatibility = manifest.get("compatibility")
+    target_soc = compatibility.get("soc") if isinstance(compatibility, dict) else None
+    if not isinstance(target_soc, str) or not target_soc:
+        raise AssertionError("package compatibility.soc must be a non-empty string")
+
+    entry: dict[str, Any] | None = None
+    entry_identity: str | None = None
+    for index, artifact in enumerate(artifacts):
+        if not isinstance(artifact, dict):
+            raise AssertionError(f"artifact {index} is not an object")
+        candidate = artifact.get("entry")
+        if not isinstance(candidate, dict) or candidate.get("schema_version") != 5:
+            raise AssertionError(f"artifact {index} does not carry entry schema v5")
+        if "dispatch_plan" in candidate:
+            raise AssertionError(
+                f"artifact {index} schema v5 entry must not carry dispatch_plan"
+            )
+        if candidate.get("public_parameters") != PUBLIC_PARAMETERS:
+            raise AssertionError(f"artifact {index} public L0 parameters drifted")
+        if "internal_parameters" in candidate:
+            raise AssertionError(f"artifact {index} exposes internal parameters")
+        if (
+            candidate.get("generated_internal_parameters")
+            != GENERATED_INTERNAL_PARAMETERS
+        ):
+            raise AssertionError(
+                f"artifact {index} generated internal parameters drifted"
+            )
+        if candidate.get("output_parameters") != OUTPUT_PARAMETERS:
+            raise AssertionError(f"artifact {index} output parameters drifted")
+        canonical_entry = json.dumps(candidate, sort_keys=True, separators=(",", ":"))
+        if entry_identity is None:
+            entry = candidate
+            entry_identity = canonical_entry
+        elif entry_identity != canonical_entry:
+            raise AssertionError("Provider artifacts carry different Entry plans")
+
+    assert entry is not None
+    rules = flatten_variant_manifest(
+        entry.get("variant_manifest"),
+        require_content_keys=True,
+        public_contract_digest=entry.get("support_digest"),
+        operator_identity=entry.get("name"),
+        target_soc=target_soc,
+    )
+    expected_generated = set(GENERATED_INTERNAL_PARAMETERS)
+    for rule in rules:
+        if set(rule["static_values"]) != expected_generated:
+            raise AssertionError(
+                "VariantManifest generated internal values differ from the Entry declaration"
+            )
+
+    expected = {
+        (rule["variant_id"], rule["content_key"])
+        for rule in rules
+    }
+    if len(expected) != expected_provider_count:
+        raise AssertionError(
+            "VariantManifest unique artifact count differs from the configured "
+            f"Provider count: {len(expected)} != {expected_provider_count}"
+        )
+    actual_list = []
+    for index, artifact in enumerate(artifacts):
+        variant_id = artifact.get("variant")
+        content_key = artifact.get("content_key")
+        if not isinstance(variant_id, str) or not variant_id:
+            raise AssertionError(f"artifact {index} has an invalid outer variant id")
+        if (
+            not isinstance(content_key, str)
+            or re.fullmatch(r"[0-9a-f]{64}", content_key) is None
+        ):
+            raise AssertionError(f"artifact {index} has an invalid outer content key")
+        actual_list.append((variant_id, content_key))
+    actual_counts = Counter(actual_list)
+    duplicate_actual = sorted(
+        identity for identity, count in actual_counts.items() if count != 1
+    )
+    if duplicate_actual:
+        raise AssertionError(
+            "duplicate outer Provider variant/content identity: "
+            f"{duplicate_actual!r}"
+        )
+    expected_counts = Counter({identity: 1 for identity in expected})
+    if actual_counts != expected_counts:
+        actual = set(actual_counts)
+        raise AssertionError(
+            "outer Provider variant/content identities differ from VariantManifest: "
+            f"missing={sorted(expected - actual)!r}, "
+            f"extra={sorted(actual - expected)!r}"
+        )
+    return tuple(_freeze(rule) for rule in rules)
+
+
 def _verify_provider_package(
     vendor_root: pathlib.Path,
     package_name: str,
     expected_provider_count: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, tuple[Mapping[str, Any], ...]]:
     cannbotdsl_root = vendor_root / "op_impl/cannbotdsl"
     registry_path = cannbotdsl_root / "registry.json"
     registry = _load_json(registry_path)
@@ -158,60 +277,12 @@ def _verify_provider_package(
     if package.get("version") != active:
         raise AssertionError("manifest version does not match active registry version")
     artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, list) or len(artifacts) != expected_provider_count:
-        raise AssertionError(
-            f"expected {expected_provider_count} Provider artifacts, "
-            f"found {len(artifacts) if isinstance(artifacts, list) else 'invalid'}"
-        )
+    variant_rules = _validated_variant_rules(
+        manifest, expected_provider_count=expected_provider_count
+    )
 
     provider_binaries: set[pathlib.Path] = set()
-    entry_identity: str | None = None
     for index, artifact in enumerate(artifacts):
-        if not isinstance(artifact, dict):
-            raise AssertionError(f"artifact {index} is not an object")
-        entry = artifact.get("entry")
-        if not isinstance(entry, dict) or entry.get("schema_version") != 4:
-            raise AssertionError(f"artifact {index} does not carry entry schema v4")
-        if entry.get("public_parameters") != PUBLIC_PARAMETERS:
-            raise AssertionError(f"artifact {index} public L0 parameters drifted")
-        if "internal_parameters" in entry:
-            raise AssertionError(f"artifact {index} exposes internal parameters")
-        if (
-            entry.get("generated_internal_parameters")
-            != GENERATED_INTERNAL_PARAMETERS
-        ):
-            raise AssertionError(
-                f"artifact {index} generated internal parameters drifted"
-            )
-        if entry.get("output_parameters") != OUTPUT_PARAMETERS:
-            raise AssertionError(f"artifact {index} output parameters drifted")
-        dispatch = entry.get("dispatch_plan")
-        if (
-            not isinstance(dispatch, dict)
-            or dispatch.get("kind") != "cannbotdsl-aot-dispatch-plan"
-            or dispatch.get("public_contract_digest") != entry.get("support_digest")
-            or dispatch.get("proof")
-            != {
-                "coverage_status": "proven",
-                "overlap_status": "proven-disjoint",
-                "method": "finite-domain-exhaustion-v1",
-            }
-        ):
-            raise AssertionError(f"artifact {index} dispatch proof drifted")
-        generated_ids = {
-            item.get("generated_id")
-            for item in dispatch.get("specializations", [])
-            if isinstance(item, dict)
-        }
-        if artifact.get("variant") not in generated_ids:
-            raise AssertionError(
-                f"artifact {index} variant is absent from its dispatch plan"
-            )
-        canonical_entry = json.dumps(entry, sort_keys=True, separators=(",", ":"))
-        if entry_identity is None:
-            entry_identity = canonical_entry
-        elif entry_identity != canonical_entry:
-            raise AssertionError("Provider artifacts carry different Entry plans")
         binary = _resolve_relative(manifest_path.parent, artifact["binary"])
         sidecar = _resolve_relative(manifest_path.parent, artifact["sidecar"])
         if _sha256(binary) != artifact.get("binary_sha256"):
@@ -223,7 +294,7 @@ def _verify_provider_package(
         raise AssertionError("Provider artifacts do not name unique binaries")
 
     checked_files = _verify_checksums(manifest_path.parent)
-    return len(provider_binaries), checked_files
+    return len(provider_binaries), checked_files, variant_rules
 
 
 def _verify_mixed_contents(
@@ -329,7 +400,7 @@ def verify_run_package(
 
     _extract_run(run_file, extract_root)
     vendor_root = _find_vendor_root(extract_root)
-    provider_count, checked_files = _verify_provider_package(
+    provider_count, checked_files, variant_rules = _verify_provider_package(
         vendor_root, package_name, expected_provider_count
     )
     traditional_count, opapi, public_headers = _verify_mixed_contents(
@@ -346,8 +417,22 @@ def verify_run_package(
         "provider_binaries": provider_count,
         "traditional_kernel_objects": traditional_count,
         "vendor": vendor_root.name,
+        "variant_rules": [
+            {
+                "variant_id": rule["variant_id"],
+                "case_id": rule["case_id"],
+                "content_key": rule["content_key"],
+                "generated_values": dict(rule["static_values"]),
+            }
+            for rule in variant_rules
+        ],
     }
-    return VerifiedMixedRun(report=report, vendor_root=vendor_root, opapi=opapi)
+    return VerifiedMixedRun(
+        report=report,
+        vendor_root=vendor_root,
+        opapi=opapi,
+        variant_rules=variant_rules,
+    )
 
 
 def main() -> int:

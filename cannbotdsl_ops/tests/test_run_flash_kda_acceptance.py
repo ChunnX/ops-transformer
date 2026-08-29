@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
+
+from cannbotdsl.package.errors import PackageIntegrityError
 
 
 _RUNNER_PATH = Path(__file__).with_name("run_flash_kda_acceptance.py")
@@ -163,3 +167,279 @@ def test_runtime_linkage_rejects_any_unresolved_library(tmp_path, monkeypatch):
 
     with pytest.raises(AssertionError, match="libopapi_math"):
         runner._verify_runtime_linkage(smoke, opapi, opbase, {})
+
+
+def _rule(
+    *,
+    case_id,
+    batch_slot,
+    head_slot,
+    sequence_slot,
+    variant_id="auto_grouped",
+    content_key="c" * 64,
+):
+    static_values = {"dv_base": 128, "group": 4}
+    return {
+        "variant_id": variant_id,
+        "physical_key": "1" * 64,
+        "variant_key": dict(static_values),
+        "case_id": case_id,
+        "predicate": {
+            "tensors": {
+                "V": {
+                    "dtype": "float16",
+                    "shape": [
+                        batch_slot,
+                        head_slot,
+                        sequence_slot,
+                        {"equal": 128},
+                    ],
+                }
+            },
+            "attrs": {},
+        },
+        "static_values": dict(static_values),
+        "content_key": content_key,
+    }
+
+
+def test_delivery_regions_consume_canonical_rules_without_reopening_json(monkeypatch):
+    rules = (
+        _rule(
+            case_id="case_z",
+            batch_slot={"equal": 1},
+            head_slot={"min": 3, "max": 8, "multiple_of": 4},
+            sequence_slot={"equal": 16},
+        ),
+        _rule(
+            case_id="case_a",
+            batch_slot={"min": 3, "max": 8, "multiple_of": 2},
+            head_slot={"equal": 32},
+            sequence_slot={"min": 17, "max": 64, "multiple_of": 16},
+        ),
+    )
+
+    def forbidden_json_load(*args, **kwargs):
+        raise AssertionError("acceptance must not load raw manifest JSON")
+
+    monkeypatch.setattr(runner.json, "loads", forbidden_json_load)
+
+    regions = runner._delivery_regions(rules)
+
+    assert [(item.variant_id, item.case_id) for item in regions] == [
+        ("auto_grouped", "case_a"),
+        ("auto_grouped", "case_z"),
+    ]
+    assert [(item.batch, item.heads, item.sequence_min) for item in regions] == [
+        (4, 32, 32),
+        (1, 4, 16),
+    ]
+    assert all(item.content_key == "c" * 64 for item in regions)
+    assert all(
+        item.static_values == (("dv_base", 128), ("group", 4))
+        for item in regions
+    )
+    assert len({item.variant_id for item in regions}) == 1
+    assert len(regions) == 2
+
+
+def test_delivery_dump_paths_encode_variant_and_case_without_separator_collisions(
+    tmp_path,
+):
+    regions = runner._delivery_regions(
+        (
+            _rule(
+                variant_id="auto-a",
+                case_id="case",
+                batch_slot={"equal": 1},
+                head_slot={"equal": 1},
+                sequence_slot={"equal": 16},
+            ),
+            _rule(
+                variant_id="auto",
+                case_id="a-case",
+                batch_slot={"equal": 2},
+                head_slot={"equal": 1},
+                sequence_slot={"equal": 16},
+            ),
+        )
+    )
+
+    paths = [runner._delivery_dump_path(tmp_path, region) for region in regions]
+
+    assert [path.relative_to(tmp_path).parts for path in paths] == [
+        ("dump-auto", "a-case"),
+        ("dump-auto-a", "case"),
+    ]
+    assert len(set(paths)) == 2
+
+
+def test_acceptance_stops_at_shared_verifier_failure_before_device_work(
+    tmp_path, monkeypatch
+):
+    run_file = tmp_path / "flash-kda.run"
+    smoke = tmp_path / "smoke"
+    opbase = tmp_path / "libnnopbase.so"
+    report = tmp_path / "report.json"
+    runtime_root = tmp_path / "runtime"
+    (runtime_root / "cannbotdsl/package").mkdir(parents=True)
+    (runtime_root / "cannbotdsl/package/cli.py").touch()
+    for path in (run_file, smoke, opbase):
+        path.touch()
+
+    def reject_corruption(*args, **kwargs):
+        raise PackageIntegrityError("VariantManifest predicate overlap")
+
+    def forbidden_device_work(*args, **kwargs):
+        raise AssertionError("device work started after package rejection")
+
+    monkeypatch.setattr(runner, "verify_run_package", reject_corruption)
+    monkeypatch.setattr(runner, "_run", forbidden_device_work)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(runner._RUNNER_PATH) if hasattr(runner, "_RUNNER_PATH") else "accept",
+            "--run",
+            str(run_file),
+            "--smoke",
+            str(smoke),
+            "--opbase-library",
+            str(opbase),
+            "--cannbotdsl-source",
+            str(tmp_path / "cannbotdsl-source"),
+            "--runtime-root",
+            str(runtime_root),
+            "--report",
+            str(report),
+        ],
+    )
+
+    assert runner.main() == 1
+    assert "VariantManifest predicate overlap" in json.loads(
+        report.read_text(encoding="utf-8")
+    )["error"]
+
+
+def test_acceptance_report_and_dump_paths_retain_case_and_content_identity(
+    tmp_path, monkeypatch
+):
+    run_file = tmp_path / "flash-kda.run"
+    smoke = tmp_path / "smoke"
+    opbase = tmp_path / "libnnopbase.so"
+    opapi = tmp_path / "libcust_opapi.so"
+    report = tmp_path / "report.json"
+    runtime_root = tmp_path / "runtime"
+    (runtime_root / "cannbotdsl/package").mkdir(parents=True)
+    (runtime_root / "cannbotdsl/package/cli.py").touch()
+    for path in (run_file, smoke, opbase, opapi):
+        path.touch()
+    rules = (
+        _rule(
+            case_id="case_a",
+            batch_slot={"equal": 1},
+            head_slot={"equal": 1},
+            sequence_slot={"equal": 16},
+        ),
+        _rule(
+            case_id="case_b",
+            batch_slot={"equal": 1},
+            head_slot={"equal": 1},
+            sequence_slot={"equal": 32},
+        ),
+    )
+    verified = SimpleNamespace(
+        report={"opapi": "package/op_api/lib/libcust_opapi.so"},
+        vendor_root=tmp_path / "vendor",
+        opapi=opapi,
+        variant_rules=rules,
+    )
+    commands = []
+
+    negative_labels = [
+        "lower_bound_below",
+        "lower_bound_above",
+        "lower_bound_nan",
+        "scale_nan",
+        "scale_float_overflow",
+        "null_k",
+        "invalid_k_contract",
+        "unsupported_variant",
+    ]
+
+    def fake_run(command, *, environment, description):
+        commands.append((command, description))
+        if description.startswith("full CPU golden"):
+            return (
+                "validated_samples=1; output max_abs=0 max_rel=0; "
+                "state max_abs=0 max_rel=0"
+            )
+        if description.startswith("representative native parity"):
+            return (
+                "sample=0:0 native/golden output max_abs=0; state max_abs=0; "
+                "aclnn/native output max_abs=0; state max_abs=0"
+            )
+        if description.startswith("two-stream soak"):
+            negative = "\n".join(
+                f"negative_case={label} status=161002 workspace_size=0 "
+                "executor=(nil)"
+                for label in negative_labels
+            )
+            negative += (
+                "\nnegative_case=null_outputs workspace_status=161002 "
+                "executor_status=161002 workspace_size=0 executor=(nil)"
+            )
+            return _smoke_output(streams=2, waves=1) + "\n" + negative
+        return _smoke_output(streams=1, waves=1)
+
+    monkeypatch.setattr(runner, "verify_run_package", lambda *args, **kwargs: verified)
+    monkeypatch.setattr(runner, "_runtime_environment", lambda **kwargs: {})
+    monkeypatch.setattr(runner, "_verify_runtime_linkage", lambda *args: {})
+    monkeypatch.setattr(runner, "_run", fake_run)
+    monkeypatch.setattr(runner, "_sha256", lambda path: "d" * 64)
+    monkeypatch.setattr(runner, "_git_head", lambda path: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "accept",
+            "--run",
+            str(run_file),
+            "--smoke",
+            str(smoke),
+            "--opbase-library",
+            str(opbase),
+            "--cannbotdsl-source",
+            str(tmp_path / "cannbotdsl-source"),
+            "--runtime-root",
+            str(runtime_root),
+            "--report",
+            str(report),
+            "--timing-waves",
+            "1",
+            "--soak-waves",
+            "1",
+        ],
+    )
+
+    assert runner.main() == 0
+
+    result = json.loads(report.read_text(encoding="utf-8"))
+    assert [item["case_id"] for item in result["variants"]] == [
+        "case_a",
+        "case_b",
+    ]
+    assert {item["content_key"] for item in result["variants"]} == {"c" * 64}
+    assert all(
+        item["generated_values"] == {"dv_base": 128, "group": 4}
+        for item in result["variants"]
+    )
+    dump_paths = {
+        Path(command[command.index("--dump-dir") + 1]).parts[-2:]
+        for command, _ in commands
+        if "--dump-dir" in command
+    }
+    assert dump_paths == {
+        ("dump-auto_grouped", "case_a"),
+        ("dump-auto_grouped", "case_b"),
+    }

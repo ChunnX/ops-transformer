@@ -49,51 +49,84 @@ _NATIVE_PATTERN = re.compile(
 @dataclass(frozen=True)
 class DeliveryRegion:
     variant_id: str
+    case_id: str
+    content_key: str
+    static_values: tuple[tuple[str, object], ...]
     batch: int
     heads: int
     sequence_min: int
 
 
-def _delivery_regions(vendor_root: Path) -> tuple[DeliveryRegion, ...]:
-    root = vendor_root / "op_impl/cannbotdsl"
-    registry = json.loads((root / "registry.json").read_text(encoding="utf-8"))
-    package = registry["packages"]["ops-transformer-flash-kda"]
-    active = package["active"]
-    manifest_path = (root / package["versions"][active]["manifest"]).resolve()
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, list) or not artifacts:
-        raise ValueError("FlashKDA manifest has no Provider artifacts")
-    entry = artifacts[0].get("entry")
-    dispatch = entry.get("dispatch_plan") if isinstance(entry, dict) else None
-    records = dispatch.get("specializations") if isinstance(dispatch, dict) else None
-    if not isinstance(records, list):
-        raise ValueError("FlashKDA manifest has no generated dispatch plan")
+def _first_shape_value(slot: object, *, field: str) -> int:
+    if not hasattr(slot, "get"):
+        raise ValueError(f"FlashKDA {field} predicate slot is malformed")
+    if set(slot) == {"equal"}:
+        value = slot["equal"]
+        if type(value) is not int:
+            raise ValueError(f"FlashKDA {field}.equal is not an int")
+        return value
+    if set(slot) != {"min", "max", "multiple_of"}:
+        raise ValueError(f"FlashKDA {field} predicate slot is malformed")
+    minimum = slot["min"]
+    maximum = slot["max"]
+    multiple = slot["multiple_of"]
+    if not all(type(value) is int for value in (minimum, maximum, multiple)):
+        raise ValueError(f"FlashKDA {field} range is not integral")
+    if minimum < 0 or maximum < minimum or multiple <= 0:
+        raise ValueError(f"FlashKDA {field} range is invalid")
+    first = ((minimum + multiple - 1) // multiple) * multiple
+    if first > maximum:
+        raise ValueError(f"FlashKDA {field} range contains no aligned value")
+    return first
+
+
+def _delivery_regions(variant_rules: object) -> tuple[DeliveryRegion, ...]:
+    if not isinstance(variant_rules, tuple) or not variant_rules:
+        raise ValueError("FlashKDA validated VariantManifest rules are empty")
     regions = []
-    for record in records:
-        predicate = record.get("predicate") if isinstance(record, dict) else None
-        tensors = predicate.get("tensors") if isinstance(predicate, dict) else None
-        v = tensors.get("V") if isinstance(tensors, dict) else None
-        shape = v.get("shape") if isinstance(v, dict) else None
-        if not isinstance(shape, list) or len(shape) != 4:
-            raise ValueError("FlashKDA dispatch V predicate is malformed")
-        batch = shape[0].get("equal") if isinstance(shape[0], dict) else None
-        heads = shape[1].get("equal") if isinstance(shape[1], dict) else None
-        sequence_min = (
-            shape[2].get("equal", shape[2].get("min"))
-            if isinstance(shape[2], dict)
-            else None
+    for index, rule in enumerate(variant_rules):
+        if not hasattr(rule, "get"):
+            raise ValueError(f"FlashKDA VariantManifest rule {index} is malformed")
+        predicate = rule.get("predicate")
+        tensors = predicate.get("tensors") if hasattr(predicate, "get") else None
+        v = tensors.get("V") if hasattr(tensors, "get") else None
+        shape = v.get("shape") if hasattr(v, "get") else None
+        if not isinstance(shape, (list, tuple)) or len(shape) != 4:
+            raise ValueError("FlashKDA VariantManifest V predicate is malformed")
+        variant_id = rule.get("variant_id")
+        case_id = rule.get("case_id")
+        content_key = rule.get("content_key")
+        static_values = rule.get("static_values")
+        if not all(
+            isinstance(value, str) and value
+            for value in (variant_id, case_id, content_key)
+        ):
+            raise ValueError("FlashKDA VariantManifest rule identity is malformed")
+        if not hasattr(static_values, "items") or set(static_values) != {
+            "dv_base",
+            "group",
+        }:
+            raise ValueError("FlashKDA generated values drifted")
+        regions.append(
+            DeliveryRegion(
+                variant_id=variant_id,
+                case_id=case_id,
+                content_key=content_key,
+                static_values=tuple(sorted(static_values.items())),
+                batch=_first_shape_value(shape[0], field="V.shape[0]"),
+                heads=_first_shape_value(shape[1], field="V.shape[1]"),
+                sequence_min=_first_shape_value(shape[2], field="V.shape[2]"),
+            )
         )
-        variant_id = record.get("generated_id")
-        if not all(type(value) is int for value in (batch, heads, sequence_min)):
-            raise ValueError("FlashKDA dispatch region has non-static B/N/min-S")
-        if not isinstance(variant_id, str):
-            raise ValueError("FlashKDA dispatch region has no generated id")
-        regions.append(DeliveryRegion(variant_id, batch, heads, sequence_min))
-    result = tuple(sorted(regions, key=lambda item: item.variant_id))
-    if len(result) != len(artifacts):
-        raise ValueError("FlashKDA dispatch/artifact counts differ")
+    result = tuple(sorted(regions, key=lambda item: (item.variant_id, item.case_id)))
+    identities = [(item.variant_id, item.case_id) for item in result]
+    if len(set(identities)) != len(identities):
+        raise ValueError("FlashKDA VariantManifest rules contain duplicate cases")
     return result
+
+
+def _delivery_dump_path(work_root: Path, region: DeliveryRegion) -> Path:
+    return work_root / f"dump-{region.variant_id}" / region.case_id
 
 
 def _sha256(path: Path) -> str:
@@ -384,11 +417,11 @@ def main() -> int:
                 expected_waves=1,
             )
 
-            delivery_regions = _delivery_regions(verified_run.vendor_root)
+            delivery_regions = _delivery_regions(verified_run.variant_rules)
             variants = []
             for policy in delivery_regions:
-                dump_dir = work_root / f"dump-{policy.variant_id}"
-                dump_dir.mkdir()
+                dump_dir = _delivery_dump_path(work_root, policy)
+                dump_dir.mkdir(parents=True)
                 smoke_output = _run(
                     [
                         str(smoke),
@@ -406,7 +439,9 @@ def main() -> int:
                         str(dump_dir),
                     ],
                     environment=environment,
-                    description=f"device smoke {policy.variant_id}",
+                    description=(
+                        f"device smoke {policy.variant_id}/{policy.case_id}"
+                    ),
                 )
                 smoke_result = _parse_smoke(
                     smoke_output,
@@ -425,7 +460,9 @@ def main() -> int:
                         "--summary-only",
                     ],
                     environment=environment,
-                    description=f"full CPU golden {policy.variant_id}",
+                    description=(
+                        f"full CPU golden {policy.variant_id}/{policy.case_id}"
+                    ),
                 )
                 golden_result = _parse_golden(
                     golden_output, expected_samples=policy.batch * policy.heads
@@ -446,7 +483,10 @@ def main() -> int:
                 native_output = _run(
                     native_command,
                     environment=environment,
-                    description=f"representative native parity {policy.variant_id}",
+                    description=(
+                        "representative native parity "
+                        f"{policy.variant_id}/{policy.case_id}"
+                    ),
                 )
                 native_result = _parse_native(
                     native_output, expected_samples=native_samples
@@ -454,6 +494,9 @@ def main() -> int:
                 variants.append(
                     {
                         "variant_id": policy.variant_id,
+                        "case_id": policy.case_id,
+                        "content_key": policy.content_key,
+                        "generated_values": dict(policy.static_values),
                         "shape": [
                             policy.batch,
                             policy.heads,

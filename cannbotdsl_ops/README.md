@@ -79,8 +79,10 @@ checked runtime shape 求值、物理参数顺序和底层 workspace 登记均�
 variant id、覆盖/互斥证明和 C++ dispatcher。构建随后逐 artifact 校验真实
 sidecar 的 B/N/S 约束与 constexpr。VariantManifest、artifact 或 L0 支持域任一
 漂移都会在编译阶段 fail-closed。schema v4 仅作为已有包的只读兼容路径；新
-FlashKDA 交付不再生成 v4 数据。下游 acceptance/verification 脚本统一迁移到共享
-VariantManifest parser 属于后续任务，本节不预先声称已完成。
+FlashKDA 交付不再生成 v4 数据。`verify_mixed_run.py` 在包边界只调用一次共享
+VariantManifest validator/flattener，并把规范化 artifact/case 规则交给
+`run_flash_kda_acceptance.py`；验收脚本不再重新读取 registry/manifest 或维护第二份
+dispatch 表。最终 FlashKDA 交付强制 schema v5，v4 只保留在 CANNBotDSL 框架兼容测试中。
 
 ## 构建
 
@@ -166,9 +168,11 @@ cmake --build build-provider --target cannbotdsl_flash_kda_acceptance -j4
 
 该 target 只读校验并解包 `.run`，强制 `ldd` 将 smoke 解析到解包所得
 `libcust_opapi.so` 和指定 Provider ABI v1 `libnnopbase.so`，随后由单一 variant
-策略表通过 `aclnnCustomFlashKda*` 驱动六 shape 的完整 CPU golden、代表性 native
-位级对拍、三轮单流时延，最后执行 2 streams × 20 waves 和 10 类 GetWorkspace
-错误矩阵；原 `aclnnFlashKda*` 另执行一次 standalone 回归。JSON 报告记录
+manifest 的规范化 artifact/case 规则通过 `aclnnCustomFlashKda*` 驱动六 shape 的
+完整 CPU golden、代表性 native 位级对拍、三轮单流时延，最后执行 2 streams ×
+20 waves 和 10 类 GetWorkspace 错误矩阵；一个 artifact 可覆盖多个互斥 case，
+每个 dump/报告项都保留 `variant_id`、`case_id`、`content_key` 和编译器生成值。
+原 `aclnnFlashKda*` 另执行一次 standalone 回归。JSON 报告记录
 归档/二进制 SHA256、源码提交、实际动态库路径、每个 shape 的 workspace/误差/
 时延和 soak 结果；任一子门禁失败时写入 `passed=false` 并使 target 失败。
 
@@ -224,11 +228,13 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 `--extract`。动态库依赖应对解包后的 `libcust_opapi.so` 使用与目标 CANN、驱动和
 新版 Provider ABI `libnnopbase.so` 匹配的 `LD_LIBRARY_PATH` 做 `ldd`/`dlopen`
 检查。离线构建还必须预置项目声明的第三方依赖，否则 CPack preinstall 可能进入
-依赖下载流程。当前 `verify_mixed_run.py` 仍保留 schema-v4 只读兼容检查；在后续
-统一迁移完成前，不把它描述为 schema-v5 VariantManifest 的权威消费者。最终检查
-仍需覆盖 12 个公共参数、2 个输出参数、无公开 internal/provider 参数、2 个编译器
-生成态值、覆盖/互斥证明、artifact/content 身份、包内 checksum、传统 kernel
-数量约束、Provider DSO 数量、混合导出符号以及 L0/Custom L2 两个公开头文件。
+依赖下载流程。`verify_mixed_run.py` 对正式 FlashKDA `.run` 强制 schema v5，并以共享
+flattener 返回的同一对象同时完成 predicate、SoC/support/operator 绑定和外层
+`(variant_id, content_key)` 双向、重复敏感的身份闭合；v4 只在 CANNBotDSL 框架的
+只读兼容测试中保留。最终检查仍需覆盖 12 个公共参数、2 个输出参数、无公开
+internal/provider 参数、2 个编译器生成态值、覆盖/互斥证明、artifact/content
+身份、包内 checksum、传统 kernel 数量约束、Provider DSO 数量、混合导出符号以及
+L0/Custom L2 两个公开头文件。
 发布配置还可用命令行参数锁定传统 kernel 的精确数量。
 
 ## 实机验证
@@ -291,8 +297,9 @@ workspace 分配和 D2H finite/确定性检查。它是当前 Ascend950PR 工程
   final_state` 为 FP32；
 - head dimension 固定为 128，chunk size 固定为 64；
 - `lower_bound` 必须为有限值且位于闭区间 `[-5, 0]`；
-- 当前仅发布单一策略表声明并经 manifest/sidecar 构建门禁证明唯一匹配的
-  6 组有限 `(B, N, S)` 变体；
+- 当前发布由 schema-v5 VariantManifest 声明、共享 flattener 校验并经
+  manifest/sidecar 构建门禁证明唯一匹配的 6 组有限 `(B, N, S)` 交付域；设备矩阵
+  直接遍历规范化 case，且不假设 case 数等于 Provider artifact 数；
 - 7 个内部临时张量由 executor workspace 分配并在 launch 前回填地址；
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
