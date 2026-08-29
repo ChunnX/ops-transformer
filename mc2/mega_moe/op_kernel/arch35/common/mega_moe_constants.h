@@ -67,6 +67,20 @@ constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
+// W8/W4 权重 L2 预取（仅 W1，fire-and-forget，策略在 kernel 内写死）。Drain 的 MTE2_V 事件 ID5：
+// ID0/1/2/4 已被占用（prologue/topkIds/unpermute/combine），ID3 空闲；本 kernel 无 TPipe/TQue，
+// 引入 TQueue 前须改为 AllocEventID 动态分配（手写与框架 ID 共享编号空间，撞车会死等）。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID = SYNC_EVENT_ID5;
+// 预取 scratch 的 UB 偏移 192K（prologue 权重区 [0,192K) 之上；host 侧已将 SendMask 布局钳至本偏移）。
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_OFFSET = 192U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_CHUNK_BYTES = 16U * 1024U;
+// 自适应总量上限：min(min(expertCount, MAX_EXPERTS) * W1 单专家量, 32MB)，窗口 0 预算 =
+// min(总量, Window0TotalBytes 能力门限)，剩余为窗口 1 软预算。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_TOTAL_BYTES = 32U * 1024U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_EXPERTS = 4U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_AIV = 32U;
+// W8 预取 rank 门控（实测）：worldSize > 8（跨机）才使能，<=8P（fullmesh）保持关闭。W4 不受限。
+constexpr uint32_t W8_WEIGHT_PREFETCH_MIN_WORLD_SIZE = 8U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
