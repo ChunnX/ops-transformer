@@ -194,12 +194,11 @@ cann_ops_transformer.fused_causal_conv1d(
 | initial_state_idx | Tensor | 可选 | 初始索引块的索引。 | int32 | [batch] |
 | activation | str | 可选 | 激活函数类型，目前不支持此字段，默认值为"None"。 | - | - |
 | pad_slot_id | int | 可选 | padding slot id。默认值为-1。 | - | - |
-| run_mode | int | 可选 | 用于判断是prefill还是decode场景。目前不支持此字段。 | - | - |
 | max_query_len | int | 可选 | 所有batch中最大的seq_len，仅decode场景（固定batch）支持为-1。 | - | - |
 | residual_connection | int | 可选 | 是否做残差连接，1=做残差连接，0=不做残差连接。 | - | - |
 | block_size | int | 可选 | block块的大小。取值范围大于等于2，典型值128、256。 | - | - |
 | conv_mode | int | 可选 | 卷积模式，支持0和1，0=Qwen3-Next社区版本实现，1=Pangu V2实现。 | - | - |
-| max_draft_tokens | int | 可选 | 最大投机个数，支持范围[0, 16]。 | - | - |
+| max_draft_tokens | int | 可选 | 最大投机个数，支持范围[0, 16]。默认值为7。 | - | - |
 
 ## 返回值说明
 
@@ -261,7 +260,11 @@ cann_ops_transformer.fused_causal_conv1d(
   - 算子入参与中间计算结果，在对应数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。
   - 算子输入不支持有±inf和nan的情况。
 
-## 调用说明
+## 确定性计算
+
+默认支持确定性计算。
+
+## 调用示例
 
 - 单算子模式调用
 
