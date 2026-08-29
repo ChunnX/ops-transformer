@@ -411,13 +411,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (sendersPerRank_ > NUM_SLOTS) {
         sendersPerRank_ = NUM_SLOTS;
     }
-    // TEMP BISECTION (debug commit, revert after diagnosis): force the pre-merge
-    // single-sender topology. If grads pass with kForceSingleSender=true, the bug is
-    // inside the multi-sender comm; if they still fail, it is in the unique/accum path.
-    constexpr bool kForceSingleSender = true;
-    if (kForceSingleSender) {
-        sendersPerRank_ = 1U;
-    }
     numSendCores_ = sendersPerRank_ * numRanks_;
     if (numSendCores_ > halfBlocks) {
         numSendCores_ = halfBlocks;
@@ -1162,17 +1155,30 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        uint64_t cycPre0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         InitFlagsAndDispls();
         ClearWinCounters();
         SyncAll<true>();
+        uint64_t cycPre1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
         CrossRankBarrier();
+        uint64_t cycBarrier1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UnsortGrad();
         SyncAll<true>();
+        uint64_t cycUnsort1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
+        uint64_t cycSend1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         RecvGradFromPeers();
+        uint64_t cycRecv1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         DrainAndSendFlags();
         SyncAll<true>();
+        uint64_t cycDrain1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+        uint64_t cycInitComp1 = cycDrain1;
+        uint64_t cycSort1 = cycDrain1;
+        uint64_t cycCount1 = cycDrain1;
+        uint64_t cycZero1 = cycDrain1;
+        uint64_t cycScatter1 = cycDrain1;
 
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
@@ -1180,9 +1186,11 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
         if (numRecv == 0) {
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
+            cycScatter1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         } else {
             InitCompanion(numRecv);
             SyncAll<true>();
+            cycInitComp1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             sortPool_.Reset();
             uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
@@ -1190,6 +1198,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
                          sortPool_);
             RunSort(numRecv);
             SyncAll<true>();
+            cycSort1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
@@ -1213,11 +1222,21 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
 
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
+            cycCount1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
             SyncAll<true>();
+            cycZero1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                                           gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
+            cycScatter1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         }
+
+        AscendC::printf("ENGRAM-TIME core=%uu pre=%llu barrier=%llu unsort=%llu send=%llu recv=%llu drain=%llu "
+                        "initComp=%llu sort=%llu count=%llu zero=%llu scatter=%llu total=%llu\n",
+                        aivId_, cycPre1 - cycPre0, cycBarrier1 - cycPre1, cycUnsort1 - cycBarrier1,
+                        cycSend1 - cycUnsort1, cycRecv1 - cycSend1, cycDrain1 - cycRecv1, cycInitComp1 - cycDrain1,
+                        cycSort1 - cycInitComp1, cycCount1 - cycSort1, cycZero1 - cycCount1, cycScatter1 - cycZero1,
+                        cycScatter1 - cycPre0);
     }
 }
 
