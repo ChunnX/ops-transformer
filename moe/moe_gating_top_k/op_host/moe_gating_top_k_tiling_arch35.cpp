@@ -706,7 +706,10 @@ ge::graphStatus MoeGatingTopKTilingRegbase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingRegbase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus MoeGatingTopKTilingRegbase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus MoeGatingTopKTilingRegbase::GetWorkspaceSize()
 {

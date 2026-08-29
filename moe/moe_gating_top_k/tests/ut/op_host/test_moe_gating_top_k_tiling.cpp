@@ -25,9 +25,15 @@ using namespace std;
 
 class MoeGatingTopKTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "MoeGatingTopKTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MoeGatingTopKTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MoeGatingTopKTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MoeGatingTopKTiling TearDown" << std::endl;
+    }
 };
 
 static string TilingData2Str(const gert::TilingData *tiling_data)

@@ -101,8 +101,8 @@ namespace MoeGatingTopK {
 
 template <typename T>
 __aicore__ inline void SmallKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                             __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr,
-                                             uint32_t k, float routedScalingFactor)
+                                            __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+                                            float routedScalingFactor)
 {
     __VEC_SCOPE__
     {
@@ -121,8 +121,8 @@ __aicore__ inline void SmallKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ 
 
 template <typename T>
 __aicore__ inline void SmallKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                              __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr,
-                                              uint32_t k, float eps, float routedScalingFactor)
+                                              __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+                                              float eps, float routedScalingFactor)
 {
     __VEC_SCOPE__
     {
@@ -147,8 +147,8 @@ __aicore__ inline void SmallKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
 
 template <typename T>
 __aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                           __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr,
-                                           uint32_t k, float routedScalingFactor)
+                                            __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+                                            float routedScalingFactor)
 {
     __VEC_SCOPE__
     {
@@ -160,8 +160,8 @@ __aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ 
         uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(k, VL_FLOAT_SIZE));
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = MicroAPI::UpdateMask<uint32_t>(k);
-            MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-                vreg0, vreg1, mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+            MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
             MicroAPI::Muls(vreg2, vreg2, routedScalingFactor, preg0);
             ops::StoreOneTensorForDtypeT<T>(outputAddr, vreg2, preg0, i * VL_FLOAT_SIZE);
@@ -172,8 +172,8 @@ __aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ 
 
 template <typename T>
 __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                              __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr,
-                                              uint32_t k, float eps, float routedScalingFactor)
+                                              __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+                                              float eps, float routedScalingFactor)
 {
     __VEC_SCOPE__
     {
@@ -191,8 +191,8 @@ __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = MicroAPI::UpdateMask<uint32_t>(k);
-            MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-                vreg0, vreg1, mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+            MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             MicroAPI::Duplicate(vreg2, static_cast<float>(0), preg1);
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg0);
             MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
@@ -203,8 +203,8 @@ __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
         MicroAPI::Duplicate(vreg4, vregSum, preg1);
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg1 = MicroAPI::UpdateMask<uint32_t>(k);
-            MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-                vreg0, vreg1, mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+            MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             MicroAPI::Gather(vreg2, inputAddr, vreg1, preg1);
             MicroAPI::Div(vregOutput, vreg2, vreg4, preg1);
             MicroAPI::Muls(vregOutput, vregOutput, routedScalingFactor, preg1);

@@ -207,8 +207,7 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKInGroup(Loca
             Reg::PairReduceElem<Reg::PairReduce::SUM>(vreg2, vreg0, preg0);
             MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vreg2, u0, 1);
         }
-        MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0,
-                                                                                  padNegInfNum);
+        MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0, padNegInfNum);
         MicroAPI::StoreUnAlignPost(outputAddr, u0, 0);
     }
 }
@@ -236,7 +235,7 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKAfterSort(Lo
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = MicroAPI::UpdateMask<int32_t>(size);
             MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                             inputAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                              inputAddr + i * 2 * VL_FLOAT_SIZE);
             MicroAPI::StoreAlign(outputAddr + i * VL_FLOAT_SIZE, vreg1, preg0);
         }
         AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_STORE>();

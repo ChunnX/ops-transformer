@@ -993,10 +993,10 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::FinalSortAfterKGroup()
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor,
-                                                                        LocalTensor<int32_t> mrgSortTensor,
-                                                                        LocalTensor<int32_t> expertIdxTensor,
-                                                                        LocalTensor<T> yTensor, uint32_t k, float eps,
-                                                                        float routedScalingFactor)
+                                                                       LocalTensor<int32_t> mrgSortTensor,
+                                                                       LocalTensor<int32_t> expertIdxTensor,
+                                                                       LocalTensor<T> yTensor, uint32_t k, float eps,
+                                                                       float routedScalingFactor)
 {
     __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
     __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
@@ -1011,10 +1011,10 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKAlignEVF(LocalTens
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor,
-                                                                        LocalTensor<int32_t> mrgSortTensor,
-                                                                        LocalTensor<int32_t> expertIdxTensor,
-                                                                        LocalTensor<T> yTensor, uint32_t k, float eps,
-                                                                        float routedScalingFactor)
+                                                                       LocalTensor<int32_t> mrgSortTensor,
+                                                                       LocalTensor<int32_t> expertIdxTensor,
+                                                                       LocalTensor<T> yTensor, uint32_t k, float eps,
+                                                                       float routedScalingFactor)
 {
     __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
     __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
