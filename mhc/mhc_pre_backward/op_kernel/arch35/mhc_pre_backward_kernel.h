@@ -991,19 +991,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // 计算
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    if (currentBSBlock == SINGLE_M) {
-        // 满块512行固定对应两个baseM=256输出块，直接展开以减少循环控制和末尾空Iterate。
-        mm0.Iterate();
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true);
+    while (mm0.Iterate()) {
+        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true); // 连续写
         writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-        mm0.Iterate();
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true);
-    } else {
-        // 非整除shape的尾块仍使用通用循环，保持原有输出块数和地址计算。
-        while (mm0.Iterate()) {
-            mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true); // 连续写
-            writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-        }
     }
     mm0.End();
 
