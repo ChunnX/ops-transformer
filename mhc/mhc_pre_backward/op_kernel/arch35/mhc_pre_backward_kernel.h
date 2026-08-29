@@ -243,8 +243,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     phiGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_PERSISTENT);
     alphaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.alpha));
     gradHInGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_h_in));
-    // grad_h_in占用10至20MiB，绕过L2以避免其跨阶段复用挤压AIC关键工作集。
-    gradHInGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     gradHPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_h_post));
     gradHResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_h_res));
     invRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.inv_rms));
