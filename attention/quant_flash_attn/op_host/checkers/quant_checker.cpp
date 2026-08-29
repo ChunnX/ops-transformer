@@ -403,16 +403,40 @@ ge::graphStatus QuantChecker::CheckQDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
     if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         return ge::GRAPH_SUCCESS;
     }
-    // 文档(descale_shape匹配关系表): MxFP8, layout_q=TND
-    //   4D: (Q_T, Q_N, D/64, 2)              prefill场景，layout_q_descale=TND
-    //   5D: (KV_N, Q_T, G, D/64, 2)          decode场景，layout_q_descale=N2TGD
-    //   其中 G = Q_N / KV_N
+    // 文档(descale_shape匹配关系表): MxFP8
+    //   layout_q=TND:
+    //     4D: (Q_T, Q_N, D/64, 2)              prefill场景，layout_q_descale=TND
+    //     5D: (KV_N, Q_T, G, D/64, 2)          decode场景，layout_q_descale=N2TGD
+    //     其中 G = Q_N / KV_N
+    //   layout_q=BNSD/BSND: 5D: (B, Q_N, S1, D/64, 2)   layout_q_descale 统一为 BNSD
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
     int64_t dPerGroup = (D + 63) / 64; // MxFP8 block size = 64
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
+    bool isBnsdOrBsnd = (qfaInfo.qLayout == QfaLayout::BNSD || qfaInfo.qLayout == QfaLayout::BSND);
     std::vector<int64_t> expected;
+    if (isBnsdOrBsnd) {
+        // BNSD/BSND: q_descale 统一按 BNSD 排布, 5D
+        OP_CHECK_IF(dimNum != DIM_NUM_5,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                        ("In MxFP8 scenario, the shape dim of q_descale must be 5D when layout_q is " +
+                         QfaLayoutToSerialString(qfaInfo.qLayout))
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+        // 约束: BNSD/BSND 场景下 layout_q_descale 统一为 BNSD
+        OP_CHECK_IF(qfaInfo.layoutQDescale != QfaLayout::BNSD,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q_descale",
+                                                          QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
+                                                          ("When layout_q is " + QfaLayoutToSerialString(qfaInfo.qLayout) +
+                                                           ", layout_q_descale must be BNSD")
+                                                              .c_str()),
+                    return ge::GRAPH_FAILED);
+        expected = {qfaInfo.bSize, qfaInfo.n1Size, qfaInfo.s1Size, dPerGroup, 2};
+        return CheckShapeEqual(*shape, expected, Q_DESCALE_NAME, qfaInfo.opName);
+    }
+
     if (dimNum == DIM_NUM_4) {
         expected = {qfaInfo.qTSize, qfaInfo.n1Size, dPerGroup, 2};
     } else if (dimNum == DIM_NUM_5) {
@@ -493,13 +517,19 @@ ge::graphStatus QuantChecker::CheckKDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
     //   PA_BBND:  (Bn, Bs, KV_N, D/64, 2)            - 5D
     //   PA_BNBD:  (Bn, KV_N, Bs, D/64, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, Bs/16, D/64, 16, 2)     - 6D
+    //   BNSD:     (B, KV_N, S2, D/64, 2)             - 5D
+    //   BSND:     (B, S2, KV_N, D/64, 2)             - 5D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
     int64_t dPerGroup = (D + 63) / 64;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
     std::vector<int64_t> expected;
-    if (qfaInfo.kvLayout == QfaLayout::TND) {
+    if (qfaInfo.kvLayout == QfaLayout::BNSD) {
+        expected = {qfaInfo.bSize, qfaInfo.n2Size, qfaInfo.s2Size, dPerGroup, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::BSND) {
+        expected = {qfaInfo.bSize, qfaInfo.s2Size, qfaInfo.n2Size, dPerGroup, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::TND) {
         expected = {qfaInfo.kTSize, qfaInfo.n2Size, dPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, dPerGroup, 2};
@@ -572,13 +602,19 @@ ge::graphStatus QuantChecker::CheckVDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
     //   PA_BBND:  (Bn, Bs/64, KV_N, D, 2)            - 5D
     //   PA_BNBD:  (Bn, KV_N, Bs/64, D, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, D/16, Bs/64, 16, 2)     - 6D
+    //   BNSD:     (B, KV_N, S2/64, D, 2)             - 5D
+    //   BSND:     (B, S2/64, KV_N, D, 2)             - 5D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
     const int64_t mxfp8BlockSize = 64;
     int64_t D = qfaInfo.vHeadDim; // v_descale 的 D 用 vHeadDim
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
     std::vector<int64_t> expected;
-    if (qfaInfo.kvLayout == QfaLayout::TND) {
+    if (qfaInfo.kvLayout == QfaLayout::BNSD) {
+        expected = {qfaInfo.bSize, qfaInfo.n2Size, CeilDivision(qfaInfo.s2Size, mxfp8BlockSize), D, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::BSND) {
+        expected = {qfaInfo.bSize, CeilDivision(qfaInfo.s2Size, mxfp8BlockSize), qfaInfo.n2Size, D, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::TND) {
         // TND(非PA)场景: dim0 = Σ ceil(curLen, 64), 依赖 cu_seqlens_kv 的实际数值。
         // tiling 阶段 cu_seqlens_kv 为 device tensor, host 侧无法安全读取,
         // 因此 dim0 不做数值校验(用 -1 占位), 仅校验维度数为 4D 及 dim[1..3]。
@@ -716,7 +752,8 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
 
 // ============================================================================
 // Feature — Layout 匹配关系校验 (文档: layout匹配关系表)
-// MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND
+// MxFP8: layout_q∈{TND,BNSD,BSND}, layout_kv∈{TND,BNSD,BSND,PA_BBND,PA_BNBD,PA_NZ},
+//        layout_out 与 layout_q 一致, layout_q_descale∈{TND,N2TGD,BNSD}
 // ============================================================================
 
 namespace {
@@ -730,10 +767,10 @@ struct QfaLayoutConstraintConfig {
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-     {{QfaLayout::TND},
-      {QfaLayout::TND, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
-      {QfaLayout::TND},
-      {QfaLayout::TND, QfaLayout::N2TGD},
+     {{QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
+      {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
+      {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
+      {QfaLayout::TND, QfaLayout::N2TGD, QfaLayout::BNSD},
       false}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::NTD}, {QfaLayout::PA_BNBD}, {QfaLayout::TND}, {QfaLayout::NT}, false}},
@@ -818,6 +855,28 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                     return ge::GRAPH_FAILED);
     }
 
+    // MxFP8: tiling key 的 InOutLayoutType 仅由 layout_q 推导(输入/输出同布局),
+    // 非 PA 场景 kernel 的 KV 与 scale 排布也按 layout_q 处理, 需拦截混布组合;
+    // PA 场景 layout_q 可为 TND/BNSD/BSND (tiling key 已支持全部组合)
+    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        OP_CHECK_IF(qfaInfo.outLayout != qfaInfo.qLayout,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        qfaInfo.opName, "layout_out", QfaLayoutToSerialString(qfaInfo.outLayout).c_str(),
+                        ("In MxFP8 scenario, layout_out must be the same as layout_q(" + qLayoutStr + ")").c_str()),
+                    return ge::GRAPH_FAILED);
+        bool isPaKv = (qfaInfo.kvLayout == QfaLayout::PA_BBND || qfaInfo.kvLayout == QfaLayout::PA_BNBD ||
+                       qfaInfo.kvLayout == QfaLayout::PA_NZ);
+        if (!isPaKv) {
+            OP_CHECK_IF(qfaInfo.kvLayout != qfaInfo.qLayout,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                            ("In MxFP8 scenario, layout_kv must be the same as layout_q(" + qLayoutStr +
+                             ") when layout_kv is not a PageAttention layout")
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -843,8 +902,7 @@ ge::graphStatus QuantChecker::CheckQueryShape(const QfaTilingInfo &qfaInfo) cons
     QfaTilingShapeCompareParam shapeParams;
     shapeParams.N = qfaInfo.n1Size;
     shapeParams.D = qfaInfo.qkHeadDim;
-    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 &&
-        (qfaInfo.qLayout == QfaLayout::BSND || qfaInfo.qLayout == QfaLayout::BNSD)) {
+    if (qfaInfo.qLayout == QfaLayout::BSND || qfaInfo.qLayout == QfaLayout::BNSD) {
         shapeParams.B = qfaInfo.bSize;
         shapeParams.S = qfaInfo.s1Size;
     } else {
@@ -867,8 +925,7 @@ ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
                qfaInfo.kvLayout == QfaLayout::PA_NZ) {
         shapeParams.Bn = qfaInfo.totalBlockNum;
         shapeParams.Bs = qfaInfo.blockSize;
-    } else if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 &&
-               (qfaInfo.kvLayout == QfaLayout::BSND || qfaInfo.kvLayout == QfaLayout::BNSD)) {
+    } else if (qfaInfo.kvLayout == QfaLayout::BSND || qfaInfo.kvLayout == QfaLayout::BNSD) {
         shapeParams.B = qfaInfo.bSize;
         shapeParams.S = qfaInfo.s2Size;
     }
@@ -896,8 +953,7 @@ ge::graphStatus QuantChecker::CheckAttnOutShape(const QfaTilingInfo &qfaInfo) co
     QfaTilingShapeCompareParam shapeParams;
     shapeParams.N = qfaInfo.n1Size;
     shapeParams.D = qfaInfo.vHeadDim;
-    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 &&
-        (qfaInfo.outLayout == QfaLayout::BSND || qfaInfo.outLayout == QfaLayout::BNSD)) {
+    if (qfaInfo.outLayout == QfaLayout::BSND || qfaInfo.outLayout == QfaLayout::BNSD) {
         shapeParams.B = qfaInfo.bSize;
         shapeParams.S = qfaInfo.s1Size;
     } else {
@@ -1037,15 +1093,18 @@ ge::graphStatus QuantChecker::CheckQkvDtype(const QfaTilingInfo &qfaInfo) const
 
 // ============================================================================
 // Feature — q/out ShapeDim 与 quant_mode 精确匹配校验 (跨参数组特性交叉校验)
-//   MXFP8/FP8: q/attn_out shape dim 仅支持 3D
-//   HIF8:      q/attn_out shape dim 支持 3D/4D
+//   MxFP8:     q/attn_out 支持 TND(3D)/BNSD/BSND(4D)
+//   HIF8:      q/attn_out 支持 TND(3D)/BNSD/BSND(4D)
+//   GQA_FP8:   q/attn_out shape dim 仅 3D
 // ============================================================================
 
 ge::graphStatus QuantChecker::CheckQkvShapeDim(const QfaTilingInfo &qfaInfo) const
 {
     std::vector<uint32_t> supportedDims;
     std::string dimStr;
-    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
+    // 按 quant_mode 判断: MxFP8/HIF8 支持 TND(3D)/BNSD/BSND(4D); GQA_FP8 仅 3D
+    if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 ||
+        qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
         supportedDims = {DIM_NUM_3, DIM_NUM_4};
         dimStr = "3D/4D";
     } else {
