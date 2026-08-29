@@ -25,109 +25,113 @@
 
 ## 功能说明
 
-- 接口功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。相较于标准causal_conv1d算子，本算子新增APC缓存复用、PD混部、残差连接可选等功能。<br>
+- 接口功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。相较于aclnnInplaceFusedCausalConv1dV1，本接口新增支持maxDraftTokens参数，表示最大支持的投机个数。<br>
 
 - 支持以下场景：
   - 场景一（prefill场景）：
 
     ```Cpp
-    x: [cu_seq_len, dim]
+    x: [cuSeqLen, dim]
     weight: [K, dim]，其中K=3
-    conv_states: [-1, K-1, dim]
-    query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch],开APC:[block, maxNumBlocks]
-    initial_state_mode: [batch]
-    bias: [dim]（无作用）
-    num_accepted_tokens: [batch]（无作用）
-    num_computed_tokens: [batch]
-    block_idx_first_scheduled_token: 不开APC:None,开APC:[batch]
-    block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
-    initial_state_idx: 不开APC:None,开APC:[batch]
-    activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
-    run_mode:（无作用）
-    residual_connection: 不做残差: 0,做残差：1
-    block_size: 典型值128/256
-    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
+    convStates: [-1, K-1, dim]
+    queryStartLocOptional: [batch+1]
+    cacheIndicesOptional: 不开APC:[batch],开APC:[block, maxNumBlocks]
+    initialStateModeOptional: [batch]
+    biasOptional: [dim]（无作用）
+    numAcceptedTokensOptional: [batch]（无作用）
+    numComputedTokensOptional: [batch]
+    blockIdxFirstScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    initialStateIdxOptional: 不开APC:None,开APC:[batch]
+    activationMode:（无作用）
+    padSlotId: 默认值 -1
+    runMode:（无作用）
+    residualConnection: 不做残差: 0,做残差：1
+    blockSize: 典型值128/256
+    convMode：Qwen3-Next模式: 0, Pangu V2: 1
+    y: [cuSeqLen, dim]
     ```
 
-    其中cu_seq_len为batch内所有变长序列拼接后的总长度。
+    其中cuSeqLen为batch内所有变长序列拼接后的总长度。
 
   - 场景二（prefill和decode混合场景）：
 
     ```Cpp
-    x: [cu_seq_len, dim]
+    x: [cuSeqLen, dim]
     weight: [K, dim]，其中K=3
-    conv_states: [-1, K-1+m, dim]
-    query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch],开APC:[block, maxNumBlocks]
-    initial_state_mode: [batch]
-    bias: [dim]（无作用）
-    num_accepted_tokens: [batch]
-    num_computed_tokens: [batch]
-    block_idx_first_scheduled_token: 不开APC:None,开APC:[batch]
-    block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
-    initial_state_idx: 不开APC:None,开APC:[batch]
-    activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
-    run_mode:（无作用）
-    residual_connection: 不做残差: 0,做残差：1
-    block_size: 典型值128/256
-    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    convStates: [-1, K-1+m, dim]
+    queryStartLocOptional: [batch+1]
+    cacheIndicesOptional: 不开APC:[batch],开APC:[block, maxNumBlocks]
+    initialStateModeOptional: [batch]
+    biasOptional: [dim]（无作用）
+    numAcceptedTokensOptional: [batch]
+    numComputedTokensOptional: [batch]
+    blockIdxFirstScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    initialStateIdxOptional: 不开APC:None,开APC:[batch]
+    activationMode:（无作用）
+    padSlotId: 默认值 -1
+    runMode:（无作用）
+    residualConnection: 不做残差: 0,做残差：1
+    blockSize: 典型值128/256
+    convMode：Qwen3-Next模式: 0, Pangu V2: 1
+    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    y: [cuSeqLen, dim]
     ```
 
-    其中cu_seq_len为batch内所有变长序列拼接后的总长度。
+    其中cuSeqLen为batch内所有变长序列拼接后的总长度。
 
   - 场景三（decode场景 - 变长序列）：
 
     ```Cpp
-    x: [cu_seq_len, dim]
+    x: [cuSeqLen, dim]
     weight: [K, dim]，其中K=3
-    conv_states: [-1, K-1+m, dim]
-    query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch],开APC:[block, maxNumBlocks]
-    initial_state_mode: [batch]
-    bias: [dim]（无作用）
-    num_accepted_tokens: [batch]
-    num_computed_tokens: [batch]
-    block_idx_first_scheduled_token: 不开APC:None,开APC:[batch]
-    block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
-    initial_state_idx: 不开APC:None,开APC:[batch]
-    activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
-    run_mode:（无作用）
-    residual_connection: 不做残差: 0,做残差：1
-    block_size: 典型值128/256
-    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    convStates: [-1, K-1+m, dim]
+    queryStartLocOptional: [batch+1]
+    cacheIndicesOptional: 不开APC:[batch],开APC:[block, maxNumBlocks]
+    initialStateModeOptional: [batch]
+    biasOptional: [dim]（无作用）
+    numAcceptedTokensOptional: [batch]
+    numComputedTokensOptional: [batch]
+    blockIdxFirstScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    initialStateIdxOptional: 不开APC:None,开APC:[batch]
+    activationMode:（无作用）
+    padSlotId: 默认值 -1
+    runMode:（无作用）
+    residualConnection: 不做残差: 0,做残差：1
+    blockSize: 典型值128/256
+    convMode：Qwen3-Next模式: 0, Pangu V2: 1
+    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    y: [cuSeqLen, dim]
     ```
 
-    其中state_len必须大于所有batch中最大的token个数加1。
+    其中stateLen必须大于所有batch中最大的token个数加1。
 
   - 场景四（decode场景 - 固定batch）：
 
     ```Cpp
     x: [batch, m+1, dim]
     weight: [K, dim]，其中K=3
-    conv_states: [-1, K-1+m, dim]
-    query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch],开APC:[block, maxNumBlocks]
-    initial_state_mode: [batch]
-    bias: [dim]（无作用）
-    num_accepted_tokens: [batch]
-    num_computed_tokens: [batch]
-    block_idx_first_scheduled_token: 不开APC:None,开APC:[batch]
-    block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
-    initial_state_idx: 不开APC:None,开APC:[batch]
-    activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
-    run_mode:（无作用）
-    max_query_len:默认值 -1
-    residual_connection: 不做残差: 0,做残差：1
-    block_size: 典型值128/256
-    conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    convStates: [-1, K-1+m, dim]
+    queryStartLocOptional: [batch+1]
+    cacheIndicesOptional: 不开APC:[batch],开APC:[block, maxNumBlocks]
+    initialStateModeOptional: [batch]
+    biasOptional: [dim]（无作用）
+    numAcceptedTokensOptional: [batch]
+    numComputedTokensOptional: [batch]
+    blockIdxFirstScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
+    initialStateIdxOptional: 不开APC:None,开APC:[batch]
+    activationMode:（无作用）
+    padSlotId: 默认值 -1
+    runMode:（无作用）
+    maxQueryLen:默认值 -1
+    residualConnection: 不做残差: 0,做残差：1
+    blockSize: 典型值128/256
+    convMode：Qwen3-Next模式: 0, Pangu V2: 1
+    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    y: [batch, m+1, dim]
     ```
 
 - 计算公式：
@@ -345,7 +349,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
       <td>x（aclTensor*）</td>
       <td>输入/输出</td>
       <td>计算公式中的x，代表输入序列。卷积结果将原地更新至x。</td>
-      <td><ul><li>不支持空tensor。</li><li>prefill场景：shape为[cu_seq_len, dim]。</li><li>decode场景：shape为[cu_seq_len, dim]或[batch, seq_len, dim]。</li></ul></td>
+      <td><ul><li>不支持空tensor。</li><li>prefill场景：shape为[cuSeqLen, dim]。</li><li>decode场景：shape为[cuSeqLen, dim]或[batch, seqLen, dim]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2-3</td>
@@ -375,7 +379,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
       <td>queryStartLoc（aclTensor*）</td>
       <td>可选输入</td>
       <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。</td>
-      <td><ul><li>不支持空tensor。</li><li>shape为[batch+1,]。</li><li>queryStartLoc[i]表示第i个序列的起始偏移。</li><li>queryStartLoc[0]必须为0，queryStartLoc[-1]必须为cu_seq_len，相邻两个数据不相等。</li></ul></td>
+      <td><ul><li>不支持空tensor。</li><li>shape为[batch+1,]。</li><li>queryStartLoc[i]表示第i个序列的起始偏移。</li><li>queryStartLoc[0]必须为0，queryStartLoc[-1]必须为cuSeqLen，相邻两个数据不相等。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -444,7 +448,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     <tr>
       <td>blockIdxLastScheduledToken（aclTensor*）</td>
       <td>可选输入</td>
-      <td>当前batch的seq_len-1处对应的block索引。</td>
+      <td>当前batch的seqLen-1处对应的block索引。</td>
       <td><ul><li>APC开启时不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -465,7 +469,6 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
       <td>activationMode（int64_t）</td>
       <td>属性</td>
       <td>激活函数类型。</td>
-      <td>不支持此字段。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -485,7 +488,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
       <td>runMode（int64_t）</td>
       <td>属性</td>
       <td>用于判断是prefill场景或decode场景。</td>
-      <td>历史遗留接口，不支持此字段。</td>
+      <td>历史遗留接口。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -494,7 +497,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     <tr>
       <td>maxQueryLen（int64_t）</td>
       <td>属性</td>
-      <td>所有batch中的最大seq_len，仅decode场景（固定batch）支持为-1。</td>
+      <td>所有batch中的最大seqLen，仅decode场景（固定batch）支持为-1。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -535,7 +538,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
       <td>maxDraftTokens（int64_t）</td>
       <td>属性</td>
       <td>最大投机个数。</td>
-      <td><ul><li>取值范围[0, 16]，默认为7。</li></ul></td>
+      <td><ul><li>取值范围[0, 16]。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -651,56 +654,56 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
 
 - 输入shape限制：
   - prefill场景：
-    - x支持2维[cu_seq_len, dim]。
+    - x支持2维[cuSeqLen, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
-    - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
-    - query_start_loc必须存在。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G], batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
-    - max_query_len > max_draft_tokens + 1。
+    - convStates必须是3维[..., K-1, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cacheIndicesOptional不等于padSlotId的batch个数）。
+    - queryStartLocOptional必须存在。
+    - cacheIndicesOptional为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cuSeqLen范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G], batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(maxQueryLen, blockSize)。
+    - maxQueryLen > maxDraftTokens + 1。
   - prefill和decode混合场景：
-    - x支持2维[cu_seq_len, dim]。
+    - x支持2维[cuSeqLen, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
-    - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
-    - query_start_loc必须存在。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G], batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
-    - max_query_len > max_draft_tokens + 1。
+    - convStates必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cacheIndicesOptional不等于padSlotId的batch个数）。
+    - queryStartLocOptional必须存在。
+    - cacheIndicesOptional为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cuSeqLen范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G], batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(maxQueryLen, blockSize)。
+    - maxQueryLen > maxDraftTokens + 1。
   - decode场景（变长序列）：
-    - x支持2维[cu_seq_len, dim]。
+    - x支持2维[cuSeqLen, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
-    - conv_states必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
-    - query_start_loc必须存在。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, batch * (max_draft_tokens + 1)]，每个batch的seq_len范围为[1, max_draft_tokens + 1]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
-    - max_query_len范围[1, max_draft_tokens + 1]。
+    - convStates必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cacheIndicesOptional不等于padSlotId的batch个数）。
+    - queryStartLoc必须存在。
+    - cacheIndices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cuSeqLen范围[batch, batch * (maxDraftTokens + 1)]，每个batch的seqLen范围为[1, maxDraftTokens + 1]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(maxQueryLen, blockSize)。
+    - maxQueryLen范围[1, maxDraftTokens + 1]。
   - decode场景（固定batch）：
     - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
-    - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - m范围[0, max_draft_tokens]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
-    - max_query_len范围[1, max_draft_tokens + 1]，可为-1。
+    - convStates必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cacheIndicesOptional不等于padSlotId的batch个数）。
+    - cacheIndicesOptional为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - m范围[0, maxDraftTokens]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(maxQueryLen, blockSize)。
+    - maxQueryLen范围[1, maxDraftTokens + 1]，可为-1。
 
 - 输入值域限制：
-  - query_start_loc是累计偏移量，取值范围[0, cu_seq_len]，长度为batch+1，query_start_loc[i]表示第i个序列的起始偏移，query_start_loc[batch+1]表示最后一个序列的结束位置。
+  - queryStartLocOptional是累计偏移量，取值范围[0, cuSeqLen]，长度为batch+1，queryStartLocOptional[i]表示第i个序列的起始偏移，queryStartLocOptional[batch+1]表示最后一个序列的结束位置。
   - blockSize 为0或者大于等于2，apc开启时不为0。
-  - blockIdxFirstScheduledToken、blockIdxLastScheduledToken、initialStateIdx、num_computed_tokens和cache_indices均存在时表示APC开启，且满足以下条件（i为batch的索引）：
-    - cache_indices为2维
-    - initialStateIdx[i] <= blockIdxFirstScheduledToken[i]+1
-    - initialStateIdx[i] <= blockIdxLastScheduledToken[i]
-    - blockIdxFirstScheduledToken[i] <= blockIdxLastScheduledToken[i]
-    - blockIdxLastScheduledToken[i] < maxNumBlocks
-  - num_accepted_tokens分为None和非None，非None情况下长度为batch，prefile对应的元素值为0，decode对应的元素值大于0且小于等于当前batch的seq_len-1。
-  - num_computed_tokens中每个元素取值大于等于0。
-  - cache_indices的取值范围为[0, conv_states.dim[0]-1],且值均不能相等（除非等于pad_slot_id）。
-  - max_query_len = batch中的最大seq_len。
-  - max_draft_tokens的取值范围为[0, 16]，默认值为7。
-  - Pangu V2 模式（conv_mode = 1）下，num_computed_tokens不能为 None。
+  - blockIdxFirstScheduledTokenOptional、blockIdxLastScheduledTokenOptional、initialStateIdxOptional、numComputedTokensOptional和cacheIndicesOptional均存在时表示APC开启，且满足以下条件（i为batch的索引）：
+    - cacheIndices为2维
+    - initialStateIdxOptional[i] <= blockIdxFirstScheduledTokenOptional[i]+1
+    - initialStateIdxOptional[i] <= blockIdxLastScheduledTokenOptional[i]
+    - blockIdxFirstScheduledTokenOptional[i] <= blockIdxLastScheduledTokenOptional[i]
+    - blockIdxLastScheduledTokenOptional[i] < maxNumBlocks
+  - numAcceptedTokensOptional分为None和非None，非None情况下长度为batch，prefile对应的元素值为0，decode对应的元素值大于0且小于等于当前batch的seqLen-1。
+  - numComputedTokensOptional中每个元素取值大于等于0。
+  - cacheIndicesOptional的取值范围为[0, convStates.dim[0]-1],且值均不能相等（除非等于padSlotId）。
+  - maxQueryLen = batch中的最大seqLen。
+  - maxDraftTokens的取值范围为[0, 16]，默认值为7。
+  - Pangu V2 模式（convMode = 1）下，numComputedTokensOptional不能为 None。
   - 算子入参与中间计算结果，在对应数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。
   - 算子输入不支持有±inf和nan的情况。
 
