@@ -88,9 +88,9 @@ constexpr uint32_t WEIGHT_SCALE_MULTI_BASE_DIM_INDEX = 2U;
 constexpr uint8_t INVALID_GMM_MODE = std::numeric_limits<uint8_t>::max();
 
 static const std::unordered_map<ge::DataType, int64_t> EXPERT_QUANT_DTYPE_TO_MODE{
-    {ge::DT_FLOAT8_E5M2, DISPATCH_QUANT_OUT_DTYPE_E5M2},
-    {ge::DT_FLOAT8_E4M3FN, DISPATCH_QUANT_OUT_DTYPE_E4M3FN},
-    {ge::DT_FLOAT4_E2M1, DISPATCH_QUANT_OUT_DTYPE_E2M1},
+    {ge::DT_FLOAT8_E5M2, EXPERT_QUANT_OUT_DTYPE_E5M2},
+    {ge::DT_FLOAT8_E4M3FN, EXPERT_QUANT_OUT_DTYPE_E4M3FN},
+    {ge::DT_FLOAT4_E2M1, EXPERT_QUANT_OUT_DTYPE_E2M1},
 };
 
 struct ExpertWeightTensorGroupInputs {
@@ -314,22 +314,20 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
                              const MegaMoeExpertParams &expertParams)
 {
     auto attrs = context->GetAttrs();
+    auto moeWeightDesc = context->GetDynamicInputDesc(expertParams.moe.inputs.weightOneIndex, 0);
+    auto sharedWeightDesc = expertParams.shared.expertCount > 0 ?
+                                context->GetDynamicInputDesc(expertParams.shared.inputs.weightOneIndex, 0) :
+                                moeWeightDesc;
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
     int64_t topoType = TILINGKEY_TPL_MTE;
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
-    auto moeWeightOneDesc = context->GetDynamicInputDesc(expertParams.moe.inputs.weightOneIndex, 0);
-    auto sharedWeightOneDesc = expertParams.shared.expertCount > 0 ?
-                                   context->GetDynamicInputDesc(expertParams.shared.inputs.weightOneIndex, 0) :
-                                   moeWeightOneDesc;
     return GET_TPL_TILING_KEY(
+        static_cast<int64_t>(moeWeightDesc->GetDataType()), static_cast<int64_t>(sharedWeightDesc->GetDataType()),
         static_cast<int64_t>(*dispatchQuantModePtr), EXPERT_QUANT_DTYPE_TO_MODE.at(expertParams.moe.activationDtype),
-        EXPERT_QUANT_DTYPE_TO_MODE.at(expertParams.shared.activationDtype),
-        static_cast<int64_t>(moeWeightOneDesc->GetDataType()),
-        static_cast<int64_t>(moeWeightOneDesc->GetStorageFormat()),
-        static_cast<int64_t>(sharedWeightOneDesc->GetDataType()),
-        static_cast<int64_t>(sharedWeightOneDesc->GetStorageFormat()), combineQuantMode, topoType, topkWeightsType);
+        EXPERT_QUANT_DTYPE_TO_MODE.at(expertParams.shared.activationDtype), combineQuantMode, topoType,
+        topkWeightsType);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, MegaMoeConfig &config,
