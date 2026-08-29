@@ -783,45 +783,38 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::SetFlagToFFN()
 {
-    uint32_t startFFNId = 0;
-    uint32_t endFFNId = 0;
-    uint32_t sentFFNNum = 0;
-    SplitToCore(ffnNum_, aivNum_, startFFNId, endFFNId, sentFFNNum);
+    if (aivId_ != 0U) {
+        return;
+    }
+
     statusTensor_.SetValue(0, URMA_FLAG_VALUE);
     statusTensor_.SetValue(1, static_cast<int32_t>(layerId_));
     SyncFunc<HardEvent::S_MTE3>();
     DataCopyExtParams statusParams = {1U, static_cast<uint32_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT), 0U,
                                       0U, 0U};
-    if (startFFNId >= ffnNum_) {
-        return;
-    }
-
-    startFFNId += ffnStartRankId_;
-    endFFNId += ffnStartRankId_;
 
     if constexpr (isSync) {
-        uint32_t sentFFNNumAlignSize = Ceil(sentFFNNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+        uint32_t sentFFNNumAlignSize = Ceil(ffnNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
         DataCopyExtParams syncStatusParams = {
-            static_cast<uint16_t>(aivNum_), static_cast<uint32_t>(sentFFNNum * sizeof(int32_t)),
-            static_cast<uint32_t>(aivWorkspaceOffset_ - sentFFNNum * sizeof(int32_t)), 0U, 0U};
+            static_cast<uint16_t>(aivNum_), static_cast<uint32_t>(ffnNum_ * sizeof(int32_t)),
+            static_cast<uint32_t>(aivWorkspaceOffset_ - ffnNum_ * sizeof(int32_t)), 0U, 0U};
         DataCopyPadExtParams<int32_t> copyPadParams{false, 0U, 0U, 0U};
         tpipe_->InitBuffer(syncStatusWorkspaceBuf_, aivNum_ * sentFFNNumAlignSize);
         syncStatusWorkspaceTensor_ = syncStatusWorkspaceBuf_.Get<int32_t>();
         syncStatusGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(syncStatusWorkspaceGM_));
-        DataCopyPad(syncStatusWorkspaceTensor_, syncStatusGMTensor_[startFFNId - ffnStartRankId_], syncStatusParams,
-                    copyPadParams);
+        DataCopyPad(syncStatusWorkspaceTensor_, syncStatusGMTensor_[0], syncStatusParams, copyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         LocalTensor<float> syncStatusWorkspaceTensorFloat = syncStatusWorkspaceTensor_.ReinterpretCast<float>();
         LocalTensor<float> ffnStatusTensorFloat = ffnStatusTensor_.ReinterpretCast<float>();
         const uint32_t shape[] = {aivNum_, static_cast<uint32_t>(sentFFNNumAlignSize / sizeof(float))};
         AscendC::ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(ffnStatusTensorFloat,
-                                                                      syncStatusWorkspaceTensorFloat, shape, true);
+                                                                       syncStatusWorkspaceTensorFloat, shape, true);
         SyncFunc<AscendC::HardEvent::V_S>();
     }
 
-    for (uint32_t ffnIdx = startFFNId; ffnIdx < endFFNId; ++ffnIdx) {
+    for (uint32_t ffnIdx = ffnStartRankId_; ffnIdx < ffnStartRankId_ + ffnNum_; ++ffnIdx) {
         if constexpr (isSync) {
-            if (ffnStatusTensor_.GetValue(ffnIdx - startFFNId) == 0) {
+            if (ffnStatusTensor_.GetValue(ffnIdx - ffnStartRankId_) == 0) {
                 continue;
             }
         }
