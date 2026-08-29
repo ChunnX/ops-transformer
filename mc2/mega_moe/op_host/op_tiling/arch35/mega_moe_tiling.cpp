@@ -1338,7 +1338,13 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
+    // 预取开启档位（MTE 拓扑）下将 SendMask 布局钳至预取 scratch 偏移（192KB）之下，防止 batch
+    // 扩张越过 192K 与窗口 0 批内预取跨队列并发写。
+    uint32_t sendMaskAvailableUbBytes = availableUbBytes;
+    if (tilingData->topoType == TOPO_TYPE_MTE && sendMaskAvailableUbBytes > WEIGHT_L2_PREFETCH_UB_OFFSET) {
+        sendMaskAvailableUbBytes = WEIGHT_L2_PREFETCH_UB_OFFSET;
+    }
+    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, sendMaskAvailableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);

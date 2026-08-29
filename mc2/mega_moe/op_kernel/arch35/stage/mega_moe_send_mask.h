@@ -64,7 +64,8 @@ struct SendMaskScratch {
 __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
                                                     const SendMaskConfig &config, SendMaskScratch &scratch,
                                                     GlobalTensor<int32_t> &topkIdsGm, GlobalTensor<uint8_t> &dstMaskGm,
-                                                    int32_t ownedExpertBegin, int32_t ownedExpertNum, int32_t batchIdx)
+                                                    int32_t ownedExpertBegin, int32_t ownedExpertNum, int32_t batchIdx,
+                                                    WeightL2PrefetchCursor *w0Prefetch)
 {
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     uint32_t maskSlotSize = config.maskSlotSize;
@@ -98,6 +99,10 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &
         DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
     }
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+    // 窗口 0 预取钩子：本批 topkIds 读完成后（MTE2 队列干净）发 1 块，被本批 mask 计算+MTE3 掩盖。
+    if (w0Prefetch != nullptr) {
+        (void)WeightL2PrefetchTryIssue(*w0Prefetch);
+    }
 
     int32_t batchRingBegin = batchIdx * ownedExpertNum;
     for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
@@ -192,7 +197,8 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
 // Prototype: MegaMoe::SendMaskCal. Builds and sends per-expert masks for one logical AIV job using route batches.
 __aicore__ inline void GatherAndSendExpertMasks(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                 const Params &params, GM_ADDR *winRankAddr,
-                                                const SendMaskConfig &config, SendMaskScratch &scratch)
+                                                const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                WeightL2PrefetchCursor *w0Prefetch = nullptr)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -226,7 +232,7 @@ __aicore__ inline void GatherAndSendExpertMasks(const AivJobContext &job, const 
 
     for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
         GatherAndSendExpertMaskBatch(common, winRankAddr, config, scratch, topkIdsGm, dstMaskGm, ownedExpertBegin,
-                                     ownedExpertNum, batchIdx);
+                                     ownedExpertNum, batchIdx, w0Prefetch);
     }
 
     for (int32_t bufIdx = 0; bufIdx < bufferConfig.bufferCount; ++bufIdx) {
