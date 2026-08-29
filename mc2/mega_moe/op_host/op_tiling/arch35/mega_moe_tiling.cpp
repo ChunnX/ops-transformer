@@ -655,6 +655,10 @@ static uint8_t ResolveExpertGmmMode(ge::DataType activationDtype, ge::DataType w
     if (activationDtype == ge::DT_FLOAT8_E4M3FN && weightDtype == ge::DT_FLOAT4_E2M1 && isNzC032Format) {
         return GMM_MODE_A8W4_NZ;
     }
+    if (activationDtype == ge::DT_FLOAT4_E2M1 && weightDtype == ge::DT_FLOAT4_E2M1 &&
+        weightOneFormat == ge::FORMAT_ND && weightTwoFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
+        return GMM_MODE_A4W4_ND;
+    }
     if (activationDtype == ge::DT_FLOAT4_E2M1 && weightDtype == ge::DT_FLOAT4_E2M1 && isNzAndNzC032Format) {
         return GMM_MODE_A4W4_NZ;
     }
@@ -1213,8 +1217,8 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     bool useAiv1OnlyWaveCombine =
         tilingData->topoType == TOPO_TYPE_MTE &&
         (tilingData->moeGmmMode == GMM_MODE_A8W8_ND || tilingData->moeGmmMode == GMM_MODE_A8W8_NZ);
-    if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ ||
-        useAiv1OnlyWaveCombine) {
+    if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_ND ||
+        tilingData->moeGmmMode == GMM_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
         // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }
@@ -1241,7 +1245,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 
     uint64_t flagElementCount = moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
                                                   static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
-    if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
+    if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_ND ||
+        tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
     if (useMteA8W8Wave) {
@@ -2191,14 +2196,9 @@ static ge::graphStatus CheckAndSetInput(const gert::TilingContext *context, Mega
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckAndSetEntryParams(const gert::TilingContext *context, MegaMoeConfig &config,
-                                              MegaMoeTilingData *tilingData, const char *nodeName)
+static ge::graphStatus CheckAndSetTopoType(const gert::TilingContext *context, const MegaMoeConfig &config,
+                                           MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "tensor pointer check failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckAttrPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "attribute pointer check failed."), return ge::GRAPH_FAILED);
-
     auto attrs = context->GetAttrs();
     int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
     OP_TILING_CHECK(topoType != TOPO_TYPE_MTE && topoType != TOPO_TYPE_URMA,
@@ -2256,8 +2256,12 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     MegaMoeTilingData *tilingData = context->GetTilingData<MegaMoeTilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckAndSetEntryParams(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "entry parameters are invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "tensor pointer check failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAttrPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "attribute pointer check failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAndSetTopoType(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "topology type is invalid."), return ge::GRAPH_FAILED);
 
     MegaMoeExpertParams expertParams{};
     OP_TILING_CHECK(CheckAndSetInput(context, tilingData, config, expertParams, nodeName) == ge::GRAPH_FAILED,

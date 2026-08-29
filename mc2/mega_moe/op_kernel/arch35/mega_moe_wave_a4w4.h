@@ -23,9 +23,11 @@ namespace MegaMoeImpl {
 
 #define TemplateMegaMoeA4W4WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
+        int32_t MoeWeight1Format, int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeA4W4WaveTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, MoeWeight1Format, MoeWeight2Format, \
+        SharedWeight1Format, SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
 class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc> {
@@ -46,6 +48,7 @@ private:
     static constexpr uint32_t A_ELEMS_PER_BYTE = MegaMoeBase::A_ELEMS_PER_BYTE;
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
+    static constexpr bool MOE_WEIGHT1_IS_NZ = MoeWeight1Format == FORMAT_FRACTAL_NZ;
 
     using MegaMoeBase::DispatchBuffInit;
     using MegaMoeBase::DispatchMoeExpert;
@@ -89,7 +92,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
     RunGmm1GenericByWeightFormat<QuantOutType, ActivationQuantOutType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                 TopkWeightsPrefetch, false, true>(
+                                 TopkWeightsPrefetch, MOE_WEIGHT1_IS_NZ, false, true>(
         gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
         static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx);
 }

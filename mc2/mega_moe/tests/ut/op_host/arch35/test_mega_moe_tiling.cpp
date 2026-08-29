@@ -87,7 +87,7 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    uint64_t expectTilingKey = 1149256842UL;
+    uint64_t expectTilingKey = 10UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -148,7 +148,7 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 1147159648UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -209,7 +209,7 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
-    uint64_t expectTilingKey = 1149256842UL;
+    uint64_t expectTilingKey = 10UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -270,7 +270,7 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    uint64_t expectTilingKey = 1147159648UL;
+    uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -331,7 +331,7 @@ TEST_F(MegaMoeArch35TilingTest, MoeA4W4SharedA8W8)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 1149478156UL);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 12UL);
 }
 
 } // namespace MegaMoeUT

@@ -50,9 +50,11 @@ using namespace AscendC;
 // 预留：XType OutputType TopkWeightsType Weight1Type
 #define TemplateMegaMoeA8W8WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
+        int32_t MoeWeight1Format, int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved
 #define TemplateMegaMoeA8W8WaveTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, MoeWeight1Format, MoeWeight2Format, \
+        SharedWeight1Format, SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
 class MegaMoeA8W8Wave {
@@ -147,6 +149,10 @@ private:
     uint32_t moeExpertPerRank_ = 0;
 
     static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved;
+    static constexpr bool MOE_WEIGHT1_IS_NZ = MoeWeight1Format == FORMAT_FRACTAL_NZ;
+    static constexpr bool MOE_WEIGHT2_IS_NZ = MoeWeight2Format == FORMAT_FRACTAL_NZ;
+    static constexpr bool SHARED_WEIGHT1_IS_NZ = SharedWeight1Format == FORMAT_FRACTAL_NZ;
+    static constexpr bool SHARED_WEIGHT2_IS_NZ = SharedWeight2Format == FORMAT_FRACTAL_NZ;
 
     /*
      * AIV1 上 Dispatch 与 Combine 分阶段复用 UB，进入 Combine 前 Dispatch 的动态 ring 已经排空：
@@ -198,7 +204,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitGmm
     int32_t dispatchFlagSlotsPerExpert)
 {
     gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-                           .gmmMode = static_cast<MegaMoeGmmMode>(params_.tilingData->moeGmmMode),
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
     countWorkspace_ = {.blockIdx = blockIdx_, .blockNum = params_.tilingData->aicNum};
     syncWorkspaceLayout_ = {.dispatchFlagSlotCountPerExpert = dispatchFlagSlotsPerExpert,
@@ -571,7 +576,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
             gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
-                                           GMM1_TILE_M, GMM1_INTERLEAVED, true>(
+                                           SHARED_WEIGHT1_IS_NZ, GMM1_TILE_M, GMM1_INTERLEAVED, true>(
             commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
             sharedExpertIdx, nullptr, true);
     }
@@ -596,7 +601,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
-                      GMM1_TILE_M, TopkWeightsPrefetch, true, GMM1_INTERLEAVED, true>(
+                      SHARED_WEIGHT2_IS_NZ, GMM1_TILE_M, TopkWeightsPrefetch, true, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, params_, gmmAddrInfo, problemShape, runtimeState, nullptr, true);
     }
 }
@@ -684,7 +689,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         uint32_t waveTokenStartIndex =
             static_cast<uint32_t>(gmm1ExpertState.globalTokenStartIndex) + gmm1Position.tokenIndexInExpert;
         RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                     TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
+                                     TopkWeightsPrefetch, MOE_WEIGHT1_IS_NZ, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, params_, epilogueOp_, gmm1AddrInfo, gmm1WaveProblemShape, waveTokenStartIndex,
             runtimeState, gmm1Position.expertIdx, nullptr, isWholeExpert);
 
@@ -736,7 +741,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         bool isWholeExpert =
             gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
-                      GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true>(
+                      MOE_WEIGHT2_IS_NZ, GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, params_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;

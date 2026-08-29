@@ -23,9 +23,11 @@ namespace MegaMoeImpl {
 
 #define TemplateMegaMoeA8W4WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
+        int32_t MoeWeight1Format, int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeA8W4WaveTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, MoeWeight1Format, MoeWeight2Format, \
+        SharedWeight1Format, SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
 class MegaMoeA8W4Wave : public MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc> {

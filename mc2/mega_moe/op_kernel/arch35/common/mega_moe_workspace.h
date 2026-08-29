@@ -132,7 +132,8 @@ struct WorkspaceInfo {
 
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
-        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
+        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_ND ||
+            tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
@@ -170,7 +171,8 @@ struct WorkspaceInfo {
         gmm2MmadResPtr = nullptr;
         bool usePersistentDispatchCumsum =
             tilingData->moeGmmMode == GMM_MODE_A8W4_NZ ||
-            (tilingData->topoType == TOPO_TYPE_MTE && tilingData->moeGmmMode == GMM_MODE_A4W4_NZ);
+            (tilingData->topoType == TOPO_TYPE_MTE &&
+             (tilingData->moeGmmMode == GMM_MODE_A4W4_ND || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ));
         if (usePersistentDispatchCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             cumsumInfoPtr = base + workspaceSize;
@@ -185,10 +187,10 @@ struct WorkspaceInfo {
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
         }
         // gmm2MmadRes：GMM2 matmul 输出，布局为 maxOutputSize × h 个 BF16；
-        // A8W4 GMM1、A4W4 混合路径、A4W4_NZ 和 Combine 量化路径需要该区域。
-        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_NZ ||
-            tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
-            useMteA8W8Wave) {
+        // A8W4 GMM1、A4W4（W1 ND/NZ）和 Combine 量化路径需要该区域。
+        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_ND ||
+            tilingData->moeGmmMode == GMM_MODE_A4W4_NZ || tilingData->combineQuantMode != COMBINE_NO_QUANT ||
+            tilingData->topoType == TOPO_TYPE_URMA || useMteA8W8Wave) {
             if (useMteA8W8Wave) {
                 workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             }

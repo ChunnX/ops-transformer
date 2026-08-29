@@ -2474,7 +2474,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
                                false>(epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
                                       vecSetSyncCom, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
             } else {
-                // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
+                // Generic: fp8/fp4 activation × fp8/fp4 weight1 in ND format (includes A4W4 ND)
                 RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                QuantScaleOutType, false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
                                false>(epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,

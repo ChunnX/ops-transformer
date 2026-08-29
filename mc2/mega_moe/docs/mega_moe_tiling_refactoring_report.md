@@ -81,9 +81,9 @@ MegaMoeTilingFuncImplPublic
   |
   +-- 获取并检查 MegaMoeTilingData
   |
-  +-- CheckAndSetEntryParams
-  |     +-- 固定输入/输出指针判空
-  |     +-- 属性指针判空
+  +-- 固定输入/输出指针判空
+  +-- 属性指针判空
+  +-- CheckAndSetTopoType
   |     `-- 校验并写入 topoType
   |
   +-- CheckAndSetInput
@@ -156,6 +156,7 @@ FFN expansion 维度，避免重复比较同一维度。
 | `A8W8_ND` | 0 | E5M2/E4M3FN | 同 activation dtype | ND |
 | `A8W4_NZ` | 1 | E4M3FN | E2M1 | NZ_C0_32 |
 | `A8W8_NZ` | 2 | E4M3FN | E4M3FN | NZ |
+| `A4W4_ND` | 3 | E2M1 | E2M1 | W1 ND、W2 NZ_C0_32 |
 | `A4W4_NZ` | 4 | E2M1 | E2M1 | W1 NZ、W2 NZ_C0_32 |
 
 枚举沿用已有协议值，但按语义分组排列。MoE 和 shared 分别执行相同的推导逻辑，并写入 `moeGmmMode` 与
@@ -179,12 +180,21 @@ tiling key 增加以下独立选择信息：
 
 - MoE activation dtype；
 - shared activation dtype；
-- MoE weight1 dtype/format；
-- shared weight1 dtype/format；
 - 原有 dispatch mode、combine mode、通信模式和 topK weight prefetch。
 
-模板选择列表只枚举支持的 MTE 双侧组合；URMA 只保留两侧相同的既有组合。tiling key 数值发生变化，因此 arch35
-host UT 的期望 key 同步更新，并增加 `MoE A4W4 + shared A8W8` 的 mixed 配置用例。
+weight dtype/format 已由算子原型的精确输入签名确定，kernel 直接使用框架生成的 `DTYPE_WEIGHT1`、
+`FORMAT_WEIGHT1`、`DTYPE_SHARED_WEIGHT1` 和 `FORMAT_SHARED_WEIGHT1`，不再重复编码到 tiling key。模板选择根据两侧
+输入签名在编译期限定 activation dtype；MTE 生成当前签名对应的配置，URMA 只为两侧 weight dtype/format 相同的签名
+生成配置。
+
+MTE kernel 将 MoE/shared 的 weight1、weight2 format 继续传入 Wave 和 GMM stage 模板链。generic GMM1 使用
+本侧 weight1 format，generic GMM2 使用本侧 weight2 format，分别派生编译期 NZ 布尔值。`GmmExecutionConfig`
+不再保存 GMM mode，也不再根据 `tilingData->moeGmmMode` 在执行阶段选择 ND/NZ 模板。
+
+`A4W4_ND` 继续保留在 host tiling mode 推导和 kernel 源码路径中，但当前算子原型不注册该 weight dtype/format 签名，
+因此不会作为公开 kernel 实例生成。后续如需重新开放 A4W4 ND，无需再次恢复内部实现，届时同步扩展算子原型及接口测试
+即可。当前测试矩阵不加入 A4W4 ND，避免将内部保留能力误解为公开接口支持。tiling key 数值发生变化，因此 arch35
+host UT 的期望 key 同步更新，并增加 `MoE A4W4 + shared A8W8` mixed 配置用例。
 
 workspace 中原 `groupedMatmulMode` 判断改为 `moeGmmMode`。这是因为当前 workspace 中的 dispatch、MoE GMM
 中间结果和同步区均属于 routed MoE 路径。shared 独立量化所需的本地量化 buffer 和 shared GMM 配置仍需在后续
@@ -201,9 +211,9 @@ kernel 双配置接通阶段按实际数据流补齐，不能仅凭 host mode �
 
 ## 10. 当前实现边界与后续工作
 
-本轮完成的是独立量化所需的 host tiling 模型、校验、tiling data、key 选择和相关公共字段重整。当前 kernel 入口已
-具备两侧 dtype/format 模板参数，但 MTE kernel 内部仍主要使用 MoE 的 `DTYPE_WEIGHT1`、`DispatchQuantOutType` 和
-`moeGmmMode`。后续必须继续完成：
+本轮完成的是独立量化所需的 host tiling 模型、校验、tiling data、key 选择和相关公共字段重整。MTE kernel 已将
+框架生成的两侧 weight1 format 接入模板链，并消除 generic GMM 执行阶段依赖 `moeGmmMode` 的 format 分支；
+dtype 和 activation 配置仍主要使用 MoE 的 `DTYPE_WEIGHT1` 与 `DispatchQuantOutType`。后续必须继续完成：
 
 1. kernel 入口将 shared 模板类型真正传入 shared GMM 实例；
 2. MoE/shared 分别构造 `GmmExecutionConfig`；

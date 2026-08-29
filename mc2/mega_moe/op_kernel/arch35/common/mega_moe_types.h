@@ -146,10 +146,9 @@ struct MoeStageCommonConfig {
     uint32_t gmm1OutputDim;
 };
 
-// GMM1/GMM2 共用的执行方式：当前 block 的任务分工、矩阵模板模式和专家权重布局。
+// GMM1/GMM2 共用的运行时执行信息；矩阵 dtype/format 由 kernel 模板参数确定。
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
-    MegaMoeGmmMode gmmMode;
     bool isPerExpertWeightTensor;
 };
 

@@ -50,9 +50,11 @@ using namespace AscendC;
 // 预留：XType OutputType TopkWeightsType Weight1Type
 #define TemplateMegaMoeTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
+        int32_t MoeWeight1Format, int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, MoeWeight1Format, MoeWeight2Format, \
+        SharedWeight1Format, SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -149,6 +151,10 @@ protected:
     //             a4w4 场景下 GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
+    static constexpr bool MOE_WEIGHT1_IS_NZ = MoeWeight1Format == FORMAT_FRACTAL_NZ;
+    static constexpr bool MOE_WEIGHT2_IS_NZ = MoeWeight2Format == FORMAT_FRACTAL_NZ;
+    static constexpr bool SHARED_WEIGHT1_IS_NZ = SharedWeight1Format == FORMAT_FRACTAL_NZ;
+    static constexpr bool SHARED_WEIGHT2_IS_NZ = SharedWeight2Format == FORMAT_FRACTAL_NZ;
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M = TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
     QuantProcessScratch<ActivationType> quantScratch_;
@@ -203,7 +209,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitGmmConfigs()
 {
     gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
-                           .gmmMode = static_cast<MegaMoeGmmMode>(params_.tilingData->moeGmmMode),
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
     constexpr bool pairedAivCombine = ENABLE_A8W4 || ENABLE_A4W4;
     quantCombineConfig_ = {.job = {.jobIndex = pairedAivCombine ? blockIdx_ : aivCoreIdx_,
@@ -514,9 +519,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
                                                         sharedWeightTensorListAddrs_, sharedEpilogueOp_, gmmAddrInfo,
                                                         sharedExpertIdx);
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
-                                           ENABLE_A8W4, GMM1_TILE_M>(commonConfig_, gmmExecutionConfig_, params_,
-                                                                     sharedEpilogueOp_, gmmAddrInfo, problemShape,
-                                                                     runtimeState, sharedExpertIdx);
+                                           ENABLE_A8W4, SHARED_WEIGHT1_IS_NZ, GMM1_TILE_M>(
+            commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
+            sharedExpertIdx);
     }
     EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }
@@ -538,7 +543,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
-                      ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false>(
+                      ENABLE_A8W4, ENABLE_A4W4, SHARED_WEIGHT2_IS_NZ, GMM1_TILE_M, false, true, false, false>(
             gmmExecutionConfig_, params_, gmmAddrInfo, problemShape, runtimeState);
     }
 }
