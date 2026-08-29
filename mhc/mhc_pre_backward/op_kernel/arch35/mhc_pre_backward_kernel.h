@@ -1160,7 +1160,6 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
                                              __ubuf__ P *hPreUbAddr, uint32_t currentChunkSize, uint32_t copySizeND,
                                              uint32_t currentN, uint32_t bsGlobalOffset)
 {
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, static_cast<uint32_t>(eleNumPerVf_));
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> hInReg;
@@ -1176,15 +1175,13 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
             // Load hPre [1] -> [copySizeND]
             Reg::Duplicate(hPreIndexReg, hPreOffset, maskAll);
             Reg::Gather(hPreFullReg, hPreUbAddr, hPreIndexReg, maskAll);
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
-                mask = Reg::UpdateMask<P>(lenND);
-                // hIn B16 -> B32
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(hInReg, hInGradInBufAddr + hInOffset);
-                Reg::Cast<float, T, ctHalf2Fp32Zero>(hInFP32Reg, hInReg, mask);
-                Reg::Mul(hInFP32Reg, hInFP32Reg, hPreFullReg, mask);
-                Reg::StoreAlign(xGradVec3BufAddr + hInOffset, hInFP32Reg, mask);
-                hInOffset += eleNumPerVf_;
-            }
+            // copySizeND最大为64，当前T行只需一次向量处理，删除恒单次的内层循环控制。
+            mask = Reg::UpdateMask<P>(lenND);
+            // hIn B16 -> B32
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(hInReg, hInGradInBufAddr + hInOffset);
+            Reg::Cast<float, T, ctHalf2Fp32Zero>(hInFP32Reg, hInReg, mask);
+            Reg::Mul(hInFP32Reg, hInFP32Reg, hPreFullReg, mask);
+            Reg::StoreAlign(xGradVec3BufAddr + hInOffset, hInFP32Reg, mask);
             hPreOffset += N_;
         }
     }
