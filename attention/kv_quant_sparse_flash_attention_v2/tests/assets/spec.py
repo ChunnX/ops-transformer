@@ -59,6 +59,7 @@ class KvQuantSparseFlashAttentionV2Spec:
 
 
 __spec__ = {
+    "torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention": "KvQuantSparseFlashAttentionV2Spec",
     "torch_npu.npu_kv_quant_sparse_flash_attention_v2": "KvQuantSparseFlashAttentionV2Spec",
     "qsfa_v2_ttk_ops.kv_quant_sparse_flash_attention_v2_ttk": "KvQuantSparseFlashAttentionV2Spec",
 }

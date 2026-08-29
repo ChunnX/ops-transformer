@@ -237,6 +237,7 @@ def cpu_kv_quant_sparse_flash_attention_v2(
 
 __golden__ = {
     "e2e": {
+        "torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention": "cpu_kv_quant_sparse_flash_attention_v2",
         "torch_npu.npu_kv_quant_sparse_flash_attention_v2": "cpu_kv_quant_sparse_flash_attention_v2",
         "qsfa_v2_ttk_ops.kv_quant_sparse_flash_attention_v2_ttk": "cpu_kv_quant_sparse_flash_attention_v2",
     }

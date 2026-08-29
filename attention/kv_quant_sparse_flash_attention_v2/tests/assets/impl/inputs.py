@@ -273,6 +273,7 @@ INPUT_ADAPTER = KvQuantSparseFlashAttentionV2InputAdapter()
 
 __input__ = {
     "e2e": {
+        "torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention": "generate_qsfa_v2_inputs",
         "torch_npu.npu_kv_quant_sparse_flash_attention_v2": "generate_qsfa_v2_inputs",
         "qsfa_v2_ttk_ops.kv_quant_sparse_flash_attention_v2_ttk": "generate_qsfa_v2_inputs",
     }

@@ -16,27 +16,16 @@ from typing import Optional
 
 import torch
 import torch_npu
+from cann_ops_transformer.ops import kv_quant_sparse_flash_attention
 
 
-class KvQuantSparseFlashAttentionV2DtypeResolver:
-    """Resolve CSV dtype strings while leaving the raw tensor storage unchanged."""
-
-    @staticmethod
-    def normalize(dtype):
-        """Return the runtime dtype object expected by the native API."""
-        if dtype is None or not isinstance(dtype, str):
-            return dtype
-        name = dtype.rsplit(".", maxsplit=1)[-1].lower()
-        if name in ("", "none"):
-            return None
-        if name == "hifp8":
-            name = "hifloat8"
-        resolved = getattr(torch_npu, name, None)
-        if resolved is None:
-            resolved = getattr(torch, name, None)
-        if resolved is None:
-            raise ValueError(f"Unsupported KvQuantSparseFlashAttentionV2 dtype: {dtype}")
-        return resolved
+def _get_kv_torch_dtype(kv_dtype):
+    if kv_dtype is None:
+        return None
+    name = str(kv_dtype).strip().lower().removeprefix("torch.")
+    if name in ("hifloat8", "hifp8"):
+        return torch_npu.hifloat8
+    return None
 
 
 def kv_quant_sparse_flash_attention_v2_ttk(
@@ -68,7 +57,7 @@ def kv_quant_sparse_flash_attention_v2_ttk(
     value_dtype: Optional[int] = None,
 ):
     """Call the installed API with explicit key/value dtype semantics."""
-    return torch_npu.npu_kv_quant_sparse_flash_attention_v2(
+    return kv_quant_sparse_flash_attention(
         query,
         key,
         value,
@@ -81,7 +70,6 @@ def kv_quant_sparse_flash_attention_v2_ttk(
         block_table=block_table,
         actual_seq_lengths_query=actual_seq_lengths_query,
         actual_seq_lengths_kv=actual_seq_lengths_kv,
-        sinks=sinks,
         sparse_block_size=sparse_block_size,
         layout_query=layout_query,
         layout_kv=layout_kv,
@@ -92,6 +80,7 @@ def kv_quant_sparse_flash_attention_v2_ttk(
         quant_scale_repo_mode=quant_scale_repo_mode,
         tile_size=tile_size,
         rope_head_dim=rope_head_dim,
-        key_dtype=KvQuantSparseFlashAttentionV2DtypeResolver.normalize(key_dtype),
-        value_dtype=KvQuantSparseFlashAttentionV2DtypeResolver.normalize(value_dtype),
+        key_dtype=_get_kv_torch_dtype(key_dtype),
+        value_dtype=_get_kv_torch_dtype(value_dtype),
+        sinks=sinks,
     )
