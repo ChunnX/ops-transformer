@@ -72,7 +72,7 @@ struct SendMaskScratch {
     LocalTensor<int32_t> sendCntAccTensor;
 };
 
-// A8W8 Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
+// MTE Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
 // 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishExpertCounts 独立发布。
 __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
                                                             const SendMaskConfig &config, SendMaskScratch &scratch,

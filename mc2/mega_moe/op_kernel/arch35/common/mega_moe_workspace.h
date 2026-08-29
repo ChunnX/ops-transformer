@@ -119,7 +119,7 @@ struct WorkspaceInfo {
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
         bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
-        bool useMteGroupReady = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
+        bool useMteGroupReady = UseMteGroupCombineReady(tilingData->topoType, tilingData->groupedMatmulMode);
         bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
                         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
