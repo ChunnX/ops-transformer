@@ -1404,7 +1404,13 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
+    // 预取 scratch 落在 UB 顶部 [weightPrefetchUbOffset, ubSize)：偏移由平台 ubSize 动态推导
+    // （ubSize − 16KB chunk）——布局钳到该偏移之下即为 scratch 留出整个顶部 chunk。
+    tilingData->weightPrefetchUbOffset = availableUbBytes > static_cast<uint32_t>(WEIGHT_L2_PREFETCH_CHUNK_BYTES) ?
+                                             availableUbBytes - static_cast<uint32_t>(WEIGHT_L2_PREFETCH_CHUNK_BYTES) :
+                                             0U;
+    uint32_t sendMaskAvailableUbBytes = tilingData->weightPrefetchUbOffset;
+    SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sendMaskAvailableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
