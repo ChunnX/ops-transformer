@@ -256,19 +256,6 @@ struct TNDSparseDeterPack {
     int64_t rSingle = 0;
 };
 
-inline bool TNDAllCubesTiny(const FuzzyBaseInfoParamsRegbase &p)
-{
-    for (int64_t i = 0; i < p.b; ++i) {
-        int64_t m = 0;
-        int64_t n = 0;
-        GetTNDOuterMN(p, i, m, n);
-        if (m > NUM_THREE || n > NUM_THREE) {
-            return false;
-        }
-    }
-    return true;
-}
-
 inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
 {
     TNDSparseDeterPack pack;
@@ -449,11 +436,8 @@ protected:
         if (fBaseParams.g == 1 &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) ||
              fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND))) {
-            if (fBaseParams.n2 >= NUM_TWO && !TNDAllCubesTiny(fBaseParams)) {
-                ApplyTNDSparseDeterParam(fBaseParams, BuildTNDSparseDeter(fBaseParams));
-                return;
-            }
-            fBaseParams.tndSparseDeter = false;
+            ApplyTNDSparseDeterParam(fBaseParams, BuildTNDSparseDeter(fBaseParams));
+            return;
         }
 
         CalcleTNDDenseDeterParam();
@@ -538,7 +522,7 @@ protected:
         std::copy(deterPrefixData.deterPrefixAlign.begin(), deterPrefixData.deterPrefixAlign.end(),
                   fBaseParams.deterPrefixAlign);
 
-        if (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) {
+        if (fBaseParams.g == 1) {
             CalcleTNDCausalDeterParamNormal(deterPrefixData, m0Max, m1Max, m2Max);
         } else {
             CalcleTNDCausalDeterParamGQA(deterPrefixData, m0Max, m1Max, m2Max);
@@ -550,18 +534,14 @@ protected:
         if (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
             return;
         }
-        int64_t N11 = 0;
-        int64_t N12 = fBaseParams.n1;
-        if (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) {
-            N11 = fBaseParams.n1 / fBaseParams.aicNum;
-            N12 = fBaseParams.n1 % fBaseParams.aicNum;
-        }
+        int64_t N11 = fBaseParams.n1 / fBaseParams.aicNum;
+        int64_t N12 = fBaseParams.n1 % fBaseParams.aicNum;
         int64_t mnMax = 0;
 
         DeterPrefixData deterPrefixData;
         CalcleTNDBandDeterPrefix(deterPrefixData, N11, mnMax);
 
-        if (N11 > 0 && fBaseParams.g == 1 && fBaseParams.tndSparseDeter) {
+        if (N11 > 0 && fBaseParams.g == 1) {
             int64_t R0 = deterPrefixData.prefix0.back();
             deterPrefixData.prefix0 = SliceVector(deterPrefixData.prefix0, fBaseParams.deterPrefixStep);
             deterPrefixData.prefix0.push_back(R0);
@@ -569,14 +549,13 @@ protected:
 
         // 将最大轮次append在了prefix的最后，需要的时候可以直接取用，形式更简洁
         // prefix0的是乘了N1的结果，也可以不乘，乘了后二分查找不用额外申请空间
-        int64_t R1 = (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) ?
-                         (N12 > 0 ? std::max(CeilDivideBy(deterPrefixData.prefix1.back() * N12,
-                                                          static_cast<int64_t>(fBaseParams.aicNum)),
-                                             mnMax) :
-                                    0) :
-                         std::max(CeilDivideBy(deterPrefixData.prefix1.back() * fBaseParams.n1,
-                                               static_cast<int64_t>(fBaseParams.aicNum)),
-                                  mnMax);
+        int64_t R1 = fBaseParams.g == 1 ? (N12 > 0 ? std::max(CeilDivideBy(deterPrefixData.prefix1.back() * N12,
+                                                                           static_cast<int64_t>(fBaseParams.aicNum)),
+                                                              mnMax) :
+                                                     0) :
+                                          std::max(CeilDivideBy(deterPrefixData.prefix1.back() * fBaseParams.n1,
+                                                                static_cast<int64_t>(fBaseParams.aicNum)),
+                                                   mnMax);
         std::vector<int64_t> slicePrefix1 = SliceVector(deterPrefixData.prefix1, fBaseParams.deterPrefixStep);
         deterPrefixData.prefix1.push_back(R1);
         slicePrefix1.push_back(R1);
@@ -623,9 +602,7 @@ protected:
 
     void CalcleTNDCausalDeterPrefix(DeterPrefixData &deterPrefixData, int64_t &m0Max, int64_t &m1Max, int64_t &m2Max)
     {
-        int64_t N12 = (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) ?
-                          fBaseParams.n2 % fBaseParams.aicNum % NUM_TWO :
-                          fBaseParams.n2 % NUM_TWO;
+        int64_t N12 = fBaseParams.g == 1 ? fBaseParams.n2 % fBaseParams.aicNum % NUM_TWO : fBaseParams.n2 % NUM_TWO;
         for (int64_t i = 0; i < fBaseParams.b; i++) {
             int64_t actualS1Outer =
                 CeilDivideBy(fBaseParams.actualSeqQlen[i], fBaseParams.s1Inner * fBaseParams.s1CvRatio);
