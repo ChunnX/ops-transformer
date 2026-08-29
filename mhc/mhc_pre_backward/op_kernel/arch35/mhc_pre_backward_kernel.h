@@ -1075,8 +1075,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
     __ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr, __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaInAddr,
     uint32_t currentChunkSize, uint32_t copySizeND)
 {
-    uint32_t eleNumPerVf = 64;
-    uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> xInB16Reg;
@@ -1086,25 +1084,24 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
             Reg::LoadAlign(gammaReg, gammaInAddr);
         }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
+            // copySizeND最大为64，一个向量指令即可处理整行，无需额外的VF分块循环。
             uint32_t lenND = copySizeND;
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
-                Reg::MaskReg mask = Reg::UpdateMask<P>(lenND);
-                uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
+            Reg::MaskReg mask = Reg::UpdateMask<P>(lenND);
+            uint32_t offset = tIdx * copySizeND;
 
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xInB16Reg, bf16InputAddr + offset);
-                Reg::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xInB16Reg, bf16InputAddr + offset);
+            Reg::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
 
-                Reg::StoreAlign(xRsFp32Addr + offset, xFp32Reg, mask); // 后续其他计算需要xFp32
+            Reg::StoreAlign(xRsFp32Addr + offset, xFp32Reg, mask); // 后续其他计算需要xFp32
 
-                if constexpr (hasGamma) {
-                    if constexpr (!reuseGamma) {
-                        Reg::LoadAlign(gammaReg, gammaInAddr + vfBlockIdx * eleNumPerVf);
-                    }
-                    Reg::Mul(resultReg, gammaReg, xFp32Reg, mask); // 逐元素乘：gamma * x
-                    Reg::StoreAlign(gammaOutAddr + offset, resultReg, mask);
-                } else { // 没有gamma，原始逻辑是 xFp32Reg * 1.0，等价于不处理，这里直接store
-                    Reg::StoreAlign(gammaOutAddr + offset, xFp32Reg, mask);
+            if constexpr (hasGamma) {
+                if constexpr (!reuseGamma) {
+                    Reg::LoadAlign(gammaReg, gammaInAddr);
                 }
+                Reg::Mul(resultReg, gammaReg, xFp32Reg, mask); // 逐元素乘：gamma * x
+                Reg::StoreAlign(gammaOutAddr + offset, resultReg, mask);
+            } else { // 没有gamma，原始逻辑是 xFp32Reg * 1.0，等价于不处理，这里直接store
+                Reg::StoreAlign(gammaOutAddr + offset, xFp32Reg, mask);
             }
         }
     }
