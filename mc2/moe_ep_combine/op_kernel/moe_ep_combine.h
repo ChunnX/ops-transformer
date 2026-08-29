@@ -80,8 +80,8 @@ static constexpr uint32_t ADDRESS_ENTRY_UB_BYTES = UB_ALIGN;
 static constexpr uint32_t ADDRESS_ENTRY_GM_BYTES = WIN_ADDR_ALIGN;
 static constexpr uint32_t ADDRESS_TABLE_BUFFER_BYTES = 40U * 1024U;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
-static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
-static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -339,6 +339,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
     // Group preceding rows into a few MTE2 copies, as in PR 10309 GetSlotStartNum().
@@ -451,6 +452,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
 
@@ -532,8 +534,11 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
     if (preparedWriteCount_ != 0) {
-        (void)hcomm_.BatchCommit(activeBatchHandle_);
+        int32_t commitRet = hcomm_.BatchCommit(activeBatchHandle_);
+        ascendc_assert(commitRet == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", commitRet);
         preparedWriteCount_ = 0;
+        int32_t drainRet = hcomm_.Drain(activeBatchHandle_);
+        ascendc_assert(drainRet == HCOMM_SUCCESS, "Batch Drain failed, ret=%d", drainRet);
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
@@ -619,8 +624,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
+    // Drain all payload writes before publishing the completion flag. Drain requires CQE-enabled WQEs; otherwise
+    // the batch handle's cqHead does not advance and polling cannot prove completion of the current batch.
+    FlushPreparedWrites();
     BeginPreparedWrites(dstRank);
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+    FlushPreparedWrites();
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -675,6 +684,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
     // Build once with all AIVs; communication AIVs consume only their compact rank table below.
     BuildAddressTable();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
 
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
@@ -706,8 +717,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Local copies completed before BuildAddressTable's final barrier. Each remote rank publishes one completion
-    // flag through channel 0 without a second all-core barrier here.
+    // Diagnostic barrier: every AIV reaches this point before any completion flag is published. Do not move this
+    // barrier into the rank/core-dependent branches above, where different execution counts would deadlock.
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+
+    // Each remote rank publishes one completion flag through channel 0 after all AIVs have issued their token work.
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
     bool publishesChannelFlag =
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
@@ -728,6 +743,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }

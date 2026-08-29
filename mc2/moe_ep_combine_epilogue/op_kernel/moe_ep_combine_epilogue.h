@@ -278,6 +278,25 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (aivId_ == 0U) {
         while (!WaitDispatch(completionChannelCount)) {
         }
+    }
+    SyncAll<true>();
+
+    if (tPerCore_ != 0U) {
+        DataCopyPadParams padParams = {false, 0, 0, 0};
+        DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+        for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
+            ProcessTopKToken(tokenIdx);
+            LocalTensor<XType> ubResult = xOutQue_.DeQue<XType>();
+            DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResult, xCopyParams);
+            xOutQue_.FreeTensor(ubResult);
+        }
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+    SyncAll<true>();
+
+    // Release the receive window only after every AIV has consumed its payload. Clearing the completion flags
+    // before the reduce phase allows the next combine invocation to overwrite slots that are still being read.
+    if (aivId_ == 0U) {
         LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
         SyncFunc<AscendC::HardEvent::S_V>();
         Duplicate<uint32_t>(stateTensor, static_cast<uint32_t>(0), flagBufferBytes / sizeof(uint32_t));
@@ -292,19 +311,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
     SyncAll<true>();
-
-    if (tPerCore_ == 0) {
-        return;
-    }
-
-    DataCopyPadParams padParams = {false, 0, 0, 0};
-    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
-        ProcessTopKToken(tokenIdx);
-        LocalTensor<XType> ubResult = xOutQue_.DeQue<XType>();
-        DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResult, xCopyParams);
-        xOutQue_.FreeTensor(ubResult);
-    }
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
