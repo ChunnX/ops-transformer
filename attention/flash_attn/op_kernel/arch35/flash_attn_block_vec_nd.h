@@ -40,6 +40,7 @@
 #endif
 
 #include "memory_copy_arch35.h"
+#include "../utils/flash_attn_sink_vf.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -206,12 +207,11 @@ public:
 
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
-            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES]; // 2 * 32K = 64K, CV通信BUF
-            uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES]; // 2 * 32K = 64K, CV通信BUF
-            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 2 * 8K = 16K, 输入BUF: MASK拷入
-            uint8_t vec2Res[32768U];                                        // 32K, 输出BUF: attn_out拷出
-            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
-                                  [UB_VEC1_RES_BUF_BYTES];                           // 2 * 32.25K, softmax结果拷至L1
+            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES];    // 2 * 32K = 64K, CV通信BUF
+            uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES];    // 2 * 32K = 64K, CV通信BUF
+            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];            // 2 * 8K = 16K, 输入BUF: MASK拷入
+            uint8_t vec2Res[32768U];                                           // 32K, 输出BUF: attn_out拷出
+            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT][UB_VEC1_RES_BUF_BYTES]; // 2 * 32.25K, softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
             uint8_t softmaxMaxBuf_[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // 3 * 0.25K = 0.75K, max常驻BUF
             uint8_t softmaxExpBuf_[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // 3 * 0.25K = 0.75K, exp常驻BUF
@@ -251,7 +251,8 @@ public:
     static constexpr uint32_t BRCB_NUM = 8U;
 
     __aicore__ inline void SinkCopyInGS1(LocalTensor<INPUT_T> &sinkTmpUb, GlobalTensor<INPUT_T> &sinkGm,
-                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx, uint32_t gSize)
+                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx,
+                                         uint32_t gSize)
     {
         uint32_t gStart = gs1Start / actS1Size;
         uint32_t gs1End = gs1Start + actVecMSize - 1;
@@ -269,56 +270,9 @@ public:
         DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
     }
 
-    __aicore__ inline void SinkExpandGS1(LocalTensor<T> &sinkExpandUb, LocalTensor<T> &sinkBrcbUb,
-                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t gSize)
-    {
-        uint32_t s1Start = gs1Start % actS1Size;
-        uint32_t gStart = gs1Start / actS1Size;
-
-        uint32_t gs1End = gs1Start + actVecMSize - 1;
-        uint32_t s1End = gs1End % actS1Size;
-        uint32_t gEnd = gs1End / actS1Size;
-
-        // 头块: 指头部不完整的s1块, 并且起始位置不是0
-        // 中间块: 指完整的s1块
-        // 尾块: 指尾部不完整的s1块, 并且其实位置是0
-        uint32_t headS1 = 0;
-        if (s1Start != 0) {
-            headS1 = (gStart == gEnd) ? (s1End - s1Start + 1) : (actS1Size - s1Start);
-        } else {
-            headS1 = 0; // 起始位置为0, 不能算入头块
-        }
-
-        uint32_t midCnt = (actVecMSize - headS1) / actS1Size;
-        uint32_t tailS1 = (actVecMSize - headS1) % actS1Size;
-
-        uint32_t ubOffset = 0;
-        uint32_t gIdx = 0;
-        if (headS1 > 0) {
-            for (uint32_t i = 0; i < headS1; i++) {
-                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[gIdx * BRCB_NUM], BRCB_NUM);
-                ubOffset += BRCB_NUM;
-            }
-            gIdx++;
-        }
-        for (uint32_t j = 0; j < midCnt; j++) {
-            for (uint32_t i = 0; i < actS1Size; i++) {
-                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[gIdx * BRCB_NUM], BRCB_NUM);
-                ubOffset += BRCB_NUM;
-            }
-            gIdx++;
-        }
-        if (tailS1 > 0) {
-            for (uint32_t i = 0; i < tailS1; i++) {
-                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[gIdx * BRCB_NUM], BRCB_NUM);
-                ubOffset += BRCB_NUM;
-            }
-            gIdx++;
-        }
-    }
-
     __aicore__ inline void SinkCopyInS1G(LocalTensor<INPUT_T> &sinkTmpUb, GlobalTensor<INPUT_T> &sinkGm,
-                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx, uint32_t gSize)
+                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx,
+                                         uint32_t gSize)
     {
         uint32_t gStart = gs1Start % gSize;
         uint32_t s1Start = gs1Start / gSize;
@@ -345,7 +299,8 @@ public:
                 // 并且gStart > gEnd, 此时它们不重叠.
                 // 由于头尾块的长度都可能不对齐, 并且gSize有可能很大, 而UB要求32B对齐,
                 // 约定先拷贝尾块的GM[0, gEnd]->UB[0, Align(gEnd + 1, 16) - 1],
-                // 再拷贝头块的GM[gStart, gSize)->UB[Align(gEnd + 1, 16), Align(gEnd + 1, 16) + Align(gSize - gStart, 16))
+                // 再拷贝头块的GM[gStart, gSize)->UB[Align(gEnd + 1, 16), Align(gEnd + 1, 16) + Align(gSize - gStart,
+                // 16))
                 DataCopyExtParams sinkCopyParams;
                 sinkCopyParams.blockCount = 1;
                 sinkCopyParams.blockLen = (gEnd + 1) * sizeof(INPUT_T);
@@ -387,68 +342,6 @@ public:
         }
     }
 
-    __aicore__ inline void SinkExpandS1G(LocalTensor<T> &sinkExpandUb, LocalTensor<T> &sinkBrcbUb,
-                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t gSize)
-    {
-        uint32_t gStart = gs1Start % gSize;
-        uint32_t s1Start = gs1Start / gSize;
-
-        uint32_t gs1End = gs1Start + actVecMSize - 1;
-        uint32_t gEnd = gs1End % gSize;
-        uint32_t s1End = gs1End / gSize;
-
-        if (s1Start == s1End) {
-            // 情况1: 只有一个头块, 此时[gStart, gEnd]之间的行就是实际处理的M轴
-            DataCopy(sinkExpandUb, sinkBrcbUb, (gEnd - gStart + 1) * BRCB_NUM);
-        } else if (s1Start + 1 == s1End) {
-            if (gStart > gEnd) {
-                // 情况2.1: 头块 + 尾块, 此时头块的[gStart, gSize)和尾块的[0, gEnd]为实际处理的M轴.
-                // 并且gStart > gEnd, 此时它们不重叠.
-                // 由于头尾块的长度都可能不对齐, 并且gSize有可能很大, 而UB要求32B对齐,
-                // 约定先拷贝尾块的GM[0, gEnd]->UB[0, Align(gEnd + 1, 16) - 1],
-                // 再拷贝头块的GM[gStart, gSize)->UB[Align(gEnd + 1, 16), Align(gEnd + 1, 16) + Align(gSize - gStart, 16))
-                uint32_t srcUbOffset = AttentionCommon::Align(gEnd + 1, 16U) * BRCB_NUM;
-                uint32_t copySize = (gSize - gStart) * BRCB_NUM;
-                DataCopy(sinkExpandUb, sinkBrcbUb[srcUbOffset], copySize);
-                DataCopy(sinkExpandUb[copySize], sinkBrcbUb[0], (gEnd + 1) * BRCB_NUM);
-            } else {
-                // 情况2.2: 头块 + 尾块, 此时头块的[gStart, gSize)和尾块的[0, gEnd]为实际处理的M轴.
-                // 并且gStart <= gEnd, 此时它们重叠, 合并后的覆盖范围为[0, gSize)
-                uint32_t copySize = (gSize - gStart) * BRCB_NUM;
-                DataCopy(sinkExpandUb, sinkBrcbUb[gStart * BRCB_NUM], copySize);
-                DataCopy(sinkExpandUb[copySize], sinkBrcbUb[0], (gEnd + 1) * BRCB_NUM);
-            }
-        } else {
-            // 情况3: 头块 + 中间块 + 尾块, 合并后的覆盖范围为[0, gSize)
-
-            // 头块: 指头部不完整的G块, 并且起始位置不是0
-            // 中间块: 指完整的G块
-            // 尾块: 指尾部不完整的G块, 并且其实位置是0
-            uint32_t headG = 0;
-            if (gStart != 0) {
-                headG = gSize - gStart;
-            } else {
-                headG = 0; // 起始位置为0, 不能算入头块
-            }
-
-            uint32_t midCnt = (actVecMSize - headG) / gSize;
-            uint32_t tailG = (actVecMSize - headG) % gSize;
-
-            uint32_t ubOffset = 0;
-            if (headG > 0) {
-                DataCopy(sinkExpandUb, sinkBrcbUb[gStart * BRCB_NUM], headG * BRCB_NUM);
-                ubOffset += headG * BRCB_NUM;
-            }
-            for (uint32_t i = 0; i < midCnt; i++) {
-                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[0], gSize * BRCB_NUM);
-                ubOffset += gSize * BRCB_NUM;
-            }
-            if (tailG > 0) {
-                DataCopy(sinkExpandUb[ubOffset], sinkBrcbUb[0], tailG * BRCB_NUM);
-            }
-        }
-    }
-
     __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfoX &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
@@ -464,54 +357,33 @@ public:
                 LocalTensor<INPUT_T> sinkTmpUb =
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
                 if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
-                    SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
-                                  runInfo.n2Idx, constInfo_.gSize);
+                    SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size, runInfo.n2Idx,
+                                  constInfo_.gSize);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    SinkCopyInGS1(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
-                                  runInfo.n2Idx, constInfo_.gSize);
+                    SinkCopyInGS1(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size, runInfo.n2Idx,
+                                  constInfo_.gSize);
                 }
             }
             Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
 
             Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
             {
-                // S1G场景,仅头尾两块且未覆盖完整G时,因为可能不32B对齐,每一段需预留16个数,故预留32元素, 预计brcb后要预留32行
+                // S1G场景,仅头尾两块且未覆盖完整G时,因为可能不32B对齐,每一段需预留16个数,故预留32元素,
+                // 预计brcb后要预留32行
                 static constexpr uint32_t MAX_VEC_M_SIZE = ((mBaseSize / CV_RATIO + 15U) & ~15U) + 32U;
                 LocalTensor<INPUT_T> sinkTmpUb =
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-                LocalTensor<T> sinkCastUb = sinkTmpUb[MAX_VEC_M_SIZE].template ReinterpretCast<T>();
-                LocalTensor<T> sinkBrcbUb = sinkCastUb[MAX_VEC_M_SIZE];
-                LocalTensor<T> sinkExpandUb = sinkBrcbUb[MAX_VEC_M_SIZE * BRCB_NUM];
-                LocalTensor<T> sinkResUb = sinkExpandUb[MAX_VEC_M_SIZE * BRCB_NUM];
+                LocalTensor<T> sinkExpandUb = sinkTmpUb[MAX_VEC_M_SIZE].template ReinterpretCast<T>();
 
-                Cast(sinkCastUb, sinkTmpUb, AscendC::RoundMode::CAST_NONE, MAX_VEC_M_SIZE);
-                AscendC::PipeBarrier<PIPE_V>();
-                Brcb(sinkBrcbUb, sinkCastUb, (MAX_VEC_M_SIZE + BRCB_NUM - 1) / BRCB_NUM, {1, BRCB_NUM});
-                AscendC::PipeBarrier<PIPE_V>();
-
-                if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
-                    SinkExpandS1G(sinkExpandUb, sinkBrcbUb, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
-                                  constInfo_.gSize);
-                } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    SinkExpandGS1(sinkExpandUb, sinkBrcbUb, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
-                                  constInfo_.gSize);
+                if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
+                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, true>(maxUb, sinkTmpUb, sinkExpandUb, gs1Start,
+                                                                   runInfo.actVecMSize, runInfo.actS1Size,
+                                                                   constInfo_.gSize);
+                } else {
+                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, false>(maxUb, sinkTmpUb, sinkExpandUb, gs1Start,
+                                                                    runInfo.actVecMSize, runInfo.actS1Size,
+                                                                    constInfo_.gSize);
                 }
-                AscendC::PipeBarrier<PIPE_V>();
-
-                constexpr uint32_t REDUCE_MAX_REPEAT = 128;
-                uint32_t remain = runInfo.actVecMSize;
-                uint32_t resOffset = 0;
-                uint32_t expandOffset = 0;
-                while (remain > 0) {
-                    uint32_t chunk = (remain > REDUCE_MAX_REPEAT) ? REDUCE_MAX_REPEAT : remain;
-                    WholeReduceMax(sinkResUb[resOffset], sinkExpandUb[expandOffset * BRCB_NUM], BRCB_NUM, chunk,
-                                   1, 1, 1, ReduceOrder::ORDER_ONLY_VALUE);
-                    resOffset += chunk;
-                    expandOffset += chunk;
-                    remain -= chunk;
-                }
-                AscendC::PipeBarrier<PIPE_V>();
-                DataCopy(maxUb, sinkResUb, AttentionCommon::Align(runInfo.actVecMSize, 8U));
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         } else {
@@ -528,17 +400,11 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
     }
 
-    __aicore__ inline void UnInitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
-    __aicore__ inline void AllocEventID()
-    {
-    }
+    __aicore__ inline void AllocEventID() {}
 
-    __aicore__ inline void FreeEventID()
-    {
-    }
+    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
     {
@@ -694,24 +560,22 @@ public:
         if (likely(runInfo.actSingleLoopS2Size == 128)) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize, EQ_128,
                                        HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false>(
-                stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
-                nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
+                stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb, nonePseUb,
+                dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                 0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                 descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size <= 64) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                       GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false,
-                                       false>(
-                stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
-                nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
+                                       GT_0_AND_LTE_64, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false>(
+                stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb, nonePseUb,
+                dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                 0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                 descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size < 128) {
             FaVectorApi::ProcessVec1Vf<T, INPUT_T, INPUT_T /*pseShiftType*/, true, mBaseSize, s2BaseSize,
-                                       GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false,
-                                       false>(
-                stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
-                nonePseUb, dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
+                                       GT_64_AND_LTE_128, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false, false, false>(
+                stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb, nonePseUb,
+                dropMaskUb, vec1ApiTmpBuf_, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
                 0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                 descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue);
         } else {
@@ -720,8 +584,7 @@ public:
                                            GT_128_AND_LTE_256, HAS_MASK, PseTypeEnum::PSE_NONE_TYPE, false>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mm1ResUbTensor, expUb, sumUb, maxUb, attenMaskUb,
                     nonePseUb, dropMaskUb, vec1ApiTmpBuf_, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size,
-                    0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */,
-                    static_cast<T>(constInfo_.scaleValue),
+                    0 /* pseStride */, 0.0f /* slopes */, 0.0f /* posShift */, static_cast<T>(constInfo_.scaleValue),
                     descaleQK, negativeFloatScalar_, 0.0F);
             }
         }
@@ -785,8 +648,7 @@ public:
             } else {
                 // 跨多个G: 后续G的s1均从0开始, 存在左无效行(s1FirstValidToken>0)必命中;
                 // 中间G的s1均到actS1Size-1结束, 存在右无效行(s1LastValidToken<actS1Size-1)必命中
-                ret = (s1FirstValidToken > 0) ||
-                      (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
+                ret = (s1FirstValidToken > 0) || (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
             }
         }
         return ret;
@@ -874,9 +736,8 @@ public:
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVBaseSize;
-        uint64_t gmOffset =
-            runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
-            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
+        uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
+                            (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
@@ -916,9 +777,8 @@ public:
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
                         1.0, 1.0);
                 } else {
-                    LocalTensor<float> sumUb =
-                        softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
-                                       (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
+                    LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
+                                                              (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, sumUb, runInfo.actVecMSize,
                         dTemplateAlign64, 1.0, 1.0);
