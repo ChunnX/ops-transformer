@@ -572,11 +572,11 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     blockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
     aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
-    if (aivBlockDim_ != blockDim_ * NUM_TWO) {
+    OP_CHECK_IF(
+        aivBlockDim_ != blockDim_ * NUM_TWO,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "aivNum", std::to_string(aivBlockDim_).c_str(),
-                                              "MhcPre only support aivNum == aicNum * 2");
-        return ge::GRAPH_FAILED;
-    }
+                                              "MhcPre only support aivNum == aicNum * 2"),
+        return ge::GRAPH_FAILED);
 
     ubSize_ = ubSize; // Save UB size for later validation
 
