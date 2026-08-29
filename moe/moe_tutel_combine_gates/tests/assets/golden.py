@@ -19,8 +19,8 @@ Contract:
     locations  : [K, S]      slot id inside the expert capacity
     gates_grad : [K, S]
 
-    valid[e,s]      = 0 <= indices[e,s] < E and 0 <= locations[e,s] < C
-    gates_grad[e,s] = dot(x[s,:], y_grad[indices[e,s], locations[e,s], :]) if valid else 0
+    valid[k,s]      = 0 <= indices[k,s] < E and 0 <= locations[k,s] < C
+    gates_grad[k,s] = dot(x[s,:], y_grad[indices[k,s], locations[k,s], :]) if valid else 0
 
 K is independent of E and satisfies 1 <= K <= E.
 
