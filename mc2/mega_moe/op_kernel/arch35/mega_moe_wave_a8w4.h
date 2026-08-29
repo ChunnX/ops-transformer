@@ -176,6 +176,29 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
+    // A8W4 权重 L2 预取（策略写死，不经 tiling 下发）：仅 AIV0 构造游标（AIC/AIV1 传空指针保持
+    // 原行为）。各 block 的 AIV0 以 (blockIdx, blockNum) 为 worker 标识在专家区域内按 chunk 交错
+    // 认领；窗口 1 为软预算（count 等待死区发多少算多少），从窗口 0 已覆盖量之后接续：自适应总量
+    // 经能力门限分解后剩余 >0 才构造，剩余为 0（小权重场景）时直接保持原自旋（Init 内 regionIndex
+    // 耗尽为第二层兜底）。topo/mode 门控：本 Wave 类仅在 TILINGKEY_TPL_MTE 拓扑实例化（apt.cpp），
+    // fp4 权重的 mode（A8W4/A4W4*）与 Wave 类经 tiling 互斥校验一一对应，故此处不重复判定 topoType/
+    // groupedMatmulMode（基类窗口 0 的 topoType 判定为同义冗余防御）；复用本类到其他拓扑时须补门控。
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        uint64_t adaptiveTotalBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank);
+        uint64_t window0Capacity = WeightL2PrefetchWindow0TotalBytes(countWorkspace_.blockNum);
+        uint64_t window0Bytes = adaptiveTotalBytes < window0Capacity ? adaptiveTotalBytes : window0Capacity;
+        if (GetSubBlockIdx() == 0U && adaptiveTotalBytes > window0Bytes) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                                 commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx,
+                                 countWorkspace_.blockNum, adaptiveTotalBytes - window0Bytes, window0Bytes);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     // A8W4 GMM1 与 GMM2 按相同的跨 Wave tile 顺序执行，因此共用分核起点。
     uint32_t startBlockIdx = 0U;
 
@@ -233,7 +256,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx, weightPrefetch);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
