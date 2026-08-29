@@ -2311,7 +2311,7 @@ def _phase1_scatter(
 
     # 搬运x（subSlot: coff=1 的 M 轴子核槽位偏移；coff=2 恒 0）
     sub_slot = sub_core_idx * deal_sc_num if Coff == 1 else 0
-    if sub_idx == 0:
+    if Coff == 1 or sub_idx == 0:
         _arrange_x(
             vec_ctx,
             intra_group_idx,
