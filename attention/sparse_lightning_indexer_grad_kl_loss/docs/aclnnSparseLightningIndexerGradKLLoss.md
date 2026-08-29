@@ -666,8 +666,9 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
-
+    <!-- npu="950" id2 -->
     <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
+    <!-- end id2 -->
 
 ## 调用示例
 
