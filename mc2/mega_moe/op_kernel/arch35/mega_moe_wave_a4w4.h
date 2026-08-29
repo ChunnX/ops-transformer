@@ -126,6 +126,26 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
+    // 权重 L2 预取：仅 AIV0 构造游标（AIC/AIV1 传空指针保持原行为）。窗口 1 为软预算（count 等待
+    // 死区发多少算多少），从窗口 0 已覆盖量之后接续；自适应总量经能力门限分解后剩余 >0 才构造
+    // （本类仅 MTE 拓扑实例化，不重复判定门控）。A4W4 的 GMM1 走 generic，W1 预取命中其权重读。
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        uint64_t adaptiveTotalBytes = WeightL2PrefetchAdaptiveTotalBytes(
+            commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank);
+        uint64_t window0Capacity = WeightL2PrefetchWindow0TotalBytes(countWorkspace_.blockNum);
+        uint64_t window0Bytes = adaptiveTotalBytes < window0Capacity ? adaptiveTotalBytes : window0Capacity;
+        if (GetSubBlockIdx() == 0U && adaptiveTotalBytes > window0Bytes) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 gmmExecutionConfig_.isPerExpertWeightTensor, commonConfig_.gmm1OutputDim,
+                                 commonConfig_.tokenHiddenDim, commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx,
+                                 countWorkspace_.blockNum, adaptiveTotalBytes - window0Bytes, window0Bytes, 2U,
+                                 params_.tilingData->weightPrefetchUbOffset);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，必须按相同调用顺序推进并始终保持一致。
     // 某个角色即使不参与当前 GMM 计算，也必须使用该 problem 的 tile 数更新游标。
     uint32_t startBlockIdx = 0U;
@@ -202,7 +222,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx, weightPrefetch);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
@@ -246,6 +266,25 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+
+        // 窗口 1 滑动补发：count 自旋仅 μs 级，首份额必然欠交；剩余预算按 wave 边界小额补发——
+        // wave N+1 将消费的权重在 wave N 期间交付，匹配逐 wave pull 的消费节奏。仅 AIV0 持游标
+        // （其余核空指针零执行）；与 AIV1 的 dispatch pull 分属不同核 MTE2 队列，仅共享 DDR 带宽。
+        if (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank && weightPrefetch != nullptr) {
+            for (uint32_t issued = 0U; issued < WEIGHT_L2_PREFETCH_WAVE_QUOTA_CHUNKS; ++issued) {
+                if (!WeightL2PrefetchTryIssue(*weightPrefetch)) {
+                    break;
+                }
+            }
+            // 发射即排空：在飞 scratch 写不得跨入下一 wave 的 AIV0 UB 使用（epilogue 手动布局
+            // 可达 UB 顶部，tiling 仅钳位 SendMask），代价 ~1-3μs 由波尾空闲吸收。
+            WeightL2PrefetchDrain();
+        }
+    }
+
+    if (weightPrefetch != nullptr) {
+        // 补发会话收尾：排空可能仍在飞的补发块，避免带在飞 MTE2 走到核退出。
+        WeightL2PrefetchDrain();
     }
 
     if constexpr (!TopkWeightsPrefetch) {
