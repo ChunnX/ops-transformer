@@ -52,7 +52,6 @@ constexpr uint32_t SUM_SQUARE_OFFSET = 0U;
 constexpr uint32_t DOT_OFFSET = FP32_REG_ELEMS;
 constexpr uint32_t MAX_OFFSET = STAT_VECTOR_COUNT * FP32_REG_ELEMS;
 constexpr uint32_t SUM_OFFSET = MAX_OFFSET + SCALAR_BLOCK_ELEMS;
-constexpr float FP32_LOWEST_FINITE = -3.4028234663852886e+38F;
 
 __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
 {
@@ -60,7 +59,7 @@ __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
     RegTensor<float> sumReg;
     MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
 
-    Duplicate(maxReg, FP32_LOWEST_FINITE, oneMask);
+    Duplicate(maxReg, 0.0F, oneMask);
     Duplicate(sumReg, 0.0F, oneMask);
     StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
     StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, sumReg, oneMask);
