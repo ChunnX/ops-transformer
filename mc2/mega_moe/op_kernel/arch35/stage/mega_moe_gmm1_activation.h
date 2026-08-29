@@ -678,7 +678,10 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
     if constexpr (IsWaveFlagGrained && g_coreType == AscendC::AIC) {
-        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config, allowWeightL2Bypass, gmB, gmScaleB);
+        // W8 预取生效（>8P）时权重读强制 NORMAL（DISABLE 的 no-allocate 读不命中预取行）；
+        // <=8P 保持调用方原判定。W4 路径 allowWeightL2Bypass 恒 false，不受影响。
+        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(
+            config, allowWeightL2Bypass && !IsW8WeightPrefetchRank(params.tilingData->epWorldSize), gmB, gmScaleB);
     }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
