@@ -62,8 +62,8 @@ void CheckMsaRequiredTensors(const at::Tensor &query, const at::Tensor &key, con
                              const c10::optional<at::Tensor> &actual_seq_qlen,
                              const c10::optional<at::Tensor> &actual_seq_klen)
 {
-    TORCH_CHECK(query.defined() && query.numel() > 0, "Tensor query is empty.");
-    TORCH_CHECK(key.defined() && key.numel() > 0, "Tensor key is empty.");
+    TORCH_CHECK(query.defined(), "Tensor query is not defined.");
+    TORCH_CHECK(key.defined(), "Tensor key is not defined.");
     TORCH_CHECK(start_loc.defined() && start_loc.numel() > 0, "Tensor start_loc is empty.");
     TORCH_CHECK(actual_seq_qlen.has_value() && actual_seq_qlen.value().defined(),
                 "TND query requires actual_seq_qlen.");
@@ -80,8 +80,8 @@ void CheckMsaLayoutRanks(const at::Tensor &query, const at::Tensor &key, const c
         TORCH_CHECK(!block_table.has_value() || !block_table.value().defined(),
                     "layout_key=TND must not pass block_table.");
     } else {
-        TORCH_CHECK(key.dim() == KEY_PA_DIM, "layout_key=", layoutKeyStr,
-                    " requires key rank 4, but got dim=", key.dim());
+        TORCH_CHECK(key.dim() == KEY_PA_DIM,
+                    "layout_key=", layoutKeyStr, " requires key rank 4, but got dim=", key.dim());
         TORCH_CHECK(block_table.has_value() && block_table.value().defined() && block_table.value().numel() > 0,
                     "PageAttention (BBND/BNBD) requires block_table.");
     }
@@ -121,7 +121,7 @@ void CheckMsaSparseAndDtypes(const at::Tensor &query, const at::Tensor &key, con
                         is_hifloat8(query.scalar_type());
     const bool is_quant = (key.scalar_type() == at::kChar);
     if (is_quant) {
-        TORCH_CHECK(query.scalar_type() == at::kHalf, "int8 key currently requires float16 query.");
+        TORCH_CHECK(query.scalar_type() == at::kHalf, "int8 key requires float16 query.");
         TORCH_CHECK(scale.has_value() && scale.value().defined() && scale.value().numel() > 0,
                     "int8 key requires dequant scale.");
         TORCH_CHECK(scale.value().scalar_type() == at::kFloat, "scale dtype must be float32.");
@@ -160,7 +160,10 @@ MsaKeyMeta ResolveTndKeyMeta(const at::Tensor &key, const at::Tensor &cu_q, cons
             meta.maxBlocks = blocks;
         }
     }
-    TORCH_CHECK(meta.maxBlocks > 0, "TND maxBlocks must be positive.");
+    // 全 kv_len=0：按 1 个 dummy block 分配 score 末维 16，与 InferShape 一致。
+    if (meta.maxBlocks <= 0) {
+        meta.maxBlocks = 1;
+    }
     TORCH_CHECK(init_blocks <= meta.maxBlocks && local_blocks <= meta.maxBlocks,
                 "init_blocks/local_blocks must be <= maxBlocks.");
     return meta;
@@ -177,12 +180,13 @@ MsaKeyMeta ResolvePaKeyMeta(const at::Tensor &key, const at::Tensor &bt, const s
         TORCH_CHECK(key.size(1) == SUPPORTED_BLOCK_SIZE,
                     "layout_key=BBND requires key [NP,P,N2,D] with P=", SUPPORTED_BLOCK_SIZE);
         meta.numKvHeads = key.size(DIM_2);
+        meta.keyHeadDim = key.size(DIM_3);
     } else {
         TORCH_CHECK(key.size(DIM_2) == SUPPORTED_BLOCK_SIZE,
                     "layout_key=BNBD requires key [NP,N2,P,D] with P=", SUPPORTED_BLOCK_SIZE);
         meta.numKvHeads = key.size(1);
+        meta.keyHeadDim = key.size(DIM_3);
     }
-    meta.keyHeadDim = key.size(DIM_3);
     TORCH_CHECK(cu_q.size(0) == kv_len.size(0) + 1, "actual_seq_qlen size must be batch+1.");
     TORCH_CHECK(start_loc.size(0) == kv_len.size(0), "start_loc size must equal batch.");
     TORCH_CHECK(bt.size(0) == kv_len.size(0), "block_table batch must equal batch.");

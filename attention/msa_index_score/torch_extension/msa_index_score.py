@@ -98,7 +98,8 @@ class MsaIndexScoreOpBuilder(OpBuilder):
                     blocks = 0 if kv <= 0 else (kv + 127) // 128
                     if blocks > max_blocks:
                         max_blocks = blocks
-                torch._check(max_blocks > 0, lambda: "TND maxBlocks must be positive")
+                if max_blocks <= 0:
+                    max_blocks = 1
             score_stride = _round_up(int(max_blocks), SCORE_STRIDE_ALIGN)
             return torch.empty(
                 (num_q_heads, total_q, score_stride),
@@ -175,6 +176,7 @@ def msa_index_score(
     Atlas A2/A3 与 Ascend 950。950 额外支持 query/key 同型
     ``torch_npu.hifloat8`` / ``torch.float8_e5m2`` / ``torch.float8_e4m3fn``（无 scale）。
     key 布局由 ``layout_key`` 指定：PA BBND ``[NP, P, N2, D]``、BNBD ``[NP, N2, P, D]``、TND ``[T2, N2, D]``。
+    Ascend 950 允许 ``q_len`` / ``kv_len`` 为 0（含整 batch）：跳过该请求的 QK；空 KV 的 score 为 ``-inf``。
 
     Args:
         query: ``[T1, N1, D]`` float16 / bfloat16；950 还可为三种 FP8

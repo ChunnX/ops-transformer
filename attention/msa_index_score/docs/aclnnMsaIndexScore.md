@@ -117,7 +117,7 @@ aclnnStatus aclnnMsaIndexScore(
       <td>公式中的$K_{idx}$。</td>
       <td>支持的shape为：TND、BNBD、BBND。</td>
       <td>BFLOAT16、FLOAT16、INT8、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
-      <td>ND、NZ</td>
+      <td>ND</td>
       <td>3（$[T2, N2, D]$）或 4（$[block\_num, N2, block\_size, D]$、$[block\_num, block\_size, N2, D]$）</td>
     </tr>
     <tr>
@@ -135,7 +135,7 @@ aclnnStatus aclnnMsaIndexScore(
       <td>公式中的$scale$，反量化系数。</td>
       <td>非量化场景传入 <code>nullptr</code>；量化场景时必选。PA 为 BNB/BBN；TND 为 $[T2, N2]$（N2=1 时可 $[T2]$）。</td>
       <td>FLOAT</td>
-      <td>ND、NZ</td>
+      <td>ND</td>
       <td>3（$[block\_num, N2, block\_size]$、$[block\_num, block\_size, N2]$）或 2（$[T2, N2]$）</td>
     </tr>
     <tr>
@@ -352,12 +352,13 @@ aclnnStatus aclnnMsaIndexScore(
 - 当前 $block\_size$ 值使用128。
 - `layoutKeyOptional` 必须显式指定 key 布局：`"BBND"`（$[block\_num, block\_size, N2, D]$）、`"BNBD"`（$[block\_num, N2, block\_size, D]$）或 `"TND"`（$[T2, N2, D]$）。不传时默认 `"BBND"`。
 - PageAttention（`layoutKey` 为 `"BBND"` / `"BNBD"`）场景下，`blockTableOptional` 必须传入；TND key 场景不得传入 `blockTableOptional`，`actualSeqKlenOptional` 为 $[B+1]$ 前缀和。
-- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16；Ascend 950 另支持 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN），`scaleOptional` 必须为 `nullptr`。量化场景下仅支持 INT8（fp16 query），`scaleOptional` 必选，dtype 为 FLOAT：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$。三种 FP8 仅 <term>Ascend 950PR/Ascend 950DT</term>，query 与 key 必须同型。
+- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16；Ascend 950 另支持 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN），`scaleOptional` 必须为 `nullptr`。量化场景仅支持 INT8（fp16 query），`scaleOptional` 必选，dtype 为 FLOAT：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$。三种 FP8 仅 950，query 与 key 必须同型。
 - `sparseMode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`attenMaskOptional` 传入 `nullptr`；
     - 为 3 时，代表 rightDownCausal 模式，`attenMaskOptional` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
 - `initBlocks`、`localBlocks` 必须 $\ge 0$ 且不超过逻辑 block 数（PA 为 `blockTableOptional` 第二维；TND 为 score 末维对齐宽度）。两者均为 0 时跳过 $local\_mask$。
-- 精度自验证矩阵（`--run_example ... --soc=ascend950`）：18 条 fp16/bf16/int8 + 3 条 FP8（`L0-fp8-e4m3fn` / `L0-fp8-e5m2` / `L1-fp8-e4m3fn-prefill`，D=128，C0=32）。通过标准末行 `[PASS]: 21/21 cases passed`。容差 fp16/bf16/int8 为 $1\mathrm{e}{-3}$，FP8 为 $2\mathrm{e}{-2}$。
+- Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 填 $-inf$；整 batch $T1=0$ 时 `SetBlockDim(1)`（对齐 FIA PR 9246）。A2/A3 整 batch $T1=0$ 仍拒绝。
+- 精度自验证矩阵（`--run_example ... --soc=ascend950`）：30 条 fp16/bf16/int8 + 3 条 FP8。通过标准末行 `[PASS]: 33/33 cases passed`。容差 fp16/bf16/int8 为 $1\mathrm{e}{-3}$，FP8 为 $2\mathrm{e}{-2}$。
 - Ascend 950 核实现位于 `op_kernel/arch35/`：当前与 A2 共用 8-page S workspace（非量化 fp16 / int8 fp32）；Cube 原生三种 FP8。`--run_example` 默认 soc 为 910b，950 必须显式 `--soc=ascend950`。
 
 

@@ -74,7 +74,7 @@
     <td>输入</td>
     <td>公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$）。</td>
     <td>BFLOAT16、FLOAT16、INT8、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
-    <td>ND、NZ</td>
+    <td>ND</td>
   </tr>
   <tr>
     <td>block_table</td>
@@ -88,7 +88,7 @@
     <td>可选输入</td>
     <td>公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选。PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$；TND 为 $[T2, N2]$。</td>
     <td>FLOAT</td>
-    <td>ND、NZ</td>
+    <td>ND</td>
   </tr>
   <tr>
     <td>atten_mask</td>
@@ -161,11 +161,12 @@
 - 当前 $block\_size$ 仅支持 128。
 - `layout_key` 必须显式指定：`"BBND"` / `"BNBD"` / `"TND"`，与 `key` 实际 shape 一致。
 - PageAttention（`layout_key` 为 `"BBND"` / `"BNBD"`）场景下，`block_table` 必须传入；TND key 场景不得传入 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和。
-- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16；Ascend 950 另支持 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN），`scale` 必须为空。量化场景下仅支持 INT8（fp16 query），`scale` 必选：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$，dtype 为 FLOAT。三种 FP8 仅 <term>Ascend 950PR/Ascend 950DT</term>，且 query 与 key 必须同型、不得传 `scale`。
+- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16；Ascend 950 另支持 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN），`scale` 必须为空。量化场景仅支持 INT8（fp16 query），`scale` 必选：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$，dtype 为 FLOAT。三种 FP8 仅 950，且 query 与 key 必须同型、不得传 `scale`。
 - `sparse_mode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`atten_mask` 传入空；
     - 为 3 时，代表 rightDownCausal 模式，`atten_mask` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
 - `init_blocks`、`local_blocks` 必须 $\ge 0$ 且不超过逻辑 block 数（PA 为 `block_table` 第二维；TND 为 score 末维对齐宽度）。两者均为 0 时跳过 $local\_mask$。
+- Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 填 `-inf`；整 batch `T1=0` 时 `SetBlockDim(1)`。A2/A3 整 batch `T1=0` 仍拒绝。
 - 本算子输出止于 block score，**不包含** TopK。
 
 ## 调用示例
@@ -216,8 +217,8 @@ export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
 
 # aclnn example 必须带 --soc=ascend950（否则默认 910b）
 bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
-# 通过：末行 [PASS]: 21/21 cases passed
-# 矩阵：18 条 fp16/bf16/int8（BBND/BNBD/TND）+ L0-fp8-e4m3fn / L0-fp8-e5m2 / L1-fp8-e4m3fn-prefill（D=128）
+# 通过：末行 [PASS]: 33/33 cases passed
+# 矩阵：30 条 fp16/bf16/int8（BBND/BNBD/TND，含 mixed-batch pad + 整 batch q_len/kv_len=0）+ 3 条 FP8（D=128）
 # 容差：fp16/bf16/int8 1e-3，FP8 2e-2
 ```
 
