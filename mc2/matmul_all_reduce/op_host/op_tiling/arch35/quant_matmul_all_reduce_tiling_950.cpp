@@ -238,7 +238,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoOpTiling()
             }
         }
         OP_LOGI(opName_,
-                "PertileAicpuSplitM: M[%lu] split[%lu] → tileM[%lu] tileCnt[%u] tailM[%lu] tailCnt[%u].",
+                "PertileAicpuSplitM: M[%lu] split[%lu] tileM[%lu] tileCnt[%u] tailM[%lu] tailCnt[%u].",
                 rankM, PERTILE_AICPU_SPLIT_NUM, tileMValue_, param.tileCnt, tailMValue_, param.tailCnt);
     }
     // ===== end 定制切分 =====
