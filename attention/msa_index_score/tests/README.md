@@ -17,7 +17,7 @@ bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-
 source /tmp/msa_opp/vendors/custom_transformer/bin/set_env.bash
 export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
 bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
-# 通过：末行 [PASS]: 21/21 cases passed
+# 通过：末行 [PASS]: 33/33 cases passed
 ```
 
 ## 2. 用例矩阵
@@ -39,8 +39,16 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --so
 | `L1-bnbd` / `L1-bnbd-int8` | PA BNBD | `[NP, N2, P, D]` |
 | `L1-tnd-unaligned` / `L1-tnd-int8` / `L0-tnd-tiny` | TND packed | 无 block_table，klen 前缀和 |
 | `L0-fp8-e4m3fn` / `L0-fp8-e5m2` / `L1-fp8-e4m3fn-prefill` | 950 FP8（D=128） | Cube 原生 e4m3fn / e5m2；hifloat8 仅 kernel |
+| `L1-pad-q0` | 部分请求 `q_len=0` | mixed-batch 跳过空 query |
+| `L1-pad-kv0` | 部分请求 `kv_len=0` | mixed-batch 空 KV，score 填 `-inf` |
+| `L1-pad-q0-kv0` / `L1-tnd-pad-q0-kv0` | 头部 `q_len=kv_len=0` | PA / TND 同时 pad |
+| `L1-pad-mid-q0` | 中间请求 `q_len=kv_len=0` | 前后有效请求夹空 pad |
+| `L0-all-q0` / `L1-all-q0` | 整 batch `q_len=0` | host 不拦截，跳过计算 |
+| `L0-all-kv0` | 整 batch `kv_len=0` | 跳过 QK，score 全 `-inf` |
+| `L0-all-q0-kv0` | 整 batch 两侧 0 | 空 query + 空 KV |
+| `L0-tnd-all-q0` / `L0-tnd-all-kv0` / `L0-tnd-all-q0-kv0` | TND 整 batch 空 | packed key / 空 key 张量 |
 
-默认跑完整用例矩阵（含 TND / BNBD）。950 另含 3 条 FP8，共 21 条。key 布局由 `layout_key`（aclnn：`layoutKeyOptional`）指定，不再从 shape 推断。
+默认跑完整用例矩阵（含 TND / BNBD）。950 另含 3 条 FP8，共 33 条。key 布局由 `layout_key`（aclnn：`layoutKeyOptional`）指定，不再从 shape 推断。
 
 ## 3. Python 参考
 
