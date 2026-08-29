@@ -543,7 +543,7 @@ ge::graphStatus FiaInfoParser::GetKvStrideValues()
             kRopeN2Stride_ = kRopeStrides_->GetStride(1);
         }
     }
-    // 仅 mode4/mode5 scale 及 offset 支持非连续 stride 传入: 
+    // 仅 mode4/mode5 scale 及 offset 支持非连续 stride 传入:
     // mode4 shape [blockNum, bs], mode5 shape [blockNum, N2, bs]
     if (opParamInfo_.keyAntiquantMode != nullptr) {
         const auto mode = *opParamInfo_.keyAntiquantMode;

@@ -48,26 +48,24 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         return;
     }
     auto tempKey = const_cast<aclTensorList *>(tensorListKey);
+    // 仅 INT4 输入场景（DT_INT32 打包存储）：将 viewShape/StorageShape/viewStrides 换算到 int4 口径（末维 ×8）
+    // SetViewShape 会把 viewStrides 重算成连续值，需用保存的原始 stride 换算后覆盖以保留非连续信息
     for (uint64_t i = 0; i < tempKey->Size(); i++) {
         if ((*tempKey)[i] != nullptr) {
             op::Shape viewShape = (*tempKey)[i]->GetViewShape();
             auto viewShapeDim = viewShape.GetDimNum();
-            // 先存原始 stride (PTA传的 int32 口径非连续值), SetViewShape 会重算成连续, 之后要×8恢复
             auto origStrides = (*tempKey)[i]->GetViewStrides();
             if (viewShapeDim >= 1) {
                 viewShape[viewShapeDim - 1] = viewShape[viewShapeDim - 1] * INT4_NUMS_IN_INT32;
             }
             (*tempKey)[i]->SetViewShape(viewShape);
             (*tempKey)[i]->SetDataType(DataType::DT_INT4);
-            // 同步 StorageShape 口径: 末维 ×8 (让 checker 用 int4 口径)
             auto storageShape = (*tempKey)[i]->GetStorageShape();
             if (storageShape.GetDimNum() >= 1) {
                 storageShape[storageShape.GetDimNum() - 1] =
                     storageShape[storageShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
                 (*tempKey)[i]->SetStorageShape(storageShape);
             }
-            // SetViewShape 会重算 viewStrides 成连续值, 丢失原非连续信息。
-            // 用原始 stride ×8 (int32→int4 口径) 覆盖, 恢复非连续: 非末维×8, 末维不变。
             if (origStrides.size() > 0 && viewShapeDim >= 1) {
                 for (uint64_t d = 0; d < origStrides.size() - 1; ++d) {
                     origStrides[d] = origStrides[d] * static_cast<int64_t>(INT4_NUMS_IN_INT32);
