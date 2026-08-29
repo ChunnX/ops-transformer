@@ -238,12 +238,18 @@ __aicore__ inline void EngramFetchGradUnique::ZeroGradUnique(uint32_t numRecv, G
         AscendC::Duplicate<float>(zeroBuf, 0.0f, tileFloats);
         SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
 
+        // Chunk stride must equal the zeroed span (tileFloats*4 <= 65532): DataCopyParams
+        // blockLen is uint16_t, and TILE_BYTES(64KB) as a full chunk wraps to 0 in the
+        // uint16 cast -> the zero pass silently wrote nothing for every full 64KB chunk
+        // (regression from the TILE_BYTES 32K->64K change; masked only by pre-zeroed
+        // output buffers, exposed by generalization cases).
+        uint32_t chunkBytes = tileFloats * sizeof(float);
         AscendC::GlobalTensor<uint8_t> dstGM;
         dstGM.SetGlobalBuffer((__gm__ uint8_t *)gradUniqueOutGM);
-        for (uint64_t off = start; off < end; off += Mc2Kernel::TILE_BYTES) {
+        for (uint64_t off = start; off < end; off += chunkBytes) {
             uint64_t thisLen = end - off;
-            if (thisLen > Mc2Kernel::TILE_BYTES) {
-                thisLen = Mc2Kernel::TILE_BYTES;
+            if (thisLen > chunkBytes) {
+                thisLen = chunkBytes;
             }
             AscendC::DataCopyParams params{1U, static_cast<uint16_t>(thisLen), 0U, 0U};
             AscendC::DataCopyPad(dstGM[off], zeroBuf.ReinterpretCast<uint8_t>(), params);
