@@ -3369,11 +3369,7 @@ def compressor_grad(
 
                 # ── CV 通路: 本轮 v1 完成即发信号（供 cube c1(i) 消费）──
                 b_idx, sc_idx = b_idx_end, sc_idx_end
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=db_idx,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-                )
+                pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
 
                 # ── 本轮快照存入 cur（V2(i-1) 结束后才轮换为 prev，避免被本轮 V2 读到）──
                 cur_db_idx, cur_b_idx_start, cur_sc_idx_start = (
@@ -3454,11 +3450,7 @@ def compressor_grad(
                 deal_tc_size = min(
                     tiling.group_deal_sc_num, max(0, round_blocks - pre_deal_tc_size)
                 )
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE1,
-                    event_id=db_idx,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-                )
+                pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
                 if pre_deal_tc_size < round_blocks:
                     _phase2_matmul(
                         round_idx,
