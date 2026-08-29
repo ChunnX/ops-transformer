@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID 5074e676c509af531df1f83554b6e9394cb45859)
+set(OPTENSOR_TAG_ID b740aaabca8a86e07055b5d833b6b3008bfa3aa7)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -74,8 +74,8 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(TENSOR_API
                          ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 else()
-  set(OPTENSOR_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
-  set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
+  set(OPTENSOR_GIT_URL "git@gitcode.com:AlbertYoung192/ops-tensor_fix_SSS_K_tiling_shape.git")
+  set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/AlbertYoung192/ops-tensor_fix_SSS_K_tiling_shape.git")
 
   execute_process(
     COMMAND git ls-remote ${OPTENSOR_GIT_URL} HEAD
