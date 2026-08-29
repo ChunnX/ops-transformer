@@ -166,24 +166,23 @@ public:
             constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
-        constInfo.bSize = tilingData->flashAttnBaseParams.bSize;
-        constInfo.t1Size = tilingData->flashAttnBaseParams.t1Size;
-        constInfo.t2Size = tilingData->flashAttnBaseParams.t2Size;
-        constInfo.n2Size = tilingData->flashAttnBaseParams.n2Size;
-        constInfo.gSize = tilingData->flashAttnBaseParams.gSize;
-        constInfo.s1Size = tilingData->flashAttnBaseParams.s1Size;
-        constInfo.s2Size = tilingData->flashAttnBaseParams.s2Size;
-        constInfo.dSize = tilingData->flashAttnBaseParams.dSize;
-        constInfo.dSizeV = tilingData->flashAttnBaseParams.dSizeV;
-        constInfo.cuSeqLensQSize = tilingData->flashAttnBaseParams.cuSeqLensQSize;
-        constInfo.cuSeqLensKVSize = tilingData->flashAttnBaseParams.cuSeqLensKVSize;
-        constInfo.seqUsedQSize = tilingData->flashAttnBaseParams.seqUsedQSize;
-        constInfo.seqUsedKvSize = tilingData->flashAttnBaseParams.seqUsedKvSize;
-        constInfo.scaleValue = static_cast<float>(tilingData->flashAttnBaseParams.scaleValue);
-        constInfo.isKvContinuous = tilingData->flashAttnBaseParams.isKvContinuous != 0;
-        constInfo.coreNum = tilingData->flashAttnBaseParams.coreNum;
-        constInfo.outputLayout = static_cast<FA_LAYOUT>(tilingData->flashAttnBaseParams.outputLayout);
-        constInfo.needInitOutput = tilingData->flashAttnBaseParams.needInitOutput;
+        constInfo_.bSize = tilingData_->flashAttnBaseParams.bSize;
+        constInfo_.t1Size = tilingData_->flashAttnBaseParams.t1Size;
+        constInfo_.t2Size = tilingData_->flashAttnBaseParams.t2Size;
+        constInfo_.n2Size = tilingData_->flashAttnBaseParams.n2Size;
+        constInfo_.gSize = tilingData_->flashAttnBaseParams.gSize;
+        constInfo_.s1Size = tilingData_->flashAttnBaseParams.s1Size;
+        constInfo_.s2Size = tilingData_->flashAttnBaseParams.s2Size;
+        constInfo_.dSize = tilingData_->flashAttnBaseParams.dSize;
+        constInfo_.dSizeV = tilingData_->flashAttnBaseParams.dSizeV;
+        constInfo_.cuSeqLensQSize = tilingData_->flashAttnBaseParams.cuSeqLensQSize;
+        constInfo_.cuSeqLensKVSize = tilingData_->flashAttnBaseParams.cuSeqLensKVSize;
+        constInfo_.seqUsedQSize = tilingData_->flashAttnBaseParams.seqUsedQSize;
+        constInfo_.seqUsedKvSize = tilingData_->flashAttnBaseParams.seqUsedKvSize;
+        constInfo_.scaleValue = static_cast<float>(tilingData_->flashAttnBaseParams.scaleValue);
+        constInfo_.coreNum = tilingData_->flashAttnBaseParams.coreNum;
+        constInfo_.outputLayout = static_cast<FA_LAYOUT>(tilingData_->flashAttnBaseParams.outputLayout);
+        constInfo_.needInitOutput = tilingData_->flashAttnBaseParams.needInitOutput;
 
         constInfo.sparseMode = tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = tilingData->flashAttnAttenMaskParams.winLefts;
@@ -513,16 +512,6 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-            }
-        }
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
