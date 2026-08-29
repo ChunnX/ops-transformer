@@ -44,7 +44,8 @@ class AllGatherMxMatmulUrmaImpl {
 public:
     __aicore__ inline AllGatherMxMatmulUrmaImpl() {}
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM,
-                                GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM, const AllGatherMxMatmulUrmaTilingData *tilingData);
+                                GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM,
+                                const AllGatherMxMatmulUrmaTilingData *tilingData);
     __aicore__ inline void Process();
 
 #if MC2_DFX_ENABLE
@@ -125,7 +126,7 @@ private:
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-    GM_ADDR biasGM,const AllGatherMxMatmulUrmaTilingData *tilingData)
+    GM_ADDR biasGM, const AllGatherMxMatmulUrmaTilingData *tilingData)
 {
     tilingData_ = tilingData;
     hcommCtx_ = hcommCtx;
@@ -166,7 +167,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     commTilingData_.splitAxisTailSize = tailM_;  // tail 行数
     commTilingData_.splitAxisTailCnt = tailCnt_;
     // 通信按 Dtype 元素个数计：FP4(fp4x2) 每元素 2 个逻辑值，故按字节行宽折算
-    commTilingData_.nonSplitAxisSize = dataBytesPerMRow_ / sizeof(AType);    // 非切分轴k
+    commTilingData_.nonSplitAxisSize = dataBytesPerMRow_ / sizeof(AType); // 非切分轴k
 
     commTilingScale_.splitAxisTileSize = tileM_;
     commTilingScale_.splitAxisTileCnt = tileCnt_;
@@ -198,10 +199,10 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::InitBaseP
 
     scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
     // FP4 (fp4x2) 1 字节装 2 个元素：每行字节数 = k/2；FP8 等 = k * sizeof(AType)
-    dataBytesPerMRow_ = Blaze::Gemm::IsFp4<AType>() ? (static_cast<uint64_t>(k_) >> 1)
-                                                    : static_cast<uint64_t>(k_) * sizeof(AType);
-    scaleBytesPerMRow_ = scaleKGroups_ * static_cast<uint64_t>(
-      Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
+    dataBytesPerMRow_ =
+        Blaze::Gemm::IsFp4<AType>() ? (static_cast<uint64_t>(k_) >> 1) : static_cast<uint64_t>(k_) * sizeof(AType);
+    scaleBytesPerMRow_ =
+        scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
     cBytesPerM_ = static_cast<uint64_t>(n_) * sizeof(CType);
 }
 

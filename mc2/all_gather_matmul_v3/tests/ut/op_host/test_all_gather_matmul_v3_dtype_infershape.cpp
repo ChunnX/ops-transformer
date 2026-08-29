@@ -54,15 +54,14 @@ TEST_P(AllGatherMatmulV3InferDataTypeTest, param)
             .InputDataTypes(inputDataTypes)
             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-            .NodeAttrs(
-                {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-                 {"hccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.hcclBufferSize)},
-                 {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.isTransA)},
-                 {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.isTransB)},
-                 {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rankSize)},
-                 {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
-                 {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.yDtypeAttr)},
-                 {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)}})
+            .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+                        {"hccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.hcclBufferSize)},
+                        {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.isTransA)},
+                        {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.isTransB)},
+                        {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rankSize)},
+                        {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
+                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.yDtypeAttr)},
+                        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)}})
             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -75,9 +74,9 @@ TEST_P(AllGatherMatmulV3InferDataTypeTest, param)
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(AllGatherMatmulV3InferDataTypeUT, AllGatherMatmulV3InferDataTypeTest,
-                         testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3InferDataTypeUtParam>(
-                             ReplaceFileExtension2Csv(__FILE__))),
-                         PrintCaseInfoString<AllGatherMatmulV3InferDataTypeUtParam>);
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherMatmulV3InferDataTypeUT, AllGatherMatmulV3InferDataTypeTest,
+    testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3InferDataTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<AllGatherMatmulV3InferDataTypeUtParam>);
 
 } // namespace AllGatherMatmulV3UT

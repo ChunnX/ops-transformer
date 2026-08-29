@@ -35,7 +35,6 @@ public:
         enableBaseMHalving_ = enable;
     }
 
-
 protected:
     const char *TilingName() const override
     {

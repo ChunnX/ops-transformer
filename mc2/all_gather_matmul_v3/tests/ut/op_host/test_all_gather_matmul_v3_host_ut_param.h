@@ -33,8 +33,8 @@ struct AllGatherMatmulV3InferShapeUtParam : public AllGatherMatmulV3HostUtParamB
         : AllGatherMatmulV3HostUtParamBase(csvMap)
     {
         // def 输入顺序: context(0) x1(1) x2(2) bias(3) x1_scale(4) x2_scale(5)，context 恒实例化
-        this->context = gert::InfershapeContextPara::TensorDescription(
-            gert::StorageShape({100}, {100}), ge::DT_INT32, ge::FORMAT_ND);
+        this->context = gert::InfershapeContextPara::TensorDescription(gert::StorageShape({100}, {100}), ge::DT_INT32,
+                                                                       ge::FORMAT_ND);
         this->inputInstance.emplace_back(1);
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", this->x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", this->x2));
@@ -43,8 +43,8 @@ struct AllGatherMatmulV3InferShapeUtParam : public AllGatherMatmulV3HostUtParamB
             GetTensorGE(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format", this->x1Scale));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format", this->x2Scale));
-        this->y = gert::InfershapeContextPara::TensorDescription(
-            {}, Str2DTypeGE(ReadMap(csvMap, "y_dtype", "BF16")), ge::FORMAT_ND);
+        this->y = gert::InfershapeContextPara::TensorDescription({}, Str2DTypeGE(ReadMap(csvMap, "y_dtype", "BF16")),
+                                                                 ge::FORMAT_ND);
         this->gatherOut = gert::InfershapeContextPara::TensorDescription(
             {}, Str2DTypeGE(ReadMap(csvMap, "gather_out_dtype", "FLOAT8_E4M3FN")), ge::FORMAT_ND);
         // def 输出顺序: y(0) gather_out(1) amax_out(2)，amax_out 未实现不实例化

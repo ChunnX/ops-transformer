@@ -25,9 +25,8 @@ using namespace AscendC;
 using namespace Apace;
 
 template <uint32_t QUANTMODE>
-__global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
-                                                GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR y,
-                                                GM_ADDR gather_out, GM_ADDR amax_out,
+__global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale,
+                                                GM_ADDR x2_scale, GM_ADDR y, GM_ADDR gather_out, GM_ADDR amax_out,
                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     (void)gather_out;
