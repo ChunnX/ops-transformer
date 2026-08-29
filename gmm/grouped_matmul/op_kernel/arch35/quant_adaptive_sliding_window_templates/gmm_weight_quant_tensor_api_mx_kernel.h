@@ -16,7 +16,7 @@
 #ifndef GMM_WEIGHT_QUANT_TENSOR_API_MX_KERNEL_H
 #define GMM_WEIGHT_QUANT_TENSOR_API_MX_KERNEL_H
 
-#include "blaze/gemm/kernel/kernel_wqgmm_mx_mix.h"
+#include "blaze/gemm/kernel/kernel_wqgmm_mix_weight_prologue.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
