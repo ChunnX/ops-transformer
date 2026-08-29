@@ -27,6 +27,11 @@ DATA_RANGE_RIGHT = 2
 FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
+# 两种运行模式
+# 1 切S2
+# 3 切S2，FP64高精度
+RUN_MODE = 1
+
 
 class GeneralizedSFAQuant:
     def __init__(
@@ -119,7 +124,12 @@ class GeneralizedSFAQuant:
         cmp_topk_length_bnsd,
         return_softmax_lse=False,
     ):
-        attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
+        if RUN_MODE not in (1, 3):
+            raise ValueError(f"unsupported RUN_MODE:{RUN_MODE}")
+        is_fp64_mode = RUN_MODE == 3
+        compute_dtype = torch.float64 if is_fp64_mode else torch.float32
+        output_dtype = torch.float64 if is_fp64_mode else q_bnsd.dtype
+        attn_out = torch.zeros(q_bnsd.shape, dtype=output_dtype)
         softmax_lse = None
         if return_softmax_lse:
             softmax_lse = torch.zeros(
@@ -129,7 +139,7 @@ class GeneralizedSFAQuant:
                     q_bnsd.shape[2],
                     q_bnsd.shape[1] // ori_k_bnsd.shape[1],
                 ),
-                dtype=torch.float32,
+                dtype=compute_dtype,
             )
         B = q_bnsd.shape[0]
         act_q = self.seqused_q
@@ -270,10 +280,10 @@ class GeneralizedSFAQuant:
                         cur_cmp_k = []
                     if cur_cmp_k == []:
                         cmp_s2_loop_time = 0
-                        cur_cmp_k_fp32 = []
+                        cur_cmp_k_compute = []
                     else:
                         cmp_s2_loop_time = math.ceil(cur_cmp_k.size(0) / s2_base_size)
-                        cur_cmp_k_fp32 = cur_cmp_k.to(dtype=torch.float32)
+                        cur_cmp_k_compute = cur_cmp_k.to(dtype=compute_dtype)
 
                     if cur_ori_k_bnsd.size(0) == 0 and cur_cmp_k == []:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
@@ -282,37 +292,36 @@ class GeneralizedSFAQuant:
                         continue
 
                     q_curr = q_bnsd[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
-                    q_curr_fp32 = q_curr.to(dtype=torch.float32)
+                    q_curr_compute = q_curr.to(dtype=compute_dtype)
                     ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
                     total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
-                    cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
+                    cur_ori_k_bnsd_compute = cur_ori_k_bnsd.to(dtype=compute_dtype)
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_scale_value = 16.0
-                    score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    score_max_pre = torch.ones(
+                        (G,), dtype=compute_dtype
+                    ) * (-torch.inf)
                     score_max = (
-                        cur_sinks.clone()
+                        cur_sinks.to(dtype=compute_dtype).clone()
                         if cur_sinks is not None
-                        else torch.ones((G,)).to(torch.float) * (-torch.inf)
+                        else torch.ones((G,), dtype=compute_dtype) * (-torch.inf)
                     )
-                    score_max = (
-                        cur_sinks.clone()
-                        if cur_sinks is not None
-                        else torch.ones((G,)).to(torch.float) * (-torch.inf)
-                    )
-                    acc_o = torch.zeros((G, self.D)).to(torch.float32)
-                    sumexp = torch.ones((G,)).to(torch.float32)
+                    acc_o = torch.zeros((G, self.D), dtype=compute_dtype)
+                    sumexp = torch.ones((G,), dtype=compute_dtype)
 
                     for i_S2 in range(total_s2_loop_time):
                         if i_S2 < ori_s2_loop_time:  # ori_kv
                             if i_S2 < ori_s2_loop_time - 1:
-                                k_tile = cur_ori_k_bnsd_fp32[
+                                k_tile = cur_ori_k_bnsd_compute[
                                     i_S2 * s2_base_size : (i_S2 + 1) * s2_base_size, :
                                 ]
                             else:
-                                k_tile = cur_ori_k_bnsd_fp32[i_S2 * s2_base_size :, :]
+                                k_tile = cur_ori_k_bnsd_compute[
+                                    i_S2 * s2_base_size :, :
+                                ]
                         else:  # cmp_kv
                             if i_S2 < total_s2_loop_time - 1:
-                                k_tile = cur_cmp_k_fp32[
+                                k_tile = cur_cmp_k_compute[
                                     (i_S2 - ori_s2_loop_time) * s2_base_size : (
                                         i_S2 - ori_s2_loop_time + 1
                                     )
@@ -320,12 +329,12 @@ class GeneralizedSFAQuant:
                                     :,
                                 ]
                             else:
-                                k_tile = cur_cmp_k_fp32[
+                                k_tile = cur_cmp_k_compute[
                                     (i_S2 - ori_s2_loop_time) * s2_base_size :, :
                                 ]
                         v_tile = k_tile.clone()
                         # MM1
-                        mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
+                        mm1_res = torch.matmul(q_curr_compute, k_tile.T)
                         # scale过程与NPU一致 保证精度统一
                         is_cmp_tile = i_S2 >= ori_s2_loop_time
                         if is_cmp_tile:
@@ -359,6 +368,7 @@ class GeneralizedSFAQuant:
                         acc_s_cast = acc_s * hifp8_scale_value
                         acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
                         acc_s_cast = trans_hifuint8_tensor_to_float(acc_s_cast)
+                        acc_s_cast = acc_s_cast.to(dtype=compute_dtype)
 
                         # MM2
                         mm2_res = torch.matmul(acc_s_cast, v_tile)
@@ -367,9 +377,9 @@ class GeneralizedSFAQuant:
 
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
                     acc_o = acc_o / hifp8_scale_value
-                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
-                        torch.bfloat16
-                    )
+                    if not is_fp64_mode:
+                        acc_o = acc_o.to(torch.bfloat16)
+                    attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o
                     if return_softmax_lse:
                         softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(
                             sumexp + 1e-10
@@ -564,7 +574,8 @@ class GeneralizedSFAQuant:
                 if seqused_q is not None
                 else prefix_sum_to_original(cu_seqlens_q)
             )
-            output = torch.zeros((T, N, D), dtype=torch.float)
+            output_dtype = torch.float64 if RUN_MODE == 3 else torch.float
+            output = torch.zeros((T, N, D), dtype=output_dtype)
             for b_index in range(B):
                 t_start = int(cu_seqlens_q[b_index])
                 cur_seqused = int(seqused_per_batch[b_index])
@@ -586,7 +597,8 @@ class GeneralizedSFAQuant:
             B = tensor.shape[0]
             N2 = tensor.shape[1]
             G = tensor.shape[3]
-            output = torch.zeros((N2, T, G), dtype=torch.float)
+            output_dtype = torch.float64 if RUN_MODE == 3 else torch.float
+            output = torch.zeros((N2, T, G), dtype=output_dtype)
             t_start = 0
             act_seq_per_batch = prefix_sum_to_original(
                 act_seq
