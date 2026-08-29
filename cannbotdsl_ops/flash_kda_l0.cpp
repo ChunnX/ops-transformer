@@ -13,36 +13,15 @@
 #include "aclnn_flash_kda.h"
 #include "opdev/framework_op.h"
 #include "cannbotdsl_provider_adapter.h"
-#include "cannbotdsl_provider_registry.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
-#include "opdev/provider_kernel.h"
 #include "opdev/tensor_view_utils.h"
 
 namespace {
 
 constexpr int64_t kHeadDim = 128;
-
-static_assert(op::PROVIDER_KERNEL_SPEC_ABI_VERSION == 1U,
-              "FlashKDA requires opbase Provider kernel ABI v1");
-static_assert(op::PROVIDER_ACLNN_REGISTRY_ABI_VERSION == 1U,
-              "FlashKDA requires opbase Provider registry ABI v1");
-
-const op::ProviderAclnnRegistrySpec kFlashKdaRegistry = {
-    sizeof(op::ProviderAclnnRegistrySpec),
-    op::PROVIDER_ACLNN_REGISTRY_ABI_VERSION,
-    nullptr,
-    cannbotdsl::generated::kProviderAclnnVariants,
-    "../../op_impl/cannbotdsl",
-    "ops-transformer::attention/flash_kda",
-    cannbotdsl::generated::kProviderAclnnVariants,
-    cannbotdsl::generated::kProviderAclnnVariantCount,
-};
-
-const op::ProviderKernelSpec kFlashKdaProviderSpec =
-    op::MakeProviderKernelSpec(&kFlashKdaRegistry);
 
 int64_t Dim(const aclTensor* tensor, size_t axis)
 {
@@ -113,8 +92,6 @@ bool CheckTensorContract(
 
 namespace l0op {
 
-OP_TYPE_REGISTER(FlashKdaProvider);
-
 aclnnStatus FlashKda(
     const aclTensor* k, const aclTensor* v, const aclTensor* q,
     const aclTensor* beta, const aclTensor* g, const aclTensor* aLog,
@@ -151,26 +128,8 @@ aclnnStatus FlashKda(
     entryArguments.lower_bound = lowerBound;
     entryArguments.o = out;
     entryArguments.st_out = finalState;
-    cannbotdsl::generated::FlashKdaProviderArguments providerArguments;
-    aclnnStatus status =
-        cannbotdsl::generated::PrepareFlashKdaProviderArguments(
-            executor, entryArguments, providerArguments);
-    if (status != ACLNN_SUCCESS) {
-        return status;
-    }
-    op::OpArgContext* args =
-        cannbotdsl::generated::MakeFlashKdaProviderOpArgContext(providerArguments);
-    if (args == nullptr) {
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-    status = cannbotdsl::generated::SetFlashKdaProviderWorkspaceTensors(
-        executor, args, providerArguments);
-    if (status != ACLNN_SUCCESS) {
-        return status;
-    }
-    return op::AddProviderKernelLauncher(
-        "FlashKdaProvider", FlashKdaProviderOpTypeId(),
-        &kFlashKdaProviderSpec, executor, args);
+    return cannbotdsl::generated::BuildFlashKdaEntry(
+        executor, entryArguments);
 }
 
 }  // namespace l0op

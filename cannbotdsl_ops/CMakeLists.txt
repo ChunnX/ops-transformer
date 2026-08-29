@@ -42,7 +42,9 @@ cannbotdsl_add_acl_operator(
   OUTPUT_DIR "${_cannbotdsl_delivery_dir}"
   RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}"
   INSTALL_DESTINATION
-    "packages/vendors/${VENDOR_NAME}_transformer/op_impl/cannbotdsl")
+    "packages/vendors/${VENDOR_NAME}_transformer/op_impl/cannbotdsl"
+  LIBRARY_INSTALL_DESTINATION
+    "packages/vendors/${VENDOR_NAME}_transformer/op_api/lib")
 
 set(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR "" CACHE PATH
   "opbase source tree containing opdev/provider_kernel.h")

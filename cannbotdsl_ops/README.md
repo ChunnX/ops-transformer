@@ -30,13 +30,15 @@ Provider kernel ABI v1，并在构建及运行时提供下列符号：
 - `op::MakeProviderKernelSpec`
 - `op::AllocProviderWorkspaceTensor`
 - `op::SetProviderWorkspaceTensors`
+- `op::DestroyOpArgContext`
 - `op::AddProviderKernelLauncher`
 - `op::RequireProviderAclnnRuntimeAbiV1`
 
 仅将新 opbase 头文件传给 ops-transformer、但运行时仍加载旧 `libnnopbase.so`，会
 导致动态链接失败。开发验证时应先从对应 opbase 分支构建并安装 `nnopbase`；正式
 发布时应把该 opbase 变更纳入匹配的 CANN 基础包。`flash_kda_l0.cpp` 对 Provider
-kernel/registry ABI v1 做了编译期断言；CMake 还会链接
+只消费生成的 canonical entry facade；生成实现对 Provider kernel/registry ABI v1
+做编译期断言，CMake 还会链接
 `RequireProviderAclnnRuntimeAbiV1`，在配置阶段拒绝旧运行库。
 
 当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 同时
@@ -60,10 +62,11 @@ registry 生成阶段会把 binding plan、VariantManifest 与 Provider
 sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape
 或六个 artifact 间的公共 entry 身份任一漂移都会使 Provider 包构建失败。schema v5
 显式声明 `output_parameters=["o", "st_out"]`；当前生成器已据此生成
-并接入 `FlashKdaEntryArguments`、`PrepareFlashKdaProviderArguments`、
-`FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
-`SetFlashKdaProviderWorkspaceTensors`。因此七段 scratch、identity 常量、view、
-checked runtime shape 求值、物理参数顺序和底层 workspace 登记均无需手写。
+并接入唯一公共门面 `FlashKdaEntryArguments` 与 `BuildFlashKdaEntry`。
+ProviderArguments、Prepare/Make/Set、registry/spec、hidden resource 准备和 launcher
+所有权链全部留在生成 `.cpp` 私有实现中。因此七段 scratch、identity 常量、view、
+checked runtime shape 求值、物理参数顺序和底层 workspace 登记均无需手写；L0 只做
+公共契约校验、填充 EntryArguments，并恰好调用一次 canonical builder。
 
 三层接口职责固定如下：
 
