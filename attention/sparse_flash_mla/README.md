@@ -304,7 +304,7 @@
   - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, ORI\_KV\_S, KV\_N, D]，cmp_kv的shape为[B, CMP\_KV\_S, KV\_N, D]。
   - 当输入为TND时，`cu_seqlens_ori_kv`必须传入；若存在`cmp_kv`，`cu_seqlens_cmp_kv`也必须传入。
 - `return_softmax_lse`为False时返回占位Tensor；为True时返回softmax的log-sum-exp结果。
-- SWA稀疏ori_kv场景仅支持SWA模板，仅传入`ori_kv`，必须同时传入`ori_sparse_indices`和`ori_topk_length`，并设置`ori_mask_mode`为0/3/4，`ori_win_left`和`ori_win_right`仅在`ori_mask_mode`为4时取非负数；配套Metadata接口的`ori_topk`为K，该场景不传入`cmp_kv`。
+- SWA稀疏ori_kv场景仅支持SWA模板，仅传入`ori_kv`，必须同时传入`ori_sparse_indices`和`ori_topk_length`，`ori_win_left`和`ori_win_right`仅在`ori_mask_mode`为4时取非负数；配套Metadata接口的`ori_topk`为K，该场景不传入`cmp_kv`。
 - `ori_topk_length`表示每个q token和KV head的实际有效索引条目数，取值应在[0, K]范围内。`ori_sparse_indices`的[0, ori_topk_length)区间为左对齐的有效索引条目，[ori_topk_length, K)区间为无效或填充条目，建议填-1。
 - 除`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
