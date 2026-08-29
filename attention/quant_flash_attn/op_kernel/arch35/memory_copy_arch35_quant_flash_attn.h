@@ -67,6 +67,7 @@ template <LayOutTypeEnum LAYOUT, bool useDn = false, bool isPerTokenHead = false
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+        // BSND/BNSD: q_scale 统一按 BNSD 排布 (B-N-G-S-D)
         return GmFormat::BNGSD;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         if constexpr (isPerTokenHead) {
