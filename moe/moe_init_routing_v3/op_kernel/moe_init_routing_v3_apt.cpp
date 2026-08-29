@@ -164,8 +164,8 @@
 /*
  * CountingSort 性能模板（计数排序）
  */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 400000   // 模板1、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 401000 // 模板1、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 410000   // 模板1、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 411000 // 模板1、非量化、SCATTER
 
 #define EMPTY_TENSOR 3000000
 
@@ -323,7 +323,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float>::value) {
+                      IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
             MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
             csOp.Init(x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
