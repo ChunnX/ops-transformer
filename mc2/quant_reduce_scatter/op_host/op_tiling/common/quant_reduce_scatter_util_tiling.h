@@ -76,8 +76,8 @@ enum OpType : size_t {
 
 // 封装参数
 struct TilingRunInfo {
-    uint32_t quantMode;   // 量化方式
-    int64_t rankSize;     // rank大小
+    uint32_t quantMode; // 量化方式
+    int64_t rankSize;   // rank大小
     int64_t hcclBufferSize;
 };
 

@@ -19,19 +19,11 @@ namespace op_api {
 // worldSize
 const std::set<int> SUPPORT_WORLD_SIZE_LIST{2, 4, 8};
 // x valid dtype
-const std::set<int64_t> SUPPORT_X_DTYPE_LIST{
-    aclDataType::ACL_INT8,
-    aclDataType::ACL_HIFLOAT8,
-    aclDataType::ACL_FLOAT8_E5M2,
-    aclDataType::ACL_FLOAT8_E4M3FN,
-    aclDataType::ACL_FLOAT4_E1M2,
-    aclDataType::ACL_FLOAT4_E2M1
-};
+const std::set<int64_t> SUPPORT_X_DTYPE_LIST{aclDataType::ACL_INT8,        aclDataType::ACL_HIFLOAT8,
+                                             aclDataType::ACL_FLOAT8_E5M2, aclDataType::ACL_FLOAT8_E4M3FN,
+                                             aclDataType::ACL_FLOAT4_E1M2, aclDataType::ACL_FLOAT4_E2M1};
 // scales valid dtype
-const std::set<int64_t> SUPPORT_SCALES_DTYPE_LIST{
-    aclDataType::ACL_FLOAT,
-    aclDataType::ACL_FLOAT8_E8M0
-};
+const std::set<int64_t> SUPPORT_SCALES_DTYPE_LIST{aclDataType::ACL_FLOAT, aclDataType::ACL_FLOAT8_E8M0};
 
 static const int H_LOWER_LIMIT = 1024;
 static const int H_UPPER_LIMIT = 8192;
@@ -69,17 +61,17 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
         TORCH_CHECK(SUPPORT_X_DTYPE_LIST.find(GetAclDataType(xDtype.value())) != SUPPORT_X_DTYPE_LIST.end(),
                     "The optional parameter xDtype only supports: "
                     "int8/hifloat8/float8_e4m3fn/float8_e5m2/float4_e1m2/float4_e2m1, "
-                    "but now is ", xDtype.value());
+                    "but now is ",
+                    xDtype.value());
     }
 
-    TORCH_CHECK(SUPPORT_WORLD_SIZE_LIST.find(worldSize) != SUPPORT_WORLD_SIZE_LIST.end(),
-                "The worldSize should be in ", c10::Join(", ", SUPPORT_WORLD_SIZE_LIST),
-                ", but the actual value is ", worldSize);
+    TORCH_CHECK(SUPPORT_WORLD_SIZE_LIST.find(worldSize) != SUPPORT_WORLD_SIZE_LIST.end(), "The worldSize should be in ",
+                c10::Join(", ", SUPPORT_WORLD_SIZE_LIST), ", but the actual value is ", worldSize);
 
     uint32_t AxisHIdx = (x.dim() == DIM_THREE ? 2 : 1);
-    TORCH_CHECK(x.size(AxisHIdx) >= H_LOWER_LIMIT && x.size(AxisHIdx) <= H_UPPER_LIMIT
-                && x.size(AxisHIdx) % NUM_128 == 0,
-                "The x H-axis should be in [1024, 8192] and divisible by 128");
+    TORCH_CHECK(
+        x.size(AxisHIdx) >= H_LOWER_LIMIT && x.size(AxisHIdx) <= H_UPPER_LIMIT && x.size(AxisHIdx) % NUM_128 == 0,
+        "The x H-axis should be in [1024, 8192] and divisible by 128");
 
     int64_t axisBs = x.size(0);
     if (x.dim() == DIM_THREE) {
@@ -101,16 +93,15 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
         TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0,
                     "The input 3 dim tensor scales can not be empty tensor");
     } else if (scales.dim() == DIM_FOUR) {
-        TORCH_CHECK(scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0
-                    && scales.size(DIM_THREE) != 0,
-                    "The input 4 dim tensor scales can not be empty tensor");
+        TORCH_CHECK(
+            scales.size(0) != 0 && scales.size(1) != 0 && scales.size(DIM_TWO) != 0 && scales.size(DIM_THREE) != 0,
+            "The input 4 dim tensor scales can not be empty tensor");
     }
     // 校验scales的dtype: float/float8_e8m0
     if (scalesDtype.has_value()) {
-        TORCH_CHECK(SUPPORT_SCALES_DTYPE_LIST.find(GetAclDataType(scalesDtype.value()))
-                    != SUPPORT_SCALES_DTYPE_LIST.end(),
-                    "The optional parameter scalesDtype only supports float/float_e8m0, but now is ",
-                    scalesDtype.value());
+        TORCH_CHECK(
+            SUPPORT_SCALES_DTYPE_LIST.find(GetAclDataType(scalesDtype.value())) != SUPPORT_SCALES_DTYPE_LIST.end(),
+            "The optional parameter scalesDtype only supports float/float_e8m0, but now is ", scalesDtype.value());
     }
 
     // pta主要是为了推导output的shape和dtype，如果这里的output_dtype没有传入，则默认是bf16
@@ -139,14 +130,14 @@ at::Tensor NpuQuantReduceScatter(const at::Tensor &context, const at::Tensor &x,
     // 如果是自定义的dtype的话，那么这里就需要使用一个wrapper
     // 让aclnn接口识别到传入的tensor具体的dtype类型，相当于打一个标签，标记真实的属性
     aclDataType xAclDtype = xDtype.has_value() ? GetAclDataType(xDtype.value()) : ConvertToAclDataType(x.scalar_type());
-    aclDataType scalesAclDtype = scalesDtype.has_value() ? GetAclDataType(scalesDtype.value())
-                                : ConvertToAclDataType(scales.scalar_type());
+    aclDataType scalesAclDtype =
+        scalesDtype.has_value() ? GetAclDataType(scalesDtype.value()) : ConvertToAclDataType(scales.scalar_type());
     TensorWrapper xWrapper = make_wrapper(x, xAclDtype);
     TensorWrapper scalesWrapper = make_wrapper(scales, scalesAclDtype);
 
     // 前面的wrapper打包传进去之后，这里直接调用aclnn接口
-    ACLNN_CMD(aclnnQuantReduceScatter, context, xWrapper, scalesWrapper, hcclBufferSize, worldSize,
-              reduceOpPtr, outputTensor);
+    ACLNN_CMD(aclnnQuantReduceScatter, context, xWrapper, scalesWrapper, hcclBufferSize, worldSize, reduceOpPtr,
+              outputTensor);
     return outputTensor;
 }
 

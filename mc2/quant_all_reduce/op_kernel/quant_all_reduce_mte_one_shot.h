@@ -101,8 +101,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR cont
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantAllReduceMteOneShot<TemplateType>::ParseTilingInfo(const QuantAllReduceTilingData *tilingData)
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ParseTilingInfo(
+    const QuantAllReduceTilingData *tilingData)
 {
     auto &&info = tilingData->quantAllReduceTilingInfo;
     totalWinSize_ = info.totalWinSize;
@@ -111,15 +111,15 @@ QuantAllReduceMteOneShot<TemplateType>::ParseTilingInfo(const QuantAllReduceTili
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(const QuantAllReduceTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
+    const QuantAllReduceTilingData *tilingData, TPipe *tPipe)
 {
     auto &&info = tilingData->quantAllReduceTilingInfo;
 
     // 固定开销：不随 xPerBlock_ 变化的 buffer
-    uint64_t commFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +                      // scaleQueue_
-                              UB_ALIGN_BYTES +                                  // winFlagsBuf_
-                              UB_ALIGN_BYTES +                                  // writeStateBuf_
+    uint64_t commFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +             // scaleQueue_
+                              UB_ALIGN_BYTES +                         // winFlagsBuf_
+                              UB_ALIGN_BYTES +                         // writeStateBuf_
                               mteComm_.rankDimHccl_ * UB_ALIGN_BYTES + // readStateBuf_
                               mteComm_.rankDimHccl_ * UB_ALIGN_BYTES;  // stateResetBuf_
 

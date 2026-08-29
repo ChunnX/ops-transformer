@@ -113,17 +113,17 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *scales, cons
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
-                                                               const aclTensor *scales,
-                                                               const int64_t hcclBufferSize, const int64_t worldSize,
-                                                               const char *reduceOp, aclTensor *output,
-                                                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                               const aclTensor *scales, const int64_t hcclBufferSize,
+                                                               const int64_t worldSize, const char *reduceOp,
+                                                               aclTensor *output, uint64_t *workspaceSize,
+                                                               aclOpExecutor **executor)
 {
     aclnnStatus retParam = CheckParams(x, scales, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    aclnnStatus ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(context, x, scales, hcclBufferSize,
-                                                                   const_cast<char *>(reduceOp),
-                                                                   yDtype, worldSize, output, workspaceSize, executor);
+    aclnnStatus ret =
+        aclnnInnerQuantReduceScatterGetWorkspaceSize(context, x, scales, hcclBufferSize, const_cast<char *>(reduceOp),
+                                                     yDtype, worldSize, output, workspaceSize, executor);
     OP_LOGD("QuantReduceScatter, aclnnQuantReduceScatterGetWorkspaceSize ret %d.", ret);
     return ret;
 }

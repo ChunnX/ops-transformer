@@ -253,7 +253,7 @@ cann_ops_transformer.ops.quant_all_reduce.quant_all_reduce(
     class Model(torch.nn.Module):
         def __init__(self):
             super().__init__()
-        
+
         def forward(self, x, scales, hcom, world_size, reduce_op="sum", output_dtype=None, x_dtype=None, scales_dtype=None):
             return cann_ops_transformer.ops.quant_all_reduce.quant_all_reduce(
                 x=x,

@@ -97,12 +97,12 @@ static bool QuantAllReduceCheckAllDtypesValid(const aclTensor *x, const aclTenso
     isAllDtypesValid = (QuantAllReduceCheckKGAllDtypesValid(x, scales, output) ||
                         QuantAllReduceCheckMXAllDtypesValid(x, scales, output));
     if (!isAllDtypesValid) {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnQuantAllReduceGetWorkspaceSize", "x/scales/output",
-                                               (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
-                                                op::ToString(scales->GetDataType()).GetString() + "/" +
-                                                op::ToString(output->GetDataType()).GetString())
-                                                   .c_str(),
-                                               "The dtypes of x, scales and output must be the same.");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "aclnnQuantAllReduceGetWorkspaceSize", "x/scales/output",
+            (std::string(op::ToString(x->GetDataType()).GetString()) + "/" +
+             op::ToString(scales->GetDataType()).GetString() + "/" + op::ToString(output->GetDataType()).GetString())
+                .c_str(),
+            "The dtypes of x, scales and output must be the same.");
     }
     return isAllDtypesValid;
 }
@@ -164,18 +164,17 @@ static aclnnStatus QuantAllReduceCheckParams(const aclTensor *x, const aclTensor
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
-                                                           const aclTensor *scales,
-                                                           const int64_t hcclBufferSize,
+                                                           const aclTensor *scales, const int64_t hcclBufferSize,
                                                            const int64_t worldSize, const char *reduceOp,
-                                                           aclTensor *output,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                           aclTensor *output, uint64_t *workspaceSize,
+                                                           aclOpExecutor **executor)
 {
     aclnnStatus retParam = QuantAllReduceCheckParams(x, scales, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    aclnnStatus ret = aclnnInnerQuantAllReduceGetWorkspaceSize(context, x, scales, hcclBufferSize,
-                                                               const_cast<char *>(reduceOp),
-                                                               yDtype, worldSize, output, workspaceSize, executor);
+    aclnnStatus ret =
+        aclnnInnerQuantAllReduceGetWorkspaceSize(context, x, scales, hcclBufferSize, const_cast<char *>(reduceOp),
+                                                 yDtype, worldSize, output, workspaceSize, executor);
     OP_LOGD("QuantAllReduce, aclnnGetWorkspaceSize ret %d.", ret);
     return ret;
 }
