@@ -316,27 +316,29 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
 {
-    // 按128列块做商余均分，避免统一向上对齐后留下空闲的AIC及配对AIV。
-    uint32_t totalNDBlockNum = CeilDiv(nD_, uint32_t(ND_BLOCK_SIZE));
-    v1UsedCubeCoreNum_ = Min(totalNDBlockNum, coreNum_);
-    uint32_t baseBlockNum = totalNDBlockNum / v1UsedCubeCoreNum_;
-    uint32_t remainderBlockNum = totalNDBlockNum % v1UsedCubeCoreNum_;
-    cubeDealnDPeCore_ = (baseBlockNum + (remainderBlockNum > 0 ? 1 : 0)) * ND_BLOCK_SIZE;
-
-    uint32_t currentCubeCoreIdx = blockIdx_;
+    v1UsedCubeCoreNum_ = 0;
+    cubeDealnDPeCore_ = nD_ / GetBlockNum();
+    if (cubeDealnDPeCore_ == 0) {
+        cubeDealnDPeCore_ = nD_;
+        v1UsedCubeCoreNum_ = 1;
+    } else {
+        cubeDealnDPeCore_ = MhcPreBackwardUtils::CeilAlign(cubeDealnDPeCore_, CEIL_ALIGN_128);
+        v1UsedCubeCoreNum_ = CeilDiv(nD_, cubeDealnDPeCore_);
+    }
+    if ASCEND_IS_AIC {
+        dealStartND_ = cubeDealnDPeCore_ * blockIdx_;
+        dealEndND_ = dealStartND_ + cubeDealnDPeCore_;
+        if (dealEndND_ > nD_) {
+            dealEndND_ = nD_;
+        }
+    }
     if ASCEND_IS_AIV {
-        currentCubeCoreIdx = blockIdx_ / VEC_DEAL_VECIDX_DIV;
+        dealStartND_ = cubeDealnDPeCore_ * uint32_t(blockIdx_ / VEC_DEAL_VECIDX_DIV);
+        dealEndND_ = dealStartND_ + cubeDealnDPeCore_;
+        if (dealEndND_ > nD_) {
+            dealEndND_ = nD_;
+        }
     }
-    if (currentCubeCoreIdx >= v1UsedCubeCoreNum_) {
-        dealStartND_ = nD_;
-        dealEndND_ = nD_;
-        return;
-    }
-
-    uint32_t startBlockIdx = currentCubeCoreIdx * baseBlockNum + Min(currentCubeCoreIdx, remainderBlockNum);
-    uint32_t currentBlockNum = baseBlockNum + (currentCubeCoreIdx < remainderBlockNum ? 1 : 0);
-    dealStartND_ = startBlockIdx * ND_BLOCK_SIZE;
-    dealEndND_ = Min(nD_, dealStartND_ + currentBlockNum * ND_BLOCK_SIZE);
 }
 
 template <class T, class P>
