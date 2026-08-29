@@ -13,8 +13,8 @@
 
 ## 功能说明
 
-> 本目录新增的 Kernel 与 Host Tiling 注册仅面向 Ascend 950；表中的 Atlas A2、Atlas A3
-> 训练/推理系列产品继续使用存量实现，本次不覆盖，也不改写其既有契约。
+> 本目录新增的Kernel与Host侧Tiling注册仅面向Ascend 950；表中的两组存量产品继续使用
+> 既有实现，本次不覆盖，也不改写其既有契约。
 
 ### Ascend 950 功能语义
 
@@ -50,7 +50,7 @@
 
 ## 参数说明
 
-> 下表描述各支持产品共有的参数角色、数据类型和数据格式；产品专属 shape 与行为见“产品差异说明”。
+> 下表描述各支持产品共有的参数角色、数据类型和数据格式；产品专属shape与行为见“产品差异说明”。
 
 <table style="table-layout: auto; width: 100%">
   <thead>
@@ -103,10 +103,10 @@
 
 ### 产品差异说明
 
-| 产品 | 调用通路 | 静态 shape 格式 | 动态 shape 格式 | shape、rank 及行为边界 |
+| 产品 | 调用通路 | 静态shape格式 | 动态shape格式 | shape、rank及行为边界 |
 | --- | --- | --- | --- | --- |
-| <term>Ascend 950PR/Ascend 950DT</term> | GE 图模式 | ND | ND | `x[S,H]`、`y_grad[E,C,H]`、`indices/locations/gates_grad[K,S]`，`1 <= K <= E`；支持 `S=0`、`H=0` 和逐 route 越界置 0。 |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | GE 图模式（存量实现） | ND | ND | 公共 `REG_OP` 未声明精确 rank、shape、空 Tensor 或非法 route 行为；上行 Ascend 950 补充契约不改变存量产品的公开边界。 |
+| <term>Ascend 950PR/Ascend 950DT</term> | GE图模式 | ND | ND | `x[S,H]`、`y_grad[E,C,H]`、`indices/locations/gates_grad[K,S]`，`1 <= K <= E`；支持`S=0`、`H=0`和逐route越界置0。 |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | GE图模式（存量实现） | ND | ND | 公共`REG_OP`未声明精确rank、shape、空Tensor或非法route行为；上行Ascend 950补充契约不改变存量产品的公开边界。 |
 
 ## 约束说明
 
@@ -124,13 +124,13 @@
 
 ### 存量产品
 
-- Atlas A2、Atlas A3 训练/推理系列产品的公共 `REG_OP` 未声明精确 shape、空 Tensor 与非法 route
-  行为。本次只新增 Ascend 950 实现，不把 Ascend 950 的补充契约反向写入存量产品。
+- 上表两组存量产品的公共`REG_OP`未声明精确shape、空Tensor与非法route
+  行为。本次只新增Ascend 950实现，不把Ascend 950的补充契约反向写入存量产品。
 
 ## 调用说明
 
 | 调用方式 | 调用样例 | 说明 |
 | --- | --- | --- |
-| GE 图模式 | [test_geir_moe_tutel_combine_gates](examples/test_geir_moe_tutel_combine_gates.cpp) | 公共入口定义见 [MoeTutelCombineGates REG_OP](../../common/include/op_graph/op_transformer_proto_extend.h)；样例通过 GE 构图并执行 RunGraph。 |
+| GE图模式 | [test_geir_moe_tutel_combine_gates](examples/test_geir_moe_tutel_combine_gates.cpp) | 公共入口定义见[MoeTutelCombineGates的REG_OP](../../common/include/op_graph/op_transformer_proto_extend.h)；样例通过GE构图并执行RunGraph。 |
 
-本算子不提供 aclnn 或 PyTorch 单算子接口。
+本算子不提供aclnn或PyTorch单算子接口。
