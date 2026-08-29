@@ -135,10 +135,8 @@ private:
     // ---------------- 通信相关组件与参数 ----------------
     __gm__ CommUbmemContext *syncBuffer_{nullptr};
     __gm__ CommUdmaContext *udmaCtx_{nullptr};
-    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, true> allToAllA_;
-    CollectiveComm<
-        CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, false>
-        allToAllScaleA_;
+    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
+    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
     TeamBarrier teamBarrier_;
 
     struct BaseParams {
@@ -285,20 +283,18 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     // 计算地址偏移所需的参数
     baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
 
-    baseParams_.bufferCount = tilingData->commTilingData.bufferCount;
     uint64_t commTiles = tilingData->commTilingData.splitAxisTileCnt + tilingData->commTilingData.splitAxisTailCnt;
-    if (baseParams_.bufferCount >= commTiles) {
-        baseParams_.bufferCount = 0;
-    }
-    if (baseParams_.bufferCount > 0) {
-        uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
-            tilingData->commTilingData.splitAxisTailSize ?
-            tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
-        baseParams_.scaleWinOffset = baseParams_.rankSize * baseParams_.bufferCount *
-                               maxTileSize * baseParams_.axisKa * sizeof(AType);
-    } else {
-        baseParams_.scaleWinOffset = baseParams_.rankSize * baseParams_.rankDataBytes;
-    }
+    uint64_t rawBufferCount = tilingData->commTilingData.bufferCount;
+    // release 门控用（0 表示不复用）
+    baseParams_.bufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
+                              static_cast<uint32_t>(rawBufferCount) : 0;
+    // A 数据补齐后的 footprint → scale 偏移
+    uint64_t effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
+    uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
+        tilingData->commTilingData.splitAxisTailSize ?
+        tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
+    baseParams_.scaleWinOffset = baseParams_.rankSize * effBufferCount *
+                           maxTileSize * baseParams_.axisKa * sizeof(AType);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>

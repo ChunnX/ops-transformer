@@ -326,17 +326,17 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
         MXFP_MULTI_BASE_SIZE;
 
     uint32_t bufferCount = commPolicy_.bufferCount;
-    uint64_t winPerRound = oriM;
-    uint64_t winTotalM = rankSize * oriM;
-    if (bufferCount > 0) {
-        winPerRound = rankSize * params.localParams.headTileSize;
-        winTotalM = static_cast<uint64_t>(bufferCount) * winPerRound;
-    }
+    uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
+    uint32_t effBufferCount = (bufferCount > 0) ? bufferCount : totalTiles;
+    uint64_t winPerRound = static_cast<uint64_t>(rankSize) * params.localParams.headTileSize;
+    uint64_t winTotalM = static_cast<uint64_t>(effBufferCount) * winPerRound;
+    uint64_t scaleWinTotalM = static_cast<uint64_t>(totalTiles) * winPerRound;
 
     // 构建各 Tensor 的全局布局
     auto layoutA = MakeLayoutA{}(winTotalM, Te::Get<MNK_K>(params.problemShape));
     auto layoutALocal = MakeLayoutA{}(rankSize * oriM, Te::Get<MNK_K>(params.problemShape));
-    auto layoutScaleA = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
+    auto layoutScaleA = MakeLayoutScaleA{}(scaleWinTotalM, scaleKLen);
+    auto layoutScaleALocal = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
 
     auto layoutB = MakeLayoutB{}(rankSize * Te::Get<MNK_K>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
     auto layoutScaleB = MakeLayoutScaleB{}(rankSize * scaleKLen, Te::Get<MNK_N>(params.problemShape));
@@ -350,7 +350,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     auto gmScaleA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(scaleAGmAddr_), layoutScaleA);
     auto gmScaleALocal = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(localScaleAGmAddr_), layoutScaleA);
+        Te::MakeMemPtr<Te::Location::GM>(localScaleAGmAddr_), layoutScaleALocal);
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), layoutB);
     auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasGmAddr_), layoutBias);
@@ -373,7 +373,6 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     int64_t mPos = 0L;
     int64_t nPos = 0L;
     constexpr int64_t kPos = 0L;
-    uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     int32_t readyTileIdx = -1;
     int32_t releasedTileIdx = -1;
     // 遍历当前块的调度任务
@@ -434,21 +433,16 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             uint32_t remoteRankCnt = 1;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 if (rank == rankId) continue;
-                auto denseMPos = rank * oriM + static_cast<uint64_t>(mPos);
-                uint64_t actualMPos;
-                if (bufferCount > 0) {
-                    uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
-                    uint64_t slotIdx = tileIdx % static_cast<uint64_t>(bufferCount);
-                    uint64_t tileOffset = static_cast<uint64_t>(mPos) -
-                        tileIdx * params.localParams.headTileSize;
-                    actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
-                } else {
-                    actualMPos = denseMPos;
-                }
+                uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
+                uint64_t slotIdx = tileIdx % static_cast<uint64_t>(effBufferCount);
+                uint64_t tileOffset = static_cast<uint64_t>(mPos) -
+                    tileIdx * params.localParams.headTileSize;
+                uint64_t actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
+                uint64_t scaleActualMPos = tileIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
                 auto gmBlockA_remote =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
+                auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(scaleActualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
                 auto gmBlockB_r = gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
                     AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
@@ -468,21 +462,17 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto denseMPos = rank * oriM + static_cast<uint64_t>(mPos);
-                uint64_t actualMPos;
-                if (bufferCount > 0) {
-                    uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
-                    uint64_t slotIdx = tileIdx % static_cast<uint64_t>(bufferCount);
-                    uint64_t tileOffset = static_cast<uint64_t>(mPos) -
-                        tileIdx * params.localParams.headTileSize;
-                    actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
-                } else {
-                    actualMPos = denseMPos;
-                }
+                uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
+                uint64_t slotIdx = tileIdx % static_cast<uint64_t>(effBufferCount);
+                uint64_t tileOffset = static_cast<uint64_t>(mPos) -
+                    tileIdx * params.localParams.headTileSize;
+                uint64_t actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
+                uint64_t scaleActualMPos = tileIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
                 // 从通信buffer上切片
                 auto gmBlockA =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
+                auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(scaleActualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
 
                 if (rank == rankId) {

@@ -30,7 +30,7 @@ constexpr uint8_t BARRIER_DEVICE = 1;
 constexpr uint8_t BARRIER_CORE = 2;
 constexpr uint8_t BARRIER_BOTH = BARRIER_DEVICE | BARRIER_CORE;
 
-template<typename Impl, typename Dtype, typename Barrier, bool EnableReuse = false>
+template<typename Impl, typename Dtype, typename Barrier>
 class CollectiveCommBase {
     friend Impl;
 public:
@@ -83,18 +83,12 @@ public:
         tileMaxByteSize_ = (tilingData_->splitAxisTileSize > tilingData_->splitAxisTailSize ?
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes;
 
-        if constexpr (EnableReuse) {
-            uint64_t commTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
-            bufferCount_ = tilingData_->bufferCount;
-            if (bufferCount_ == 0 || bufferCount_ >= commTiles) {
-                bufferCount_ = commTiles;
-                dstChunkBytes_ = chunkBytes_;
-            } else {
-                dstChunkBytes_ = bufferCount_ * tileMaxByteSize_;
-            }
-        } else {
-            dstChunkBytes_ = chunkBytes_;
+        uint64_t commTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
+        bufferCount_ = tilingData_->bufferCount;
+        if (bufferCount_ == 0 || bufferCount_ >= commTiles) {
+            bufferCount_ = commTiles;
         }
+        dstChunkBytes_ = bufferCount_ * tileMaxByteSize_;
 
         currentTileIdx_ = 0;
         tileByteOffset_ = 0;
