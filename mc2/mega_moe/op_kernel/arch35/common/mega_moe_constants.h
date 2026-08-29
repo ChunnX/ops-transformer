@@ -67,6 +67,28 @@ constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
+// W8/W4 权重 L2 预取（仅 W1，fire-and-forget）。窗口 0 在 SendMask 期间发射、SyncAll 前
+// PipeBarrier 排空；窗口 1（count 等待自旋处全量发射 + MTE2_V 事件排空收尾）已由下方开关关闭，
+// 代码路径保留，置 true 可恢复双窗口。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID = SYNC_EVENT_ID5;
+// 窗口 1 开关：false 时 3 个窗口 1 构造点（a4w4/a8w4/a8w8）游标保持 nullptr，count 等待退回
+// 原版 WaitForMoeExpertTokenCountReady；仅保留窗口 0 预取。constexpr 编译期裁剪，无运行时开销。
+constexpr bool WEIGHT_L2_PREFETCH_ENABLE_WINDOW1 = false;
+// 预取 scratch 偏移的兜底默认值：正常运行时 scratch 位于平台 UB 顶部 [ubSize−16K, ubSize)（host 按
+// ubSize 动态下发 weightPrefetchUbOffset，SendMask 布局同值钳位），本常量仅作字段未设置时的回落。
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_OFFSET = 192U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_CHUNK_BYTES = 16U * 1024U;
+// 自适应总量上限：min(min(expertCount, MAX_EXPERTS) * W1 单专家量, 32MB)，窗口 0 预算 =
+// min(总量, Window0TotalBytes 能力门限)，剩余为窗口 1 软预算（窗口 1 关闭时不预取）。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_TOTAL_BYTES = 32U * 1024U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_EXPERTS = 4U;
+// 窗口 0 能力门限（chunk/AIV），按拓扑分档（实测）：单机（<=8P）RTT 小、GMM1 消费早，
+// 窗口 0 过大早期倾泻白发率高，取 24；跨机（>8P）RTT 长、消费晚，取 40。
+constexpr uint32_t WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_AIV_SINGLE_NODE = 24U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_AIV_CROSS_NODE = 40U;
+// 权重预取跨机门控阈值（实测）：worldSize > 8 才使能。现仅作用于 W8 的窗口 0 与窗口 1；
+// W4 的窗口 0 与窗口 1 按 09-07 实测恢复全拓扑常开（窗口 1 已由开关整体关闭）。
+constexpr uint32_t WEIGHT_PREFETCH_MIN_WORLD_SIZE = 8U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
