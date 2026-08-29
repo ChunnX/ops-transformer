@@ -29,17 +29,6 @@ using GMMQuantTilingData = GroupedMatmulTilingData::GMMQuantTilingData;
 
 namespace GROUPED_MATMUL {
 
-// DTYPE_SCALE（ge::DataType 枚举宏）→ GM scale 的 C++ 类型：uint64/int64（scale64）或 fp32/bf16（per-tensor）。
-#if defined(DT_UINT64) && DTYPE_SCALE == DT_UINT64
-using GmmCubeScaleGmType = uint64_t;
-#elif defined(DT_INT64) && DTYPE_SCALE == DT_INT64
-using GmmCubeScaleGmType = int64_t;
-#elif defined(DT_BF16) && DTYPE_SCALE == DT_BF16
-using GmmCubeScaleGmType = bfloat16_t;
-#else
-using GmmCubeScaleGmType = float;
-#endif
-
 template <class xType, class wType, class biasType, class scaleType, class yType, class xLayout, class wLayout,
           class yLayout>
 __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale,
@@ -54,11 +43,14 @@ __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
     GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);
     GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);
 
+    // The template parameter scaleType already carries the correct C++ type from the gen script
+    // (e.g. uint64_t / int64_t / float / bfloat16_t); no macro-based re-derivation needed.
+    // (Same pattern as gqmm_tensor_api_mx_kernel.h.)
     using AType = xType;
     using BType = wType;
     using CType = yType;
     using BiasType = biasType;
-    using ScaleGmType = GmmCubeScaleGmType;
+    using ScaleGmType = scaleType;
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
@@ -86,7 +78,8 @@ __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
     gmmParams.baseK = baseK;
     gmmParams.kAL1 = static_cast<uint32_t>(mmTilingData_.stepKa) * baseK; // = stepKa * baseK
     gmmParams.kBL1 = static_cast<uint32_t>(mmTilingData_.stepKb) * baseK; // = stepKb * baseK
-    gmmParams.nBufferNum = 2U;                                            // 双缓冲
+    // nBufferNum 不再由薄封装传入：当前 cube fixpipe-quant BlockMmad 固定双缓冲，
+    // kernel 内部直接使用 Blaze::Gemm::DOUBLE_BUFFER_COUNT。
     gmmParams.x1QuantMode = gmmQuantParams_.aQuantMode;
     gmmParams.x2QuantMode = gmmQuantParams_.bQuantMode;
     gmmParams.isBias = static_cast<uint8_t>(gmmQuantParams_.hasBias);
@@ -96,8 +89,6 @@ __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
     gmmParams.singleW = gmmQuantParams_.singleW;
     gmmParams.singleX = gmmQuantParams_.singleX;
     gmmParams.singleY = gmmQuantParams_.singleY;
-    gmmParams.mTailCnt = 1U; // quant cube 无 no-quant tail 语义，固定 1
-    gmmParams.nTailCnt = 1U;
 
     typename CubeBlockMmad::Params mmadParams{};
     // x/weight/y/bias 为 ListTensorDesc，kernel 内按 single/multi 解析；scale 解析为数据地址
