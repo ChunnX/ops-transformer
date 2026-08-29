@@ -543,9 +543,7 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
                                           static_cast<int32_t>(scratch.cumsumRevCntInRank));
     }
 
-    // max_recv_token_num 给小时，把对外可见的接收数截断到剩余容量，使 GMM 等待目标
-    // 与 dispatch 实际发布量一致：溢出只损失精度，不再因 flag 死等而卡住。
-    // cumsumInfoTensor 保持实况不动，dispatch 的目的行号与 rank 分段逻辑不受影响。
+    // max_recv_token_num 给小时，不再因 flag 死等而卡住。
     uint64_t expertGlobalRowBegin = GetExpertGlobalRowBegin(scratch, localExpertId, common.worldSize);
     sendCnt = static_cast<uint32_t>(ClampDispatchRowCount(expertGlobalRowBegin, sendCnt, context.maxOutputSize));
 
