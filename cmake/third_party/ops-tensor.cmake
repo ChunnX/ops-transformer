@@ -20,7 +20,7 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
 
-  execute_process(
+  execute_process( 
     COMMAND git fetch origin ${OPTENSOR_TAG_ID} --depth=1
     WORKING_DIRECTORY ${OPTENSOR_SOURCE_PATH}
     TIMEOUT 20
