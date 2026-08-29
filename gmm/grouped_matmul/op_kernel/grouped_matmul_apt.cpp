@@ -57,7 +57,7 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 #if IS_BLAZE
-#include "arch35/quant_adaptive_sliding_window_templates/gmm_weight_quant_sample_mx_kernel.h"
+#include "arch35/quant_adaptive_sliding_window_templates/gmm_weight_quant_tensor_api_mx_kernel.h"
 #endif
 #if defined(V310_GMM_S8S4_UINT64_SCALE)
 #include "arch35/weight_quant_basic_block/gmm_s8s4_perchannel_tensor_api.h"
@@ -442,8 +442,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #if IS_BLAZE
             GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);
             GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
-            GROUPED_MATMUL::GmmWeightQuantSampleMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS,
-                                                         DTYPE_Y, IS_SINGLE_MULTI_SINGLE>(
+            GROUPED_MATMUL::GmmWeightQuantTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS,
+                                                            DTYPE_Y, IS_SINGLE_MULTI_SINGLE>(
                 x, weight, antiquantScale, bias, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);
 #else
             INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
