@@ -13,26 +13,29 @@
  * \brief Ascend 950 graph inference. Output shape is supplied by the caller.
  */
 
+#include "graph/operator_reg.h"
 #include "log/log.h"
 #include "register/op_impl_registry.h"
+
+namespace ge {
+// The runtime-v2 InferShapeContext owns a fresh output-shape slot and therefore
+// cannot observe a shape prefilled through Operator::UpdateOutputDesc.  This
+// compatibility operator has no E input/attribute, so use the Operator-based GE
+// callback to retain the caller descriptor verbatim instead of fabricating E=K.
+IMPLEMT_COMMON_INFERFUNC(InferShape4MoeTutelDispatchV1)
+{
+    const TensorDesc outputDesc = op.GetOutputDesc("y");
+    return op.UpdateOutputDesc("y", outputDesc);
+}
+
+COMMON_INFER_FUNC_REG(MoeTutelDispatch, InferShape4MoeTutelDispatchV1);
+} // namespace ge
 
 namespace ops {
 namespace {
 constexpr size_t INPUT_X_INDEX = 0;
 constexpr size_t OUTPUT_Y_INDEX = 0;
 } // namespace
-
-static ge::graphStatus InferShape4MoeTutelDispatch(gert::InferShapeContext *context)
-{
-    OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    OP_LOGD(context, "Begin InferShape4MoeTutelDispatch");
-    // E is absent from the historical input ABI. GetOutputShape points to the
-    // caller-provided y descriptor, so preserving it is the only valid shape
-    // inference behavior; deriving E from gates would incorrectly force E=K.
-    OP_CHECK_NULL_WITH_CONTEXT(context, context->GetOutputShape(OUTPUT_Y_INDEX));
-    OP_LOGD(context, "Finished InferShape4MoeTutelDispatch without changing caller output shape");
-    return ge::GRAPH_SUCCESS;
-}
 
 static ge::graphStatus InferDataType4MoeTutelDispatch(gert::InferDataTypeContext *context)
 {
@@ -43,10 +46,8 @@ static ge::graphStatus InferDataType4MoeTutelDispatch(gert::InferDataTypeContext
     return ret;
 }
 
-// Shape and dtype inference stay in op_host rather than op_graph because the
-// custom vendor package links this object into libcust_opsproto_rt2.0.so;
-// graph-plugin objects are not part of that library.
-IMPL_OP_INFERSHAPE(MoeTutelDispatch)
-    .InferShape(InferShape4MoeTutelDispatch)
-    .InferDataType(InferDataType4MoeTutelDispatch);
+// Dtype inference stays in the runtime-v2 registry.  Shape inference uses the
+// Operator-based compatibility registration above so the caller-owned E dim is
+// not discarded before graph compilation.
+IMPL_OP_INFERSHAPE(MoeTutelDispatch).InferDataType(InferDataType4MoeTutelDispatch);
 } // namespace ops
