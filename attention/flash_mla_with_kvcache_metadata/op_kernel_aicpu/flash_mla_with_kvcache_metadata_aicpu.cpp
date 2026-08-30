@@ -56,13 +56,11 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
     KERNEL_CHECK_FALSE((metadata_ != nullptr && metadata_->GetData() != nullptr), false, "metadata is empty");
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                         GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-                         GetAttrValue(ctx, "head_dim_qk", headDimQk_) &&
-                         GetAttrValue(ctx, "head_dim_v", headDimV_) &&
-                         GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    bool requiredAttrs =
+        GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
+        GetAttrValue(ctx, "head_dim_qk", headDimQk_) && GetAttrValue(ctx, "head_dim_v", headDimV_) &&
+        GetAttrValue(ctx, "soc_version", socVersion_) && GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     KERNEL_CHECK_FALSE(requiredAttrs, false, "Missing Required attrs missing!");
 
     // attributes optional
@@ -88,8 +86,7 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
     KERNEL_CHECK_FALSE(CheckActualQuerySeq(), false, "Check query sequence failed");
     KERNEL_CHECK_FALSE(CheckActualKvSeq(), false, "Check kv sequence failed");
     // batch size 由必传的 cacheSeqlens 长度推导（每 batch 一项），batch_size attr 已移除
-    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false,
-                       "cacheSeqlens must be provided to derive batch_size");
+    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false, "cacheSeqlens must be provided to derive batch_size");
     return true;
 }
 
@@ -120,8 +117,8 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualQuerySeq()
     for (size_t i = 1; i < cuSeqlensQ.size(); ++i) {
         if (cuSeqlensQ[i] < cuSeqlensQ[i - 1]) {
             KERNEL_LOG_ERROR(
-                "The %zuth element of cuSeqlensQ must not be less than the %zuth element, but got %ld and %ld",
-                i, i - 1, cuSeqlensQ[i], cuSeqlensQ[i - 1]);
+                "The %zuth element of cuSeqlensQ must not be less than the %zuth element, but got %ld and %ld", i,
+                i - 1, cuSeqlensQ[i], cuSeqlensQ[i - 1]);
             return false;
         }
     }
@@ -151,8 +148,8 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualKvSeq()
 
     for (size_t i = 0; i < cacheSeqlens.size(); ++i) {
         if (cacheSeqlens[i] < 0) {
-            KERNEL_LOG_ERROR("The elements of cacheSeqlens must be non-negative, but %zuth element is %ld",
-                             i, cacheSeqlens[i]);
+            KERNEL_LOG_ERROR("The elements of cacheSeqlens must be non-negative, but %zuth element is %ld", i,
+                             cacheSeqlens[i]);
             return false;
         }
     }
@@ -177,10 +174,10 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
     } else if (baseInfo.layoutQuery == load_balance::Layout::TND) {
         qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
     }
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDimQk, maxSeqlenQ_,
-                                                                maxSeqlenKv_, baseInfo.sparseMode, baseInfo.preToken,
-                                                                baseInfo.nextToken, qlayout,
-                                                                mBaseSize_, s2BaseSize_);
+    uint32_t gSize = static_cast<uint32_t>(numHeadsQ_ / numHeadsKv_);
+    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDimQk, gSize, maxSeqlenQ_, maxSeqlenKv_,
+                                                                baseInfo.sparseMode, baseInfo.preToken,
+                                                                baseInfo.nextToken, qlayout, mBaseSize_, s2BaseSize_);
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
