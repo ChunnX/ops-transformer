@@ -81,9 +81,9 @@ def call_npu_eager(torch_tensor_dict, params):
 def call_npu(input_tensor_dict, params):
     torch_npu.npu.set_device(0)
     torch_tensor_dict = _load_inputs_to_npu(input_tensor_dict)
-    npu_result = call_npu_eager(torch_tensor_dict, params)
+    # npu_result = call_npu_eager(torch_tensor_dict, params)
     # 路径3
-    # npu_result = call_npu_graph(torch_tensor_dict, params)
+    npu_result = call_npu_graph(torch_tensor_dict, params)
     torch.npu.synchronize()
     return npu_result
 
@@ -118,7 +118,7 @@ class Network(torch.nn.Module):
         sinks,
         return_softmax_lse,
     ):
-        return kv_quant_sparse_flash_attention(
+        return torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention(
             query=query,
             key=key,
             value=value,
