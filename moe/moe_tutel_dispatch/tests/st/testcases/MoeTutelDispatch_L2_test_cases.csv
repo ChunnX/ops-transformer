@@ -1,0 +1,26 @@
+case_id,layer,category,mutation,base_shapes,base_dtypes,capacity,expected_error,allocation_policy,notes
+MTD_L2_001,Host-UT,null_input,missing_x,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,null_input,normal,missing required tensor
+MTD_L2_002,Host-UT,null_input,missing_gates,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,null_input,normal,missing required tensor
+MTD_L2_003,Host-UT,null_input,missing_indices,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,null_input,normal,missing required tensor
+MTD_L2_004,Host-UT,null_input,missing_locations,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,null_input,normal,missing required tensor
+MTD_L2_005,Host-UT,null_input,missing_capacity,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",missing,null_input,normal,missing required attr
+MTD_L2_006,GE-build,shape_mismatch,missing_caller_y_desc,"x=[4,8];route=[3,4];y=missing","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,E cannot be inferred from K
+MTD_L2_007,Host-UT,shape_mismatch,x_rank_1,"x=[32];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,fixed rank required
+MTD_L2_008,Host-UT,shape_mismatch,gates_rank_3,"x=[4,8];gates=[1,3,4];indices=[3,4];locations=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,fixed rank required
+MTD_L2_009,Host-UT,shape_mismatch,indices_shape_mismatch,"x=[4,8];gates=[3,4];indices=[2,4];locations=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,route shapes must match
+MTD_L2_010,Host-UT,shape_mismatch,locations_shape_mismatch,"x=[4,8];gates=[3,4];indices=[3,4];locations=[3,5];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,route shapes must match
+MTD_L2_011,Host-UT,shape_mismatch,S_mismatch,"x=[4,8];route=[3,5];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,x.S must equal route.S
+MTD_L2_012,Host-UT,shape_mismatch,y_rank_2,"x=[4,8];route=[3,4];y=[2,40]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,caller y rank must be 3
+MTD_L2_013,Host-UT,shape_mismatch,y_capacity_mismatch,"x=[4,8];route=[3,4];y=[2,6,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,y.dim1 must equal capacity
+MTD_L2_014,Host-UT,shape_mismatch,y_hidden_mismatch,"x=[4,8];route=[3,4];y=[2,5,7]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,y.dim2 must equal x.H
+MTD_L2_015,Host-UT,dtype_not_supported,x_float64,"x=[4,8];route=[3,4];y=[2,5,8]","fp64;fp16;i32;i32;fp16",5,dtype_not_supported,normal,unsupported x dtype
+MTD_L2_016,Host-UT,dtype_not_supported,gates_dtype_mismatch,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp32;i32;i32;fp16",5,dtype_not_supported,normal,x gates y must match
+MTD_L2_017,Host-UT,dtype_not_supported,indices_int64,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i64;i32;fp16",5,dtype_not_supported,normal,indices fixed int32
+MTD_L2_018,Host-UT,dtype_not_supported,y_dtype_mismatch,"x=[4,8];route=[3,4];y=[2,5,8]","bf16;bf16;i32;i32;fp16",5,dtype_not_supported,normal,caller y dtype must equal x
+MTD_L2_019,Host-UT,attribute_value_out_of_range,capacity_negative,"x=[4,8];route=[3,4];y=[2,0,8]","fp16;fp16;i32;i32;fp16",-1,attribute_value_out_of_range,metadata_only,no allocation from invalid attr
+MTD_L2_020,Host-UT,attribute_value_out_of_range,capacity_gt_int32,"x=[4,8];route=[3,4];y=[2,2147483648,8]","fp16;fp16;i32;i32;fp16",2147483648,attribute_value_out_of_range,metadata_only,no huge allocation
+MTD_L2_021,Host-UT,shape_mismatch,dimension_gt_int32,"x=[2147483648,8];route=[3,2147483648];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,metadata_only,no huge allocation
+MTD_L2_022,Host-UT,shape_mismatch,signed_int64_product_overflow,"x=[2147483647,2147483647];route=[3,2147483647];y=[2147483647,2147483647,2147483647]","fp16;fp16;i32;i32;fp16",2147483647,shape_mismatch,metadata_only,construct descriptors only
+MTD_L2_023,Host-UT,shape_mismatch,non_ND_format,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,normal,all tensors fixed ND
+MTD_L2_024,GE-build,shape_mismatch,dynamic_rank,"x=[-2];route=[-2];y=[-2]","fp16;fp16;i32;i32;fp16",5,shape_mismatch,metadata_only,dynamic dimensions supported but dynamic rank unsupported
+MTD_L2_025,Host-UT,dtype_not_supported,locations_int64,"x=[4,8];route=[3,4];y=[2,5,8]","fp16;fp16;i32;i64;fp16",5,dtype_not_supported,normal,locations fixed int32

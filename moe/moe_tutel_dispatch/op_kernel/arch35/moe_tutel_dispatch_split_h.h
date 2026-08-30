@@ -32,15 +32,17 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR gates, GM_ADDR indices, GM_ADDR locations, GM_ADDR y)
     {
         Base::InitCommon(x, gates, indices, locations, y);
-        hChunkElems_ = this->tl_->hChunkElems;
-        this->pipe_->InitBuffer(rowQue_, DOUBLE_BUFFER,
-                                static_cast<uint32_t>(hChunkElems_ * static_cast<int64_t>(sizeof(TByte))));
+        hChunkElems_ = this->tiling_->hChunkElems;
     }
 
     __aicore__ inline void Process()
     {
         Base::InitOutputZero();
         Base::SyncBetweenStages();
+
+        Base::InitRouteBuffers();
+        this->pipe_->InitBuffer(rowQue_, PAYLOAD_BUFFER_NUM,
+                                static_cast<uint32_t>(hChunkElems_ * static_cast<int64_t>(sizeof(TByte))));
 
         // tileRoutes 恒为 1：一次只解析一条路由，行内再按 hChunkElems 切块
         for (int64_t r = this->routeStart_; r < this->routeEnd_; ++r) {
@@ -56,11 +58,7 @@ public:
 private:
     __aicore__ inline void CopyRow(int64_t srcOffset, int64_t dstOffset)
     {
-        DataCopyPadExtParams<TByte> rowPad;
-        rowPad.isPad = 0;
-        rowPad.leftPadding = 0;
-        rowPad.rightPadding = 0;
-        rowPad.paddingValue = 0;
+        DataCopyPadExtParams<TByte> rowPad{false, 0, 0, 0};
 
         for (int64_t off = 0; off < this->hidden_; off += hChunkElems_) {
             const int64_t cur = MinInt64(hChunkElems_, this->hidden_ - off);
@@ -76,7 +74,7 @@ private:
         }
     }
 
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> rowQue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, PAYLOAD_QUEUE_DEPTH> rowQue_;
     int64_t hChunkElems_ = 0;
 };
 } // namespace MoeTutelDispatchNs
