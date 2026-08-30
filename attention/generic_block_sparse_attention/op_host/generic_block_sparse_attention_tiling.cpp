@@ -192,12 +192,12 @@ ge::graphStatus GBSATiling::ParseCapabilityAttrs(gert::TilingContext *context)
     if (lseFlagPtr != nullptr) {
         softmaxLseFlag_ = *lseFlagPtr;
     }
-    if (softmaxLseFlag_ != 0 && softmaxLseFlag_ != 1) {
-        OP_LOGE(context->GetNodeName(), "Unsupported returnSoftmaxlse=%ld, only 0 or 1 are supported.",
+    if (softmaxLseFlag_ != 0) {
+        OP_LOGE(context->GetNodeName(), "Unsupported returnSoftmaxlse=%ld, only 0 is supported.",
                 softmaxLseFlag_);
         return ge::GRAPH_FAILED;
     }
-    returnSoftmaxlse_ = (softmaxLseFlag_ == 1);
+    returnSoftmaxlse_ = false;
     return ge::GRAPH_SUCCESS;
 }
 

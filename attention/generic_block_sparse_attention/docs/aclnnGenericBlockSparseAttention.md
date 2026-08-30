@@ -489,10 +489,9 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>是否使能softmaxLse输出的标志位。</td>
       <td>
-    当前只支持传0或1
+    当前仅支持传0
     <ul>
-          <li>0：表示不输出softmaxLse</li>
-      <li>1：表示输出softmaxLse，相比不输出softmaxLse可能存在性能损失</li>
+          <li>0：表示不输出softmaxLse，softmaxLseOptional须传入nullptr</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -514,13 +513,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>softmaxLseOptional</td>
       <td>输出</td>
       <td>Softmax计算的log-sum-exp中间结果。</td>
-      <td>支持的shape随着query的shape改变：
-    <ul>
-          <li>query为"TND": [totalQTokens, headNum, 1]。</li>
-          <li>query为"BNSD": [batch, headNum, maxQSeqLength, 1]。</li>
-          <li>query为"BSND": [batch, maxQSeqLength, headNum, 1]。</li>
-        </ul>
-      </td>
+      <td>当前不支持；returnSoftmaxlse须为0，传入nullptr。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>
@@ -571,12 +564,12 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>query/key/value/sparseBlockIdx/sparseBlockCount/attentionOut 等必选指针为空；returnSoftmaxlse=1 时 softmaxLse 必须非空。</td>
+      <td>query/key/value/sparseBlockIdx/sparseBlockCount/attentionOut 等必选指针为空。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>isPackedGQA、layout、maskType、blockShape、softmaxPrecision、quantType 等与约束不匹配。</td>
+      <td>isPackedGQA、layout、maskType、blockShape、softmaxPrecision、quantType、returnSoftmaxlse 等与约束不匹配。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_NULLPTR</td>
@@ -927,7 +920,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 - qDequantScaleOptional、kDequantScaleOptional、vDequantScaleOptional、pQuantScaleOptional当前须传入nullptr。
 - dstTypeMax当前只支持0.0。
 - 输入query、key、value的数据类型必须一致；当前支持FLOAT16、BFLOAT16；Ascend 950上另支持FLOAT8_E4M3FN（须quantType=5）。
-- returnSoftmaxlse仅支持0或1，分别表示不开启/开启softmaxLse输出；quantType=5时returnSoftmaxlse当前只支持0。
+- returnSoftmaxlse当前仅支持0，不支持开启softmaxLse输出。
 - softmaxPrecision：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0；FLOAT8路径仅支持1。
 - scaleValue传0时算子内按$1/\sqrt{D}$处理。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0；groupSize=N1/N2当前须≤128。
@@ -1102,7 +1095,6 @@ int main()
   std::vector<int64_t> cuSeqKvShape = {B + 1};
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T, N1, D};
-  std::vector<int64_t> softmaxLseShape = {T, N1, 1};
 
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
@@ -1114,7 +1106,6 @@ int main()
   void* cuSeqKvDeviceAddr = nullptr;
   void* blockTableDeviceAddr = nullptr;
   void* attnOutDeviceAddr = nullptr;
-  void* softmaxLseDeviceAddr = nullptr;
 
   aclTensor* q = nullptr;
   aclTensor* k = nullptr;
@@ -1126,7 +1117,6 @@ int main()
   aclTensor* cuSeqKv = nullptr;
   aclTensor* blockTable = nullptr;
   aclTensor* attnOut = nullptr;
-  aclTensor* softmaxLse = nullptr;
 
   int64_t qSize = GetShapeSize(qShape);
   int64_t kvSize = GetShapeSize(kvShape);
@@ -1134,7 +1124,6 @@ int main()
   int64_t sparseCountSize = GetShapeSize(sparseCountShape);
   int64_t blockTableSize = GetShapeSize(blockTableShape);
   int64_t attnOutSize = GetShapeSize(attnOutShape);
-  int64_t softmaxLseSize = GetShapeSize(softmaxLseShape);
 
   std::vector<uint16_t> qHostData = MakeFp16Data(qSize, 1.0f);
   std::vector<uint16_t> kHostData = MakeFp16Data(kvSize, 1.0f);
@@ -1147,7 +1136,6 @@ int main()
   std::vector<int64_t> cuSeqKvHostData = {0, S2};
   std::vector<int32_t> metadataHostData(1024, 0);
   std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
-  std::vector<float> softmaxLseHostData(softmaxLseSize, 0.0f);
 
   // Causal-like sparse window: keep up to topK trailing KV blocks per Q token.
   int64_t history = S2 - S1;
@@ -1183,9 +1171,6 @@ int main()
                         &blockTable);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attnOutHostData, attnOutShape, &attnOutDeviceAddr, aclDataType::ACL_FLOAT16, &attnOut);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(softmaxLseHostData, softmaxLseShape, &softmaxLseDeviceAddr, aclDataType::ACL_FLOAT,
-                        &softmaxLse);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   const int64_t blockShapeData[] = {blockShapeX, blockSize};
@@ -1225,7 +1210,7 @@ int main()
   aclOpExecutor* executor = nullptr;
   ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
       q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, cuSeqKv, nullptr,
-      nullptr, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 1, attnOut, softmaxLse,
+      nullptr, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut, nullptr,
       &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -1257,7 +1242,6 @@ int main()
   aclDestroyTensor(cuSeqKv);
   aclDestroyTensor(blockTable);
   aclDestroyTensor(attnOut);
-  aclDestroyTensor(softmaxLse);
 
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
@@ -1270,7 +1254,6 @@ int main()
   aclrtFree(cuSeqKvDeviceAddr);
   aclrtFree(blockTableDeviceAddr);
   aclrtFree(attnOutDeviceAddr);
-  aclrtFree(softmaxLseDeviceAddr);
   if (metadataWorkspaceSize > 0) {
     aclrtFree(metadataWorkspaceAddr);
   }

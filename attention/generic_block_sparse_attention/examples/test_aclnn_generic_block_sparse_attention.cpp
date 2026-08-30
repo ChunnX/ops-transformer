@@ -178,7 +178,6 @@ int main()
     std::vector<int64_t> cuSeqKvShape = {B + 1};
     std::vector<int64_t> metadataShape = {1024};
     std::vector<int64_t> attnOutShape = {T, N1, D};
-    std::vector<int64_t> softmaxLseShape = {T, N1, 1};
 
     void *qDeviceAddr = nullptr;
     void *kDeviceAddr = nullptr;
@@ -190,7 +189,6 @@ int main()
     void *cuSeqKvDeviceAddr = nullptr;
     void *blockTableDeviceAddr = nullptr;
     void *attnOutDeviceAddr = nullptr;
-    void *softmaxLseDeviceAddr = nullptr;
 
     aclTensor *q = nullptr;
     aclTensor *k = nullptr;
@@ -202,7 +200,6 @@ int main()
     aclTensor *cuSeqKv = nullptr;
     aclTensor *blockTable = nullptr;
     aclTensor *attnOut = nullptr;
-    aclTensor *softmaxLse = nullptr;
 
     int64_t qSize = GetShapeSize(qShape);
     int64_t kvSize = GetShapeSize(kvShape);
@@ -210,7 +207,6 @@ int main()
     int64_t sparseCountSize = GetShapeSize(sparseCountShape);
     int64_t blockTableSize = GetShapeSize(blockTableShape);
     int64_t attnOutSize = GetShapeSize(attnOutShape);
-    int64_t softmaxLseSize = GetShapeSize(softmaxLseShape);
 
     std::vector<uint16_t> qHostData = MakeFp16Data(qSize, 1.0f);
     std::vector<uint16_t> kHostData = MakeFp16Data(kvSize, 1.0f);
@@ -223,7 +219,6 @@ int main()
     std::vector<int64_t> cuSeqKvHostData = {0, S2};
     std::vector<int32_t> metadataHostData(1024, 0);
     std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
-    std::vector<float> softmaxLseHostData(softmaxLseSize, 0.0f);
 
     // Causal-like sparse window: keep up to topK trailing KV blocks per Q token.
     int64_t history = S2 - S1;
@@ -259,9 +254,6 @@ int main()
                           &blockTable);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(attnOutHostData, attnOutShape, &attnOutDeviceAddr, aclDataType::ACL_FLOAT16, &attnOut);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(softmaxLseHostData, softmaxLseShape, &softmaxLseDeviceAddr, aclDataType::ACL_FLOAT,
-                          &softmaxLse);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     const int64_t blockShapeData[] = {blockShapeX, blockSize};
@@ -301,8 +293,8 @@ int main()
     aclOpExecutor *executor = nullptr;
     ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
         q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, cuSeqKv,
-        nullptr, nullptr, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 1, attnOut,
-        softmaxLse, &workspaceSize, &executor);
+        nullptr, nullptr, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut,
+        nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
@@ -334,7 +326,6 @@ int main()
     aclDestroyTensor(cuSeqKv);
     aclDestroyTensor(blockTable);
     aclDestroyTensor(attnOut);
-    aclDestroyTensor(softmaxLse);
 
     // 7. 释放device资源
     aclrtFree(qDeviceAddr);
@@ -347,7 +338,6 @@ int main()
     aclrtFree(cuSeqKvDeviceAddr);
     aclrtFree(blockTableDeviceAddr);
     aclrtFree(attnOutDeviceAddr);
-    aclrtFree(softmaxLseDeviceAddr);
     if (metadataWorkspaceSize > 0) {
         aclrtFree(metadataWorkspaceAddr);
     }

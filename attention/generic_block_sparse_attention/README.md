@@ -46,9 +46,9 @@ aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
     int64_t softmaxPrecision,                       // Softmax计算采取的精度级别
     int64_t winLeft,                                // 滑窗参数(当前不支持)
     int64_t winRight,                               // 滑窗参数(当前不支持)
-    int64_t returnSoftmaxlse,                       // 是否输出LSE
+    int64_t returnSoftmaxlse,                       // 是否输出LSE（当前仅支持0）
     aclTensor *attentionOut,                        // 输出tensor
-    aclTensor *softmaxLseOptional,                  // Softmax LSE输出(可选)
+    aclTensor *softmaxLseOptional,                  // Softmax LSE输出（当前不支持，须传nullptr）
     uint64_t *workspaceSize,                        // 返回workspace大小
     aclOpExecutor **executor);                      // 返回executor
 ```
@@ -95,7 +95,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 ### 输出参数
 
 - **attentionOut**: 注意力输出，shape与query相同
-- **softmaxLse**: Softmax log-sum-exp输出(可选)
+- **softmaxLse**: Softmax log-sum-exp输出；当前不支持，`returnSoftmaxlse`须为0，传入`nullptr`
 
 ## 使用示例
 
@@ -197,6 +197,7 @@ KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 9. quantType当前支持0；Ascend 950上可选5；quantType为1~4当前不支持。
 10. 输入query、key、value的数据类型必须一致；当前支持FLOAT16、BFLOAT16；Ascend 950上另支持FLOAT8_E4M3FN（须quantType=5）。
 11. softmaxPrecision：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0。
+12. returnSoftmaxlse当前仅支持0，不支持开启softmaxLse输出。
 
 ## 编译说明
 
