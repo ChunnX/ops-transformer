@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -75,22 +85,17 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 - **参数说明**
 
-  > [!NOTE]
-  >
-  >- 参数维度含义：B（Batch Size）表示输入样本批量大小；S（Sequence Length）表示序列长度；H（Head Size）表示hidden层大小；N（Head Num）表示多头数；D（Head Dim）表示head维度，且满足D=H/N；T表示所有Batch序列长度的累加和。
-  >- 表格中shape变量：totalQTokens、totalKTokens、totalVTokens分别为query、key、value的T；headNum为query的N；numKeyValueHeads为key/value的N；headDim为D；batch为B；maxQSeqLength、maxKvSeqLength分别为query、key在BNSD/BSND下的S；numBlocks为Paged KV Cache的物理页数；blockSize为每一页容纳的token数；maxNumBlocksPerBatch为blockTable第二维，须≥ceilDiv(maxKvSeqLength, blockSize)。
-  >- totalQBlocks表示按cuSeqLengthsQ差分得到的**存储长度**分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$，qStorageLen_i为cuSeqLengthsQ前缀和差分得到的各batch存储长度；maxSparseBlockCount（也称topK）为sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值。
-  >- 当前落地取值：D=128；blockShape=[1, 128]；KV页blockSize=128且须等于blockShapeY；query的headNum须≥key/value的numKeyValueHeads，且整除，groupSize当前须≤128；maxSparseBlockCount当前上限为256。
+  表格中shape变量含义见<a href="#基准说明">基准说明</a>。
 
-  <table style="undefined;table-layout: fixed; width: 1550px">
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1550px">
   <colgroup>
-  <col style="width: 190px">
+  <col style="width: 180px">
   <col style="width: 90px">
-  <col style="width: 150px">
-  <col style="width: 330px">
-  <col style="width: 250px">
+  <col style="width: 230px">
+  <col style="width: 320px">
+  <col style="width: 240px">
   <col style="width: 70px">
-  <col style="width: 360px">
+  <col style="width: 310px">
   <col style="width: 110px">
   </colgroup>
   <thead>
@@ -544,7 +549,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1155px"><colgroup>
   <col style="width: 280px">
   <col style="width: 90px">
   <col style="width: 785px">
@@ -579,7 +584,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
   <col style="width: 854px">
@@ -620,9 +625,38 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ## 约束说明
 
+### 基准说明
+
+资料约束中，常见字段释义如下：
+
+| 命名 | 含义 |
+| :---: | :--- |
+| B | Batch Size，输入样本批量大小 |
+| S | Sequence Length，序列长度 |
+| H | Head Size，hidden层大小 |
+| N | Head Num，多头数 |
+| D | Head Dim，head维度，且满足D=H/N |
+| T | 所有Batch序列长度的累加和 |
+| totalQTokens | query的T |
+| totalKTokens | key的T |
+| totalVTokens | value的T |
+| headNum | query的N |
+| numKeyValueHeads | key/value的N |
+| headDim | D |
+| batch | B |
+| maxQSeqLength | query在BNSD/BSND下的S |
+| maxKvSeqLength | key/value在BNSD/BSND下的S |
+| numBlocks | Paged KV Cache的物理页数 |
+| blockSize | 每一页容纳的token数 |
+| maxNumBlocksPerBatch | blockTable第二维，须≥ceilDiv(maxKvSeqLength, blockSize) |
+| qStorageLen_i | cuSeqLengthsQ前缀和差分得到的各batch存储长度 |
+| totalQBlocks | 按存储长度分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$ |
+| maxSparseBlockCount | 也称topK，sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值，当前上限为256 |
+| blockShapeX / blockShapeY | 稀疏块在Q方向、KV方向的块大小 |
+
 ### layout对应关系说明
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1155px"><colgroup>
   <col style="width: 160px">
   <col style="width: 180px">
   <col style="width: 815px">
@@ -681,7 +715,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### Paged Attention相关说明
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1155px"><colgroup>
   <col style="width: 420px">
   <col style="width: 160px">
   <col style="width: 575px">
@@ -725,7 +759,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 下列量化配置按Ascend 950（A5）代际描述；当前可用quantType=0，Ascend 950上可选quantType=5。
 
-  <table style="undefined;table-layout: fixed;width: 1550px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1550px"><colgroup>
   <col style="width: 120px">
   <col style="width: 240px">
   <col style="width: 130px">
@@ -857,7 +891,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### 掩码说明
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 100%; max-width: 1155px"><colgroup>
   <col style="width: 160px">
   <col style="width: 140px">
   <col style="width: 655px">
