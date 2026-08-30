@@ -2189,21 +2189,25 @@ __aicore__ inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM,
     virtN = n * NUM_TWO - m + NUM_THREE;
 }
 
-__aicore__ inline bool TNDRunPreferPool(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, int64_t groupSize)
+constexpr int64_t TND_TINY_PAIR_AREA = 8;
+
+// 与host的TNDLineCostsMoreThanPool逐字对应，两侧判据必须完全一致，否则前缀和与走查会错位。
+__aicore__ inline bool TNDLineCostsMoreThanPool(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
 {
-    if (pairCount <= 0 || virtM <= 0 || virtN <= 0) {
+    if (virtM * virtN <= TND_TINY_PAIR_AREA) {
         return true;
     }
-    const int64_t cols = virtN * pairCount;
-    // LINE独占整机。几何不合法、单batch碎片、pair轴填不满核、或pair矩形太小（1x1/2x2）都进共享pool。
-    return cols < k || virtM < Min(k, virtN) || groupSize <= 1 || pairCount < k || virtM * virtN <= 8;
+    const int64_t lineRounds = Ceil<int64_t>(virtN * pairCount, k) * virtM;
+    const int64_t poolShare = Ceil<int64_t>(virtM * virtN * pairCount, k);
+    return lineRounds > poolShare;
 }
 
-__aicore__ inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, int64_t groupSize,
-                                           bool &isSmall, bool &useLine, int64_t &soloPairRounds)
+__aicore__ inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, bool &isSmall,
+                                           bool &useLine, int64_t &soloPairRounds)
 {
     const int64_t cols = virtN * pairCount;
-    isSmall = (pairCount > 0 && cols > 0 && TNDRunPreferPool(k, virtM, virtN, pairCount, groupSize));
+    isSmall = (pairCount > 0 && cols > 0 &&
+               (cols < k || virtM < Min(k, virtN) || TNDLineCostsMoreThanPool(k, virtM, virtN, pairCount)));
     if (isSmall || pairCount <= 0 || cols <= 0) {
         useLine = false;
         soloPairRounds = 0;
@@ -2214,8 +2218,8 @@ __aicore__ inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t vir
 }
 
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
-__aicore__ inline int64_t CalTNDBandSoloRounds(int64_t k, int64_t n1, int64_t groupSize, int64_t m, int64_t n, int64_t p,
-                                               int64_t q, bool &isSmall, bool &useLine)
+__aicore__ inline int64_t CalTNDBandSoloRounds(int64_t k, int64_t n1, int64_t m, int64_t n, int64_t p, int64_t q,
+                                               bool &isSmall, bool &useLine)
 {
     isSmall = false;
     useLine = false;
@@ -2226,12 +2230,12 @@ __aicore__ inline int64_t CalTNDBandSoloRounds(int64_t k, int64_t n1, int64_t gr
     }
     if (p >= m) {
         int64_t pairRounds = 0;
-        ClassifyTNDPairCols(k, m, n, n1, groupSize, isSmall, useLine, pairRounds);
+        ClassifyTNDPairCols(k, m, n, n1, isSmall, useLine, pairRounds);
         return isSmall ? 0 : pairRounds;
     }
     if (p + q <= m) {
-        // narrow LINE 按带宽列打包，比物理 m×n pool 更紧；只有 1x1/2x2 进 pool。
-        isSmall = (m * n <= 8);
+        // 与host保持一致：narrow只有碎片入池，其余继续按带宽列打包走LINE。
+        isSmall = (m * n <= TND_TINY_PAIR_AREA);
         if (isSmall) {
             return 0;
         }
@@ -2253,7 +2257,7 @@ __aicore__ inline int64_t CalTNDBandSoloRounds(int64_t k, int64_t n1, int64_t gr
     const int64_t foldCols = Max(static_cast<int64_t>(0), l3 - p + 1);
     const int64_t denseN = nNew - foldCols;
     int64_t pairRounds = 0;
-    ClassifyTNDPairCols(k, m, denseN, n1, groupSize, isSmall, useLine, pairRounds);
+    ClassifyTNDPairCols(k, m, denseN, n1, isSmall, useLine, pairRounds);
     return isSmall ? 0 : pairRounds;
 }
 
@@ -2373,6 +2377,7 @@ __aicore__ inline void LoadTNDAreaVirt(const __gm__ uint8_t *actualSeqQlenAddr,
             virtM = 0;
             virtN = 0;
         } else if (p + q <= m) {
+            // narrow入池时host按物理m×n累面积，这里必须同口径，否则前缀和走查会错位
             virtM = m;
             virtN = n;
         } else {
@@ -2422,8 +2427,8 @@ __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlen
                                                  bp, bq, tmpInfo);
         bool isSmall = false;
         bool useLine = false;
-        (void)CalTNDBandSoloRounds<CUBE_BASEM, CUBE_BASEN>(k, n1 * (runEnd - runHead + 1), runEnd - runHead + 1, bm, bn,
-                                                           bp, bq, isSmall, useLine);
+        (void)CalTNDBandSoloRounds<CUBE_BASEM, CUBE_BASEN>(k, n1 * (runEnd - runHead + 1), bm, bn, bp, bq, isSmall,
+                                                           useLine);
         return isSmall ? base : 0;
     }
     if (virtMode <= 3) {
@@ -2446,12 +2451,14 @@ __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlen
         int64_t pairRounds = 0;
         const int64_t nRun = n1 * (runEnd - runHead + 1);
         const int64_t runPairs = nRun / NUM_TWO;
-        ClassifyTNDPairCols(k, pairVirtM, pairVirtN, runPairs, runEnd - runHead + 1, isSmall, useLine, pairRounds);
-        if (virtMode == 0 || virtMode == 1) {
-            const bool n1Odd = (n1 % NUM_TWO == 1);
-            const bool singleUnsafe = !leftUp && (nRun % NUM_TWO == 1) && cm < Min(k, cn);
-            const bool singleInPool = n1Odd && (isSmall || runPairs <= 0 || singleUnsafe);
-            return singleInPool ? base : 0;
+        ClassifyTNDPairCols(k, pairVirtM, pairVirtN, runPairs, isSmall, useLine, pairRounds);
+        // 与CalTNDCausalRunIndex保持一致：凑不出pair的run、以及被挤出LINE的落单头，都由single池承接。
+        // 这两条只对single前缀（virtMode 0/1）成立，pair池前缀不能把它们算进去。
+        const bool isSingleMode = (virtMode == 0 || virtMode == 1);
+        const bool noPairSingle = isSingleMode && runPairs <= 0;
+        const bool singleUnsafe = virtMode == 1 && (nRun % NUM_TWO == 1) && cm < Min(k, cn);
+        if (!isSmall && (noPairSingle || singleUnsafe)) {
+            return base;
         }
         return isSmall ? base : 0;
     }
@@ -2617,7 +2624,8 @@ __aicore__ inline void CalTNDCausalRunIndex(const __gm__ uint8_t *actualSeqQlenA
         bool isSmall = false;
         bool useLine = false;
         int64_t pairRounds = 0;
-        ClassifyTNDPairCols(k, virtM, virtN, runPairs, groupSize, isSmall, useLine, pairRounds);
+        ClassifyTNDPairCols(k, virtM, virtN, runPairs, isSmall, useLine, pairRounds);
+        // runPairs<=0时host没给这个run分LINE轮次，落单头在single池里，这里不能消耗轮次
         if (isSmall || runPairs <= 0) {
             bIdx = runEnd + 1;
             continue;
@@ -2824,7 +2832,7 @@ __aicore__ inline void CalTNDBandSoloIndex(const __gm__ uint8_t *actualSeqQlenAd
         bool isSmall = false;
         bool useLine = false;
         const int64_t soloRounds =
-            CalTNDBandSoloRounds<CUBE_BASEM, CUBE_BASEN>(k, copies, groupSize, m, n, p, q, isSmall, useLine);
+            CalTNDBandSoloRounds<CUBE_BASEM, CUBE_BASEN>(k, copies, m, n, p, q, isSmall, useLine);
         if (isSmall) {
             bIdx = runEnd + 1;
             continue;
@@ -3163,8 +3171,10 @@ __aicore__ inline void CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr,
         const int64_t q = coordinateInfo.q;
         m = coordinateInfo.m > 0 ? coordinateInfo.m : m;
         n = coordinateInfo.n > 0 ? coordinateInfo.n : n;
-        const bool inBand = (p + q <= m) ? (x >= 1 && x <= m && y >= 1 && y <= n && y >= x - p + 1 && y <= x + q - 1) :
-                                           MapTNDBandWide(m, n, p, q, x, y);
+        // narrow入池时pool走的是物理m×n矩形，落点只需落在带宽内，不能套wide的折叠映射
+        const bool inBand = (p + q <= m) ?
+                                (x >= 1 && x <= m && y >= 1 && y <= n && y >= x - p + 1 && y <= x + q - 1) :
+                                MapTNDBandWide(m, n, p, q, x, y);
         if (copyId >= 1 && copyId <= N1 && inBand) {
             coordinateInfo.batchId = coordinateInfo.batchId * N1 + copyId;
             coordinateInfo.s1Idx = x;
