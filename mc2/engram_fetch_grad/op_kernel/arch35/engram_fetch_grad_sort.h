@@ -63,6 +63,21 @@ __aicore__ inline void GatherGroupsSimt(uint32_t tileLen, __ubuf__ uint8_t *sort
     }
 }
 
+// Single-core fast-path reorder: copy both arrays in sorted order to a CONTIGUOUS GM
+// staging area (values at [0,count), indices at [count,2*count)). Same access discipline
+// as GatherGroupsSimt: SIMT reads UB at any granularity and stores GM; UB stores from
+// SIMT threads are forbidden (error 340).
+__simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
+__aicore__ inline void GatherContigSimt(uint32_t count, __ubuf__ uint32_t *sortedIndex, __ubuf__ int32_t *valSrc,
+                                        __ubuf__ int32_t *idxSrc, __gm__ int32_t *valDst, __gm__ int32_t *idxDst)
+{
+    for (uint32_t i = threadIdx.x; i < count; i += SIMT_THREAD_NUM) {
+        uint32_t j = sortedIndex[i];
+        valDst[i] = valSrc[j];
+        idxDst[i] = idxSrc[j];
+    }
+}
+
 namespace EngramFetchGradSort {
 
 enum : uint32_t {
@@ -150,6 +165,8 @@ public:
     __aicore__ inline void SetValueOffset(int32_t offset);
 
     __aicore__ inline void Process(uint32_t actualCount, AscendC::TPipe &pipe);
+
+    __aicore__ inline void ProcessSingleCore(uint32_t actualCount, AscendC::TPipe &pipe);
 
     uint64_t sortCopyTempCycle_{0};
     uint64_t sortRoundHistCycle_[4]{0};
@@ -1030,6 +1047,13 @@ __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
 __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, AscendC::TPipe &pipe)
 {
     elementCount_ = actualCount;
+    // Small inputs: one core sorts the whole array with every byte round resident in UB —
+    // no cross-core barriers, no global hist/prefix, no GM temp round trips (the 6 SyncAll
+    // + per-round fixed latencies dominate the distributed path at tileLen=64).
+    if (actualCount <= DEFAULT_TILE_SIZE) {
+        ProcessSingleCore(actualCount, pipe);
+        return;
+    }
     uint32_t dynTile = CeilDiv(actualCount, coreCount_);
     if (dynTile > 0 && dynTile < tileElements_) {
         tileElements_ = dynTile;
@@ -1044,6 +1068,84 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     if (byteRounds_ % 2 == 1) {
         CopyTempToOutput(tempValueGm_, tempIndexGm_, valueGm_, indexGm_, pipe);
     }
+}
+
+// One core sorts the whole array (actualCount <= DEFAULT_TILE_SIZE): for each byte round,
+// V-pipe keys (ComputeTileHistogram) -> Sort<uint8_t> -> SIMT reorder of both arrays to the
+// per-core GM staging -> MTE2 read-back (data stays in UB between rounds). The final round
+// is written to the sort GM outputs via the ordered MTE3 path. All primitives are the ones
+// already proven on board; the only cross-core sync is the trailing barrier.
+__aicore__ inline void EngramFetchGradSort::ProcessSingleCore(uint32_t actualCount, AscendC::TPipe &pipe)
+{
+    if (AscendC::GetBlockIdx() == 0) {
+        event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
+        event_t evtVMte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE2));
+        event_t evtMte2Mte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_MTE3));
+        event_t evtVS = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
+        event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
+
+        AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
+        AscendC::LocalTensor<int32_t> vals = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
+        AscendC::LocalTensor<int32_t> idxs = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, tileAlignBytes_);
+        AscendC::LocalTensor<uint32_t> sortIndices =
+            sortWorkspace_.GetWithOffset<uint32_t>(tileElements_, 2U * tileAlignBytes_);
+        // RADIX_SORT tmp layout (ArrangeCommonTmpBuffer): 512B buckets + 7B/element.
+        uint32_t tmpCount = (actualCount + 31U) / 32U * 32U;
+        AscendC::LocalTensor<uint8_t> sortTempBig =
+            sortWorkspace_.GetWithOffset<uint8_t>(512U + 7U * tmpCount, 3U * tileAlignBytes_);
+        // exclusiveUb scratch for ComputeTileHistogram; lives at sortTemp's base because the
+        // histogram runs strictly before Sort consumes sortTemp.
+        AscendC::LocalTensor<int32_t> exclusiveLocal =
+            sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 3U * tileAlignBytes_);
+        AscendC::LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
+        AscendC::LocalTensor<uint8_t> sortedKey = sortedKeyBuffer_.Get<uint8_t>();
+        AscendC::LocalTensor<uint16_t> histLocal = histogramBuffer_.Get<uint16_t>();
+        AscendC::LocalTensor<uint16_t> cumsumLocal = cumulativeBuffer_.Get<uint16_t>();
+        AscendC::LocalTensor<int32_t> histWide = histWideBuffer_.Get<int32_t>();
+
+        AscendC::DataCopyExtParams ioParam{1U, static_cast<uint32_t>(actualCount * sizeof(int32_t)), 0U, 0U, 0U};
+        AscendC::DataCopyPad(vals, valueGm_[0], ioParam, valPad);
+        AscendC::DataCopyPad(idxs, indexGm_[0], ioParam, valPad);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+
+        for (uint32_t byteRound = 0; byteRound < byteRounds_; byteRound++) {
+            ComputeTileHistogram(
+                (__local_mem__ uint32_t *)vals.GetPhyAddr(), actualCount, byteRound, valueOffset_,
+                (__local_mem__ uint16_t *)histLocal.GetPhyAddr(), (__local_mem__ uint16_t *)cumsumLocal.GetPhyAddr(),
+                (__local_mem__ uint8_t *)keyLocal.GetPhyAddr(), (__local_mem__ uint32_t *)exclusiveLocal.GetPhyAddr(),
+                (__local_mem__ uint32_t *)histWide.GetPhyAddr());
+            AscendC::PipeBarrier<PIPE_V>();
+            // Sort is V-pipe; V->V program order with the keys above.
+            Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTempBig, actualCount);
+            // Join V -> VF through S (the proven launch pattern).
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+
+            asc_vf_call<GatherContigSimt>(dim3(SIMT_THREAD_NUM), actualCount,
+                                          (__ubuf__ uint32_t *)sortIndices.GetPhyAddr(),
+                                          (__ubuf__ int32_t *)vals.GetPhyAddr(), (__ubuf__ int32_t *)idxs.GetPhyAddr(),
+                                          (__gm__ int32_t *)simtStagingGm_.GetPhyAddr(),
+                                          (__gm__ int32_t *)(simtStagingGm_.GetPhyAddr() + actualCount));
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+            AscendC::DataCopyPad(vals, simtStagingGm_[0], ioParam, valPad);
+            AscendC::DataCopyPad(idxs, simtStagingGm_[actualCount], ioParam, valPad);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+        }
+
+        // Sorted arrays are in UB (last round's MTE2 read-back); write the GM outputs via
+        // the ordered MTE3 path.
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
+        AscendC::DataCopyPad(valueGm_[0], vals, ioParam);
+        AscendC::DataCopyPad(indexGm_[0], idxs, ioParam);
+        WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+    }
+    AscendC::SyncAll<true>();
 }
 
 } // namespace EngramFetchGradSort
