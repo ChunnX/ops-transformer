@@ -26,13 +26,13 @@
 using namespace std;
 
 namespace {
-const std::string kAscend950SocInfo = "{\n"
-                                      "  \"hardware_info\": {\n"
-                                      "    \"UB_SIZE\": 262144,\n"
-                                      "    \"CORE_NUM\": 32,\n"
-                                      "    \"socVersion\": \"Ascend910_95\"\n"
-                                      "  }\n"
-                                      "}";
+const std::string ASCEND_950_SOC_INFO = "{\n"
+                                        "  \"hardware_info\": {\n"
+                                        "    \"UB_SIZE\": 262144,\n"
+                                        "    \"CORE_NUM\": 32,\n"
+                                        "    \"socVersion\": \"Ascend910_95\"\n"
+                                        "  }\n"
+                                        "}";
 
 constexpr size_t SYS_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
@@ -89,7 +89,7 @@ gert::TilingContextPara MakePara(const vector<int64_t> &xShape, const vector<int
     outputs.emplace_back(MakeStorageShape(outShape), outType, meta.outFormat);
     return gert::TilingContextPara("MoeTutelCombineGates", inputs, outputs,
                                    std::vector<gert::TilingContextPara::OpAttr>{}, compileInfo, "Ascend950",
-                                   kAscend950SocInfo, 4096);
+                                   ASCEND_950_SOC_INFO, 4096);
 }
 
 void ExpectSuccess(const gert::TilingContextPara &para, uint64_t tilingKey)

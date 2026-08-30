@@ -66,6 +66,17 @@ constexpr uint32_t FP16_MANTISSA_SCALE = 1U << FP16_MANTISSA_BITS;
 constexpr float FP16_ROUND_HALFWAY = 0.5F;
 constexpr float FP16_MIN_NORMAL = 0x1.0p-14F;
 constexpr float FP16_MAX_FINITE = 65504.0F;
+constexpr int32_t ARGUMENT_COUNT_WITH_DTYPE = 2;
+constexpr int32_t PROGRAM_ARGUMENT_INDEX = 0;
+constexpr int32_t DTYPE_ARGUMENT_INDEX = 1;
+constexpr char FP16_ARGUMENT[] = "fp16";
+constexpr char FP32_ARGUMENT[] = "fp32";
+constexpr char USAGE_FORMAT[] = "Usage: %s [%s|%s]\n";
+constexpr char GRAPH_NAME[] = "tc_ge_irrun_moe_tutel_combine_gates";
+constexpr char GE_DEVICE_ID_KEY[] = "ge.exec.deviceId";
+constexpr char GE_DEVICE_ID_VALUE[] = "0";
+constexpr char GE_GRAPH_RUN_MODE_KEY[] = "ge.graphRunMode";
+constexpr char GE_GRAPH_RUN_MODE_VALUE[] = "1";
 
 string GetTime()
 {
@@ -170,26 +181,27 @@ int32_t MakeInt32Tensor(const vector<int64_t> &shape, const vector<int32_t> &val
 
 int main(int argc, char *argv[])
 {
-    const char *graphName = "tc_ge_irrun_moe_tutel_combine_gates";
-    Graph graph(graphName);
+    Graph graph(GRAPH_NAME);
 
     DataType floatDtype = DT_FLOAT;
-    if (argc > 2 || (argc == 2 && argv[1] == nullptr)) {
-        printf("Usage: %s [fp32|fp16]\n", argv[0]);
+    if (argc > ARGUMENT_COUNT_WITH_DTYPE ||
+        (argc == ARGUMENT_COUNT_WITH_DTYPE && argv[DTYPE_ARGUMENT_INDEX] == nullptr)) {
+        printf(USAGE_FORMAT, argv[PROGRAM_ARGUMENT_INDEX], FP32_ARGUMENT, FP16_ARGUMENT);
         return FAILED;
     }
-    if (argc == 2) {
-        const string dtypeArg(argv[1]);
-        if (dtypeArg == "fp16") {
+    if (argc == ARGUMENT_COUNT_WITH_DTYPE) {
+        const string dtypeArg(argv[DTYPE_ARGUMENT_INDEX]);
+        if (dtypeArg == FP16_ARGUMENT) {
             floatDtype = DT_FLOAT16;
-        } else if (dtypeArg != "fp32") {
-            printf("Usage: %s [fp32|fp16]\n", argv[0]);
+        } else if (dtypeArg != FP32_ARGUMENT) {
+            printf(USAGE_FORMAT, argv[PROGRAM_ARGUMENT_INDEX], FP32_ARGUMENT, FP16_ARGUMENT);
             return FAILED;
         }
     }
 
     printf("%s - INFO - [XIR]: Start to initialize ge\n", GetTime().c_str());
-    map<AscendString, AscendString> globalOptions = {{"ge.exec.deviceId", "0"}, {"ge.graphRunMode", "1"}};
+    map<AscendString, AscendString> globalOptions = {{GE_DEVICE_ID_KEY, GE_DEVICE_ID_VALUE},
+                                                     {GE_GRAPH_RUN_MODE_KEY, GE_GRAPH_RUN_MODE_VALUE}};
     Status ret = ge::GEInitialize(globalOptions);
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: GEInitialize failed\n", GetTime().c_str());

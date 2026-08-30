@@ -25,7 +25,7 @@ constexpr size_t INPUT_X_INDEX = 0;
 constexpr size_t INPUT_INDICES_INDEX = 2;
 constexpr size_t OUTPUT_GATES_GRAD_INDEX = 0;
 
-const char *GetSafeNodeName(gert::InferShapeContext *context)
+const char *GetSafeNodeName(const gert::InferShapeContext *context)
 {
     const char *nodeName = context->GetNodeName();
     return nodeName == nullptr ? "MoeTutelCombineGates" : nodeName;

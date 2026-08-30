@@ -131,7 +131,9 @@ static void CheckInferDataType(ge::DataType floatType)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
-    auto dataTypeFunc = spaceRegistry->GetOpImpl("MoeTutelCombineGates")->infer_datatype;
+    auto opImpl = spaceRegistry->GetOpImpl("MoeTutelCombineGates");
+    ASSERT_NE(opImpl, nullptr);
+    auto dataTypeFunc = opImpl->infer_datatype;
     ASSERT_NE(dataTypeFunc, nullptr);
 
     ge::DataType intType = ge::DT_INT32;
@@ -172,7 +174,9 @@ TEST_F(MoeTutelCombineGatesProto, infer_shape_null_context_fails)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
-    auto shapeFunc = spaceRegistry->GetOpImpl("MoeTutelCombineGates")->infer_shape;
+    auto opImpl = spaceRegistry->GetOpImpl("MoeTutelCombineGates");
+    ASSERT_NE(opImpl, nullptr);
+    auto shapeFunc = opImpl->infer_shape;
     ASSERT_NE(shapeFunc, nullptr);
     EXPECT_EQ(shapeFunc(nullptr), ge::GRAPH_FAILED);
 }
@@ -181,7 +185,9 @@ TEST_F(MoeTutelCombineGatesProto, infer_datatype_null_context_fails)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
-    auto dataTypeFunc = spaceRegistry->GetOpImpl("MoeTutelCombineGates")->infer_datatype;
+    auto opImpl = spaceRegistry->GetOpImpl("MoeTutelCombineGates");
+    ASSERT_NE(opImpl, nullptr);
+    auto dataTypeFunc = opImpl->infer_datatype;
     ASSERT_NE(dataTypeFunc, nullptr);
     EXPECT_EQ(dataTypeFunc(nullptr), ge::GRAPH_FAILED);
 }
