@@ -31,7 +31,7 @@ Ascend950 GEIR-only implementation. The operator has no ACLNN/E2E API.
 Run these commands from this directory:
 
 ```bash
-PYTHONHASHSEED=0 python3 /root/.codex/skills/ascendc-st-design/scripts/generate_factor_values.py \
+PYTHONHASHSEED=0 python3 "${ASCENDC_ST_DESIGN_DIR:?set ASCENDC_ST_DESIGN_DIR}/scripts/generate_factor_values.py" \
   design/06_求解配置.yaml design/05_约束定义.yaml design/04_测试因子.yaml \
   design/07_因子值.csv --max-cases 10000
 python3 design/postprocess_l1_cases.py design/07_因子值.csv \
@@ -40,6 +40,9 @@ python3 design/postprocess_l1_cases.py design/07_因子值.csv \
 python3 design/materialize_ttk_cases.py --check
 python3 run_contract_harness.py
 ```
+
+`ASCENDC_ST_DESIGN_DIR` must point to the installed `ascendc-st-design`
+tool directory.
 
 The factor pool has 10,000 rows / 6,804 distinct full rows. Its frozen SHA256
 is `b4d12638b707d6fdb1c46229b860773e456ddcd6e2132681a3622e7f86812c71`.
