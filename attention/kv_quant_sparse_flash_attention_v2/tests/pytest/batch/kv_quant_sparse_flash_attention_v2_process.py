@@ -21,7 +21,7 @@ import time
 import math
 import random
 from utils import get_torch_dtype
-from cann_ops_transformer.ops import kv_quant_sparse_flash_attention
+from cann_ops_transformer.ops.attention.kv_quant_sparse_flash_attention_v2 import kv_quant_sparse_flash_attention
 
 
 def _load_inputs_to_npu(input_dict):
@@ -72,6 +72,7 @@ def call_npu_eager(torch_tensor_dict, params):
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
         sinks=torch_tensor_dict.get("sinks", None),
+        return_softmax_lse=params.get("return_softmax_lse", False),
     )
     assert npu_result is not None, "kv_quant_sparse_flash_attention returned None"
     return npu_result
@@ -115,6 +116,7 @@ class Network(torch.nn.Module):
         key_dtype,
         value_dtype,
         sinks,
+        return_softmax_lse,
     ):
         return kv_quant_sparse_flash_attention(
             query=query,
@@ -142,6 +144,7 @@ class Network(torch.nn.Module):
             key_dtype=key_dtype,
             value_dtype=value_dtype,
             sinks=sinks,
+            return_softmax_lse=return_softmax_lse,
         )
 
 
@@ -193,6 +196,7 @@ def call_npu_graph(torch_tensor_dict, params):
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
         sinks=torch_tensor_dict.get("sinks", None),
+        return_softmax_lse=params.get("return_softmax_lse", False),
     )
     assert npu_result is not None, "kv_quant_sparse_flash_attention (graph) returned None"
     return npu_result

@@ -154,6 +154,7 @@ def load_excel_test_cases(excel_file_path, sheet_name):
         "block_num",
         "actual_seq_q",
         "actual_seq_kv",
+        "return_softmax_lse",
     ]
     missing_columns = [
         column for column in required_columns if column not in dataframe.columns
@@ -166,7 +167,14 @@ def load_excel_test_cases(excel_file_path, sheet_name):
     return [row.to_dict() for _, row in dataframe.iterrows()]
 
 
-def save_result(params, result, fulfill_percent, result_path):
+def save_result(
+    params,
+    result,
+    fulfill_percent,
+    result_path,
+    softmax_max_percent=None,
+    softmax_sum_percent=None,
+):
     """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
     row_data = {
         "Testcase_Prefix": params.get("Testcase_Prefix", "kvQuantSparseFlashAttn"),
@@ -217,8 +225,11 @@ def save_result(params, result, fulfill_percent, result_path):
         "range_dequant_scale": str(params.get("range_dequant_scale"))
         if params.get("range_dequant_scale") is not None
         else None,
+        "return_softmax_lse": params.get("return_softmax_lse", False),
         "result": result,
         "fulfill_percent": fulfill_percent,
+        "softmax_max_percent": softmax_max_percent,
+        "softmax_sum_percent": softmax_sum_percent,
     }
 
     if result_path.exists():
@@ -260,6 +271,7 @@ def combin_params(enabled_params, pytest_paramset=True):
         "actual_seq_q",
         "actual_seq_kv",
         "enable_sinks",
+        "return_softmax_lse",
     ]
     range_param_names = [
         "range_query",
@@ -313,6 +325,7 @@ def convert_param_combination_to_cs_format(param_combination):
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
     enable_sinks = param_combination.get("enable_sinks", False)
+    return_softmax_lse = param_combination.get("return_softmax_lse", False)
     
     # 参数校验：TND layout 下 T 不能超过 B*S
     if layout_query == "TND" and T1 is not None:
@@ -513,6 +526,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "attention_mode": attention_mode,
         "quant_scale_repo_mode": quant_scale_repo_mode,
         "block_size": block_size,
+        "return_softmax_lse": return_softmax_lse,
         "k_antiquant_mode": key_quant_mode,
         "v_antiquant_mode": value_quant_mode,
         "antiquant_scale": 1,
@@ -683,17 +697,69 @@ def qsfa_v2_run_npu(test_data, testcase_name=None, device_id=0, result_path=None
     if testcase_name:
         params["Testcase_Prefix"] = testcase_name
     cpu_result = test_data["cpu_output"]
+    compare_results = {}
+    softmax_max_percent = None
+    softmax_sum_percent = None
     try:
         npu_result = kv_quant_sparse_flash_attention_v2_process.call_npu(
             test_data["input"], params
         )
-        result, fulfill_percent = result_compare_method.check_result(
-            cpu_result, npu_result
+        print("[compare] comparing attn_out ...")
+        result_attn_out, fulfill_percent_attn = result_compare_method.check_result(
+            cpu_result[0], npu_result[0]
         )
+        compare_results["attn_out"] = {
+            "result": result_attn_out,
+            "fulfill_percent": fulfill_percent_attn,
+        }
+        overall_result = result_attn_out
+        overall_fulfill_percent = fulfill_percent_attn
+        if params.get("return_softmax_lse", False):
+            print("[compare] comparing softmax_max ...")
+            result_softmax_max, fulfill_percent_max = (
+                result_compare_method.check_result(cpu_result[1], npu_result[1])
+            )
+            print("[compare] comparing softmax_sum ...")
+            result_softmax_sum, fulfill_percent_sum = (
+                result_compare_method.check_result(cpu_result[2], npu_result[2])
+            )
+            compare_results["softmax_max"] = {
+                "result": result_softmax_max,
+                "fulfill_percent": fulfill_percent_max,
+            }
+            compare_results["softmax_sum"] = {
+                "result": result_softmax_sum,
+                "fulfill_percent": fulfill_percent_sum,
+            }
+            softmax_max_percent = fulfill_percent_max
+            softmax_sum_percent = fulfill_percent_sum
+            overall_result = (
+                "Pass"
+                if (
+                    result_attn_out == "Pass"
+                    and result_softmax_max == "Pass"
+                    and result_softmax_sum == "Pass"
+                )
+                else "Failed"
+            )
     except Exception:
         if result_path:
-            save_result(params, "Failed", "", result_path)
+            save_result(
+                params,
+                "Failed",
+                "",
+                result_path,
+                softmax_max_percent,
+                softmax_sum_percent,
+            )
         raise
     if result_path:
-        save_result(params, result, fulfill_percent, result_path)
-    return result, fulfill_percent
+        save_result(
+            params,
+            overall_result,
+            overall_fulfill_percent,
+            result_path,
+            softmax_max_percent,
+            softmax_sum_percent,
+        )
+    return overall_result, compare_results

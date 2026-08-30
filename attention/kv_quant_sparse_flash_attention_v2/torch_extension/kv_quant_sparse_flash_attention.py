@@ -37,7 +37,7 @@ class KvQuantSparseFlashAttentionOpBuilder(OpBuilder):
             "int next_tokens=9223372036854775807, int attention_mode=0, "
             "int quant_scale_repo_mode=1, int tile_size=128, int rope_head_dim=64, "
             "int? key_dtype=None, int? value_dtype=None, "
-            "Tensor? sinks=None) -> Tensor"
+            "Tensor? sinks=None, bool return_softmax_lse=False) -> (Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
@@ -69,12 +69,25 @@ class KvQuantSparseFlashAttentionOpBuilder(OpBuilder):
             key_dtype: Optional[int] = None,
             value_dtype: Optional[int] = None,
             sinks: Optional[torch.Tensor] = None,
+            return_softmax_lse: bool = False,
         ):
             if query.numel() == 0:
                 raise ValueError("The shape size of query should not be 0")
             out_shape = list(query.shape)
             out_shape[-1] -= rope_head_dim
-            return torch.empty(out_shape, dtype=query.dtype, device="meta")
+            attn_out = torch.empty(out_shape, dtype=query.dtype, device="meta")
+            empty_lse = torch.empty(0, dtype=torch.float32, device="meta")
+            if not return_softmax_lse:
+                return attn_out, empty_lse, empty_lse
+            kv_head_num = key.shape[2] if layout_kv == "BSND" or layout_kv == "PA_BSND" else key.shape[1]
+            g = query.shape[-2] // kv_head_num if layout_query == "BSND" else query.shape[-2] // kv_head_num
+            if layout_query == "BSND":
+                lse_shape = [query.shape[0], kv_head_num, query.shape[1], g]
+            else:
+                lse_shape = [kv_head_num, query.shape[0], g]
+            softmax_max = torch.empty(lse_shape, dtype=torch.float32, device="meta")
+            softmax_sum = torch.empty(lse_shape, dtype=torch.float32, device="meta")
+            return attn_out, softmax_max, softmax_sum
 
 
 _op_builder = KvQuantSparseFlashAttentionOpBuilder()
@@ -109,6 +122,7 @@ def kv_quant_sparse_flash_attention(
     key_dtype: Optional[int] = None,
     value_dtype: Optional[int] = None,
     sinks: Optional[torch.Tensor] = None,
+    return_softmax_lse: bool = False,
 ):
     """
     Dispatcher implementation for NPU.
@@ -124,5 +138,5 @@ def kv_quant_sparse_flash_attention(
         sparse_mode, pre_tokens, next_tokens,
         attention_mode, quant_scale_repo_mode,
         tile_size, rope_head_dim,
-        key_dtype, value_dtype, sinks,
+        key_dtype, value_dtype, sinks, return_softmax_lse,
     )

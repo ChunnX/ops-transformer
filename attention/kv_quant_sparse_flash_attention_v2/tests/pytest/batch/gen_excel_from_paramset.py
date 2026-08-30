@@ -60,6 +60,7 @@ EXCEL_COLUMNS = [
     "range_query_rope",
     "range_key_rope",
     "range_dequant_scale",
+    "return_softmax_lse",
 ]
 
 

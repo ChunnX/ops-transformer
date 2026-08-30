@@ -61,7 +61,7 @@ public:
                                 __gm__ uint8_t *sparseIndices, __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
                                 __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
                                 const KvQuantSparseFlashAttentionV2TilingDataMla *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -133,17 +133,20 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
     const KvQuantSparseFlashAttentionV2TilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     fa_base_matmul::ResetIdCounter();
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
+        constInfo.aicIdx = this->aicIdx;
         constInfo.aivIdx = 0;
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
+        constInfo.aicIdx = this->aicIdx;
         this->tilingData = tiling;
     }
 
@@ -159,8 +162,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBlockT
         constInfo.s1Size = this->sharedParams.s1Size;
         constInfo.needInit = this->sharedParams.needInit;
         constInfo.dSizeV = 512;
+        constInfo.returnSoftmaxLse = this->sharedParams.returnSoftmaxLse;
     }
-    vecBlock.CleanOutput(attentionOut, constInfo);
+    vecBlock.CleanOutput(attentionOut, softmaxMax, softmaxSum, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if ASCEND_IS_AIC {

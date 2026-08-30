@@ -46,11 +46,13 @@ def execute_qsfa_v2(param_combination):
     }
     if SAVE_PT:
         kv_quant_sparse_flash_attention_v2_golden._save_test_case(test_data, PT_SAVE_PATH)
-    result, fulfill_percent = utils.qsfa_v2_run_npu(
+    overall_result, compare_results = utils.qsfa_v2_run_npu(
         test_data, testcase_name=None, device_id=DEVICE_ID, result_path=RESULT_PATH
     )
+    attn_info = compare_results.get("attn_out", {})
+    fulfill_percent = attn_info.get("fulfill_percent", 0.0)
     case_id += 1
-    return result, fulfill_percent, test_data
+    return overall_result, fulfill_percent, test_data
 
 
 @pytest.mark.ci

@@ -419,6 +419,7 @@ void QSFAV2MlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_isActualLenDimsNull(qsfaInfo_->actualQSeqLenFlag ? 0U : 1U);
     tilingData_.baseParams.set_isActualLenDimsKVNull(qsfaInfo_->actualSeqLenFlag ? 0U : 1U);
     tilingData_.baseParams.set_keyStride0(qsfaInfo_->keyStride0);
+    tilingData_.baseParams.set_returnSoftmaxLse(qsfaInfo_->returnSoftmaxLse ? 1U : 0U);
 }
 
 // for flash decode
@@ -1692,6 +1693,10 @@ void QSFAV2InfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attenOut.desc = context_->GetOutputDesc(OUTPUT_INDEX);
     opParamInfo_.attenOut.shape = context_->GetOutputShape(OUTPUT_INDEX);
+    opParamInfo_.softmaxMax.desc = context_->GetOutputDesc(SOFTMAX_MAX_INDEX);
+    opParamInfo_.softmaxMax.shape = context_->GetOutputShape(SOFTMAX_MAX_INDEX);
+    opParamInfo_.softmaxSum.desc = context_->GetOutputDesc(SOFTMAX_SUM_INDEX);
+    opParamInfo_.softmaxSum.shape = context_->GetOutputShape(SOFTMAX_SUM_INDEX);
 }
 
 ge::graphStatus QSFAV2InfoParser::GetAttrParaInfo()
@@ -1713,6 +1718,7 @@ ge::graphStatus QSFAV2InfoParser::GetAttrParaInfo()
     opParamInfo_.quantScaleRepoMode = attrs->GetAttrPointer<int64_t>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
     opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_ATTR_INDEX);
 
     auto keyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 1) {
@@ -2110,6 +2116,7 @@ void QSFAV2InfoParser::FillTilingInfoAttrsAndLayouts(QSFAV2TilingInfo &qsfaInfo)
     qsfaInfo.nextTokens = *opParamInfo_.nextTokens;
     qsfaInfo.tileSize = *opParamInfo_.tileSize;
     qsfaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
+    qsfaInfo.returnSoftmaxLse = (opParamInfo_.returnSoftmaxLse != nullptr) ? *opParamInfo_.returnSoftmaxLse : false;
 
     qsfaInfo.qLayout = qLayout_;
     qsfaInfo.topkLayout = topkLayout_;

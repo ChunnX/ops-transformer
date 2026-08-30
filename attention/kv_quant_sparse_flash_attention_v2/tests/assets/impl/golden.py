@@ -176,7 +176,14 @@ class KvQuantSparseFlashAttentionV2PytestAdapter:
             name: copy.deepcopy(attributes.get(f"pytest_{name}"))
             for name in cls.REQUIRED_PARAM_NAMES
         }
-        for name in ("T1", "T2", "block_size", "block_num", "enable_sinks"):
+        for name in (
+            "T1",
+            "T2",
+            "block_size",
+            "block_num",
+            "enable_sinks",
+            "return_softmax_lse",
+        ):
             key = f"pytest_{name}"
             if key in attributes:
                 pytest_params[name] = copy.deepcopy(attributes[key])
@@ -207,6 +214,24 @@ class KvQuantSparseFlashAttentionV2PytestAdapter:
         params = pytest_utils.convert_param_combination_to_cs_format(combination)
         params["case_name"] = testcase_name or params["case_name"]
         return params, pytest_golden
+
+
+def normalize_pytest_outputs(outputs, query, return_softmax_lse):
+    if not isinstance(outputs, (list, tuple)) or len(outputs) != 3:
+        raise RuntimeError(
+            "KvQuantSparseFlashAttentionV2 pytest compute_cpu returned an invalid output tuple"
+        )
+    # 对齐算子Cast(CAST_ROUND)语义:仅"有限值"超出目标dtype表示范围时钳到上下界，±inf/NaN 原样保留
+    attn_fp32 = outputs[0].detach().cpu().float()
+    attn_out = torch.where(
+        torch.isfinite(attn_fp32),
+        attn_fp32.clamp(-torch.finfo(query.dtype).max, torch.finfo(query.dtype).max),
+        attn_fp32,
+    ).to(dtype=query.dtype)
+    if not bool(return_softmax_lse):
+        empty = torch.zeros(0, dtype=torch.float32)
+        return attn_out, empty, empty
+    return tuple(output.detach().cpu() for output in outputs)
 
 
 def cpu_kv_quant_sparse_flash_attention_v2(

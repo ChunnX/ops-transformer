@@ -564,8 +564,8 @@ def generate_input_tensors(params):
 
 def compute_cpu(input_tensor_dict, params):
     try:
-        out_data = compute_golden(input_tensor_dict, params)
-        return out_data, input_tensor_dict, params
+        out_data, softmax_max, softmax_sum = compute_golden(input_tensor_dict, params)
+        return (out_data, softmax_max, softmax_sum), input_tensor_dict, params
     except Exception as e:
         import traceback
 
@@ -783,7 +783,7 @@ def _generate_block_table_and_cache(
         blockNum = fa_param["k_concat_shape"][0]
         if 0 in fa_param["bt_shape"]:
             print("[WARNING]:block_table为空场景，输出空tensor！")
-            return torch.zeros(out_shape)
+            return torch.zeros(out_shape), torch.empty(0), torch.empty(0)
         blockNumPerBlock = []
         block_num_min = 0
         for actual_seq in actualSeqLengths_kv:
@@ -832,7 +832,7 @@ def compute_golden(input_tensor_dict, params):
     }
     fa_param = _prepare_fa_param(cpu_input, params)
     if not fa_param["normal_flag"]:
-        return torch.zeros(fa_param["out_shape"])
+        return torch.zeros(fa_param["out_shape"]), torch.empty(0), torch.empty(0)
 
     out_shape = fa_param["out_shape"]
     layoutQuery = fa_param["layout_query"]
@@ -860,14 +860,14 @@ def compute_golden(input_tensor_dict, params):
         input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape
     )
     if early_exit is not None:
-        return early_exit
+        return early_exit, torch.empty(0), torch.empty(0)
 
     # ===计算入口===
-    y_all = _t_increattention_bnsd(fa_param)
+    y_all, softmax_max, softmax_sum = _t_increattention_bnsd(fa_param)
     y_all = trans_bnsd_to_layout(
         y_all, out_shape, layoutQuery, fa_param["actualSeqLengths_q"]
     )
-    return y_all
+    return y_all, softmax_max, softmax_sum
 
 
 def gatherKV(
@@ -982,6 +982,16 @@ def _t_increattention_bnsd(fa_param):
 
     q_bnsd_tensor = fa_param["q_bnsd_tensor"].float()
 
+    layout_query = fa_param["layout_query"]
+    if layout_query == "BSND":
+        lse_shape = [batch_size, numKeyValueHeads, out_shape_bnsd[2], g]
+    else:
+        total_t1 = sum(actualSeqLengths_q)
+        lse_shape = [numKeyValueHeads, total_t1, g]
+    softmax_max_all = torch.full(lse_shape, float("-inf"), dtype=torch.float32)
+    softmax_sum_all = torch.zeros(lse_shape, dtype=torch.float32)
+
+    t_offset = 0
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
         curr_actualSeq = actualSeqLengths_kv[batch]
@@ -1025,7 +1035,16 @@ def _t_increattention_bnsd(fa_param):
                     exp_quantized = exp_unnorm
                 bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
                 y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-    return y
+
+                if layout_query == "BSND":
+                    softmax_max_all[batch, n2Idx, s1Idx, :] = x_max.squeeze(-1)
+                    softmax_sum_all[batch, n2Idx, s1Idx, :] = x_sum.squeeze(-1)
+                else:
+                    softmax_max_all[n2Idx, t_offset + s1Idx, :] = x_max.squeeze(-1)
+                    softmax_sum_all[n2Idx, t_offset + s1Idx, :] = x_sum.squeeze(-1)
+        t_offset += curr_actualSeq_q
+
+    return y, softmax_max_all, softmax_sum_all
 
 
 def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):

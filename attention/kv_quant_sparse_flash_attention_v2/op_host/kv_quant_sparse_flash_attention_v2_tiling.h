@@ -37,6 +37,8 @@ constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
 constexpr uint32_t SINKS_INPUT_INDEX = 9;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
+constexpr uint32_t SOFTMAX_MAX_INDEX = 1;
+constexpr uint32_t SOFTMAX_SUM_INDEX = 2;
 // Attributes Index
 constexpr uint32_t SCALE_VALUE_ATTR_INDEX = 0;
 constexpr uint32_t KEY_QUANT_MODE_ATTR_INDEX = 1;
@@ -51,6 +53,7 @@ constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 9;
 constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 10;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
+constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 13;
 // Dim Num
 constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
@@ -129,6 +132,8 @@ struct QSFAV2ParaInfo {
     QSFAV2OptionalParaInfo valueDequantScale = {nullptr, nullptr};
     QSFAV2OptionalParaInfo sinks = {nullptr, nullptr};
     QSFAV2RequiredParaInfo attenOut = {nullptr, nullptr};
+    QSFAV2RequiredParaInfo softmaxMax = {nullptr, nullptr};
+    QSFAV2RequiredParaInfo softmaxSum = {nullptr, nullptr};
 
     const char *layoutQuery = nullptr;
     const char *layoutKV = nullptr;
@@ -145,6 +150,7 @@ struct QSFAV2ParaInfo {
     const int64_t *ropeHeadDim = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 struct InnerSplitParams {
@@ -171,6 +177,7 @@ TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0) // PA mode non-contiguous stride
+TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionV2BaseParamsMlaOp, KvQuantSparseFlashAttentionV2BaseParamsMla)
@@ -293,6 +300,8 @@ struct QSFAV2TilingInfo {
     int64_t dSizeVInput = 0;
 
     uint32_t keyStride0 = 0; // PA mode non-contiguous stride on 0-axis
+
+    bool returnSoftmaxLse = false;
 };
 
 // ---------------算子Tiling类---------------

@@ -104,6 +104,7 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
         attention_mode,
         quant_scale_repo_mode,
         tile_size,
+        return_softmax_lse,
         rope_head_dim,
     ):
         expected = {
@@ -117,6 +118,7 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
             "attention_mode": attention_mode,
             "quant_scale_repo_mode": quant_scale_repo_mode,
             "tile_size": tile_size,
+            "return_softmax_lse": return_softmax_lse,
             "rope_head_dim": rope_head_dim,
         }
         mismatches = {
@@ -152,6 +154,7 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
         attention_mode=0,
         quant_scale_repo_mode=1,
         tile_size=128,
+        return_softmax_lse=False,
         rope_head_dim=64,
         testcase_name=None,
         **kwargs,
@@ -180,11 +183,12 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
             attention_mode,
             quant_scale_repo_mode,
             tile_size,
+            return_softmax_lse,
             rope_head_dim,
         )
         generated = pytest_golden.generate_input_tensors(params)
-        output, generated, _ = pytest_golden.compute_cpu(generated, params)
-        if output is None:
+        outputs, generated, _ = pytest_golden.compute_cpu(generated, params)
+        if outputs is None:
             raise RuntimeError("KvQuantSparseFlashAttentionV2 pytest compute_cpu failed")
 
         self.copy_tensor(query, generated.get("query_cache"), "query")
@@ -211,7 +215,11 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
 
         golden_module.CASE_DATA.put(
             testcase_name,
-            {"golden": output.detach().cpu()},
+            {
+                "golden": golden_module.normalize_pytest_outputs(
+                    outputs, query, params["return_softmax_lse"]
+                )
+            },
         )
 
 
@@ -237,6 +245,7 @@ def generate_qsfa_v2_inputs(
     attention_mode=0,
     quant_scale_repo_mode=1,
     tile_size=128,
+    return_softmax_lse=False,
     rope_head_dim=64,
     testcase_name=None,
     **kwargs,
@@ -262,6 +271,7 @@ def generate_qsfa_v2_inputs(
         attention_mode=attention_mode,
         quant_scale_repo_mode=quant_scale_repo_mode,
         tile_size=tile_size,
+        return_softmax_lse=return_softmax_lse,
         rope_head_dim=rope_head_dim,
         testcase_name=testcase_name,
         **kwargs,

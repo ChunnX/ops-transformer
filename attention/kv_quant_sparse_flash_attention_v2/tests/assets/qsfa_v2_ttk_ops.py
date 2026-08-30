@@ -55,6 +55,7 @@ def kv_quant_sparse_flash_attention_v2_ttk(
     rope_head_dim: int = 64,
     key_dtype: Optional[int] = None,
     value_dtype: Optional[int] = None,
+    return_softmax_lse: bool = False,
 ):
     """Call the installed API with explicit key/value dtype semantics."""
     return kv_quant_sparse_flash_attention(
@@ -83,4 +84,5 @@ def kv_quant_sparse_flash_attention_v2_ttk(
         key_dtype=_get_kv_torch_dtype(key_dtype),
         value_dtype=_get_kv_torch_dtype(value_dtype),
         sinks=sinks,
+        return_softmax_lse=return_softmax_lse,
     )
