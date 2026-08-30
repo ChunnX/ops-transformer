@@ -900,9 +900,6 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
         10U,  // tilingGmArgIdx
         offsetof(AllGatherMxMatmulUrmaTilingData, peermemDataSize),
         offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout));
-    Mc2Exception::Mc2DumpSqCqContext(args, "AllGatherMatmulV3",
-        0U,   // contextArgIdx
-        0U);  // argsOffset
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV3ExceptionFunc()
