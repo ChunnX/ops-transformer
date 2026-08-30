@@ -300,16 +300,12 @@ __aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::ComputeTile(int64_
             ComputeCutHSample(sample, i, curK, indicesUb, locationsUb);
         } else {
             LocalTensor<T> xUb;
-            if (hidden_ > 0) {
-                CopyInX(sample, 0, static_cast<uint32_t>(hidden_));
-                xUb = xInQueue_.template DeQue<T>();
-            }
+            CopyInX(sample, 0, static_cast<uint32_t>(hidden_));
+            xUb = xInQueue_.template DeQue<T>();
             for (int64_t kk = 0; kk < curK; kk++) {
                 ComputeNotCutHOnePair(i, kk, xUb, indicesUb, locationsUb);
             }
-            if (hidden_ > 0) {
-                xInQueue_.FreeTensor(xUb);
-            }
+            xInQueue_.FreeTensor(xUb);
         }
     }
     indicesInQueue_.FreeTensor(indicesUb);

@@ -69,14 +69,14 @@ constexpr float FP16_MAX_FINITE = 65504.0F;
 constexpr int32_t ARGUMENT_COUNT_WITH_DTYPE = 2;
 constexpr int32_t PROGRAM_ARGUMENT_INDEX = 0;
 constexpr int32_t DTYPE_ARGUMENT_INDEX = 1;
-constexpr char FP16_ARGUMENT[] = "fp16";
-constexpr char FP32_ARGUMENT[] = "fp32";
-constexpr char USAGE_FORMAT[] = "Usage: %s [%s|%s]\n";
-constexpr char GRAPH_NAME[] = "tc_ge_irrun_moe_tutel_combine_gates";
-constexpr char GE_DEVICE_ID_KEY[] = "ge.exec.deviceId";
-constexpr char GE_DEVICE_ID_VALUE[] = "0";
-constexpr char GE_GRAPH_RUN_MODE_KEY[] = "ge.graphRunMode";
-constexpr char GE_GRAPH_RUN_MODE_VALUE[] = "1";
+constexpr char g_fp16Argument[] = "fp16";
+constexpr char g_fp32Argument[] = "fp32";
+constexpr char g_usageFormat[] = "Usage: %s [%s|%s]\n";
+constexpr char g_graphName[] = "tc_ge_irrun_moe_tutel_combine_gates";
+constexpr char g_geDeviceIdKey[] = "ge.exec.deviceId";
+constexpr char g_geDeviceIdValue[] = "0";
+constexpr char g_geGraphRunModeKey[] = "ge.graphRunMode";
+constexpr char g_geGraphRunModeValue[] = "1";
 
 string GetTime()
 {
@@ -181,27 +181,27 @@ int32_t MakeInt32Tensor(const vector<int64_t> &shape, const vector<int32_t> &val
 
 int main(int argc, char *argv[])
 {
-    Graph graph(GRAPH_NAME);
+    Graph graph(g_graphName);
 
     DataType floatDtype = DT_FLOAT;
     if (argc > ARGUMENT_COUNT_WITH_DTYPE ||
         (argc == ARGUMENT_COUNT_WITH_DTYPE && argv[DTYPE_ARGUMENT_INDEX] == nullptr)) {
-        printf(USAGE_FORMAT, argv[PROGRAM_ARGUMENT_INDEX], FP32_ARGUMENT, FP16_ARGUMENT);
+        printf(g_usageFormat, argv[PROGRAM_ARGUMENT_INDEX], g_fp32Argument, g_fp16Argument);
         return FAILED;
     }
     if (argc == ARGUMENT_COUNT_WITH_DTYPE) {
         const string dtypeArg(argv[DTYPE_ARGUMENT_INDEX]);
-        if (dtypeArg == FP16_ARGUMENT) {
+        if (dtypeArg == g_fp16Argument) {
             floatDtype = DT_FLOAT16;
-        } else if (dtypeArg != FP32_ARGUMENT) {
-            printf(USAGE_FORMAT, argv[PROGRAM_ARGUMENT_INDEX], FP32_ARGUMENT, FP16_ARGUMENT);
+        } else if (dtypeArg != g_fp32Argument) {
+            printf(g_usageFormat, argv[PROGRAM_ARGUMENT_INDEX], g_fp32Argument, g_fp16Argument);
             return FAILED;
         }
     }
 
     printf("%s - INFO - [XIR]: Start to initialize ge\n", GetTime().c_str());
-    map<AscendString, AscendString> globalOptions = {{GE_DEVICE_ID_KEY, GE_DEVICE_ID_VALUE},
-                                                     {GE_GRAPH_RUN_MODE_KEY, GE_GRAPH_RUN_MODE_VALUE}};
+    map<AscendString, AscendString> globalOptions = {{g_geDeviceIdKey, g_geDeviceIdValue},
+                                                     {g_geGraphRunModeKey, g_geGraphRunModeValue}};
     Status ret = ge::GEInitialize(globalOptions);
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: GEInitialize failed\n", GetTime().c_str());
@@ -296,19 +296,39 @@ int main(int argc, char *argv[])
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: RunGraph failed ret=%u\n", GetTime().c_str(), ret);
         ge::AscendString errorMsg = ge::GEGetErrorMsgV2();
-        printf("%s - ERROR - [XIR]: error: %s\n", GetTime().c_str(), errorMsg.GetString());
+        const char *errorText = errorMsg.GetString();
+        printf("%s - ERROR - [XIR]: error: %s\n", GetTime().c_str(),
+               errorText == nullptr ? "GE error message unavailable" : errorText);
         session.reset();
         (void)ge::GEFinalize();
         return FAILED;
     }
     printf("%s - INFO - [XIR]: RunGraph success\n", GetTime().c_str());
 
+    int32_t outputStatus = SUCCESS;
     for (size_t i = 0; i < output.size(); i++) {
+        if (output[i].IsValid() != SUCCESS) {
+            printf("%s - ERROR - [XIR]: output[%zu] is invalid\n", GetTime().c_str(), i);
+            outputStatus = FAILED;
+            break;
+        }
         const int64_t outSize = output[i].GetTensorDesc().GetShape().GetShapeSize();
         printf("output[%zu] dtype=%d shapeSize=%ld\n", i, output[i].GetTensorDesc().GetDataType(), outSize);
         if (output[i].GetTensorDesc().GetDataType() == ge::DT_FLOAT) {
-            const float *p = reinterpret_cast<const float *>(output[i].GetData());
+            if (outSize < 0) {
+                printf("%s - ERROR - [XIR]: output[%zu] has an invalid shape size\n", GetTime().c_str(), i);
+                outputStatus = FAILED;
+                break;
+            }
             const int64_t printCnt = outSize < MAX_PRINT_COUNT ? outSize : MAX_PRINT_COUNT;
+            const size_t requiredBytes = static_cast<size_t>(printCnt) * sizeof(float);
+            const uint8_t *rawData = output[i].GetData();
+            if ((requiredBytes > 0 && rawData == nullptr) || output[i].GetSize() < requiredBytes) {
+                printf("%s - ERROR - [XIR]: output[%zu] data buffer is invalid\n", GetTime().c_str(), i);
+                outputStatus = FAILED;
+                break;
+            }
+            const float *p = reinterpret_cast<const float *>(rawData);
             for (int64_t j = 0; j < printCnt; j++) {
                 printf("  result[%ld] = %f\n", j, p[j]);
             }
@@ -322,5 +342,5 @@ int main(int argc, char *argv[])
         return FAILED;
     }
     printf("%s - INFO - [XIR]: GEFinalize success\n", GetTime().c_str());
-    return SUCCESS;
+    return outputStatus;
 }
