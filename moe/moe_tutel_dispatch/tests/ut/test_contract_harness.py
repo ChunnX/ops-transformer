@@ -84,6 +84,7 @@ def test_p0_descriptor_cases_are_real_geir_targets():
 
 def test_ttk_command_honors_repeat_dynamic_binary_and_manual_data():
     row = {
+        "case_id": "MTD_REQ_033",
         "harness": "ttk_geir",
         "target": "testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_033",
         "repeats": "20",
@@ -111,6 +112,7 @@ def test_ttk_command_honors_repeat_dynamic_binary_and_manual_data():
 
 def test_kernel_command_is_binary_only_and_skips_warmup():
     row = {
+        "case_id": "MTD_REQ_010",
         "harness": "ttk_kernel",
         "target": "testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_010",
         "repeats": "1",
@@ -130,6 +132,35 @@ def test_kernel_command_is_binary_only_and_skips_warmup():
     assert "-d=false" in command
     assert "-b=release" in command
     assert "-d=true" not in command
+
+
+def test_ttk_result_rejects_zero_exit_error_csv(tmp_path):
+    result = tmp_path / "result.csv"
+    result.write_text(
+        "testcase_name,precision_status\nMTD_REQ_001,ERROR: GEIR failed\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="TTK precision failed"):
+        harness.validate_ttk_result(
+            result,
+            {"case_id": "MTD_REQ_001", "harness": "ttk_geir"},
+        )
+
+
+def test_ttk_kernel_result_requires_binary_match(tmp_path):
+    result = tmp_path / "result.csv"
+    result.write_text(
+        "testcase_name,precision_status,bin_compile_s,bin_precision\n"
+        "MTD_REQ_010,PASS,SUCC,100%\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="binary was not matched"):
+        harness.validate_ttk_result(
+            result,
+            {"case_id": "MTD_REQ_010", "harness": "ttk_kernel"},
+        )
 
 
 def test_csv_target_is_resolved_inside_st_directory():

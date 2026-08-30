@@ -111,7 +111,7 @@
   - H：隐藏维长度，取值为非负整数，不要求32字节对齐。
   - K：每个token的路由条数，取值为非负整数。
   - E：输出专家数，取值为非负整数。`E`由调用方提供的`y`描述确定，与`K`无相等约束。
-- shape关系约束：`gates`、`indices`、`locations`三者shape必须完全相同；`x`的第0维必须等于`gates`的第1维；调用方提供的`y`必须为`[E, capacity, x.shape[1]]`。本算子不注册InferShape来覆盖该描述。
+- shape关系约束：`gates`、`indices`、`locations`三者shape必须完全相同；`x`的第0维必须等于`gates`的第1维；调用方提供的`y`必须为`[E, capacity, x.shape[1]]`。InferShape只确认caller输出描述存在并原样保留，绝不从`K`推导或覆盖`E`。
 - 数据类型约束：`x`、`gates`、`y`必须为同一种数据类型；`indices`、`locations`固定为INT32。
 - 输入值域约束：`indices`的取值必须落在`[0, E)`，`locations`的取值必须落在`[0, capacity)`。超出范围的路由被跳过，不写出任何字节，也不报错。
 - 唯一性约束：所有被判定为有效的`(indices[k][s], locations[k][s])`二元组必须全局唯一。若多条路由指向同一个`(专家, 槽位)`，写入顺序不确定，结果不保证，但实现仍保证不越界。

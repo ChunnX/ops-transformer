@@ -10,7 +10,7 @@
 
 /*!
  * \file moe_tutel_dispatch_infershape.cpp
- * \brief Ascend 950 graph dtype inference. Output shape is supplied by the caller.
+ * \brief Ascend 950 graph inference. Output shape is supplied by the caller.
  */
 
 #include "log/log.h"
@@ -22,6 +22,18 @@ constexpr size_t INPUT_X_INDEX = 0;
 constexpr size_t OUTPUT_Y_INDEX = 0;
 } // namespace
 
+static ge::graphStatus InferShape4MoeTutelDispatch(gert::InferShapeContext *context)
+{
+    OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    OP_LOGD(context, "Begin InferShape4MoeTutelDispatch");
+    // E is absent from the historical input ABI. GetOutputShape points to the
+    // caller-provided y descriptor, so preserving it is the only valid shape
+    // inference behavior; deriving E from gates would incorrectly force E=K.
+    OP_CHECK_NULL_WITH_CONTEXT(context, context->GetOutputShape(OUTPUT_Y_INDEX));
+    OP_LOGD(context, "Finished InferShape4MoeTutelDispatch without changing caller output shape");
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus InferDataType4MoeTutelDispatch(gert::InferDataTypeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
@@ -31,12 +43,10 @@ static ge::graphStatus InferDataType4MoeTutelDispatch(gert::InferDataTypeContext
     return ret;
 }
 
-// Do not register InferShape here. The historical GE ABI has no expert-count input or attribute:
-// K comes from gates.shape[0], while E comes exclusively from the caller-provided y=[E,C,H]
-// descriptor. Registering a shape callback would overwrite that descriptor or incorrectly force
-// E=K. Runtime shape validation is therefore performed by the Ascend 950 tiling callback.
-//
-// InferDataType stays in op_host rather than op_graph because the custom vendor package links the
-// infer object into libcust_opsproto_rt2.0.so; graph-plugin objects are not part of that library.
-IMPL_OP_INFERSHAPE(MoeTutelDispatch).InferDataType(InferDataType4MoeTutelDispatch);
+// Shape and dtype inference stay in op_host rather than op_graph because the
+// custom vendor package links this object into libcust_opsproto_rt2.0.so;
+// graph-plugin objects are not part of that library.
+IMPL_OP_INFERSHAPE(MoeTutelDispatch)
+    .InferShape(InferShape4MoeTutelDispatch)
+    .InferDataType(InferDataType4MoeTutelDispatch);
 } // namespace ops

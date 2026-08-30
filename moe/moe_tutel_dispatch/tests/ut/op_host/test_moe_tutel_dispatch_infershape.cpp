@@ -12,6 +12,7 @@
 
 #include "base/registry/op_impl_space_registry_v2.h"
 #include "infer_datatype_context_faker.h"
+#include "infer_shape_context_faker.h"
 
 namespace {
 constexpr const char *OP_TYPE = "MoeTutelDispatch";
@@ -21,17 +22,72 @@ const gert::OpImplKernelRegistry::OpImplFunctions *GetOpImpl()
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     return spaceRegistry == nullptr ? nullptr : spaceRegistry->GetOpImpl(OP_TYPE);
 }
+
+std::vector<int64_t> ToVector(const gert::Shape &shape)
+{
+    std::vector<int64_t> result(shape.GetDimNum());
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        result[i] = shape.GetDim(i);
+    }
+    return result;
+}
+
+gert::StorageShape MakeStorageShape(const std::vector<int64_t> &dims)
+{
+    gert::StorageShape shape;
+    for (const int64_t dim : dims) {
+        shape.MutableOriginShape().AppendDim(dim);
+        shape.MutableStorageShape().AppendDim(dim);
+    }
+    return shape;
+}
 } // namespace
 
 class MoeTutelDispatchInferDataTypeTest : public testing::Test {};
 
-TEST_F(MoeTutelDispatchInferDataTypeTest, DoesNotRegisterShapeInference)
+TEST_F(MoeTutelDispatchInferDataTypeTest, RegistersShapeAndDtypeInference)
 {
     auto *opImpl = GetOpImpl();
     ASSERT_NE(opImpl, nullptr);
-    // E is carried only by the caller's y descriptor. A shape callback would overwrite it.
-    EXPECT_EQ(opImpl->infer_shape, nullptr);
+    ASSERT_NE(opImpl->infer_shape, nullptr);
     ASSERT_NE(opImpl->infer_datatype, nullptr);
+}
+
+TEST_F(MoeTutelDispatchInferDataTypeTest, ShapeInferencePreservesCallerDescriptor)
+{
+    auto *opImpl = GetOpImpl();
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->infer_shape, nullptr);
+
+    const std::vector<std::vector<int64_t>> cases = {
+        {2, 5, 8},  // E < K
+        {5, 5, 8},  // E > K
+        {-1, 5, 8}, // dynamic E
+    };
+    for (const auto &expected : cases) {
+        gert::StorageShape outputShape = MakeStorageShape(expected);
+        auto contextHolder = gert::InferShapeContextFaker()
+                                 .SetOpType(OP_TYPE)
+                                 .NodeIoNum(4, 1)
+                                 .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                                 .Build();
+        auto *context = contextHolder.GetContext();
+        ASSERT_NE(context, nullptr);
+        // InferShapeContextFaker intentionally starts output slots empty. GE
+        // populates this slot from the graph's output descriptor before the
+        // callback; seed it explicitly to model that caller-provided state.
+        *context->GetOutputShape(0) = outputShape.GetStorageShape();
+        EXPECT_EQ(opImpl->infer_shape(context), ge::GRAPH_SUCCESS);
+        EXPECT_EQ(ToVector(*context->GetOutputShape(0)), expected);
+    }
+}
+
+TEST_F(MoeTutelDispatchInferDataTypeTest, NullShapeContextRejected)
+{
+    auto *opImpl = GetOpImpl();
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->infer_shape, nullptr);
+    EXPECT_EQ(opImpl->infer_shape(nullptr), ge::GRAPH_FAILED);
 }
 
 TEST_F(MoeTutelDispatchInferDataTypeTest, OutputFollowsX)
