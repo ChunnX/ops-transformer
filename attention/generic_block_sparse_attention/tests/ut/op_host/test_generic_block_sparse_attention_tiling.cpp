@@ -57,7 +57,6 @@ constexpr uint64_t kFp16Tiling950 = 9250000071001002ULL;
 constexpr uint64_t kBf16Tiling950 = 9250000071023222ULL;
 constexpr uint64_t kFp8Fp16Tiling950 = 9250000071001012ULL;
 constexpr uint64_t kFp8Bf16Tiling950 = 9250000071001022ULL;
-constexpr uint64_t kLseOffset = 100000000ULL;
 
 std::vector<int64_t> kBlockShape = {kBlockShapeX, kBlockSize};
 
@@ -149,13 +148,13 @@ TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_910b)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Tiling910B);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_lse_910b)
+TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_return_softmax_lse)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
                                               MakeOutputs(ge::DT_FLOAT16, true), MakeAttrs(1, 0, 0, 1), &compileInfo,
                                               "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling910B + kLseOffset);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_950)
