@@ -1,0 +1,44 @@
+{
+  "op_type": "MoeTutelCombineGates",
+  "op_list": [
+    {
+      "bin_filename": "MoeTutelCombineGates_float32",
+      "inputs": [
+        {"name": "x", "index": 0, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "y_grad", "index": 1, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "indices", "index": 2, "dtype": "int32", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "locations", "index": 3, "dtype": "int32", "format": "ND", "paramType": "required", "shape": [-2]}
+      ],
+      "outputs": [
+        {"name": "gates_grad", "index": 0, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]}
+      ],
+      "attrs": []
+    },
+    {
+      "bin_filename": "MoeTutelCombineGates_float16",
+      "inputs": [
+        {"name": "x", "index": 0, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "y_grad", "index": 1, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "indices", "index": 2, "dtype": "int32", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "locations", "index": 3, "dtype": "int32", "format": "ND", "paramType": "required", "shape": [-2]}
+      ],
+      "outputs": [
+        {"name": "gates_grad", "index": 0, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]}
+      ],
+      "attrs": []
+    },
+    {
+      "bin_filename": "MoeTutelCombineGates_bfloat16",
+      "inputs": [
+        {"name": "x", "index": 0, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "y_grad", "index": 1, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "indices", "index": 2, "dtype": "int32", "format": "ND", "paramType": "required", "shape": [-2]},
+        {"name": "locations", "index": 3, "dtype": "int32", "format": "ND", "paramType": "required", "shape": [-2]}
+      ],
+      "outputs": [
+        {"name": "gates_grad", "index": 0, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]}
+      ],
+      "attrs": []
+    }
+  ]
+}
