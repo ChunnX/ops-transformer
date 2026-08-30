@@ -1013,8 +1013,8 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
         return;
     }
 
-    // 2. D2H 拷贝 CommContext (UrmaCommContextForDump) -> comm_context
-    constexpr uint32_t ctxDumpSize = sizeof(UrmaCommContextForDump);
+    // 2. D2H 拷贝 CommContext (UrmaCommContextFullForDump, udmaCtx + ubmemCtx) -> comm_context
+    constexpr uint32_t ctxDumpSize = sizeof(UrmaCommContextFullForDump);
     std::vector<uint8_t> ctxBuf(ctxDumpSize, 0);
     if (aclrtMemcpy(ctxBuf.data(), ctxDumpSize, reinterpret_cast<void *>(contextAddr), ctxDumpSize,
                     ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
@@ -1027,14 +1027,14 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     }
 
     // 3. 解析 peermem 窗口地址
-    UrmaCommContextForDump *urmaCtx = reinterpret_cast<UrmaCommContextForDump *>(ctxBuf.data());
-    uint32_t rankId = urmaCtx->rankId;
-    OP_LOGE(OP_NAME, "urmaCtx: rankId=%u, rankSize=%u", rankId, urmaCtx->rankSize);
+    UrmaCommContextFullForDump *urmaCtx = reinterpret_cast<UrmaCommContextFullForDump *>(ctxBuf.data());
+    uint32_t rankId = urmaCtx->udmaCtx.rankId;
+    OP_LOGE(OP_NAME, "urmaCtx: rankId=%u, rankSize=%u", rankId, urmaCtx->udmaCtx.rankSize);
     if (rankId >= URMA_MAX_RANK_NUM) {
         OP_LOGE(OP_NAME, "rankId=%u >= URMA_MAX_RANK_NUM=%u, skip peermem dump.", rankId, URMA_MAX_RANK_NUM);
         return;
     }
-    uint64_t selfWinAddr = urmaCtx->commBufferAddrs[rankId];
+    uint64_t selfWinAddr = urmaCtx->udmaCtx.commBufferAddrs[rankId];
     OP_LOGE(OP_NAME, "selfWinAddr=0x%lx (commBufferAddrs[%u])", selfWinAddr, rankId);
     if (selfWinAddr == 0U) {
         OP_LOGE(OP_NAME, "selfWinAddr is 0, skip peermem dump.");

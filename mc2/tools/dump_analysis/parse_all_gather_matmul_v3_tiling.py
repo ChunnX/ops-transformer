@@ -23,7 +23,7 @@
 #   --args       解析 args_info_*.bin（GM 地址指针）
 #   --ws-layout  从 tiling_data_*.bin 中解析 WorkspaceLayoutInfo
 #   --workspace  解析 workspace_seg*_type*_*.bin（type=12 解析 RuntimeInfo）
-#   --comm-ctx   解析 comm_context_*.bin（UrmaCommContextForDump, 1032B）
+#   --comm-ctx   解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B）
 #   --peermem    解析 peermem_window_*.bin（peermem 窗口数据 hex 预览）
 #   --json       以 JSON 格式输出（默认为人类可读表格）
 
@@ -68,9 +68,14 @@ OFFSET_IS_BIAS = OFFSET_COMM_TILE + COMM_TILING_DATA_SIZE  # 104
 OFFSET_WS_LAYOUT = OFFSET_IS_BIAS + 8  # 112 (isBias 1B + 7B padding, 对齐到 8)
 OFFSET_PEERMEM_DATA_SIZE = OFFSET_WS_LAYOUT + WORKSPACE_LAYOUT_INFO_SIZE  # 320
 
-# ====== UrmaCommContextForDump 常量 ======
+# ====== CommContext 常量（与 Apace::AivComm::CommContext / moe_distribute_comm_ctx.h 镜像保持一致）======
 URMA_MAX_RANK_NUM = 64
-URMA_COMM_CONTEXT_SIZE = 4 + 4 + URMA_MAX_RANK_NUM * 8 * 2  # 1032B
+# CommUdmaContext (数据面): rankId + rankSize + channelHandles[64] + commBufferAddrs[64]
+COMM_UDMA_CONTEXT_SIZE = 4 + 4 + URMA_MAX_RANK_NUM * 8 * 2  # 1032B
+# CommUbmemContext (同步面): rankId + rankSize + commBufferAddrs[64]，无 channelHandles
+COMM_UBMEM_CONTEXT_SIZE = 4 + 4 + URMA_MAX_RANK_NUM * 8  # 520B
+# CommContext: udmaCtx 在前，ubmemCtx 紧随其后（offset 1032）
+COMM_CONTEXT_SIZE = COMM_UDMA_CONTEXT_SIZE + COMM_UBMEM_CONTEXT_SIZE  # 1552B
 
 # args_info_*.bin 中 kernel 参数索引（注册算子 all_gather_matmul_v3）
 ARGS_INDEX_NAMES = [
@@ -326,19 +331,27 @@ def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None) 
 
 
 def parse_urma_comm_context(data: bytes) -> dict:
-    """解析 comm_context_*.bin（UrmaCommContextForDump, 1032B）。
+    """解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B）。
 
-    布局:
+    udmaCtx 布局 (offset 0, 1032B):
       uint32_t rankId
       uint32_t rankSize
       uint64_t channelHandles[64]   (512B)
       uint64_t commBufferAddrs[64]  (512B)
+    ubmemCtx 布局 (offset 1032, 520B):
+      uint32_t rankId
+      uint32_t rankSize
+      uint64_t commBufferAddrs[64]  (512B)  ← [rankId] 为本 rank barrier sync buffer 地址
     """
-    if len(data) < URMA_COMM_CONTEXT_SIZE:
-        return {"error": f"data too short for UrmaCommContextForDump (need {URMA_COMM_CONTEXT_SIZE}, got {len(data)})"}
+    if len(data) < COMM_CONTEXT_SIZE:
+        return {"error": f"data too short for CommContext (need {COMM_CONTEXT_SIZE}, got {len(data)})"}
     rank_id, rank_size = struct.unpack_from("<2I", data, 0)
     channel_handles = list(struct.unpack_from(f"<{URMA_MAX_RANK_NUM}Q", data, 8))
     comm_buffer_addrs = list(struct.unpack_from(f"<{URMA_MAX_RANK_NUM}Q", data, 8 + URMA_MAX_RANK_NUM * 8))
+
+    ub_rank_id, ub_rank_size = struct.unpack_from("<2I", data, COMM_UDMA_CONTEXT_SIZE)
+    ub_comm_buffer_addrs = list(
+        struct.unpack_from(f"<{URMA_MAX_RANK_NUM}Q", data, COMM_UDMA_CONTEXT_SIZE + 8))
 
     # 仅保留非零的 channel/buffer 地址
     channels = {}
@@ -349,13 +362,25 @@ def parse_urma_comm_context(data: bytes) -> dict:
         if comm_buffer_addrs[i] != 0:
             buffers[i] = f"0x{comm_buffer_addrs[i]:016x}"
 
+    ub_buffers = {}
+    for i in range(URMA_MAX_RANK_NUM):
+        if ub_comm_buffer_addrs[i] != 0:
+            ub_buffers[i] = f"0x{ub_comm_buffer_addrs[i]:016x}"
+
     self_win_addr = comm_buffer_addrs[rank_id] if rank_id < URMA_MAX_RANK_NUM else 0
+    self_sync_addr = ub_comm_buffer_addrs[ub_rank_id] if ub_rank_id < URMA_MAX_RANK_NUM else 0
     return {
         "rankId": rank_id,
         "rankSize": rank_size,
         "selfWinAddr": f"0x{self_win_addr:016x}" if self_win_addr else "0x0",
         "channelHandles": channels,
         "commBufferAddrs": buffers,
+        "ubmemCtx": {
+            "rankId": ub_rank_id,
+            "rankSize": ub_rank_size,
+            "selfSyncBufAddr": f"0x{self_sync_addr:016x}" if self_sync_addr else "0x0",
+            "commBufferAddrs": ub_buffers,
+        },
         "fileSize": len(data),
     }
 
@@ -511,12 +536,13 @@ def print_workspace_segment(result: dict):
 
 
 def print_urma_comm_context(result: dict):
-    """人类可读格式打印 UrmaCommContextForDump。"""
+    """人类可读格式打印 CommContext。"""
     if "error" in result:
-        print_section("CommContext (UrmaCommContextForDump)")
+        print_section("CommContext (CommUdmaContext + CommUbmemContext)")
         logging.error("  %s", result["error"])
         return
-    print_section(f"CommContext (UrmaCommContextForDump, {result['fileSize']}B)")
+    print_section(f"CommContext (CommUdmaContext + CommUbmemContext, {result['fileSize']}B)")
+    logging.info("  --- udmaCtx (数据面, offset 0, %dB) ---", COMM_UDMA_CONTEXT_SIZE)
     logging.info("  %-30s: %d", "rankId", result["rankId"])
     logging.info("  %-30s: %d", "rankSize", result["rankSize"])
     logging.info("  %-30s: %s", "selfWinAddr", result["selfWinAddr"])
@@ -528,6 +554,18 @@ def print_urma_comm_context(result: dict):
     logging.info("  --- commBufferAddrs (非零) ---")
     for idx, addr in result["commBufferAddrs"].items():
         logging.info("    buffer[%d]: %s", idx, addr)
+
+    ubmem = result.get("ubmemCtx", {})
+    logging.info("")
+    logging.info("  --- ubmemCtx (同步面, offset %d, %dB) ---",
+                 COMM_UDMA_CONTEXT_SIZE, COMM_UBMEM_CONTEXT_SIZE)
+    logging.info("  %-30s: %s", "rankId", ubmem.get("rankId"))
+    logging.info("  %-30s: %s", "rankSize", ubmem.get("rankSize"))
+    logging.info("  %-30s: %s", "selfSyncBufAddr", ubmem.get("selfSyncBufAddr"))
+    logging.info("")
+    logging.info("  --- ubmemCtx commBufferAddrs (非零) ---")
+    for idx, addr in ubmem.get("commBufferAddrs", {}).items():
+        logging.info("    syncBuf[%d]: %s", idx, addr)
 
 
 def print_peermem_window(result: dict):
@@ -668,7 +706,7 @@ def main():
     parser.add_argument("--workspace", action="store_true",
                         help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
     parser.add_argument("--comm-ctx", action="store_true",
-                        help="解析 comm_context_*.bin（UrmaCommContextForDump，通信拓扑）")
+                        help="解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B, 通信拓扑）")
     parser.add_argument("--peermem", action="store_true",
                         help="解析 peermem_window_*.bin（peermem 窗口数据 hex 预览）")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
