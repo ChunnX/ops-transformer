@@ -98,12 +98,16 @@ def command_for(row, args, st_dir):
             "--pc=1",
             f"--run={repeats}",
             "--compare=binary",
+            "--warmup",
+            "false",
             "--manual-data-dirs",
             str(args.manual_data_dir),
         ]
         if harness == "ttk_geir" and repeats > 1:
             command.append("--dl=1")
-        if row["dynamic"] == "1":
+        if harness == "ttk_kernel":
+            command.extend(["-d=false", "-b=release"])
+        elif row["dynamic"] == "1":
             command.extend(["-c=false", "-d=true"])
         if args.plugin is not None:
             command.extend(["--plugin", str(args.plugin)])
