@@ -1416,6 +1416,16 @@
     <td>AI Core</td>
     <td>aclnnMoeTokenUnpermuteWithRoutingMap的反向传播。</td>
   </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_tutel_combine_x/README.md">moe_tutel_combine_x</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE（Tutel）combine阶段的token侧聚合。按路由表indices、locations从专家输出缓冲y_grad中为每个token取出至多K行，乘以门控gates后沿top-k轴求和；indices或locations任一不在各自合法范围[0,E)、[0,C)时，该路由贡献0。</td>
+  </tr>
     <tr>
     <td>mhc</td>
     <td><a href="../../mhc/mhc_sinkhorn/README.md">mhc_sinkhorn</a></td>
