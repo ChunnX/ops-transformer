@@ -1,6 +1,12 @@
+# ----------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
 
 """Directed ST materialization and execution-harness regression tests."""
 
@@ -35,6 +41,14 @@ manual_data = load_module(
     "moe_tutel_dispatch_manual_data", ST_DIR / "design/prepare_manual_data.py"
 )
 harness = load_module("moe_tutel_dispatch_harness", ST_DIR / "run_contract_harness.py")
+
+
+def test_materialized_csv_uses_lf_line_endings(tmp_path):
+    output = tmp_path / "cases.csv"
+
+    materializer.write_rows(output, ["case_id"], [{"case_id": "MTD"}])
+
+    assert output.read_bytes() == b"case_id\nMTD\n"
 
 
 def test_p0_descriptor_cases_are_real_geir_targets():
