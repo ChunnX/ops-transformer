@@ -77,20 +77,21 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
   > [!NOTE]
   >
-  >- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小；S（Sequence Length）表示序列长度；N（Head Num）表示多头数；D（Head Dim）表示head维度，且满足D=H/N；T表示所有Batch序列长度的累加和；numBlocks表示Paged KV Cache的物理页数；blockSize表示每一页容纳的token数。
-  >- totalQBlocks表示按cuSeqLengthsQ差分得到的**存储长度**分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；maxSparseBlockCount（也称topK）为sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值。
+  >- 参数维度含义：B（Batch Size）表示输入样本批量大小；S（Sequence Length）表示序列长度；H（Head Size）表示hidden层大小；N（Head Num）表示多头数；D（Head Dim）表示head维度，且满足D=H/N；T表示所有Batch序列长度的累加和。
+  >- 表格中shape变量：totalQTokens、totalKTokens、totalVTokens分别为query、key、value的T；headNum为query的N；numKeyValueHeads为key/value的N；headDim为D；batch为B；maxQSeqLength、maxKvSeqLength分别为query、key在BNSD/BSND下的S；numBlocks为Paged KV Cache的物理页数；blockSize为每一页容纳的token数；maxNumBlocksPerBatch为blockTable第二维，须≥ceilDiv(maxKvSeqLength, blockSize)。
+  >- totalQBlocks表示按cuSeqLengthsQ差分得到的**存储长度**分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$，qStorageLen_i为cuSeqLengthsQ前缀和差分得到的各batch存储长度；maxSparseBlockCount（也称topK）为sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值。
   >- 当前落地取值：D=128；blockShape=[1, 128]；KV页blockSize=128且须等于blockShapeY；query的headNum须≥key/value的numKeyValueHeads，且整除，groupSize当前须≤128；maxSparseBlockCount当前上限为256。
 
-  <table style="undefined;table-layout: fixed; width: 1200px">
+  <table style="undefined;table-layout: fixed; width: 1550px">
   <colgroup>
-  <col style="width: 160px">
+  <col style="width: 190px">
   <col style="width: 90px">
-  <col style="width: 140px">
+  <col style="width: 150px">
+  <col style="width: 330px">
   <col style="width: 250px">
-  <col style="width: 180px">
   <col style="width: 70px">
-  <col style="width: 210px">
-  <col style="width: 100px">
+  <col style="width: 360px">
+  <col style="width: 110px">
   </colgroup>
   <thead>
     <tr>
@@ -543,10 +544,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
-  <col style="width: 200px">
-  <col style="width: 100px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 280px">
+  <col style="width: 90px">
+  <col style="width: 785px">
   </colgroup>
   <thead>
     <tr>
@@ -578,10 +579,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
-  <col style="width: 160px">
-  <col style="width: 100px">
-  <col style="width: 740px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
   </colgroup>
   <thead>
     <tr>
@@ -621,10 +622,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### layout对应关系说明
 
-  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
-  <col style="width: 200px">
-  <col style="width: 100px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 160px">
+  <col style="width: 180px">
+  <col style="width: 815px">
   </colgroup>
   <thead>
     <tr>
@@ -680,10 +681,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### Paged Attention相关说明
 
-  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
-  <col style="width: 200px">
-  <col style="width: 100px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 420px">
+  <col style="width: 160px">
+  <col style="width: 575px">
   </colgroup>
   <thead>
     <tr>
@@ -724,14 +725,14 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 下列量化配置按Ascend 950（A5）代际描述；当前可用quantType=0，Ascend 950上可选quantType=5。
 
-  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
-  <col style="width: 90px">
-  <col style="width: 160px">
-  <col style="width: 90px">
-  <col style="width: 160px">
-  <col style="width: 180px">
-  <col style="width: 180px">
-  <col style="width: 140px">
+  <table style="undefined;table-layout: fixed;width: 1550px"><colgroup>
+  <col style="width: 120px">
+  <col style="width: 240px">
+  <col style="width: 130px">
+  <col style="width: 240px">
+  <col style="width: 260px">
+  <col style="width: 280px">
+  <col style="width: 280px">
   </colgroup>
   <thead>
     <tr>
@@ -856,10 +857,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### 掩码说明
 
-  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
-  <col style="width: 120px">
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 160px">
   <col style="width: 140px">
-  <col style="width: 540px">
+  <col style="width: 655px">
   <col style="width: 200px">
   </colgroup>
   <thead>
