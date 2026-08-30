@@ -3169,8 +3169,7 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
         const int64_t total = n1 * groupSize;
         const int64_t runPairs = total / NUM_TWO;
         const int64_t pairSpace = runPairs * NUM_TWO;
-        const int64_t pairRounds =
-            (runPairs > 0 && virtN > 0) ? (Ceil<int64_t>(virtN * runPairs, k) * virtM) : 0;
+        const int64_t pairRounds = (runPairs > 0 && virtN > 0) ? (Ceil<int64_t>(virtN * runPairs, k) * virtM) : 0;
         const int64_t singleRounds =
             (total % NUM_TWO == 1) ? (LEFT_UP ? CalTNDSingleCausalRounds(k, m, n) : (Ceil<int64_t>(n, k) * m)) : 0;
         const int64_t runRounds = pairRounds + singleRounds;
@@ -3280,8 +3279,8 @@ __aicore__ inline void CalTNDBandLineIndex(const __gm__ uint8_t *actualSeqQlenAd
             int64_t w = 0;
             int64_t x = 0;
             int64_t y = 0;
-            if (CalTNDDenseLine(k, m, denseN, copies, j, a, w, x, y) && MapTNDBandWide(m, n, p, q, x, y) &&
-                w >= 1 && w <= copies) {
+            if (CalTNDDenseLine(k, m, denseN, copies, j, a, w, x, y) && MapTNDBandWide(m, n, p, q, x, y) && w >= 1 &&
+                w <= copies) {
                 BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x,
                                                                y, rawP, rawQ, coordinateInfo);
             }
