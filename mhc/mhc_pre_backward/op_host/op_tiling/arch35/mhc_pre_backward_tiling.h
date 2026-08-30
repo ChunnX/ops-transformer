@@ -34,6 +34,16 @@ TILING_DATA_FIELD_DEF(uint64_t, nD);
 TILING_DATA_FIELD_DEF(uint64_t, N);
 TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
+TILING_DATA_FIELD_DEF(uint32_t, vecDealChunk);
+TILING_DATA_FIELD_DEF(uint32_t, vecDealBsPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, usedVecCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, cubeDealNdPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, usedCubeCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, preProcessCopySizeD);
+TILING_DATA_FIELD_DEF(uint32_t, preProcessLenN);
+TILING_DATA_FIELD_DEF(uint32_t, preProcessDLoopCnt);
+TILING_DATA_FIELD_DEF(uint32_t, processV2ChunkSize);
+TILING_DATA_FIELD_DEF(float, scaleMean);
 TILING_DATA_FIELD_DEF(float, hcEps);
 END_TILING_DATA_DEF;
 
