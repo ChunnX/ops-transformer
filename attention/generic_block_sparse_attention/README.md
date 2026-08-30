@@ -1,212 +1,231 @@
-# GenericBlockSparseAttention算子
+# GenericBlockSparseAttention
 
-## 概述
+## 产品支持情况
 
-GenericBlockSparseAttention是一个基于CATLASS模板库实现的高性能稀疏注意力算子，支持沿着S轴任意粒度的块稀疏模式。通过sparseBlockIdx指定每个Q块选择的KV块，sparseBlockCount指定每个Q块保留的KV块数量。调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadata。
+| 产品                                                         | 是否支持 |
+| ------------------------------------------------------------ | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                              |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
-## 功能特性
+## 功能说明
 
-- **灵活的稀疏块模式**: 支持自定义的x*y块级稀疏模式，通过blockShape参数指定
-- **Paged KV Cache布局**: 支持PAGED_BBND [numBlocks, blockSize, N, D]的KV cache布局
-- **TND格式Q输入布局**: 支持TND [T, N, D]的Query输入布局
-- **高性能计算**: 基于CATLASS模板库，充分利用昇腾硬件特性
-- **多精度支持**: 支持FP16和BF16两种精度；Ascend 950上另支持FLOAT8_E4M3FN
-- **非对齐序列**: 支持序列长度不能被块大小整除的场景，自动处理边界情况
+- 算子功能：
 
-## 接口定义
+  `GenericBlockSparseAttention`是基于CATLASS模板库实现的高性能块稀疏注意力算子，支持沿S轴的块级稀疏模式。通过`sparseBlockIdx`指定每个Q块选择的KV块，通过`sparseBlockCount`指定每个Q块实际保留的KV块数量。调用前须先执行`aclnnGenericBlockSparseAttentionMetadata`生成`metadataOptional`。
 
-### aclnnGenericBlockSparseAttentionGetWorkspaceSize
+  典型调用流程如下：
 
-```cpp
-aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-    const aclTensor *query,                         // Query输入
-    const aclTensor *key,                           // Key输入
-    const aclTensor *value,                         // Value输入
-    const aclTensor *sparseBlockIdx,                // 稀疏块索引
-    const aclTensor *sparseBlockCount,              // 每个Q块保留的KV块数量
-    const aclTensor *metadataOptional,              // Metadata调度表
-    const aclTensor *attenMaskOptional,             // Attention mask (当前不支持)
-    const aclTensor *qDequantScaleOptional,         // Q反量化系数 (当前不支持)
-    const aclTensor *kDequantScaleOptional,         // K反量化系数 (当前不支持)
-    const aclTensor *vDequantScaleOptional,         // V反量化系数 (当前不支持)
-    const aclTensor *pQuantScaleOptional,           // P量化系数 (当前不支持)
-    const aclTensor *cuSeqLengthsQOptional,         // Q序列前缀和(TND格式时必选)
-    const aclTensor *cuSeqLengthsKvOptional,        // KV序列前缀和(PAGED格式时必选)
-    const aclTensor *sequsedQOptional,              // Q实际有效长度(可选)
-    const aclTensor *sequsedKvOptional,             // KV实际有效长度(可选)
-    const aclTensor *blockTableOptional,            // Block表(用于PagedAttention)
-    const aclIntArray *blockShape,                  // 稀疏块形状数组
-    int64_t isPackedGQA,                            // 同group是否共享稀疏pattern
-    char *layoutQ,                                  // Query的数据排布格式
-    char *layoutKv,                                 // Key/Value的数据排布格式
-    double scaleValue,                              // 缩放因子
-    int64_t maskType,                               // Mask类型
-    int64_t quantType,                              // 量化类型
-    double dstTypeMax,                              // 量化相关参数
-    int64_t softmaxPrecision,                       // Softmax计算采取的精度级别
-    int64_t winLeft,                                // 滑窗参数(当前不支持)
-    int64_t winRight,                               // 滑窗参数(当前不支持)
-    int64_t returnSoftmaxlse,                       // 是否输出LSE（当前仅支持0）
-    aclTensor *attentionOut,                        // 输出tensor
-    aclTensor *softmaxLseOptional,                  // Softmax LSE输出（当前不支持，须传nullptr）
-    uint64_t *workspaceSize,                        // 返回workspace大小
-    aclOpExecutor **executor);                      // 返回executor
-```
+  1. 准备`query`、`key`、`value`、`sparseBlockIdx`、`sparseBlockCount`、`cuSeqLengthsQOptional`、`cuSeqLengthsKvOptional`、`blockTableOptional`等输入。
+  2. 调用`aclnnGenericBlockSparseAttentionMetadata`生成`metadataOptional`。
+  3. 调用`aclnnGenericBlockSparseAttention`，将上一步得到的`metadataOptional`传入主算子。
 
-### aclnnGenericBlockSparseAttention
+- 计算公式：
 
-```cpp
-aclnnStatus aclnnGenericBlockSparseAttention(
-    void *workspace,                           // workspace地址
-    uint64_t workspaceSize,                    // workspace大小
-    aclOpExecutor *executor,                   // executor
-    aclrtStream stream);                       // ACL stream
-```
+  稀疏块大小：$blockShapeX \times blockShapeY$
+
+  $$
+  attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T}) \cdot value_{sparse}
+  $$
+
+  其中$key_{sparse}$、$value_{sparse}$为按`sparseBlockIdx`/`sparseBlockCount`从Paged KV Cache中选取的KV块。
 
 ## 参数说明
 
-### 输入参数
+> **说明：**<br>
+> 参数维度含义：B表示Batch Size，T表示Total tokens，N1和N2分别表示query和key/value的Head Num，D表示Head Dim，topK表示`sparseBlockIdx`最后一维`maxSparseBlockCount`。
 
-- **query**: Query tensor,当前支持以下布局
-  - TND: [total_tokens, num_heads, head_dim]
+<table style="undefined;table-layout: fixed; width: 1200px"><colgroup>
+  <col style="width: 220px">
+  <col style="width: 120px">
+  <col style="width: 520px">
+  <col style="width: 180px">
+  <col style="width: 100px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出/属性</th>
+      <th>描述</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>query</td>
+      <td>输入</td>
+      <td>公式中的query。layoutQ为"TND"时，shape为[T, N1, D]。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>key</td>
+      <td>输入</td>
+      <td>公式中的key。layoutKv为"PAGED_BBND"时，shape为[numBlocks, blockSize, N2, D]。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>value</td>
+      <td>输入</td>
+      <td>公式中的value，shape与key一致。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sparseBlockIdx</td>
+      <td>输入</td>
+      <td>稀疏块索引。TND + isPackedGQA=1时，shape为[N2, totalQBlocks, topK]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sparseBlockCount</td>
+      <td>输入</td>
+      <td>每个Q块实际选择的KV块数量。TND + isPackedGQA=1时，shape为[N2, totalQBlocks]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cuSeqLengthsQOptional</td>
+      <td>输入</td>
+      <td>各batch中query序列长度前缀和，layoutQ为"TND"时必传，shape为[B+1,]。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cuSeqLengthsKvOptional</td>
+      <td>输入</td>
+      <td>各batch中key/value序列长度前缀和，layoutKv为"PAGED_BBND"时必传，shape为[B+1,]。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sequsedQOptional</td>
+      <td>可选输入</td>
+      <td>各batch中query实际有效长度；不传时按cu前缀和差分得到的存储长度处理。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sequsedKvOptional</td>
+      <td>可选输入</td>
+      <td>各batch中kv实际有效长度；不传时按cu前缀和差分得到的存储长度处理。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>blockTableOptional</td>
+      <td>输入</td>
+      <td>PagedAttention页表，shape为[B, maxNumBlocksPerBatch]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>blockShape</td>
+      <td>属性</td>
+      <td>稀疏块形状[blockShapeX, blockShapeY]，当前仅支持[1, 128]。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>isPackedGQA</td>
+      <td>属性</td>
+      <td>同group内qHead是否共享稀疏pattern，当前仅支持1。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutQ</td>
+      <td>属性</td>
+      <td>query数据排布格式，当前仅支持"TND"。</td>
+      <td>STRING</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutKv</td>
+      <td>属性</td>
+      <td>key/value数据排布格式，当前仅支持"PAGED_BBND"。</td>
+      <td>STRING</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>scaleValue</td>
+      <td>属性</td>
+      <td>缩放系数；传0时算子内按$1/\sqrt{D}$处理。</td>
+      <td>DOUBLE</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maskType</td>
+      <td>属性</td>
+      <td>掩码类型，当前仅支持1（内置causal mask）。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>quantType</td>
+      <td>属性</td>
+      <td>量化类型；当前支持0，Ascend 950上可选5。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>softmaxPrecision</td>
+      <td>属性</td>
+      <td>Softmax计算精度级别，取值0或1。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>returnSoftmaxlse</td>
+      <td>属性</td>
+      <td>是否输出softmaxLse，当前仅支持0。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>attentionOut</td>
+      <td>输出</td>
+      <td>公式中的attentionOut，数据类型和shape与query保持一致。</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>softmaxLseOptional</td>
+      <td>输出</td>
+      <td>Softmax log-sum-exp中间结果；当前不支持，须传入nullptr。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+  </tbody>
+</table>
 
-- **key**: Key tensor,当前支持以下布局
-  - PAGED_BBND: [numBlocks, blockSize, num_kv_heads, head_dim]
+## 约束说明
 
-- **value**: Value tensor,当前支持以下布局
-  - PAGED_BBND: [numBlocks, blockSize, num_kv_heads, head_dim]
+- 该接口支持推理场景下使用。
+- 调用前须先执行`aclnnGenericBlockSparseAttentionMetadata`生成`metadataOptional`，再调用本接口；metadata须与当前输入/属性配套，不可跨不同shape/属性复用。
+- layoutQ当前仅支持"TND"；layoutKv当前仅支持"PAGED_BBND"。
+- isPackedGQA当前仅支持1；maskType当前仅支持1（算子内置causal）；`attenMaskOptional`须传入nullptr；winLeft和winRight当前只支持-1。
+- blockShape当前仅支持[1, 128]；query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
+- TND + isPackedGQA=1时：`sparseBlockIdx`为[N2, totalQBlocks, topK]，`sparseBlockCount`为[N2, totalQBlocks]；totalQBlocks按cu存储长度分块；topK须≥`sparseBlockCount`中所有元素的最大值，且当前上限为256。
+- metadataOptional、blockTableOptional、cuSeqLengthsQOptional、cuSeqLengthsKvOptional当前必须传入。
+- sequsedQOptional/sequsedKvOptional可选；传入时分核/任务空间按各batch实际有效长度累加，sparse分块与QKV寻址仍按cu存储长度计算；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
+- quantType当前支持0（非量化）；Ascend 950上可选5（FLOAT8_E4M3FN全量化，attentionOut为FLOAT16/BFLOAT16）。quantType为1~4当前不支持。
+- qDequantScaleOptional、kDequantScaleOptional、vDequantScaleOptional、pQuantScaleOptional当前须传入nullptr；dstTypeMax当前只支持0.0。
+- 输入query、key、value的数据类型必须一致；当前支持FLOAT16、BFLOAT16；Ascend 950上另支持FLOAT8_E4M3FN（须quantType=5）。
+- returnSoftmaxlse当前仅支持0，不支持开启softmaxLse输出。
+- softmaxPrecision：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0；FLOAT8路径仅支持1。
+- 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2且N1 % N2 == 0；groupSize=N1/N2当前须≤128。
+- PAGED_BBND下key/value仅dim0（物理页轴）可非连续；页内blockSize×N2×D须连续。
 
-- **sparseBlockIdx**:
-  - 稀疏块索引: [num_kv_heads, totalQBlocks, maxSparseBlockCount]
+## 调用说明
 
-- **sparseBlockCount**:
-  - 每个Q块保留的KV块数量: [num_kv_heads, totalQBlocks]
-
-- **metadataOptional**:
-  - Metadata算子输出的调度表,INT32,shape固定为[1024]
-
-- **blockTableOptional**:
-  - PagedAttention页表: [batch, maxNumBlocksPerBatch]
-
-- **blockShape**:
-  - blockShapeX: Q方向块大小
-  - blockShapeY: KV方向块大小
-
-### 输出参数
-
-- **attentionOut**: 注意力输出，shape与query相同
-- **softmaxLse**: Softmax log-sum-exp输出；当前不支持，`returnSoftmaxlse`须为0，传入`nullptr`
-
-## 使用示例
-
-```cpp
-// 1. 准备输入数据
-int64_t batch = 1;
-int64_t qSeqlen = 256;
-int64_t kvSeqlen = 512;
-int64_t numHeads = 8;
-int64_t numKvHeads = 8;
-int64_t headDim = 128;
-int64_t blockShapeX = 1;
-int64_t blockShapeY = 128;
-int64_t blockSize = 128;
-
-// 2. 创建tensor (略)
-
-// 3. 设置blockShape
-int64_t blockShapeData[2] = {blockShapeX, blockShapeY};
-aclIntArray *blockShape = aclCreateIntArray(blockShapeData, 2);
-
-// 4. 先调用Metadata，再调用主算子
-uint64_t metadataWorkspaceSize = 0;
-aclOpExecutor *metadataExecutor = nullptr;
-aclnnStatus ret = aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
-    sparseBlockIdx, sparseBlockCount, cuSeqLengthsQ, cuSeqLengthsKv, nullptr, nullptr,
-    qSeqlen, kvSeqlen, numHeads, numKvHeads, headDim, blockShape, 1, "TND", "PAGED_BBND",
-    1, 0, 1, -1, -1, metadata, &metadataWorkspaceSize, &metadataExecutor);
-
-if (ret == ACLNN_SUCCESS) {
-    void *metadataWorkspace = nullptr;
-    aclrtMalloc(&metadataWorkspace, metadataWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    ret = aclnnGenericBlockSparseAttentionMetadata(
-        metadataWorkspace, metadataWorkspaceSize, metadataExecutor, stream);
-    aclrtFree(metadataWorkspace);
-}
-
-uint64_t workspaceSize = 0;
-aclOpExecutor *executor = nullptr;
-ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-    query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr,
-    nullptr, nullptr, nullptr, nullptr, cuSeqLengthsQ, cuSeqLengthsKv, nullptr, nullptr,
-    blockTable, blockShape, 1, "TND", "PAGED_BBND", scaleValue, 1, 0, 0.0, 1, -1, -1, 0,
-    attentionOut, nullptr, &workspaceSize, &executor);
-
-if (ret == ACLNN_SUCCESS) {
-    void *workspace = nullptr;
-    aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-
-    ret = aclnnGenericBlockSparseAttention(workspace, workspaceSize, executor, stream);
-
-    aclrtFree(workspace);
-}
-```
-
-## 稀疏模式说明
-
-### sparseBlockIdx稀疏pattern
-
-GenericBlockSparseAttention使用sparseBlockIdx/sparseBlockCount稀疏pattern:
-
-- **sparseBlockIdx**: 形状为`[numKvHeads, totalQBlocks, maxSparseBlockCount]`的稀疏块索引
-- **sparseBlockCount**: 形状为`[numKvHeads, totalQBlocks]`的稀疏块数量
-- **blockShapeX**: Q方向基本块大小
-- **blockShapeY**: KV方向基本块大小
-
-### 示例
-
-对于qSeqlen=512, kvSeqlen=1024, blockShapeX=1, blockShapeY=128:
-
-```text
-Q方向: ceil(512/1)=512块
-KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
-
-每个Q块可以选择任意KV块组合：
-- Q块0选择的KV块: [0, 2, 5]
-- Q块1选择的KV块: [1, 3, 6]
-- Q块2选择的KV块: [0, 4, 7]
-- Q块3选择的KV块: [2, 5, 6]
-```
-
-## 性能特点
-
-- **内存效率**: 相比密集注意力，显著减少内存使用
-- **计算效率**: 只计算指定的稀疏块，减少计算量
-- **灵活配置**: 支持通过sparseBlockIdx配置稀疏块选择
-- **硬件优化**: 充分利用昇腾的AI Core和Vector Core
-
-## 注意事项
-
-1. 须先调用aclnnGenericBlockSparseAttentionMetadata生成metadata，再调用主算子；metadata不可跨不同shape/属性复用。
-2. layoutQ当前仅支持"TND"。
-3. layoutKv当前仅支持"PAGED_BBND"。
-4. blockShape当前仅支持[1, 128]；headDim当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-5. isPackedGQA当前仅支持1；maskType当前仅支持1；attenMaskOptional当前只支持传入nullptr。
-6. sparseBlockIdx最后一维maxSparseBlockCount须≥sparseBlockCount中所有元素的最大值，且当前上限为256。
-7. metadataOptional、blockTableOptional、cuSeqLengthsQOptional、cuSeqLengthsKvOptional当前必须传入。
-8. winLeft和winRight当前只支持-1。
-9. quantType当前支持0；Ascend 950上可选5；quantType为1~4当前不支持。
-10. 输入query、key、value的数据类型必须一致；当前支持FLOAT16、BFLOAT16；Ascend 950上另支持FLOAT8_E4M3FN（须quantType=5）。
-11. softmaxPrecision：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0。
-12. returnSoftmaxlse当前仅支持0，不支持开启softmaxLse输出。
-
-## 编译说明
-
-算子编译集成在ops-transformer的统一编译流程中:
-
-```bash
-bash build.sh
-```
-
-## 版本历史
-
-- v1.0.0: 初始版本
+| 调用方式 | 样例代码 | 说明 |
+| -------- | -------- | ---- |
+| aclnn API | [test_aclnn_generic_block_sparse_attention](./examples/test_aclnn_generic_block_sparse_attention.cpp) | 通过[aclnnGenericBlockSparseAttention](./docs/aclnnGenericBlockSparseAttention.md)两段式接口调用GenericBlockSparseAttention算子 |
+| aclnn API（Metadata） | [test_aclnn_generic_block_sparse_attention_metadata](../generic_block_sparse_attention_metadata/examples/test_aclnn_generic_block_sparse_attention_metadata.cpp) | 通过[aclnnGenericBlockSparseAttentionMetadata](../generic_block_sparse_attention_metadata/docs/aclnnGenericBlockSparseAttentionMetadata.md)生成metadata |
