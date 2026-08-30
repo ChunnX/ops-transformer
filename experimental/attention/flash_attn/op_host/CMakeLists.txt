@@ -20,17 +20,16 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(flash_attn_depends attention/common CACHE INTERNAL "Dependencies for flash_attn")
+    # ENABLE_EXPERIMENTAL 构建时依赖路径会自动加 experimental/ 前缀，
+    # "../attention/common" 映射为仓级 attention/common（kernel 侧代码位于
+    # op_kernel 下，经 staged src/common 引用该依赖）
+    set(flash_attn_depends ../attention/common CACHE INTERNAL "Dependencies for flash_attn")
     add_ops_compile_options(
         OP_NAME FlashAttn
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
 endif()
-
-file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
-    ../op_host/checkers/*checker*.cpp
-)
 
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
@@ -48,9 +47,8 @@ else()
     )
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-    ${ARCH35_CHECKER_SRC_FILES}
     flash_attn_tiling_info_parser.cpp
-    ../../common/op_host/fia_tiling_shape.cpp
+    ../../../../attention/common/op_host/fia_tiling_shape.cpp
     )
     add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出

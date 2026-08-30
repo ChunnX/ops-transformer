@@ -21,8 +21,7 @@
 #include "flash_attn_tiling_common.h"
 #include "../op_kernel/arch35/flash_attn_template_tiling_key.h"
 #include "flash_attn_tiling_info_parser.h"
-#include "checkers/fa_checker.h"
-#include "../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../../../attention/common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -57,11 +56,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    FAChecker faChecker;
-    faChecker.Init(faInfo);
-    if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &faInfo);
 }
 

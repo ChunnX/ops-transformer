@@ -87,7 +87,6 @@ private:
     uint32_t sOuterFactor_;
     uint32_t sInnerFactor_;
     bool flashDecodeFlag_ = false;
-    bool dnFlag_ = false;
     bool cuSeqLenQFlag_ = false;
     bool cuSeqLenKVFlag_ = false;
     bool seqUsedQFlag_ = false;

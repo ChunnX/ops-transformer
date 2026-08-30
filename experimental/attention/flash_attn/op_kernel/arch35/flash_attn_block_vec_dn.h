@@ -17,15 +17,14 @@
 
 #include <limits>
 
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "vf/vf_flashupdate_new.h"
 #include "vf/vf_div_cast_arch35.h"
 #include "vf/vf_flash_decode_arch35.h"
 
-#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#include "../../common/op_kernel/vector_common.h"
-#include "../../common/op_kernel/init_output.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/init_output.h"
 
 #include "memory_copy_arch35.h"
 

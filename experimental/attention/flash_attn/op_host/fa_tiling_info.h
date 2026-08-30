@@ -21,8 +21,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include "../common/op_host/fia_tiling_base.h"
-#include "../common/op_host/fia_tiling_shape.h"
+#include "../../../../attention/common/op_host/fia_tiling_base.h"
+#include "../../../../attention/common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -251,7 +251,7 @@ public:
     uint64_t valueBnStride = 0;
     uint64_t valueN2Stride = 0;
     bool hasViewStride = true;
-    // 非连续场景下首个非连续维, -1表示连续, 由parser计算供checker复用
+    // 非连续场景下首个非连续维, -1表示连续, 由parser计算
     int32_t keyNonContigDim = -1;
     int32_t valueNonContigDim = -1;
 

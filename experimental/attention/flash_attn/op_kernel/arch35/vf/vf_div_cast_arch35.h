@@ -15,6 +15,7 @@
 #define VF_DIV_CAST_INTERFACE_ARCH35_H
 
 #include "kernel_tensor.h"
+#include "vf_basic_block_utils.h"
 
 namespace FaVectorApi {
 template <typename T, typename OUTPUT_T, uint16_t srcD>

@@ -15,6 +15,7 @@
 #ifndef MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
 #define MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
 #include "kernel_tensor.h"
+#include "vf_basic_block_utils.h"
 namespace FaVectorApi {
 using AscendC::LocalTensor;
 using namespace AscendC;

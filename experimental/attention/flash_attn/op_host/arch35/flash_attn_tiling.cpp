@@ -24,7 +24,7 @@
 #include "log/log.h"
 #include "../flash_attn_tiling_utils.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
-#include "../../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../../../../attention/common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -238,7 +238,7 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
     if (dVBasicBlock > arch35FA::DSIZE_256) {
         bmm2ResBlockSize = arch35FA::DSIZE_512;
     }
-    if ((!dnFlag_ && dSize > arch35FA::DSIZE_128) || (dnFlag_ && dSize > arch35FA::DSIZE_192)) {
+    if (dSize > arch35FA::DSIZE_192) {
         bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
         if (dVBasicBlock > arch35FA::DSIZE_256) {
             vec2Bytes = mSize * dVBasicBlock * sizeof(float);
