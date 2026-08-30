@@ -1,0 +1,70 @@
+{
+  "MoeTutelDispatch": {
+    "attr": {
+      "list": "capacity"
+    },
+    "attr_capacity": {
+      "paramType": "required",
+      "type": "int",
+      "value": "all"
+    },
+    "coreType": {
+      "value": "AiCore"
+    },
+    "dynamicCompileStatic": {
+      "flag": "true"
+    },
+    "dynamicRankSupport": {
+      "flag": "false"
+    },
+    "dynamicShapeSupport": {
+      "flag": "true"
+    },
+    "input0": {
+      "dtype": "float16,float32,bfloat16",
+      "format": "ND,ND,ND",
+      "name": "x",
+      "paramType": "required",
+      "shape": "all",
+      "unknownshape_format": "ND,ND,ND"
+    },
+    "input1": {
+      "dtype": "float16,float32,bfloat16",
+      "format": "ND,ND,ND",
+      "name": "gates",
+      "paramType": "required",
+      "shape": "all",
+      "unknownshape_format": "ND,ND,ND"
+    },
+    "input2": {
+      "dtype": "int32,int32,int32",
+      "format": "ND,ND,ND",
+      "name": "indices",
+      "paramType": "required",
+      "shape": "all",
+      "unknownshape_format": "ND,ND,ND"
+    },
+    "input3": {
+      "dtype": "int32,int32,int32",
+      "format": "ND,ND,ND",
+      "name": "locations",
+      "paramType": "required",
+      "shape": "all",
+      "unknownshape_format": "ND,ND,ND"
+    },
+    "opFile": {
+      "value": "moe_tutel_dispatch"
+    },
+    "opInterface": {
+      "value": "moe_tutel_dispatch"
+    },
+    "output0": {
+      "dtype": "float16,float32,bfloat16",
+      "format": "ND,ND,ND",
+      "name": "y",
+      "paramType": "required",
+      "shape": "all",
+      "unknownshape_format": "ND,ND,ND"
+    }
+  }
+}

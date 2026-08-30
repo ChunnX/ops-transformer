@@ -1,0 +1,168 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+
+metadata:
+  operator: "MoeTutelDispatch"
+  version: "1.0"
+  interface_kind: "GEIR registry"
+  description: "E/K 独立且输出描述由调用方提供的 MoeTutelDispatch 测试约束"
+
+factors:
+  x.exist: {type: exist, param: x, io_type: input}
+  x.dtype: {type: dtype, param: x, io_type: input}
+  x.format: {type: format, param: x, io_type: input}
+  x.dimensions: {type: dimensions, param: x, io_type: input}
+  x.shape: {type: shape, param: x, io_type: input}
+  x.value_range: {type: value_range, param: x, io_type: input}
+
+  gates.exist: {type: exist, param: gates, io_type: input}
+  gates.dtype: {type: dtype, param: gates, io_type: input}
+  gates.format: {type: format, param: gates, io_type: input}
+  gates.dimensions: {type: dimensions, param: gates, io_type: input}
+  gates.shape: {type: shape, param: gates, io_type: input}
+  gates.value_range: {type: value_range, param: gates, io_type: input}
+
+  indices.exist: {type: exist, param: indices, io_type: input}
+  indices.dtype: {type: dtype, param: indices, io_type: input}
+  indices.format: {type: format, param: indices, io_type: input}
+  indices.dimensions: {type: dimensions, param: indices, io_type: input}
+  indices.shape: {type: shape, param: indices, io_type: input}
+  indices.value_range: {type: value_range, param: indices, io_type: input}
+
+  locations.exist: {type: exist, param: locations, io_type: input}
+  locations.dtype: {type: dtype, param: locations, io_type: input}
+  locations.format: {type: format, param: locations, io_type: input}
+  locations.dimensions: {type: dimensions, param: locations, io_type: input}
+  locations.shape: {type: shape, param: locations, io_type: input}
+  locations.value_range: {type: value_range, param: locations, io_type: input}
+
+  capacity.exist: {type: exist, param: capacity, io_type: input}
+  capacity.dtype: {type: dtype, param: capacity, io_type: input}
+  capacity.value_range: {type: value_range, param: capacity, io_type: input}
+  capacity.value: {type: value, param: capacity, io_type: input}
+
+  y.exist: {type: exist, param: y, io_type: output}
+  y.dtype: {type: dtype, param: y, io_type: output}
+  y.format: {type: format, param: y, io_type: output}
+  y.dimensions: {type: dimensions, param: y, io_type: output}
+  y.shape: {type: shape, param: y, io_type: output}
+
+  _shape_symbols.S: {type: value, param: _shape_symbols, io_type: intermediate}
+  _shape_symbols.H: {type: value, param: _shape_symbols, io_type: intermediate}
+  _shape_symbols.K: {type: value, param: _shape_symbols, io_type: intermediate}
+  _shape_symbols.E: {type: value, param: _shape_symbols, io_type: intermediate}
+
+constraints:
+
+  # ========================================
+  # 隐式约束（自动生成）
+  # ========================================
+
+  - id: "IMPLICIT-RANGE-x"
+    type: calculate
+    sources: [x.dtype]
+    target: "x.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择x.value_range"
+    implicit: True
+  - id: "IMPLICIT-RANGE-gates"
+    type: calculate
+    sources: [gates.dtype]
+    target: "gates.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择gates.value_range"
+    implicit: True
+  - id: "IMPLICIT-RANGE-indices"
+    type: calculate
+    sources: [indices.dtype]
+    target: "indices.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择indices.value_range"
+    implicit: True
+  - id: "IMPLICIT-RANGE-locations"
+    type: calculate
+    sources: [locations.dtype]
+    target: "locations.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择locations.value_range"
+    implicit: True
+  - id: "IMPLICIT-RANGE-capacity"
+    type: calculate
+    sources: [capacity.dtype]
+    target: "capacity.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择capacity.value_range"
+    implicit: True
+  - id: "IMPLICIT-VALUE-capacity"
+    type: calculate
+    sources: [capacity.value_range]
+    target: "capacity.value"
+    expression: "derive_value_from_range(sources[0])"
+    description: "根据value_range生成capacity.value"
+    implicit: True
+
+  - id: "C-TYPE-001"
+    type: calculate
+    sources: ["x.dtype"]
+    target: "gates.dtype"
+    expression: "sources[0]"
+    description: "gates 与 x 同 dtype"
+
+  - id: "C-TYPE-002"
+    type: calculate
+    sources: ["x.dtype"]
+    target: "y.dtype"
+    expression: "sources[0]"
+    description: "y 与 x 同 dtype"
+
+  - id: "IMPLICIT-SHAPE-x"
+    type: calculate
+    sources: ["_shape_symbols.S", "_shape_symbols.H"]
+    target: "x.shape"
+    expression: "[sources[0], sources[1]]"
+    description: "x.shape=[S,H]"
+    implicit: true
+
+  - id: "IMPLICIT-SHAPE-gates"
+    type: calculate
+    sources: ["_shape_symbols.K", "_shape_symbols.S"]
+    target: "gates.shape"
+    expression: "[sources[0], sources[1]]"
+    description: "gates.shape=[K,S]"
+    implicit: true
+
+  - id: "IMPLICIT-SHAPE-indices"
+    type: calculate
+    sources: ["gates.shape"]
+    target: "indices.shape"
+    expression: "sources[0]"
+    description: "indices.shape=gates.shape"
+    implicit: true
+
+  - id: "IMPLICIT-SHAPE-locations"
+    type: calculate
+    sources: ["gates.shape"]
+    target: "locations.shape"
+    expression: "sources[0]"
+    description: "locations.shape=gates.shape"
+    implicit: true
+
+  - id: "IMPLICIT-SHAPE-y"
+    type: calculate
+    sources: ["_shape_symbols.E", "capacity.value", "_shape_symbols.H"]
+    target: "y.shape"
+    expression: "[sources[0], sources[1], sources[2]]"
+    description: "测试数据生成器据 caller descriptor 符号构造 y=[E,capacity,H]；不是运行时从 K 推导 E"
+    implicit: true
+
+# 下列约束无法由通用因子求解器表达，必须由 TEST.md、golden 和定向用例执行。
+execution_constraints:
+  - id: "EXEC-ROUTE-001"
+    rule: "合法数值正确性用例中的有效 (indices,locations) destination 全局唯一"
+  - id: "EXEC-ROUTE-002"
+    rule: "idx/loc 越界和 ±0 gate 安全跳过；重复 destination 只检查 guard region"
+  - id: "EXEC-BITWISE-001"
+    rule: "FP16/FP32/BF16 输出均按原始字节比较；未命中元素必须是正零位型"
+  - id: "EXEC-ALIAS-001"
+    rule: "y 不得与 x/gates/indices/locations alias；框架不可检测时由调用方保证"
+  - id: "EXEC-RANGE-001"
+    rule: "INT32_MAX、INT32_MAX+1、负 capacity 及 signed-int64 乘积边界仅做 Host metadata-only 用例，不分配对应大 Tensor"

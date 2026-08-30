@@ -1,0 +1,32 @@
+operator: MoeTutelDispatch
+level: L1
+case_count: 500
+unique_case_count: 500
+generator: ascendc-st-design factor solver + contract-aware deterministic postprocess
+seed: 42
+coverage:
+  dtype:
+    bfloat16: 174
+    float16: 174
+    float32: 152
+  e_k_relation:
+    E<K: 197
+    E=K: 82
+    E>K: 221
+  empty_axis:
+    C=0: 72
+    E=0: 85
+    H=0: 37
+    K=0: 68
+    S=0: 51
+    nonempty: 187
+  hidden_alignment:
+    aligned32: 165
+    one: 65
+    unaligned32: 205
+    zero: 65
+notes:
+- x/gates/y dtype are one constrained combination, not three independent pairwise
+  factors
+- bitwise, long-H SPLIT_H, guarded duplicate routes and P0 cases are mandatory curated
+  rows outside this random L1 pool

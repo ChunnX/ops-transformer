@@ -1,0 +1,150 @@
+# 求解配置
+# 基于约束定义自动生成
+#
+# 依赖关系分析：
+# - IMPLICIT-RANGE-x: x.value_range <- x.dtype (隐式)
+# - IMPLICIT-RANGE-gates: gates.value_range <- gates.dtype (隐式)
+# - IMPLICIT-RANGE-indices: indices.value_range <- indices.dtype (隐式)
+# - IMPLICIT-RANGE-locations: locations.value_range <- locations.dtype (隐式)
+# - IMPLICIT-RANGE-capacity: capacity.value_range <- capacity.dtype (隐式)
+# - IMPLICIT-VALUE-capacity: capacity.value <- capacity.value_range (隐式)
+# - C-TYPE-001: gates.dtype <- x.dtype
+# - C-TYPE-002: y.dtype <- x.dtype
+# - IMPLICIT-SHAPE-x: x.shape <- _shape_symbols.S, _shape_symbols.H (隐式)
+# - IMPLICIT-SHAPE-gates: gates.shape <- _shape_symbols.K, _shape_symbols.S (隐式)
+# - IMPLICIT-SHAPE-indices: indices.shape <- gates.shape (隐式)
+# - IMPLICIT-SHAPE-locations: locations.shape <- gates.shape (隐式)
+# - IMPLICIT-SHAPE-y: y.shape <- _shape_symbols.E, capacity.value, _shape_symbols.H (隐式)
+
+solver:
+  strategy: topological
+
+  # ========== 锚点因子 ==========
+  # 定义：入度为0的因子，无依赖，可独立随机采样
+  anchors:
+    # 类型锚点
+    - capacity.dtype
+    - indices.dtype
+    - locations.dtype
+    - x.dtype
+    # 固定值因子（无依赖）
+    - _shape_symbols.E
+    - _shape_symbols.H
+    - _shape_symbols.K
+    - _shape_symbols.S
+    - capacity.exist
+    - gates.dimensions
+    - gates.exist
+    - gates.format
+    - indices.dimensions
+    - indices.exist
+    - indices.format
+    - locations.dimensions
+    - locations.exist
+    - locations.format
+    - x.dimensions
+    - x.exist
+    - x.format
+    - y.dimensions
+    - y.exist
+    - y.format
+
+  # ========== 推导顺序 ==========
+  derivation_order:
+    # Level 0: 锚点因子（无依赖，可独立采样）
+    level_0:
+      - _shape_symbols.E
+      - _shape_symbols.H
+      - _shape_symbols.K
+      - _shape_symbols.S
+      - capacity.dtype
+      - capacity.exist
+      - gates.dimensions
+      - gates.exist
+      - gates.format
+      - indices.dimensions
+      - indices.dtype
+      - indices.exist
+      - indices.format
+      - locations.dimensions
+      - locations.dtype
+      - locations.exist
+      - locations.format
+      - x.dimensions
+      - x.dtype
+      - x.exist
+      - x.format
+      - y.dimensions
+      - y.exist
+      - y.format
+    # Level 1: 从前面层级推导
+    #   - capacity.value_range <- [capacity.dtype]
+    #   - gates.dtype <- [x.dtype]
+    #   - gates.shape <- [_shape_symbols.K, _shape_symbols.S]
+    #   - indices.value_range <- [indices.dtype]
+    #   - locations.value_range <- [locations.dtype]
+    #   ... (+3 more)
+    level_1:
+      - capacity.value_range
+      - gates.dtype
+      - gates.shape
+      - indices.value_range
+      - locations.value_range
+      - x.shape
+      - x.value_range
+      - y.dtype
+    # Level 2: 从前面层级推导
+    #   - capacity.value <- [capacity.value_range]
+    #   - gates.value_range <- [gates.dtype]
+    #   - indices.shape <- [gates.shape]
+    #   - locations.shape <- [gates.shape]
+    level_2:
+      - capacity.value
+      - gates.value_range
+      - indices.shape
+      - locations.shape
+    # Level 3: 从前面层级推导
+    #   - y.shape <- [_shape_symbols.E, _shape_symbols.H, capacity.value]
+    level_3:
+      - y.shape
+
+# ========== 隐式依赖说明 ==========
+#
+# 隐式约束由 generate_implicit_constraints.py 自动生成，
+# 描述参数内部属性的推导关系。
+#
+#   x.value_range <- x.dtype  (IMPLICIT-RANGE-x: 根据dtype选择x.value_range)
+#   gates.value_range <- gates.dtype  (IMPLICIT-RANGE-gates: 根据dtype选择gates.value_range)
+#   indices.value_range <- indices.dtype  (IMPLICIT-RANGE-indices: 根据dtype选择indices.value_range)
+#   locations.value_range <- locations.dtype  (IMPLICIT-RANGE-locations: 根据dtype选择locations.value_range)
+#   capacity.value_range <- capacity.dtype  (IMPLICIT-RANGE-capacity: 根据dtype选择capacity.value_range)
+#   capacity.value <- capacity.value_range  (IMPLICIT-VALUE-capacity: 根据value_range生成capacity.value)
+#   x.shape <- _shape_symbols.S, _shape_symbols.H  (IMPLICIT-SHAPE-x: x.shape=[S,H])
+#   gates.shape <- _shape_symbols.K, _shape_symbols.S  (IMPLICIT-SHAPE-gates: gates.shape=[K,S])
+#   indices.shape <- gates.shape  (IMPLICIT-SHAPE-indices: indices.shape=gates.shape)
+#   locations.shape <- gates.shape  (IMPLICIT-SHAPE-locations: locations.shape=gates.shape)
+#   y.shape <- _shape_symbols.E, capacity.value, _shape_symbols.H  (IMPLICIT-SHAPE-y: 测试数据生成器据 caller descriptor 符号构造 y=[E,capacity,H]；不是运行时从 K 推导 E)
+#
+# ========== 依赖图说明 ==========
+#
+# 类型依赖图：
+#   x.value_range <- x.dtype  (IMPLICIT-RANGE-x)
+#   gates.value_range <- gates.dtype  (IMPLICIT-RANGE-gates)
+#   indices.value_range <- indices.dtype  (IMPLICIT-RANGE-indices)
+#   locations.value_range <- locations.dtype  (IMPLICIT-RANGE-locations)
+#   capacity.value_range <- capacity.dtype  (IMPLICIT-RANGE-capacity)
+#   capacity.value <- capacity.value_range  (IMPLICIT-VALUE-capacity)
+#   gates.dtype <- x.dtype  (C-TYPE-001)
+#   y.dtype <- x.dtype  (C-TYPE-002)
+#   x.shape <- _shape_symbols.S, _shape_symbols.H  (IMPLICIT-SHAPE-x)
+#   gates.shape <- _shape_symbols.K, _shape_symbols.S  (IMPLICIT-SHAPE-gates)
+#   indices.shape <- gates.shape  (IMPLICIT-SHAPE-indices)
+#   locations.shape <- gates.shape  (IMPLICIT-SHAPE-locations)
+#   y.shape <- _shape_symbols.E, capacity.value, _shape_symbols.H  (IMPLICIT-SHAPE-y)
+#
+# 形状依赖图：
+#   x.shape <- _shape_symbols.S, _shape_symbols.H  (IMPLICIT-SHAPE-x)
+#   gates.shape <- _shape_symbols.K, _shape_symbols.S  (IMPLICIT-SHAPE-gates)
+#   indices.shape <- gates.shape  (IMPLICIT-SHAPE-indices)
+#   locations.shape <- gates.shape  (IMPLICIT-SHAPE-locations)
+#   y.shape <- _shape_symbols.E, capacity.value, _shape_symbols.H  (IMPLICIT-SHAPE-y)
