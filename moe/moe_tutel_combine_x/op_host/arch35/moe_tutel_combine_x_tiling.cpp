@@ -10,11 +10,13 @@
 
 /*!
  * \file moe_tutel_combine_x_tiling.cpp
- * \brief MoeTutelCombineX arch35(Ascend950 / regbase) tiling.
+ * \brief MoeTutelCombineX arch35 (Ascend950 / RegBase) tiling.
  */
 #include "moe_tutel_combine_x_tiling.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -22,6 +24,7 @@
 #include "log/log.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
+#include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "util/math_util.h"
 
@@ -41,18 +44,41 @@ constexpr size_t DIM_1 = 1;
 constexpr size_t DIM_2 = 2;
 
 constexpr int64_t TILING_KEY_MAIN = 10000;
-constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t BUFFER_NUM = 2;
+constexpr int64_t ROW_FACTOR_GROWTH = 2;
+constexpr int64_t ROW_UB_BUDGET_DIVISOR = 2;
 constexpr int64_t INT32_SIZE = 4;
 constexpr int64_t FP32_SIZE = 4;
 constexpr int64_t FP32_PER_BLOCK = 8; // 32B / sizeof(float)
-constexpr int64_t ROUTE_ALIGN = 16;   // 路由片行跨距对齐，同时满足 int32(8) 与 bf16/fp16(16) 的 32B 对齐
-constexpr int64_t UB_BLOCK_SIZE = 32;
-// VF 的 acc/行数据按整个 VREG（256B）加载，尾块会多读最多一个 VREG；预留一段余量保证
-// 这段"读越界但不写"的行为始终落在 UB 内。
-constexpr int64_t UB_RESERVED = 1024;
+constexpr int64_t ROUTE_ALIGN = 16; // 路由片行跨距对齐，同时满足 int32(8) 与 bf16/fp16(16) 的 32B 对齐
+// [RegBase-native] DAV_3510 VREG 为 256B；DIST_NORM fp32 和 DIST_UNPACK_B16 都按 64 个元素
+// 物理读取。每行按 64 元素分配，而不是依赖相邻 Buffer 作尾部 guard。
+constexpr int64_t VF_LOAD_ELEMS = 64;
+// TPipe 规划的保守余量；完整 VL 尾部容量已单独计入每行 stride。
+constexpr int64_t UB_SAFETY_MARGIN = 1024;
 constexpr int64_t MAX_ROW_FACTOR = 64;
+// [RegBase-native] DAV_3510 DataCopyPad 约束：blockCount <= 4095，GM 侧 stride <= 2^40-1 字节。
+constexpr int64_t MAX_BLOCK_COUNT = 4095;
+constexpr int64_t MAX_GM_STRIDE_BYTE = (int64_t{1} << 40) - 1;
 constexpr int64_t KFACTOR_FIX_LOOP = 16; // CeilAlign(kF,8) 引入的取整回退上限
-constexpr int64_t WORKSPACE_RESERVED = 16 * 1024 * 1024;
+
+bool SafeMulNonNegative(int64_t lhs, int64_t rhs, int64_t &result)
+{
+    if (lhs == 0 || rhs == 0) {
+        result = 0;
+        return true;
+    }
+    if (lhs > std::numeric_limits<int64_t>::max() / rhs) {
+        return false;
+    }
+    result = lhs * rhs;
+    return true;
+}
+
+int64_t CeilDivNonNegative(int64_t value, int64_t divisor)
+{
+    return value / divisor + static_cast<int64_t>(value % divisor != 0);
+}
 
 std::string ShapeToStr(const gert::Shape &shape)
 {
@@ -77,12 +103,54 @@ ge::graphStatus MoeTutelCombineXTiling::GetPlatformInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     totalCoreNum_ = static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv());
+    workspaceSize_ = static_cast<uint64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     uint64_t ubSizePlatform = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatform);
-    usableUb_ = static_cast<int64_t>(ubSizePlatform) - UB_RESERVED;
-    OP_CHECK_IF(totalCoreNum_ <= 0 || usableUb_ <= 0,
-                OP_LOGE(context_->GetNodeName(), "Get platform info failed, coreNum=%ld ubSize=%ld.", totalCoreNum_,
-                        usableUb_),
+    usableUb_ = static_cast<int64_t>(ubSizePlatform) - UB_SAFETY_MARGIN;
+    OP_CHECK_IF(
+        totalCoreNum_ <= 0 || usableUb_ <= 0,
+        OP_LOGE(context_->GetNodeName(), "Get platform info failed, coreNum=%ld ubSize=%ld.", totalCoreNum_, usableUb_),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeTutelCombineXTiling::CheckAddressRange()
+{
+    int64_t yRows = 0;
+    int64_t yElements = 0;
+    int64_t yBytes = 0;
+    int64_t routeElements = 0;
+    int64_t routeFloatBytes = 0;
+    int64_t routeIntBytes = 0;
+    int64_t outputElements = 0;
+    int64_t outputBytes = 0;
+    const bool representable =
+        SafeMulNonNegative(expertNum_, capacity_, yRows) && SafeMulNonNegative(yRows, hidden_, yElements) &&
+        SafeMulNonNegative(yElements, dtypeSize_, yBytes) && SafeMulNonNegative(topK_, samples_, routeElements) &&
+        SafeMulNonNegative(routeElements, dtypeSize_, routeFloatBytes) &&
+        SafeMulNonNegative(routeElements, INT32_SIZE, routeIntBytes) &&
+        SafeMulNonNegative(samples_, hidden_, outputElements) &&
+        SafeMulNonNegative(outputElements, dtypeSize_, outputBytes);
+    OP_CHECK_IF(!representable,
+                OP_LOGE(context_->GetNodeName(),
+                        "Tensor element/byte count exceeds the int64 address range: E=%ld C=%ld H=%ld K=%ld S=%ld "
+                        "dtypeSize=%ld.",
+                        expertNum_, capacity_, hidden_, topK_, samples_, dtypeSize_),
+                return ge::GRAPH_FAILED);
+
+    int64_t maxRouteSrcStride = 0;
+    int64_t maxOutputDstStride = 0;
+    const bool routeStrideValid =
+        topK_ == 0 || samples_ == 0 || hidden_ == 0 ||
+        (SafeMulNonNegative(samples_ - 1, INT32_SIZE, maxRouteSrcStride) && maxRouteSrcStride <= MAX_GM_STRIDE_BYTE);
+    const bool outputStrideValid =
+        samples_ == 0 || hidden_ == 0 ||
+        (SafeMulNonNegative(hidden_ - 1, dtypeSize_, maxOutputDstStride) && maxOutputDstStride <= MAX_GM_STRIDE_BYTE);
+    OP_CHECK_IF(!routeStrideValid || !outputStrideValid,
+                OP_LOGE(context_->GetNodeName(),
+                        "DataCopyPad GM stride exceeds 2^40-1 bytes: routeSrcStride=%ld outputDstStride=%ld, "
+                        "H=%ld K=%ld S=%ld dtypeSize=%ld.",
+                        maxRouteSrcStride, maxOutputDstStride, hidden_, topK_, samples_, dtypeSize_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -101,11 +169,11 @@ ge::graphStatus MoeTutelCombineXTiling::CheckDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xGradDesc);
 
     dtype_ = yGradDesc->GetDataType();
-    OP_CHECK_IF(dtype_ != ge::DT_FLOAT && dtype_ != ge::DT_FLOAT16 && dtype_ != ge::DT_BF16,
-                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y_grad",
-                                          ge::TypeUtils::DataTypeToSerialString(dtype_),
-                                          "FLOAT32, FLOAT16 or BFLOAT16"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dtype_ != ge::DT_FLOAT && dtype_ != ge::DT_FLOAT16 && dtype_ != ge::DT_BF16,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "y_grad", ge::TypeUtils::DataTypeToSerialString(dtype_),
+                                  "FLOAT32, FLOAT16 or BFLOAT16"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(gatesDesc->GetDataType() != dtype_,
                 OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gates",
                                           ge::TypeUtils::DataTypeToSerialString(gatesDesc->GetDataType()),
@@ -131,7 +199,6 @@ ge::graphStatus MoeTutelCombineXTiling::CheckDtype()
                                                       ge::TypeUtils::DataTypeToSerialString(dtype_),
                                                       "failed to get the byte width of this dtype"),
                 return ge::GRAPH_FAILED);
-    blockElemT_ = UB_BLOCK_SIZE / dtypeSize_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -150,16 +217,16 @@ ge::graphStatus MoeTutelCombineXTiling::CheckRouteShape(const gert::Shape &gates
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "gates", ShapeToStr(gatesShape),
                                                       "gates must be a 2D tensor of [K, S]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(indicesShape != gatesShape,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "indices", ShapeToStr(indicesShape),
-                                                      "indices must have the same shape as gates " +
-                                                          ShapeToStr(gatesShape)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(locationsShape != gatesShape,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "locations", ShapeToStr(locationsShape),
-                                                      "locations must have the same shape as gates " +
-                                                          ShapeToStr(gatesShape)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        indicesShape != gatesShape,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "indices", ShapeToStr(indicesShape),
+                                              "indices must have the same shape as gates " + ShapeToStr(gatesShape)),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        locationsShape != gatesShape,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "locations", ShapeToStr(locationsShape),
+                                              "locations must have the same shape as gates " + ShapeToStr(gatesShape)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -200,7 +267,7 @@ ge::graphStatus MoeTutelCombineXTiling::CheckShape()
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x_grad", ShapeToStr(xGradShape),
                                                       "x_grad must be [gates.dim(1), y_grad.dim(2)]"),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+    return CheckAddressRange();
 }
 
 ge::graphStatus MoeTutelCombineXTiling::GetShapeAttrsInfo()
@@ -213,15 +280,15 @@ ge::graphStatus MoeTutelCombineXTiling::GetShapeAttrsInfo()
 
 int64_t MoeTutelCombineXTiling::CalcUbBytes(int64_t hChunk, int64_t rowF, int64_t kF) const
 {
-    const int64_t alignT = Ops::Base::CeilAlign(hChunk, blockElemT_);
-    const int64_t alignF32 = Ops::Base::CeilAlign(hChunk, FP32_PER_BLOCK);
+    const int64_t alignT = Ops::Base::CeilAlign(hChunk, VF_LOAD_ELEMS);
+    const int64_t alignF32 = Ops::Base::CeilAlign(hChunk, VF_LOAD_ELEMS);
     const int64_t routeStride = Ops::Base::CeilAlign(rowF, ROUTE_ALIGN);
     const bool isFp32 = (dtypeSize_ == FP32_SIZE);
 
     // fp32 时累加器直接复用 VECOUT 队列（免一次 UB 搬运），故不再单独占 accBuf。
     const int64_t accBytes = isFp32 ? 0 : rowF * alignF32 * FP32_SIZE;
-    const int64_t outBytes = DOUBLE_BUFFER * rowF * alignT * dtypeSize_;
-    const int64_t rowBytes = DOUBLE_BUFFER * kF * alignT * dtypeSize_;
+    const int64_t outBytes = BUFFER_NUM * rowF * alignT * dtypeSize_;
+    const int64_t rowBytes = BUFFER_NUM * kF * alignT * dtypeSize_;
     const int64_t gateF32Bytes = isFp32 ? 0 : kF * routeStride * FP32_SIZE;
     const int64_t routeBytes = kF * routeStride * (INT32_SIZE + INT32_SIZE + dtypeSize_) + gateF32Bytes +
                                Ops::Base::CeilAlign(kF, FP32_PER_BLOCK) * FP32_SIZE;
@@ -233,12 +300,13 @@ int64_t MoeTutelCombineXTiling::CalcUbBytes(int64_t hChunk, int64_t rowF, int64_
 ge::graphStatus MoeTutelCombineXTiling::SolveHFactor()
 {
     const bool isFp32 = (dtypeSize_ == FP32_SIZE);
-    const int64_t bytesPerElemMin = isFp32 ? (DOUBLE_BUFFER * FP32_SIZE + DOUBLE_BUFFER * FP32_SIZE) : (FP32_SIZE + DOUBLE_BUFFER * dtypeSize_ + DOUBLE_BUFFER * dtypeSize_);
+    const int64_t bytesPerElemMin = isFp32 ? (BUFFER_NUM * FP32_SIZE + BUFFER_NUM * FP32_SIZE) :
+                                             (FP32_SIZE + BUFFER_NUM * dtypeSize_ + BUFFER_NUM * dtypeSize_);
     const int64_t routeFixed = CalcUbBytes(0, 1, 1);
-    int64_t hCap = Ops::Base::FloorAlign((usableUb_ - routeFixed) / bytesPerElemMin, blockElemT_);
-    hFactor_ = std::min(hidden_, std::max(hCap, blockElemT_));
-    while (hFactor_ > blockElemT_ && CalcUbBytes(hFactor_, 1, 1) > usableUb_) {
-        hFactor_ -= blockElemT_;
+    int64_t hCap = Ops::Base::FloorAlign((usableUb_ - routeFixed) / bytesPerElemMin, VF_LOAD_ELEMS);
+    hFactor_ = std::min(hidden_, std::max(hCap, VF_LOAD_ELEMS));
+    while (hFactor_ > VF_LOAD_ELEMS && CalcUbBytes(hFactor_, 1, 1) > usableUb_) {
+        hFactor_ -= VF_LOAD_ELEMS;
     }
     OP_CHECK_IF(CalcUbBytes(hFactor_, 1, 1) > usableUb_,
                 OP_LOGE(context_->GetNodeName(), "UB is too small to hold one hidden block, ubSize=%ld.", usableUb_),
@@ -255,9 +323,9 @@ void MoeTutelCombineXTiling::SolveRowFactor()
         return;
     }
     const int64_t maxRow = std::min(MAX_ROW_FACTOR, rowOfFormerBlock_);
-    while (rowFactor_ * DOUBLE_BUFFER <= maxRow &&
-           CalcUbBytes(hFactor_, rowFactor_ * DOUBLE_BUFFER, 1) * DOUBLE_BUFFER <= usableUb_) {
-        rowFactor_ *= DOUBLE_BUFFER;
+    while (rowFactor_ * ROW_FACTOR_GROWTH <= maxRow &&
+           CalcUbBytes(hFactor_, rowFactor_ * ROW_FACTOR_GROWTH, 1) * ROW_UB_BUDGET_DIVISOR <= usableUb_) {
+        rowFactor_ *= ROW_FACTOR_GROWTH;
     }
 }
 
@@ -265,12 +333,12 @@ void MoeTutelCombineXTiling::SolveRowFactor()
 ge::graphStatus MoeTutelCombineXTiling::SolveKFactor()
 {
     const bool isFp32 = (dtypeSize_ == FP32_SIZE);
-    const int64_t alignT = Ops::Base::CeilAlign(hFactor_, blockElemT_);
+    const int64_t alignT = Ops::Base::CeilAlign(hFactor_, VF_LOAD_ELEMS);
     const int64_t routeStride = Ops::Base::CeilAlign(rowFactor_, ROUTE_ALIGN);
-    const int64_t bytesPerK = DOUBLE_BUFFER * alignT * dtypeSize_ +
+    const int64_t bytesPerK = BUFFER_NUM * alignT * dtypeSize_ +
                               routeStride * (INT32_SIZE + INT32_SIZE + dtypeSize_ + (isFp32 ? 0 : FP32_SIZE)) +
                               FP32_SIZE;
-    const int64_t maxK = std::max<int64_t>(topK_, 1);
+    const int64_t maxK = std::min(std::max<int64_t>(topK_, 1), MAX_BLOCK_COUNT);
     kFactor_ = (usableUb_ - CalcUbBytes(hFactor_, rowFactor_, 0)) / bytesPerK;
     kFactor_ = std::min(std::max<int64_t>(kFactor_, 1), maxK);
     for (int64_t i = 0; i < KFACTOR_FIX_LOOP && kFactor_ > 1; i++) {
@@ -288,7 +356,7 @@ ge::graphStatus MoeTutelCombineXTiling::SolveKFactor()
 
 ge::graphStatus MoeTutelCombineXTiling::DoOpTiling()
 {
-    // 空输出：S==0 或 H==0 时 x_grad 没有元素，直接派 1 个核走空循环，不报错（与 A2 一致）。
+    // 空输出：S==0 或 H==0 时 x_grad 没有元素，直接派 1 个核走空循环，不报错。
     // hFactor_ 取 1 只为让 InitBuffer 拿到非零长度，kernel 侧循环次数为 0，不会用到。
     if (samples_ == 0 || hidden_ == 0) {
         usedCoreNum_ = 1;
@@ -296,13 +364,13 @@ ge::graphStatus MoeTutelCombineXTiling::DoOpTiling()
         rowOfTailBlock_ = 0;
         rowFactor_ = 1;
         kFactor_ = 1;
-        hFactor_ = (hidden_ > 0) ? hidden_ : 1;
+        hFactor_ = 1;
         return ge::GRAPH_SUCCESS;
     }
 
     // 核间：按 token 均分，输出区间互不重叠，无原子累加。
-    rowOfFormerBlock_ = Ops::Base::CeilDiv(samples_, totalCoreNum_);
-    usedCoreNum_ = Ops::Base::CeilDiv(samples_, rowOfFormerBlock_);
+    rowOfFormerBlock_ = CeilDivNonNegative(samples_, totalCoreNum_);
+    usedCoreNum_ = CeilDivNonNegative(samples_, rowOfFormerBlock_);
     rowOfTailBlock_ = samples_ - (usedCoreNum_ - 1) * rowOfFormerBlock_;
 
     if (SolveHFactor() != ge::GRAPH_SUCCESS) {
@@ -325,41 +393,47 @@ uint64_t MoeTutelCombineXTiling::GetTilingKey() const
 
 ge::graphStatus MoeTutelCombineXTiling::GetWorkspaceSize()
 {
-    // 本算子按 token 独占输出，无需用户 workspace，只留系统 workspace。
-    workspaceSize_ = WORKSPACE_RESERVED;
+    // 本算子按 token 独占输出，无需额外用户 workspace；保留平台库 API 要求的系统 workspace。
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeTutelCombineXTiling::PostTiling()
 {
-    tilingData_.set_capacity(capacity_);
-    tilingData_.set_hidden(hidden_);
-    tilingData_.set_topK(topK_);
-    tilingData_.set_samples(samples_);
-    tilingData_.set_usedCoreNum(usedCoreNum_);
-    tilingData_.set_rowOfFormerBlock(rowOfFormerBlock_);
-    tilingData_.set_rowOfTailBlock(rowOfTailBlock_);
-    tilingData_.set_rowFactor(rowFactor_);
-    tilingData_.set_kFactor(kFactor_);
-    tilingData_.set_hFactor(hFactor_);
-    tilingData_.set_hChunkAlignT(Ops::Base::CeilAlign(hFactor_, blockElemT_));
-    tilingData_.set_hChunkAlignF32(Ops::Base::CeilAlign(hFactor_, FP32_PER_BLOCK));
-    tilingData_.set_routeStride(Ops::Base::CeilAlign(rowFactor_, ROUTE_ALIGN));
+    tilingData_.capacity = capacity_;
+    tilingData_.hidden = hidden_;
+    tilingData_.topK = topK_;
+    tilingData_.samples = samples_;
+    tilingData_.usedCoreNum = usedCoreNum_;
+    tilingData_.rowOfFormerBlock = rowOfFormerBlock_;
+    tilingData_.rowOfTailBlock = rowOfTailBlock_;
+    tilingData_.rowFactor = rowFactor_;
+    tilingData_.kFactor = kFactor_;
+    tilingData_.hFactor = hFactor_;
+    tilingData_.hChunkAlignT = Ops::Base::CeilAlign(hFactor_, VF_LOAD_ELEMS);
+    tilingData_.hChunkAlignF32 = Ops::Base::CeilAlign(hFactor_, VF_LOAD_ELEMS);
+    tilingData_.routeStride = Ops::Base::CeilAlign(rowFactor_, ROUTE_ALIGN);
+    tilingData_.expertNum = expertNum_;
 
     auto workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = workspaceSize_;
-    context_->SetBlockDim(usedCoreNum_);
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+    OP_CHECK_IF(context_->SetSimdNumBlocks(static_cast<uint32_t>(usedCoreNum_)) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "Failed to set SIMD block count to %ld.", usedCoreNum_),
+                return ge::GRAPH_FAILED);
+    auto rawTilingData = context_->GetRawTilingData();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingData);
+    OP_CHECK_IF(
+        memcpy_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), &tilingData_, sizeof(tilingData_)) != EOK,
+        OP_LOGE(context_->GetNodeName(), "Failed to serialize tiling data."), return ge::GRAPH_FAILED);
+    rawTilingData->SetDataSize(sizeof(tilingData_));
     return ge::GRAPH_SUCCESS;
 }
 
 void MoeTutelCombineXTiling::DumpTilingInfo()
 {
     std::ostringstream info;
-    info << "E: " << expertNum_ << ", C: " << capacity_ << ", H: " << hidden_ << ", K: " << topK_
-         << ", S: " << samples_ << ", usedCoreNum: " << usedCoreNum_ << ", rowOfFormerBlock: " << rowOfFormerBlock_
+    info << "E: " << expertNum_ << ", C: " << capacity_ << ", H: " << hidden_ << ", K: " << topK_ << ", S: " << samples_
+         << ", usedCoreNum: " << usedCoreNum_ << ", rowOfFormerBlock: " << rowOfFormerBlock_
          << ", rowOfTailBlock: " << rowOfTailBlock_ << ", rowFactor: " << rowFactor_ << ", kFactor: " << kFactor_
          << ", hFactor: " << hFactor_ << ", ubBytes: " << CalcUbBytes(hFactor_, rowFactor_, kFactor_)
          << ", tilingKey: " << GetTilingKey();
@@ -374,7 +448,7 @@ static ge::graphStatus Tiling4MoeTutelCombineX(gert::TilingContext *context)
 
 static ge::graphStatus TilingPrepare4MoeTutelCombineX(gert::TilingParseContext *context)
 {
-    (void)context;
+    static_cast<void>(context);
     return ge::GRAPH_SUCCESS;
 }
 

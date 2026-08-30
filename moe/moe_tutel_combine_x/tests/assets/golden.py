@@ -16,12 +16,12 @@
 | 通路   | 支持 | 依据                                                          |
 |--------|------|---------------------------------------------------------------|
 | kernel | 是   | op_kernel/arch35/ 有 Ascend950 regbase 实现                   |
-| geir   | 是   | op_graph/moe_tutel_combine_x_proto.h 有 REG_OP(MoeTutelCombineX) |
+| geir   | 是   | common/include/op_graph/op_transformer_proto_extend.h 已注册算子 |
 | aclnn  | 否   | 无 op_api/、无 docs/aclnnMoeTutelCombineX.md，canndev 侧亦无   |
 | e2e    | 否   | torch_npu 二进制无 aclnnMoeTutelCombineX 符号                 |
 
 语义：
-    valid(k, s) = indices[k, s] >= 0 and locations[k, s] < C
+    valid(k, s) = 0 <= indices[k, s] < E and 0 <= locations[k, s] < C
     x_grad[s, :] = sum_k valid(k, s) ? gates[k, s] * y_grad[indices[k, s], locations[k, s], :] : 0
 累加从 0 起，K = 0 或全部路由无效时输出为 0。
 """
@@ -48,13 +48,21 @@ _TOL = {
 
 # ── 路由输入定制 ─────────────────────────────────────────────────────────────
 # indices / locations 不能用框架的通用随机数：
-#   · indices 的合法域是 [-1, E)，随机 int32 会给出 >= E 的专家号，而判据
-#     `expertId >= 0 && location < C` 照抄 Tutel/canndev，**不判 expertId < E**，
-#     越界值会直接被当成合法下标去读 y_grad（越界读，golden 侧同样是未定义）；
-#   · locations 的合法域是 [0, +inf)，>= C 表示该 token 被丢弃（Tutel 的 drop 语义），
-#     但 **负数不合法**——判据同样不判 location >= 0，负 location 会读到 y_grad 之前。
+#   · indices 的有效域是 [0, E)，负数与 >= E 都必须覆盖；
+#   · locations 的有效域是 [0, C)，负数与 >= C 都必须覆盖。
 # 因此路由表由本函数按用例名里的场景后缀生成，其余两个浮点输入沿用 CSV 的随机范围。
-_ROUTE_SCENARIOS = ("all", "mix", "none", "neg", "ooc", "edge", "dup", "sparse")
+_ROUTE_SCENARIOS = (
+    "all",
+    "mix",
+    "none",
+    "neg",
+    "idx_oob",
+    "loc_neg",
+    "ooc",
+    "edge",
+    "dup",
+    "sparse",
+)
 _ROUTE_SUFFIX = "_r"
 
 
@@ -88,6 +96,10 @@ def _make_route(
         pass
     elif scenario == "neg":
         idx = np.full(shape, -1)
+    elif scenario == "idx_oob":
+        idx = rng.integers(expert_num, expert_num + 8, size=shape)
+    elif scenario == "loc_neg":
+        loc = np.full(shape, -1)
     elif scenario == "ooc":
         loc = rng.integers(capacity, capacity + 8, size=shape)
     elif scenario == "none":
@@ -95,9 +107,9 @@ def _make_route(
         idx = np.where(half, -1, idx)
         loc = np.where(half, loc, rng.integers(capacity, capacity + 8, size=shape))
     elif scenario == "edge":
-        # 只取判据的边界值：expert 取 {-1, 0, E-1}，location 取 {0, C-1, C}。
-        idx = rng.choice(np.array([-1, 0, hi_e - 1]), size=shape)
-        loc = rng.choice(np.array([0, hi_c - 1, capacity]), size=shape)
+        # 四侧边界：expert 取 {-1, 0, E-1, E}，location 取 {-1, 0, C-1, C}。
+        idx = rng.choice(np.array([-1, 0, hi_e - 1, expert_num]), size=shape)
+        loc = rng.choice(np.array([-1, 0, hi_c - 1, capacity]), size=shape)
     elif scenario == "dup":
         # 一个 token 的 K 项全部指向同一个 (expert, location)：重复 gather + 纯累加。
         idx = np.repeat(rng.integers(0, hi_e, size=(1, samples)), top_k, axis=0)
@@ -106,10 +118,15 @@ def _make_route(
         keep = rng.random(shape) < 0.1
         idx = np.where(keep, idx, -1)
     else:  # mix
-        drop_i = rng.random(shape) < 0.25
-        drop_l = rng.random(shape) < 0.25
-        idx = np.where(drop_i, -1, idx)
-        loc = np.where(drop_l, rng.integers(capacity, capacity + 8, size=shape), loc)
+        selector = rng.integers(0, 5, size=shape)
+        idx = np.where(selector == 1, -1, idx)
+        idx = np.where(
+            selector == 2, rng.integers(expert_num, expert_num + 8, size=shape), idx
+        )
+        loc = np.where(selector == 3, -1, loc)
+        loc = np.where(
+            selector == 4, rng.integers(capacity, capacity + 8, size=shape), loc
+        )
 
     if expert_num == 0:
         idx = np.full(shape, -1)
@@ -172,6 +189,7 @@ def _compute(y_grad, gates, indices, locations, **kwargs):
     indices = _to_tensor(indices).to(torch.int64)
     locations = _to_tensor(locations).to(torch.int64)
 
+    expert_num = y_grad.shape[0]
     capacity = y_grad.shape[1]
     hidden = y_grad.shape[2]
     samples = gates.shape[1]
@@ -189,7 +207,10 @@ def _compute(y_grad, gates, indices, locations, **kwargs):
         return [out]
 
     flat = y_grad.reshape(-1, hidden)
-    valid = torch.logical_and(indices >= 0, locations < capacity)
+    valid = torch.logical_and(
+        torch.logical_and(indices >= 0, indices < expert_num),
+        torch.logical_and(locations >= 0, locations < capacity),
+    )
     # 无效项的行号先夹到 0，避免 index_select 报越界；其贡献随后被 where 抹成 0。
     row = torch.where(valid, indices * capacity + locations, torch.zeros_like(indices))
     zero_row = torch.zeros((samples, hidden), dtype=work_dtype)
@@ -205,8 +226,8 @@ def _compute(y_grad, gates, indices, locations, **kwargs):
 class _Compose:
     """竞品标杆：用与 _compute 不同的 torch 路径拼出同一语义。
 
-    _compute 走 index_select + 逐 k 循环累加；这里走高级索引一次取出 [K, S, H]
-    再用 masked_fill + sum 一次归约，两条路径相互独立，避免"同错一起过"。
+    _compute 走扁平行号 + index_select；这里走二维高级索引。两条路径都按k从小到大
+    逐项累加，以保持冻结的浮点运算顺序，同时避免"同错一起过"。
     输出必须 cast 回 NPU 的输出 dtype，否则竞品对 golden 的误差远小于 NPU，
     cross_check 的 ratio 会凭空爆表。
     """
@@ -223,6 +244,7 @@ class _Compose:
         indices_t = _to_tensor(indices).to(torch.int64)
         locations_t = _to_tensor(locations).to(torch.int64)
 
+        expert_num = work.shape[0]
         capacity = work.shape[1]
         hidden = work.shape[2]
         samples = gates_t.shape[1]
@@ -235,13 +257,21 @@ class _Compose:
         ):
             return [torch.zeros((samples, hidden), dtype=out_dtype)]
 
-        valid = torch.logical_and(indices_t >= 0, locations_t < capacity)
+        valid = torch.logical_and(
+            torch.logical_and(indices_t >= 0, indices_t < expert_num),
+            torch.logical_and(locations_t >= 0, locations_t < capacity),
+        )
         safe_expert = torch.where(valid, indices_t, torch.zeros_like(indices_t))
         safe_loc = torch.where(valid, locations_t, torch.zeros_like(locations_t))
-        gathered = work[safe_expert, safe_loc]  # [K, S, H]
-        scaled = gathered * gates_t.unsqueeze(-1)  # [K, S, H]
-        masked = scaled.masked_fill(~valid.unsqueeze(-1), 0)
-        return [masked.sum(dim=0).to(out_dtype)]
+        out = torch.zeros((samples, hidden), dtype=work.dtype)
+        zero_row = torch.zeros_like(out)
+        for k in range(gates_t.shape[0]):
+            gathered = work[safe_expert[k], safe_loc[k]]
+            weighted = torch.mul(gathered, gates_t[k].reshape(-1, 1))
+            out = torch.add(
+                out, torch.where(valid[k].reshape(-1, 1), weighted, zero_row)
+            )
+        return [out.to(out_dtype)]
 
 
 class MoeTutelCombineXKernelSpec:

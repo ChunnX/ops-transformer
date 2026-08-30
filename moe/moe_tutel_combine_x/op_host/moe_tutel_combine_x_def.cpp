@@ -48,8 +48,8 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        // 本次只交付 Ascend950（arch35 / regbase）。A2（ascend910b / ascend910_93）由 canndev
-        // 既有实现承接，此处不新增 config，避免影响已上库的 A2 功能与原型。
+        // 本次只交付 Ascend950（arch35 / regbase）。ascend910b / ascend910_93 由 canndev
+        // 既有实现承接，此处不新增 config，避免影响既有产品功能与原型。
         // opFile.value 显式指向 moe_tutel_combine_x，入口文件是 op_kernel/moe_tutel_combine_x.cpp，
         // 不使用 *_apt.cpp。
         OpAICoreConfig regbaseConfig;

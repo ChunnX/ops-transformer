@@ -27,7 +27,7 @@ using namespace AscendC::MicroAPI;
 using AscendC::MicroAPI::MaskReg;
 using AscendC::MicroAPI::RegTensor;
 
-constexpr int32_t DOUBLE_BUFFER = 2;
+constexpr int32_t BUFFER_NUM = 2;
 constexpr int32_t VL_FP32 = Ops::Base::GetVRegSize() / sizeof(float);
 
 constexpr AscendC::MicroAPI::CastTrait CAST_TRAIT_B16_TO_B32 = {
@@ -39,7 +39,7 @@ constexpr AscendC::MicroAPI::CastTrait CAST_TRAIT_B16_TO_B32 = {
 
 // 把 UB 上的一段 T 数据装进 fp32 RegTensor；16bit 类型先 unpack 再升 fp32。
 template <typename T>
-__aicore__ inline void LoadAsFloat(RegTensor<float> &dst, __local_mem__ T *src, MaskReg preg, uint32_t srcOffset)
+__aicore__ inline void LoadAsFloat(RegTensor<float> &dst, __ubuf__ T *src, MaskReg preg, uint32_t srcOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
         DataCopy(dst, src + srcOffset);
@@ -51,7 +51,7 @@ __aicore__ inline void LoadAsFloat(RegTensor<float> &dst, __local_mem__ T *src, 
 }
 
 // 把 UB 上的一个 fp32 标量广播成整个 RegTensor。
-__aicore__ inline void LoadScalarBrc(RegTensor<float> &dst, __local_mem__ float *src, uint32_t srcOffset)
+__aicore__ inline void LoadScalarBrc(RegTensor<float> &dst, __ubuf__ float *src, uint32_t srcOffset)
 {
     DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + srcOffset);
 }
@@ -59,8 +59,8 @@ __aicore__ inline void LoadScalarBrc(RegTensor<float> &dst, __local_mem__ float 
 /**
  * acc[0:hLen] += sum_{k<validK} gate[k] * rows[k * rowStride : k * rowStride + hLen]
  *
- * acc  : fp32 累加器，调用方已按 0 初始化，32B 对齐。
- * rows : 压紧后的有效行（无效路由不占位），行跨距 rowStride（32B 对齐）。
+ * acc  : fp32 累加器，调用方已按 0 初始化，每行至少留出一个完整 fp32 VL。
+ * rows : 压紧后的有效行（无效路由不占位），行跨距 rowStride 按 64 元素对齐。
  * gates: 压紧后的有效门控，fp32。
  * 累加顺序恒为 0 -> validK-1，与分块无关（INV-5）。
  */
@@ -69,9 +69,9 @@ __aicore__ inline void AccumulateRows(const LocalTensor<float> &acc, const Local
                                       const LocalTensor<float> &gates, uint16_t validK, uint32_t hLen,
                                       uint32_t rowStride)
 {
-    __local_mem__ float *accAddr = (__local_mem__ float *)acc.GetPhyAddr();
-    __local_mem__ T *rowAddr = (__local_mem__ T *)rows.GetPhyAddr();
-    __local_mem__ float *gateAddr = (__local_mem__ float *)gates.GetPhyAddr();
+    __ubuf__ float *accAddr = (__ubuf__ float *)acc.GetPhyAddr();
+    __ubuf__ T *rowAddr = (__ubuf__ T *)rows.GetPhyAddr();
+    __ubuf__ float *gateAddr = (__ubuf__ float *)gates.GetPhyAddr();
     uint16_t loopCount = Ops::Base::CeilDiv<uint32_t>(hLen, VL_FP32);
 
     __VEC_SCOPE__
@@ -99,7 +99,7 @@ __aicore__ inline void AccumulateRows(const LocalTensor<float> &acc, const Local
 
 template <typename T>
 __aicore__ inline void CopyInPad(const GlobalTensor<T> &src, const LocalTensor<T> &dst, uint16_t blockCount,
-                                 uint32_t blockLenElem, uint32_t srcStrideByte, uint32_t dstStrideBlock)
+                                 uint32_t blockLenElem, int64_t srcStrideByte, int64_t dstStrideBlock)
 {
     DataCopyPadExtParams<T> padParams;
     padParams.isPad = false;
@@ -117,7 +117,7 @@ __aicore__ inline void CopyInPad(const GlobalTensor<T> &src, const LocalTensor<T
 
 template <typename T>
 __aicore__ inline void CopyOutPad(const LocalTensor<T> &src, const GlobalTensor<T> &dst, uint16_t blockCount,
-                                  uint32_t blockLenElem, uint32_t srcStrideBlock, uint32_t dstStrideByte)
+                                  uint32_t blockLenElem, int64_t srcStrideBlock, int64_t dstStrideByte)
 {
     DataCopyExtParams copyParams;
     copyParams.blockCount = blockCount;

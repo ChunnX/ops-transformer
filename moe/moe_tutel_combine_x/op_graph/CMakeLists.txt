@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.transformer.moe_tutel_combine_x.op_graph.CMakeLists.txt ")
 if (BUILD_OPEN_PROJECT)
     add_graph_plugin_sources()
 endif()

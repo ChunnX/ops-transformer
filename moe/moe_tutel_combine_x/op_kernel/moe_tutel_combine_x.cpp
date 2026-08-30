@@ -16,7 +16,7 @@
 
 #include "kernel_operator.h"
 #include "arch35/moe_tutel_combine_x_kernel.h"
-#include "arch35/moe_tutel_combine_x_tiling_key.h"
+#include "arch35/moe_tutel_combine_x_tiling_data.h"
 
 using namespace AscendC;
 using namespace MoeTutelCombineXRegbase;
@@ -29,12 +29,11 @@ extern "C" __global__ __aicore__ void moe_tutel_combine_x(GM_ADDR y_grad, GM_ADD
     if (g_coreType == AIC) {
         return;
     }
-    GET_TILING_DATA(tilingData, tiling);
+    REGISTER_TILING_DEFAULT(MoeTutelCombineXTilingData);
+    GET_TILING_DATA_WITH_STRUCT(MoeTutelCombineXTilingData, tilingData, tiling);
     TPipe pipe;
-    // TILING_KEY_IS 由 CCE 预编译器消费，实参必须是字面量或宏，不能是 C++ constexpr。
-    if (TILING_KEY_IS(MOE_TUTEL_COMBINE_X_TILING_KEY_MAIN)) {
-        MoeTutelCombineXKernel<DTYPE_Y_GRAD> op;
-        op.Init(y_grad, gates, indices, locations, x_grad, &tilingData, &pipe);
-        op.Process();
-    }
+    // 本算子只注册唯一主模板，不在 Kernel 内感知或分支具体 TilingKey。
+    MoeTutelCombineXKernel<DTYPE_Y_GRAD> op;
+    op.Init(y_grad, gates, indices, locations, x_grad, &tilingData, &pipe);
+    op.Process();
 }

@@ -13,7 +13,7 @@
  * \brief MoeTutelCombineX arch35(Ascend950 / regbase) 主模板。
  *
  * x_grad[s, :] = sum_k valid(k,s) ? gates[k,s] * y_grad[indices[k,s], locations[k,s], :] : 0
- * valid(k,s)   = indices[k,s] >= 0 && locations[k,s] < C
+ * valid(k,s)   = 0 <= indices[k,s] < E && 0 <= locations[k,s] < C
  *
  * 切分：token 独占输出（核间不重叠、无原子累加）→ 结果逐位确定。
  *       H 按 hFactor 分块（hFactor == hidden 时即整行全载），k 按 kFactor 分块，
@@ -31,13 +31,13 @@ using namespace AscendC;
 template <typename T>
 class MoeTutelCombineXKernel {
 public:
-    __aicore__ inline MoeTutelCombineXKernel()
-    {}
+    __aicore__ inline MoeTutelCombineXKernel() {}
 
     template <typename TilingT>
     __aicore__ inline void Init(GM_ADDR yGrad, GM_ADDR gates, GM_ADDR indices, GM_ADDR locations, GM_ADDR xGrad,
                                 const TilingT *tiling, TPipe *pipe)
     {
+        expertNum_ = tiling->expertNum;
         capacity_ = tiling->capacity;
         hidden_ = tiling->hidden;
         topK_ = tiling->topK;
@@ -58,9 +58,9 @@ public:
         locationsGm_.SetGlobalBuffer((__gm__ int32_t *)locations);
         xGradGm_.SetGlobalBuffer((__gm__ T *)xGrad);
 
-        // 与 op_host/moe_tutel_combine_x_tiling.cpp 的 CalcUbBytes() 逐项对应，改一处必须改另一处。
-        pipe->InitBuffer(outQue_, DOUBLE_BUFFER, rowFactor_ * hChunkAlignT_ * sizeof(T));
-        pipe->InitBuffer(rowQue_, DOUBLE_BUFFER, kFactor_ * hChunkAlignT_ * sizeof(T));
+        // 与 op_host/arch35/moe_tutel_combine_x_tiling.cpp 的 CalcUbBytes() 逐项对应，改一处必须改另一处。
+        pipe->InitBuffer(outQue_, BUFFER_NUM, rowFactor_ * hChunkAlignT_ * sizeof(T));
+        pipe->InitBuffer(rowQue_, BUFFER_NUM, kFactor_ * hChunkAlignT_ * sizeof(T));
         pipe->InitBuffer(idxBuf_, kFactor_ * routeStride_ * sizeof(int32_t));
         pipe->InitBuffer(locBuf_, kFactor_ * routeStride_ * sizeof(int32_t));
         pipe->InitBuffer(gateTBuf_, kFactor_ * routeStride_ * sizeof(T));
@@ -110,7 +110,7 @@ private:
             const int64_t curK = (topK_ - kOuter < kFactor_) ? (topK_ - kOuter) : kFactor_;
             LoadRouteTile(kOuter, tokenStart, curK, curRow);
             for (int64_t r = 0; r < curRow; r++) {
-                GatherAndAccumulate(accLocal[r * accStride], tokenStart + r, curK, r, hOffset, curH);
+                GatherAndAccumulate(accLocal[r * accStride], curK, r, hOffset, curH);
             }
         }
 
@@ -124,11 +124,13 @@ private:
         outQue_.EnQue(outLocal);
         outLocal = outQue_.template DeQue<T>();
 
-        // UB 行跨距 hChunkAlignT_ 是 32B 的整数倍，故 srcStride 只需补 curH 与 hFactor 的差额。
-        const uint32_t srcStrideBlock = static_cast<uint32_t>(
-            (hChunkAlignT_ * static_cast<int64_t>(sizeof(T)) - Ops::Base::CeilAlign<int64_t>(curH * static_cast<int64_t>(sizeof(T)), UB_BLOCK_BYTE)) /
-            UB_BLOCK_BYTE);
-        const uint32_t dstStrideByte = static_cast<uint32_t>((hidden_ - curH) * static_cast<int64_t>(sizeof(T)));
+        // UB 行跨距 hChunkAlignT_ 覆盖完整 VL 尾读且是 32B 的整数倍，
+        // srcStride 只需补 curH 与已分配行跨距的差额。
+        const int64_t srcStrideBlock =
+            (hChunkAlignT_ * static_cast<int64_t>(sizeof(T)) -
+             Ops::Base::CeilAlign<int64_t>(curH * static_cast<int64_t>(sizeof(T)), UB_BLOCK_BYTE)) /
+            UB_BLOCK_BYTE;
+        const int64_t dstStrideByte = (hidden_ - curH) * static_cast<int64_t>(sizeof(T));
         CopyOutPad<T>(outLocal, xGradGm_[tokenStart * hidden_ + hOffset], static_cast<uint16_t>(curRow),
                       static_cast<uint32_t>(curH), srcStrideBlock, dstStrideByte);
         outQue_.FreeTensor(outLocal);
@@ -143,21 +145,21 @@ private:
         LocalTensor<T> gateTLocal = gateTBuf_.template Get<T>();
 
         const int64_t gmOffset = kOffset * samples_ + tokenStart;
-        const uint32_t srcStrideI32 = static_cast<uint32_t>((samples_ - curRow) * static_cast<int64_t>(sizeof(int32_t)));
-        const uint32_t dstStrideI32 = static_cast<uint32_t>(
+        const int64_t srcStrideI32 = (samples_ - curRow) * static_cast<int64_t>(sizeof(int32_t));
+        const int64_t dstStrideI32 =
             (routeStride_ * static_cast<int64_t>(sizeof(int32_t)) -
              Ops::Base::CeilAlign<int64_t>(curRow * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_BYTE)) /
-            UB_BLOCK_BYTE);
-        CopyInPad<int32_t>(indicesGm_[gmOffset], idxLocal, static_cast<uint16_t>(curK),
-                           static_cast<uint32_t>(curRow), srcStrideI32, dstStrideI32);
-        CopyInPad<int32_t>(locationsGm_[gmOffset], locLocal, static_cast<uint16_t>(curK),
-                           static_cast<uint32_t>(curRow), srcStrideI32, dstStrideI32);
+            UB_BLOCK_BYTE;
+        CopyInPad<int32_t>(indicesGm_[gmOffset], idxLocal, static_cast<uint16_t>(curK), static_cast<uint32_t>(curRow),
+                           srcStrideI32, dstStrideI32);
+        CopyInPad<int32_t>(locationsGm_[gmOffset], locLocal, static_cast<uint16_t>(curK), static_cast<uint32_t>(curRow),
+                           srcStrideI32, dstStrideI32);
 
-        const uint32_t srcStrideT = static_cast<uint32_t>((samples_ - curRow) * static_cast<int64_t>(sizeof(T)));
-        const uint32_t dstStrideT = static_cast<uint32_t>(
+        const int64_t srcStrideT = (samples_ - curRow) * static_cast<int64_t>(sizeof(T));
+        const int64_t dstStrideT =
             (routeStride_ * static_cast<int64_t>(sizeof(T)) -
              Ops::Base::CeilAlign<int64_t>(curRow * static_cast<int64_t>(sizeof(T)), UB_BLOCK_BYTE)) /
-            UB_BLOCK_BYTE);
+            UB_BLOCK_BYTE;
         CopyInPad<T>(gatesGm_[gmOffset], gateTLocal, static_cast<uint16_t>(curK), static_cast<uint32_t>(curRow),
                      srcStrideT, dstStrideT);
 
@@ -180,10 +182,9 @@ private:
     }
 
     // 取第 token 个 token 在当前 k 片内的有效项，压紧后 gather 并累加。
-    __aicore__ inline void GatherAndAccumulate(const LocalTensor<float> &acc, int64_t token, int64_t curK,
-                                               int64_t rowInBlock, int64_t hOffset, int64_t curH)
+    __aicore__ inline void GatherAndAccumulate(const LocalTensor<float> &acc, int64_t curK, int64_t rowInBlock,
+                                               int64_t hOffset, int64_t curH)
     {
-        (void)token;
         LocalTensor<int32_t> idxLocal = idxBuf_.template Get<int32_t>();
         LocalTensor<int32_t> locLocal = locBuf_.template Get<int32_t>();
         LocalTensor<float> gateCompact = gateCompactBuf_.template Get<float>();
@@ -199,9 +200,9 @@ private:
             const int64_t routeIdx = kk * routeStride_ + rowInBlock;
             const int32_t expertId = idxLocal.GetValue(routeIdx);
             const int32_t location = locLocal.GetValue(routeIdx);
-            // INV-3：判据与 Tutel / canndev 逐字一致，不加 expertId < E、不加 location >= 0。
-            // INV-6：判据不通过就不发搬运，一个字节都不读。
-            if (expertId >= 0 && static_cast<int64_t>(location) < capacity_) {
+            // INV-3/INV-6：四侧边界全部满足才发搬运；无效路由贡献 0，且不读 y_grad。
+            if (expertId >= 0 && static_cast<int64_t>(expertId) < expertNum_ && location >= 0 &&
+                static_cast<int64_t>(location) < capacity_) {
                 const int64_t gmOffset =
                     (static_cast<int64_t>(expertId) * capacity_ + static_cast<int64_t>(location)) * hidden_ + hOffset;
                 CopyInPad<T>(yGradGm_[gmOffset], rowLocal[validK * hChunkAlignT_], 1, static_cast<uint32_t>(curH), 0,
@@ -232,6 +233,7 @@ private:
     static constexpr int64_t UB_BLOCK_BYTE = 32;
     static constexpr int64_t FP32_PER_BLOCK = 8;
 
+    int64_t expertNum_{0};
     int64_t capacity_{0};
     int64_t hidden_{0};
     int64_t topK_{0};
@@ -252,8 +254,9 @@ private:
     GlobalTensor<int32_t> indicesGm_;
     GlobalTensor<int32_t> locationsGm_;
 
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> outQue_;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> rowQue_;
+    // TQue 模板深度是逻辑队列深度；双缓冲由 InitBuffer 的 buffer 数量单独控制。
+    TQue<QuePosition::VECOUT, 1> outQue_;
+    TQue<QuePosition::VECIN, 1> rowQue_;
     TBuf<TPosition::VECCALC> idxBuf_;
     TBuf<TPosition::VECCALC> locBuf_;
     TBuf<TPosition::VECCALC> gateTBuf_;

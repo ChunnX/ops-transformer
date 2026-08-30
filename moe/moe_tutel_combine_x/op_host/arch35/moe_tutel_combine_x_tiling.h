@@ -10,14 +10,14 @@
 
 /*!
  * \file moe_tutel_combine_x_tiling.h
- * \brief
+ * \brief MoeTutelCombineX Ascend950 tiling declaration.
  */
 
 #ifndef OPS_OP_TILING_RUNTIME_MOE_TUTEL_COMBINE_X_TILING_H_
 #define OPS_OP_TILING_RUNTIME_MOE_TUTEL_COMBINE_X_TILING_H_
 
+#include "../../op_kernel/arch35/moe_tutel_combine_x_tiling_data.h"
 #include "op_host/tiling_base.h"
-#include "register/tilingdata_base.h"
 
 namespace optiling {
 
@@ -25,24 +25,6 @@ struct MoeTutelCombineXCompileInfo {
     int64_t coreNum{0};
     int64_t ubSize{0};
 };
-
-BEGIN_TILING_DATA_DEF(MoeTutelCombineXTilingData)
-TILING_DATA_FIELD_DEF(int64_t, capacity);         // C = y_grad.dim(1)
-TILING_DATA_FIELD_DEF(int64_t, hidden);           // H = y_grad.dim(2)
-TILING_DATA_FIELD_DEF(int64_t, topK);             // K = gates.dim(0)
-TILING_DATA_FIELD_DEF(int64_t, samples);          // S = gates.dim(1)
-TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);      // 实际派活的核数
-TILING_DATA_FIELD_DEF(int64_t, rowOfFormerBlock); // 非尾核各领多少个 token
-TILING_DATA_FIELD_DEF(int64_t, rowOfTailBlock);   // 尾核领多少个 token
-TILING_DATA_FIELD_DEF(int64_t, rowFactor);        // 内层一次处理多少个 token
-TILING_DATA_FIELD_DEF(int64_t, kFactor);          // 内层一次处理多少个 k
-TILING_DATA_FIELD_DEF(int64_t, hFactor);          // H 分块长度，等于 hidden 时为整行全载
-TILING_DATA_FIELD_DEF(int64_t, hChunkAlignT);     // CeilAlign(hFactor, 32 / sizeof(T))
-TILING_DATA_FIELD_DEF(int64_t, hChunkAlignF32);   // CeilAlign(hFactor, 8)
-TILING_DATA_FIELD_DEF(int64_t, routeStride);      // 路由片在 UB 里的行跨距 = CeilAlign(rowFactor, 16)
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(MoeTutelCombineX, MoeTutelCombineXTilingData)
 
 class MoeTutelCombineXTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -65,6 +47,7 @@ private:
     ge::graphStatus CheckDtype();
     ge::graphStatus CheckShape();
     ge::graphStatus CheckRouteShape(const gert::Shape &gatesShape);
+    ge::graphStatus CheckAddressRange();
     ge::graphStatus SolveHFactor();
     void SolveRowFactor();
     ge::graphStatus SolveKFactor();
@@ -76,7 +59,6 @@ private:
     int64_t totalCoreNum_{0};
     int64_t usableUb_{0};
     int64_t dtypeSize_{0};
-    int64_t blockElemT_{0};
 
     int64_t expertNum_{0};
     int64_t capacity_{0};
@@ -91,7 +73,7 @@ private:
     int64_t kFactor_{1};
     int64_t hFactor_{0};
 
-    int64_t workspaceSize_{0};
+    uint64_t workspaceSize_{0};
     ge::DataType dtype_{ge::DT_UNDEFINED};
     MoeTutelCombineXTilingData tilingData_;
 };

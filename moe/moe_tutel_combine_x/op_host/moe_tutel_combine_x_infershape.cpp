@@ -35,7 +35,7 @@ constexpr size_t X_GRAD_DIM_NUM = 2;
 // 已挪到 op_graph/moe_tutel_combine_x_graph_plugin.cpp。
 static ge::graphStatus InferShape4MoeTutelCombineX(gert::InferShapeContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do InferShape4MoeTutelCombineX");
+    OP_LOGD(context->GetNodeName(), "Begin InferShape4MoeTutelCombineX");
 
     const gert::Shape *yGradShape = context->GetInputShape(INPUT_Y_GRAD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, yGradShape);
@@ -60,7 +60,7 @@ static ge::graphStatus InferShape4MoeTutelCombineX(gert::InferShapeContext *cont
     xGradShape->SetDim(0, gatesShape->GetDim(GATES_S_IDX));
     xGradShape->SetDim(1, yGradShape->GetDim(Y_GRAD_H_IDX));
 
-    OP_LOGD(context->GetNodeName(), "End to do InferShape4MoeTutelCombineX");
+    OP_LOGD(context->GetNodeName(), "End InferShape4MoeTutelCombineX");
     return ge::GRAPH_SUCCESS;
 }
 

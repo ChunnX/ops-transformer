@@ -28,9 +28,9 @@ constexpr size_t OUTPUT_X_GRAD_IDX = 0;
 
 static ge::graphStatus InferDataType4MoeTutelCombineX(gert::InferDataTypeContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do InferDataType4MoeTutelCombineX");
+    OP_LOGD(context->GetNodeName(), "Begin InferDataType4MoeTutelCombineX");
     context->SetOutputDataType(OUTPUT_X_GRAD_IDX, context->GetInputDataType(INPUT_Y_GRAD_IDX));
-    OP_LOGD(context->GetNodeName(), "End to do InferDataType4MoeTutelCombineX");
+    OP_LOGD(context->GetNodeName(), "End InferDataType4MoeTutelCombineX");
     return ge::GRAPH_SUCCESS;
 }
 

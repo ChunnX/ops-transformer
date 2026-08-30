@@ -19,7 +19,6 @@
 #include <iostream>
 
 #include "base/registry/op_impl_space_registry_v2.h"
-#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 
@@ -39,18 +38,19 @@ protected:
 // 主路径：y_grad [E=4, C=8, H=64]、路由 [K=2, S=16] -> x_grad [16, 64]。
 TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_float32)
 {
-    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineX",
-                                                      {
-                                                          {{{4, 8, 64}, {4, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // y_grad
-                                                          {{{2, 16}, {2, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},       // gates
-                                                          {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},       // indices
-                                                          {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},       // locations
-                                                      },
-                                                      {
-                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // x_grad
-                                                      },
-                                                      {});
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTutelCombineX",
+        {
+            {{{4, 8, 64}, {4, 8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND}, // y_grad
+            {{{2, 16}, {2, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},       // gates
+            {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},       // indices
+            {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},       // locations
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // x_grad
+        },
+        {});
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{16, 64}});
 }
 
 // bf16 与 fp16 走同一条 shape 推导。
@@ -67,7 +67,7 @@ TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_bfloat16)
                                                           {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
                                                       },
                                                       {});
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{256, 1024}});
 }
 
 // K=0：gates 第 0 维为 0，输出仍是 [S, H]，不报错。
@@ -84,7 +84,7 @@ TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_k_zero)
                                                           {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {});
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{16, 64}});
 }
 
 // S=0 空 tensor：输出 [0, H]，不报错。
@@ -101,7 +101,41 @@ TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_empty_samples)
                                                           {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {});
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{0, 64}});
+}
+
+// E/C/K/S/H 同时为 0：InferShape 仍按 [S,H] 生成 [0,0]。
+TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_all_zero_axes)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineX",
+                                                      {
+                                                          {{{0, 0, 0}, {0, 0, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{0, 0}, {0, 0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{0, 0}, {0, 0}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                          {{{0, 0}, {0, 0}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {});
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{0, 0}});
+}
+
+// 固定 rank 的动态维（-1）允许在 InferShape 阶段透传；运行时 Tiling 仍要求实际维度非负。
+TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_dynamic_dims)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeTutelCombineX",
+                                                      {
+                                                          {{{4, 8, -1}, {4, 8, -1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{2, -1}, {2, -1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                          {{{2, -1}, {2, -1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                          {{{2, -1}, {2, -1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {});
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, {{-1, -1}});
 }
 
 // y_grad rank 不是 3：拒绝。

@@ -27,10 +27,9 @@
 #include "ge_error_codes.h"
 #include "ge_ir_build.h"
 #include "graph.h"
+#include "op_graph/op_transformer_proto_extend.h"
 #include "tensor.h"
 #include "types.h"
-
-#include "../op_graph/moe_tutel_combine_x_proto.h"
 
 #define FAILED (-1)
 #define SUCCESS 0
@@ -46,13 +45,22 @@ constexpr int64_t CAPACITY = 8;
 constexpr int64_t HIDDEN = 64;
 constexpr int64_t TOP_K = 2;
 constexpr int64_t SAMPLES = 16;
+constexpr int64_t OUTPUT_PREVIEW_COUNT = 6;
 
 string GetTime()
 {
-    time_t timep;
-    time(&timep);
+    std::time_t timep = 0;
+    if (std::time(&timep) == static_cast<std::time_t>(-1)) {
+        return "unknown-time";
+    }
+    std::tm timeInfo = {};
+    if (localtime_r(&timep, &timeInfo) == nullptr) {
+        return "unknown-time";
+    }
     char tmp[64] = {0};
-    strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S,000", localtime(&timep));
+    if (std::strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S,000", &timeInfo) == 0) {
+        return "unknown-time";
+    }
     return string(tmp);
 }
 
@@ -159,7 +167,7 @@ int main()
     Session *session = new (std::nothrow) Session(buildOptions);
     if (session == nullptr) {
         printf("Create session failed\n");
-        (void)GEFinalize();
+        static_cast<void>(GEFinalize());
         return FAILED;
     }
 
@@ -169,7 +177,7 @@ int main()
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: AddGraph failed ret=%u\n", GetTime().c_str(), ret);
         delete session;
-        (void)GEFinalize();
+        static_cast<void>(GEFinalize());
         return FAILED;
     }
 
@@ -180,7 +188,7 @@ int main()
         AscendString errorMsg = GEGetErrorMsgV2();
         printf("%s - ERROR - [XIR]: error: %s\n", GetTime().c_str(), errorMsg.GetString());
         delete session;
-        (void)GEFinalize();
+        static_cast<void>(GEFinalize());
         return FAILED;
     }
     printf("%s - INFO - [XIR]: RunGraph success, output_num=%zu\n", GetTime().c_str(), output.size());
@@ -189,7 +197,7 @@ int main()
         int64_t outSize = output[i].GetTensorDesc().GetShape().GetShapeSize();
         printf("output[%zu] shapeSize=%ld\n", i, outSize);
         const float *p = reinterpret_cast<const float *>(output[i].GetData());
-        int64_t printCnt = outSize < 6 ? outSize : 6;
+        int64_t printCnt = outSize < OUTPUT_PREVIEW_COUNT ? outSize : OUTPUT_PREVIEW_COUNT;
         for (int64_t j = 0; j < printCnt; j++) {
             printf("  x_grad[%ld] = %f\n", j, p[j]);
         }
