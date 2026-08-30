@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -21,17 +31,7 @@
   attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
   $$
 
-  GenericBlockSparseAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过layoutQ和layoutKv传入。
-  - B：表示输入样本批量大小（Batch）
-  - T：B和S合轴紧密排列的长度（Total tokens）
-  - S：表示输入样本序列长度（Seq-Length）
-  - H：表示隐藏层的大小（Head-Size）
-  - N：表示多头数（Head-Num）
-  - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
-
-  当前支持的布局：
-  - layoutQ: "TND"
-  - layoutKv: "PAGED_BBND"
+  输入排布由layoutQ、layoutKv指定，当前仅支持layoutQ="TND"、layoutKv="PAGED_BBND"。
 
 ## 函数原型
 
@@ -85,16 +85,18 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 - **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1550px">
+  表格中shape变量含义见<a href="#基准说明">基准说明</a>。
+
+  <table style="table-layout: fixed; width: 100%; word-break: break-word; overflow-wrap: anywhere;">
   <colgroup>
-    <col style="width: 150px">
-    <col style="width: 100px">
-    <col style="width: 200px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
+  <col style="width: 12%">
+  <col style="width: 6%">
+  <col style="width: 15%">
+  <col style="width: 25%">
+  <col style="width: 11%">
+  <col style="width: 5%">
+  <col style="width: 20%">
+  <col style="width: 6%">
   </colgroup>
   <thead>
     <tr>
@@ -113,112 +115,50 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>query</td>
       <td>输入</td>
       <td>公式中的query。</td>
-      <td>支持的shape为：
-    <ul>
-          <li>TND: [totalQTokens, headNum, headDim]。</li>
-          <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li>
-          <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li>
-        </ul>
-      </td>
-      <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
+      <td>当前仅支持layoutQ="TND"。其他layout的shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
-      <td>3/4</td>
+      <td>[totalQTokens, headNum, headDim]</td>
       <td>×</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
       <td>公式中的key。</td>
-      <td>
-        作为原始Key输入时，支持的shape为：
-    <ul>
-          <li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li>
-          <li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li>
-          <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
-        </ul>
-        作为Key Cache输入时，支持的shape为：
-    <ul>
-          <li>PAGED_BBND: [numBlocks, blockSize, numKeyValueHeads, headDim]。</li>
-          <li>PAGED_BNBD: [numBlocks, numKeyValueHeads, blockSize, headDim]。</li>
-        </ul>
-        当前落地为PAGED_BBND时，dim0非连续约束见约束说明；其余layout当前不支持。
-      </td>
-      <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
+      <td>可作为原始Key或Paged KV Cache。当前仅支持layoutKv="PAGED_BBND"。其余layout及原始KV的shape见<a href="#layout对应关系说明">layout对应关系说明</a>、<a href="#paged-attention相关说明">Paged Attention相关说明</a>；dim0非连续见<a href="#其他约束">其他约束</a>。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
-      <td>3/4</td>
+      <td>[numBlocks, blockSize, numKeyValueHeads, headDim]</td>
       <td>√</td>
     </tr>
     <tr>
       <td>value</td>
       <td>输入</td>
       <td>公式中的value。</td>
-      <td>
-        作为原始Value输入时，支持的shape为：
-    <ul>
-          <li>TND: [totalVTokens, numKeyValueHeads, headDim]。</li>
-          <li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li>
-          <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
-        </ul>
-        作为Value Cache输入时，支持的shape为：
-    <ul>
-          <li>PAGED_BBND: [numBlocks, blockSize, numKeyValueHeads, headDim]。</li>
-          <li>PAGED_BNBD: [numBlocks, numKeyValueHeads, blockSize, headDim]。</li>
-        </ul>
-        其中blockSize为cache的页的大小，支持范围[16, 512]，需要满足16对齐。当前落地为PAGED_BBND时，dim0非连续约束见约束说明；其余layout当前不支持。
-      </td>
-      <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
+      <td>可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前仅支持layoutKv="PAGED_BBND"。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
-      <td>3/4</td>
+      <td>与key一致</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sparseBlockIdx</td>
       <td>输入</td>
       <td>稀疏块索引数组，指定每个Q块选择的KV块索引。</td>
-      <td>
-        存储每个Q块选择的KV块索引，支持的shape随query布局变化：
-        <ul>
-          <li>query为TND布局时：</li>
-          <ul>
-            <li>每个qHead对应的KV稀疏pattern不一致（isPackedGQA=0）：<br>[headNum, totalQBlocks, maxSparseBlockCount]</li>
-            <li>GQA/MQA下，同group每个qHead对应的KV稀疏pattern一致（isPackedGQA=1）：<br>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</li>
-          </ul>
-          <li>query为BNSD/BSND布局时：</li>
-          <ul>
-            <li>每个qHead对应的KV稀疏pattern不一致（isPackedGQA=0）：<br>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]</li>
-            <li>GQA/MQA下，同group每个qHead对应的KV稀疏pattern一致（isPackedGQA=1）：<br>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]</li>
-          </ul>
-        </ul>
-        其中 totalQBlocks = Σ ceilDiv(qStorageLen_i, blockShapeX)，i 为 batch 索引；qStorageLen_i 为 cuSeqLengthsQOptional 前缀和差分得到的<strong>存储长度</strong>（与seqused双长度语义见约束说明）。
-<br>maxSparseBlockCount为sparseBlockCount tensor中所有元素的最大值，即所有Q块选择的KV块数量的最大值。传入值须 >= 该最大值，当前上限为256。
-      </td>
+      <td>当前仅支持TND + isPackedGQA=1。取值须为合法KV块索引（按cu存储长度分块）；无效位置可用-1填充，有效值须落在前sparseBlockCount个位置。isPackedGQA及其余shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>3/4</td>
+      <td>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</td>
       <td>×</td>
     </tr>
     <tr>
       <td>sparseBlockCount</td>
       <td>输入</td>
       <td>每个Q块实际选择的KV块数量。</td>
-      <td>
-        存储每个Q块实际选择的KV块数量，支持的shape随query布局变化：
-        <ul>
-          <li>query为TND布局时：</li>
-          <ul>
-            <li>每个qHead对应的KV稀疏pattern不一致（isPackedGQA=0）：<br>[headNum, totalQBlocks]</li>
-            <li>GQA/MQA下，同group每个qHead对应的KV稀疏pattern一致（isPackedGQA=1）：<br>[numKeyValueHeads, totalQBlocks]</li>
-          </ul>
-          <li>query为BNSD/BSND布局时：</li>
-          <ul>
-            <li>每个qHead对应的KV稀疏pattern不一致（isPackedGQA=0）：<br>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX)]</li>
-            <li>GQA/MQA下，同group每个qHead对应的KV稀疏pattern一致（isPackedGQA=1）：<br>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX)]</li>
-          </ul>
-        </ul>
-      </td>
+      <td>当前仅支持TND + isPackedGQA=1。isPackedGQA含义与sparseBlockIdx相同。其他组合的shape见<a href="#layout对应关系说明">layout对应关系说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>2/3</td>
+      <td>[numKeyValueHeads, totalQBlocks]</td>
       <td>×</td>
     </tr>
     <tr>
@@ -226,18 +166,18 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>AICPU算子aclnnGenericBlockSparseAttentionMetadata的分核结果。</td>
       <td>
-        必须传入。由aclnnGenericBlockSparseAttentionMetadata算子生成，每次调用须重新生成。
+        必须传入。由aclnnGenericBlockSparseAttentionMetadata生成，每次调用须重新生成。
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
+      <td>(1024,)</td>
       <td>×</td>
     </tr>
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
       <td>公式中的atten_mask。</td>
-      <td>atten_mask会与稀疏pattern叠加（见「掩码说明」）。当前不支持，必须传入nullptr。</td>
+      <td>atten_mask会与稀疏pattern叠加，详见<a href="#掩码说明">掩码说明</a>。当前不支持，必须传入nullptr。</td>
       <td>BOOL</td>
       <td>ND</td>
       <td>2</td>
@@ -247,9 +187,9 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>qDequantScaleOptional</td>
       <td>输入</td>
       <td>query的反量化缩放因子。</td>
-      <td>详情见「量化相关说明」。当前仅quantType=0/5场景可传nullptr；quantType=1~4当前不支持，须传入nullptr。
+      <td>详情见<a href="#量化相关说明">量化相关说明</a>。当前仅quantType=0/5场景可传nullptr；quantType=1~4当前不支持，须传入nullptr。
       </td>
-      <td>FLOAT32/FLOAT8_E8M0</td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
       <td>x</td>
       <td>×</td>
@@ -258,9 +198,9 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>kDequantScaleOptional</td>
       <td>输入</td>
       <td>key的反量化缩放因子。</td>
-      <td>详情见「量化相关说明」。当前仅quantType=0/5场景可传nullptr；quantType=1~4当前不支持，须传入nullptr。
+      <td>详情见<a href="#量化相关说明">量化相关说明</a>。当前仅quantType=0/5场景可传nullptr；quantType=1~4当前不支持，须传入nullptr。
       </td>
-      <td>FLOAT32/FLOAT8_E8M0</td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
       <td>x</td>
       <td>×</td>
@@ -269,9 +209,9 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>vDequantScaleOptional</td>
       <td>输入</td>
       <td>value的反量化缩放因子。</td>
-      <td>详情见「量化相关说明」。当前仅quantType=0/5场景可传nullptr；quantType=1~4当前不支持，须传入nullptr。
+      <td>详情见<a href="#量化相关说明">量化相关说明</a>。当前仅quantType=0/5场景可传nullptr；quantType=1~4当前不支持，须传入nullptr。
       </td>
-      <td>FLOAT32/FLOAT8_E8M0</td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
       <td>x</td>
       <td>×</td>
@@ -280,7 +220,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>pQuantScaleOptional</td>
       <td>输入</td>
       <td>非mx量化模式下，online-softmax的结果P矩阵所需的量化系数。</td>
-      <td>详情见「量化相关说明」。当前须传入nullptr。</td>
+      <td>详情见<a href="#量化相关说明">量化相关说明</a>。当前须传入nullptr。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>x</td>
@@ -290,31 +230,35 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>cuSeqLengthsQOptional</td>
       <td>输入</td>
       <td>描述每个Batch对应的query序列长度，以前缀和形式存储。</td>
-      <td>可选输入，用于变长序列场景：
+      <td>
+        可选输入，用于变长序列场景。
         <ul>
-          <li>当layoutQ为"TND"时：该项输入必须配置</li>
-          <li>当layoutQ为"BNSD""BSND"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；<br>如不配置该项输入(传入nullptr)，算子内会按照query的shape中的S进行处理。</li>
+          <li>layoutQ为TND时必须传入。</li>
+          <li>layoutQ为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按query的shape中的S处理（当前不支持）。</li>
+          <li>元素为前缀和：第0个元素为0，最后一个元素等于totalQTokens，后一个元素须≥前一个元素；相邻差分得到各batch的<strong>存储长度</strong> qStorageLen_i，且满足 Σ qStorageLen_i = totalQTokens。</li>
         </ul>
       </td>
       <td>INT64</td>
-      <td>-</td>
-      <td>1</td>
-      <td>-</td>
+      <td>ND</td>
+      <td>(B+1,)</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cuSeqLengthsKvOptional</td>
       <td>输入</td>
       <td>描述每个Batch对应的key/value序列长度，以前缀和形式存储。</td>
-      <td>可选输入，用于变长序列场景：
+      <td>
+        可选输入，用于变长序列场景。
         <ul>
-          <li>当layoutKv为"TND"/"PAGED_BBND"/"PAGED_BNBD"时：该项输入必须配置</li>
-          <li>当layoutKv为"BNSD""BSND"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；<br>如不配置该项输入(传入nullptr)，算子内会按照key/value的shape中的S进行处理。</li>
+          <li>layoutKv为TND/PAGED_BBND/PAGED_BNBD时必须传入。当前仅支持PAGED_BBND。</li>
+          <li>layoutKv为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按key/value的shape中的S处理（当前不支持）。</li>
+          <li>元素为前缀和：第0个元素为0，最后一个元素等于各batch KV存储长度之和，后一个元素须≥前一个元素。</li>
         </ul>
       </td>
       <td>INT64</td>
-      <td>-</td>
-      <td>1</td>
-      <td>-</td>
+      <td>ND</td>
+      <td>(B+1,)</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sequsedQOptional</td>
@@ -322,13 +266,13 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>各batch中query的实际序列长度。</td>
       <td>
         <ul>
-          <li>不指定序列长度可传入nullptr，表示和cuSeqLengthsQOptional差分得到的存储长度相同。</li>
-          <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+          <li>不指定实际长度可传入nullptr，表示与cuSeqLengthsQOptional差分得到的存储长度相同。</li>
+          <li>传入时shape为(B,)，每个元素须≥0且≤对应batch的cu存储长度。与cu并存时的双长度语义见<a href="#其他约束">其他约束</a>。</li>
         </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
+      <td>(B,)</td>
       <td>×</td>
     </tr>
     <tr>
@@ -337,30 +281,30 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>各batch中kv的实际序列长度。</td>
       <td>
         <ul>
-          <li>不指定序列长度可传入nullptr，表示和cuSeqLengthsKvOptional差分得到的存储长度相同。</li>
-          <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+          <li>不指定实际长度可传入nullptr，表示与cuSeqLengthsKvOptional差分得到的存储长度相同。</li>
+          <li>传入时shape为(B,)，每个元素须≥0且≤对应batch的cu存储长度。与cu并存时的双长度语义见<a href="#其他约束">其他约束</a>。</li>
         </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1</td>
+      <td>(B,)</td>
       <td>×</td>
     </tr>
     <tr>
       <td>blockTableOptional</td>
       <td>输入</td>
       <td>Block表用于PagedAttention。</td>
-      <td>如配置此输入，则表示使用PagedAttention，layout、KV shape均需对应配置（见「Paged Attention相关说明」）。当前必须传入，且layoutKv须为PAGED_BBND。</td>
+      <td>如配置此输入，则表示使用PagedAttention。当前必须传入，且layoutKv须为PAGED_BBND。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>2</td>
+      <td>(B, maxNumBlocksPerBatch)</td>
       <td>×</td>
     </tr>
     <tr>
       <td>blockShape</td>
       <td>输入</td>
       <td>代表稀疏块形状数组。</td>
-      <td>含两个元素[blockShapeX, blockShapeY]。<br>blockShapeX支持任意值，不可超过int64表示范围。<br>blockShapeY支持按16对齐的任意值，不可超过int64表示范围。<br>开启量化时的额外约束见「量化相关说明」。<br>当前仅支持blockShape=[1,128]。</td>
+      <td>含两个元素[blockShapeX, blockShapeY]。<br>blockShapeX支持任意值，不可超过int64表示范围。<br>blockShapeY支持按16对齐的任意值，不可超过int64表示范围。<br>开启量化时的额外约束见<a href="#量化相关说明">量化相关说明</a>。<br>当前仅支持blockShape=[1,128]。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -380,7 +324,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>layoutQ</td>
       <td>输入</td>
       <td>代表输入query的数据排布格式。</td>
-      <td>目标支持"TND""BNSD""BSND"，详见「layout对应关系说明」。当前仅支持"TND"。</td>
+      <td>目标支持"TND""BNSD""BSND"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"TND"。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -390,7 +334,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>layoutKv</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>目标支持"TND""BNSD""BSND""PAGED_BBND""PAGED_BNBD"，详见「layout对应关系说明」。当前仅支持"PAGED_BBND"。</td>
+      <td>目标支持"TND""BNSD""BSND""PAGED_BBND""PAGED_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"PAGED_BBND"。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -411,7 +355,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>表示attention计算中的掩码类型。</td>
       <td>
-        取值0~5，含义见「掩码说明」。<br>
+        取值0~5，含义见<a href="#掩码说明">掩码说明</a>。<br>
         当前仅支持1（causal mask）。
       </td>
       <td>INT64</td>
@@ -424,7 +368,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>代表采用的量化手段。</td>
       <td>
-        取值0~5，完整配置见「量化相关说明」：<br>
+        取值0~5，完整配置见<a href="#量化相关说明">量化相关说明</a>：<br>
         当前可用：0；Ascend 950上可选5。取值1~4传入将校验失败。
       </td>
       <td>INT64</td>
@@ -439,7 +383,6 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>
         <ul>
           <li>当前版本不支持自定义量程，必须传入0.0。</li>
-          <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
       </td>
       <td>double</td>
@@ -457,7 +400,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
           <li>0：online softmax和rescale全部采取fp32，适合追求计算精度的场景。</li>
           <li>1：混合精度；online softmax采取fp16/bf16（与attentionOut相同），rescale采取fp32，online softmax阶段可能数值溢出。</li>
         </ul>
-        芯片约束见「约束说明」（Ascend 950仅1；Atlas A2/A3上FP16可0/1，BF16仅0；FP8路径仅1）。
+        芯片约束：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0；FP8路径仅支持1。
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -468,7 +411,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>winLeft</td>
       <td>输入</td>
       <td>滑窗attention场景下，滑窗需要向前包含多少个token。</td>
-      <td>用于滑窗attention；不使能时必须为-1，需与maskType配合，见「掩码说明」。当前只支持传入-1。</td>
+      <td>用于滑窗attention；不使能时必须为-1，需与maskType配合，见<a href="#掩码说明">掩码说明</a>。当前只支持传入-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -478,7 +421,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>winRight</td>
       <td>输入</td>
       <td>滑窗attention场景下，滑窗需要向后包含多少个token。</td>
-      <td>用于滑窗attention；不使能时必须为-1，需与maskType配合，见「掩码说明」。当前只支持传入-1。</td>
+      <td>用于滑窗attention；不使能时必须为-1，需与maskType配合，见<a href="#掩码说明">掩码说明</a>。当前只支持传入-1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -503,10 +446,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>attentionOut</td>
       <td>输出</td>
       <td>公式中的attentionOut。</td>
-      <td>数据类型和shape与query保持一致。</td>
-      <td>FLOAT16/BFLOAT16（Q/K/V 为 FP8 时由 attentionOut tensor 指定 FP16/BF16）</td>
+      <td>数据类型和shape与query保持一致。当前仅支持layoutQ="TND"。</td>
+      <td>FLOAT16、BFLOAT16（FP8输入时由本tensor指定）</td>
       <td>ND</td>
-      <td>3/4</td>
+      <td>与query一致</td>
       <td>√</td>
     </tr>
     <tr>
@@ -539,8 +482,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>-</td>
       <td>-</td>
     </tr>
-</tbody>
-</table>
+  </tbody>
+  </table>
 
 - **返回值**
 
@@ -548,10 +491,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 280px">
+  <col style="width: 90px">
+  <col style="width: 785px">
   </colgroup>
   <thead>
     <tr>
@@ -583,7 +526,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 - **参数说明**
 
-<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
   <col style="width: 854px">
@@ -622,12 +565,43 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
   返回 aclnnStatus 状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-## layout对应关系说明
+## 约束说明
 
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+### 基准说明
+
+资料约束中，常见字段释义如下：
+
+| 命名 | 含义 |
+| :---: | :--- |
+| B | Batch Size，输入样本批量大小 |
+| S | Sequence Length，序列长度 |
+| H | Head Size，hidden层大小 |
+| N | Head Num，多头数 |
+| D | Head Dim，head维度，且满足D=H/N |
+| T | 所有Batch序列长度的累加和 |
+| totalQTokens | query的T |
+| totalKTokens | key的T |
+| totalVTokens | value的T |
+| headNum | query的N |
+| numKeyValueHeads | key/value的N |
+| headDim | D |
+| batch | B |
+| maxQSeqLength | query在BNSD/BSND下的S |
+| maxKvSeqLength | key/value在BNSD/BSND下的S |
+| numBlocks | Paged KV Cache的物理页数 |
+| blockSize | 每一页容纳的token数 |
+| maxNumBlocksPerBatch | blockTable第二维，须≥ceilDiv(maxKvSeqLength, blockSize) |
+| qStorageLen_i | cuSeqLengthsQ前缀和差分得到的各batch存储长度 |
+| totalQBlocks | 按存储长度分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$ |
+| maxSparseBlockCount | 也称topK，sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值，当前上限为256 |
+| blockShapeX / blockShapeY | 稀疏块在Q方向、KV方向的块大小 |
+
+### layout对应关系说明
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 160px">
+  <col style="width: 180px">
+  <col style="width: 815px">
   </colgroup>
   <thead>
     <tr>
@@ -681,12 +655,91 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 当前支持组合：layoutQ="TND" + layoutKv="PAGED_BBND"。其余layoutQ/layoutKv组合当前不支持。
 
-## Paged Attention相关说明
+query、attentionOut的shape由layoutQ决定：
 
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 160px">
+  <col style="width: 815px">
+  <col style="width: 180px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>layoutQ</th>
+      <th>shape</th>
+      <th>当前支持</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>TND</td>
+      <td>[totalQTokens, headNum, headDim]</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>BNSD</td>
+      <td>[batch, headNum, maxQSeqLength, headDim]</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>BSND</td>
+      <td>[batch, maxQSeqLength, headNum, headDim]</td>
+      <td>×</td>
+    </tr>
+  </tbody>
+  </table>
+
+sparseBlockIdx、sparseBlockCount的shape由layoutQ与isPackedGQA决定。isPackedGQA=0：每个qHead对应的KV稀疏pattern不一致；isPackedGQA=1：GQA/MQA下同group每个qHead对应的KV稀疏pattern一致。
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 140px">
+  <col style="width: 140px">
+  <col style="width: 515px">
+  <col style="width: 360px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>layoutQ</th>
+      <th>isPackedGQA</th>
+      <th>sparseBlockIdx</th>
+      <th>sparseBlockCount</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>TND</td>
+      <td>1</td>
+      <td>[numKeyValueHeads, totalQBlocks, maxSparseBlockCount]</td>
+      <td>[numKeyValueHeads, totalQBlocks]</td>
+    </tr>
+    <tr>
+      <td>TND</td>
+      <td>0</td>
+      <td>[headNum, totalQBlocks, maxSparseBlockCount]（当前不支持）</td>
+      <td>[headNum, totalQBlocks]（当前不支持）</td>
+    </tr>
+    <tr>
+      <td>BNSD/BSND</td>
+      <td>1</td>
+      <td>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]（当前不支持）</td>
+      <td>[batch, numKeyValueHeads, ceilDiv(maxQSeqLength, blockShapeX)]（当前不支持）</td>
+    </tr>
+    <tr>
+      <td>BNSD/BSND</td>
+      <td>0</td>
+      <td>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), maxSparseBlockCount]（当前不支持）</td>
+      <td>[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX)]（当前不支持）</td>
+    </tr>
+  </tbody>
+  </table>
+
+key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。
+
+### Paged Attention相关说明
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 420px">
+  <col style="width: 160px">
+  <col style="width: 575px">
   </colgroup>
   <thead>
     <tr>
@@ -694,8 +747,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
         <th>kvLayout</th>
         <th>Key/Value</th>
     </tr>
-</thead>
-<tbody>
+  </thead>
+  <tbody>
     <tr>
       <td rowspan="2">非空，shape为[batch, maxNumBlocksPerBatch]，代表使能paged cache</td>
       <td>PAGED_BBND</td>
@@ -723,18 +776,18 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 当前必须传入非空blockTable，且layoutKv为PAGED_BBND。blockTable为nullptr（原始KV）及PAGED_BNBD当前不支持。
 
-## 量化相关说明
+### 量化相关说明
 
-下列量化配置按Ascend 950（A5）代际描述；当前可用范围见「约束说明」。
+下列量化配置按Ascend 950（A5）代际描述；当前可用quantType=0，Ascend 950上可选quantType=5。
 
-<table style="undefined;table-layout: fixed;width: 2000px"><colgroup>
-  <col style="width: 100px">
-  <col style="width: 30px">
-  <col style="width: 60px">
-  <col style="width: 200px">
-  <col style="width: 200px">
-  <col style="width: 100px">
-  <col style="width: 100px">
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 120px">
+  <col style="width: 240px">
+  <col style="width: 130px">
+  <col style="width: 240px">
+  <col style="width: 260px">
+  <col style="width: 280px">
+  <col style="width: 280px">
   </colgroup>
   <thead>
     <tr>
@@ -746,8 +799,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
         <th>量化参数shape</th>
         <th>量化参数dType</th>
     </tr>
-</thead>
-<tbody>
+  </thead>
+  <tbody>
     <tr>
       <td>0</td>
       <td>非量化，QKV直接作为输入进行计算</td>
@@ -857,13 +910,13 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 当前可用quantType=0；Ascend 950上可选quantType=5。quantType=1~4当前不支持。
 
-## 掩码说明
+### 掩码说明
 
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-<col style="width: 144px">
-  <col style="width: 500px">
-<col style="width: 144px">
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 160px">
+  <col style="width: 140px">
+  <col style="width: 655px">
+  <col style="width: 200px">
   </colgroup>
   <thead>
     <tr>
@@ -872,8 +925,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
         <th>attentionMaskOptional</th>
         <th>winLeft/winRight</th>
     </tr>
-</thead>
-<tbody>
+  </thead>
+  <tbody>
     <tr>
       <td>0</td>
       <td>不加mask</td>
@@ -903,29 +956,15 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 当前仅支持maskType=1（算子内置causal，attenMaskOptional须为nullptr，winLeft/winRight为-1）。maskType为0/2/3~5当前不支持。
 
-## 约束说明
+### 其他约束
 
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
-- 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional（INT32 [1024]），再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
-- layoutQ当前仅支持"TND"。
-- layoutKv当前仅支持"PAGED_BBND"。
-- isPackedGQA当前仅支持1。
-- maskType当前仅支持1（算子内置causal）；attenMaskOptional须传入nullptr；winLeft和winRight当前只支持-1。
-- blockShape当前仅支持[1,128]；query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-- TND + isPackedGQA=1时：sparseBlockIdx为[N2, totalQBlocks, topK]，sparseBlockCount为[N2, totalQBlocks]；totalQBlocks按cu存储长度分块；maxSparseBlockCount（即topK）须≥sparseBlockCount中所有元素的最大值，且当前上限为256。
-- metadataOptional、blockTableOptional、cuSeqLengthsQOptional、cuSeqLengthsKvOptional当前必须传入；blockTableOptional为nullptr（原始KV）当前不支持。
-- cuSeqLengthsQOptional在layoutQ为"TND"时必选；cuSeqLengthsKvOptional在layoutKv为"PAGED_BBND"时必选。
-- sequsedQOptional/sequsedKvOptional可选，可与cu前缀和同时传入；不传（nullptr）时按cu差分得到的存储长度处理。传入时：分核/任务空间按各batch实际有效长度（seqused）累加；sparseBlockIdx/sparseBlockCount分块与QKV寻址仍按cu存储长度计算；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
-- quantType当前支持0（非量化）；Ascend 950上可选5（FLOAT8_E4M3FN全量化，attentionOut为FLOAT16/BFLOAT16）。quantType为1~4当前不支持。
-- qDequantScaleOptional、kDequantScaleOptional、vDequantScaleOptional、pQuantScaleOptional当前须传入nullptr。
-- dstTypeMax当前只支持0.0。
-- 输入query、key、value的数据类型必须一致；当前支持FLOAT16、BFLOAT16；Ascend 950上另支持FLOAT8_E4M3FN（须quantType=5）。
-- returnSoftmaxlse当前仅支持0，不支持开启softmaxLse输出。
-- softmaxPrecision：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0；FLOAT8路径仅支持1。
-- scaleValue传0时算子内按$1/\sqrt{D}$处理。
-- 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0；groupSize=N1/N2当前须≤128。
-- PAGED_BBND下key/value仅dim0（物理页轴）可非连续；页内blockSize×N2×D须连续；stride0 ≥ blockSize×N2×D且按N2×D对齐。
-- layout、Paged、量化、掩码等完整参数语义见对应章节。
+- 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
+- query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
+- TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
+- sequsedQOptional/sequsedKvOptional与cu前缀和同时传入时：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
+- 输入query、key、value的数据类型必须一致。
+- PAGED_BBND下key/value仅dim0（物理页轴）可非连续；页内blockSize×numKeyValueHeads×headDim须连续；stride0 ≥ blockSize×numKeyValueHeads×headDim且按numKeyValueHeads×headDim对齐。
 
 ## 调用示例
 
