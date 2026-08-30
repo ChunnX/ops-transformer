@@ -914,7 +914,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>MoE（Tutel）combine阶段的token侧聚合。按路由表indices、locations从专家输出缓冲y_grad中为每个token取出至多K行，乘以门控gates后沿top-k轴求和；indices小于0或locations大于等于容量的项贡献0。</td>
+    <td>MoE（Tutel）combine阶段的token侧聚合。按路由表indices、locations从专家输出缓冲y_grad中为每个token取出至多K行，乘以门控gates后沿top-k轴求和；indices或locations任一不在各自合法范围[0,E)、[0,C)时，该路由贡献0。</td>
   </tr>
   <tr>
     <td>posembedding</td>

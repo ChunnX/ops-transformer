@@ -42,10 +42,10 @@ template <typename T>
 __aicore__ inline void LoadAsFloat(RegTensor<float> &dst, __ubuf__ T *src, MaskReg preg, uint32_t srcOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
-        DataCopy(dst, src + srcOffset);
+        LoadAlign(dst, src + srcOffset);
     } else {
         RegTensor<T> tmp;
-        DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
+        LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
         Cast<float, T, CAST_TRAIT_B16_TO_B32>(dst, tmp, preg);
     }
 }
@@ -53,7 +53,7 @@ __aicore__ inline void LoadAsFloat(RegTensor<float> &dst, __ubuf__ T *src, MaskR
 // 把 UB 上的一个 fp32 标量广播成整个 RegTensor。
 __aicore__ inline void LoadScalarBrc(RegTensor<float> &dst, __ubuf__ float *src, uint32_t srcOffset)
 {
-    DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + srcOffset);
+    LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + srcOffset);
 }
 
 /**
@@ -85,11 +85,11 @@ __aicore__ inline void AccumulateRows(const LocalTensor<float> &acc, const Local
             uint32_t sreg = hLen;
             for (uint16_t i = 0; i < loopCount; i++) {
                 preg = UpdateMask<float>(sreg);
-                DataCopy(accReg, accAddr + i * VL_FP32);
+                LoadAlign(accReg, accAddr + i * VL_FP32);
                 LoadAsFloat<T>(rowReg, rowAddr, preg, k * rowStride + i * VL_FP32);
                 Mul(rowReg, rowReg, gateReg, preg);
                 Add(accReg, accReg, rowReg, preg);
-                DataCopy(accAddr + i * VL_FP32, accReg, preg);
+                StoreAlign(accAddr + i * VL_FP32, accReg, preg);
             }
             // 下一个 k 会重新读回同一段 acc，必须挡一次写后读。
             LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
