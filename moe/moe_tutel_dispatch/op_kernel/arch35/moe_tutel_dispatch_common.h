@@ -32,7 +32,7 @@ constexpr int64_t PAYLOAD_QUEUE_DEPTH = 2;
 // 与 attention/scatter_pa_kv_cache 的 arch35 内核同法（它把 payload 模板成 int8/int16/int32）。
 
 // 「值为零」的位型判据：除符号位外全 0。fp16 / bf16 / fp32 皆成立，
-// 与 A2 kernel 的 `static_cast<float>(gates_) != 0` 逐位等价（NaN / Inf / denormal 判为非零）。
+// 与既有 ascend910b kernel 的 `static_cast<float>(gates_) != 0` 逐位等价（NaN / Inf / denormal 判为非零）。
 template <typename TByte>
 __aicore__ inline TByte GateAbsMask()
 {
