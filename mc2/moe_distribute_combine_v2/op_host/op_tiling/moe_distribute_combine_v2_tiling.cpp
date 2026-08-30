@@ -1748,8 +1748,8 @@ static uint64_t GetDispatchBufferSize(const MoeDistributeCombineV2TilingData *ti
 static uint64_t GetQuantScratchSize(uint32_t axisH, uint32_t expandXTypeSize, bool isMxFp8Quant,
                                     uint32_t hFloatAlign32Size, uint32_t hFloatAlign256Size)
 {
-    uint32_t hExpandXAlignSize = isMxFp8Quant ? (axisH + 127U) / 128U * 128U * expandXTypeSize
-                                              : (axisH * expandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint32_t hExpandXAlignSize = isMxFp8Quant ? (axisH + 127U) / 128U * 128U * expandXTypeSize :
+                                                (axisH * expandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     return static_cast<uint64_t>(hFloatAlign256Size) * 2UL + hFloatAlign256Size / (UB_ALIGN / sizeof(float)) +
            hFloatAlign32Size + hExpandXAlignSize;
 }
@@ -1782,8 +1782,8 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
         uint32_t scaleBaseCnt =
             isInt8Quant ? (isA5 ? hFloatAlign256Size / sizeof(float) : hExpandXAlign32Size / expandXTypeSize) : 0U;
         commDataBytes = GetQuantCommDataBytes(axisH, expandXTypeSize, scaleBaseCnt, commQuantMode, scaleNumAlignSize);
-        quantBufferSize = GetQuantScratchSize(axisH, expandXTypeSize, isMxFp8Quant, hFloatAlign32Size,
-                                              hFloatAlign256Size);
+        quantBufferSize =
+            GetQuantScratchSize(axisH, expandXTypeSize, isMxFp8Quant, hFloatAlign32Size, hFloatAlign256Size);
     }
     uint32_t blockCntPerToken = (commDataBytes + SPLIT_BLOCK_DATA_SIZE - 1) / SPLIT_BLOCK_DATA_SIZE;
     uint32_t packedDataBytes = blockCntPerToken * SPLIT_BLOCK_DATA_SIZE;
