@@ -60,9 +60,14 @@ public:
         this->Attr("padded_mode").AttrType(OPTIONAL).Bool(false);
         this->Attr("restore_shape").AttrType(OPTIONAL).ListInt();
 
-        this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend910_93");
-        this->AICore().AddConfig("ascend950");
+        OpAICoreConfig config_dyn;
+        config_dyn.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true);
+        this->AICore().AddConfig("ascend910b", config_dyn);
+        this->AICore().AddConfig("ascend910_93", config_dyn);
+        this->AICore().AddConfig("ascend950", config_dyn);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);
