@@ -104,12 +104,9 @@ __simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2 *p_
     // }
 
     // ====================== 预计算：本大块第一个分组的最大值 ======================
-    // 【修复】validGroups==0(整块无有效行) 时预计算不读 s，避免读垃圾数据污染
-    //   curr_group_max -> pscale 偏大 -> P 反量化溢出 NaN。
-    //   动态上界与主循环 for(g<validGroups) 同形态（短路写法会触发 bisheng SIGSEGV）。
+    // 前提: 调用方保证进入本 VF 的所有大块 validEffRows>0（validGroups>=1），故预计算无条件执行。
     Duplicate(curr_group_max, MIN_VALUE);
-    const uint16_t groupMaxIters = validGroups > 0 ? ITER_PER_GROUP : 0;
-    for (uint16_t iter = 0; iter < groupMaxIters; ++iter) {
+    for (uint16_t iter = 0; iter < ITER_PER_GROUP; ++iter) {
         LoadAlign(src_c0, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 0 * QsBase) * 2);
         LoadAlign(src_c1, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 1 * QsBase) * 2);
         LoadAlign(src_c2, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 2 * QsBase) * 2);

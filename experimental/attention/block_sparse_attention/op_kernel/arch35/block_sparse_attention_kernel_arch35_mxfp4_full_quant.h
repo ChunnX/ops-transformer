@@ -330,8 +330,7 @@ public:
                 } else {
 #ifdef __DAV_VEC__
                     if (subBlockIdx == AscendC::GetSubBlockIdx()) {
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
-                                                                       subBlockIdx * 16);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                         uint32_t l1PBufId = curTileInfo.loop % GmMXFP4::L1_P_BUF_CNT;
                         auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPL1>(EpMXFP4::KVS_BASE_SIZE,
                                                                                          EpMXFP4::QS_BASE_SIZE / 2);
@@ -363,8 +362,7 @@ public:
                             actualBlockShapeQK, 
                             curTileInfo,
                             curTaskInfo);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
-                                                                       subBlockIdx * 16);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
                     if (curTileInfo.isUpdatePScale) {
                         if (curTileInfo.tileMaxIdx == 0) {

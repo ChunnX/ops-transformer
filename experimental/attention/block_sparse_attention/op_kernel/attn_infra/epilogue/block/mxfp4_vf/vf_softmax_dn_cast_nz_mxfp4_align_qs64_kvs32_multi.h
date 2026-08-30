@@ -114,15 +114,9 @@ __simd_callee__ inline void softmax_align_qs64_kvs32_multi_chunk_vf(__ubuf__ T2 
     // }
 
     // ====================== 预计算：本大块第一个分组的最大值 ======================
-    // 【修复】validGroups==0(整块无有效行) 时跳过预计算: 否则会读 MM1 真实 S 数据。
-    //   gap_sparse 下末块 eff=0 时该 KV 块是未初始化/垃圾, S 可达 ±1000~3000(有效行仅 ±50),
-    //   读进来会污染 curr_group_max -> pscale 偏大(实测 210/157, 正常 ~124)
-    //   -> P 反量化 2^(pscale-127) 溢出 fp16 -> inf -> 输出 NaN。
-    // 【编译规避】短路条件 validGroups>0 && iter<ITER 触发 bisheng unroll 分析 SIGSEGV(139)，
-    // 改用动态上界（与主循环 for(g<validGroups) 同形态，编译器已验证可编译）。语义不变。
+    // 前提: 调用方保证进入本 VF 的所有大块 validEffRows>0（validGroups>=1），故预计算无条件执行。
     Duplicate(curr_group_max, MIN_VALUE);
-    const uint16_t groupMaxIters = validGroups > 0 ? ITER_PER_GROUP : 0;
-    for (uint16_t iter = 0; iter < groupMaxIters; ++iter) {
+    for (uint16_t iter = 0; iter < ITER_PER_GROUP; ++iter) {
         LoadAlign(src_c0, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 0 * QsBase) * 2);
         LoadAlign(src_c1, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 1 * QsBase) * 2);
         LoadAlign(src_c2, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 2 * QsBase) * 2);

@@ -111,10 +111,8 @@ __simd_callee__ inline void softmax_with_group_max_qs128_chunk_vf(__ubuf__ T2 *p
     // 若某大块 validEffRows==0（全无效），预计算会读到 MM1 真实数据并污染 local_group_max
     // （随后被 padding 分支覆盖）与 group_gmax 寄存器（主循环不执行，不外泄），仅收尾
     // global_max 置极负被删除后，该块 global_max 保持初始值。
-    // 【修复】validGroups==0 时预计算循环改为动态上界不执行（短路写法触发 bisheng SIGSEGV）。
     Duplicate(curr_group_max, MIN_VALUE);
-    const uint16_t groupMaxIters = validGroups > 0 ? ITER_PER_GROUP : 0;
-    for (uint16_t iter = 0; iter < groupMaxIters; ++iter) {
+    for (uint16_t iter = 0; iter < ITER_PER_GROUP; ++iter) {
         LoadAlign(src_c0, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 0 * QsBase) * 2);
         LoadAlign(src_c1, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 1 * QsBase) * 2);
         LoadAlign(src_c2, s + ((chunkY * 128 + iter * ROW_SUB_LOOP) * QsBase + 2 * QsBase) * 2);
