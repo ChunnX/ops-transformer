@@ -14,16 +14,20 @@
  */
 
 #include "moe_tutel_combine_gates_tiling.h"
+#include "log/log.h"
 #include "op_host/tiling_util.h"
+#include "op_common/op_host/util/platform_util.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 
 static ge::graphStatus Tiling4MoeTutelCombineGates(gert::TilingContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    const char *nodeName = context->GetNodeName();
+    const char *safeNodeName = nodeName == nullptr ? "MoeTutelCombineGates" : nodeName;
     OP_CHECK_IF(!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context),
-                OP_LOGE(context->GetNodeName(), "MoeTutelCombineGates is only supported on Ascend 950"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(safeNodeName, "MoeTutelCombineGates is only supported on Ascend 950"), return ge::GRAPH_FAILED);
     MoeTutelCombineGatesTiling tilingObject(context);
     return tilingObject.DoTiling();
 }
@@ -38,15 +42,21 @@ static ge::graphStatus TilingPrepare4MoeTutelCombineGates(gert::TilingParseConte
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->coreNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(compileInfo->coreNum == 0, OP_LOGE(context, "get AIV core num failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo->coreNum == 0,
+                OP_LOGE(context, "Invalid AIV core count: coreNum=%lu", compileInfo->coreNum), return ge::GRAPH_FAILED);
 
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo->ubSize);
-    OP_CHECK_IF(compileInfo->ubSize == 0, OP_LOGE(context, "get UB size failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo->ubSize == 0, OP_LOGE(context, "Invalid UB size: ubSize=%lu", compileInfo->ubSize),
+                return ge::GRAPH_FAILED);
 
     compileInfo->ubBlockSize = static_cast<uint32_t>(Ops::Base::GetUbBlockSize(context));
-    OP_CHECK_IF(compileInfo->ubBlockSize == 0, OP_LOGE(context, "get UB block size failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo->ubBlockSize == 0,
+                OP_LOGE(context, "Invalid UB block size: ubBlockSize=%u", compileInfo->ubBlockSize),
+                return ge::GRAPH_FAILED);
     compileInfo->vectorLength = static_cast<uint32_t>(Ops::Base::GetVRegSize(context));
-    OP_CHECK_IF(compileInfo->vectorLength == 0, OP_LOGE(context, "get vector length failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo->vectorLength == 0,
+                OP_LOGE(context, "Invalid vector length: vectorLength=%u", compileInfo->vectorLength),
+                return ge::GRAPH_FAILED);
     compileInfo->workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 }

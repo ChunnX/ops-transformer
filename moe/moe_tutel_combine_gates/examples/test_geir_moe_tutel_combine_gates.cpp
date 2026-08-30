@@ -16,11 +16,12 @@
  * 用例含合法路由与越界路由各若干，越界位置期望输出 0。
  */
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <ctime>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -33,7 +34,7 @@
 #include "array_ops.h"
 #include "ge_ir_build.h"
 // REG_OP(MoeTutelCombineGates) 定义在本仓公共 proto 头中，本算子目录不重复声明。
-#include "op_transformer_proto_extend.h"
+#include "../../../common/include/op_graph/op_transformer_proto_extend.h"
 
 #define FAILED (-1)
 #define SUCCESS 0
@@ -49,37 +50,78 @@ constexpr int64_t HIDDEN = 64;  // H
 constexpr int64_t EXPERTS = 2;  // E
 constexpr int64_t CAPACITY = 4; // C
 constexpr int64_t ROUTES = 1;   // K; Top-1 demonstrates that K may be less than E.
+constexpr size_t TIME_BUFFER_SIZE = 64;
+constexpr size_t DATA_PATTERN_MULTIPLIER = 7;
+constexpr size_t DATA_PATTERN_OFFSET = 3;
+constexpr size_t DATA_PATTERN_MODULUS = 100;
+constexpr size_t ROUTE_PATTERN_PERIOD = 4;
+constexpr size_t EXPERT_UPPER_BOUND_PATTERN = 1;
+constexpr size_t LOCATION_UPPER_BOUND_PATTERN = 2;
+constexpr int64_t MAX_PRINT_COUNT = 8;
+constexpr uint16_t FP16_SIGN_MASK = 0x8000;
+constexpr int32_t FP16_EXPONENT_BIAS = 15;
+constexpr int32_t FP16_MAX_EXPONENT = 30;
+constexpr uint32_t FP16_MANTISSA_BITS = 10;
+constexpr uint32_t FP16_MANTISSA_SCALE = 1U << FP16_MANTISSA_BITS;
+constexpr float FP16_ROUND_HALFWAY = 0.5F;
+constexpr float FP16_MIN_NORMAL = 0x1.0p-14F;
+constexpr float FP16_MAX_FINITE = 65504.0F;
 
 string GetTime()
 {
     time_t timep;
-    time(&timep);
-    char tmp[64];
-    strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S,000", localtime(&timep));
+    if (time(&timep) == static_cast<time_t>(-1)) {
+        return {};
+    }
+    struct tm localTime = {};
+    if (localtime_r(&timep, &localTime) == nullptr) {
+        return {};
+    }
+    char tmp[TIME_BUFFER_SIZE] = {};
+    if (strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S,000", &localTime) == 0) {
+        return {};
+    }
     return string(tmp);
 }
 
-uint16_t FloatToFp16Bits(float val)
+int32_t FloatToFp16Bits(float value, uint16_t &result)
 {
-    uint32_t bits = 0;
-    memcpy(&bits, &val, sizeof(uint32_t));
-    const uint16_t sign = static_cast<uint16_t>((bits >> 16) & 0x8000);
-    const uint16_t exponent = static_cast<uint16_t>((bits >> 23) & 0xff);
-    const uint32_t mantissa = bits & 0x7fffff;
-    if (exponent == 0) {
-        return sign;
+    if (!std::isfinite(value)) {
+        return FAILED;
     }
-    if (exponent >= 113 && exponent <= 142) {
-        return static_cast<uint16_t>(sign | ((exponent - 112) << 10) | (mantissa >> 13));
+    const uint16_t sign = std::signbit(value) ? FP16_SIGN_MASK : 0;
+    const float magnitude = std::fabs(value);
+    if (magnitude == 0.0F) {
+        result = sign;
+        return SUCCESS;
     }
-    if (exponent < 113) {
-        if (exponent >= 103) {
-            const uint32_t shifted = (mantissa | 0x800000) >> (113 - exponent);
-            return static_cast<uint16_t>(sign | static_cast<uint16_t>(shifted));
+    if (magnitude < FP16_MIN_NORMAL || magnitude > FP16_MAX_FINITE) {
+        return FAILED;
+    }
+
+    int exponent = 0;
+    const float fraction = std::frexp(magnitude, &exponent);
+    int32_t halfExponent = exponent - 1 + FP16_EXPONENT_BIAS;
+    if (halfExponent <= 0 || halfExponent > FP16_MAX_EXPONENT) {
+        return FAILED;
+    }
+    const float scaledMantissa = (fraction * 2.0F - 1.0F) * static_cast<float>(FP16_MANTISSA_SCALE);
+    const float flooredMantissa = std::floor(scaledMantissa);
+    uint32_t halfMantissa = static_cast<uint32_t>(flooredMantissa);
+    const float remainder = scaledMantissa - flooredMantissa;
+    if (remainder > FP16_ROUND_HALFWAY || (remainder == FP16_ROUND_HALFWAY && (halfMantissa & 1U) != 0U)) {
+        ++halfMantissa;
+    }
+    if (halfMantissa == FP16_MANTISSA_SCALE) {
+        halfMantissa = 0;
+        ++halfExponent;
+        if (halfExponent > FP16_MAX_EXPONENT) {
+            return FAILED;
         }
-        return sign;
     }
-    return static_cast<uint16_t>(sign | 0x7c00);
+    result = static_cast<uint16_t>(sign | static_cast<uint16_t>(halfExponent << FP16_MANTISSA_BITS) |
+                                   static_cast<uint16_t>(halfMantissa));
+    return SUCCESS;
 }
 
 int32_t MakeFloatTensor(const vector<int64_t> &shape, DataType dtype, Format format, Tensor &tensor, TensorDesc &desc)
@@ -91,18 +133,28 @@ int32_t MakeFloatTensor(const vector<int64_t> &shape, DataType dtype, Format for
     for (size_t i = 0; i < shape.size(); i++) {
         size *= static_cast<size_t>(shape[i]);
     }
-    const uint32_t byteSize = (dtype == ge::DT_FLOAT) ? 4U : 2U;
-    vector<uint8_t> data(size * byteSize, 0);
+    if (dtype == ge::DT_FLOAT) {
+        vector<float> data(size, 0.0F);
+        for (size_t i = 0; i < size; i++) {
+            data[i] = static_cast<float>((i * DATA_PATTERN_MULTIPLIER + DATA_PATTERN_OFFSET) % DATA_PATTERN_MODULUS) /
+                      static_cast<float>(DATA_PATTERN_MODULUS);
+        }
+        tensor = Tensor(desc, reinterpret_cast<const uint8_t *>(data.data()), data.size() * sizeof(float));
+        return SUCCESS;
+    }
+    if (dtype != ge::DT_FLOAT16) {
+        return FAILED;
+    }
+    vector<uint16_t> data(size, 0);
     for (size_t i = 0; i < size; i++) {
-        const float val = static_cast<float>((i * 7 + 3) % 100) / 100.0f;
-        if (dtype == ge::DT_FLOAT) {
-            memcpy(data.data() + i * 4, &val, sizeof(float));
-        } else {
-            const uint16_t half = FloatToFp16Bits(val);
-            memcpy(data.data() + i * 2, &half, sizeof(uint16_t));
+        const float value =
+            static_cast<float>((i * DATA_PATTERN_MULTIPLIER + DATA_PATTERN_OFFSET) % DATA_PATTERN_MODULUS) /
+            static_cast<float>(DATA_PATTERN_MODULUS);
+        if (FloatToFp16Bits(value, data[i]) != SUCCESS) {
+            return FAILED;
         }
     }
-    tensor = Tensor(desc, data.data(), data.size());
+    tensor = Tensor(desc, reinterpret_cast<const uint8_t *>(data.data()), data.size() * sizeof(uint16_t));
     return SUCCESS;
 }
 
@@ -122,8 +174,18 @@ int main(int argc, char *argv[])
     Graph graph(graphName);
 
     DataType floatDtype = DT_FLOAT;
-    if (argc > 1 && string(argv[1]) == "fp16") {
-        floatDtype = DT_FLOAT16;
+    if (argc > 2 || (argc == 2 && argv[1] == nullptr)) {
+        printf("Usage: %s [fp32|fp16]\n", argv[0]);
+        return FAILED;
+    }
+    if (argc == 2) {
+        const string dtypeArg(argv[1]);
+        if (dtypeArg == "fp16") {
+            floatDtype = DT_FLOAT16;
+        } else if (dtypeArg != "fp32") {
+            printf("Usage: %s [fp32|fp16]\n", argv[0]);
+            return FAILED;
+        }
     }
 
     printf("%s - INFO - [XIR]: Start to initialize ge\n", GetTime().c_str());
@@ -143,20 +205,24 @@ int main(int argc, char *argv[])
     TensorDesc descIndices;
     TensorDesc descLocations;
 
-    (void)MakeFloatTensor({SAMPLES, HIDDEN}, floatDtype, FORMAT_ND, tensorX, descX);
-    (void)MakeFloatTensor({EXPERTS, CAPACITY, HIDDEN}, floatDtype, FORMAT_ND, tensorY, descY);
+    if (MakeFloatTensor({SAMPLES, HIDDEN}, floatDtype, FORMAT_ND, tensorX, descX) != SUCCESS ||
+        MakeFloatTensor({EXPERTS, CAPACITY, HIDDEN}, floatDtype, FORMAT_ND, tensorY, descY) != SUCCESS) {
+        printf("%s - ERROR - [XIR]: MakeFloatTensor failed\n", GetTime().c_str());
+        (void)ge::GEFinalize();
+        return FAILED;
+    }
 
     // 路由值刻意混入越界项（-1 与 EXPERTS / CAPACITY），这些位置期望输出 0。
     vector<int32_t> indicesValues(static_cast<size_t>(ROUTES * SAMPLES), 0);
     vector<int32_t> locationsValues(static_cast<size_t>(ROUTES * SAMPLES), 0);
     for (size_t i = 0; i < indicesValues.size(); i++) {
-        if (i % 4 == 0) {
+        if (i % ROUTE_PATTERN_PERIOD == 0) {
             indicesValues[i] = -1; // index 负越界
             locationsValues[i] = static_cast<int32_t>(i % CAPACITY);
-        } else if (i % 4 == 1) {
+        } else if (i % ROUTE_PATTERN_PERIOD == EXPERT_UPPER_BOUND_PATTERN) {
             indicesValues[i] = static_cast<int32_t>(EXPERTS); // index 上越界
             locationsValues[i] = static_cast<int32_t>(i % CAPACITY);
-        } else if (i % 4 == 2) {
+        } else if (i % ROUTE_PATTERN_PERIOD == LOCATION_UPPER_BOUND_PATTERN) {
             indicesValues[i] = static_cast<int32_t>(i % EXPERTS);
             locationsValues[i] = static_cast<int32_t>(CAPACITY); // location 上越界
         } else {
@@ -164,8 +230,12 @@ int main(int argc, char *argv[])
             locationsValues[i] = static_cast<int32_t>(i % CAPACITY);
         }
     }
-    (void)MakeInt32Tensor({ROUTES, SAMPLES}, indicesValues, tensorIndices, descIndices);
-    (void)MakeInt32Tensor({ROUTES, SAMPLES}, locationsValues, tensorLocations, descLocations);
+    if (MakeInt32Tensor({ROUTES, SAMPLES}, indicesValues, tensorIndices, descIndices) != SUCCESS ||
+        MakeInt32Tensor({ROUTES, SAMPLES}, locationsValues, tensorLocations, descLocations) != SUCCESS) {
+        printf("%s - ERROR - [XIR]: MakeInt32Tensor failed\n", GetTime().c_str());
+        (void)ge::GEFinalize();
+        return FAILED;
+    }
 
     auto xData = op::Data("placeholder_x").set_attr_index(0);
     xData.update_input_desc_x(descX);
@@ -191,7 +261,7 @@ int main(int argc, char *argv[])
     graph.SetInputs(inputsOp).SetOutputs(outputsOp);
 
     map<AscendString, AscendString> buildOptions = {};
-    ge::Session *session = new (std::nothrow) Session(buildOptions);
+    std::unique_ptr<ge::Session> session(new (std::nothrow) Session(buildOptions));
     if (session == nullptr) {
         printf("Create session failed\n");
         (void)ge::GEFinalize();
@@ -203,7 +273,7 @@ int main(int argc, char *argv[])
     ret = session->AddGraph(graphId, graph, graphOptions);
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: AddGraph failed ret=%u\n", GetTime().c_str(), ret);
-        delete session;
+        session.reset();
         (void)ge::GEFinalize();
         return FAILED;
     }
@@ -215,7 +285,7 @@ int main(int argc, char *argv[])
         printf("%s - ERROR - [XIR]: RunGraph failed ret=%u\n", GetTime().c_str(), ret);
         ge::AscendString errorMsg = ge::GEGetErrorMsgV2();
         printf("%s - ERROR - [XIR]: error: %s\n", GetTime().c_str(), errorMsg.GetString());
-        delete session;
+        session.reset();
         (void)ge::GEFinalize();
         return FAILED;
     }
@@ -226,15 +296,14 @@ int main(int argc, char *argv[])
         printf("output[%zu] dtype=%d shapeSize=%ld\n", i, output[i].GetTensorDesc().GetDataType(), outSize);
         if (output[i].GetTensorDesc().GetDataType() == ge::DT_FLOAT) {
             const float *p = reinterpret_cast<const float *>(output[i].GetData());
-            const int64_t printCnt = outSize < 8 ? outSize : 8;
+            const int64_t printCnt = outSize < MAX_PRINT_COUNT ? outSize : MAX_PRINT_COUNT;
             for (int64_t j = 0; j < printCnt; j++) {
                 printf("  result[%ld] = %f\n", j, p[j]);
             }
         }
     }
 
-    delete session;
-    session = nullptr;
+    session.reset();
     ret = ge::GEFinalize();
     if (ret != SUCCESS) {
         printf("GEFinalize failed\n");

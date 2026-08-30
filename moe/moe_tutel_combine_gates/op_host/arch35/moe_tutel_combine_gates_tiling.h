@@ -18,11 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "log/log.h"
-#include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
-#include "tiling/platform/platform_ascendc.h"
-#include "op_common/op_host/util/platform_util.h"
 #include "../../op_kernel/arch35/moe_tutel_combine_gates_tiling_data.h"
 #include "../../op_kernel/arch35/moe_tutel_combine_gates_tiling_key.h"
 
@@ -78,6 +74,7 @@ private:
     bool TryNotCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock);
     bool FindCutHFactor(int64_t budget, int64_t &hFactor, int64_t &partialAlign) const;
     void SetShapeTilingData();
+    const char *GetSafeNodeName() const;
 
 private:
     gert::TilingContext *context_ = nullptr;

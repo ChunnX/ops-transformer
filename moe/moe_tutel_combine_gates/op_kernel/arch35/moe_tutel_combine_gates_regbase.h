@@ -33,9 +33,14 @@ private:
     __aicore__ inline void CopyInX(int64_t sample, int64_t hOffset, uint32_t len);
     __aicore__ inline void CopyInY(int64_t row, int64_t hOffset, uint32_t len);
     __aicore__ inline void CopyInRoutes(int64_t kBase, int64_t curK, int64_t sBase, int64_t curS);
-    __aicore__ inline void ComputeOnePair(int64_t sample, int64_t sInTile, int64_t kInTile, const LocalTensor<T> &xUb,
-                                          const LocalTensor<int32_t> &indicesUb,
-                                          const LocalTensor<int32_t> &locationsUb);
+    __aicore__ inline bool GetRouteRow(int64_t sInTile, int64_t kInTile, const LocalTensor<int32_t> &indicesUb,
+                                       const LocalTensor<int32_t> &locationsUb, int64_t &row) const;
+    __aicore__ inline void ComputeNotCutHOnePair(int64_t sInTile, int64_t kInTile, const LocalTensor<T> &xUb,
+                                                 const LocalTensor<int32_t> &indicesUb,
+                                                 const LocalTensor<int32_t> &locationsUb);
+    __aicore__ inline void ComputeCutHSample(int64_t sample, int64_t sInTile, int64_t curK,
+                                             const LocalTensor<int32_t> &indicesUb,
+                                             const LocalTensor<int32_t> &locationsUb);
     __aicore__ inline void ComputeTile(int64_t kBase, int64_t curK, int64_t sBase, int64_t curS);
     __aicore__ inline void CopyOut(int64_t kBase, int64_t curK, int64_t sBase, int64_t curS);
     __aicore__ inline uint32_t ChunkLen(int64_t chunk) const;
@@ -122,13 +127,18 @@ __aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::Init(GM_ADDR x, GM
         const uint32_t rowBytes = static_cast<uint32_t>(hFactorAlign_ * static_cast<int64_t>(sizeof(T)));
         const uint32_t routeBytes =
             static_cast<uint32_t>(kBlock_ * sBlockAlign_ * static_cast<int64_t>(sizeof(int32_t)));
-        pipe_->InitBuffer(xInQueue_, DOUBLE_BUFFER, rowBytes);
+        if constexpr (CUT_H) {
+            pipe_->InitBuffer(xInQueue_, 1, rowBytes);
+        } else {
+            pipe_->InitBuffer(xInQueue_, DOUBLE_BUFFER, rowBytes);
+        }
         pipe_->InitBuffer(yInQueue_, DOUBLE_BUFFER, rowBytes);
         pipe_->InitBuffer(indicesInQueue_, 1, routeBytes);
         pipe_->InitBuffer(locationsInQueue_, 1, routeBytes);
         pipe_->InitBuffer(vlPartialBuf_, static_cast<uint32_t>(vlPartialAlign_ * sizeof(float)));
         if constexpr (CUT_H) {
-            pipe_->InitBuffer(chunkPartialBuf_, static_cast<uint32_t>(chunkPartialAlign_ * sizeof(float)));
+            pipe_->InitBuffer(chunkPartialBuf_, static_cast<uint32_t>(kBlock_ * chunkPartialAlign_ *
+                                                                      static_cast<int64_t>(sizeof(float))));
         }
     }
     pipe_->InitBuffer(outQueue_, 1, static_cast<uint32_t>(kBlock_ * sBlockAlign_ * static_cast<int64_t>(sizeof(T))));
@@ -183,54 +193,90 @@ __aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::CopyInRoutes(int64
 }
 
 template <typename T, bool CUT_H>
-__aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::ComputeOnePair(int64_t sample, int64_t sInTile,
-                                                                             int64_t kInTile, const LocalTensor<T> &xUb,
-                                                                             const LocalTensor<int32_t> &indicesUb,
-                                                                             const LocalTensor<int32_t> &locationsUb)
+__aicore__ inline bool MoeTutelCombineGatesRegbase<T, CUT_H>::GetRouteRow(int64_t sInTile, int64_t kInTile,
+                                                                          const LocalTensor<int32_t> &indicesUb,
+                                                                          const LocalTensor<int32_t> &locationsUb,
+                                                                          int64_t &row) const
 {
     const uint32_t routeOffset = static_cast<uint32_t>(kInTile * sBlockAlign_ + sInTile);
     const int32_t expertId = indicesUb.GetValue(routeOffset);
     const int32_t location = locationsUb.GetValue(routeOffset);
     const bool valid = expertId >= 0 && static_cast<int64_t>(expertId) < experts_ && location >= 0 &&
                        static_cast<int64_t>(location) < capacity_;
-    if (!valid || hidden_ == 0) {
+    if (!valid) {
+        return false;
+    }
+    row = static_cast<int64_t>(expertId) * capacity_ + static_cast<int64_t>(location);
+    return true;
+}
+
+template <typename T, bool CUT_H>
+__aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::ComputeNotCutHOnePair(
+    int64_t sInTile, int64_t kInTile, const LocalTensor<T> &xUb, const LocalTensor<int32_t> &indicesUb,
+    const LocalTensor<int32_t> &locationsUb)
+{
+    int64_t row = 0;
+    if (!GetRouteRow(sInTile, kInTile, indicesUb, locationsUb, row)) {
         return;
     }
-
     __ubuf__ float *outFp32 = reinterpret_cast<__ubuf__ float *>(outFp32Buf_.Get<float>().GetPhyAddr());
     const uint32_t outOffset = static_cast<uint32_t>(kInTile * sBlockAlign_ + sInTile);
-    const int64_t row = static_cast<int64_t>(expertId) * capacity_ + static_cast<int64_t>(location);
     LocalTensor<float> vlPartial = vlPartialBuf_.Get<float>();
     __ubuf__ float *vlPartialPtr = reinterpret_cast<__ubuf__ float *>(vlPartial.GetPhyAddr());
 
-    if constexpr (CUT_H) {
-        LocalTensor<float> chunkPartial = chunkPartialBuf_.Get<float>();
-        Duplicate(chunkPartial, 0.0f, static_cast<int32_t>(chunkPartialAlign_));
-        __ubuf__ float *chunkPartialPtr = reinterpret_cast<__ubuf__ float *>(chunkPartial.GetPhyAddr());
-        for (int64_t chunk = 0; chunk < numChunks_; chunk++) {
+    Duplicate(vlPartial, 0.0f, static_cast<int32_t>(vlPartialAlign_));
+    CopyInY(row, 0, static_cast<uint32_t>(hidden_));
+    LocalTensor<T> yUb = yInQueue_.template DeQue<T>();
+    BuildDotPartialsVF<T>(vlPartialPtr, reinterpret_cast<__ubuf__ T *>(xUb.GetPhyAddr()),
+                          reinterpret_cast<__ubuf__ T *>(yUb.GetPhyAddr()), static_cast<uint32_t>(hidden_));
+    yInQueue_.FreeTensor(yUb);
+    ReducePartialTreeVF(vlPartialPtr, static_cast<uint32_t>(vlPartialAlign_), outFp32, outOffset);
+}
+
+template <typename T, bool CUT_H>
+__aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::ComputeCutHSample(int64_t sample, int64_t sInTile,
+                                                                                int64_t curK,
+                                                                                const LocalTensor<int32_t> &indicesUb,
+                                                                                const LocalTensor<int32_t> &locationsUb)
+{
+    int64_t rows[optiling::MTCG_CUT_H_ROUTE_BATCH] = {0, 0};
+    bool validRoutes[optiling::MTCG_CUT_H_ROUTE_BATCH] = {false, false};
+    for (int64_t kk = 0; kk < curK; ++kk) {
+        validRoutes[kk] = GetRouteRow(sInTile, kk, indicesUb, locationsUb, rows[kk]);
+    }
+
+    LocalTensor<float> vlPartial = vlPartialBuf_.Get<float>();
+    __ubuf__ float *vlPartialPtr = reinterpret_cast<__ubuf__ float *>(vlPartial.GetPhyAddr());
+    LocalTensor<float> chunkPartial = chunkPartialBuf_.Get<float>();
+    Duplicate(chunkPartial, 0.0f, static_cast<int32_t>(kBlock_ * chunkPartialAlign_));
+    __ubuf__ float *chunkPartialPtr = reinterpret_cast<__ubuf__ float *>(chunkPartial.GetPhyAddr());
+
+    for (int64_t chunk = 0; chunk < numChunks_; ++chunk) {
+        const uint32_t len = ChunkLen(chunk);
+        const int64_t hOffset = chunk * hFactor_;
+        CopyInX(sample, hOffset, len);
+        LocalTensor<T> xChunk = xInQueue_.template DeQue<T>();
+        for (int64_t kk = 0; kk < curK; ++kk) {
+            if (!validRoutes[kk]) {
+                continue;
+            }
             Duplicate(vlPartial, 0.0f, static_cast<int32_t>(vlPartialAlign_));
-            const uint32_t len = ChunkLen(chunk);
-            const int64_t hOffset = chunk * hFactor_;
-            CopyInX(sample, hOffset, len);
-            CopyInY(row, hOffset, len);
-            LocalTensor<T> xChunk = xInQueue_.template DeQue<T>();
+            CopyInY(rows[kk], hOffset, len);
             LocalTensor<T> yChunk = yInQueue_.template DeQue<T>();
             BuildDotPartialsVF<T>(vlPartialPtr, reinterpret_cast<__ubuf__ T *>(xChunk.GetPhyAddr()),
                                   reinterpret_cast<__ubuf__ T *>(yChunk.GetPhyAddr()), len);
-            xInQueue_.FreeTensor(xChunk);
             yInQueue_.FreeTensor(yChunk);
-            ReducePartialTreeVF(vlPartialPtr, static_cast<uint32_t>(vlPartialAlign_), chunkPartialPtr,
-                                static_cast<uint32_t>(chunk));
+            ReducePartialTreeVF(vlPartialPtr, static_cast<uint32_t>(vlPartialAlign_),
+                                chunkPartialPtr + kk * chunkPartialAlign_, static_cast<uint32_t>(chunk));
         }
-        ReducePartialTreeVF(chunkPartialPtr, static_cast<uint32_t>(chunkPartialAlign_), outFp32, outOffset);
-    } else {
-        Duplicate(vlPartial, 0.0f, static_cast<int32_t>(vlPartialAlign_));
-        CopyInY(row, 0, static_cast<uint32_t>(hidden_));
-        LocalTensor<T> yUb = yInQueue_.template DeQue<T>();
-        BuildDotPartialsVF<T>(vlPartialPtr, reinterpret_cast<__ubuf__ T *>(xUb.GetPhyAddr()),
-                              reinterpret_cast<__ubuf__ T *>(yUb.GetPhyAddr()), static_cast<uint32_t>(hidden_));
-        yInQueue_.FreeTensor(yUb);
-        ReducePartialTreeVF(vlPartialPtr, static_cast<uint32_t>(vlPartialAlign_), outFp32, outOffset);
+        xInQueue_.FreeTensor(xChunk);
+    }
+
+    __ubuf__ float *outFp32 = reinterpret_cast<__ubuf__ float *>(outFp32Buf_.Get<float>().GetPhyAddr());
+    for (int64_t kk = 0; kk < curK; ++kk) {
+        const uint32_t outOffset = static_cast<uint32_t>(kk * sBlockAlign_ + sInTile);
+        ReducePartialTreeVF(chunkPartialPtr + kk * chunkPartialAlign_, static_cast<uint32_t>(chunkPartialAlign_),
+                            outFp32, outOffset);
     }
 }
 
@@ -250,17 +296,17 @@ __aicore__ inline void MoeTutelCombineGatesRegbase<T, CUT_H>::ComputeTile(int64_
 
     for (int64_t i = 0; i < curS; i++) {
         const int64_t sample = sBase + i;
-        LocalTensor<T> xUb;
-        if constexpr (!CUT_H) {
+        if constexpr (CUT_H) {
+            ComputeCutHSample(sample, i, curK, indicesUb, locationsUb);
+        } else {
+            LocalTensor<T> xUb;
             if (hidden_ > 0) {
                 CopyInX(sample, 0, static_cast<uint32_t>(hidden_));
                 xUb = xInQueue_.template DeQue<T>();
             }
-        }
-        for (int64_t kk = 0; kk < curK; kk++) {
-            ComputeOnePair(sample, i, kk, xUb, indicesUb, locationsUb);
-        }
-        if constexpr (!CUT_H) {
+            for (int64_t kk = 0; kk < curK; kk++) {
+                ComputeNotCutHOnePair(i, kk, xUb, indicesUb, locationsUb);
+            }
             if (hidden_ > 0) {
                 xInQueue_.FreeTensor(xUb);
             }

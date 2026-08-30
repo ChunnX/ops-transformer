@@ -92,7 +92,7 @@ gert::TilingContextPara MakePara(const vector<int64_t> &xShape, const vector<int
                                    kAscend950SocInfo, 4096);
 }
 
-void ExpectSuccess(gert::TilingContextPara &para, uint64_t tilingKey)
+void ExpectSuccess(const gert::TilingContextPara &para, uint64_t tilingKey)
 {
     std::vector<size_t> expectWorkspaces = {SYS_WORKSPACE_SIZE};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, tilingKey, "", expectWorkspaces);
@@ -134,11 +134,44 @@ TEST_F(MoeTutelCombineGatesTilingTest, core_split_uses_all_available_cores)
     EXPECT_EQ(tilingData->sCoreNum, 16);
 }
 
+TEST_F(MoeTutelCombineGatesTilingTest, core_split_balances_two_dimensional_workload)
+{
+    auto compileInfo = MakeCompileInfo(32);
+    auto para = MakePara({33, 64}, {33, 4, 64}, {33, 33}, {33, 33}, {33, 33}, ge::DT_FLOAT, &compileInfo);
+    TilingInfo info;
+    ASSERT_TRUE(ExecuteTiling(para, info));
+    ASSERT_GE(info.tilingDataSize, sizeof(optiling::MoeTutelCombineGatesTilingData));
+    const auto *tilingData = reinterpret_cast<const optiling::MoeTutelCombineGatesTilingData *>(info.tilingData.get());
+    EXPECT_EQ(info.blockNum, 32);
+    EXPECT_EQ(tilingData->sCoreNum, 8);
+    EXPECT_EQ(tilingData->sPerCoreBase, 4);
+    EXPECT_EQ(tilingData->sCoreRemain, 1);
+    EXPECT_EQ(tilingData->kPerCoreBase, 8);
+    EXPECT_EQ(tilingData->kCoreRemain, 1);
+}
+
 TEST_F(MoeTutelCombineGatesTilingTest, cut_h_float32_large_hidden)
 {
     auto compileInfo = MakeCompileInfo();
     auto para = MakePara({4, 65536}, {2, 3, 65536}, {1, 4}, {1, 4}, {1, 4}, ge::DT_FLOAT, &compileInfo);
     ExpectSuccess(para, optiling::MTCG_TILING_KEY_CUT_H);
+}
+
+TEST_F(MoeTutelCombineGatesTilingTest, cut_h_batches_two_routes_to_reuse_x_chunk)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakePara({2, 65536}, {32, 1, 65536}, {32, 2}, {32, 2}, {32, 2}, ge::DT_FLOAT, &compileInfo);
+    TilingInfo info;
+    ASSERT_TRUE(ExecuteTiling(para, info));
+    ASSERT_GE(info.tilingDataSize, sizeof(optiling::MoeTutelCombineGatesTilingData));
+    const auto *tilingData = reinterpret_cast<const optiling::MoeTutelCombineGatesTilingData *>(info.tilingData.get());
+    EXPECT_EQ(info.blockNum, 32);
+    EXPECT_EQ(info.tilingKey, optiling::MTCG_TILING_KEY_CUT_H);
+    EXPECT_EQ(tilingData->sCoreNum, 2);
+    EXPECT_EQ(tilingData->kPerCoreBase, 2);
+    EXPECT_EQ(tilingData->kCoreRemain, 0);
+    EXPECT_EQ(tilingData->sBlock, 1);
+    EXPECT_EQ(tilingData->kBlock, optiling::MTCG_CUT_H_ROUTE_BATCH);
 }
 
 TEST_F(MoeTutelCombineGatesTilingTest, datacopy_block_len_limit_boundary_uses_not_cut_h)

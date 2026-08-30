@@ -18,6 +18,7 @@
 #include <securec.h>
 #include <string>
 
+#include "log/log.h"
 #include "moe_tutel_combine_gates_tiling.h"
 
 using namespace ge;
@@ -33,6 +34,8 @@ constexpr size_t DIM_2 = 2;
 
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t INPUT_BUFFER_NUM = 2;
+constexpr int64_t CUT_H_X_BUFFER_NUM = 1;
+constexpr int64_t CUT_H_Y_BUFFER_NUM = 2;
 constexpr int64_t ROUTE_BUFFER_NUM = 2;
 constexpr int64_t POWER_OF_TWO_RADIX = 2;
 constexpr int64_t TILE_SHRINK_FACTOR = 2;
@@ -98,11 +101,19 @@ std::string ShapeValues(int64_t samples, int64_t hidden, int64_t experts, int64_
 }
 } // namespace
 
+const char *MoeTutelCombineGatesTiling::GetSafeNodeName() const
+{
+    if (context_ == nullptr) {
+        return "MoeTutelCombineGates";
+    }
+    const char *nodeName = context_->GetNodeName();
+    return nodeName == nullptr ? "MoeTutelCombineGates" : nodeName;
+}
+
 ge::graphStatus MoeTutelCombineGatesTiling::GetPlatformInfo()
 {
     auto compileInfo = static_cast<const MoeTutelCombineGatesCompileInfo *>(context_->GetCompileInfo());
-    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "compile info is null"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(GetSafeNodeName(), "compile info is null"), return ge::GRAPH_FAILED);
     coreNum_ = compileInfo->coreNum;
     ubSize_ = compileInfo->ubSize;
     workspaceSize_ = compileInfo->workspaceSize;
@@ -116,7 +127,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::GetPlatformInfo()
         (vlFp32_ & (vlFp32_ - 1)) != 0;
     OP_CHECK_IF(
         invalidPlatform,
-        OP_LOGE(context_->GetNodeName(), "invalid platform info: coreNum=%lu, ubSize=%lu, vlFp32=%ld, ubBlockSize=%ld",
+        OP_LOGE(GetSafeNodeName(), "invalid platform info: coreNum=%lu, ubSize=%lu, vlFp32=%ld, ubBlockSize=%ld",
                 coreNum_, ubSize_, vlFp32_, ubBlockSize_),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -132,10 +143,10 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckFormat() const
     for (size_t i = 0; i < sizeof(descs) / sizeof(descs[0]); ++i) {
         OP_CHECK_NULL_WITH_CONTEXT(context_, descs[i]);
         const ge::Format format = static_cast<ge::Format>(ge::GetPrimaryFormat(descs[i]->GetStorageFormat()));
-        OP_CHECK_IF(format != ge::FORMAT_ND,
-                    OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), names[i], Ops::Base::ToString(format).c_str(),
-                                               "FORMAT_ND"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            format != ge::FORMAT_ND,
+            OP_LOGE_FOR_INVALID_FORMAT(GetSafeNodeName(), names[i], Ops::Base::ToString(format).c_str(), "FORMAT_ND"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -155,18 +166,18 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckDtype()
 
     const ge::DataType xType = xDesc->GetDataType();
     OP_CHECK_IF(xType != ge::DT_FLOAT && xType != ge::DT_FLOAT16 && xType != ge::DT_BF16,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x", Ops::Base::ToString(xType),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetSafeNodeName(), "x", Ops::Base::ToString(xType),
                                                       "dtype of x must be float32, float16 or bfloat16"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(yDesc->GetDataType() != xType || outDesc->GetDataType() != xType,
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x, y_grad, gates_grad",
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetSafeNodeName(), "x, y_grad, gates_grad",
                                                        Ops::Base::ToString(xType) + ", " +
                                                            Ops::Base::ToString(yDesc->GetDataType()) + ", " +
                                                            Ops::Base::ToString(outDesc->GetDataType()),
                                                        "dtype of x, y_grad and gates_grad must be identical"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(indicesDesc->GetDataType() != ge::DT_INT32 || locationsDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "indices, locations",
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetSafeNodeName(), "indices, locations",
                                                        Ops::Base::ToString(indicesDesc->GetDataType()) + ", " +
                                                            Ops::Base::ToString(locationsDesc->GetDataType()),
                                                        "dtype of indices and locations must be int32"),
@@ -181,20 +192,19 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckRank(const gert::Shape &xShape,
                                                       const gert::Shape &locationsShape,
                                                       const gert::Shape &outShape) const
 {
-    OP_CHECK_IF(
-        xShape.GetDimNum() != X_DIM_NUM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x", std::to_string(xShape.GetDimNum()),
-                                                 "rank of x must be 2, in the form of [S, H]"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(xShape.GetDimNum() != X_DIM_NUM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetSafeNodeName(), "x", std::to_string(xShape.GetDimNum()),
+                                                         "rank of x must be 2, in the form of [S, H]"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         yShape.GetDimNum() != Y_GRAD_DIM_NUM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "y_grad", std::to_string(yShape.GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetSafeNodeName(), "y_grad", std::to_string(yShape.GetDimNum()),
                                                  "rank of y_grad must be 3, in the form of [E, C, H]"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(indicesShape.GetDimNum() != ROUTE_DIM_NUM || locationsShape.GetDimNum() != ROUTE_DIM_NUM ||
                     outShape.GetDimNum() != ROUTE_DIM_NUM,
                 OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                    context_->GetNodeName(), "indices, locations, gates_grad",
+                    GetSafeNodeName(), "indices, locations, gates_grad",
                     std::to_string(indicesShape.GetDimNum()) + ", " + std::to_string(locationsShape.GetDimNum()) +
                         ", " + std::to_string(outShape.GetDimNum()),
                     "rank of indices, locations and gates_grad must all be 2, in the form of [K, S]"),
@@ -212,7 +222,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckRouteShape(const gert::Shape &i
                               outShape.GetDim(DIM_1) == samples_;
     OP_CHECK_IF(!routeShapeOk,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    context_->GetNodeName(), "indices, locations, gates_grad",
+                    GetSafeNodeName(), "indices, locations, gates_grad",
                     Ops::Base::ToString(indicesShape) + ", " + Ops::Base::ToString(locationsShape) + ", " +
                         Ops::Base::ToString(outShape),
                     "shape of indices, locations and gates_grad must all be [K, S], and S must equal x.shape[0]"),
@@ -227,16 +237,33 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckTensorSizes() const
     int64_t yElements = 0;
     int64_t routeElements = 0;
     int64_t bytes = 0;
-    const bool safe = CheckedMul(samples_, hidden_, xElements) && CheckedMul(experts_, capacity_, expertRows) &&
-                      CheckedMul(expertRows, hidden_, yElements) && CheckedMul(routes_, samples_, routeElements) &&
-                      CheckedMul(xElements, dtypeSize_, bytes) && CheckedMul(yElements, dtypeSize_, bytes) &&
-                      CheckedMul(routeElements, static_cast<int64_t>(sizeof(int32_t)), bytes) &&
-                      CheckedMul(routeElements, dtypeSize_, bytes);
-    OP_CHECK_IF(!safe,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    context_->GetNodeName(), "x, y_grad, indices, locations, gates_grad",
-                    ShapeValues(samples_, hidden_, experts_, capacity_, routes_),
-                    "all element counts, byte counts, strides and offsets must fit signed 64-bit arithmetic"),
+    OP_CHECK_IF(!CheckedMul(samples_, hidden_, xElements),
+                OP_LOGE(GetSafeNodeName(), "overflow computing xElements: S=%ld, H=%ld", samples_, hidden_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedMul(experts_, capacity_, expertRows),
+                OP_LOGE(GetSafeNodeName(), "overflow computing expertRows: E=%ld, C=%ld", experts_, capacity_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedMul(expertRows, hidden_, yElements),
+                OP_LOGE(GetSafeNodeName(), "overflow computing yElements: expertRows=%ld, H=%ld", expertRows, hidden_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedMul(routes_, samples_, routeElements),
+                OP_LOGE(GetSafeNodeName(), "overflow computing routeElements: K=%ld, S=%ld", routes_, samples_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !CheckedMul(xElements, dtypeSize_, bytes),
+        OP_LOGE(GetSafeNodeName(), "overflow computing xBytes: xElements=%ld, dtypeSize=%ld", xElements, dtypeSize_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !CheckedMul(yElements, dtypeSize_, bytes),
+        OP_LOGE(GetSafeNodeName(), "overflow computing yBytes: yElements=%ld, dtypeSize=%ld", yElements, dtypeSize_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedMul(routeElements, static_cast<int64_t>(sizeof(int32_t)), bytes),
+                OP_LOGE(GetSafeNodeName(), "overflow computing routeBytes: routeElements=%ld, dtypeSize=%zu",
+                        routeElements, sizeof(int32_t)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedMul(routeElements, dtypeSize_, bytes),
+                OP_LOGE(GetSafeNodeName(), "overflow computing outputBytes: routeElements=%ld, dtypeSize=%ld",
+                        routeElements, dtypeSize_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -282,24 +309,22 @@ ge::graphStatus MoeTutelCombineGatesTiling::CheckShapeValues(const gert::Shape &
                              outShape.GetDim(DIM_1) >= 0;
     OP_CHECK_IF(!allConcrete,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    context_->GetNodeName(), "x, y_grad, indices, locations, gates_grad",
+                    GetSafeNodeName(), "x, y_grad, indices, locations, gates_grad",
                     Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(yShape) + ", " +
                         Ops::Base::ToString(indicesShape) + ", " + Ops::Base::ToString(locationsShape) + ", " +
                         Ops::Base::ToString(outShape),
                     "Tiling requires concrete non-negative dimensions"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        experts_ == 0 || capacity_ == 0 || routes_ == 0 || routes_ > experts_,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "y_grad, indices, locations, gates_grad",
-                                               ShapeValues(samples_, hidden_, experts_, capacity_, routes_),
-                                               "E, C and K must be positive and K must satisfy 1 <= K <= E"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        yHidden != hidden_,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x, y_grad",
-                                               Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(yShape),
-                                               "x.shape[1] must equal y_grad.shape[2], the contracted hidden axis H"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(experts_ == 0 || capacity_ == 0 || routes_ == 0 || routes_ > experts_,
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetSafeNodeName(), "y_grad, indices, locations, gates_grad",
+                                                       ShapeValues(samples_, hidden_, experts_, capacity_, routes_),
+                                                       "E, C and K must be positive and K must satisfy 1 <= K <= E"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(yHidden != hidden_,
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    GetSafeNodeName(), "x, y_grad", Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(yShape),
+                    "x.shape[1] must equal y_grad.shape[2], the contracted hidden axis H"),
+                return ge::GRAPH_FAILED);
     if (CheckRouteShape(indicesShape, locationsShape, outShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -323,20 +348,47 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitCore()
     int64_t sCoreNum = 1;
     int64_t kCoreNum = std::min(coreNum, routes_);
     int64_t blockDim = kCoreNum;
+    int64_t maxSPerCore = 0;
+    int64_t maxKPerCore = 0;
+    int64_t maxCoreLoad = 0;
+    OP_CHECK_IF(!CheckedCeilDiv(samples_, sCoreNum, maxSPerCore) || !CheckedCeilDiv(routes_, kCoreNum, maxKPerCore) ||
+                    !CheckedMul(maxSPerCore, maxKPerCore, maxCoreLoad),
+                OP_LOGE(GetSafeNodeName(),
+                        "overflow computing initial core load: S=%ld, K=%ld, sCoreNum=%ld, "
+                        "kCoreNum=%ld",
+                        samples_, routes_, sCoreNum, kCoreNum),
+                return ge::GRAPH_FAILED);
     for (int64_t candidateSCoreNum = 2; candidateSCoreNum <= maxSCoreNum; ++candidateSCoreNum) {
         const int64_t candidateKCoreNum = std::min(coreNum / candidateSCoreNum, routes_);
         int64_t candidateBlockDim = 0;
         if (!CheckedMul(candidateSCoreNum, candidateKCoreNum, candidateBlockDim)) {
+            OP_LOGE(GetSafeNodeName(), "overflow computing candidateBlockDim: sCoreNum=%ld, kCoreNum=%ld",
+                    candidateSCoreNum, candidateKCoreNum);
             return ge::GRAPH_FAILED;
         }
-        if (candidateBlockDim > blockDim || (candidateBlockDim == blockDim && candidateSCoreNum > sCoreNum)) {
+        int64_t candidateMaxSPerCore = 0;
+        int64_t candidateMaxKPerCore = 0;
+        int64_t candidateMaxCoreLoad = 0;
+        OP_CHECK_IF(!CheckedCeilDiv(samples_, candidateSCoreNum, candidateMaxSPerCore) ||
+                        !CheckedCeilDiv(routes_, candidateKCoreNum, candidateMaxKPerCore) ||
+                        !CheckedMul(candidateMaxSPerCore, candidateMaxKPerCore, candidateMaxCoreLoad),
+                    OP_LOGE(GetSafeNodeName(),
+                            "overflow computing candidate core load: S=%ld, K=%ld, sCoreNum=%ld, kCoreNum=%ld",
+                            samples_, routes_, candidateSCoreNum, candidateKCoreNum),
+                    return ge::GRAPH_FAILED);
+        const bool hasMoreCores = candidateBlockDim > blockDim;
+        const bool hasBetterLoad = candidateBlockDim == blockDim && candidateMaxCoreLoad < maxCoreLoad;
+        const bool hasBetterReuse =
+            candidateBlockDim == blockDim && candidateMaxCoreLoad == maxCoreLoad && candidateSCoreNum > sCoreNum;
+        if (hasMoreCores || hasBetterLoad || hasBetterReuse) {
             sCoreNum = candidateSCoreNum;
             kCoreNum = candidateKCoreNum;
             blockDim = candidateBlockDim;
+            maxCoreLoad = candidateMaxCoreLoad;
         }
     }
     OP_CHECK_IF(kCoreNum <= 0 || blockDim <= 0 || blockDim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                OP_LOGE(context_->GetNodeName(), "invalid core split: sCoreNum=%ld, kCoreNum=%ld", sCoreNum, kCoreNum),
+                OP_LOGE(GetSafeNodeName(), "invalid core split: sCoreNum=%ld, kCoreNum=%ld", sCoreNum, kCoreNum),
                 return ge::GRAPH_FAILED);
 
     td_.sCoreNum = static_cast<uint64_t>(sCoreNum);
@@ -439,37 +491,60 @@ bool MoeTutelCombineGatesTiling::FindCutHFactor(int64_t budget, int64_t &hFactor
 
 ge::graphStatus MoeTutelCombineGatesTiling::SolveCutH(int64_t avail, int64_t &sBlock, int64_t &kBlock)
 {
+    const int64_t kBlockLimit = kBlock;
     sBlock = 1;
     kBlock = 1;
     int64_t tileBytes = 0;
     int64_t fixedBytes = 0;
     OP_CHECK_IF(!GetTileBytes(sBlock, kBlock, tileBytes) || !CheckedAdd(tileBytes, MAX_CHUNK_TREE_BYTES, fixedBytes) ||
                     fixedBytes >= avail,
-                OP_LOGE(context_->GetNodeName(), "UB size %lu is too small for CUT_H output and tree buffers", ubSize_),
+                OP_LOGE(GetSafeNodeName(), "UB size %lu is too small for CUT_H output and tree buffers", ubSize_),
                 return ge::GRAPH_FAILED);
     const int64_t rowAndTreeBudget = avail - fixedBytes;
     int64_t hFactor = 0;
     int64_t partialAlign = 0;
     OP_CHECK_IF(!FindCutHFactor(rowAndTreeBudget, hFactor, partialAlign),
-                OP_LOGE(context_->GetNodeName(), "cannot find a safe CUT_H factor for UB size %lu", ubSize_),
+                OP_LOGE(GetSafeNodeName(), "cannot find a safe CUT_H factor for UB size %lu", ubSize_),
                 return ge::GRAPH_FAILED);
 
     int64_t numChunks = 0;
     OP_CHECK_IF(!CheckedCeilDiv(hidden_, hFactor, numChunks) || numChunks <= 0 || numChunks > MAX_CHUNK_COUNT,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                    context_->GetNodeName(), "x", std::to_string(hidden_),
+                    GetSafeNodeName(), "x", std::to_string(hidden_),
                     "hidden axis H requires too many CUT_H chunks for the deterministic tree buffer"),
                 return ge::GRAPH_FAILED);
     int64_t chunkPartialAlign = 0;
     int64_t chunkTreeBytes = 0;
+    int64_t vlTreeBytes = 0;
     OP_CHECK_IF(!CheckedNextPowerOfTwo(numChunks, vlFp32_, chunkPartialAlign) ||
                     !CheckedMul(chunkPartialAlign, static_cast<int64_t>(sizeof(float)), chunkTreeBytes) ||
+                    !CheckedMul(partialAlign, static_cast<int64_t>(sizeof(float)), vlTreeBytes) ||
                     chunkTreeBytes > MAX_CHUNK_TREE_BYTES,
-                OP_LOGE(context_->GetNodeName(), "invalid CUT_H chunk tree layout: chunks=%ld", numChunks),
+                OP_LOGE(GetSafeNodeName(), "invalid CUT_H chunk tree layout: chunks=%ld", numChunks),
                 return ge::GRAPH_FAILED);
     int64_t usedHidden = 0;
     OP_CHECK_IF(!CheckedMul(numChunks - 1, hFactor, usedHidden) || usedHidden > hidden_,
-                OP_LOGE(context_->GetNodeName(), "CUT_H tail calculation overflow"), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "CUT_H tail calculation overflow"), return ge::GRAPH_FAILED);
+
+    const int64_t candidateKBlock = std::min(kBlockLimit, static_cast<int64_t>(optiling::MTCG_CUT_H_ROUTE_BATCH));
+    if (candidateKBlock > 1) {
+        int64_t rowBytes = 0;
+        int64_t inputBytes = 0;
+        int64_t candidateTileBytes = 0;
+        int64_t candidateChunkTreeBytes = 0;
+        int64_t candidateTotalBytes = 0;
+        const bool batchFits = GetRowBytes(hFactor, rowBytes) &&
+                               CheckedMul(rowBytes, CUT_H_X_BUFFER_NUM + CUT_H_Y_BUFFER_NUM, inputBytes) &&
+                               GetTileBytes(sBlock, candidateKBlock, candidateTileBytes) &&
+                               CheckedMul(chunkTreeBytes, candidateKBlock, candidateChunkTreeBytes) &&
+                               CheckedAdd(inputBytes, vlTreeBytes, candidateTotalBytes) &&
+                               CheckedAdd(candidateTotalBytes, candidateTileBytes, candidateTotalBytes) &&
+                               CheckedAdd(candidateTotalBytes, candidateChunkTreeBytes, candidateTotalBytes) &&
+                               candidateTotalBytes <= avail;
+        if (batchFits) {
+            kBlock = candidateKBlock;
+        }
+    }
 
     td_.hFactor = static_cast<uint64_t>(hFactor);
     td_.numChunks = static_cast<uint64_t>(numChunks);
@@ -499,14 +574,14 @@ ge::graphStatus MoeTutelCombineGatesTiling::SolveZeroH(int64_t avail, int64_t &s
         }
     }
     OP_CHECK_IF(!GetTileBytes(sBlock, kBlock, tileBytes) || tileBytes > avail,
-                OP_LOGE(context_->GetNodeName(), "UB is too small for H=0 output tile"), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "UB is too small for H=0 output tile"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
 {
     OP_CHECK_IF(ubSize_ <= static_cast<uint64_t>(UB_RESERVE_BYTES),
-                OP_LOGE(context_->GetNodeName(), "UB size %lu is too small", ubSize_), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "UB size %lu is too small", ubSize_), return ge::GRAPH_FAILED);
     const int64_t avail = static_cast<int64_t>(ubSize_) - UB_RESERVE_BYTES;
 
     SetShapeTilingData();
@@ -531,6 +606,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
         td_.hTail = static_cast<uint64_t>(hidden_);
     } else {
         schMode_ = MTCG_TILING_KEY_CUT_H;
+        kBlock = std::min(K_BLOCK_INIT, kBlockMax);
         if (SolveCutH(avail, sBlock, kBlock) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -539,11 +615,33 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
     int64_t sBlockAlign = 0;
     int64_t hFactorAlign = 0;
     int64_t outputElements = 0;
-    OP_CHECK_IF(!CheckedAlignUp(sBlock, vlFp32_, sBlockAlign) ||
-                    !CheckedAlignUp(static_cast<int64_t>(td_.hFactor), vlFp32_, hFactorAlign) ||
-                    !CheckedMul(kBlock, sBlockAlign, outputElements) ||
-                    outputElements > static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
-                OP_LOGE(context_->GetNodeName(), "tiling field exceeds kernel limits"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedAlignUp(sBlock, vlFp32_, sBlockAlign),
+                OP_LOGE(GetSafeNodeName(), "overflow computing sBlockAlign: sBlock=%ld, vlFp32=%ld", sBlock, vlFp32_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !CheckedAlignUp(static_cast<int64_t>(td_.hFactor), vlFp32_, hFactorAlign),
+        OP_LOGE(GetSafeNodeName(), "overflow computing hFactorAlign: hFactor=%lu, vlFp32=%ld", td_.hFactor, vlFp32_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckedMul(kBlock, sBlockAlign, outputElements),
+                OP_LOGE(GetSafeNodeName(), "overflow computing outputElements: kBlock=%ld, sBlockAlign=%ld", kBlock,
+                        sBlockAlign),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(outputElements > static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
+                OP_LOGE(GetSafeNodeName(), "outputElements=%ld exceeds kernel int32 limit=%d", outputElements,
+                        std::numeric_limits<int32_t>::max()),
+                return ge::GRAPH_FAILED);
+    if (schMode_ == MTCG_TILING_KEY_CUT_H) {
+        int64_t chunkPartialElements = 0;
+        OP_CHECK_IF(
+            !CheckedMul(kBlock, static_cast<int64_t>(td_.chunkPartialAlign), chunkPartialElements),
+            OP_LOGE(GetSafeNodeName(), "overflow computing chunkPartialElements: kBlock=%ld, chunkPartialAlign=%lu",
+                    kBlock, td_.chunkPartialAlign),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(chunkPartialElements > static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
+                    OP_LOGE(GetSafeNodeName(), "chunkPartialElements=%ld exceeds kernel int32 limit=%d",
+                            chunkPartialElements, std::numeric_limits<int32_t>::max()),
+                    return ge::GRAPH_FAILED);
+    }
     td_.sBlock = static_cast<uint64_t>(sBlock);
     td_.sBlockAlign = static_cast<uint64_t>(sBlockAlign);
     td_.kBlock = static_cast<uint64_t>(kBlock);
@@ -554,14 +652,13 @@ ge::graphStatus MoeTutelCombineGatesTiling::SplitUb()
 ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
 {
     const uint64_t tilingKey = GET_TPL_TILING_KEY(schMode_);
-    OP_CHECK_IF(
-        tilingKey == INVALID_TILING_KEY,
-        OP_LOGE(context_->GetNodeName(), "failed to encode template tiling key for schedule mode %lu", schMode_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingKey == INVALID_TILING_KEY,
+                OP_LOGE(GetSafeNodeName(), "failed to encode template tiling key for schedule mode %lu", schMode_),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "set block dim failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "set block dim failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->SetTilingKey(tilingKey) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "set tiling key failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "set tiling key failed"), return ge::GRAPH_FAILED);
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
@@ -570,16 +667,16 @@ ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
     auto rawTilingData = context_->GetRawTilingData();
     OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingData);
     OP_CHECK_IF(sizeof(td_) > rawTilingData->GetCapacity(),
-                OP_LOGE(context_->GetNodeName(), "tiling data size %zu exceeds capacity %zu", sizeof(td_),
+                OP_LOGE(GetSafeNodeName(), "tiling data size %zu exceeds capacity %zu", sizeof(td_),
                         rawTilingData->GetCapacity()),
                 return ge::GRAPH_FAILED);
     void *data = rawTilingData->GetData();
     OP_CHECK_NULL_WITH_CONTEXT(context_, data);
     OP_CHECK_IF(memcpy_s(data, rawTilingData->GetCapacity(), &td_, sizeof(td_)) != EOK,
-                OP_LOGE(context_->GetNodeName(), "copy tiling data failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "copy tiling data failed"), return ge::GRAPH_FAILED);
     rawTilingData->SetDataSize(sizeof(td_));
 
-    OP_LOGI(context_->GetNodeName(),
+    OP_LOGI(GetSafeNodeName(),
             "MoeTutelCombineGates tiling: S=%lu H=%lu E=%lu C=%lu K=%lu sCore=%lu sBlock=%lu "
             "kBlock=%lu hFactor=%lu chunks=%lu vlPartialAlign=%lu chunkPartialAlign=%lu key=%lu blockDim=%u",
             td_.samples, td_.hidden, td_.experts, td_.capacity, td_.routes, td_.sCoreNum, td_.sBlock, td_.kBlock,
@@ -590,7 +687,7 @@ ge::graphStatus MoeTutelCombineGatesTiling::PostTiling()
 ge::graphStatus MoeTutelCombineGatesTiling::DoTiling()
 {
     OP_CHECK_IF(memset_s(&td_, sizeof(td_), 0, sizeof(td_)) != EOK,
-                OP_LOGE(context_->GetNodeName(), "initialize tiling data failed"), return ge::GRAPH_FAILED);
+                OP_LOGE(GetSafeNodeName(), "initialize tiling data failed"), return ge::GRAPH_FAILED);
     if (GetPlatformInfo() != ge::GRAPH_SUCCESS || CheckFormat() != ge::GRAPH_SUCCESS ||
         CheckDtype() != ge::GRAPH_SUCCESS || GetShapeAndCheck() != ge::GRAPH_SUCCESS ||
         SplitCore() != ge::GRAPH_SUCCESS || SplitUb() != ge::GRAPH_SUCCESS) {

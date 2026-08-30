@@ -27,6 +27,8 @@
 // Core mapping: blockDim = sCoreNum * kCoreNum and
 // blockIdx b -> (cs, ck) = (b % sCoreNum, b / sCoreNum).
 namespace optiling {
+constexpr uint64_t MTCG_CUT_H_ROUTE_BATCH = 2;
+
 struct MoeTutelCombineGatesTilingData {
     uint64_t samples;           // S
     uint64_t hidden;            // H

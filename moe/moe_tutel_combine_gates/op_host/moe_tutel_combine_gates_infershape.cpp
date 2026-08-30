@@ -24,6 +24,12 @@ namespace {
 constexpr size_t INPUT_X_INDEX = 0;
 constexpr size_t INPUT_INDICES_INDEX = 2;
 constexpr size_t OUTPUT_GATES_GRAD_INDEX = 0;
+
+const char *GetSafeNodeName(gert::InferShapeContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    return nodeName == nullptr ? "MoeTutelCombineGates" : nodeName;
+}
 } // namespace
 
 // gates_grad follows the routing tensor shape [K, S]. Shape constraints that
@@ -33,7 +39,7 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
     if (context == nullptr) {
         return GRAPH_FAILED;
     }
-    OP_LOGD(context->GetNodeName(), "Begin to do InferShape4MoeTutelCombineGates");
+    OP_LOGD(GetSafeNodeName(context), "Begin to do InferShape4MoeTutelCombineGates");
 
     const gert::Shape *indicesShape = context->GetInputShape(INPUT_INDICES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, indicesShape);
@@ -42,13 +48,13 @@ static ge::graphStatus InferShape4MoeTutelCombineGates(gert::InferShapeContext *
 
     if (Ops::Base::IsUnknownRank(*indicesShape)) {
         Ops::Base::SetUnknownRank(*gatesGradShape);
-        OP_LOGD(context->GetNodeName(), "indices has an unknown rank; gates_grad is set to an unknown rank");
+        OP_LOGD(GetSafeNodeName(context), "indices has an unknown rank; gates_grad is set to an unknown rank");
         return GRAPH_SUCCESS;
     }
 
     *gatesGradShape = *indicesShape;
 
-    OP_LOGD(context->GetNodeName(), "Finished InferShape4MoeTutelCombineGates");
+    OP_LOGD(GetSafeNodeName(context), "Finished InferShape4MoeTutelCombineGates");
     return GRAPH_SUCCESS;
 }
 

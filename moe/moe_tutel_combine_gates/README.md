@@ -13,44 +13,46 @@
 
 ## 功能说明
 
-> 本目录新增的Kernel与Host侧Tiling注册仅面向Ascend 950；表中的两组存量产品继续使用
-> 既有实现，本次不覆盖，也不改写其既有契约。
+> `[RegBase-native]`：本目录新增的Kernel与Host侧Tiling注册仅面向Ascend 950PR/DT
+> （DAV_3510/arch35）；`[compat]`：表中的Atlas A2/A3系列产品继续使用仓内存量实现，本次不覆盖，
+> 也不把DAV_3510的实现约束外推到其既有契约。
 
 ### Ascend 950 功能语义
 
-- **算子功能**：Tutel MoE`combine`的反向算子之一，求门控权重`gates`的梯度。按`indices`、`locations`给出的路由，从`y_grad`中取出对应的一行，与`x`中对应token的一行沿隐藏维`H`做点积，得到一个标量写入`gates_grad`。路由越界时该位置输出0。
+**算子功能**：Tutel MoE`combine`的反向算子之一，求门控权重`gates`的梯度。按`indices`、`locations`给出的路由，从`y_grad`中取出对应的一行，与`x`中对应token的一行沿隐藏维`H`做点积，得到一个标量写入`gates_grad`。路由越界时该位置输出0。
 
-  与之配套的另外两个算子是MoeTutelDispatch（正向dispatch）与MoeTutelCombineX（combine反向求`x`的梯度），三者共用同一套路由张量语义。
+与之配套的另外两个算子是MoeTutelDispatch（正向dispatch）与MoeTutelCombineX（combine反向求`x`的梯度），三者共用同一套路由张量语义。
 
-- **计算公式**：
+#### 计算公式
 
-  S：token（sample）数
+S：token（sample）数
 
-  H：hidden维，即被规约的轴
+H：hidden维，即被规约的轴
 
-  E：专家数
+E：专家数
 
-  C：每个专家的capacity
+C：每个专家的capacity
 
-  K：每个token的路由数，满足 $1 \le K \le E$
+K：每个token的路由数，满足 $1 \le K \le E$
 
-  x：(S, H)　　y_grad：(E, C, H)　　indices：(K, S)　　locations：(K, S)　　gates_grad：(K, S)
+`x`：`[S,H]`　　`y_grad`：`[E,C,H]`　　`indices`：`[K,S]`　　`locations`：`[K,S]`　　`gates_grad`：`[K,S]`
 
-  $$
-  valid_{(k,s)} = (0 \le indices_{(k,s)} < E) \land (0 \le locations_{(k,s)} < C)
-  $$
+$$
+valid_{(k,s)} = (0 \le indices_{(k,s)} < E) \land (0 \le locations_{(k,s)} < C)
+$$
 
-  $$
-  gatesGrad_{(k,s)} =
-  \begin{cases}
-  \sum_{h=0}^{H-1} x_{(s,h)} \cdot yGrad_{(indices_{(k,s)},\ locations_{(k,s)},\ h)}, & valid_{(k,s)} \\
-  0, & \text{otherwise}
-  \end{cases}
-  $$
+$$
+gatesGrad_{(k,s)} =
+\begin{cases}
+\sum_{h=0}^{H-1} x_{(s,h)} \cdot yGrad_{(indices_{(k,s)},\ locations_{(k,s)},\ h)}, & valid_{(k,s)} \\
+0, & \text{otherwise}
+\end{cases}
+$$
 
 ## 参数说明
 
-> 下表描述各支持产品共有的参数角色、数据类型和数据格式；产品专属shape与行为见“产品差异说明”。
+> `[general]`：下表描述各支持产品共有的参数角色、数据类型和数据格式；产品专属shape与行为见
+> “产品差异说明”。
 
 <table style="table-layout: auto; width: 100%">
   <thead>
@@ -113,7 +115,7 @@
 ### Ascend 950
 
 - `x`、`y_grad`、`gates_grad`的数据类型必须相同，不支持混合数据类型。
-- `indices`、`locations`、`gates_grad`的shape必须都为(K, S)，其中S取自`x`的第1维，K满足$1 \le K \le E$。K不要求等于E，Top-1等K<E场景合法。
+- `indices`、`locations`、`gates_grad`的shape必须均为`[K,S]`，其中S取自`x`的第1维，K满足$1 \le K \le E$。K不要求等于E，Top-1等K<E场景合法。
 - `x`的第2维必须等于`y_grad`的第3维（同一个H）。
 - 路由越界（`indices`或`locations`超出`[0, E)`、`[0, C)`）时，对应的`gates_grad`元素输出0，且不会访问越界内存。
 - E、C、K必须大于0；S可为0，H可为0。S为0时空进空出，H为0时按空内积处理并输出0。
