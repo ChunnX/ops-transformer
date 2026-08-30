@@ -19,15 +19,10 @@
 #include "kernel_operator.h"
 #endif
 #include "kv_quant_sparse_flash_attention_v2_template_tiling_key.h"
-#if (__CCE_AICORE__ == 310)
 #include "arch35/kv_quant_sparse_flash_attention_v2_kernel_mla_arch35.h"
-#else
-#include "arch22/kv_quant_sparse_flash_attention_v2_kernel_mla.h"
-#endif
 
 using namespace AscendC;
 
-#if (__CCE_AICORE__ == 310)
 #if defined(__DAV_C310_CUBE__)
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
@@ -59,19 +54,7 @@ using namespace AscendC;
         op.Process(); \
     } while (0)
 #endif
-#else
-#define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
-    do { \
-        templateClass<QSFAType<__VA_ARGS__>> op; \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling); \
-        const tilingdataClass *__restrict tiling_data = &tiling_data_in; \
-        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
-                actualSeqLengthsKV, attentionOut, softmaxMax, softmaxSum, user, tiling_data, tiling, &tPipe); \
-        op.Process(); \
-    } while (0)
-#endif
 
-#if (__CCE_AICORE__ == 310)
 template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G,
           int IS_VEC_S2PHYADDR>
 __aicore__ inline void DispatchKernelDtype310(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -120,7 +103,6 @@ __aicore__ inline void DispatchKernelDtype310(__gm__ uint8_t *query, __gm__ uint
                      IS_VEC_S2PHYADDR);
     }
 }
-#endif
 
 template <int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G,
           int IS_VEC_S2PHYADDR>
@@ -135,21 +117,8 @@ __global__ __aicore__ void kv_quant_sparse_flash_attention_v2(
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
-#if (__CCE_AICORE__ == 310)
     DispatchKernelDtype310<FLASH_DECODE, PAGE_ATTENTION, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G,
                            IS_VEC_S2PHYADDR>(query, key, value, sparseIndices, keyScale, valueScale, blocktable,
                                              actualSeqLengthsQuery, actualSeqLengthsKV, sinks, attentionOut,
                                              softmaxMax, softmaxSum, user, tiling, tPipe);
-#else
-    if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
-                  ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
-        QSFA_OP_IMPL(KvQuantSparseFlashAttentionV2Mla, KvQuantSparseFlashAttentionV2TilingDataMla, half, int8_t, half,
-                     FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
-                     TEMPLATE_MODE);
-    } else { // bf16
-        QSFA_OP_IMPL(KvQuantSparseFlashAttentionV2Mla, KvQuantSparseFlashAttentionV2TilingDataMla, bfloat16_t, int8_t,
-                     bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T),
-                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
-    }
-#endif
 }
