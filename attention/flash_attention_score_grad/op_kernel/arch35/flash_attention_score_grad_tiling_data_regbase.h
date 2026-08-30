@@ -520,7 +520,7 @@ public:
     constexpr static int64_t DETER_PREFIX_NUM = 132;
 
     bool coreDivide;
-    uint8_t reserved1;  // tilingData需要8字节对齐
+    uint8_t tndLineDeter; // 原 reserved1，布局不变；1=TND LINE 独占走查
     uint8_t reserved2;  // tilingData需要8字节对齐
     uint8_t reserved3;  // tilingData需要8字节对齐
     uint32_t reserved4; // tilingData需要8字节对齐
@@ -532,6 +532,7 @@ public:
     int64_t deterPrefix2[DETER_PREFIX_NUM];
 
     bool get_coreDivide() const { return coreDivide; }
+    uint8_t get_tndLineDeter() const { return tndLineDeter; }
     int64_t get_deterPrefixStep() const { return deterPrefixStep; }
     const int64_t *get_deterPrefix() const { return deterPrefix; }
     int64_t get_deterPrefix(int index) const { return deterPrefix[index]; }
@@ -544,6 +545,7 @@ public:
     const int64_t *get_deterPrefix2() const { return deterPrefix2; }
     int64_t get_deterPrefix2(int index) const { return deterPrefix2[index]; }
     void set_coreDivide(bool value) { coreDivide = value; }
+    void set_tndLineDeter(uint8_t value) { tndLineDeter = value; }
     void set_deterPrefixStep(int64_t value) { deterPrefixStep = value; }
     void set_deterPrefix(const int64_t *val)
     {
