@@ -28,7 +28,7 @@
   稀疏块大小：$blockShapeX \times blockShapeY$
 
   $$
-  attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T}) \cdot value_{sparse}
+  attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
   $$
 
   其中$key_{sparse}$、$value_{sparse}$为按`sparseBlockIdx`/`sparseBlockCount`从Paged KV Cache中选取的KV块。
@@ -36,7 +36,8 @@
 ## 参数说明
 
 > **说明：**<br>
-> 参数维度含义：B表示Batch Size，T表示Total tokens，N1和N2分别表示query和key/value的Head Num，D表示Head Dim，topK表示`sparseBlockIdx`最后一维`maxSparseBlockCount`。
+> 参数维度含义：B表示Batch Size，T表示Total tokens，N表示Head Num，D表示Head Dim，topK表示`sparseBlockIdx`最后一维`maxSparseBlockCount`。<br>
+> TND中的N为query的headNum（记为N1），PAGED_BBND中的N为key/value的headNum（记为N2）。GQA下N1与N2可以不同，约束见下文。
 
 <table style="undefined;table-layout: fixed; width: 1200px"><colgroup>
   <col style="width: 220px">
@@ -58,14 +59,14 @@
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>公式中的query。layoutQ为"TND"时，shape为[T, N1, D]。</td>
+      <td>公式中的query。layoutQ为"TND"时，shape为[T, N, D]，N为query的headNum（N1）。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>公式中的key。layoutKv为"PAGED_BBND"时，shape为[numBlocks, blockSize, N2, D]。</td>
+      <td>公式中的key。layoutKv为"PAGED_BBND"时，shape为[numBlocks, blockSize, N, D]，N为kv的headNum（N2）。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
     </tr>
@@ -79,14 +80,14 @@
     <tr>
       <td>sparseBlockIdx</td>
       <td>输入</td>
-      <td>稀疏块索引。TND + isPackedGQA=1时，shape为[N2, totalQBlocks, topK]。</td>
+      <td>稀疏块索引。TND + isPackedGQA=1时，shape为[N, totalQBlocks, topK]，N为kv的headNum（N2）。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>sparseBlockCount</td>
       <td>输入</td>
-      <td>每个Q块实际选择的KV块数量。TND + isPackedGQA=1时，shape为[N2, totalQBlocks]。</td>
+      <td>每个Q块实际选择的KV块数量。TND + isPackedGQA=1时，shape为[N, totalQBlocks]，N为kv的headNum（N2）。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -228,4 +229,3 @@
 | 调用方式 | 样例代码 | 说明 |
 | -------- | -------- | ---- |
 | aclnn API | [test_aclnn_generic_block_sparse_attention](./examples/test_aclnn_generic_block_sparse_attention.cpp) | 通过[aclnnGenericBlockSparseAttention](./docs/aclnnGenericBlockSparseAttention.md)两段式接口调用GenericBlockSparseAttention算子 |
-| aclnn API（Metadata） | [test_aclnn_generic_block_sparse_attention_metadata](../generic_block_sparse_attention_metadata/examples/test_aclnn_generic_block_sparse_attention_metadata.cpp) | 通过[aclnnGenericBlockSparseAttentionMetadata](../generic_block_sparse_attention_metadata/docs/aclnnGenericBlockSparseAttentionMetadata.md)生成metadata |
