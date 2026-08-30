@@ -25,5 +25,9 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_tutel_dispatch ACLNNTYPE aclnn_exclude)
+    # The SoC-aware collector is required here: it selects arch35 Host
+    # registrations only when ASCEND_COMPUTE_UNIT contains ascend950.  The OpDef
+    # remains at the root so the custom schema can be generated, but its only
+    # AICore config is AddConfig("ascend950").
+    add_modules_sources_with_soc(OPTYPE moe_tutel_dispatch ACLNNTYPE aclnn_exclude)
 endif()

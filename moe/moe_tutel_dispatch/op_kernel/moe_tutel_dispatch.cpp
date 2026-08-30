@@ -15,33 +15,28 @@
 
 #include "arch35/moe_tutel_dispatch_full_row.h"
 #include "arch35/moe_tutel_dispatch_split_h.h"
+#include "arch35/moe_tutel_dispatch_tiling_key.h"
+#include "arch35/moe_tutel_dispatch_zero_only.h"
 
 using namespace MoeTutelDispatchNs;
 
-// 必须是宏或字面量：TILING_KEY_IS 的实参要在预编译期被解析成数值常量，
-// 写成 constexpr 变量会报 "can not be processed as numeric variables in the
-// precompilation phase"，退化成单个不按 key 特化的 kernel。
-// 取值须与 op_host/moe_tutel_dispatch_tiling.h 的 MOE_TUTEL_DISPATCH_TILING_KEY_* 一致。
-#define TILING_KEY_FULL_ROW 0
-#define TILING_KEY_SPLIT_H 1
-#define TILING_KEY_EMPTY 2
-
-/*
- * x / gates / y 按同宽无符号整型搬运：本算子是纯 bit 拷贝，不做任何算术，
- * 因此 float16 / bfloat16 走 uint16_t、float32 走 uint32_t，逐位等价且规避 bf16 cast。
- */
-extern "C" __global__ __aicore__ void moe_tutel_dispatch(GM_ADDR x, GM_ADDR gates, GM_ADDR indices, GM_ADDR locations,
-                                                         GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+// x / gates / y 按同宽无符号整型搬运：本算子是纯 bit 拷贝，不做任何算术，
+// 因此 float16 / bfloat16 走 uint16_t、float32 走 uint32_t，逐位等价且规避 bf16 cast。
+template <uint64_t TEMPLATE_MODE>
+__global__ __aicore__ void moe_tutel_dispatch(GM_ADDR x, GM_ADDR gates, GM_ADDR indices, GM_ADDR locations, GM_ADDR y,
+                                              GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    if (TILING_KEY_IS(TILING_KEY_EMPTY)) {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
+    REGISTER_TILING_DEFAULT(MoeTutelDispatchTilingData);
+    GET_TILING_DATA_WITH_STRUCT(MoeTutelDispatchTilingData, tilingData, tiling);
+
+    if constexpr (TEMPLATE_MODE == MOE_TUTEL_DISPATCH_EMPTY_OUTPUT) {
         return;
     }
 
     AscendC::TPipe pipe;
-    GET_TILING_DATA(tilingData, tiling);
 
-    if (TILING_KEY_IS(TILING_KEY_FULL_ROW)) {
+    if constexpr (TEMPLATE_MODE == MOE_TUTEL_DISPATCH_FULL_ROW) {
         if constexpr (sizeof(DTYPE_X) == sizeof(uint32_t)) {
             MoeTutelDispatchFullRow<uint32_t> op(&pipe, &tilingData);
             op.Init(x, gates, indices, locations, y);
@@ -51,13 +46,23 @@ extern "C" __global__ __aicore__ void moe_tutel_dispatch(GM_ADDR x, GM_ADDR gate
             op.Init(x, gates, indices, locations, y);
             op.Process();
         }
-    } else if (TILING_KEY_IS(TILING_KEY_SPLIT_H)) {
+    } else if constexpr (TEMPLATE_MODE == MOE_TUTEL_DISPATCH_SPLIT_H) {
         if constexpr (sizeof(DTYPE_X) == sizeof(uint32_t)) {
             MoeTutelDispatchSplitH<uint32_t> op(&pipe, &tilingData);
             op.Init(x, gates, indices, locations, y);
             op.Process();
         } else {
             MoeTutelDispatchSplitH<uint16_t> op(&pipe, &tilingData);
+            op.Init(x, gates, indices, locations, y);
+            op.Process();
+        }
+    } else if constexpr (TEMPLATE_MODE == MOE_TUTEL_DISPATCH_ZERO_ONLY) {
+        if constexpr (sizeof(DTYPE_X) == sizeof(uint32_t)) {
+            MoeTutelDispatchZeroOnly<uint32_t> op(&pipe, &tilingData);
+            op.Init(x, gates, indices, locations, y);
+            op.Process();
+        } else {
+            MoeTutelDispatchZeroOnly<uint16_t> op(&pipe, &tilingData);
             op.Init(x, gates, indices, locations, y);
             op.Process();
         }

@@ -32,10 +32,6 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR gates, GM_ADDR indices, GM_ADDR locations, GM_ADDR y)
     {
         Base::InitCommon(x, gates, indices, locations, y);
-        // 一块 buffer 放 tileRoutes 行，每行按 32B 对齐；VECIN/VECOUT 绑定，省掉 UB→UB 拷贝
-        this->pipe_->InitBuffer(
-            rowQue_, DOUBLE_BUFFER,
-            static_cast<uint32_t>(this->tileRoutes_ * this->alignedH_ * static_cast<int64_t>(sizeof(TByte))));
     }
 
     __aicore__ inline void Process()
@@ -43,8 +39,14 @@ public:
         Base::InitOutputZero();
         Base::SyncBetweenStages();
 
-        for (int64_t base = this->routeStart_; base < this->routeEnd_; base += this->tileRoutes_) {
-            const int64_t cnt = MinInt64(this->tileRoutes_, this->routeEnd_ - base);
+        // Fill must finish before any InitBuffer. The payload queue holds routeBatch complete rows.
+        Base::InitRouteBuffers();
+        this->pipe_->InitBuffer(
+            rowQue_, PAYLOAD_BUFFER_NUM,
+            static_cast<uint32_t>(this->routeBatch_ * this->alignedH_ * static_cast<int64_t>(sizeof(TByte))));
+
+        for (int64_t base = this->routeStart_; base < this->routeEnd_; base += this->routeBatch_) {
+            const int64_t cnt = MinInt64(this->routeBatch_, this->routeEnd_ - base);
             ProcessTile(base, cnt);
         }
     }
@@ -54,41 +56,43 @@ private:
     {
         Base::LoadRouteMeta(base, cnt);
 
-        DataCopyExtParams rowParams{1, this->rowBytes_, 0, 0, 0};
-        DataCopyPadExtParams<TByte> rowPad;
-        rowPad.isPad = 0;
-        rowPad.leftPadding = 0;
-        rowPad.rightPadding = 0;
-        rowPad.paddingValue = 0;
-
         LocalTensor<TByte> rowLocal = rowQue_.template AllocTensor<TByte>();
-        int64_t slot = 0;
+        CopyInputRows(rowLocal, base, cnt);
+        rowQue_.EnQue(rowLocal);
+
+        rowLocal = rowQue_.template DeQue<TByte>();
+        DataCopyExtParams rowParams{1, static_cast<uint32_t>(this->rowBytes_), 0, 0, 0};
         int64_t dstRow = 0;
         for (int64_t i = 0; i < cnt; ++i) {
             if (!Base::RouteValid(i, dstRow)) {
                 continue;
             }
-            const int64_t srcRow = (base + i) % this->samples_;
-            DataCopyPad(rowLocal[slot * this->alignedH_], this->xGm_[srcRow * this->hidden_], rowParams, rowPad);
-            ++slot;
-        }
-        rowQue_.EnQue(rowLocal);
-
-        rowLocal = rowQue_.template DeQue<TByte>();
-        slot = 0;
-        for (int64_t i = 0; i < cnt; ++i) {
-            if (!Base::RouteValid(i, dstRow)) {
-                continue;
-            }
-            DataCopyPad(this->yGm_[dstRow * this->hidden_], rowLocal[slot * this->alignedH_], rowParams);
-            ++slot;
+            DataCopyPad(this->yGm_[dstRow * this->hidden_], rowLocal[i * this->alignedH_], rowParams);
         }
         rowQue_.FreeTensor(rowLocal);
 
         Base::FreeRouteMeta();
     }
 
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, DOUBLE_BUFFER> rowQue_;
+    __aicore__ inline void CopyInputRows(const LocalTensor<TByte> &rowLocal, int64_t base, int64_t cnt)
+    {
+        const uint8_t rightPadding = static_cast<uint8_t>(this->alignedH_ - this->hidden_);
+        DataCopyPadExtParams<TByte> rowPad{false, 0, rightPadding, 0};
+        const int64_t srcRow = base % this->samples_;
+        const int64_t firstCount = MinInt64(cnt, this->samples_ - srcRow);
+        DataCopyExtParams firstParams{static_cast<uint16_t>(firstCount), static_cast<uint32_t>(this->rowBytes_), 0, 0,
+                                      0};
+        DataCopyPad(rowLocal, this->xGm_[srcRow * this->hidden_], firstParams, rowPad);
+
+        const int64_t secondCount = cnt - firstCount;
+        if (secondCount > 0) {
+            DataCopyExtParams secondParams{static_cast<uint16_t>(secondCount), static_cast<uint32_t>(this->rowBytes_),
+                                           0, 0, 0};
+            DataCopyPad(rowLocal[firstCount * this->alignedH_], this->xGm_, secondParams, rowPad);
+        }
+    }
+
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, PAYLOAD_QUEUE_DEPTH> rowQue_;
 };
 } // namespace MoeTutelDispatchNs
 

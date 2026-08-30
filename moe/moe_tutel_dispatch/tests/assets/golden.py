@@ -16,7 +16,7 @@
 |--------|------|------|
 | kernel | ✅   | op_kernel/moe_tutel_dispatch.cpp + op_kernel/arch35/ 有 arch35 实现 |
 | geir   | ✅   | REG_OP(MoeTutelDispatch) 在 common/include/op_graph/op_transformer_proto_extend.h； |
-|        |      | op_host/moe_tutel_dispatch_infershape.cpp + op_graph/moe_tutel_dispatch_graph_plugin.cpp |
+|        |      | Ascend950 Host 实现在 op_host/arch35，输出 shape 由 caller descriptor 提供 |
 | aclnn  | ❌   | 无同名 public aclnn（canndev ops/built-in/op_api/ grep 无命中），CMake 显式 ACLNNTYPE aclnn_exclude |
 | e2e    | ❌   | strings libtorch_npu.so | grep -ic moetutel → 0，torch_npu 无本算子绑定 |
 
@@ -84,14 +84,39 @@ def _to_numpy_bit_exact(tensor):
     return tensor.numpy()
 
 
-def _compute(x, gates, indices, locations, capacity):
+def _caller_output_shape(kwargs, capacity=None, hidden=None):
+    """Read the single logical output descriptor without ever inferring E from K."""
+    shapes = kwargs.get("output_shapes")
+    if shapes is None:
+        shapes = kwargs.get("output_ori_shapes")
+    if shapes is None or len(shapes) != 1 or len(shapes[0]) != 3:
+        raise ValueError(
+            "MoeTutelDispatch requires one caller-provided output shape [E, capacity, H]"
+        )
+
+    shape = tuple(int(dim) for dim in shapes[0])
+    if any(dim < 0 for dim in shape):
+        raise ValueError(
+            f"output shape must be concrete at execution time, got {shape}"
+        )
+    if capacity is not None and shape[1] != int(capacity):
+        raise ValueError(
+            f"output capacity {shape[1]} does not match attribute capacity {int(capacity)}"
+        )
+    if hidden is not None and shape[2] != int(hidden):
+        raise ValueError(
+            f"output hidden {shape[2]} does not match x hidden {int(hidden)}"
+        )
+    return shape
+
+
+def _compute(x, gates, indices, locations, capacity, output_shape):
     """torch.Tensor 进、list[torch.Tensor] 出，顺序照 moe_tutel_dispatch_def.cpp 的输出序。
 
     用 torch 的 index_put_ 竞品接口完成 scatter，不手写元素循环、不复刻内核的分块结构。
     """
-    expert_num, _ = gates.shape
-    hidden = x.shape[1]
-    y = torch.zeros((expert_num, int(capacity), hidden), dtype=x.dtype)
+    expert_num, output_capacity, hidden = output_shape
+    y = torch.zeros((expert_num, output_capacity, hidden), dtype=x.dtype)
     if int(capacity) == 0 or hidden == 0 or expert_num == 0:
         return [y]
 
@@ -123,11 +148,15 @@ class _Compose:
 
     def __init__(self, **kwargs):
         self.capacity = _attr(kwargs, "capacity", 0)
+        self.output_shape = _caller_output_shape(kwargs, capacity=self.capacity)
 
     def __call__(self, x, gates, indices, locations, **kwargs):
         capacity = int(self.capacity)
-        expert_num = gates.shape[0]
-        hidden = x.shape[1]
+        expert_num, _, hidden = _caller_output_shape(
+            {"output_shapes": (self.output_shape,)},
+            capacity=capacity,
+            hidden=x.shape[1],
+        )
         out = torch.zeros(
             (expert_num, capacity, hidden), dtype=x.dtype, device=x.device
         )
@@ -163,10 +192,12 @@ def _dedup_routes(x, gates, indices, locations, **kwargs):
     空槽用尽后才把 locations 置为 capacity 让它落入越界分支。
     """
     capacity = int(_attr(kwargs, "capacity", 0))
+    expert_num, _, _ = _caller_output_shape(
+        kwargs, capacity=capacity, hidden=x.shape[1]
+    )
     if capacity <= 0 or gates.size == 0:
         return (x, gates, indices, locations)
 
-    expert_num = gates.shape[0]
     idx = indices.astype(np.int64).ravel()
     loc = locations.astype(np.int64).ravel()
     # gates 判零与 kernel 的按位判定一致：±0.0 为零，NaN / Inf / denormal 非零
@@ -211,8 +242,11 @@ class MoeTutelDispatchKernelSpec:
 
     def golden(x, gates, indices, locations, **kwargs):
         capacity = _attr(kwargs, "capacity", 0)
+        output_shape = _caller_output_shape(
+            kwargs, capacity=capacity, hidden=x.shape[1]
+        )
         tensors = [_to_torch_bit_exact(a) for a in (x, gates, indices, locations)]
-        outs = _compute(*tensors, capacity=capacity)
+        outs = _compute(*tensors, capacity=capacity, output_shape=output_shape)
 
         out_dtypes = kwargs.get("output_dtypes") or []
         out_dtypes = [d[0] if isinstance(d, (list, tuple)) else d for d in out_dtypes]

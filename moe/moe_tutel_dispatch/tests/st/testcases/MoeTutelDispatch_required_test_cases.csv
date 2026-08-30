@@ -1,0 +1,39 @@
+case_id,level,layer,dtype,S,H,K,E,capacity,route_pattern,gate_pattern,x_pattern,expected_key,oracle,assertion,repeats,notes
+MTD_REQ_001,L0,GEIR,float16,4,8,3,2,5,unique_sparse,all_one,sequential,FULL_ROW,bitwise_cpu,output_shape_and_bytes,1,E<K caller descriptor preserved
+MTD_REQ_002,L0,GEIR,float16,4,8,2,5,5,unique_sparse,all_one,sequential,FULL_ROW,bitwise_cpu,output_shape_and_bytes,1,E>K untouched experts positive zero
+MTD_REQ_003,L0,GEIR,float32,10,8,2,4,5,unique_full,all_one,random_bits,FULL_ROW,bitwise_cpu,all_destinations_written,1,full output
+MTD_REQ_004,L0,GEIR,bfloat16,8,17,2,3,4,unique_sparse,mixed_zero_nonzero,random_bits,FULL_ROW,bitwise_cpu,unaligned_H_and_positive_zero,1,H not 32-byte aligned
+MTD_REQ_005,L0,GEIR,float16,4,8,3,0,5,all_invalid,all_one,sequential,EMPTY_OUTPUT,bitwise_cpu,empty_y_no_payload_access,1,E=0
+MTD_REQ_006,L0,GEIR,float32,4,8,3,2,0,all_invalid,all_one,sequential,EMPTY_OUTPUT,bitwise_cpu,empty_y_no_payload_access,1,capacity=0
+MTD_REQ_007,L0,GEIR,bfloat16,4,0,3,2,5,unique_sparse,all_one,empty,EMPTY_OUTPUT,bitwise_cpu,empty_y_no_payload_access,1,H=0
+MTD_REQ_008,L0,GEIR,float16,4,8,0,3,5,empty,empty,sequential,ZERO_ONLY,bitwise_cpu,all_positive_zero,1,K=0 and y nonempty
+MTD_REQ_009,L0,GEIR,float32,0,8,3,2,5,empty,empty,empty,ZERO_ONLY,bitwise_cpu,all_positive_zero,1,S=0 and y nonempty
+MTD_REQ_010,L0,kernel,float16,8,16,3,3,4,unique_sparse,all_positive_zero,random_bits,FULL_ROW,bitwise_cpu,all_positive_zero,1,+0 gate mask
+MTD_REQ_011,L0,kernel,float16,8,16,3,3,4,unique_sparse,all_negative_zero,random_bits,FULL_ROW,bitwise_cpu,all_positive_zero,1,-0 gate mask
+MTD_REQ_012,L0,kernel,float32,8,16,3,3,4,unique_sparse,nan_inf_subnormal,random_bits,FULL_ROW,bitwise_cpu,special_gates_are_nonzero,1,no arithmetic on gate
+MTD_REQ_013,L0,kernel,float16,8,16,2,3,4,unique_sparse,all_one,nan_payload_bits,FULL_ROW,raw_byte_oracle,nan_payload_preserved,1,NaN payload bitwise
+MTD_REQ_014,L0,kernel,float32,8,16,2,3,4,unique_sparse,all_one,pos_neg_inf_and_signed_zero,FULL_ROW,raw_byte_oracle,special_payload_preserved,1,FP32 raw bits
+MTD_REQ_015,L0,kernel,bfloat16,8,16,2,3,4,unique_sparse,all_one,nan_inf_subnormal_bits,FULL_ROW,raw_byte_oracle,special_payload_preserved,1,BF16 raw bits
+MTD_REQ_016,L1,kernel,float16,1,262145,1,1,1,unique_full,all_one,random_bits,SPLIT_H,bitwise_cpu,long_H_chunk_and_tail,1,full row cannot fit UB
+MTD_REQ_017,L1,kernel,float32,1,131073,1,1,1,unique_full,all_one,random_bits,SPLIT_H,bitwise_cpu,long_H_chunk_and_tail,1,FP32 long row
+MTD_REQ_018,L1,kernel,bfloat16,1,262145,1,1,1,unique_full,all_one,random_bits,SPLIT_H,bitwise_cpu,long_H_chunk_and_tail,1,BF16 long row
+MTD_REQ_019,L1,kernel,float16,65,33,1,4,17,unique_sparse,all_one,random_bits,FULL_ROW,guarded_bitwise,metadata_actualN_1_tail,1,routeBatch tail and unaligned H
+MTD_REQ_020,L1,kernel,float32,67,32,1,4,17,unique_sparse,mixed_zero_nonzero,random_bits,FULL_ROW,guarded_bitwise,metadata_short_tail_no_overread,1,guard bytes around route metadata
+MTD_REQ_021,L1,kernel,bfloat16,4,17,2,3,5,idx_negative,all_one,random_bits,FULL_ROW,guarded_bitwise,invalid_route_skipped,1,idx<0
+MTD_REQ_022,L1,kernel,bfloat16,4,17,2,3,5,idx_equal_E,all_one,random_bits,FULL_ROW,guarded_bitwise,invalid_route_skipped,1,idx>=E
+MTD_REQ_023,L1,kernel,float16,4,17,2,3,5,loc_negative,all_one,random_bits,FULL_ROW,guarded_bitwise,invalid_route_skipped,1,loc<0
+MTD_REQ_024,L1,kernel,float16,4,17,2,3,5,loc_equal_capacity,all_one,random_bits,FULL_ROW,guarded_bitwise,invalid_route_skipped,1,loc>=capacity
+MTD_REQ_025,L1,kernel,float32,1,1,64,1,1,unique_until_full,all_one,random_bits,FULL_ROW,bitwise_cpu,zero_init_task_cores_reach_sync,1,route work dominates init work
+MTD_REQ_026,L1,kernel,float32,1,64,1,1,1,unique_full,all_one,random_bits,FULL_ROW,bitwise_cpu,zero_route_task_cores_reach_sync,1,init work dominates route work
+MTD_REQ_027,L1,kernel,float16,2,8,2,3,4,duplicate_destination,all_one,random_bits,FULL_ROW,guard_only,no_oob_no_numeric_assert,1,out-of-contract duplicate target
+MTD_REQ_028,L1,GEIR,float16,64,128,3,5,32,unique_sparse,mixed_zero_nonzero,random_bits,FULL_ROW,bitwise_cpu,bitwise_reproducible,20,single stream determinism
+MTD_REQ_029,L1,GEIR,float32,64,128,3,5,32,unique_sparse,mixed_zero_nonzero,random_bits,FULL_ROW,bitwise_cpu,no_deadlock_and_bitwise,20,multiple concurrent streams
+MTD_REQ_030,L1,GEIR,bfloat16,4096,512,2,64,64,unique_sparse,mixed_zero_nonzero,random_bits,FULL_ROW,bitwise_cpu,performance_and_scalar_pressure,5,network-like E>K tail scenario
+MTD_REQ_031,P0,GE-build,float16,4,8,3,2,5,unique_sparse,all_one,sequential,N/A,descriptor_probe,caller_E_known_preserved,1,P0-A E<K
+MTD_REQ_032,P0,GE-build,float16,4,8,2,5,5,unique_sparse,all_one,sequential,N/A,descriptor_probe,caller_E_known_preserved,1,P0-A E>K
+MTD_REQ_033,P0,GE-build,float16,dynamic,dynamic,3,dynamic,5,N/A,N/A,N/A,N/A,descriptor_probe,unknown_dims_deferred,1,E unknown and C/H known-or-unknown matrix
+MTD_REQ_034,P0,build,float16,4,8,3,2,5,N/A,N/A,N/A,N/A,symbol_scan,host_symbols_isolated,1,P0-C ascend950 versus old product
+MTD_REQ_035,P0,kernel,float16,64,33,3,5,32,unique_sparse,mixed_zero_nonzero,random_bits,FULL_ROW,sync_probe,no_deadlock,20,P0-B MIX single and multistream
+MTD_REQ_036,L1,contract,float16,4,8,3,2,5,N/A,N/A,N/A,N/A,static_contract,y_has_no_input_alias,1,caller obligation when GE cannot detect alias
+MTD_REQ_037,L0,kernel,float32,8,16,2,3,4,unique_sparse,all_one,nan_payload_bits,FULL_ROW,raw_byte_oracle,nan_payload_preserved,1,FP32 fixed quiet/signaling NaN payload bits
+MTD_REQ_038,P0,test-infra,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,unit_test,output_shape_metadata_spec_class_only,1,P0-TTK-OUTPUT-SHAPE; class/spec receives logical output_shapes while API/string third_party does not

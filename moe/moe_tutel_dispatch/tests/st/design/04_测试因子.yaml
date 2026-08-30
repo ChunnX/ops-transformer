@@ -1,0 +1,232 @@
+x:
+  type: aclTensor
+  factors:
+    x.exist:
+    - true
+    x.format:
+    - ND
+    x.dimensions:
+    - 2
+    x.dtype:
+    - float16
+    - float32
+    - bfloat16
+    x.value_range_float16:
+    - - -1
+      - 1
+    - - 0
+      - 0
+    - - "+0"
+      - "+0"
+    - - "-0"
+      - "-0"
+    - - -65504
+      - -65504
+    - - 65504
+      - 65504
+    - - -6.103515625e-05
+      - 6.103515625e-05
+    - - "inf"
+      - "inf"
+    - - "-inf"
+      - "-inf"
+    - - "nan"
+      - "nan"
+    x.value_range_float32:
+    - - -1
+      - 1
+    - - 0
+      - 0
+    - - "+0"
+      - "+0"
+    - - "-0"
+      - "-0"
+    - - -3.4028235e+38
+      - -3.4028235e+38
+    - - 3.4028235e+38
+      - 3.4028235e+38
+    - - -1.1754943508e-38
+      - 1.1754943508e-38
+    - - "inf"
+      - "inf"
+    - - "-inf"
+      - "-inf"
+    - - "nan"
+      - "nan"
+    x.value_range_bfloat16:
+    - - -1
+      - 1
+    - - 0
+      - 0
+    - - "+0"
+      - "+0"
+    - - "-0"
+      - "-0"
+    - - -3.3895313892515355e+38
+      - -3.3895313892515355e+38
+    - - 3.3895313892515355e+38
+      - 3.3895313892515355e+38
+    - - -1.1754943508e-38
+      - 1.1754943508e-38
+    - - "inf"
+      - "inf"
+    - - "-inf"
+      - "-inf"
+    - - "nan"
+      - "nan"
+gates:
+  type: aclTensor
+  factors:
+    gates.exist:
+    - true
+    gates.format:
+    - ND
+    gates.dimensions:
+    - 2
+    gates.dtype:
+    - float16
+    - float32
+    - bfloat16
+    gates.value_range_float16:
+    - - -1
+      - 1
+    - - 1
+      - 1
+    - - 0
+      - 0
+    - - "+0"
+      - "+0"
+    - - "-0"
+      - "-0"
+    - - -6.103515625e-05
+      - 6.103515625e-05
+    - - "inf"
+      - "inf"
+    - - "-inf"
+      - "-inf"
+    - - "nan"
+      - "nan"
+    gates.value_range_float32:
+    - - -1
+      - 1
+    - - 1
+      - 1
+    - - 0
+      - 0
+    - - "+0"
+      - "+0"
+    - - "-0"
+      - "-0"
+    - - -1.1754943508e-38
+      - 1.1754943508e-38
+    - - "inf"
+      - "inf"
+    - - "-inf"
+      - "-inf"
+    - - "nan"
+      - "nan"
+    gates.value_range_bfloat16:
+    - - -1
+      - 1
+    - - 1
+      - 1
+    - - 0
+      - 0
+    - - "+0"
+      - "+0"
+    - - "-0"
+      - "-0"
+    - - -1.1754943508e-38
+      - 1.1754943508e-38
+    - - "inf"
+      - "inf"
+    - - "-inf"
+      - "-inf"
+    - - "nan"
+      - "nan"
+indices:
+  type: aclTensor
+  factors:
+    indices.exist:
+    - true
+    indices.format:
+    - ND
+    indices.dimensions:
+    - 2
+    indices.dtype:
+    - int32
+    indices.value_range_int32:
+    - - 0
+      - 7
+    - - -1
+      - -1
+    - - -16
+      - -2
+    - - 8
+      - 16
+    - - -2147483648
+      - -2147483648
+    - - 2147483647
+      - 2147483647
+locations:
+  type: aclTensor
+  factors:
+    locations.exist:
+    - true
+    locations.format:
+    - ND
+    locations.dimensions:
+    - 2
+    locations.dtype:
+    - int32
+    locations.value_range_int32:
+    - - 0
+      - 63
+    - - -1
+      - -1
+    - - -16
+      - -2
+    - - 64
+      - 128
+    - - -2147483648
+      - -2147483648
+    - - 2147483647
+      - 2147483647
+capacity:
+  type: int64_t
+  factors:
+    capacity.exist:
+    - true
+    capacity.dtype:
+    - int64
+    capacity.value_range_int64:
+    - - 0
+      - 0
+    - - 1
+      - 1
+    - - 2
+      - 8
+    - - 16
+      - 64
+y:
+  type: aclTensor
+  factors:
+    y.exist:
+    - true
+    y.format:
+    - ND
+    y.dimensions:
+    - 3
+    y.dtype:
+    - float16
+    - float32
+    - bfloat16
+
+# caller 输出描述引入 E；这些符号是约束求解中间因子，不是公开接口参数。
+_shape_symbols:
+  type: intermediate
+  factors:
+    _shape_symbols.S: [0, 1, 4, 8, 31, 64, 257]
+    _shape_symbols.H: [0, 1, 8, 17, 31, 32, 33, 128, 1024]
+    _shape_symbols.K: [0, 1, 2, 3, 8, 64]
+    _shape_symbols.E: [0, 1, 2, 3, 5, 64]

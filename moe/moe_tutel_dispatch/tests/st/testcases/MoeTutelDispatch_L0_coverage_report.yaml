@@ -1,0 +1,362 @@
+summary:
+  level: L0
+  strategy: single_factor_coverage
+  total_factors: 31
+  total_factor_values: 97
+  covered_factor_values: 97
+  uncovered_factor_values: 0
+  coverage_rate: 100.00%
+  actual_case_count: 15
+  unique_case_count: 15
+  generator_note: "minimal_case_count below is the generic script's factor-value count label, not the emitted CSV row count"
+  minimal_case_count: 97
+details:
+  capacity.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  locations.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  _shape_symbols.S:
+    target_values:
+    - '0'
+    - '1'
+    - '257'
+    - '31'
+    - '4'
+    - '64'
+    - '8'
+    covered_values:
+    - '0'
+    - '1'
+    - '257'
+    - '31'
+    - '4'
+    - '64'
+    - '8'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  gates.value_range:
+    target_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-1.1754943508e-38, 1.1754943508e-38]'
+    - '[-6.103515625e-05, 6.103515625e-05]'
+    - '[0, 0]'
+    - '[1, 1]'
+    covered_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-1.1754943508e-38, 1.1754943508e-38]'
+    - '[-6.103515625e-05, 6.103515625e-05]'
+    - '[0, 0]'
+    - '[1, 1]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  indices.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  capacity.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  locations.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  gates.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  y.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  x.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  x.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  y.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - float32
+    covered_values:
+    - bfloat16
+    - float16
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  _shape_symbols.H:
+    target_values:
+    - '0'
+    - '1'
+    - '1024'
+    - '128'
+    - '17'
+    - '31'
+    - '32'
+    - '33'
+    - '8'
+    covered_values:
+    - '0'
+    - '1'
+    - '1024'
+    - '128'
+    - '17'
+    - '31'
+    - '32'
+    - '33'
+    - '8'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  gates.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  locations.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  y.dimensions:
+    target_values:
+    - '3'
+    covered_values:
+    - '3'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  gates.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - float32
+    covered_values:
+    - bfloat16
+    - float16
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  locations.value_range:
+    target_values:
+    - '[-1, -1]'
+    - '[-16, -2]'
+    - '[-2147483648, -2147483648]'
+    - '[0, 63]'
+    - '[2147483647, 2147483647]'
+    - '[64, 128]'
+    covered_values:
+    - '[-1, -1]'
+    - '[-16, -2]'
+    - '[-2147483648, -2147483648]'
+    - '[0, 63]'
+    - '[2147483647, 2147483647]'
+    - '[64, 128]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  indices.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  _shape_symbols.K:
+    target_values:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '64'
+    - '8'
+    covered_values:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '64'
+    - '8'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  indices.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  indices.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  gates.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  indices.value_range:
+    target_values:
+    - '[-1, -1]'
+    - '[-16, -2]'
+    - '[-2147483648, -2147483648]'
+    - '[0, 7]'
+    - '[2147483647, 2147483647]'
+    - '[8, 16]'
+    covered_values:
+    - '[-1, -1]'
+    - '[-16, -2]'
+    - '[-2147483648, -2147483648]'
+    - '[0, 7]'
+    - '[2147483647, 2147483647]'
+    - '[8, 16]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  _shape_symbols.E:
+    target_values:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '5'
+    - '64'
+    covered_values:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '5'
+    - '64'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  capacity.value_range:
+    target_values:
+    - '[0, 0]'
+    - '[1, 1]'
+    - '[16, 64]'
+    - '[2, 8]'
+    covered_values:
+    - '[0, 0]'
+    - '[1, 1]'
+    - '[16, 64]'
+    - '[2, 8]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  y.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  x.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - float32
+    covered_values:
+    - bfloat16
+    - float16
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  x.value_range:
+    target_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-1.1754943508e-38, 1.1754943508e-38]'
+    - '[-3.3895313892515355e+38, -3.3895313892515355e+38]'
+    - '[-3.4028235e+38, -3.4028235e+38]'
+    - '[-6.103515625e-05, 6.103515625e-05]'
+    - '[-65504, -65504]'
+    - '[0, 0]'
+    - '[3.3895313892515355e+38, 3.3895313892515355e+38]'
+    - '[3.4028235e+38, 3.4028235e+38]'
+    - '[65504, 65504]'
+    covered_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-1.1754943508e-38, 1.1754943508e-38]'
+    - '[-3.3895313892515355e+38, -3.3895313892515355e+38]'
+    - '[-3.4028235e+38, -3.4028235e+38]'
+    - '[-6.103515625e-05, 6.103515625e-05]'
+    - '[-65504, -65504]'
+    - '[0, 0]'
+    - '[3.3895313892515355e+38, 3.3895313892515355e+38]'
+    - '[3.4028235e+38, 3.4028235e+38]'
+    - '[65504, 65504]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  locations.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  x.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%

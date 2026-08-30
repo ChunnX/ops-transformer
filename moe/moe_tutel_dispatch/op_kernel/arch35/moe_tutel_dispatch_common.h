@@ -17,20 +17,19 @@
 #define MOE_TUTEL_DISPATCH_COMMON_H_
 
 #include "kernel_operator.h"
+#include "moe_tutel_dispatch_tiling_data.h"
 
 namespace MoeTutelDispatchNs {
 using namespace AscendC;
 
 constexpr int64_t BLOCK_SIZE = 32;
-constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t PAYLOAD_BUFFER_NUM = 2;
+constexpr int64_t PAYLOAD_QUEUE_DEPTH = 2;
 
-/*
- * x / gates / y 一律按同宽无符号整型搬运：
- *  - 本算子是纯 bit 搬运，不做任何算术，用整型容器与用 float16/bfloat16/float 完全等价；
- *  - 规避 bfloat16_t 的 cast / 构造在 arch35 上的兼容性问题（DataCopyPadExtParams.paddingValue、
- *    InitGlobalMemory 的填充值都能直接写 0）。
- * 与 attention/scatter_pa_kv_cache 的 arch35 内核同法（它把 payload 模板成 int8/int16/int32）。
- */
+// x / gates / y 一律按同宽无符号整型搬运：
+// - 本算子是纯 bit 搬运，不做任何算术，用整型容器与用 float16/bfloat16/float 完全等价；
+// - 规避 bfloat16_t 的 cast / 构造在 arch35 上的兼容性问题。
+// 与 attention/scatter_pa_kv_cache 的 arch35 内核同法（它把 payload 模板成 int8/int16/int32）。
 
 // 「值为零」的位型判据：除符号位外全 0。fp16 / bf16 / fp32 皆成立，
 // 与 A2 kernel 的 `static_cast<float>(gates_) != 0` 逐位等价（NaN / Inf / denormal 判为非零）。
