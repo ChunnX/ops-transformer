@@ -91,13 +91,17 @@ __simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2 *p_
     // validGroups==0 时整块无有效行：无 next 预取需防污染，且把行 [0,32) 写 MIN_VALUE
     // 会让预计算读到 -65504，乘 INV_LN2 溢出 -inf 污染 local_group_max -> scale 255/NaN，
     // 故该循环对 validGroups==0 不执行，s 保持 MM1 输出。
-    const uint16_t writeEnd = ((validGroups + 1) * ROWS_PER_GROUP) < 128
-                                  ? ((validGroups + 1) * ROWS_PER_GROUP)
-                                  : 128;
-    for (uint16_t r = effY; validGroups > 0 && r < writeEnd; ++r) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-            s + ((chunkY * 128 + r) * QsBase) * 2, min_val_reg, preg_VL64_16bit);
-    }
+    // 【已上移】本循环移到调度层的独立 VF MaskInvalidRowsToMinValueCallVF(写完 PipeBarrier<PIPE_V>())。
+    //   原因: VF 内 StoreAlign(写 MIN_VALUE) 与紧随其后的预计算 LoadAlign(读 s) 是同一 V 流水的 RAW,
+    //   VF 内无法插屏障, 实测无同步时预计算读到 MM1 真实数据而非 MIN_VALUE, 污染
+    //   group_gmax/global_max -> pscale 饱和 255 -> 输出 NaN。
+    // const uint16_t writeEnd = ((validGroups + 1) * ROWS_PER_GROUP) < 128
+    //                               ? ((validGroups + 1) * ROWS_PER_GROUP)
+    //                               : 128;
+    // for (uint16_t r = effY; validGroups > 0 && r < writeEnd; ++r) {
+    //     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
+    //         s + ((chunkY * 128 + r) * QsBase) * 2, min_val_reg, preg_VL64_16bit);
+    // }
 
     // ====================== 预计算：本大块第一个分组的最大值 ======================
     // 前提: 调用方保证进入本 VF 的所有大块 validEffRows>0（validGroups>=1），故预计算无条件执行。

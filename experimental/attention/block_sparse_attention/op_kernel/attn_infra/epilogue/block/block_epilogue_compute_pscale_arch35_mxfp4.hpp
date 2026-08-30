@@ -103,6 +103,24 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_P_BUF1_FLAG);
 
+#if 0  // DBG_DUMP_TMP
+        // ===== [DBG] pscale 入口 dump(此时 tileInfo 是 delay3 的那个 tile) =====
+        {
+            uint32_t sub = AscendC::GetSubBlockIdx();
+            int32_t cg = (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) ? 1 : 0;
+            AscendC::PRINTF("[PSDBG] t=%u sub=%u tm=%u cg=%d | gmax=%d peer=%d old=%d | lm1=%d,%d lm2=%d,%d | dm=%d\n",
+                            (uint32_t)tileInfo.curKvsTileLoopIdx, sub, (uint32_t)tileInfo.tileMaxIdx, cg,
+                            DbgF2I((float)localGlobalMax.GetValue(0)),
+                            DbgF2I((float)peerGlobalMax.GetValue(0)),
+                            DbgF2I((float)softmaxMaxOld.GetValue(0)),
+                            DbgF2I((float)localGroupMax1.GetValue(0)),
+                            DbgF2I((float)localGroupMax1.GetValue(128)),
+                            DbgF2I((float)localGroupMax2.GetValue(0)),
+                            DbgF2I((float)localGroupMax2.GetValue(128)),
+                            DbgF2I(dm.GetValue(0)));
+        }
+
+#endif
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
                 Mxfp4VF::ComputePscaleAndDmCallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
@@ -177,6 +195,25 @@ public:
     }
 
 private:
+#if 0  // DBG_DUMP_TMP
+    // ===== [DBG] float -> int(只打印整数, 避免 %f 的 double 提升) =====
+    // 约定: 999999=+inf, -999999=-inf, 888888=NaN
+    __aicore__ inline int32_t DbgF2I(float fv)
+    {
+        if (fv != fv) {
+            return 888888;
+        }
+        if (fv > 1e30f) {
+            return 999999;
+        }
+        if (fv < -1e30f) {
+            return -999999;
+        }
+        return (int32_t)fv;
+    }
+
+#endif
+
     __aicore__ inline void GetPScaleParams(const TileInfo &tileInfo, uint32_t subBlockIdx, uint16_t &firstLoopStart,
                                            uint16_t &firstLoop, uint16_t &secondLoopStart, uint16_t &secondLoop)
     {

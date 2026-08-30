@@ -75,10 +75,15 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 
     // 块内行 [effY, 32) 置 -inf: 预计算与组循环读到 MIN_VALUE 后 exp(MIN_VALUE-max)=0,
     // 且 max 统计不受影响。validGroups==0 时不执行(整块无有效行, 预计算跳过,
     // s 保持 MM1 输出, 防 -65504*INV_LN2 溢出 -inf 污染 local_group_max)。
-    for (uint16_t r = effYClamped; validGroups > 0 && r < KvsBaseAlign; ++r) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-            s + (r * QsBase) * 2, min_val_reg, preg_all_16bit);
-    }
+    // 【已上移】本循环移到调度层(block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp4.hpp)
+    //   的独立 VF MaskInvalidRowsToMinValueCallVF 中执行, 写完由调用方 PipeBarrier<PIPE_V>() 后再进本 VF。
+    //   原因: VF 内 StoreAlign(写 MIN_VALUE) 与紧随其后的预计算 LoadAlign(读 s) 是同一 V 流水的 RAW,
+    //   VF 内无法插屏障, 实测(见 [EXP] 打印)无同步时预计算读到 MM1 真实数据(0)而非 MIN_VALUE,
+    //   导致 group_gmax/global_max 被污染 -> pscale 饱和 255 -> 输出 NaN。
+    // for (uint16_t r = effYClamped; validGroups > 0 && r < KvsBaseAlign; ++r) {
+    //     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
+    //         s + (r * QsBase) * 2, min_val_reg, preg_all_16bit);
+    // }
 
     // ====================== 预计算：第一个分组的最大值 ======================
     // 前提: 调用方保证进入本 VF 的所有大块 validEffRows>0（validGroups>=1），故预计算无条件执行。

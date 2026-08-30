@@ -77,10 +77,10 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
     // 块内行 [effY, 32) 置 -inf: 预计算与组循环读到 MIN_VALUE 后 exp(MIN_VALUE-max)=0,
     // 且 max 统计不受影响。validGroups==0 时不执行(整块无有效行, 预计算跳过,
     // s 保持 MM1 输出, 防 -65504*INV_LN2 溢出 -inf 污染 local_group_max)。
-    for (uint16_t r = effYClamped; validGroups > 0 && r < KvsBaseAlign; ++r) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-            s + (r * QsBase) * 2, min_val_reg, preg_VL64_16bit);
-    }
+    // for (uint16_t r = effYClamped; validGroups > 0 && r < KvsBaseAlign; ++r) {
+    //     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
+    //         s + (r * QsBase) * 2, min_val_reg, preg_VL64_16bit);
+    // }
 
     // ====================== 预计算：第一个分组的最大值 ======================
     // 前提: 调用方保证进入本 VF 的所有大块 validEffRows>0（validGroups>=1），故预计算无条件执行。

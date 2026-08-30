@@ -96,6 +96,15 @@ public:
 
         const uint32_t actKvsTile = actualBlockShape.m();
         const uint32_t actQsTile = actualBlockShape.n();
+        // 只有「任务首 tile」或「TileGroup 首 tile」时 global_max 缓冲才是未初始化/轮转残留,
+        // 需要 SoftmaxAllInvalidCallVF 兜底写 -60000; 其余tile 一律不写, 保住跨 tile 累积的 running max
+        const bool gmaxNeedInit = (tileInfo.isFirstKvsTile || tileInfo.isTileGoupFirstTile);
+        // 槽位只在这两个时机切换(kernel:704-708), 新槽位是 4 个 TileGroup 之前的残留 -> 落一次安全初值。
+        // 无效 tile 一律不再碰 global_max(见 SoftmaxAllInvalidCallVF 注释), running max 只由有效数据推进。
+        if (gmaxNeedInit) {
+            Mxfp4VF::InitGlobalMaxCallVF<ElementMax>(localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
         if (actKvsTile == MXFP4::KVS_BASE_SIZE) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
@@ -106,13 +115,11 @@ public:
                 // 会覆盖 chunk0 已写回的 global_max(反之亦然)。
                 if (tileInfo.validRowsY1 == 0) {
                     Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 1, 0, 0>(
-                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                 }
                 if (tileInfo.validRowsY2 == 0) {
                     Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 1, 0, 1>(
-                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
                 if (tileInfo.validRowsY1 != 0) {
@@ -139,13 +146,11 @@ public:
                 // qs=64, kvs=256 按 chunk 分流, 同 qs=128 (每行仅 64 half, HAS_HIGH_OFF=false)。
                 if (tileInfo.validRowsY1 == 0) {
                     Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 1, 0, 0>(
-                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                 }
                 if (tileInfo.validRowsY2 == 0) {
                     Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 1, 0, 1>(
-                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                        pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
                 if (tileInfo.validRowsY1 != 0) {
@@ -192,29 +197,17 @@ public:
                     if (tileInfo.validRowsY1 == 0) {
                         // softmax padding 32 全0: 专用模板(LGM_GROUPS=2 对齐主 VF 的 groupMax padding 到 64)
                         Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 1, 1, 2>(
-                            pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                            localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                            pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                     } else {
                         // softmax padding 32, qs=128
                         // [DBG] mask 上移到 softmax VF 前的独立 VF: 行 [validRowsY1, min((ceil(Y1/32)+1)*32,32)) 置 MIN_VALUE, 确保对 VF 预计算可见
                         Mxfp4VF::MaskInvalidRowsToMinValueCallVF<ElementInput, false>(
                             sUBTensor[spBuffIdx], 0, tileInfo.validRowsY1, MXFP4::DATA_BLOCK_BYTE);
-                        // ===== [EXP] 实测: 读 UB 是否受同步影响 =====
-                        {
-                            uint16_t expR = (tileInfo.validRowsY1 < MXFP4::DATA_BLOCK_BYTE)
-                                                ? tileInfo.validRowsY1 : MXFP4::DATA_BLOCK_BYTE - 1;
-                            // A) 掩码写完后、屏障前: 无同步直接读(GetValue 走 S 标量流水) + DumpTensor
-                            // [DBG] AscendC::DumpTensor(sUBTensor[spBuffIdx], 90, actKvsTile * 128);
-                            float expNoB = (float)sUBTensor[spBuffIdx].GetValue(expR * 256);
-                            AscendC::PRINTF("[EXP] effY=%u r=%u noBarrier=%f\n",
-                                            (uint32_t)tileInfo.validRowsY1, (uint32_t)expR, expNoB);
-                            // B) 加 PIPE_V 屏障后再读
-                            AscendC::PipeBarrier<PIPE_V>();
-                            // [DBG] AscendC::DumpTensor(sUBTensor[spBuffIdx], 91, actKvsTile * 128);
-                            float expB = (float)sUBTensor[spBuffIdx].GetValue(expR * 256);
-                            AscendC::PRINTF("[EXP] effY=%u r=%u afterBarrier=%f\n",
-                                            (uint32_t)tileInfo.validRowsY1, (uint32_t)expR, expB);
-                        }
+                        // MIN_VALUE 填充(独立 VF MaskInvalidRowsToMinValueCallVF) 与 softmax VF 的
+                        // 预计算(LoadAlign 读 s) 之间是同一 V 流水的 RAW, VF 内无法插屏障,
+                        // 必须在此显式 PipeBarrier<PIPE_V>() 后预计算才读得到 MIN_VALUE。
+                        // 实测: 无同步时预计算读到 MM1 真实数据 -> group_gmax/global_max 被污染
+                        //       -> pscale 饱和 255 -> 输出 NaN。
                         AscendC::PipeBarrier<PIPE_V>();
                         Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput,
                                                                           ElementDisguiseP>(
@@ -226,8 +219,7 @@ public:
                     if (tileInfo.validRowsY1 == 0) {
                         // softmax padding 32 全0: 专用模板(LGM_GROUPS=2 对齐主 VF 的 groupMax padding 到 64)
                         Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 1, 1, 2>(
-                            pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                            localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                            pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                     } else {
                         // softmax padding 32, qs=64
                         // [DBG] mask 上移到 softmax VF 前的独立 VF: 行 [validRowsY1,32) 置 MIN_VALUE, 确保对 VF 预计算可见 (qs=64: 每行仅 64 half)
@@ -249,12 +241,10 @@ public:
                     if (wholeInvalid) {
                         if (actKvsTile <= 128) {
                             Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 1>(
-                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                                localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                         } else {
                             Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, true, 4, 2>(
-                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                                localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                         }
                     } else {
                         // softmax padding 32 multi >= 64, qs=128
@@ -282,12 +272,10 @@ public:
                     if (wholeInvalid) {
                         if (actKvsTile <= 128) {
                             Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 1>(
-                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                                localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                         } else {
                             Mxfp4VF::SoftmaxAllInvalidCallVF<ElementInput, false, 4, 2>(
-                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                                localGlobalMaxUBTensor[tileInfo.tileMaxIdx]);
+                                pUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx]);
                         }
                     } else {
                         // softmax padding 32 multi >= 64, qs=64
@@ -313,6 +301,11 @@ public:
                 }
             }
         }
+
+#if 0  // DBG_DUMP_TMP
+        // ===== [DBG] softmax 出口: 打印本 tile 的有效行数与 softmax 后 global_max / local_group_max =====
+        AscendDbgDumpI(l1PTensorTla, tileInfo, actKvsTile, groupMaxIdx, spBuffIdx, (uint32_t)taskInfo.taskTileNum);
+#endif
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_P_BUF0_FLAG + spBuffIdx);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_P_BUF0_FLAG + spBuffIdx);
@@ -414,6 +407,47 @@ public:
     {
         return loop / 2 * 2 % MXFP4::UB_LOCAL_GROUP_MAX_CNT;
     }
+
+#if 0  // DBG_DUMP_TMP
+    // ===== [DBG] softmax 出口 dump: 本 tile 有效行数 + softmax 后 global_max / local_group_max =====
+    // 只打印整数(避免 %f 触发 float->double 提升)。约定: 999999=+inf, -999999=-inf, 888888=NaN
+    template <class TensorL1P>
+    __aicore__ inline void AscendDbgDumpI(TensorL1P &l1PTensorTla, TileInfo const &tileInfo, uint32_t actKvsTile,
+                                          uint32_t groupMaxIdx, uint32_t spBuffIdx, uint32_t taskTileNum)
+    {
+        (void)l1PTensorTla;
+        uint32_t sub = AscendC::GetSubBlockIdx();
+        AscendC::PRINTF(
+            "[SMDBG] t=%u/%u tm=%u sub=%u sp=%u actKvs=%u Y1=%u Y2=%u | first=%d tgf=%d | gmax=%d | lm=%d,%d,%d,%d,%d,%d,%d,%d\n",
+            (uint32_t)tileInfo.curKvsTileLoopIdx, taskTileNum, (uint32_t)tileInfo.tileMaxIdx, sub,
+            (uint32_t)spBuffIdx, (uint32_t)actKvsTile, (uint32_t)tileInfo.validRowsY1, (uint32_t)tileInfo.validRowsY2,
+            (int32_t)tileInfo.isFirstKvsTile, (int32_t)tileInfo.isTileGoupFirstTile,
+            DbgToI((float)localGlobalMaxUBTensor[tileInfo.tileMaxIdx].GetValue(0)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(0)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(128)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(256)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(384)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(512)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(640)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(768)),
+            DbgToI((float)localGroupMaxUBTensor[groupMaxIdx].GetValue(896)));
+    }
+
+    __aicore__ inline int32_t DbgToI(float fv)
+    {
+        if (fv != fv) {
+            return 888888;  // NaN
+        }
+        if (fv > 1e30f) {
+            return 999999;  // +inf
+        }
+        if (fv < -1e30f) {
+            return -999999;  // -inf
+        }
+        return (int32_t)fv;
+    }
+
+#endif
 
 private:
     // UB tensors（FIXPIPE<->V 及常驻 buffer）
