@@ -1500,11 +1500,28 @@ def generate_data():
 
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
+E4M3_RINT_NAN_THRESHOLD = 464.0
 # Keep the exact FP32 constants and operation order used by the VF.  For
 # large-magnitude negative scores, ``x / log(2)`` and ``x * INV_LN2`` can
 # round to different FP32 values before ceil.
 LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
+
+
+def _cast_mxfp8_p_to_e4m3(value):
+    """Match the MXFP8 VF RINT conversion at the top of E4M3FN range.
+
+    E4M3FN's largest finite value is 448.  The VF conversion rounds finite
+    values through the next encoding, whose midpoint is 464; values above
+    that midpoint become the NaN encoding instead of saturating to 448.
+    PyTorch's CPU conversion saturates those values, so repair only this
+    backend difference after preserving the normal E4M3 rounding result.
+    """
+    result = value.to(FP8_DTYPE).to(torch.float32)
+    overflow = torch.isfinite(value) & (
+        torch.abs(value) > E4M3_RINT_NAN_THRESHOLD
+    )
+    return result.masked_fill(overflow, float("nan"))
 
 
 def _align_up_to_ln2(value, use_quant_matmul):
@@ -2373,7 +2390,7 @@ def cpu_mxfp8_golden(
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
-                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            p_quant_subloop = _cast_mxfp8_p_to_e4m3(p_subloop)
                             subloop_results.append(
                                 (
                                     subloop_start,
@@ -3168,6 +3185,7 @@ def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
     avoids pre-fix cache files whose key did not encode the backend.
     """
     backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul"
+    backend += "_p_cast_rint_v1"
     cache_prefix = f"{case_name}_{backend}_p_scale"
     if p_scale is None or p_scale.numel() == 0:
         return f"{cache_prefix}_default"
