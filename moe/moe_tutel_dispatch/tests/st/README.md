@@ -63,9 +63,16 @@ case's repeat, dynamic and parallelism fields:
 ```bash
 python3 design/prepare_manual_data.py --ttk-root <ops-test-kit> --output-dir <artifact-dir>
 python3 run_contract_harness.py --execute --ttk-root <ops-test-kit> \
-  --manual-data-dir <artifact-dir> --host-ut-binary <host-ut-binary> \
+  --manual-data-dir <artifact-dir> --result-dir <result-dir> \
+  --host-ut-binary <host-ut-binary> \
   --build-scan <build-scan> --static-contract <static-contract>
 ```
+
+The harness writes one result CSV per TTK invocation outside the repository and
+checks `precision_status`; Kernel entries additionally require
+`bin_compile_s=BINARY_MATCH` and `bin_precision=100%`. This is required because
+TTK can return process status zero even when a GEIR case records an execution
+error in its result CSV.
 
 The complete rationale and gates are in
 `deliverables/MoeTutelDispatch/TEST.md` at the workspace root.

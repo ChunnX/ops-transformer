@@ -76,7 +76,7 @@ def split_csv_target(st_dir, target):
     return csv_path, case_name
 
 
-def command_for(row, args, st_dir):
+def command_for(row, args, st_dir, result_path=None):
     harness = row["harness"]
     if harness in {"ttk_kernel", "ttk_geir"}:
         if args.ttk_root is None:
@@ -111,6 +111,8 @@ def command_for(row, args, st_dir):
             command.extend(["-c=false", "-d=true"])
         if args.plugin is not None:
             command.extend(["--plugin", str(args.plugin)])
+        if result_path is not None:
+            command.extend(["--output", str(result_path)])
         return command, args.ttk_root
     if harness == "host_ut":
         if args.host_ut_binary is None:
@@ -133,21 +135,64 @@ def command_for(row, args, st_dir):
     raise RuntimeError(f"unsupported harness: {harness}")
 
 
+def validate_ttk_result(path, row):
+    if not path.is_file():
+        raise RuntimeError(f"TTK did not create result CSV: {path}")
+    with path.open(newline="", encoding="utf-8") as file:
+        results = list(csv.DictReader(file))
+    if len(results) != 1:
+        raise RuntimeError(f"TTK result must contain exactly one row: {path}")
+    result = results[0]
+    if result.get("testcase_name") != row["case_id"]:
+        raise RuntimeError(
+            f"TTK result case mismatch: expected {row['case_id']}, "
+            f"got {result.get('testcase_name')!r}"
+        )
+    if result.get("precision_status") != "PASS":
+        raise RuntimeError(
+            f"TTK precision failed for {row['case_id']}: "
+            f"{result.get('precision_status')!r}"
+        )
+    if row["harness"] == "ttk_kernel":
+        if result.get("bin_compile_s") != "BINARY_MATCH":
+            raise RuntimeError(
+                f"TTK binary was not matched for {row['case_id']}: "
+                f"{result.get('bin_compile_s')!r}"
+            )
+        if result.get("bin_precision") != "100%":
+            raise RuntimeError(
+                f"TTK binary comparison was not exact for {row['case_id']}: "
+                f"{result.get('bin_precision')!r}"
+            )
+
+
 def execute_row(row, args, st_dir):
-    command, cwd = command_for(row, args, st_dir)
     parallelism = int(row["parallelism"])
-    print(
-        f"RUN {row['case_id']}: parallelism={parallelism} {' '.join(command)}",
-        flush=True,
-    )
-    if parallelism == 1:
+    is_ttk = row["harness"] in {"ttk_kernel", "ttk_geir"}
+    if is_ttk and args.result_dir is None:
+        raise RuntimeError("--result-dir is required for TTK execution")
+    if is_ttk:
+        args.result_dir.mkdir(parents=True, exist_ok=True)
+
+    def run_one(lane=None):
+        result_path = None
+        if is_ttk:
+            suffix = "" if lane is None else f"_p{lane}"
+            result_path = args.result_dir / f"{row['case_id']}{suffix}.csv"
+        command, cwd = command_for(row, args, st_dir, result_path)
+        print(
+            f"RUN {row['case_id']}: parallelism={parallelism} {' '.join(command)}",
+            flush=True,
+        )
         subprocess.run(command, cwd=cwd, check=True)
+        if result_path is not None:
+            validate_ttk_result(result_path, row)
+
+    if parallelism == 1:
+        run_one()
         return
     with ThreadPoolExecutor(max_workers=parallelism) as executor:
-        futures = [
-            executor.submit(subprocess.run, command, cwd=cwd, check=True)
-            for _ in range(parallelism)
-        ]
+        futures = [executor.submit(run_one, lane) for lane in range(parallelism)]
         for future in futures:
             future.result()
 
@@ -161,6 +206,7 @@ def main():
     parser.add_argument("--ttk-root", type=Path)
     parser.add_argument("--plugin", type=Path)
     parser.add_argument("--manual-data-dir", type=Path)
+    parser.add_argument("--result-dir", type=Path)
     parser.add_argument("--host-ut-binary", type=Path)
     parser.add_argument("--build-scan", type=Path)
     parser.add_argument("--static-contract", type=Path)
