@@ -1212,7 +1212,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
             GatherKvForNorm(kvLocal, info, loopInfo, statisticInfo,
                             originSliceInfo, 0U, constInfo_.headDim,
                             needDealTcSize);
-            PipeBarrier<PIPE_ALL>();
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
             KeyPoolVec1SliceIterator<COMP> normalizedSliceIterator(tools_);
             normalizedSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
             normalizedSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
@@ -1249,7 +1251,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
                 statisticInfo.key_poolScCnt * cmpRatio_,
                 constInfo_.headDim, constInfo_.headDim,
                 constInfo_.headDim);
-            PipeBarrier<PIPE_MTE3>();
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
             compressedCnt_ += statisticInfo.key_poolScCnt;
         }
 
@@ -1309,6 +1312,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
             }
             tailIterator.IteratorSlice();
         }
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         tcIdx += actDealTcSize;
     }
 }

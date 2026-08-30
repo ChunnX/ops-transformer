@@ -74,13 +74,19 @@ __aicore__ inline void KeyPoolLayerNormRowsInplace(
     LocalTensor<float> beta = gamma[headDim];
     DataCopy(gamma, normWeight, headDim);
     DataCopy(beta, normBias, headDim);
-    PipeBarrier<PIPE_ALL>();
     for (uint32_t row = 0; row < rowCount; ++row) {
         DataCopy(input, data[static_cast<uint64_t>(row) * rowStride], headDim);
-        PipeBarrier<PIPE_MTE2>();
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
         KeyPoolLayerNorm(output, input, mean, gamma, beta, eps, headDim);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
         DataCopy(data[static_cast<uint64_t>(row) * rowStride], output, headDim);
-        PipeBarrier<PIPE_MTE3>();
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
 }
 
