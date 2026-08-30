@@ -103,8 +103,33 @@ def test_ttk_command_honors_repeat_dynamic_binary_and_manual_data():
     assert "--run=20" in command
     assert "--dl=1" in command
     assert "--compare=binary" in command
+    assert command[command.index("--warmup") + 1] == "false"
     assert command[command.index("--manual-data-dirs") + 1] == str(args.manual_data_dir)
     assert "-c=false" in command and "-d=true" in command
+    assert "-b=release" not in command
+
+
+def test_kernel_command_is_binary_only_and_skips_warmup():
+    row = {
+        "harness": "ttk_kernel",
+        "target": "testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_010",
+        "repeats": "1",
+        "parallelism": "1",
+        "dynamic": "0",
+    }
+    args = SimpleNamespace(
+        ttk_root=Path("/tmp/ttk"),
+        manual_data_dir=Path("/tmp/manual"),
+        plugin=Path("/tmp/golden.py"),
+    )
+
+    command, cwd = harness.command_for(row, args, ST_DIR)
+
+    assert cwd == args.ttk_root
+    assert command[command.index("--warmup") + 1] == "false"
+    assert "-d=false" in command
+    assert "-b=release" in command
+    assert "-d=true" not in command
 
 
 def test_csv_target_is_resolved_inside_st_directory():
