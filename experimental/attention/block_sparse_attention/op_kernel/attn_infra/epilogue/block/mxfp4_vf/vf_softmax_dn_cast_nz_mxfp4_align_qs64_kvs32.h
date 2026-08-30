@@ -83,9 +83,12 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
     // }
 
     // ====================== 预计算：第一个分组的最大值 ======================
-    // 前提: 调用方保证进入本 VF 的所有大块 validEffRows>0（validGroups>=1），故预计算无条件执行。
+    // 【修复】validGroups==0(整块无有效行) 时预计算不读 s，避免读 MM1 垃圾数据污染
+    //   curr_group_max -> local_group_max[0] -> pscale 偏大 -> 反量化错(实测 fulfill 81%)。
+    //   动态上界与主循环 for(i<validGroups) 同形态（短路写法会触发 bisheng SIGSEGV）。
     Duplicate(curr_group_max, MIN_VALUE);
-    for (uint16_t iter = 0; iter < ITER_PER_GROUP; ++iter) {
+    const uint16_t groupMaxIters = validGroups > 0 ? ITER_PER_GROUP : 0;
+    for (uint16_t iter = 0; iter < groupMaxIters; ++iter) {
         LoadAlign(src_c0, s + (iter * QsBase * ROW_SUB_LOOP + 0 * QsBase)*2);
         LoadAlign(src_c1, s + (iter * QsBase * ROW_SUB_LOOP + 1 * QsBase)*2);
         LoadAlign(src_c2, s + (iter * QsBase * ROW_SUB_LOOP + 2 * QsBase)*2);
@@ -208,8 +211,12 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(global_max, group_gmax, preg_all_16bit);
     }
 
-    // GroupMaxpadding到64, 使得对应的pscale=0
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * QsBase, min_val_reg, preg_all_16bit);
+    // GroupMax padding 到 64, 使得对应的 pscale=0
+    // 【修复】validGroups==0(整块无有效行) 时连 [0] 一起写 MIN_VALUE: 预计算已跳过,
+    //   local_group_max[0] 未写, 下游 computePscale 会读到垃圾 -> pscale 非零。
+    for (uint16_t gi = validGroups; gi <= GROUP_COUNT; ++gi) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + gi * QsBase, min_val_reg, preg_all_16bit);
+    }
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
