@@ -139,11 +139,21 @@ inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &v
     virtN = NUM_TWO * n - m + NUM_THREE;
 }
 
-inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, bool &isSmall,
-                                bool &useLine, int64_t &soloPairRounds)
+inline bool TNDRunPreferPool(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, int64_t groupSize)
+{
+    if (pairCount <= 0 || virtM <= 0 || virtN <= 0) {
+        return true;
+    }
+    const int64_t cols = virtN * pairCount;
+    // LINE独占整机。几何不合法、单batch碎片、pair轴填不满核、或pair矩形太小（1x1/2x2）都进共享pool。
+    return cols < k || virtM < std::min(k, virtN) || groupSize <= 1 || pairCount < k || virtM * virtN <= 8;
+}
+
+inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, int64_t groupSize,
+                                bool &isSmall, bool &useLine, int64_t &soloPairRounds)
 {
     const int64_t cols = virtN * pairCount;
-    isSmall = (pairCount > 0 && cols > 0 && (cols < k || virtM < std::min(k, virtN)));
+    isSmall = (pairCount > 0 && cols > 0 && TNDRunPreferPool(k, virtM, virtN, pairCount, groupSize));
     if (isSmall || pairCount <= 0 || cols <= 0) {
         useLine = false;
         soloPairRounds = 0;
@@ -348,8 +358,13 @@ inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
             bool isSmall = false;
             bool useLine = false;
             int64_t pairRounds = 0;
-            ClassifyTNDPairCols(k, virtM, virtN, runPairs, isSmall, useLine, pairRounds);
-            if (isSmall) {
+            ClassifyTNDPairCols(k, virtM, virtN, runPairs, groupSize, isSmall, useLine, pairRounds);
+            // n1=1 没有 pair，不能按 batch 串行 LINE，落单头全部进 single 池。
+            if (runPairs <= 0 && runHasSingle) {
+                singleArea = shape.m * shape.n;
+                singleMMax = std::max(singleMMax, shape.m);
+                singleNMax = std::max(singleNMax, shape.n);
+            } else if (isSmall) {
                 poolArea = virtM * virtN;
                 poolMMax = std::max(poolMMax, virtM);
                 poolNMax = std::max(poolNMax, virtN);
@@ -375,7 +390,7 @@ inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
             bool isSmall = false;
             bool useLine = false;
             int64_t pairRounds = 0;
-            ClassifyTNDPairCols(k, shape.m, shape.n, total, isSmall, useLine, pairRounds);
+            ClassifyTNDPairCols(k, shape.m, shape.n, total, groupSize, isSmall, useLine, pairRounds);
             if (isSmall) {
                 poolArea = shape.m * shape.n;
                 poolMMax = std::max(poolMMax, shape.m);
@@ -384,13 +399,21 @@ inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
                 runSolo = pairRounds;
             }
         } else if (shape.p + shape.q <= shape.m) {
-            runSolo = CalTNDBandNarrowRounds(k, total, shape.m, shape.n, shape.p, shape.q);
+            // narrow 的 LINE 按带宽列打包，比物理 m×n pool 更紧。
+            // 只有 1x1/2x2 碎片才进 pool；独苗大带宽继续 LINE，避免 001 这类 case 膨胀。
+            if (shape.m * shape.n <= 8) {
+                poolArea = shape.m * shape.n;
+                poolMMax = std::max(poolMMax, shape.m);
+                poolNMax = std::max(poolNMax, shape.n);
+            } else {
+                runSolo = CalTNDBandNarrowRounds(k, total, shape.m, shape.n, shape.p, shape.q);
+            }
         } else {
             const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
             bool isSmall = false;
             bool useLine = false;
             int64_t pairRounds = 0;
-            ClassifyTNDPairCols(k, shape.m, denseN, total, isSmall, useLine, pairRounds);
+            ClassifyTNDPairCols(k, shape.m, denseN, total, groupSize, isSmall, useLine, pairRounds);
             if (isSmall) {
                 poolArea = shape.m * denseN;
                 poolMMax = std::max(poolMMax, shape.m);
