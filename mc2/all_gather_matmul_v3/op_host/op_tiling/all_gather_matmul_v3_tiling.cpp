@@ -783,12 +783,16 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
 
     uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    tilingData->workspaceLayout.totalSize = libApiSize + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
-    tilingData->workspaceLayout.segCount = 2;
+    uint64_t runtimeInfoOffset = libApiSize;
+    uint64_t queueSnapshotOffset = runtimeInfoOffset + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+    tilingData->workspaceLayout.totalSize = queueSnapshotOffset + Mc2Tiling::QUEUE_SNAPSHOT_TOTAL_SIZE;
+    tilingData->workspaceLayout.segCount = 3;
     tilingData->workspaceLayout.segments[0] = {0UL, libApiSize,
                                                 static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-    tilingData->workspaceLayout.segments[1] = {libApiSize, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+    tilingData->workspaceLayout.segments[1] = {runtimeInfoOffset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
                                                 static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    tilingData->workspaceLayout.segments[2] = {queueSnapshotOffset, Mc2Tiling::QUEUE_SNAPSHOT_TOTAL_SIZE,
+                                                static_cast<uint8_t>(Mc2Tiling::WS_SEG_QUEUE_SNAPSHOT), {}};
 
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
     double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
@@ -822,7 +826,8 @@ static void SetTilingKey(gert::TilingContext *context)
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 {
     platform_ascendc::PlatformAscendC ascendcPlatform(context->GetPlatformInfo());
-    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize() + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize() + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE
+                             + Mc2Tiling::QUEUE_SNAPSHOT_TOTAL_SIZE;
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(context->GetNodeName(), "workSpaces is nullptr."),
                     return ge::GRAPH_FAILED);

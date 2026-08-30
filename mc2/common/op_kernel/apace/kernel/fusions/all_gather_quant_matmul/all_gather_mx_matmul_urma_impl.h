@@ -27,6 +27,7 @@
 #include "include/tensor_api/tensor.h"
 #if MC2_DFX_ENABLE
 #include "mc2_runtime_info.h"
+#include "mc2_queue_snapshot.h"
 #endif
 
 namespace Apace {
@@ -50,6 +51,7 @@ public:
 
 #if MC2_DFX_ENABLE
     __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+    __aicore__ inline void SetQueueSnapshot(Mc2Kernel::Mc2QueueSnapshot *qs) { queueSnapshot_ = qs; }
 #endif
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
@@ -117,6 +119,7 @@ private:
 
 #if MC2_DFX_ENABLE
     Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
+    Mc2Kernel::Mc2QueueSnapshot *queueSnapshot_{nullptr};
     uint8_t execTurn_ = 0;
     static constexpr uint8_t POS_COMM_BEFORE             = 0U;
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
@@ -284,15 +287,39 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
                 runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
             }
+            if (queueSnapshot_ != nullptr && GetBlockIdx() == 0) {
+                for (uint32_t peer = 0; peer < rankSize_; ++peer) {
+                    uint64_t handle = udmaCtx_->channelHandles[peer];
+                    if (handle != 0) {
+                        queueSnapshot_->CaptureCounters(handle, peer, execTurn_);
+                    }
+                }
+            }
 #endif
             allGatherScale_.Commit();
             allGatherData_.Commit();
 #if MC2_DFX_ENABLE
             if (runtimeInfo_ != nullptr) { runtimeInfo_->IncCommitCount(); }
+            if (queueSnapshot_ != nullptr && GetBlockIdx() == 0) {
+                for (uint32_t peer = 0; peer < rankSize_; ++peer) {
+                    uint64_t handle = udmaCtx_->channelHandles[peer];
+                    if (handle != 0) {
+                        queueSnapshot_->CaptureSubmittedWqe(handle, peer, execTurn_);
+                    }
+                }
+            }
 #endif
             allGatherData_.template Wait<BARRIER_DEVICE>();
 #if MC2_DFX_ENABLE
             if (runtimeInfo_ != nullptr) { runtimeInfo_->IncWaitCount(); }
+            if (queueSnapshot_ != nullptr && GetBlockIdx() == 0) {
+                for (uint32_t peer = 0; peer < rankSize_; ++peer) {
+                    uint64_t handle = udmaCtx_->channelHandles[peer];
+                    if (handle != 0) {
+                        queueSnapshot_->CaptureLatestCqe(handle, peer, execTurn_);
+                    }
+                }
+            }
 #endif
         }
         AscendC::SyncAll<true>();

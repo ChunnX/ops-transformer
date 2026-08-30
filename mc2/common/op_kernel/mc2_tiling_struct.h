@@ -188,6 +188,7 @@ enum WorkspaceSegType : uint8_t {
     WS_SEG_COMM_INT8     = 10,  // int8 通信 workspace
     WS_SEG_DYNAMIC_QUANT = 11,  // 动态量化临时空间
     WS_SEG_RUNTIME_INFO  = 12,  // 运行时信息段 (64KB)
+    WS_SEG_QUEUE_SNAPSHOT = 13, // URMA 队列快照段 (SQE/CQE/WQEBB)
     WS_SEG_RESERVED      = 255,
 };
 
@@ -265,5 +266,33 @@ struct alignas(512) RuntimeInfoPerCore {
     uint8_t  commWaitCount;   // 1B  HCCL Wait 次数 (B层 communicator 递增)
     uint8_t  reserved[501];   // 501B 预留
 }; // 512 bytes
+
+// ==================== Queue Snapshot (URMA DFX) ====================
+
+constexpr uint32_t QUEUE_SNAPSHOT_MAX_PEERS = 16U;
+constexpr uint32_t QUEUE_SNAPSHOT_WQE_BYTES = 256U;
+constexpr uint32_t QUEUE_SNAPSHOT_RING_SIZE = 8U;
+constexpr uint32_t QUEUE_SNAPSHOT_SLOT_SIZE = 4096U;
+constexpr uint32_t QUEUE_SNAPSHOT_TOTAL_SIZE =
+    QUEUE_SNAPSHOT_MAX_PEERS * QUEUE_SNAPSHOT_SLOT_SIZE; // 64KB
+constexpr uint32_t QUEUE_SNAPSHOT_MAGIC = 0x5A5A5A5AU;
+
+struct alignas(8) QueueSnapshotSlot {
+    uint32_t magic;
+    uint32_t turn;
+    uint32_t peer;
+    uint32_t sqHead, sqTail, cqHead, cqTail;
+    uint32_t sqLiveHead, sqLiveTail;
+    uint32_t cqLiveHead, cqLiveTail;
+    uint32_t sqDepth, wqeSize;
+    uint32_t cqDepth, cqeSize;
+    uint8_t  wqeLatest[QUEUE_SNAPSHOT_WQE_BYTES];
+    uint8_t  cqeLatest[QUEUE_SNAPSHOT_WQE_BYTES];
+    uint32_t cqeStatus, cqeSubstatus;
+    uint8_t  wqeRing[QUEUE_SNAPSHOT_RING_SIZE][QUEUE_SNAPSHOT_WQE_BYTES];
+    uint32_t wqeRingTurn[QUEUE_SNAPSHOT_RING_SIZE];
+    uint32_t ringPos;
+    uint32_t reserved;
+};
 } // namespace Mc2Tiling
 #endif // MC2_TILING_STRUCT_H

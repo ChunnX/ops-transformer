@@ -61,6 +61,14 @@ RUNTIME_INFO_CORE_MAX = 128
 RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE  # 65536
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
+# ====== QueueSnapshot 常量 (与 mc2_tiling_struct.h 保持一致) ======
+QUEUE_SNAPSHOT_MAX_PEERS = 16
+QUEUE_SNAPSHOT_WQE_BYTES = 256
+QUEUE_SNAPSHOT_RING_SIZE = 8
+QUEUE_SNAPSHOT_SLOT_SIZE = 4096
+QUEUE_SNAPSHOT_TOTAL_SIZE = QUEUE_SNAPSHOT_MAX_PEERS * QUEUE_SNAPSHOT_SLOT_SIZE  # 65536
+QUEUE_SNAPSHOT_MAGIC = 0x5A5A5A5A
+
 # ====== 偏移量常量 ======
 OFFSET_MM_TILE = 0
 OFFSET_COMM_TILE = QUANT_MATMUL_TILING_DATA_SIZE  # 64
@@ -102,6 +110,7 @@ WS_SEG_TYPE_MAP = {
     10: "COMM_INT8",
     11: "DYNAMIC_QUANT",
     12: "RUNTIME_INFO",
+    13: "QUEUE_SNAPSHOT",
     255: "RESERVED",
 }
 
@@ -298,6 +307,104 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
     }
 
 
+def decode_wqe_fields(wqe_bytes: bytes) -> dict:
+    """从 WQE 原始字节解码 HcommUrmaSqeCtx 关键字段 (little-endian bitfields)。"""
+    if len(wqe_bytes) < 20:
+        return {"error": "WQE data too short"}
+    w0, w1, w2, w3 = struct.unpack_from("<4I", wqe_bytes, 0)
+    rmt_eid_l, rmt_eid_h = struct.unpack_from("<2Q", wqe_bytes, 16)
+    return {
+        "sqeBbIdx": w0 & 0xFFFF,
+        "flag": (w0 >> 16) & 0xFF,
+        "opcode": (w1 >> 8) & 0xFF,
+        "inlineMsgLen": (w1 >> 22) & 0x3FF,
+        "tpId": w2 & 0xFFFFFF,
+        "sgeNum": (w2 >> 24) & 0xFF,
+        "rmtJettyOrSegId": w3 & 0xFFFFF,
+        "rmtEidL": f"0x{rmt_eid_l:016x}",
+        "rmtEidH": f"0x{rmt_eid_h:016x}",
+    }
+
+
+def decode_cqe_fields(cqe_bytes: bytes) -> dict:
+    """从 CQE 原始字节解码 HcommUrmaJfcCqeCtx 关键字段 (little-endian bitfields)。"""
+    if len(cqe_bytes) < 16:
+        return {"error": "CQE data too short"}
+    w0 = struct.unpack_from("<I", cqe_bytes, 0)[0]
+    entry_idx_local = struct.unpack_from("<I", cqe_bytes, 4)[0]
+    tpn_rmt = struct.unpack_from("<2I", cqe_bytes, 8)
+    byte_cnt = struct.unpack_from("<I", cqe_bytes, 16)[0]
+    return {
+        "status": (w0 >> 24) & 0xFF,
+        "substatus": (w0 >> 16) & 0xFF,
+        "opcode": (w0 >> 4) & 0x7,
+        "entryIdx": entry_idx_local & 0xFFFF,
+        "tpn": tpn_rmt[0] & 0xFFFFFF,
+        "byteCnt": byte_cnt,
+    }
+
+
+def parse_queue_snapshot_slot(data: bytes, offset: int) -> dict:
+    """解析单个 QueueSnapshotSlot (4096B)。"""
+    if offset + QUEUE_SNAPSHOT_SLOT_SIZE > len(data):
+        return {"error": "data too short for QueueSnapshotSlot"}
+    magic, turn, peer = struct.unpack_from("<3I", data, offset)
+    sq_head, sq_tail, cq_head, cq_tail = struct.unpack_from("<4I", data, offset + 12)
+    sq_lh, sq_lt, cq_lh, cq_lt = struct.unpack_from("<4I", data, offset + 28)
+    sq_depth, wqe_size, cq_depth, cqe_size = struct.unpack_from("<4I", data, offset + 44)
+
+    wqe_offset = offset + 60
+    cqe_offset = wqe_offset + QUEUE_SNAPSHOT_WQE_BYTES
+    cqe_status_offset = cqe_offset + QUEUE_SNAPSHOT_WQE_BYTES
+
+    cqe_status, cqe_substatus = struct.unpack_from("<2I", data, cqe_status_offset)
+    ring_offset = cqe_status_offset + 8
+    ring_turn_offset = ring_offset + QUEUE_SNAPSHOT_RING_SIZE * QUEUE_SNAPSHOT_WQE_BYTES
+    ring_pos = struct.unpack_from("<I", data, ring_turn_offset + QUEUE_SNAPSHOT_RING_SIZE * 4)[0]
+
+    slot = {
+        "magic": magic,
+        "magicValid": magic == QUEUE_SNAPSHOT_MAGIC,
+        "turn": turn,
+        "peer": peer,
+        "sqHead": sq_head, "sqTail": sq_tail,
+        "cqHead": cq_head, "cqTail": cq_tail,
+        "sqLiveHead": sq_lh, "sqLiveTail": sq_lt,
+        "cqLiveHead": cq_lh, "cqLiveTail": cq_lt,
+        "sqDepth": sq_depth, "wqeSize": wqe_size,
+        "cqDepth": cq_depth, "cqeSize": cqe_size,
+        "cqeStatus": cqe_status, "cqeSubstatus": cqe_substatus,
+        "ringPos": ring_pos,
+        "wqeLatest": data[wqe_offset:wqe_offset + QUEUE_SNAPSHOT_WQE_BYTES],
+        "cqeLatest": data[cqe_offset:cqe_offset + QUEUE_SNAPSHOT_WQE_BYTES],
+        "wqeRing": [],
+    }
+
+    for i in range(QUEUE_SNAPSHOT_RING_SIZE):
+        r_off = ring_offset + i * QUEUE_SNAPSHOT_WQE_BYTES
+        slot["wqeRing"].append({
+            "turn": struct.unpack_from("<I", data, ring_turn_offset + i * 4)[0],
+            "data": data[r_off:r_off + QUEUE_SNAPSHOT_WQE_BYTES],
+        })
+    return slot
+
+
+def parse_queue_snapshot_segment(data: bytes) -> dict:
+    """解析 workspace_segN_type13_*.bin (QueueSnapshot 段, 64KB = 16 × 4096B)。"""
+    max_slots = len(data) // QUEUE_SNAPSHOT_SLOT_SIZE
+    slots = []
+    for i in range(min(max_slots, QUEUE_SNAPSHOT_MAX_PEERS)):
+        slot = parse_queue_snapshot_slot(data, i * QUEUE_SNAPSHOT_SLOT_SIZE)
+        if slot.get("magicValid", False):
+            slots.append(slot)
+    return {
+        "segmentSize": len(data),
+        "maxSlots": QUEUE_SNAPSHOT_MAX_PEERS,
+        "activeSlots": len(slots),
+        "slots": slots,
+    }
+
+
 def detect_workspace_seg_from_filename(filename: str) -> tuple:
     """从文件名检测是否为 workspace_seg 文件，返回 (seg_idx, seg_type) 或 None。"""
     import re
@@ -319,6 +426,9 @@ def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None) 
     if seg_type == 12:  # WS_SEG_RUNTIME_INFO
         rt_info = parse_runtime_info_segment(data, aic_core_num)
         result["runtimeInfo"] = rt_info
+    elif seg_type == 13:  # WS_SEG_QUEUE_SNAPSHOT
+        qs_info = parse_queue_snapshot_segment(data)
+        result["queueSnapshot"] = qs_info
     else:
         result["hexPreview"] = data[:256].hex()
         result["note"] = f"段类型 {type_name}，原始二进制数据，请结合 tiling 参数人工分析。"
@@ -489,6 +599,50 @@ def print_runtime_info_segment(rt_info: dict):
                          slot["commCommitCount"], slot["commWaitCount"])
 
 
+def print_queue_snapshot_segment(qs_info: dict):
+    """人类可读格式打印 QueueSnapshot 段。"""
+    print_section(f"QueueSnapshot Segment (type=13, {qs_info['segmentSize']}B)")
+    logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", qs_info["activeSlots"], qs_info["maxSlots"])
+    if not qs_info["slots"]:
+        logging.warning("  无有效 slot，可能快照未被写入（异常发生在 Init 之前）。")
+        return
+    for slot in qs_info["slots"]:
+        logging.info("")
+        logging.info("  [peer %d] turn=%d  magic=0x%08X", slot["peer"], slot["turn"], slot["magic"])
+        logging.info("    SQ: head=%d tail=%d (live: head=%d tail=%d)  depth=%d wqeSize=%d",
+                     slot["sqHead"], slot["sqTail"], slot["sqLiveHead"], slot["sqLiveTail"],
+                     slot["sqDepth"], slot["wqeSize"])
+        logging.info("    CQ: head=%d tail=%d (live: head=%d tail=%d)  depth=%d cqeSize=%d",
+                     slot["cqHead"], slot["cqTail"], slot["cqLiveHead"], slot["cqLiveTail"],
+                     slot["cqDepth"], slot["cqeSize"])
+
+        wqe_fields = decode_wqe_fields(slot["wqeLatest"])
+        if "error" not in wqe_fields:
+            logging.info("    WQE: opcode=0x%x sgeNum=%d inlineMsgLen=%d tpId=0x%x rmtEidH=%s rmtEidL=%s sqeBbIdx=%d",
+                         wqe_fields["opcode"], wqe_fields["sgeNum"], wqe_fields["inlineMsgLen"],
+                         wqe_fields["tpId"], wqe_fields["rmtEidH"], wqe_fields["rmtEidL"],
+                         wqe_fields["sqeBbIdx"])
+        else:
+            logging.info("    WQE: %s", wqe_fields["error"])
+
+        cqe_fields = decode_cqe_fields(slot["cqeLatest"])
+        if "error" not in cqe_fields:
+            logging.info("    CQE: status=%d substatus=%d opcode=%d entryIdx=%d byteCnt=%d tpn=0x%x",
+                         cqe_fields["status"], cqe_fields["substatus"], cqe_fields["opcode"],
+                         cqe_fields["entryIdx"], cqe_fields["byteCnt"], cqe_fields["tpn"])
+        else:
+            logging.info("    CQE: %s", cqe_fields["error"])
+
+        logging.info("    WQE Ring (ringPos=%d):", slot["ringPos"])
+        for i, ring_entry in enumerate(slot["wqeRing"]):
+            if ring_entry["turn"] == 0 and all(b == 0 for b in ring_entry["data"][:8]):
+                continue
+            rf = decode_wqe_fields(ring_entry["data"])
+            if "error" not in rf:
+                logging.info("      [%d] turn=%d  opcode=0x%x sgeNum=%d rmtEidH=%s",
+                             i, ring_entry["turn"], rf["opcode"], rf["sgeNum"], rf["rmtEidH"])
+
+
 def print_workspace_segment(result: dict):
     """人类可读格式打印 workspace 段文件。"""
     seg_type = result["segmentType"]
@@ -496,6 +650,8 @@ def print_workspace_segment(result: dict):
     print_section(f"Workspace Segment (type={seg_type}/{type_name}, {result['fileSize']}B)")
     if seg_type == 12:  # RUNTIME_INFO
         print_runtime_info_segment(result["runtimeInfo"])
+    elif seg_type == 13:  # QUEUE_SNAPSHOT
+        print_queue_snapshot_segment(result["queueSnapshot"])
     else:
         logging.info("  段类型: %d (%s)", seg_type, type_name)
         logging.info("  文件大小: %d bytes", result["fileSize"])

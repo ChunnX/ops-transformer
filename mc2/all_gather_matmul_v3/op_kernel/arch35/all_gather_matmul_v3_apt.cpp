@@ -19,6 +19,7 @@
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h"
 #if MC2_DFX_ENABLE
 #include "mc2_runtime_info.h"
+#include "mc2_queue_snapshot.h"
 #endif
 
 using namespace AscendC;
@@ -46,6 +47,9 @@ __global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo;
     runtimeInfo.Init(workspaceGM, &tilingData.workspaceLayout, tilingData.mmTile.usedCoreNum);
     impl.SetRuntimeInfo(&runtimeInfo);
+    Mc2Kernel::Mc2QueueSnapshot queueSnapshot;
+    queueSnapshot.Init(workspaceGM, &tilingData.workspaceLayout);
+    impl.SetQueueSnapshot(&queueSnapshot);
 #endif
     impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);
     impl.Process();
