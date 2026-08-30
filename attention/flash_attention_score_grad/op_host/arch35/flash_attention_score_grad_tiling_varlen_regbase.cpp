@@ -51,6 +51,32 @@ inline bool TNDAllCubesSingleCell(const FuzzyBaseInfoParamsRegbase &p)
     return true;
 }
 
+// kernel ASCENDC_TPL_SEL 里，TND + BN2S2 + 确定性只编了 DENSE(2) 和 BAND(4)，没有 CAUSAL(3)。
+// BAND 还要求 mask=1、S=128/128、无 rope/nz、NEqual、D>128 时不能 drop。
+// host 多吐一个未实例化组合就会 rtsFuncGetByEntry 失败（tiling key 在 bin 里不存在）。
+inline bool TNDSparseDeterBns2KeyInCatalog(const FuzzyBaseInfoParamsRegbase &p)
+{
+    if (p.splitAxis != SplitAxisEnum::BN2S2) {
+        return false;
+    }
+    if (p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
+        return false;
+    }
+    if (p.attenMaskOptional == EMPTY_TENSOR) {
+        return false;
+    }
+    if (p.hasRope || p.isNzOut || p.g != 1) {
+        return false;
+    }
+    if (p.s1TemplateType != ConstAxisTemplateNum::NUM128 || p.s2TemplateType != ConstAxisTemplateNum::NUM128) {
+        return false;
+    }
+    if (p.keepProb < 1 && p.dTemplateType > ConstAxisTemplateNum::NUM128) {
+        return false;
+    }
+    return true;
+}
+
 inline int64_t CalTNDCase0RecRounds(int64_t k, int64_t m, int64_t n)
 {
     if (n <= 0) {
@@ -402,7 +428,9 @@ inline void ApplyTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p, const TNDSpa
     // 每个batch只有一个cube时，同一列只会被写一次，BN2S2直接写dK/dV是安全的。
     // 这里不能动kernel协议：只有rSingle==0才留BN2S2，否则prefix2会被single前缀占用，
     // 而BN2S2的SpecialS2Index把prefix2当成dK切列偏移。
-    const bool keepBns2 = (p.splitAxis == SplitAxisEnum::BN2S2) && TNDAllCubesSingleCell(p) && (pack.rSingle == 0);
+    // 还要落在已编译的 tiling key 上：BN2S2+CAUSAL 没编，BAND 还要 mask/S/D/drop 对齐目录。
+    const bool keepBns2 =
+        TNDSparseDeterBns2KeyInCatalog(p) && TNDAllCubesSingleCell(p) && (pack.rSingle == 0);
     if (!keepBns2) {
         p.splitAxis = SplitAxisEnum::BN2GS1S2;
     }
