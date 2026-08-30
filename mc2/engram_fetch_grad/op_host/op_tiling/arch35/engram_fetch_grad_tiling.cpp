@@ -63,9 +63,15 @@ static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value
     return std::find(list.begin(), list.end(), value) != list.end();
 }
 
-static int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
+static int64_t CeilDiv(int64_t x, int64_t y)
+{
+    return (x + y - 1) / y;
+}
 
-static int64_t AlignTo(int64_t x, int64_t y) { return CeilDiv(x, y) * y; }
+static int64_t AlignTo(int64_t x, int64_t y)
+{
+    return CeilDiv(x, y) * y;
+}
 
 static void PrintEngramFetchGradTilingData(const EngramFetchGradTilingData *tilingData, const char *nodeName)
 {
@@ -268,8 +274,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
     int64_t sendCountsDim0 = sendCountsShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(sendCountsDim0 % SEND_COUNTS_ALIGN_FACTOR != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sendCounts.dim0",
-                                              std::to_string(sendCountsDim0).c_str(),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sendCounts.dim0", std::to_string(sendCountsDim0).c_str(),
                                               "must be multiple of SEND_COUNTS_ALIGN_FACTOR(8)"),
                     return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsDim0 / SEND_COUNTS_ALIGN_FACTOR);
@@ -549,23 +554,25 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     tilingData.commBufferSize = *commBufferSizePtr;
 
     // 动态计算 gradSubBatch
-    uint32_t permanentUb = 9U * 1024U;   // hcommBuf + statusBuf + tempBuf + indicesBuf
-    uint32_t commBufSize = 2U * 64U * 1024U;  // entryBuf + gradBuf
+    uint32_t permanentUb = 9U * 1024U;       // hcommBuf + statusBuf + tempBuf + indicesBuf
+    uint32_t commBufSize = 2U * 64U * 1024U; // entryBuf + gradBuf
     uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(tilingData.hiddenBytes);
     if (maxByPong < 1U) {
         maxByPong = 1U;
     }
-    uint32_t accumNeed = static_cast<uint32_t>(AlignTo(
-        static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(UB_ALIGN)));
+    uint32_t accumNeed = static_cast<uint32_t>(
+        AlignTo(static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(UB_ALIGN)));
     bool needCast = (tilingData.inputDtype != static_cast<int32_t>(ge::DT_FLOAT));
-    uint32_t castFp32Need = needCast ? static_cast<uint32_t>(AlignTo(
-        static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * sizeof(float) * 2,
-        static_cast<int64_t>(UB_ALIGN))) : 0U;
+    uint32_t castFp32Need =
+        needCast ?
+            static_cast<uint32_t>(AlignTo(static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * sizeof(float) * 2,
+                                          static_cast<int64_t>(UB_ALIGN))) :
+            0U;
     uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - permanentUb;
-    uint32_t availableForCast = (availableForPool > commBufSize + accumNeed) ?
-        (availableForPool - commBufSize - accumNeed) : 0U;
-    uint32_t maxByCast = needCast ?
-        (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * sizeof(float) * 2U)) : maxByPong;
+    uint32_t availableForCast =
+        (availableForPool > commBufSize + accumNeed) ? (availableForPool - commBufSize - accumNeed) : 0U;
+    uint32_t maxByCast =
+        needCast ? (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * sizeof(float) * 2U)) : maxByPong;
     uint32_t gradSubBatch = maxByPong;
     if (maxByCast < gradSubBatch) {
         gradSubBatch = maxByCast;
@@ -651,8 +658,19 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortPrefix = 256 * sizeof(int32_t);
     int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * 256 * sizeof(int32_t);
     int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
-    int64_t wsSortTotal =
-        wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums + wsSortOffsets;
+    // SIMT gather staging: mirrors EngramFetchGradSort::SimtStagingPerCore — per-core GM
+    // slot area (tileElements*4B + 256*28B group pads + 32B guard), 32B aligned.
+    int64_t simtTileElements = 4096;
+    int64_t simtDynTile = (maxSortCount + tilingData.aivNum - 1) / tilingData.aivNum;
+    if (simtDynTile > 0 && simtDynTile < simtTileElements) {
+        simtTileElements = simtDynTile;
+    }
+    int64_t simtStagingPerCore = (simtTileElements * static_cast<int64_t>(sizeof(int32_t)) +
+                                  256 * (32 - static_cast<int64_t>(sizeof(int32_t))) + 32 + UB_ALIGN - 1) /
+                                 UB_ALIGN * UB_ALIGN;
+    int64_t wsSortSimtStaging = static_cast<int64_t>(tilingData.aivNum) * simtStagingPerCore;
+    int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums +
+                          wsSortOffsets + wsSortSimtStaging;
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
                       wsSegCount + wsCoreStart + wsSortTotal;

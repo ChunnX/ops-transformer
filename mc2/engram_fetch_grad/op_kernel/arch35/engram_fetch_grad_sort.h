@@ -13,6 +13,51 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
+#include "adv_api/math/cumsum.h"
+#include "simt_api/asc_simt.h"
+
+// Exclusive-scan config for the prefix phase: last-axis inclusive LINEBYLINE, no
+// last-row output (exclusive is derived by subtracting the original totals).
+constexpr AscendC::CumSumConfig kScanCfg{true, false, false, AscendC::CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
+
+constexpr uint32_t SIMT_THREAD_NUM = 1024;
+
+// Scatter data path A/B (board-decided):
+//  true  = SIMT parallel gather into a per-core GM staging buffer (slot layout) + MTE2
+//          read-back to the UB slot buffer + per-group MTE3 GM stores. SIMT keeps the
+//          gather parallelism; every GM write goes through the ordered MTE3 path.
+//  false = scalar S-pipe gather + the same MTE3 stores (fallback).
+// BOARD RESULT: with the SIMT kernel storing directly to UB, the device raised error 340
+// ("The address for VEC to access UB is not aligned") on every build since the SIMT hybrid
+// was introduced, across three unrelated rewrites of the scan code — the only free
+// variable was the SIMT UB store itself. PR10464's original SIMT kernel (and every
+// built-in CANN SIMT kernel: radix CopyOutGm, im2col, matrix_diag) only ever READS UB and
+// WRITES GM, which is why those never faulted. The staging therefore lives in GM.
+constexpr bool kUseSimtScatter = true;
+
+// 32B MTE3-source alignment for the per-group slot layout + worst-case per-group pad
+// (alignUp8(len)-len <= 7 elements = 28B, up to 256 groups) + one guard slot.
+constexpr uint32_t SIMT_SLOT_ALIGN = 32U;
+constexpr uint32_t SIMT_SLOT_ALIGN_ELEMS = SIMT_SLOT_ALIGN / sizeof(int32_t);
+constexpr uint32_t SIMT_STAGING_PAD_BYTES = 256U * (SIMT_SLOT_ALIGN - sizeof(int32_t)) + SIMT_SLOT_ALIGN;
+
+// SIMT parallel gather: scatter one source array (values or indices) by the sorted order
+// into the 32B-aligned group slots of a PER-CORE GM STAGING buffer. SIMT threads must not
+// store to UB on this device (error 340 above); UB reads and GM stores at any offset are
+// fine (PR10464's original SIMT scatter + built-in kernels rely on exactly that). The
+// staging is read back to the UB slot buffer via MTE2 and the final GM output is written
+// by the ordered per-group MTE3 path afterwards.
+__simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
+__aicore__ inline void GatherGroupsSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
+                                        __ubuf__ uint32_t *binStart, __ubuf__ uint32_t *slotOff, __ubuf__ int32_t *src,
+                                        __gm__ int32_t *padGm)
+{
+    for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
+        uint8_t k = sortedKey[i];
+        uint32_t pos = slotOff[k] + (i - binStart[k]);
+        padGm[pos] = src[sortedIndex[i]];
+    }
+}
 
 namespace EngramFetchGradSort {
 
@@ -53,6 +98,15 @@ __aicore__ inline uint32_t CeilDiv(uint32_t a, uint32_t b)
 __aicore__ inline uint32_t AlignUpU32(uint32_t bytes)
 {
     return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
+}
+
+// Per-core GM staging bytes for the SIMT gather: the full slot area of one tile
+// (tileLen*4B data + per-group 32B alignment pads + guard), aligned to 32B. The host
+// tiling mirrors this formula exactly (engram_fetch_grad_tiling.cpp SetWorkSpace).
+__aicore__ inline uint32_t SimtStagingPerCore(uint32_t tileElements)
+{
+    return (tileElements * sizeof(int32_t) + SIMT_STAGING_PAD_BYTES + SIMT_SLOT_ALIGN - 1U) / SIMT_SLOT_ALIGN *
+           SIMT_SLOT_ALIGN;
 }
 
 template <AscendC::HardEvent evt>
@@ -163,6 +217,8 @@ private:
     AscendC::GlobalTensor<int32_t> prefixGm_;
     AscendC::GlobalTensor<int32_t> coreSumsGm_;
     AscendC::GlobalTensor<int32_t> tileOffsetsGm_;
+    AscendC::GlobalTensor<int32_t> simtStagingGm_;
+    uint32_t simtStagingPerCore_{0};
 };
 
 // ==== implementations ====
@@ -268,8 +324,10 @@ __aicore__ inline uint64_t EngramFetchGradSort::GetWorkspaceSize(uint32_t totalE
         (sortTileCountByCore > sortTileCountByDefault) ? sortTileCountByCore : sortTileCountByDefault;
     uint64_t sortTempBytes = static_cast<uint64_t>(totalElements) * sizeof(int32_t);
     uint64_t sortTempSize = (sortTempBytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
+    uint64_t simtStagingBytes = static_cast<uint64_t>(numCores) * SimtStagingPerCore(tileElements);
     return 2 * sortTempSize + 2 * static_cast<uint64_t>(sortTileCount) * HISTOGRAM_BINS * sizeof(int32_t) +
-           HISTOGRAM_BINS * sizeof(int32_t) + static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t);
+           HISTOGRAM_BINS * sizeof(int32_t) + static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) +
+           simtStagingBytes;
 }
 
 __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements, uint32_t numCores)
@@ -322,6 +380,18 @@ __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_
     coreSumsGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
     offset += static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t);
     tileOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
+    offset += histSize;
+
+    // Per-core GM staging for the SIMT gather (workspace math mirrors GetWorkspaceSize,
+    // whose tileElements uses the dynTile reduction that Process() re-derives at runtime).
+    uint32_t wsTileElements = DEFAULT_TILE_SIZE;
+    uint32_t wsDynTile = CeilDiv(elementCount_, numCores);
+    if (wsDynTile > 0U && wsDynTile < wsTileElements) {
+        wsTileElements = wsDynTile;
+    }
+    simtStagingPerCore_ = SimtStagingPerCore(wsTileElements);
+    simtStagingGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
+    offset += static_cast<uint64_t>(numCores) * simtStagingPerCore_;
 
     uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t)));
     tileAlignBytes_ = tileAlignBytes;
@@ -378,10 +448,9 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
     event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
     event_t evtMte3Mte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_MTE2));
     event_t evtMte3S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_S));
-    event_t evtVS = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
-    event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
 
     uint32_t coreId = AscendC::GetBlockIdx();
+    uint16_t coreIdU16 = static_cast<uint16_t>(coreId);
     uint32_t tilesPerCore = CeilDiv(tc, coreCount_);
     uint32_t coreStart = coreId * tilesPerCore;
     uint32_t coreEnd = MinU32(coreStart + tilesPerCore, tc);
@@ -413,7 +482,7 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
         Duplicate(acc2, (uint32_t)0, mask32);
         Duplicate(acc3, (uint32_t)0, mask32);
 
-        for (uint16_t c = 0; c < coreId; c++) {
+        for (uint16_t c = 0; c < coreIdU16; c++) {
             __local_mem__ uint32_t *ptr = sumsPtr + c * HISTOGRAM_BINS;
             RegTensor<uint32_t> r0, r1, r2, r3;
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(r0, ptr, VECTOR_LEN_INT32);
@@ -432,7 +501,7 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
         DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(offsetPtr, acc2, VECTOR_LEN_INT32, mask32);
         DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(offsetPtr, acc3, VECTOR_LEN_INT32, mask32);
 
-        for (uint16_t c = coreId; c < coreCount_; c++) {
+        for (uint16_t c = coreIdU16; c < static_cast<uint16_t>(coreCount_); c++) {
             __local_mem__ uint32_t *ptr = sumsPtr + c * HISTOGRAM_BINS;
             RegTensor<uint32_t> r0, r1, r2, r3;
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(r0, ptr, VECTOR_LEN_INT32);
@@ -454,19 +523,30 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
 
     AscendC::PipeBarrier<PIPE_V>();
 
-    // Scalar exclusive scan over bins (baseline-proven). The previous in-place
-    // CumSum<float>(x, x, x) needs a 32KB stack tmp (device-side unchecked) and
-    // dst==src aliasing; both risk silent UB corruption of the prefix result.
-    AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
-    AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
-    int32_t running = 0;
-    for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
-        int32_t binCount = totalBuf.GetValue(b);
-        totalBuf.SetValue(b, running);
-        running += binCount;
-    }
-    AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
-    AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+    // Exclusive scan over the 256 per-bin totals via CumSum with an explicit 32KB tmp
+    // carved from sortWorkspace_ ([0,48KB) is free during the prefix phase): fixes the
+    // original stack-tmp (32KB needed, device-side unchecked) and dst==src aliasing, and
+    // avoids hand-rolled scan UB alignment issues entirely. Buffers are distinct.
+    // NOTE: the abandoned Hillis-Steele scratch (scanA/scanB) must NOT be touched here —
+    // its scanB base (+2044B) was not 32B aligned and its Duplicate() triggered error 340
+    // on every core of every round.
+    AscendC::LocalTensor<float> scanSrcF = sortWorkspace_.GetWithOffset<float>(HISTOGRAM_BINS, 0U);
+    AscendC::LocalTensor<float> scanInclF =
+        sortWorkspace_.GetWithOffset<float>(HISTOGRAM_BINS, HISTOGRAM_BINS * sizeof(float));
+    AscendC::LocalTensor<int32_t> scanIncl =
+        sortWorkspace_.GetWithOffset<int32_t>(HISTOGRAM_BINS, 2U * HISTOGRAM_BINS * sizeof(float));
+    AscendC::LocalTensor<uint8_t> scanTmp =
+        sortWorkspace_.GetWithOffset<uint8_t>(32U * 1024U, 3U * HISTOGRAM_BINS * sizeof(float));
+    AscendC::Cast<float, int32_t>(scanSrcF, totalBuf, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::CumSumInfo scanInfo{1U, HISTOGRAM_BINS};
+    AscendC::CumSum<float, kScanCfg>(scanInclF, scanInclF, scanSrcF, scanTmp, scanInfo);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::Cast<int32_t, float>(scanIncl, scanInclF, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
+    AscendC::PipeBarrier<PIPE_V>();
+    // exclusive[j] = inclusive[j] - total[j]
+    AscendC::Sub<int32_t>(totalBuf, scanIncl, totalBuf, HISTOGRAM_BINS);
+    AscendC::PipeBarrier<PIPE_V>();
 
     for (uint32_t t = coreStart; t < coreEnd; t++) {
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
@@ -595,10 +675,9 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
     WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
     // Cross-round barrier is taken by the prefix phase's leading SyncAll (it also orders
     // these hist/coreSums MTE3 writes before any consumer's MTE2 reads).
-}
-// sortHistMte2Cycle_[byteRound] += mte2Total;
-// sortHistComputeCycle_[byteRound] += computeTotal;
-// sortHistMte3Cycle_[byteRound] += mte3Total;
+    // sortHistMte2Cycle_[byteRound] += mte2Total;
+    // sortHistComputeCycle_[byteRound] += computeTotal;
+    // sortHistMte3Cycle_[byteRound] += mte3Total;
 }
 
 __aicore__ inline void EngramFetchGradSort::ProcessScatter(
@@ -614,6 +693,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_S));
     event_t evtVS2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
     event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
+    event_t evtVMte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE2));
+    event_t evtMte2Mte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_MTE3));
 
     // uint64_t mte2Total = 0;
     // uint64_t keyTotal = 0;
@@ -651,9 +732,9 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::DataCopyPad(indexLocal, (*srcIdx)[offset], valParam, valPad);
         }
 
-        if (batch == 0) {
-            AscendC::SyncAll<true>();
-        }
+        // No batch==0 barrier needed: each core reads only its own tile's tileOffsetsGm
+        // entry (same-core MTE3->MTE3_S->MTE2 ordering from the prefix phase), and the
+        // round input data was ordered by the previous round's trailing SyncAll.
 
         if (coreId < batchCores) {
             uint32_t tileId = firstTile + coreId;
@@ -675,15 +756,21 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             AscendC::LocalTensor<uint8_t> sortTemp =
                 sortWorkspace_.GetWithOffset<uint8_t>(tileAlignBytes_, 3U * tileAlignBytes_);
-            uint32_t shiftBits = byteRound * BITS_PER_BYTE;
-            for (uint32_t i = 0; i < tileLen; i++) {
-                uint32_t v = static_cast<uint32_t>(valueLocal.GetValue(i));
-                uint32_t local = v - static_cast<uint32_t>(valueOffset_);
-                keyLocal.SetValue(i, static_cast<uint8_t>((local >> shiftBits) & 0xFFU));
+            if (batchCount == 1U) {
+                // Single batch: ProcessHist of this round already wrote keyLocal for THIS
+                // tile on THIS core (V-pipe masked store); reuse it directly (V->V order).
+                AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
+            } else {
+                uint32_t shiftBits = byteRound * BITS_PER_BYTE;
+                for (uint32_t i = 0; i < tileLen; i++) {
+                    uint32_t v = static_cast<uint32_t>(valueLocal.GetValue(i));
+                    uint32_t local = v - static_cast<uint32_t>(valueOffset_);
+                    keyLocal.SetValue(i, static_cast<uint8_t>((local >> shiftBits) & 0xFFU));
+                }
+                AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+                AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+                AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
             }
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
-            AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
 
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
@@ -694,88 +781,177 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
 
-            // Per-key-group MTE3 scatter (baseline-proven ordering; the SIMT variant's V-pipe
-            // GM stores were not reliably visible to other cores' MTE2 reads across SyncAll).
-            // Perf: gather each group into its OWN 32B-aligned UB slot (DataCopyPad's MTE3
-            // source must be 32B aligned; a compact layout would start copies at unaligned
-            // group offsets -> device fault), then issue all group copies back-to-back with
-            // one S->MTE3 sync per pass and one MTE3->S wait, so the DMA queue pipelines.
-            // Worst-case pad: tileLen*4 + 256 bins*28B <= 23.5KB, fits the 32KB region.
-            constexpr uint32_t kSlotAlign = 32U;
-            constexpr uint32_t kSlotAlignElems = kSlotAlign / sizeof(int32_t);
+            // Scatter: per-key-group MTE3 stores (the ordered path — SIMT V-pipe GM stores
+            // were not reliably visible to other cores' MTE2 reads across SyncAll). Each
+            // group is staged in its own 32B-aligned slot (DataCopyPad's MTE3 source must
+            // be 32B aligned); worst-case pad: tileLen*4 + 256 bins*28B <= 23.5KB. The
+            // SIMT gather fills the slot layout in a per-core GM staging area (SIMT UB
+            // stores fault with error 340 on this device), which is read back to the UB
+            // slot buffer via MTE2; the scalar S-pipe gather is the fallback.
+            constexpr uint32_t kSlotAlign = SIMT_SLOT_ALIGN;
+            constexpr uint32_t kSlotAlignElems = SIMT_SLOT_ALIGN_ELEMS;
+            AscendC::LocalTensor<uint32_t> binStartUbT =
+                sortWorkspace_.GetWithOffset<uint32_t>(HISTOGRAM_BINS, 3U * tileAlignBytes_);
+            AscendC::LocalTensor<uint32_t> slotOffUbT = sortWorkspace_.GetWithOffset<uint32_t>(
+                HISTOGRAM_BINS, 3U * tileAlignBytes_ + HISTOGRAM_BINS * sizeof(uint32_t));
             AscendC::LocalTensor<int32_t> padBuf =
-                sortWorkspace_.GetWithOffset<int32_t>(2U * (tileAlignBytes_ / sizeof(int32_t)), 3U * tileAlignBytes_);
-            uint32_t keyStart = 0U;
-            uint8_t curKey = sortedKey.GetValue(0);
-            uint32_t off = 0U;
-            for (uint32_t i = 1U; i <= tileLen; i++) {
-                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
-                    uint32_t keyCount = i - keyStart;
-                    for (uint32_t k = 0U; k < keyCount; k++) {
-                        padBuf.SetValue(off + k, valueLocal.GetValue(sortIndices.GetValue(keyStart + k)));
-                    }
-                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
-                    if (i < tileLen) {
-                        curKey = sortedKey.GetValue(i);
-                        keyStart = i;
-                    }
-                }
-            }
-            WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
-            off = 0U;
-            keyStart = 0U;
-            curKey = sortedKey.GetValue(0);
-            for (uint32_t i = 1U; i <= tileLen; i++) {
-                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
-                    uint32_t keyCount = i - keyStart;
-                    int32_t gmPos = basePosUb.GetValue(curKey);
-                    AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-                    AscendC::DataCopyPad((*dstValue)[gmPos], padBuf[off], dcp);
-                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
-                    if (i < tileLen) {
-                        curKey = sortedKey.GetValue(i);
-                        keyStart = i;
+                sortWorkspace_.GetWithOffset<int32_t>(2U * (tileAlignBytes_ / sizeof(int32_t)) - 2U * HISTOGRAM_BINS,
+                                                      3U * tileAlignBytes_ + 2U * HISTOGRAM_BINS * sizeof(uint32_t));
+            __ubuf__ uint8_t *sortedKeyUb = (__ubuf__ uint8_t *)sortedKey.GetPhyAddr();
+            __ubuf__ uint32_t *sortedIdxUb = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
+            __ubuf__ uint32_t *binStartUb = (__ubuf__ uint32_t *)binStartUbT.GetPhyAddr();
+            __ubuf__ uint32_t *slotOffUb = (__ubuf__ uint32_t *)slotOffUbT.GetPhyAddr();
+            __gm__ int32_t *padGm =
+                (__gm__ int32_t *)(simtStagingGm_.GetPhyAddr() +
+                                   static_cast<uint64_t>(coreId) * (simtStagingPerCore_ / sizeof(int32_t)));
+
+            if (kUseSimtScatter) {
+                uint32_t scanOff = 0U;
+                uint32_t keyStart = 0U;
+                uint8_t curKey = sortedKey.GetValue(0);
+                binStartUbT.SetValue(curKey, 0U);
+                slotOffUbT.SetValue(curKey, 0U);
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        scanOff += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                            binStartUbT.SetValue(curKey, i);
+                            slotOffUbT.SetValue(curKey, scanOff);
+                        }
                     }
                 }
-            }
-            WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
-            keyStart = 0U;
-            curKey = sortedKey.GetValue(0);
-            off = 0U;
-            for (uint32_t i = 1U; i <= tileLen; i++) {
-                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
-                    uint32_t keyCount = i - keyStart;
-                    for (uint32_t k = 0U; k < keyCount; k++) {
-                        padBuf.SetValue(off + k, indexLocal.GetValue(sortIndices.GetValue(keyStart + k)));
-                    }
-                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
-                    if (i < tileLen) {
-                        curKey = sortedKey.GetValue(i);
-                        keyStart = i;
-                    }
-                }
-            }
-            WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
-            off = 0U;
-            keyStart = 0U;
-            curKey = sortedKey.GetValue(0);
-            for (uint32_t i = 1U; i <= tileLen; i++) {
-                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
-                    uint32_t keyCount = i - keyStart;
-                    int32_t gmPos = basePosUb.GetValue(curKey);
-                    AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-                    AscendC::DataCopyPad((*dstIndex)[gmPos], padBuf[off], dcp);
-                    off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
-                    if (i < tileLen) {
-                        curKey = sortedKey.GetValue(i);
-                        keyStart = i;
+                AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+                AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+                __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
+                __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
+
+                asc_vf_call<GatherGroupsSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedKeyUb, sortedIdxUb, binStartUb,
+                                              slotOffUb, valUb, padGm);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+                AscendC::DataCopyExtParams stageParam{1U, static_cast<uint32_t>(scanOff * sizeof(int32_t)), 0U, 0U, 0U};
+                AscendC::DataCopyPad(padBuf, simtStagingGm_[coreId * (simtStagingPerCore_ / sizeof(int32_t))],
+                                     stageParam, valPad);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
+                keyStart = 0U;
+                curKey = sortedKey.GetValue(0);
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        int32_t gmPos = basePosUb.GetValue(curKey);
+                        AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
+                        AscendC::DataCopyPad((*dstValue)[gmPos], padBuf[slotOffUbT.GetValue(curKey)], dcp);
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                        }
                     }
                 }
+                WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+
+                asc_vf_call<GatherGroupsSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedKeyUb, sortedIdxUb, binStartUb,
+                                              slotOffUb, idxUb, padGm);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+                AscendC::DataCopyPad(padBuf, simtStagingGm_[coreId * (simtStagingPerCore_ / sizeof(int32_t))],
+                                     stageParam, valPad);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
+                keyStart = 0U;
+                curKey = sortedKey.GetValue(0);
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        int32_t gmPos = basePosUb.GetValue(curKey);
+                        AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
+                        AscendC::DataCopyPad((*dstIndex)[gmPos], padBuf[slotOffUbT.GetValue(curKey)], dcp);
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                        }
+                    }
+                }
+                WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+            } else {
+                uint32_t off = 0U;
+                uint32_t keyStart = 0U;
+                uint8_t curKey = sortedKey.GetValue(0);
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        for (uint32_t k = 0U; k < keyCount; k++) {
+                            padBuf.SetValue(off + k, valueLocal.GetValue(sortIndices.GetValue(keyStart + k)));
+                        }
+                        off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                        }
+                    }
+                }
+                WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+                off = 0U;
+                keyStart = 0U;
+                curKey = sortedKey.GetValue(0);
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        int32_t gmPos = basePosUb.GetValue(curKey);
+                        AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
+                        AscendC::DataCopyPad((*dstValue)[gmPos], padBuf[off], dcp);
+                        off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                        }
+                    }
+                }
+                WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+                keyStart = 0U;
+                curKey = sortedKey.GetValue(0);
+                off = 0U;
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        for (uint32_t k = 0U; k < keyCount; k++) {
+                            padBuf.SetValue(off + k, indexLocal.GetValue(sortIndices.GetValue(keyStart + k)));
+                        }
+                        off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                        }
+                    }
+                }
+                WaitPipe<AscendC::HardEvent::S_MTE3>(pipe);
+                off = 0U;
+                keyStart = 0U;
+                curKey = sortedKey.GetValue(0);
+                for (uint32_t i = 1U; i <= tileLen; i++) {
+                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
+                        uint32_t keyCount = i - keyStart;
+                        int32_t gmPos = basePosUb.GetValue(curKey);
+                        AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
+                        AscendC::DataCopyPad((*dstIndex)[gmPos], padBuf[off], dcp);
+                        off += (keyCount + kSlotAlignElems - 1U) / kSlotAlignElems * kSlotAlignElems;
+                        if (i < tileLen) {
+                            curKey = sortedKey.GetValue(i);
+                            keyStart = i;
+                        }
+                    }
+                }
+                WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
             }
-            WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
         }
-        AscendC::SyncAll<true>();
     }
+    // Round-boundary barrier: orders this round's MTE3 scatter stores before the next
+    // round's hist MTE2 reads (batch-local stores use disjoint tile ranges, so the
+    // barrier is only needed once per round, not per batch).
+    AscendC::SyncAll<true>();
     // sortScatterMte2Cycle_[byteRound] += mte2Total;
     // sortScatterKeyCycle_[byteRound] += keyTotal;
     // sortScatterWriteCycle_[byteRound] += writeTotal;

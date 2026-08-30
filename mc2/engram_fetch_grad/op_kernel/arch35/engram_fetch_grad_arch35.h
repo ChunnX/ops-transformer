@@ -1228,7 +1228,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uint64_t sendUs = (sendEndCycle - sendStartCycle) / 1000U;
             uint64_t gapUs = (t0 - sendEndCycle) / 1000U;
             uint64_t totalUs = (t6 - processStartCycle) / 1000U;
-            AscendC::printf("ENGRAM core=%uu pre=%lluu send=%lluu gap=%lluu init=%lluu sort=%lluu count=%lluu "
+            AscendC::printf("ENGRAM v7 core=%uu pre=%lluu send=%lluu gap=%lluu init=%lluu sort=%lluu count=%lluu "
                             "zero=%lluu drain=%lluu scatterCast=%lluu total=%lluu\n",
                             aivId_, preUs, sendUs, gapUs, (t1 - t0) / 1000U, (t2 - t1) / 1000U, (t3 - t2) / 1000U,
                             (t4 - t3) / 1000U, (t5 - t4) / 1000U, (t6 - t5) / 1000U, totalUs);
