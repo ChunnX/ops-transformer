@@ -195,7 +195,7 @@ public:
         constInfo_.s2Size = fiaBaseParams.s2Size;
         constInfo_.dSize = fiaBaseParams.dSize;
         constInfo_.dSizeV = fiaBaseParams.dSizeV;
-        constInfo_.dSizeRope = 64; // todo 修改成传入值
+        constInfo_.dSizeRope = fiaBaseParams.dSizeRope;
         constInfo_.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo_.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo_.scaleValue = fiaBaseParams.scaleValue;
