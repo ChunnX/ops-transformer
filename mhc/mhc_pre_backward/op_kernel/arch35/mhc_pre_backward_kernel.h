@@ -218,6 +218,10 @@ private:
     uint32_t hFusionOffset_;
     uint32_t globalUbOffset_;
     uint32_t vecDealChunk_;
+    uint32_t preProcessCopySizeD_;
+    uint32_t preProcessLenN_;
+    uint32_t preProcessDLoopCnt_;
+    uint32_t processV2ChunkSize_;
     uint16_t eleNumPerVf_;
     bool withGamma_;
     bool withGradXPost_;
@@ -274,7 +278,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     totalLength_ = static_cast<uint32_t>(tiling_->totalLength);
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
-    scaleMean_ = (nD_ > 0) ? (1.0f / nD_) : 0.0f;
+    scaleMean_ = tiling_->scaleMean;
     eleNumPerVf_ = GetVRegSize() / sizeof(P);
     workspaceBuf_.Init(totalLength_, fusionSize_, vecCoreNum_, coreNum_);
     blockIdx_ = GetBlockIdx();
@@ -283,7 +287,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
-    vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
+    vecDealChunk_ = tiling_->vecDealChunk;
+    preProcessCopySizeD_ = tiling_->preProcessCopySizeD;
+    preProcessLenN_ = tiling_->preProcessLenN;
+    preProcessDLoopCnt_ = tiling_->preProcessDLoopCnt;
+    processV2ChunkSize_ = tiling_->processV2ChunkSize;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
     hMixOffset_ = (hPreMaxBufLen_ + hPostMaxBufLen_) * sizeof(P);
@@ -299,16 +307,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0; // V0V1部分开始分配fp32TBuf_
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
-        vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
-        if (vecDealBSPeCore_ == 0) {
-            vecDealBSPeCore_ = totalLength_;
-            usedVecCoreNum_ = 1;
-        } else {
-            vecDealBSPeCore_ = MhcPreBackwardUtils::CeilAlign(vecDealBSPeCore_, CEIL_ALIGN_16);
-            usedVecCoreNum_ = CeilDiv(totalLength_, vecDealBSPeCore_) > vecCoreNum_ ?
-                                  vecCoreNum_ :
-                                  CeilDiv(totalLength_, vecDealBSPeCore_);
-        }
+        vecDealBSPeCore_ = tiling_->vecDealBsPerCore;
+        usedVecCoreNum_ = tiling_->usedVecCoreNum;
         dealStartBS_ = vecDealBSPeCore_ * blockIdx_;
         dealEndBS_ = dealStartBS_ + vecDealBSPeCore_;
         if (dealEndBS_ > totalLength_ || blockIdx_ == usedVecCoreNum_ - 1) {
@@ -320,15 +320,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
 {
-    v1UsedCubeCoreNum_ = 0;
-    cubeDealnDPeCore_ = nD_ / GetBlockNum();
-    if (cubeDealnDPeCore_ == 0) {
-        cubeDealnDPeCore_ = nD_;
-        v1UsedCubeCoreNum_ = 1;
-    } else {
-        cubeDealnDPeCore_ = MhcPreBackwardUtils::CeilAlign(cubeDealnDPeCore_, CEIL_ALIGN_128);
-        v1UsedCubeCoreNum_ = CeilDiv(nD_, cubeDealnDPeCore_);
-    }
+    cubeDealnDPeCore_ = tiling_->cubeDealNdPerCore;
+    v1UsedCubeCoreNum_ = tiling_->usedCubeCoreNum;
     if ASCEND_IS_AIC {
         dealStartND_ = cubeDealnDPeCore_ * blockIdx_;
         dealEndND_ = dealStartND_ + cubeDealnDPeCore_;
@@ -378,7 +371,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                                                                     uint32_t runBSStart)
 {
     uint16_t eleNumPerVf = 64;
-    uint16_t dLoopCnt = (lenD + eleNumPerVf - 1) / eleNumPerVf;
+    uint16_t dLoopCnt = static_cast<uint16_t>(preProcessDLoopCnt_);
     __VEC_SCOPE__
     {
         Reg::RegTensor<P> sumReg;
@@ -415,10 +408,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t runBSStart,
                                                                 uint32_t runBSEnd)
 {
-    uint32_t maxDLen = MAX_D_LEN;
-    uint32_t queueCopySize = INOUT_QUEUE_SIZE / sizeof(T);
-    uint32_t copySizeD = D_ <= maxDLen ? D_ : maxDLen;
-    uint32_t lenN = static_cast<uint32_t>(queueCopySize / copySizeD > N_ ? N_ : queueCopySize / copySizeD);
+    uint32_t copySizeD = preProcessCopySizeD_;
+    uint32_t lenN = preProcessLenN_;
     AscendC::LocalTensor<T> bf16InputBuf;
     DataCopyParams dataCopyParams;
     DataCopyPadParams dataCopyPadParams;
@@ -1199,7 +1190,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 初始化
     // ==========================================================
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
-    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
+    uint32_t chunkSize = processV2ChunkSize_;
     uint32_t currentBsSize = bsEnd - bsStart;
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
