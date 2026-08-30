@@ -95,8 +95,13 @@ inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &v
     virtN = NUM_TWO * n - m + NUM_THREE;
 }
 
+constexpr int64_t TND_LINE_TINY_AREA = 8;
+
 inline bool TNDRunIsLineWorthy(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
 {
+    if (virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA) {
+        return false;
+    }
     return pairCount > 0 && virtN * pairCount >= k && virtM >= std::min(k, virtN);
 }
 
@@ -232,8 +237,6 @@ inline int64_t CalTNDBandNarrowRounds(int64_t k, int64_t n1, int64_t m, int64_t 
     const int64_t seg = p + q - 1;
     return seg * CeilDivideBy((nNew - overlap) * n1 + overlap, k);
 }
-
-constexpr int64_t TND_LINE_TINY_AREA = 8;
 
 inline bool TNDRunEmpty(const TNDRunShape &shape, bool isBand)
 {
@@ -425,7 +428,7 @@ protected:
 
         if (PreferTNDLineDeter(fBaseParams)) {
             ApplyTNDLineDeterParam(fBaseParams, BuildTNDLineDeter(fBaseParams));
-            OP_LOGD("CalcleTNDDeterParam", "TND LINE deterMaxRound is %ld.", fBaseParams.deterMaxRound);
+            OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
             return;
         }
 

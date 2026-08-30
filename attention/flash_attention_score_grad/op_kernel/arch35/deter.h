@@ -2995,8 +2995,13 @@ __aicore__ inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM,
     virtN = NUM_TWO * n - m + NUM_THREE;
 }
 
+constexpr int64_t TND_LINE_TINY_AREA = 8;
+
 __aicore__ inline bool TNDRunIsLineWorthy(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
 {
+    if (virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA) {
+        return false;
+    }
     return pairCount > 0 && virtN * pairCount >= k && virtM >= Min(k, virtN);
 }
 

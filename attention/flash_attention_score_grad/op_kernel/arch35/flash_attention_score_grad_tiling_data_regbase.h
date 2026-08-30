@@ -520,7 +520,7 @@ public:
     constexpr static int64_t DETER_PREFIX_NUM = 132;
 
     bool coreDivide;
-    uint8_t tndLineDeter; // 原 reserved1，布局不变；1=TND LINE 独占走查
+    uint8_t tndLineDeter;
     uint8_t reserved2;  // tilingData需要8字节对齐
     uint8_t reserved3;  // tilingData需要8字节对齐
     uint32_t reserved4; // tilingData需要8字节对齐
