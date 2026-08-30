@@ -162,11 +162,8 @@ public:
 
 #ifdef __DAV_C220_CUBE__
         coreIdx = AscendC::GetBlockIdx();
-        // Only core 0 initializes gIdentityIdx.
-        if (coreIdx == 0) {
-            for (uint32_t i = 0; i < topK_; i++) {
-                gIdentityIdx.SetValue(i, 0);
-            }
+        for (uint32_t i = 0; i < topK_; i++) {
+            gIdentityIdx.SetValue(i, 0);
         }
 #endif
         AscendC::SyncAll<false>();
