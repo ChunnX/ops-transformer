@@ -437,7 +437,6 @@ protected:
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
     }
 
-    // clang-format off
     void CalcTNDSwizzleParam() override
     {
         if (fBaseParams.b >= TND_SWIZZLE_PREFIX_NUM) {
@@ -1791,6 +1790,5 @@ protected:
 };
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingVarlenRegbase, static_cast<int32_t>(NpuArch::DAV_3510), 900);
-// clang-format on
 } // namespace fag
 } // namespace optiling

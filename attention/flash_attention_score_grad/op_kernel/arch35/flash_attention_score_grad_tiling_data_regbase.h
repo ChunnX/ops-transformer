@@ -18,7 +18,6 @@
 
 #include <cstdint>
 
-// clang-format off
 namespace optiling {
 namespace fag {
 constexpr uint32_t MAX_CORE_NUM = 36;
@@ -659,5 +658,4 @@ public:
 };
 } // namespace fag
 } // namespace optiling
-// clang-format on
 #endif
