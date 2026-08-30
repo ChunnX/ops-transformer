@@ -659,16 +659,17 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * 256 * sizeof(int32_t);
     int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
     // SIMT gather staging: mirrors EngramFetchGradSort::SimtStagingPerCore — per-core GM
-    // slot area (tileElements*4B + 256*28B group pads + 32B guard), 32B aligned.
+    // slot area x2 (values + indices), each tileElements*4B + 256*28B group pads + 32B
+    // guard, 32B aligned.
     int64_t simtTileElements = 4096;
     int64_t simtDynTile = (maxSortCount + tilingData.aivNum - 1) / tilingData.aivNum;
     if (simtDynTile > 0 && simtDynTile < simtTileElements) {
         simtTileElements = simtDynTile;
     }
-    int64_t simtStagingPerCore = (simtTileElements * static_cast<int64_t>(sizeof(int32_t)) +
+    int64_t simtStagingOneArea = (simtTileElements * static_cast<int64_t>(sizeof(int32_t)) +
                                   256 * (32 - static_cast<int64_t>(sizeof(int32_t))) + 32 + UB_ALIGN - 1) /
                                  UB_ALIGN * UB_ALIGN;
-    int64_t wsSortSimtStaging = static_cast<int64_t>(tilingData.aivNum) * simtStagingPerCore;
+    int64_t wsSortSimtStaging = static_cast<int64_t>(tilingData.aivNum) * simtStagingOneArea * 2;
     int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums +
                           wsSortOffsets + wsSortSimtStaging;
 

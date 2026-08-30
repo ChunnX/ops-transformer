@@ -41,21 +41,25 @@ constexpr uint32_t SIMT_SLOT_ALIGN = 32U;
 constexpr uint32_t SIMT_SLOT_ALIGN_ELEMS = SIMT_SLOT_ALIGN / sizeof(int32_t);
 constexpr uint32_t SIMT_STAGING_PAD_BYTES = 256U * (SIMT_SLOT_ALIGN - sizeof(int32_t)) + SIMT_SLOT_ALIGN;
 
-// SIMT parallel gather: scatter one source array (values or indices) by the sorted order
-// into the 32B-aligned group slots of a PER-CORE GM STAGING buffer. SIMT threads must not
-// store to UB on this device (error 340 above); UB reads and GM stores at any offset are
-// fine (PR10464's original SIMT scatter + built-in kernels rely on exactly that). The
-// staging is read back to the UB slot buffer via MTE2 and the final GM output is written
-// by the ordered per-group MTE3 path afterwards.
+// SIMT parallel gather: scatter BOTH source arrays (values and indices) by the sorted
+// order in ONE launch into the 32B-aligned group slots of a PER-CORE GM STAGING buffer —
+// values at [0, slotArea), indices at [slotArea, 2*slotArea). SIMT threads must not store
+// to UB on this device (error 340 above); UB reads and GM stores at any offset are fine
+// (PR10464's original SIMT scatter + built-in kernels rely on exactly that). The staging
+// is read back to the UB slot buffers via MTE2 and the final GM output is written by the
+// ordered per-group MTE3 path afterwards.
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
 __aicore__ inline void GatherGroupsSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
-                                        __ubuf__ uint32_t *binStart, __ubuf__ uint32_t *slotOff, __ubuf__ int32_t *src,
-                                        __gm__ int32_t *padGm)
+                                        __ubuf__ uint32_t *binStart, __ubuf__ uint32_t *slotOff,
+                                        __ubuf__ int32_t *valSrc, __ubuf__ int32_t *idxSrc, __gm__ int32_t *padGm,
+                                        uint32_t slotAreaElems)
 {
     for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
         uint8_t k = sortedKey[i];
         uint32_t pos = slotOff[k] + (i - binStart[k]);
-        padGm[pos] = src[sortedIndex[i]];
+        uint32_t srcIdx = sortedIndex[i];
+        padGm[pos] = valSrc[srcIdx];
+        padGm[slotAreaElems + pos] = idxSrc[srcIdx];
     }
 }
 
@@ -100,13 +104,20 @@ __aicore__ inline uint32_t AlignUpU32(uint32_t bytes)
     return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
 }
 
-// Per-core GM staging bytes for the SIMT gather: the full slot area of one tile
-// (tileLen*4B data + per-group 32B alignment pads + guard), aligned to 32B. The host
+// Per-core GM staging bytes for the SIMT gather: TWO slot areas (values + indices),
+// each tileLen*4B data + per-group 32B alignment pads + guard, aligned to 32B. The host
 // tiling mirrors this formula exactly (engram_fetch_grad_tiling.cpp SetWorkSpace).
 __aicore__ inline uint32_t SimtStagingPerCore(uint32_t tileElements)
 {
-    return (tileElements * sizeof(int32_t) + SIMT_STAGING_PAD_BYTES + SIMT_SLOT_ALIGN - 1U) / SIMT_SLOT_ALIGN *
-           SIMT_SLOT_ALIGN;
+    uint32_t oneArea = (tileElements * sizeof(int32_t) + SIMT_STAGING_PAD_BYTES + SIMT_SLOT_ALIGN - 1U) /
+                       SIMT_SLOT_ALIGN * SIMT_SLOT_ALIGN;
+    return 2U * oneArea;
+}
+
+// UB bytes of one aligned slot area for a tile of tileAlignBytes bytes.
+__aicore__ inline uint32_t SimtPadAreaBytes(uint32_t tileAlignBytes)
+{
+    return (tileAlignBytes + SIMT_STAGING_PAD_BYTES + SIMT_SLOT_ALIGN - 1U) / SIMT_SLOT_ALIGN * SIMT_SLOT_ALIGN;
 }
 
 template <AscendC::HardEvent evt>
@@ -336,7 +347,8 @@ __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements
     uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(tileElements * sizeof(int32_t)));
     uint32_t phaseHistSize = 2U * tileAlignBytes;
     uint32_t phasePrefixSize = numCores * HISTOGRAM_BINS * sizeof(int32_t) + tileAlignBytes;
-    uint32_t phaseScatterSize = 5U * tileAlignBytes;
+    uint32_t phaseScatterSize =
+        3U * tileAlignBytes + 2U * HISTOGRAM_BINS * sizeof(uint32_t) + 2U * SimtPadAreaBytes(tileAlignBytes);
     uint32_t sortWorkspaceSize = phaseHistSize;
     if (phasePrefixSize > sortWorkspaceSize) {
         sortWorkspaceSize = phasePrefixSize;
@@ -397,7 +409,8 @@ __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_
     tileAlignBytes_ = tileAlignBytes;
     uint32_t phaseHistSize = 2U * tileAlignBytes;
     uint32_t phasePrefixSize = static_cast<uint32_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) + tileAlignBytes;
-    uint32_t phaseScatterSize = 5U * tileAlignBytes;
+    uint32_t phaseScatterSize =
+        3U * tileAlignBytes + 2U * HISTOGRAM_BINS * sizeof(uint32_t) + 2U * SimtPadAreaBytes(tileAlignBytes);
     uint32_t sortWorkspaceSize = phaseHistSize;
     if (phasePrefixSize > sortWorkspaceSize) {
         sortWorkspaceSize = phasePrefixSize;
@@ -785,9 +798,10 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             // were not reliably visible to other cores' MTE2 reads across SyncAll). Each
             // group is staged in its own 32B-aligned slot (DataCopyPad's MTE3 source must
             // be 32B aligned); worst-case pad: tileLen*4 + 256 bins*28B <= 23.5KB. The
-            // SIMT gather fills the slot layout in a per-core GM staging area (SIMT UB
-            // stores fault with error 340 on this device), which is read back to the UB
-            // slot buffer via MTE2; the scalar S-pipe gather is the fallback.
+            // SIMT path gathers BOTH arrays in ONE launch into a per-core GM staging area
+            // (SIMT UB stores fault with error 340 on this device), reads both back with
+            // TWO MTE2 copies, and issues ONE merged MTE3 pass; the scalar S-pipe gather
+            // is the fallback.
             constexpr uint32_t kSlotAlign = SIMT_SLOT_ALIGN;
             constexpr uint32_t kSlotAlignElems = SIMT_SLOT_ALIGN_ELEMS;
             AscendC::LocalTensor<uint32_t> binStartUbT =
@@ -828,13 +842,23 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                 __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
                 __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
 
+                // ONE SIMT launch gathers both arrays; TWO MTE2 copies read the staging
+                // back into separate aligned UB pad areas; ONE merged MTE3 pass then
+                // copies each group to its value/index GM destination.
+                uint32_t padAreaElems = SimtPadAreaBytes(tileAlignBytes_) / sizeof(int32_t);
+                AscendC::LocalTensor<int32_t> padVal = sortWorkspace_.GetWithOffset<int32_t>(
+                    padAreaElems, 3U * tileAlignBytes_ + 2U * HISTOGRAM_BINS * sizeof(uint32_t));
+                AscendC::LocalTensor<int32_t> padIdx = sortWorkspace_.GetWithOffset<int32_t>(
+                    padAreaElems,
+                    3U * tileAlignBytes_ + 2U * HISTOGRAM_BINS * sizeof(uint32_t) + padAreaElems * sizeof(int32_t));
                 asc_vf_call<GatherGroupsSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedKeyUb, sortedIdxUb, binStartUb,
-                                              slotOffUb, valUb, padGm);
+                                              slotOffUb, valUb, idxUb, padGm, scanOff);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
                 AscendC::DataCopyExtParams stageParam{1U, static_cast<uint32_t>(scanOff * sizeof(int32_t)), 0U, 0U, 0U};
-                AscendC::DataCopyPad(padBuf, simtStagingGm_[coreId * (simtStagingPerCore_ / sizeof(int32_t))],
-                                     stageParam, valPad);
+                uint32_t stagingBaseElems = coreId * (simtStagingPerCore_ / sizeof(int32_t));
+                AscendC::DataCopyPad(padVal, simtStagingGm_[stagingBaseElems], stageParam, valPad);
+                AscendC::DataCopyPad(padIdx, simtStagingGm_[stagingBaseElems + scanOff], stageParam, valPad);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
                 keyStart = 0U;
@@ -843,32 +867,10 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                     if (i == tileLen || sortedKey.GetValue(i) != curKey) {
                         uint32_t keyCount = i - keyStart;
                         int32_t gmPos = basePosUb.GetValue(curKey);
+                        uint32_t slot = slotOffUbT.GetValue(curKey);
                         AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-                        AscendC::DataCopyPad((*dstValue)[gmPos], padBuf[slotOffUbT.GetValue(curKey)], dcp);
-                        if (i < tileLen) {
-                            curKey = sortedKey.GetValue(i);
-                            keyStart = i;
-                        }
-                    }
-                }
-                WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
-
-                asc_vf_call<GatherGroupsSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedKeyUb, sortedIdxUb, binStartUb,
-                                              slotOffUb, idxUb, padGm);
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-                AscendC::DataCopyPad(padBuf, simtStagingGm_[coreId * (simtStagingPerCore_ / sizeof(int32_t))],
-                                     stageParam, valPad);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3);
-                keyStart = 0U;
-                curKey = sortedKey.GetValue(0);
-                for (uint32_t i = 1U; i <= tileLen; i++) {
-                    if (i == tileLen || sortedKey.GetValue(i) != curKey) {
-                        uint32_t keyCount = i - keyStart;
-                        int32_t gmPos = basePosUb.GetValue(curKey);
-                        AscendC::DataCopyParams dcp{1U, static_cast<uint16_t>(keyCount * sizeof(int32_t)), 0U, 0U};
-                        AscendC::DataCopyPad((*dstIndex)[gmPos], padBuf[slotOffUbT.GetValue(curKey)], dcp);
+                        AscendC::DataCopyPad((*dstValue)[gmPos], padVal[slot], dcp);
+                        AscendC::DataCopyPad((*dstIndex)[gmPos], padIdx[slot], dcp);
                         if (i < tileLen) {
                             curKey = sortedKey.GetValue(i);
                             keyStart = i;
