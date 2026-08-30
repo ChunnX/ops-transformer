@@ -1188,7 +1188,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_, *tpipe_,
                          sortPool_);
             RunSort(numRecv);
-            SyncAll<true>();
 
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, 64U * 1024U);

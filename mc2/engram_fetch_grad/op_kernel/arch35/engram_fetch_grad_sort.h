@@ -375,7 +375,6 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
     AscendC::DataCopyParams offsetParam{1U, static_cast<uint16_t>(HISTOGRAM_BINS * sizeof(int32_t)), 0U, 0U};
 
     event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
-    event_t evtVMte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE2));
     event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
     event_t evtMte3Mte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_MTE2));
     event_t evtMte3S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE3_S));
@@ -387,27 +386,8 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
     uint32_t coreStart = coreId * tilesPerCore;
     uint32_t coreEnd = MinU32(coreStart + tilesPerCore, tc);
 
-    AscendC::LocalTensor<int32_t> localSum = histWideBuffer_.Get<int32_t>();
-    AscendC::Duplicate(localSum, (int32_t)0, HISTOGRAM_BINS);
-
-    for (uint32_t t = coreStart; t < coreEnd; t++) {
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-        AscendC::DataCopyPad(histogram, histGm[t * HISTOGRAM_BINS], param, padParam);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-        AscendC::Add(localSum, localSum, histogram, HISTOGRAM_BINS);
-    }
-
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-    // SIMT writes dst GM via the V pipe; next byte-round's ProcessHist reads it via MTE2.
-    // Make V stores visible to MTE2 explicitly (don't rely on SyncAll flushing V->GM).
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
-    AscendC::DataCopyPad(coreSumsGm_[coreId * HISTOGRAM_BINS], localSum, offsetParam);
-    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
+    // coreSumsGm_ was written directly by ProcessHist; the single SyncAll above it orders
+    // both the per-tile histograms and the per-core sums (one barrier per round instead of two).
 
     AscendC::SyncAll<true>();
 
@@ -551,6 +531,11 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
     uint64_t computeTotal = 0;
     uint64_t mte3Total = 0;
 
+    // Per-core histogram sum written straight to coreSumsGm_ here, so the prefix phase
+    // needs a single barrier (saves one SyncAll per byte round).
+    AscendC::LocalTensor<int32_t> coreSumAccum = prefixBuffer_.Get<int32_t>();
+    AscendC::Duplicate(coreSumAccum, (int32_t)0, HISTOGRAM_BINS);
+
     for (uint32_t batch = 0; batch < batchCount; batch++) {
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
@@ -587,6 +572,10 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
                 (__local_mem__ uint8_t *)keyLocal.GetPhyAddr(), (__local_mem__ uint32_t *)exclusiveLocal.GetPhyAddr(),
                 (__local_mem__ uint32_t *)histWide.GetPhyAddr());
 
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Add(coreSumAccum, coreSumAccum, histWide, HISTOGRAM_BINS);
+            AscendC::PipeBarrier<PIPE_V>();
+
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
             // t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
@@ -599,10 +588,17 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
         // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         // mte3Total += t3 - t2;
     }
-    AscendC::SyncAll<true>();
-    // sortHistMte2Cycle_[byteRound] += mte2Total;
-    // sortHistComputeCycle_[byteRound] += computeTotal;
-    // sortHistMte3Cycle_[byteRound] += mte3Total;
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+    AscendC::DataCopyParams coreSumOutParam{1U, static_cast<uint16_t>(HISTOGRAM_BINS * sizeof(int32_t)), 0U, 0U};
+    AscendC::DataCopyPad(coreSumsGm_[AscendC::GetBlockIdx() * HISTOGRAM_BINS], coreSumAccum, coreSumOutParam);
+    WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
+    // Cross-round barrier is taken by the prefix phase's leading SyncAll (it also orders
+    // these hist/coreSums MTE3 writes before any consumer's MTE2 reads).
+}
+// sortHistMte2Cycle_[byteRound] += mte2Total;
+// sortHistComputeCycle_[byteRound] += computeTotal;
+// sortHistMte3Cycle_[byteRound] += mte3Total;
 }
 
 __aicore__ inline void EngramFetchGradSort::ProcessScatter(
