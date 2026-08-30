@@ -33,7 +33,9 @@ case_id = 0
 def execute_qsfa_v2(param_combination):
     global case_id
     params = utils.convert_param_combination_to_cs_format(param_combination)
-    input_dict = kv_quant_sparse_flash_attention_v2_golden.generate_input_tensors(params)
+    input_dict = kv_quant_sparse_flash_attention_v2_golden.generate_input_tensors(
+        params
+    )
     cpu_result, _, _ = kv_quant_sparse_flash_attention_v2_golden.compute_cpu(
         input_dict, params
     )

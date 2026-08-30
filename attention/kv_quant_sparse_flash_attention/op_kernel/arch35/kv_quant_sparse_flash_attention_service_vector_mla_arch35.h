@@ -157,7 +157,7 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<uint32_t> kvPhyAddrGm;
 
-    TBuf<> commonTBuf; // common的复用空间
+    TBuf<> commonTBuf;                            // common的复用空间
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2]; // 2份表示可能存在pingpong
     TQue<QuePosition::VECIN, 2> stage0InQue;      // for v0 input, 2份表示可能存在pingpong
     TQue<QuePosition::VECOUT, 2> stage0OutQue;    // for v0 output, 2份表示可能存在pingpong

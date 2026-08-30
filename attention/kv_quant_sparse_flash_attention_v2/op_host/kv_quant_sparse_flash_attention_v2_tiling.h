@@ -200,14 +200,16 @@ TILING_DATA_FIELD_DEF(uint32_t, s2)            // S2切分份数
 TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)  // FD workspace
 TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize) // FD workspace
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionV2SplitKVParamsMlaOp, KvQuantSparseFlashAttentionV2SplitKVParamsMla)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionV2SplitKVParamsMlaOp,
+                           KvQuantSparseFlashAttentionV2SplitKVParamsMla)
 
 // 内切基本块参数
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionV2InnerSplitParams)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionV2InnerSplitParamsOp, KvQuantSparseFlashAttentionV2InnerSplitParams)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionV2InnerSplitParamsOp,
+                           KvQuantSparseFlashAttentionV2InnerSplitParams)
 
 BEGIN_TILING_DATA_DEF(KvQuantSparseFlashAttentionV2TilingDataMla)
 TILING_DATA_FIELD_DEF_STRUCT(KvQuantSparseFlashAttentionV2BaseParamsMla, baseParams);
@@ -414,8 +416,8 @@ private:
                                const std::string &name) const;
     ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const QSFAV2TilingShapeCompareParam &param,
                                      const QSFAV2Layout &layout) const;
-    ge::graphStatus CompareShape(QSFAV2TilingShapeCompareParam &param, const gert::Shape &shape, const QSFAV2Layout &layout,
-                                 const std::string &name) const;
+    ge::graphStatus CompareShape(QSFAV2TilingShapeCompareParam &param, const gert::Shape &shape,
+                                 const QSFAV2Layout &layout, const std::string &name) const;
     ge::graphStatus CheckLayoutSupport(const QSFAV2Layout &actualLayout, const std::string &name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;

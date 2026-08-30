@@ -38,19 +38,13 @@ int64_t GetKvHeadNum(const at::Tensor &key, const std::string &layoutKvStr)
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> KvQuantSparseFlashAttention(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-    const at::Tensor &sparseIndices,
-    const c10::optional<at::Tensor> &keyDequantScale,
-    const c10::optional<at::Tensor> &valueDequantScale,
-    const c10::optional<at::Tensor> &blockTable,
-    const c10::optional<at::Tensor> &actualSeqLengthsQuery,
-    const c10::optional<at::Tensor> &actualSeqLengthsKv,
-    double scaleValue, int64_t keyQuantMode, int64_t valueQuantMode,
-    int64_t sparseBlockSize, c10::string_view layoutQuery, c10::string_view layoutKv,
-    int64_t sparseMode, int64_t preTokens, int64_t nextTokens,
-    int64_t attentionMode, int64_t quantScaleRepoMode,
-    int64_t tileSize, int64_t ropeHeadDim,
-    c10::optional<int64_t> keyDtype, c10::optional<int64_t> valueDtype,
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &sparseIndices,
+    const c10::optional<at::Tensor> &keyDequantScale, const c10::optional<at::Tensor> &valueDequantScale,
+    const c10::optional<at::Tensor> &blockTable, const c10::optional<at::Tensor> &actualSeqLengthsQuery,
+    const c10::optional<at::Tensor> &actualSeqLengthsKv, double scaleValue, int64_t keyQuantMode,
+    int64_t valueQuantMode, int64_t sparseBlockSize, c10::string_view layoutQuery, c10::string_view layoutKv,
+    int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t attentionMode, int64_t quantScaleRepoMode,
+    int64_t tileSize, int64_t ropeHeadDim, c10::optional<int64_t> keyDtype, c10::optional<int64_t> valueDtype,
     const c10::optional<at::Tensor> &sinks, bool returnSoftmaxLse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
@@ -67,9 +61,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> KvQuantSparseFlashAttention(
     at::Tensor attenOut = at::empty(outSizes, query.options().dtype(query.dtype()));
 
     int64_t numHeads = (layoutQStr == "BSND") ? query.size(DIM_2) : query.size(DIM_1);
-    at::Tensor sinksVal = (sinks.has_value() && sinks->defined())
-        ? sinks.value()
-        : at::zeros({numHeads}, query.options().dtype(torch::kFloat32));
+    at::Tensor sinksVal = (sinks.has_value() && sinks->defined()) ?
+                              sinks.value() :
+                              at::zeros({numHeads}, query.options().dtype(torch::kFloat32));
 
     at::Tensor softmaxMax;
     at::Tensor softmaxSum;
@@ -94,19 +88,17 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> KvQuantSparseFlashAttention(
     if (isHifloat8Kv) {
         TensorWrapper keyWrapper = MakeWrapper(key, GetAclDataType(keyDtype.value()));
         TensorWrapper valueWrapper = MakeWrapper(value, GetAclDataType(valueDtype.value()));
-        ACLNN_CMD(aclnnKvQuantSparseFlashAttentionV2, query, keyWrapper, valueWrapper,
-                  sparseIndices, keyDequantScale, valueDequantScale, blockTable,
-                  actualSeqLengthsQuery, actualSeqLengthsKv, sinksVal, scaleValue,
-                  keyQuantMode, valueQuantMode, sparseBlockSize, layoutQPtr, layoutKvPtr,
-                  sparseMode, preTokens, nextTokens, attentionMode, quantScaleRepoMode,
-                  tileSize, ropeHeadDim, returnSoftmaxLse, attenOut, softmaxMax, softmaxSum);
+        ACLNN_CMD(aclnnKvQuantSparseFlashAttentionV2, query, keyWrapper, valueWrapper, sparseIndices, keyDequantScale,
+                  valueDequantScale, blockTable, actualSeqLengthsQuery, actualSeqLengthsKv, sinksVal, scaleValue,
+                  keyQuantMode, valueQuantMode, sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, preTokens,
+                  nextTokens, attentionMode, quantScaleRepoMode, tileSize, ropeHeadDim, returnSoftmaxLse, attenOut,
+                  softmaxMax, softmaxSum);
     } else {
-        ACLNN_CMD(aclnnKvQuantSparseFlashAttentionV2, query, key, value,
-                  sparseIndices, keyDequantScale, valueDequantScale, blockTable,
-                  actualSeqLengthsQuery, actualSeqLengthsKv, sinksVal, scaleValue,
-                  keyQuantMode, valueQuantMode, sparseBlockSize, layoutQPtr, layoutKvPtr,
-                  sparseMode, preTokens, nextTokens, attentionMode, quantScaleRepoMode,
-                  tileSize, ropeHeadDim, returnSoftmaxLse, attenOut, softmaxMax, softmaxSum);
+        ACLNN_CMD(aclnnKvQuantSparseFlashAttentionV2, query, key, value, sparseIndices, keyDequantScale,
+                  valueDequantScale, blockTable, actualSeqLengthsQuery, actualSeqLengthsKv, sinksVal, scaleValue,
+                  keyQuantMode, valueQuantMode, sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, preTokens,
+                  nextTokens, attentionMode, quantScaleRepoMode, tileSize, ropeHeadDim, returnSoftmaxLse, attenOut,
+                  softmaxMax, softmaxSum);
     }
 
     return std::make_tuple(attenOut, softmaxMax, softmaxSum);

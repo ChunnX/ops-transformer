@@ -81,9 +81,9 @@ def gen_tensor_data(params, key):
     input_i_data = None
     for param_key in params.keys():
         if f"tensor_data_{index}" in param_key and "required_" not in param_key:
-            input_i_data = torch.tensor(
-                params[param_key], dtype=compute_dtype
-            ).reshape(shape_input)
+            input_i_data = torch.tensor(params[param_key], dtype=compute_dtype).reshape(
+                shape_input
+            )
             is_fix_value = True
 
     if not is_fix_value:
@@ -289,9 +289,7 @@ def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw="f
     elif input_range[0] == "default":
         input_i_data = None
     else:
-        input_i_data = torch.full(
-            shape_input, input_range[0], dtype=dtype_input
-        )
+        input_i_data = torch.full(shape_input, input_range[0], dtype=dtype_input)
     return input_i_data
 
 

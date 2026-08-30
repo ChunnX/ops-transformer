@@ -133,8 +133,8 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sinks, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
+    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
     const KvQuantSparseFlashAttentionV2TilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     fa_base_matmul::ResetIdCounter();
@@ -321,9 +321,8 @@ __aicore__ inline uint64_t KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBlockType>::GetAxisStartIdx(uint32_t bN2EndPrev,
-                                                                                                    uint32_t s1GEndPrev,
-                                                                                                    uint32_t s2EndPrev)
+__aicore__ inline void KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBlockType>::GetAxisStartIdx(
+    uint32_t bN2EndPrev, uint32_t s1GEndPrev, uint32_t s2EndPrev)
 {
     uint32_t qsfaBEndPrev = bN2EndPrev / constInfo.n2Size;
     uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBEndPrev);
@@ -343,8 +342,8 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionV2Mla<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *sinks, __gm__ uint8_t *workspace, const KvQuantSparseFlashAttentionV2TilingDataMla *__restrict tiling,
-    TPipe *tPipe)
+    __gm__ uint8_t *sinks, __gm__ uint8_t *workspace,
+    const KvQuantSparseFlashAttentionV2TilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     if (actualSeqLengthsQ != nullptr) {
         actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengthsQ;

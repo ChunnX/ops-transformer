@@ -326,7 +326,7 @@ def convert_param_combination_to_cs_format(param_combination):
     block_num = param_combination.get("block_num")
     enable_sinks = param_combination.get("enable_sinks", False)
     return_softmax_lse = param_combination.get("return_softmax_lse", False)
-    
+
     # 参数校验：TND layout 下 T 不能超过 B*S
     if layout_query == "TND" and T1 is not None:
         if T1 > B * S1:
@@ -482,7 +482,7 @@ def convert_param_combination_to_cs_format(param_combination):
     if enable_sinks == True:
         shape_input["sinks"] = [N1]
         dtype_input["sinks"] = "fp32"
-    
+
     default_range_input = {
         "query": [2, 10],
         "key": [-100, 100.0],
@@ -675,9 +675,7 @@ def modify_alcnn_input_file(
         tensor_dtype = get_tensor_dtype(tensors, data_dtype)
         if torch.is_tensor(tensors):
             if tensor_dtype == "bf16":
-                out_tensor = (
-                    tensors.detach().cpu().to(torch.float32).numpy()
-                )
+                out_tensor = tensors.detach().cpu().to(torch.float32).numpy()
             else:
                 out_tensor = tensors.detach().cpu().numpy()
         else:

@@ -37,7 +37,7 @@ constexpr uint32_t DIM_NUM_4 = 4;
 ge::graphStatus InferShapeKvQuantSparseFlashAttentionV2(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvQuantSparseFlashAttentionV2", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     const gert::Shape *keyShape = context->GetInputShape(KEY_INPUT_INDEX);
@@ -122,7 +122,7 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttentionV2(gert::InferShapeContext 
 ge::graphStatus InferDataTypeKvQuantSparseFlashAttentionV2(gert::InferDataTypeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("KvQuantSparseFlashAttentionV2", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
     context->SetOutputDataType(1, ge::DT_FLOAT);

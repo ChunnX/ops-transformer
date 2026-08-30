@@ -591,8 +591,9 @@ ge::graphStatus TilingPrepareForKvQuantSparseFlashAttentionV2(gert::TilingParseC
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAV2TilingCheck::GetExpectedShape(gert::Shape &shapeExpected, const QSFAV2TilingShapeCompareParam &param,
-                                                  const QSFAV2Layout &layout) const
+ge::graphStatus QSFAV2TilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
+                                                    const QSFAV2TilingShapeCompareParam &param,
+                                                    const QSFAV2Layout &layout) const
 {
     if (layout == QSFAV2Layout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
@@ -608,7 +609,7 @@ ge::graphStatus QSFAV2TilingCheck::GetExpectedShape(gert::Shape &shapeExpected, 
 }
 
 ge::graphStatus QSFAV2TilingCheck::CompareShape(QSFAV2TilingShapeCompareParam &param, const gert::Shape &shape,
-                                              const QSFAV2Layout &layout, const std::string &name) const
+                                                const QSFAV2Layout &layout, const std::string &name) const
 {
     gert::Shape qsfaShapeExpected;
     if (GetExpectedShape(qsfaShapeExpected, param, layout) != ge::GRAPH_SUCCESS) {
@@ -635,7 +636,7 @@ ge::graphStatus QSFAV2TilingCheck::CompareShape(QSFAV2TilingShapeCompareParam &p
 }
 
 void QSFAV2TilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                           const ge::DataType &actualDtype, const std::string &name) const
+                                             const ge::DataType &actualDtype, const std::string &name) const
 {
     std::ostringstream qsfaOss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -649,7 +650,7 @@ void QSFAV2TilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &ex
 }
 
 ge::graphStatus QSFAV2TilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
-                                                   const std::string &name) const
+                                                     const std::string &name) const
 {
     if (qsfaDesc != nullptr) {
         const auto &qsfaIt = DTYPE_SUPPORT_MAP.find(name);
@@ -666,7 +667,7 @@ ge::graphStatus QSFAV2TilingCheck::CheckDtypeSupport(const gert::CompileTimeTens
 
 template <typename T>
 void QSFAV2TilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                            const std::string &name, const std::string subName) const
+                                              const std::string &name, const std::string subName) const
 {
     std::ostringstream qsfaOssNum;
     size_t count = expectNumberList.size();
@@ -687,13 +688,14 @@ void QSFAV2TilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumber
 
 template <typename T>
 void QSFAV2TilingCheck::LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                            const std::string &name) const
+                                              const std::string &name) const
 {
     LogErrorNumberSupport(expectNumberList, actualValue, name, "dimension");
 }
 
-ge::graphStatus QSFAV2TilingCheck::CheckDimNumInLayoutSupport(const QSFAV2Layout &layout, const gert::StorageShape *shape,
-                                                            const std::string &name) const
+ge::graphStatus QSFAV2TilingCheck::CheckDimNumInLayoutSupport(const QSFAV2Layout &layout,
+                                                              const gert::StorageShape *shape,
+                                                              const std::string &name) const
 {
     const auto &qsfaDimIt = QSFAV2_LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != qsfaDimIt->second,
@@ -706,8 +708,8 @@ ge::graphStatus QSFAV2TilingCheck::CheckDimNumInLayoutSupport(const QSFAV2Layout
 }
 
 ge::graphStatus QSFAV2TilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                    const std::vector<size_t> &qsfaExpectDimNumList,
-                                                    const std::string &name) const
+                                                      const std::vector<size_t> &qsfaExpectDimNumList,
+                                                      const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -723,7 +725,7 @@ ge::graphStatus QSFAV2TilingCheck::CheckDimNumSupport(const gert::StorageShape *
 }
 
 void QSFAV2TilingCheck::LogErrorLayoutSupport(const std::vector<QSFAV2Layout> &expectLayoutList,
-                                            const QSFAV2Layout &actualLayout, const std::string &name) const
+                                              const QSFAV2Layout &actualLayout, const std::string &name) const
 {
     std::ostringstream qsfaOssLayout;
     for (size_t i = 0; i < expectLayoutList.size(); ++i) {
@@ -977,8 +979,8 @@ ge::graphStatus QSFAV2TilingCheck::CheckBlockTable() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAV2TilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
-                                                       const std::string &name) const
+ge::graphStatus QSFAV2TilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
+                                                         const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -1318,12 +1320,12 @@ ge::graphStatus QSFAV2TilingCheck::CheckFeatureMlaAntiquantLayout() const
 
 ge::graphStatus QSFAV2TilingCheck::CheckFeatureMlaAntiquantDtype() const
 {
-    OP_CHECK_IF(
-        inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query", QSFAV2DataTypeToSerialString(inputQType_).c_str(),
-                                              "The dtype of query must be " + QSFAV2DataTypeToSerialString(ge::DT_BF16) +
-                                                  " and " + QSFAV2DataTypeToSerialString(ge::DT_FLOAT16)),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    opName_, "query", QSFAV2DataTypeToSerialString(inputQType_).c_str(),
+                    "The dtype of query must be " + QSFAV2DataTypeToSerialString(ge::DT_BF16) + " and " +
+                        QSFAV2DataTypeToSerialString(ge::DT_FLOAT16)),
+                return ge::GRAPH_FAILED);
 
     if (isA5_) {
         OP_CHECK_IF(

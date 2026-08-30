@@ -189,7 +189,9 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
         generated = pytest_golden.generate_input_tensors(params)
         outputs, generated, _ = pytest_golden.compute_cpu(generated, params)
         if outputs is None:
-            raise RuntimeError("KvQuantSparseFlashAttentionV2 pytest compute_cpu failed")
+            raise RuntimeError(
+                "KvQuantSparseFlashAttentionV2 pytest compute_cpu failed"
+            )
 
         self.copy_tensor(query, generated.get("query_cache"), "query")
         self.copy_tensor(key, generated.get("key_cache"), "key")

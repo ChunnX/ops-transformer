@@ -21,7 +21,9 @@ import time
 import math
 import random
 from utils import get_torch_dtype
-from cann_ops_transformer.ops.attention.kv_quant_sparse_flash_attention_v2 import kv_quant_sparse_flash_attention
+from cann_ops_transformer.ops.attention.kv_quant_sparse_flash_attention_v2 import (
+    kv_quant_sparse_flash_attention,
+)
 
 
 def _load_inputs_to_npu(input_dict):
@@ -198,5 +200,7 @@ def call_npu_graph(torch_tensor_dict, params):
         sinks=torch_tensor_dict.get("sinks", None),
         return_softmax_lse=params.get("return_softmax_lse", False),
     )
-    assert npu_result is not None, "kv_quant_sparse_flash_attention (graph) returned None"
+    assert npu_result is not None, (
+        "kv_quant_sparse_flash_attention (graph) returned None"
+    )
     return npu_result
