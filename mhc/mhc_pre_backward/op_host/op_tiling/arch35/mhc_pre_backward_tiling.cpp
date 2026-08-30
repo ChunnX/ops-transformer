@@ -59,15 +59,6 @@ const constexpr uint32_t WORKSPACE_ALIGN_SIZE = 32;
 const constexpr uint64_t SYSTEM_WORKSPACE_SIZE = 40 * 1024 * 1024;
 const constexpr int32_t SCHEDULE_MODE = 1;
 
-// 以下参数只依赖输入形状和核数，在CPU侧预先计算，避免每个AI Core重复执行除法和对齐计算。
-const constexpr uint32_t VEC_DEAL_CHUNK_LARGE_N = 32;
-const constexpr uint32_t VEC_DEAL_CHUNK_SMALL_N = 64;
-const constexpr uint32_t LARGE_N_THRESHOLD = 6;
-const constexpr uint32_t VEC_BS_ALIGN = 16;
-const constexpr uint32_t CUBE_ND_ALIGN = 128;
-const constexpr uint32_t PRE_PROCESS_QUEUE_ELEMS = 16 * 1024;
-const constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;
-
 const constexpr uint32_t C0_SET_SHAPE_M = 512;
 const constexpr uint32_t C0_SET_SHAPE_N = 128;
 const constexpr uint32_t C1_SET_SHAPE_M_BASE = 128;
@@ -288,50 +279,13 @@ void MhcPreBackwardTiling::SetC1TilingParams()
 
 void MhcPreBackwardTiling::SetCommonTilingParams()
 {
-    uint32_t totalLength = static_cast<uint32_t>(totalLength_);
-    uint32_t nD = static_cast<uint32_t>(N_ * D_);
-    uint32_t vecDealChunk = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
-
-    uint32_t vecDealBsPerCore = totalLength / vecCoreNum_;
-    uint32_t usedVecCoreNum = 1;
-    if (vecDealBsPerCore == 0) {
-        vecDealBsPerCore = totalLength;
-    } else {
-        vecDealBsPerCore = (vecDealBsPerCore + VEC_BS_ALIGN - 1) / VEC_BS_ALIGN * VEC_BS_ALIGN;
-        usedVecCoreNum = (totalLength + vecDealBsPerCore - 1) / vecDealBsPerCore;
-        usedVecCoreNum = usedVecCoreNum > vecCoreNum_ ? vecCoreNum_ : usedVecCoreNum;
-    }
-
-    uint32_t cubeDealNdPerCore = nD / blockDim_;
-    uint32_t usedCubeCoreNum = 1;
-    if (cubeDealNdPerCore == 0) {
-        cubeDealNdPerCore = nD;
-    } else {
-        cubeDealNdPerCore = (cubeDealNdPerCore + CUBE_ND_ALIGN - 1) / CUBE_ND_ALIGN * CUBE_ND_ALIGN;
-        usedCubeCoreNum = (nD + cubeDealNdPerCore - 1) / cubeDealNdPerCore;
-    }
-
-    uint32_t preProcessCopySizeD = static_cast<uint32_t>(D_);
-    uint32_t preProcessLenN = PRE_PROCESS_QUEUE_ELEMS / preProcessCopySizeD;
-    preProcessLenN = preProcessLenN > N_ ? static_cast<uint32_t>(N_) : preProcessLenN;
-
     tilingData_.set_coreNum(blockDim_);
     tilingData_.set_vecCoreNum(vecCoreNum_);
     tilingData_.set_totalLength(totalLength_);
-    tilingData_.set_nD(nD);
+    tilingData_.set_nD(N_ * D_);
     tilingData_.set_fusionSize(fusionSize_);
     tilingData_.set_N(N_);
     tilingData_.set_D(D_);
-    tilingData_.set_vecDealChunk(vecDealChunk);
-    tilingData_.set_vecDealBsPerCore(vecDealBsPerCore);
-    tilingData_.set_usedVecCoreNum(usedVecCoreNum);
-    tilingData_.set_cubeDealNdPerCore(cubeDealNdPerCore);
-    tilingData_.set_usedCubeCoreNum(usedCubeCoreNum);
-    tilingData_.set_preProcessCopySizeD(preProcessCopySizeD);
-    tilingData_.set_preProcessLenN(preProcessLenN);
-    tilingData_.set_preProcessDLoopCnt(preProcessCopySizeD / D_ALIGN);
-    tilingData_.set_processV2ChunkSize(N_ > 4 ? PROCESS_V2_CHUNK_SIZE / 2 : PROCESS_V2_CHUNK_SIZE);
-    tilingData_.set_scaleMean(nD > 0 ? 1.0f / static_cast<float>(nD) : 0.0f);
     tilingData_.set_hcEps(hcEps_);
 }
 
