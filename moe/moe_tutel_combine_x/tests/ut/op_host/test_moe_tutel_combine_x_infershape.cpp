@@ -10,15 +10,15 @@
 
 /*!
  * \file test_moe_tutel_combine_x_infershape.cpp
- * \brief InferShape UT。x_grad = [gates.dim(1), y_grad.dim(2)] = [S, H]。
- *        InferDataType 注册在 op_graph/moe_tutel_combine_x_graph_plugin.cpp，
- *        本仓 UT 工程只收集 op_host 侧注册，那部分本地验证、不在此处覆盖。
+ * \brief InferShape/InferDataType UT。x_grad = [gates.dim(1), y_grad.dim(2)] = [S, H]，
+ *        x_grad dtype 与 y_grad 相同。
  */
 
 #include <gtest/gtest.h>
 #include <iostream>
 
 #include "base/registry/op_impl_space_registry_v2.h"
+#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 
@@ -187,4 +187,35 @@ TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_infershape_unknown_rank)
                                                       },
                                                       {});
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeTutelCombineXProto, moe_tutel_combine_x_inferdatatype_follows_y_grad)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto *opImpl = spaceRegistry->GetOpImpl("MoeTutelCombineX");
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDataType = opImpl->infer_datatype;
+    ASSERT_NE(inferDataType, nullptr);
+
+    for (const ge::DataType dtype : {ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16}) {
+        ge::DataType inputDtype = dtype;
+        ge::DataType indicesDtype = ge::DT_INT32;
+        ge::DataType outputDtype = ge::DT_UNDEFINED;
+        auto contextHolder = gert::InferDataTypeContextFaker()
+                                 .SetOpType("MoeTutelCombineX")
+                                 .NodeIoNum(4, 1)
+                                 .NodeInputTd(0, inputDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                                 .NodeInputTd(1, inputDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                                 .NodeInputTd(2, indicesDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                                 .NodeInputTd(3, indicesDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                                 .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                                 .InputDataTypes({&inputDtype, &inputDtype, &indicesDtype, &indicesDtype})
+                                 .OutputDataTypes({&outputDtype})
+                                 .Build();
+        auto *context = contextHolder.GetContext<gert::InferDataTypeContext>();
+        ASSERT_NE(context, nullptr);
+        EXPECT_EQ(inferDataType(context), ge::GRAPH_SUCCESS);
+        EXPECT_EQ(context->GetOutputDataType(0), inputDtype);
+    }
 }

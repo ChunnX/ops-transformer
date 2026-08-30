@@ -31,8 +31,6 @@ constexpr size_t X_GRAD_DIM_NUM = 2;
 } // namespace
 
 // x_grad = [gates.dim(1), y_grad.dim(2)] = [S, H]。
-// InferShape 图模式与单算子直调共用，故留在 op_host；InferDataType 仅图场景使用，
-// 已挪到 op_graph/moe_tutel_combine_x_graph_plugin.cpp。
 static ge::graphStatus InferShape4MoeTutelCombineX(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin InferShape4MoeTutelCombineX");
@@ -64,5 +62,15 @@ static ge::graphStatus InferShape4MoeTutelCombineX(gert::InferShapeContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(MoeTutelCombineX).InferShape(InferShape4MoeTutelCombineX);
+static ge::graphStatus InferDataType4MoeTutelCombineX(gert::InferDataTypeContext *context)
+{
+    OP_LOGD(context->GetNodeName(), "Begin InferDataType4MoeTutelCombineX");
+    context->SetOutputDataType(OUTPUT_X_GRAD_IDX, context->GetInputDataType(INPUT_Y_GRAD_IDX));
+    OP_LOGD(context->GetNodeName(), "End InferDataType4MoeTutelCombineX");
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFERSHAPE(MoeTutelCombineX)
+    .InferShape(InferShape4MoeTutelCombineX)
+    .InferDataType(InferDataType4MoeTutelCombineX);
 } // namespace ops

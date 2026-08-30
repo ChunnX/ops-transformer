@@ -21,6 +21,8 @@
 using namespace AscendC;
 using namespace MoeTutelCombineXRegbase;
 
+#define MOE_TUTEL_COMBINE_X_TILING_KEY_MAIN 10000
+
 extern "C" __global__ __aicore__ void moe_tutel_combine_x(GM_ADDR y_grad, GM_ADDR gates, GM_ADDR indices,
                                                           GM_ADDR locations, GM_ADDR x_grad, GM_ADDR workspace,
                                                           GM_ADDR tiling)
@@ -32,8 +34,10 @@ extern "C" __global__ __aicore__ void moe_tutel_combine_x(GM_ADDR y_grad, GM_ADD
     REGISTER_TILING_DEFAULT(MoeTutelCombineXTilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeTutelCombineXTilingData, tilingData, tiling);
     TPipe pipe;
-    // 本算子只注册唯一主模板，不在 Kernel 内感知或分支具体 TilingKey。
-    MoeTutelCombineXKernel<DTYPE_Y_GRAD> op;
-    op.Init(y_grad, gates, indices, locations, x_grad, &tilingData, &pipe);
-    op.Process();
+    // 即使只有一个模板也必须显式声明非零 TilingKey，供编译器生成运行时入口映射。
+    if (TILING_KEY_IS(MOE_TUTEL_COMBINE_X_TILING_KEY_MAIN)) {
+        MoeTutelCombineXKernel<DTYPE_Y_GRAD> op;
+        op.Init(y_grad, gates, indices, locations, x_grad, &tilingData, &pipe);
+        op.Process();
+    }
 }
