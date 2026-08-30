@@ -21,7 +21,7 @@
   attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
   $$
 
-  其中$key_{sparse}$、$value_{sparse}$为按`sparseBlockIdx`/`sparseBlockCount`从Paged KV Cache中选取的KV块。输入排布由layoutQ、layoutKv指定，当前仅支持layoutQ="TND"、layoutKv="PAGED_BBND"。
+  输入排布由layoutQ、layoutKv指定，当前仅支持layoutQ="TND"、layoutKv="PAGED_BBND"。
 
 ## 函数原型
 
@@ -81,16 +81,16 @@ aclnnStatus aclnnGenericBlockSparseAttention(
   >- totalQBlocks表示按cuSeqLengthsQ差分得到的**存储长度**分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；maxSparseBlockCount（也称topK）为sparseBlockIdx最后一维，须不小于sparseBlockCount中所有元素的最大值。
   >- 当前落地取值：D=128；blockShape=[1, 128]；KV页blockSize=128且须等于blockShapeY；query的headNum须≥key/value的numKeyValueHeads，且整除，groupSize当前须≤128；maxSparseBlockCount当前上限为256。
 
-  <table style="undefined;table-layout: fixed; width: 1550px">
+  <table style="undefined;table-layout: fixed; width: 1200px">
   <colgroup>
-  <col style="width: 220px">
-  <col style="width: 120px">
-  <col style="width: 200px">
-  <col style="width: 300px">
-  <col style="width: 275px">
+  <col style="width: 160px">
+  <col style="width: 90px">
+  <col style="width: 140px">
+  <col style="width: 250px">
+  <col style="width: 180px">
+  <col style="width: 70px">
+  <col style="width: 210px">
   <col style="width: 100px">
-  <col style="width: 190px">
-  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -109,7 +109,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>query</td>
       <td>输入</td>
       <td>公式中的query。</td>
-      <td>不支持空tensor。当前仅支持layoutQ="TND"。</td>
+      <td>当前仅支持layoutQ="TND"。</td>
       <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
       <td>ND</td>
       <td>
@@ -126,7 +126,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>公式中的key。</td>
       <td>
-        不支持空tensor。可作为原始Key输入或Paged KV Cache输入，当前仅支持layoutKv="PAGED_BBND"。<br>
+        可作为原始Key输入或Paged KV Cache输入，当前仅支持layoutKv="PAGED_BBND"。<br>
         作为Paged KV Cache输入时，numBlocks为物理页总数，blockSize为每页token数，支持范围[16, 512]且须16对齐；当前落地blockSize=128且须等于blockShapeY。<br>
         dim0非连续约束见<a href="#其他约束">其他约束</a>。
       </td>
@@ -148,7 +148,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>公式中的value。</td>
       <td>
-        不支持空tensor。可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前仅支持layoutKv="PAGED_BBND"。<br>
+        可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前仅支持layoutKv="PAGED_BBND"。<br>
         作为Value Cache输入时，blockSize为cache页大小，支持范围[16, 512]且须16对齐；当前落地blockSize=128且须等于blockShapeY。
       </td>
       <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>稀疏块索引数组，指定每个Q块选择的KV块索引。</td>
       <td>
-        不支持空tensor。当前仅支持TND + isPackedGQA=1。<br>
+        当前仅支持TND + isPackedGQA=1。<br>
         isPackedGQA=0：每个qHead对应的KV稀疏pattern不一致；isPackedGQA=1：GQA/MQA下同group每个qHead对应的KV稀疏pattern一致。<br>
         取值须为合法KV块索引（按cu存储长度分块）；无效位置可用-1填充，但有效值须落在前sparseBlockCount个位置。<br>
         totalQBlocks = Σ ceilDiv(qStorageLen_i, blockShapeX)，qStorageLen_i 为 cuSeqLengthsQOptional 前缀和差分得到的存储长度。<br>
@@ -192,8 +192,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>每个Q块实际选择的KV块数量。</td>
       <td>
-        不支持空tensor。当前仅支持TND + isPackedGQA=1。<br>
-        isPackedGQA含义与sparseBlockIdx相同。每个元素取值范围为[0, maxSparseBlockCount]，且须与sparseBlockIdx中有效KV块个数一致。
+        当前仅支持TND + isPackedGQA=1。<br>
+        isPackedGQA含义与sparseBlockIdx相同。
       </td>
       <td>INT32</td>
       <td>ND</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>AICPU算子aclnnGenericBlockSparseAttentionMetadata的分核结果。</td>
       <td>
-        必须传入。由aclnnGenericBlockSparseAttentionMetadata生成，每次调用须重新生成，不可跨不同shape/属性复用。
+        必须传入。由aclnnGenericBlockSparseAttentionMetadata生成，每次调用须重新生成。
       </td>
       <td>INT32</td>
       <td>ND</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>描述每个Batch对应的query序列长度，以前缀和形式存储。</td>
       <td>
-        可选输入，用于变长序列场景。不支持空tensor。
+        可选输入，用于变长序列场景。
         <ul>
           <li>layoutQ为TND时必须传入。</li>
           <li>layoutQ为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按query的shape中的S处理（当前不支持）。</li>
@@ -294,7 +294,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>描述每个Batch对应的key/value序列长度，以前缀和形式存储。</td>
       <td>
-        可选输入，用于变长序列场景。不支持空tensor。
+        可选输入，用于变长序列场景。
         <ul>
           <li>layoutKv为TND/PAGED_BBND/PAGED_BNBD时必须传入。当前仅支持PAGED_BBND。</li>
           <li>layoutKv为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按key/value的shape中的S处理（当前不支持）。</li>
@@ -543,10 +543,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 100px">
+  <col style="width: 700px">
   </colgroup>
   <thead>
     <tr>
@@ -578,10 +578,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
+  <table style="undefined;table-layout: fixed; width: 1000px"><colgroup>
+  <col style="width: 160px">
+  <col style="width: 100px">
+  <col style="width: 740px">
   </colgroup>
   <thead>
     <tr>
@@ -621,10 +621,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### layout对应关系说明
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 100px">
+  <col style="width: 700px">
   </colgroup>
   <thead>
     <tr>
@@ -680,10 +680,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### Paged Attention相关说明
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 100px">
+  <col style="width: 700px">
   </colgroup>
   <thead>
     <tr>
@@ -724,14 +724,14 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 下列量化配置按Ascend 950（A5）代际描述；当前可用quantType=0，Ascend 950上可选quantType=5。
 
-  <table style="undefined;table-layout: fixed;width: 2000px"><colgroup>
-  <col style="width: 100px">
-  <col style="width: 30px">
-  <col style="width: 60px">
-  <col style="width: 200px">
-  <col style="width: 200px">
-  <col style="width: 100px">
-  <col style="width: 100px">
+  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
+  <col style="width: 90px">
+  <col style="width: 160px">
+  <col style="width: 90px">
+  <col style="width: 160px">
+  <col style="width: 180px">
+  <col style="width: 180px">
+  <col style="width: 140px">
   </colgroup>
   <thead>
     <tr>
@@ -856,11 +856,11 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 
 ### 掩码说明
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 500px">
-  <col style="width: 144px">
+  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
+  <col style="width: 120px">
+  <col style="width: 140px">
+  <col style="width: 540px">
+  <col style="width: 200px">
   </colgroup>
   <thead>
     <tr>
@@ -903,9 +903,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 ### 其他约束
 
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
-- 该接口支持推理场景下使用。
-- 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成，不可跨不同shape/属性复用。
-- query/key/value的headDim(D)须一致，当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
+- 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
+- query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
 - TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
 - sequsedQOptional/sequsedKvOptional与cu前缀和同时传入时：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
 - 输入query、key、value的数据类型必须一致。
