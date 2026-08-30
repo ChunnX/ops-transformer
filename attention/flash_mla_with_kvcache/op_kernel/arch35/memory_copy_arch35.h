@@ -20,8 +20,8 @@
 #include "../../../common/op_kernel/memcopy/fa_l1_tensor.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
 #include "../../../common/op_kernel/memcopy/gm_coord.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_ub.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_ub.h"
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/vector_common.h"
@@ -32,8 +32,8 @@
 #include "../../common/memcopy/fa_l1_tensor.h"
 #include "../../common/memcopy/fa_ub_tensor.h"
 #include "../../common/memcopy/gm_coord.h"
-#include "../../common/memcopy/copy_gm_to_l1.h"
-#include "../../common/memcopy/copy_gm_to_ub.h"
+#include "../../common/memcopy/attn_copy_gm_to_l1.h"
+#include "../../common/memcopy/attn_copy_gm_to_ub.h"
 #include "../../common/memcopy/copy_ub_to_gm.h"
 #endif
 
