@@ -60,6 +60,7 @@ MANIFEST_COLUMNS = [
     "repeats",
     "parallelism",
     "dynamic",
+    "build_only",
     "notes",
 ]
 
@@ -207,6 +208,7 @@ def required_ttk_rows(source):
         dims = {name: as_int(row, name) for name in ("S", "H", "K", "E", "capacity")}
         layer = row["layer"]
         is_dynamic_p0 = row["case_id"] == "MTD_REQ_033"
+        is_build_only = is_dynamic_p0
         if is_dynamic_p0:
             # Storage and ori tensors stay concrete so TestcaseOp can validate
             # and generate data.  GEIR's dedicated dyn_input_shapes field keeps
@@ -263,6 +265,7 @@ def required_ttk_rows(source):
                     "repeats": row["repeats"],
                     "parallelism": "2" if row["case_id"] in CONCURRENT_CASES else "1",
                     "dynamic": "1" if is_dynamic_p0 else "0",
+                    "build_only": "1" if is_build_only else "0",
                     "notes": row["notes"],
                 }
             )
@@ -280,6 +283,7 @@ def required_ttk_rows(source):
                 "repeats": row["repeats"],
                 "parallelism": "1",
                 "dynamic": "0",
+                "build_only": "0",
                 "notes": row["notes"],
             }
         )
@@ -328,6 +332,7 @@ def l2_manifest(source):
                 "repeats": "1",
                 "parallelism": "1",
                 "dynamic": "0",
+                "build_only": "0",
                 "notes": row["notes"],
             }
         )
@@ -354,6 +359,11 @@ def validate_manifest(rows):
         or int(row["repeats"]) < 1
         or int(row["parallelism"]) < 1
         or row["dynamic"] not in {"0", "1"}
+        or row["build_only"] not in {"0", "1"}
+        or (
+            row["build_only"] == "1"
+            and (row["harness"] != "ttk_geir" or row["dynamic"] != "1")
+        )
     ]
     if bad:
         raise RuntimeError(f"unroutable harness rows: {bad}")

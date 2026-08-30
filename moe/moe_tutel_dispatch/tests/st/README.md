@@ -22,7 +22,9 @@ Ascend950 GEIR-only implementation. The operator has no ACLNN/E2E API.
 - `testcases/MoeTutelDispatch_required_test_cases.csv`: 38 mandatory P0,
   bitwise, guard, long-H, concurrency, performance and test-infra scenarios.
 - `testcases/MoeTutelDispatch_contract_harness_manifest.csv` plus
-  `run_contract_harness.py`: deterministic target for every required/L2 row.
+  `run_contract_harness.py`: deterministic target for every required/L2 row;
+  `MTD_REQ_033` uses GEIR `--compile-only` because its caller E is intentionally
+  unknown and cannot be inferred from the operator inputs.
 - `design/prepare_manual_data.py`: writes exact raw-bit route/gate/payload inputs
   and positive-zero goldens outside the repository for the 35 directed TTK cases.
 
@@ -69,7 +71,8 @@ python3 run_contract_harness.py --execute --ttk-root <ops-test-kit> \
 ```
 
 The harness writes one result CSV per TTK invocation outside the repository and
-checks `precision_status`; Kernel entries additionally require
+checks `precision_status`; the dynamic GE-build entry additionally requires
+`precision=BUILD_ONLY`, while Kernel entries require
 `bin_compile_s=BINARY_MATCH` and `bin_precision=100%`. This is required because
 TTK can return process status zero even when a GEIR case records an execution
 error in its result CSV.

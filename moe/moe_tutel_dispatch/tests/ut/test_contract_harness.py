@@ -64,6 +64,9 @@ def test_p0_descriptor_cases_are_real_geir_targets():
     assert by_id["MTD_REQ_031"]["harness"] == "ttk_geir"
     assert by_id["MTD_REQ_032"]["harness"] == "ttk_geir"
     assert by_id["MTD_REQ_033"]["dynamic"] == "1"
+    assert by_id["MTD_REQ_031"]["build_only"] == "0"
+    assert by_id["MTD_REQ_032"]["build_only"] == "0"
+    assert by_id["MTD_REQ_033"]["build_only"] == "1"
 
     dynamic_case = next(
         row for row in geir_rows if row["testcase_name"] == "MTD_REQ_033"
@@ -82,14 +85,15 @@ def test_p0_descriptor_cases_are_real_geir_targets():
     )
 
 
-def test_ttk_command_honors_repeat_dynamic_binary_and_manual_data():
+def test_dynamic_ge_build_command_is_compile_only():
     row = {
         "case_id": "MTD_REQ_033",
         "harness": "ttk_geir",
         "target": "testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_033",
-        "repeats": "20",
+        "repeats": "1",
         "parallelism": "1",
         "dynamic": "1",
+        "build_only": "1",
     }
     args = SimpleNamespace(
         ttk_root=Path("/tmp/ttk"),
@@ -101,13 +105,38 @@ def test_ttk_command_honors_repeat_dynamic_binary_and_manual_data():
 
     assert cwd == args.ttk_root
     assert "--pc=1" in command
-    assert "--run=20" in command
-    assert "--dl=1" in command
-    assert "--compare=binary" in command
+    assert "--run=1" in command
+    assert "--compile-only" in command
+    assert "--dl=1" not in command
+    assert "--compare=binary" not in command
     assert command[command.index("--warmup") + 1] == "false"
     assert command[command.index("--manual-data-dirs") + 1] == str(args.manual_data_dir)
     assert "-c=false" in command and "-d=true" in command
     assert "-b=release" not in command
+
+
+def test_executed_geir_repeat_enables_determinism_and_binary_compare():
+    row = {
+        "case_id": "MTD_REQ_028",
+        "harness": "ttk_geir",
+        "target": "testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_028",
+        "repeats": "20",
+        "parallelism": "1",
+        "dynamic": "0",
+        "build_only": "0",
+    }
+    args = SimpleNamespace(
+        ttk_root=Path("/tmp/ttk"),
+        manual_data_dir=Path("/tmp/manual"),
+        plugin=Path("/tmp/golden.py"),
+    )
+
+    command, _ = harness.command_for(row, args, ST_DIR)
+
+    assert "--run=20" in command
+    assert "--dl=1" in command
+    assert "--compare=binary" in command
+    assert "--compile-only" not in command
 
 
 def test_kernel_command_is_binary_only_and_skips_warmup():
@@ -160,6 +189,24 @@ def test_ttk_kernel_result_requires_binary_match(tmp_path):
         harness.validate_ttk_result(
             result,
             {"case_id": "MTD_REQ_010", "harness": "ttk_kernel"},
+        )
+
+
+def test_ttk_build_only_result_requires_build_only_marker(tmp_path):
+    result = tmp_path / "result.csv"
+    result.write_text(
+        "testcase_name,precision_status,precision\nMTD_REQ_033,PASS,100%\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="did not use GEIR build-only"):
+        harness.validate_ttk_result(
+            result,
+            {
+                "case_id": "MTD_REQ_033",
+                "harness": "ttk_geir",
+                "build_only": "1",
+            },
         )
 
 

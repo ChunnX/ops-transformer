@@ -49,6 +49,11 @@ def load_manifest(path):
         or int(row["repeats"]) < 1
         or int(row["parallelism"]) < 1
         or row["dynamic"] not in {"0", "1"}
+        or row.get("build_only", "0") not in {"0", "1"}
+        or (
+            row.get("build_only", "0") == "1"
+            and (row["harness"] != "ttk_geir" or row["dynamic"] != "1")
+        )
     ]
     if bad:
         raise RuntimeError(f"manifest contains unroutable rows: {bad}")
@@ -86,6 +91,7 @@ def command_for(row, args, st_dir, result_path=None):
         csv_path, case_name = split_csv_target(st_dir, row["target"])
         mode = "kernel" if harness == "ttk_kernel" else "geir"
         repeats = int(row["repeats"])
+        build_only = row.get("build_only", "0") == "1"
         command = [
             sys.executable,
             "-m",
@@ -97,13 +103,16 @@ def command_for(row, args, st_dir, result_path=None):
             case_name,
             "--pc=1",
             f"--run={repeats}",
-            "--compare=binary",
             "--warmup",
             "false",
             "--manual-data-dirs",
             str(args.manual_data_dir),
         ]
-        if harness == "ttk_geir" and repeats > 1:
+        if build_only:
+            command.append("--compile-only")
+        else:
+            command.append("--compare=binary")
+        if harness == "ttk_geir" and repeats > 1 and not build_only:
             command.append("--dl=1")
         if harness == "ttk_kernel":
             command.extend(["-d=false", "-b=release"])
@@ -152,6 +161,11 @@ def validate_ttk_result(path, row):
         raise RuntimeError(
             f"TTK precision failed for {row['case_id']}: "
             f"{result.get('precision_status')!r}"
+        )
+    if row.get("build_only", "0") == "1" and result.get("precision") != "BUILD_ONLY":
+        raise RuntimeError(
+            f"TTK did not use GEIR build-only mode for {row['case_id']}: "
+            f"{result.get('precision')!r}"
         )
     if row["harness"] == "ttk_kernel":
         if result.get("bin_compile_s") != "BINARY_MATCH":

@@ -1,64 +1,64 @@
-case_id,source,layer,harness,target,expected,repeats,parallelism,dynamic,notes
-MTD_REQ_001,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_001,output_shape_and_bytes,1,1,0,E<K caller descriptor preserved
-MTD_REQ_002,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_002,output_shape_and_bytes,1,1,0,E>K untouched experts positive zero
-MTD_REQ_003,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_003,all_destinations_written,1,1,0,full output
-MTD_REQ_004,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_004,unaligned_H_and_positive_zero,1,1,0,H not 32-byte aligned
-MTD_REQ_005,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_005,empty_y_no_payload_access,1,1,0,E=0
-MTD_REQ_006,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_006,empty_y_no_payload_access,1,1,0,capacity=0
-MTD_REQ_007,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_007,empty_y_no_payload_access,1,1,0,H=0
-MTD_REQ_008,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_008,all_positive_zero,1,1,0,K=0 and y nonempty
-MTD_REQ_009,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_009,all_positive_zero,1,1,0,S=0 and y nonempty
-MTD_REQ_010,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_010,all_positive_zero,1,1,0,+0 gate mask
-MTD_REQ_011,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_011,all_positive_zero,1,1,0,-0 gate mask
-MTD_REQ_012,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_012,special_gates_are_nonzero,1,1,0,no arithmetic on gate
-MTD_REQ_013,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_013,nan_payload_preserved,1,1,0,NaN payload bitwise
-MTD_REQ_014,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_014,special_payload_preserved,1,1,0,FP32 raw bits
-MTD_REQ_015,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_015,special_payload_preserved,1,1,0,BF16 raw bits
-MTD_REQ_016,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_016,long_H_chunk_and_tail,1,1,0,full row cannot fit UB
-MTD_REQ_017,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_017,long_H_chunk_and_tail,1,1,0,FP32 long row
-MTD_REQ_018,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_018,long_H_chunk_and_tail,1,1,0,BF16 long row
-MTD_REQ_019,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_019,metadata_actualN_1_tail,1,1,0,routeBatch tail and unaligned H
-MTD_REQ_020,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_020,metadata_short_tail_no_overread,1,1,0,guard bytes around route metadata
-MTD_REQ_021,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_021,invalid_route_skipped,1,1,0,idx<0
-MTD_REQ_022,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_022,invalid_route_skipped,1,1,0,idx>=E
-MTD_REQ_023,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_023,invalid_route_skipped,1,1,0,loc<0
-MTD_REQ_024,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_024,invalid_route_skipped,1,1,0,loc>=capacity
-MTD_REQ_025,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_025,zero_init_task_cores_reach_sync,1,1,0,route work dominates init work
-MTD_REQ_026,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_026,zero_route_task_cores_reach_sync,1,1,0,init work dominates route work
-MTD_REQ_027,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_027,no_oob_no_numeric_assert,1,1,0,out-of-contract duplicate target
-MTD_REQ_028,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_028,bitwise_reproducible,20,1,0,single stream determinism
-MTD_REQ_029,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_029,no_deadlock_and_bitwise,20,2,0,multiple concurrent streams
-MTD_REQ_030,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_030,performance_and_scalar_pressure,5,1,0,network-like E>K tail scenario
-MTD_REQ_031,MoeTutelDispatch_required_test_cases.csv,GE-build,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_031,caller_E_known_preserved,1,1,0,P0-A E<K
-MTD_REQ_032,MoeTutelDispatch_required_test_cases.csv,GE-build,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_032,caller_E_known_preserved,1,1,0,P0-A E>K
-MTD_REQ_033,MoeTutelDispatch_required_test_cases.csv,GE-build,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_033,unknown_dims_deferred,1,1,1,E unknown and C/H known-or-unknown matrix
-MTD_REQ_034,MoeTutelDispatch_required_test_cases.csv,build,build_scan,build_isolation:MTD_REQ_034,host_symbols_isolated,1,1,0,P0-C ascend950 versus old product
-MTD_REQ_035,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_035,no_deadlock,20,2,0,P0-B MIX single and multistream
-MTD_REQ_036,MoeTutelDispatch_required_test_cases.csv,contract,static_contract,spec_readme_alias:MTD_REQ_036,y_has_no_input_alias,1,1,0,caller obligation when GE cannot detect alias
-MTD_REQ_037,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_037,nan_payload_preserved,1,1,0,FP32 fixed quiet/signaling NaN payload bits
-MTD_REQ_038,MoeTutelDispatch_required_test_cases.csv,test-infra,test_infra_ut,tests/ut/test_output_shape_spec_kwargs.py,output_shape_metadata_spec_class_only,1,1,0,P0-TTK-OUTPUT-SHAPE; class/spec receives logical output_shapes while API/string third_party does not
-MTD_L2_001,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingX,null_input,1,1,0,missing required tensor
-MTD_L2_002,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingGates,null_input,1,1,0,missing required tensor
-MTD_L2_003,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingIndices,null_input,1,1,0,missing required tensor
-MTD_L2_004,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingLocations,null_input,1,1,0,missing required tensor
-MTD_L2_005,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingCapacity,null_input,1,1,0,missing required attr
-MTD_L2_006,MoeTutelDispatch_L2_test_cases.csv,GE-build,host_ut,MoeTutelDispatchTiling.MissingCallerYDesc,shape_mismatch,1,1,0,E cannot be inferred from K
-MTD_L2_007,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.XRank1,shape_mismatch,1,1,0,fixed rank required
-MTD_L2_008,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.GatesRank3,shape_mismatch,1,1,0,fixed rank required
-MTD_L2_009,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.IndicesShapeMismatch,shape_mismatch,1,1,0,route shapes must match
-MTD_L2_010,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.LocationsShapeMismatch,shape_mismatch,1,1,0,route shapes must match
-MTD_L2_011,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.SMismatch,shape_mismatch,1,1,0,x.S must equal route.S
-MTD_L2_012,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YRank2,shape_mismatch,1,1,0,caller y rank must be 3
-MTD_L2_013,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YCapacityMismatch,shape_mismatch,1,1,0,y.dim1 must equal capacity
-MTD_L2_014,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YHiddenMismatch,shape_mismatch,1,1,0,y.dim2 must equal x.H
-MTD_L2_015,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.XFloat64,dtype_not_supported,1,1,0,unsupported x dtype
-MTD_L2_016,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.GatesDtypeMismatch,dtype_not_supported,1,1,0,x gates y must match
-MTD_L2_017,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.IndicesInt64,dtype_not_supported,1,1,0,indices fixed int32
-MTD_L2_018,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YDtypeMismatch,dtype_not_supported,1,1,0,caller y dtype must equal x
-MTD_L2_019,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.CapacityNegative,attribute_value_out_of_range,1,1,0,no allocation from invalid attr
-MTD_L2_020,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.CapacityGtInt32,attribute_value_out_of_range,1,1,0,no huge allocation
-MTD_L2_021,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.DimensionGtInt32,shape_mismatch,1,1,0,no huge allocation
-MTD_L2_022,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.SignedInt64ProductOverflow,shape_mismatch,1,1,0,construct descriptors only
-MTD_L2_023,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.NonNdFormat,shape_mismatch,1,1,0,all tensors fixed ND
-MTD_L2_024,MoeTutelDispatch_L2_test_cases.csv,GE-build,host_ut,MoeTutelDispatchTiling.DynamicRank,shape_mismatch,1,1,0,dynamic dimensions supported but dynamic rank unsupported
-MTD_L2_025,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.LocationsInt64,dtype_not_supported,1,1,0,locations fixed int32
+case_id,source,layer,harness,target,expected,repeats,parallelism,dynamic,build_only,notes
+MTD_REQ_001,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_001,output_shape_and_bytes,1,1,0,0,E<K caller descriptor preserved
+MTD_REQ_002,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_002,output_shape_and_bytes,1,1,0,0,E>K untouched experts positive zero
+MTD_REQ_003,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_003,all_destinations_written,1,1,0,0,full output
+MTD_REQ_004,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_004,unaligned_H_and_positive_zero,1,1,0,0,H not 32-byte aligned
+MTD_REQ_005,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_005,empty_y_no_payload_access,1,1,0,0,E=0
+MTD_REQ_006,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_006,empty_y_no_payload_access,1,1,0,0,capacity=0
+MTD_REQ_007,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_007,empty_y_no_payload_access,1,1,0,0,H=0
+MTD_REQ_008,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_008,all_positive_zero,1,1,0,0,K=0 and y nonempty
+MTD_REQ_009,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_009,all_positive_zero,1,1,0,0,S=0 and y nonempty
+MTD_REQ_010,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_010,all_positive_zero,1,1,0,0,+0 gate mask
+MTD_REQ_011,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_011,all_positive_zero,1,1,0,0,-0 gate mask
+MTD_REQ_012,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_012,special_gates_are_nonzero,1,1,0,0,no arithmetic on gate
+MTD_REQ_013,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_013,nan_payload_preserved,1,1,0,0,NaN payload bitwise
+MTD_REQ_014,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_014,special_payload_preserved,1,1,0,0,FP32 raw bits
+MTD_REQ_015,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_015,special_payload_preserved,1,1,0,0,BF16 raw bits
+MTD_REQ_016,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_016,long_H_chunk_and_tail,1,1,0,0,full row cannot fit UB
+MTD_REQ_017,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_017,long_H_chunk_and_tail,1,1,0,0,FP32 long row
+MTD_REQ_018,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_018,long_H_chunk_and_tail,1,1,0,0,BF16 long row
+MTD_REQ_019,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_019,metadata_actualN_1_tail,1,1,0,0,routeBatch tail and unaligned H
+MTD_REQ_020,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_020,metadata_short_tail_no_overread,1,1,0,0,guard bytes around route metadata
+MTD_REQ_021,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_021,invalid_route_skipped,1,1,0,0,idx<0
+MTD_REQ_022,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_022,invalid_route_skipped,1,1,0,0,idx>=E
+MTD_REQ_023,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_023,invalid_route_skipped,1,1,0,0,loc<0
+MTD_REQ_024,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_024,invalid_route_skipped,1,1,0,0,loc>=capacity
+MTD_REQ_025,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_025,zero_init_task_cores_reach_sync,1,1,0,0,route work dominates init work
+MTD_REQ_026,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_026,zero_route_task_cores_reach_sync,1,1,0,0,init work dominates route work
+MTD_REQ_027,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_027,no_oob_no_numeric_assert,1,1,0,0,out-of-contract duplicate target
+MTD_REQ_028,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_028,bitwise_reproducible,20,1,0,0,single stream determinism
+MTD_REQ_029,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_029,no_deadlock_and_bitwise,20,2,0,0,multiple concurrent streams
+MTD_REQ_030,MoeTutelDispatch_required_test_cases.csv,GEIR,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_030,performance_and_scalar_pressure,5,1,0,0,network-like E>K tail scenario
+MTD_REQ_031,MoeTutelDispatch_required_test_cases.csv,GE-build,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_031,caller_E_known_preserved,1,1,0,0,P0-A E<K
+MTD_REQ_032,MoeTutelDispatch_required_test_cases.csv,GE-build,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_032,caller_E_known_preserved,1,1,0,0,P0-A E>K
+MTD_REQ_033,MoeTutelDispatch_required_test_cases.csv,GE-build,ttk_geir,testcases/MoeTutelDispatch_required_geir.csv#MTD_REQ_033,unknown_dims_deferred,1,1,1,1,E unknown and C/H known-or-unknown matrix
+MTD_REQ_034,MoeTutelDispatch_required_test_cases.csv,build,build_scan,build_isolation:MTD_REQ_034,host_symbols_isolated,1,1,0,0,P0-C ascend950 versus old product
+MTD_REQ_035,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_035,no_deadlock,20,2,0,0,P0-B MIX single and multistream
+MTD_REQ_036,MoeTutelDispatch_required_test_cases.csv,contract,static_contract,spec_readme_alias:MTD_REQ_036,y_has_no_input_alias,1,1,0,0,caller obligation when GE cannot detect alias
+MTD_REQ_037,MoeTutelDispatch_required_test_cases.csv,kernel,ttk_kernel,testcases/MoeTutelDispatch_required_kernel.csv#MTD_REQ_037,nan_payload_preserved,1,1,0,0,FP32 fixed quiet/signaling NaN payload bits
+MTD_REQ_038,MoeTutelDispatch_required_test_cases.csv,test-infra,test_infra_ut,tests/ut/test_output_shape_spec_kwargs.py,output_shape_metadata_spec_class_only,1,1,0,0,P0-TTK-OUTPUT-SHAPE; class/spec receives logical output_shapes while API/string third_party does not
+MTD_L2_001,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingX,null_input,1,1,0,0,missing required tensor
+MTD_L2_002,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingGates,null_input,1,1,0,0,missing required tensor
+MTD_L2_003,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingIndices,null_input,1,1,0,0,missing required tensor
+MTD_L2_004,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingLocations,null_input,1,1,0,0,missing required tensor
+MTD_L2_005,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.MissingCapacity,null_input,1,1,0,0,missing required attr
+MTD_L2_006,MoeTutelDispatch_L2_test_cases.csv,GE-build,host_ut,MoeTutelDispatchTiling.MissingCallerYDesc,shape_mismatch,1,1,0,0,E cannot be inferred from K
+MTD_L2_007,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.XRank1,shape_mismatch,1,1,0,0,fixed rank required
+MTD_L2_008,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.GatesRank3,shape_mismatch,1,1,0,0,fixed rank required
+MTD_L2_009,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.IndicesShapeMismatch,shape_mismatch,1,1,0,0,route shapes must match
+MTD_L2_010,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.LocationsShapeMismatch,shape_mismatch,1,1,0,0,route shapes must match
+MTD_L2_011,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.SMismatch,shape_mismatch,1,1,0,0,x.S must equal route.S
+MTD_L2_012,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YRank2,shape_mismatch,1,1,0,0,caller y rank must be 3
+MTD_L2_013,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YCapacityMismatch,shape_mismatch,1,1,0,0,y.dim1 must equal capacity
+MTD_L2_014,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YHiddenMismatch,shape_mismatch,1,1,0,0,y.dim2 must equal x.H
+MTD_L2_015,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.XFloat64,dtype_not_supported,1,1,0,0,unsupported x dtype
+MTD_L2_016,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.GatesDtypeMismatch,dtype_not_supported,1,1,0,0,x gates y must match
+MTD_L2_017,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.IndicesInt64,dtype_not_supported,1,1,0,0,indices fixed int32
+MTD_L2_018,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.YDtypeMismatch,dtype_not_supported,1,1,0,0,caller y dtype must equal x
+MTD_L2_019,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.CapacityNegative,attribute_value_out_of_range,1,1,0,0,no allocation from invalid attr
+MTD_L2_020,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.CapacityGtInt32,attribute_value_out_of_range,1,1,0,0,no huge allocation
+MTD_L2_021,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.DimensionGtInt32,shape_mismatch,1,1,0,0,no huge allocation
+MTD_L2_022,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.SignedInt64ProductOverflow,shape_mismatch,1,1,0,0,construct descriptors only
+MTD_L2_023,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.NonNdFormat,shape_mismatch,1,1,0,0,all tensors fixed ND
+MTD_L2_024,MoeTutelDispatch_L2_test_cases.csv,GE-build,host_ut,MoeTutelDispatchTiling.DynamicRank,shape_mismatch,1,1,0,0,dynamic dimensions supported but dynamic rank unsupported
+MTD_L2_025,MoeTutelDispatch_L2_test_cases.csv,Host-UT,host_ut,MoeTutelDispatchTiling.LocationsInt64,dtype_not_supported,1,1,0,0,locations fixed int32
