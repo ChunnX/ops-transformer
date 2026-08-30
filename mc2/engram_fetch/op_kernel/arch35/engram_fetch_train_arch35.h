@@ -100,6 +100,7 @@ private:
     __aicore__ inline void SendTokensRemote(uint32_t dstRank, int32_t sendCount, int64_t rdispl, GM_ADDR localWinBase);
     __aicore__ inline void RecvTokensFromPeers();
     __aicore__ inline void ReorderAndSaveCtx();
+    __aicore__ inline void ClearWinForBackward();
     __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
     __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
     __aicore__ inline GM_ADDR GetRemoteWinAddr(uint32_t dstRank, uint64_t offset);
@@ -1278,6 +1279,41 @@ __aicore__ inline void EngramFetchTrainArch35::GatherAndSortPhase()
     SyncAll<true>();
 }
 
+__aicore__ inline void EngramFetchTrainArch35::ClearWinForBackward()
+{
+    if (aivId_ != 0) {
+        SyncAll<true>();
+        return;
+    }
+
+    uint32_t backwardSendersPerRank = 8U;
+
+    uint64_t backwardTotalRanksOffset =
+        static_cast<uint64_t>(numRanks_) * static_cast<uint64_t>(backwardSendersPerRank) * STATE_OFFSET;
+    uint64_t clearSize = 3U * backwardTotalRanksOffset;
+
+    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
+
+    LocalTensor<int32_t> zeroLocal = pingBuf_.Get<int32_t>();
+    uint32_t tileElements = TILE_BYTES / sizeof(int32_t);
+    Duplicate<int32_t>(zeroLocal, 0, tileElements);
+    EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
+
+    GlobalTensor<int32_t> winGM;
+    winGM.SetGlobalBuffer((__gm__ int32_t *)localWinBase);
+    uint64_t clearElements = clearSize / sizeof(int32_t);
+    for (uint64_t off = 0; off < clearElements; off += tileElements) {
+        uint64_t thisLen = clearElements - off;
+        if (thisLen > tileElements) {
+            thisLen = tileElements;
+        }
+        DataCopyParams params{1U, static_cast<uint16_t>(thisLen * sizeof(int32_t)), 0U, 0U};
+        DataCopyPad(winGM[off], zeroLocal, params);
+    }
+    EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+    SyncAll<true>();
+}
+
 __aicore__ inline void EngramFetchTrainArch35::Process()
 {
     if ASCEND_IS_AIV {
@@ -1298,6 +1334,8 @@ __aicore__ inline void EngramFetchTrainArch35::Process()
         LocalReadTable();
         ExchangeToken();
         ReorderAndSaveCtx();
+
+        ClearWinForBackward();
     }
 }
 

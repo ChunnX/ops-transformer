@@ -519,12 +519,8 @@ private:
                              const std::string &targetTag)
     {
         uint32_t rankId = resources.context.rankId;
-        constexpr uint32_t handleArraySize = 72U;
-        resources.context.channelsPerRank = static_cast<uint32_t>(CeilDiv(handleArraySize, resources.context.rankSize));
-        if (resources.context.channelsPerRank == 0U) {
-            resources.context.channelsPerRank = 1U;
-        }
-        uint32_t channelsPerRank = resources.context.channelsPerRank;
+        uint32_t channelsPerRank = 1U;
+        resources.context.channelsPerRank = channelsPerRank;
 
         ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
         GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerRank, resources.memHandle,
@@ -571,16 +567,7 @@ private:
     {
         uint32_t rankId = resources.context.rankId;
         uint32_t rankSize = resources.context.rankSize;
-        constexpr uint32_t aivNum = 72U;
-        uint32_t numSendCores = aivNum / 2U;
-        if (numSendCores == 0U) {
-            numSendCores = 1U;
-        }
-        uint32_t groupSize = numSendCores / rankSize;
-        if (groupSize == 0U) {
-            groupSize = 1U;
-        }
-        uint32_t channelsPerPeer = groupSize * 2U;
+        uint32_t channelsPerPeer = 1U;
         resources.context.channelsPerRank = channelsPerPeer;
 
         std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
