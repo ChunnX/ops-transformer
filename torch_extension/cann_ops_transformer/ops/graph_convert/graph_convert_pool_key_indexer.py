@@ -108,9 +108,10 @@ if _TORCHAIR_AVAILABLE:
                 "mask_mode": attr.Int(mask_mode),
                 "quant_mode": attr.Int(quant_mode),
                 "return_value": attr.Bool(return_value),
-                # PA_BBND 0-axis non-contiguous support (attr index 7, must be
-                # the last attr to match the op_def registration order)
+                # PA_BBND 0-axis non-contiguous support (attr index 7/8, must be
+                # the last attrs to match the op_def registration order)
                 "key_stride0": attr.Int(_pool_key_stride0(pool_key)),
+                "k_descale_stride0": attr.Int(_pool_key_stride0(k_descale)),
             },
             outputs=["sparse_indices_out", "sparse_values_out"],
         )

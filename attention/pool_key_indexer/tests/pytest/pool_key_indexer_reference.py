@@ -210,12 +210,129 @@ def _split_key(pool_key, layout_k, actual_seq_k, block_table):
     raise ValueError(f"unsupported layout_k: {layout_k}")
 
 
-def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode):
+def _e8m0_decode(t):
+    """E8M0 raw(uint8) -> float32 scale: 2^(raw-127), raw==255 -> NaN。
+
+    与 QLIv2 golden 的 e8m0_raw_to_float 一致(0xFF 约定为 NaN, 不拦截)。
+    """
+    raw = t.detach().cpu().to(torch.uint8)
+    scale = torch.pow(2.0, raw.to(torch.float32) - 127.0)
+    return torch.where(raw == 255, torch.full_like(scale, float("nan")), scale)
+
+
+def _split_q_descale_generic(ds, layout_q, q_counts):
+    """通用 q_descale 拆分(任意尾维, 已解码 float) -> 逐 batch (Sb, N1, ...) 列表。"""
+    if layout_q == "BSND":
+        return [ds[b, :c] for b, c in enumerate(q_counts)]
+    out, start = [], 0
+    for c in q_counts:
+        out.append(ds[start : start + c])
+        start += c
+    return out
+
+
+def _split_k_descale_generic(ds, layout_k, actual_seq_k, k_counts, block_table=None,
+                             block_size=None):
+    """通用 k_descale 拆分(任意尾维, 已解码 float) -> 逐 batch (Pb, ...) 列表。
+
+    支持与 pool_key 相同的三布局(BSND 切批 / TND 前缀切 / PA 经 block_table)。
+    """
+    if layout_k == "BSND":
+        return [ds[b, :c] for b, c in enumerate(k_counts)]
+    if layout_k == "TND":
+        out, start = [], 0
+        for c in k_counts:
+            out.append(ds[start : start + c])
+            start += c
+        return out
+    # PA_BBND: (blockNum, blockSize, N2, ...) 经 block_table 重排逻辑池序
+    if block_table is None:
+        raise ValueError("PA k_descale requires block_table")
+    bt = block_table.detach().cpu()
+    batch, max_blocks = bt.shape
+    out = []
+    for b in range(batch):
+        need, rows, pos = k_counts[b], [], 0
+        for t in range(max_blocks):
+            if pos >= need:
+                break
+            blk = int(bt[b, t])
+            if blk < 0:
+                continue
+            take = min(block_size, need - pos)
+            rows.append(ds[blk, :take, 0])
+            pos += take
+        out.append(torch.cat(rows, dim=0) if rows else ds.new_zeros((0,) + ds.shape[3:]))
+    return out
+
+
+def _split_q_descale(q_descale, layout_q, actual_seq_q, q_counts):
+    """q_descale(mode=0, per-token-head) -> 逐 batch (Sb, N1) float32 列表。"""
+    if q_descale is None:
+        return None
+    ds = q_descale.detach().cpu().to(torch.float32)
+    if layout_q == "BSND":
+        batch, _, n1 = ds.shape
+        return [ds[b, :c] for b, c in enumerate(q_counts)]
+    # TND: (T1, N1) 按前缀和切
+    out, start = [], 0
+    for c in q_counts:
+        out.append(ds[start : start + c])
+        start += c
+    return out
+
+
+def _split_k_descale(k_descale, layout_k, actual_seq_k, k_counts, block_table=None, block_size=None):
+    """k_descale(mode=0) -> 逐 batch (Pb,) float32 列表。
+
+    BSND (B,S2,N2) -> [b, :c, 0]; TND (T2,N2) 前缀切;
+    PA (blockNum,blockSize,N2) 与 pool_key 同构: 逻辑池 p 的 scale 在
+    物理块 block_table[b][p//bs] 第 p%bs 行。
+    """
+    if k_descale is None:
+        return None
+    ds = k_descale.detach().cpu().to(torch.float32)
+    if layout_k == "BSND":
+        return [ds[b, :c, 0] for b, c in enumerate(k_counts)]
+    if layout_k == "TND":
+        out, start = [], 0
+        for c in k_counts:
+            out.append(ds[start : start + c, 0])
+            start += c
+        return out
+    # PA_BBND
+    if block_table is None:
+        raise ValueError("PA k_descale requires block_table")
+    bt = block_table.detach().cpu()
+    batch, max_blocks = bt.shape
+    out = []
+    for b in range(batch):
+        need, vals, pos = k_counts[b], [], 0
+        for t in range(max_blocks):
+            if pos >= need:
+                break
+            blk = int(bt[b, t])
+            if blk < 0:
+                continue
+            take = min(block_size, need - pos)
+            vals.append(ds[blk, :take, 0])
+            pos += take
+        out.append(torch.cat(vals, dim=0) if vals else ds.new_zeros((0,)))
+    return out
+
+
+def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode,
+                   q_scale_b=None, k_scale_b=None, mx_q_scale_b=None, mx_k_scale_b=None):
     """单个 batch 的池级 TopK 选择与索引展开。
 
     入参:
       q_b: (S, N1, D) float32;  w_b: (S, N1) float32;  k_b: (P, D) float32;
-      tail_k: 尾部有效 token 数; topk/pool_size/mask_mode: 算子属性。
+      tail_k: 尾部有效 token 数; topk/pool_size/mask_mode: 算子属性;
+      q_scale_b/k_scale_b: mode=0 的 per-token-head 反量化系数(float32):
+        q_scale_b (S, N1) / None; k_scale_b (P,) / None。
+      mx_q_scale_b/mx_k_scale_b: mode=1 的 mxFP8 scale(float32, 已解码):
+        mx_q_scale_b (S, N1, D/32) / None; mx_k_scale_b (P, D/32) / None。
+        按 per-32-D-group 反量化后计算(参考 QLIv2 cal_atten_per_batch_mx)。
 
     返回:
       token_idx: (S, topk + pool_size - 1) int32, 无效 -1
@@ -232,11 +349,38 @@ def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode):
     if s_len == 0 or p_len == 0:
         return token_idx, pool_val
 
-    # 步骤 1: 池级分数 score[i, j] = sum_n w[i, n] * relu(q[i, n] . k[j] / sqrt(d))
-    # (算子文档: S = Q @ K_pool^T * 1/sqrt(headDim) -> ReLU -> 多头加权)
+    # 步骤 1: 池级分数
+    #   mode=0: score[i,j] = (Σ_n relu(Σ_d q·k) · w[i,n] · dq) · dk / sqrt(d)
+    #           (q_scale 乘入 weight、k_scale 乘入聚合和, 与 kernel 数值口径一致;
+    #            scale 恒正可从 D 维点积提出, 数学等价于先反量化)
+    #   mode=1: q/k 先按 per-32-D-group scale 反量化, 再点积(参考 QLIv2 MX golden)
+    #   非量化: score[i,j] = Σ_n w[i,n] · relu(q[i,n]·k[j]/sqrt(d))
     scale = 1.0 / math.sqrt(d)
-    dot = torch.einsum("snd,pd->snp", q_b, k_b) * scale  # (S, N1, P)
-    scores = torch.einsum("sn,snp->sp", w_b, dot.clamp_min(0.0))  # (S, P)
+    if mx_q_scale_b is not None or mx_k_scale_b is not None:
+        # mxFP8: 展开 group scale 到 D 维后反量化
+        if mx_q_scale_b is not None:
+            mxq = mx_q_scale_b.reshape(mx_q_scale_b.shape[0], -1) if mx_q_scale_b.dim() > 2 \
+                else mx_q_scale_b  # (S, N1*D/32) -> (S, N1, D/32)
+            mxq = mxq.reshape(mxq.shape[0], -1, d // 32)
+            q_b = q_b * mxq.repeat_interleave(32, dim=-1)
+        if mx_k_scale_b is not None:
+            mxk = mx_k_scale_b.reshape(mx_k_scale_b.shape[0], -1)  # (P, D/32)
+            k_b = k_b * mxk.repeat_interleave(32, dim=-1)
+        dot = torch.einsum("snd,pd->snp", q_b, k_b)
+        scores = torch.einsum("sn,snp->sp", w_b, dot.clamp_min(0.0)) * scale
+    else:
+        dot = torch.einsum("snd,pd->snp", q_b, k_b)
+        dot = dot.clamp_min(0.0)
+        if q_scale_b is not None:
+            # q_scale 乘入 weight(per-token-head, 与 kernel 一致)
+            w_eff = w_b * q_scale_b  # (S, N1)
+        else:
+            w_eff = w_b
+        scores = torch.einsum("sn,snp->sp", w_eff, dot)  # (S, P)
+        if k_scale_b is not None:
+            # k_scale 乘入聚合和(每池 1 个标量; squeeze 吸收 N2=1 维)
+            scores = scores * k_scale_b.reshape(1, p_len)
+        scores = scores * scale
 
     arange_pool = torch.arange(pool_size, dtype=torch.int64)
     for i in range(s_len):
@@ -288,6 +432,9 @@ def _reference_cpu(
     pool_size=1,
     mask_mode=0,
     return_value=False,
+    q_descale=None,
+    k_descale=None,
+    quant_mode=-1,
 ):
     """CPU 金标实现(逐 batch Python 循环, 精确语义, 全布局能力)。"""
     # ---- 布局归一化: 逐 batch 拆分 ----
@@ -301,11 +448,42 @@ def _reference_cpu(
     if len(tail_list) != batch:
         raise ValueError(f"pool_tail_k length {len(tail_list)} != batch {batch}")
 
+    # ---- 量化 descale 拆分 ----
+    # mode=0: q_descale (…,N1) float, dim==N1+1; k_descale (…,N2) float
+    # mode=1: q_descale (…,N1,D/64,2) e8m0; k_descale (…,N2,D/64,2) e8m0
+    # dispatch 依据: mode=1 的 descale 是 e8m0(uint8/float8_e8m0fnu)或解码后
+    # 尾维为 D/32 的 float —— 由 run_golden 统一解码后传入(此时 shape 尾维
+    # 为 D/32, dim 比 mode=0 多一维), 按尾维长度判别(D==128 时 D/32=4)
+    q_scale_list = None
+    k_scale_list = None
+    mx_q_scale_list = None
+    mx_k_scale_list = None
+    is_mx = (quant_mode == 1)
+    if q_descale is not None:
+        if not is_mx:
+            q_scale_list = _split_q_descale(q_descale, layout_q, actual_seq_q, q_counts)
+        else:
+            # mxFP8: 已解码 float, 尾维 [D/32](run_golden 展平 [D/64,2] 后)
+            mx_q_scale_list = _split_q_descale_generic(q_descale, layout_q, q_counts)
+    if k_descale is not None:
+        k_counts = [k.shape[0] for k in k_list]
+        block_size = pool_key.shape[1] if layout_k == "PA_BBND" else None
+        if not is_mx:
+            k_scale_list = _split_k_descale(k_descale, layout_k, actual_seq_k,
+                                             k_counts, block_table, block_size)
+        else:
+            mx_k_scale_list = _split_k_descale_generic(
+                k_descale, layout_k, actual_seq_k, k_counts, block_table, block_size)
+
     # ---- 逐 batch 计算 ----
     idx_rows, val_rows = [], []
     for b in range(batch):
         token_idx, pool_val = _compute_batch(
-            q_list[b], w_list[b], k_list[b], tail_list[b], topk, pool_size, mask_mode
+            q_list[b], w_list[b], k_list[b], tail_list[b], topk, pool_size, mask_mode,
+            q_scale_list[b] if q_scale_list is not None else None,
+            k_scale_list[b] if k_scale_list is not None else None,
+            mx_q_scale_list[b] if mx_q_scale_list is not None else None,
+            mx_k_scale_list[b] if mx_k_scale_list is not None else None,
         )
         idx_rows.append(token_idx)
         val_rows.append(pool_val)
@@ -616,6 +794,9 @@ def pool_key_indexer_reference(
     pool_size=1,
     mask_mode=0,
     return_value=False,
+    q_descale=None,
+    k_descale=None,
+    quant_mode=-1,
 ):
     """PoolKeyIndexer 统一标杆(按输入设备自动选择 CPU/NPU 实现)。
 
@@ -676,7 +857,13 @@ def pool_key_indexer_reference(
             pool_size=pool_size,
             mask_mode=mask_mode,
             return_value=return_value,
+            q_descale=q_descale,
+            k_descale=k_descale,
+            quant_mode=quant_mode,
         )
+    # NPU 组合标杆暂不支持量化 descale(量化精度验证走 CPU 金标)
+    if q_descale is not None or k_descale is not None:
+        raise ValueError("NPU reference does not support quant descale yet; use CPU golden")
     return _reference_npu(
         query,
         pool_key,

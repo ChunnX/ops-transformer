@@ -99,6 +99,68 @@ const int SIZE = 8;
 const int DIM_0 = 0;
 const int DIM_1 = 1;
 
+inline TensorWrapper PkiMakeWrapper(const at::Tensor &tensor)
+{
+    return {tensor, ConvertToAclDataType(tensor.scalar_type())};
+}
+
+inline bool PkiIsFp8Tensor(const at::Tensor &tensor)
+{
+    return tensor.scalar_type() == at::kFloat8_e4m3fn;
+}
+
+inline bool PkiIsE8M0Tensor(const at::Tensor &tensor)
+{
+    return tensor.scalar_type() == at::kFloat8_e8m0fnu;
+}
+
+constexpr int64_t PKI_E8M0_SCALE_PACK_NUM = 2;
+
+// PKI 量化 dtype 修正(参考 QLIv2 FixQLIV2AclDtypes 模式):
+//   quantMode=0: q/k=FP8_E4M3FN, descale=FLOAT —— aclnn 按输入 dtype 自动识别,
+//                仅校验 dtype 匹配;
+//   quantMode=1: descale=FLOAT8_E8M0 —— 需显式设置 scale dtype(ACL_FLOAT8_E8M0),
+//                并校验 2 元素 E8M0 打包对齐(Cube 按 bf16 视图成对加载)。
+inline void FixPkiAclDtypes(int64_t quantMode,
+                            TensorWrapper &queryWrapper, TensorWrapper &poolKeyWrapper,
+                            TensorWrapper &qScaleWrapper, TensorWrapper &kScaleWrapper)
+{
+    if (quantMode == 0 || quantMode == 1) {
+        TORCH_CHECK(PkiIsFp8Tensor(queryWrapper.tensor_),
+                    "When quant_mode is 0 or 1, query must be torch.float8_e4m3fn, but got ",
+                    queryWrapper.tensor_.scalar_type());
+        TORCH_CHECK(PkiIsFp8Tensor(poolKeyWrapper.tensor_),
+                    "When quant_mode is 0 or 1, pool_key must be torch.float8_e4m3fn, but got ",
+                    poolKeyWrapper.tensor_.scalar_type());
+    }
+    if (quantMode == 0) {
+        TORCH_CHECK(qScaleWrapper.tensor_.scalar_type() == at::kFloat,
+                    "When quant_mode is 0, q_descale must be torch.float, but got ",
+                    qScaleWrapper.tensor_.scalar_type());
+        TORCH_CHECK(kScaleWrapper.tensor_.scalar_type() == at::kFloat,
+                    "When quant_mode is 0, k_descale must be torch.float, but got ",
+                    kScaleWrapper.tensor_.scalar_type());
+    } else if (quantMode == 1) {
+        TORCH_CHECK(PkiIsE8M0Tensor(qScaleWrapper.tensor_),
+                    "When quant_mode is 1, q_descale must be torch.float8_e8m0fnu, but got ",
+                    qScaleWrapper.tensor_.scalar_type());
+        TORCH_CHECK(PkiIsE8M0Tensor(kScaleWrapper.tensor_),
+                    "When quant_mode is 1, k_descale must be torch.float8_e8m0fnu, but got ",
+                    kScaleWrapper.tensor_.scalar_type());
+        // Cube loads E8M0 scales in two-byte groups through a bfloat16_t view.
+        TORCH_CHECK(qScaleWrapper.tensor_.storage_offset() % PKI_E8M0_SCALE_PACK_NUM == 0,
+                    "When quant_mode is 1, q_descale storage offset must satisfy 2-element E8M0 packing alignment, "
+                    "but got ",
+                    qScaleWrapper.tensor_.storage_offset());
+        TORCH_CHECK(kScaleWrapper.tensor_.storage_offset() % PKI_E8M0_SCALE_PACK_NUM == 0,
+                    "When quant_mode is 1, k_descale storage offset must satisfy 2-element E8M0 packing alignment, "
+                    "but got ",
+                    kScaleWrapper.tensor_.storage_offset());
+        qScaleWrapper.dtype = ACL_FLOAT8_E8M0;
+        kScaleWrapper.dtype = ACL_FLOAT8_E8M0;
+    }
+}
+
 // Derive output shapes from query shape + layout.
 //   BSND: query (B,S1,N1,D) -> indices (B,S1,topk+poolSize-1) / values (B,S1,topk/poolSize)
 //   TND:  query (T1,N1,D)   -> indices (T1,topk+poolSize-1)     / values (T1,topk/poolSize)
@@ -198,10 +260,17 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
     // tiling context 不上报运行时 stride, 故在 torch extension 层直读
     // at::Tensor::stride(0) 作为 key_stride0 属性下传; 非 0 轴必须连续。
     // PA_BBND 下 0 轴 stride >= blockSize*N2*D 时按非连续寻址, 否则等价连续。
+    // 非 PA(BSND/TND) 布局: kernel KeyNd2Nz 连续寻址且 tiling 不消费
+    // key_stride0 属性(该属性仅 PA 分支接线), 0 轴非连续输入会静默错算,
+    // 必须在此显式拒绝(图模式由框架上报运行时 stride 经 tiling 拦截)。
     int64_t keyStride0 = -1;
     if (!poolKey.is_contiguous()) {
         auto contiguousAxes = IsContiguousAxes(poolKey);
         bool isPaBbnd = (keyLayoutStr == "PA_BBND");
+        TORCH_CHECK(isPaBbnd,
+                    "pool_key non-contiguous tensor is only supported with layout_k='PA_BBND' "
+                    "(0-axis non-contiguous), but layout_k is '", keyLayoutStr,
+                    "'; pass a contiguous pool_key or use PA_BBND layout");
         for (int64_t i = 1; i < static_cast<int64_t>(contiguousAxes.size()); i++) {
             TORCH_CHECK(contiguousAxes[i],
                         "pool_key only supports non-contiguous tensor on the 0-axis, axis[",
@@ -214,6 +283,58 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
                         "pool_key stride0(", keyStride0,
                         ") must be >= contiguous stride(", contiguousStride0, ") in PA_BBND scenarios");
         }
+    }
+
+    // 量化路径 dtype 修正(quantMode=0/1): mxFP8 的 E8M0 scale 需显式 ACL dtype;
+    // 非量化路径直接透传 at::Tensor(ConvertType 自动转换)。
+    const bool qDescaleDefined = qDescale.has_value() && qDescale.value().defined();
+    const bool kDescaleDefined = kDescale.has_value() && kDescale.value().defined();
+    const bool isQuantPath = (quantMode == 0 || quantMode == 1);
+
+    // k_descale 0轴非连续支持(与 pool_key 的 key_stride0 属性同机制):
+    // eager/aclnn 链路的 tiling context 不上报运行时 stride, 故在 torch extension
+    // 层直读 at::Tensor::stride(0) 作为 k_descale_stride0 属性下传; 非 0 轴必须连续。
+    // 仅 PA_BBND 布局支持 0 轴非连续(kernel GetKeyScale 按 block_table 逐物理块
+    // 寻址, 块基址 = blockId * keyDequantScaleStride0); 非 PA 布局 kernel 连续
+    // 寻址且 tiling 不消费该属性, 非连续输入会静默错算, 必须显式拒绝。
+    int64_t kDescaleStride0 = -1;
+    if (kDescaleDefined && !kDescale.value().is_contiguous()) {
+        bool isPaBbndKds = (keyLayoutStr == "PA_BBND");
+        TORCH_CHECK(isPaBbndKds,
+                    "k_descale non-contiguous tensor is only supported with layout_k='PA_BBND' "
+                    "(0-axis non-contiguous), but layout_k is '", keyLayoutStr,
+                    "'; pass a contiguous k_descale or use PA_BBND layout");
+        auto kdsContiguousAxes = IsContiguousAxes(kDescale.value());
+        for (int64_t i = 1; i < static_cast<int64_t>(kdsContiguousAxes.size()); i++) {
+            TORCH_CHECK(kdsContiguousAxes[i],
+                        "k_descale only supports non-contiguous tensor on the 0-axis, axis[",
+                        i, "] stride is not contiguous");
+        }
+        kDescaleStride0 = kDescale.value().stride(0);
+        if (isPaBbndKds) {
+            // PA: 属性须 >= 连续 stride(0 轴非连续只允许加 padding);
+            // 连续值因 quant_mode 而异(mode=0: blockSize*N2*D/32_e8m0_per_token... 此处
+            // 按元素单位校验下界, tiling 侧做精确校验)
+            TORCH_CHECK(kDescaleStride0 > 0,
+                        "k_descale stride0(", kDescaleStride0, ") must be positive");
+        }
+    }
+
+    // 量化路径 dtype 修正(quantMode=0/1): mxFP8 的 E8M0 scale 需显式 ACL dtype;
+    // 非量化路径直接透传 at::Tensor(ConvertType 自动转换)。
+    if (isQuantPath) {
+        TORCH_CHECK(qDescaleDefined && kDescaleDefined,
+                    "quant_mode=", quantMode, " requires both q_descale and k_descale to be provided");
+    } else if (qDescaleDefined || kDescaleDefined) {
+        TORCH_CHECK(false, "quant_mode=-1 requires q_descale and k_descale to be null");
+    }
+    // 量化路径: wrapper 生命周期与所在分支的 ACLNN_CMD 调用一致
+    auto queryWrapper = PkiMakeWrapper(query);
+    auto poolKeyWrapper = PkiMakeWrapper(poolKey);
+    auto qScaleWrapper = qDescaleDefined ? PkiMakeWrapper(qDescale.value()) : PkiMakeWrapper(poolKey);
+    auto kScaleWrapper = kDescaleDefined ? PkiMakeWrapper(kDescale.value()) : PkiMakeWrapper(poolKey);
+    if (isQuantPath) {
+        FixPkiAclDtypes(quantMode, queryWrapper, poolKeyWrapper, qScaleWrapper, kScaleWrapper);
     }
 
     // pool_tail_k / actual_seq_q / actual_seq_k 为 ValueDepend(OPTIONAL) 输入,
@@ -255,13 +376,24 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
             actualSeqKArr = at::IntArrayRef(actualSeqKCpu.data_ptr<int64_t>(), actualSeqKCpu.numel());
         }
 
-        ACLNN_CMD(aclnnPoolKeyIndexer,
-                  query, poolKey, weights, poolTailKArr,
-                  actualSeqQArr, actualSeqKArr, blockTable,
-                  qDescale, kDescale,
-                  topk, poolSize, queryLayoutPtr, keyLayoutPtr,
-                  maskMode, quantMode, returnValue, keyStride0,
-                  sparseIndicesOut, sparseValuesOut);
+        if (isQuantPath) {
+            // 量化路径: TensorWrapper 传递(使 FixPkiAclDtypes 修正后的 dtype 生效)
+            ACLNN_CMD(aclnnPoolKeyIndexer,
+                      queryWrapper, poolKeyWrapper, weights, poolTailKArr,
+                      actualSeqQArr, actualSeqKArr, blockTable,
+                      qScaleWrapper, kScaleWrapper,
+                      topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+                      maskMode, quantMode, returnValue, keyStride0, kDescaleStride0,
+                      sparseIndicesOut, sparseValuesOut);
+        } else {
+            ACLNN_CMD(aclnnPoolKeyIndexer,
+                      query, poolKey, weights, poolTailKArr,
+                      actualSeqQArr, actualSeqKArr, blockTable,
+                      qDescale, kDescale,
+                      topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+                      maskMode, quantMode, returnValue, keyStride0, kDescaleStride0,
+                      sparseIndicesOut, sparseValuesOut);
+        }
 
         return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
     }
@@ -279,13 +411,23 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
         actualSeqKT = actualSeqK.value().to(at::kLong).to(computeDevice).contiguous();
     }
 
-    AclnnCallNamed("aclnnPoolKeyIndexerTensorGetWorkspaceSize", "aclnnPoolKeyIndexer",
-                   query, poolKey, weights, poolTailKT,
-                   actualSeqQT, actualSeqKT, blockTable,
-                   qDescale, kDescale,
-                   topk, poolSize, queryLayoutPtr, keyLayoutPtr,
-                   maskMode, quantMode, returnValue, keyStride0,
-                   sparseIndicesOut, sparseValuesOut);
+    if (isQuantPath) {
+        AclnnCallNamed("aclnnPoolKeyIndexerTensorGetWorkspaceSize", "aclnnPoolKeyIndexer",
+                       queryWrapper, poolKeyWrapper, weights, poolTailKT,
+                       actualSeqQT, actualSeqKT, blockTable,
+                       qScaleWrapper, kScaleWrapper,
+                       topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+                       maskMode, quantMode, returnValue, keyStride0, kDescaleStride0,
+                       sparseIndicesOut, sparseValuesOut);
+    } else {
+        AclnnCallNamed("aclnnPoolKeyIndexerTensorGetWorkspaceSize", "aclnnPoolKeyIndexer",
+                       query, poolKey, weights, poolTailKT,
+                       actualSeqQT, actualSeqKT, blockTable,
+                       qDescale, kDescale,
+                       topk, poolSize, queryLayoutPtr, keyLayoutPtr,
+                       maskMode, quantMode, returnValue, keyStride0, kDescaleStride0,
+                       sparseIndicesOut, sparseValuesOut);
+    }
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }

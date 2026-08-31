@@ -21,6 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../pool_key_indexer_common.h"
+#include <type_traits>
 
 namespace PkiKernel {
 using namespace PkiCommon;
@@ -30,11 +31,21 @@ public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using SCORE_T = uint32_t;
+    // 非量化实例 SCALE_T=void(LocalTensor<void> 非法), scale buffer 以
+    // bfloat16_t 占位(mxFP8 的 e8m0 也按 bf16 打包视图使用)
+    using SCALE_T = std::conditional_t<std::is_same_v<typename LIT::scaleType, void>,
+                                       bfloat16_t, typename LIT::scaleType>;
+    // mode=1 (mxFP8): LoadData-Mx 要求 fp8_e4m3fn 源操作数的 L0 dst 为
+    // mx_fp8_e4m3_t(参考 QLIv2 MX_DATA_DST_T); 其他模式 L0 类型与源一致
+    using L0_Q_T = std::conditional_t<LIT::isMxFp8, mx_fp8_e4m3_t, Q_T>;
+    using L0_K_T = std::conditional_t<LIT::isMxFp8, mx_fp8_e4m3_t, K_T>;
 
     __aicore__ inline PoolKeyIndexerServiceCube(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
-                                               const GlobalTensor<Q_T> &queryGm);
+                                               const GlobalTensor<Q_T> &queryGm,
+                                               const GlobalTensor<bfloat16_t> &keyScaleGmBf16 = {},
+                                               const GlobalTensor<bfloat16_t> &queryScaleGmBf16 = {});
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -62,12 +73,22 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
 
     static constexpr uint64_t FP16_BLOCK_CUBE = 16;
+    // FP8 NZ 布局因子: L1 中 fp8 数据的 C0 粒度是 32(参考 QLIv2 FP8_BLOCK_CUBE)
+    static constexpr uint64_t FP8_BLOCK_CUBE = 32;
     static constexpr FixpipeConfig LI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
     
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK * D_BASIC_BLOCK;
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
+    // mxFP8: 每 32 个 D 元素一个 E8M0 scale, 2 个 E8M0 打包 1 个 bf16
+    static constexpr uint64_t MX_SCALE_GROUP_SIZE = 32;
+    static constexpr uint64_t FP8_TWO = 2;
+    // L1 NZ 布局块因子: fp8 为 32, fp16 为 16(按类型选择)
+    static constexpr uint64_t QK_BLOCK_CUBE =
+        (sizeof(Q_T) == 1) ? FP8_BLOCK_CUBE : FP16_BLOCK_CUBE;
+    // mxFP8 scale 单行元素数(e8m0 个数) = D基本块/32
+    static constexpr uint64_t MX_SCALE_PER_TOKEN = D_BASIC_BLOCK / MX_SCALE_GROUP_SIZE;
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
@@ -80,19 +101,32 @@ protected:
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, const PkiCommon::RunInfo &runInfo);
     __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, const PkiCommon::RunInfo &runInfo);
     __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset, const PkiCommon::RunInfo &runInfo);
+    // mxFP8: E8M0 scale GM -> L1(Dn2Nz, 2 个 e8m0 打包 1 个 bf16)
+    __aicore__ inline void LoadQScaleToL1(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
+                                          const PkiCommon::RunInfo &runInfo);
+    __aicore__ inline void LoadKScaleToL1(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+                                          const PkiCommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
+    // mxFP8: E8M0 scale GM(按 bf16 打包视角寻址)
+    GlobalTensor<bfloat16_t> mxKeyScaleGmBf16_;
+    GlobalTensor<bfloat16_t> mxQueryScaleGmBf16_;
 
     TBuf<TPosition::A1> bufQL1_;
     LocalTensor<Q_T> queryL1_;
     TBuf<TPosition::B1> bufKeyL1_;
     LocalTensor<K_T> keyL1_;
+    // mxFP8: scale L1 乒乓缓冲
+    TBuf<TPosition::A1> bufQScaleL1_;
+    LocalTensor<SCALE_T> queryScaleL1_;
+    TBuf<TPosition::B1> bufKeyScaleL1_;
+    LocalTensor<SCALE_T> keyScaleL1_;
 
     TBuf<TPosition::A2> bufQL0_;
-    LocalTensor<Q_T> queryL0_;
+    LocalTensor<L0_Q_T> queryL0_;
     TBuf<TPosition::B2> bufKeyL0_;
-    LocalTensor<K_T> keyL0_;
+    LocalTensor<L0_K_T> keyL0_;
 
     TBuf<TPosition::CO1> bufL0C_;
     LocalTensor<float> cL0_;
@@ -105,6 +139,10 @@ protected:
     uint64_t queryL1Mte1BufIdx_ = 0;
     uint64_t l0BufIdx_ = 0;
     uint64_t kl0BufIdx_ = 0;
+    // mxFP8 scale L1 乒乓步长(以 e8m0 计; InitParams 按 mBaseSizeMax/s2BasicBlock 计算,
+    // 参考 QLIv2 queryScaleBufferOffset/keyScaleBufferOffset_)
+    uint64_t queryScaleBufferOffset_ = 0;
+    uint64_t keyScaleBufferOffset_ = 0;
 
     ConstInfo constInfo_;
 
@@ -116,6 +154,9 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
+    // mxFP8 scale L1 乒乓步长(以 e8m0 计, 与 L1 数据乒乓容量一致; 参考 QLIv2)
+    queryScaleBufferOffset_ = constInfo_.mBaseSizeMax * constInfo_.headDim / MX_SCALE_GROUP_SIZE;
+    keyScaleBufferOffset_ = constInfo_.s2BaseSize * constInfo_.headDim / MX_SCALE_GROUP_SIZE;
 }
 
 template <typename LIT>
@@ -129,11 +170,18 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::InitBuffers(TPipe *pipe)
     queryL1_ = bufQL1_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * S2_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(K_T));
     keyL1_ = bufKeyL1_.Get<K_T>();
+    if constexpr (LIT::isMxFp8) {
+        // mxFP8 scale L1 乒乓(以 e8m0 元素计; Dn2Nz 搬运按 2*e8m0=1bf16 视图)
+        pipe->InitBuffer(bufQScaleL1_, QUERY_BUF_NUM * queryScaleBufferOffset_ * sizeof(SCALE_T));
+        queryScaleL1_ = bufQScaleL1_.Get<SCALE_T>();
+        pipe->InitBuffer(bufKeyScaleL1_, KEY_BUF_NUM * keyScaleBufferOffset_ * sizeof(SCALE_T));
+        keyScaleL1_ = bufKeyScaleL1_.Get<SCALE_T>();
+    }
 
-    pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(Q_T));
-    queryL0_ = bufQL0_.Get<Q_T>();
-    pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(K_T));
-    keyL0_ = bufKeyL0_.Get<K_T>();
+    pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(L0_Q_T));
+    queryL0_ = bufQL0_.Get<L0_Q_T>();
+    pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(L0_K_T));
+    keyL0_ = bufKeyL0_.Get<L0_K_T>();
 
     pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
     cL0_ = bufL0C_.Get<float>();
@@ -142,11 +190,17 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::InitBuffers(TPipe *pipe)
 template <typename LIT>
 __aicore__ inline void
 PoolKeyIndexerServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm,
-                                                      const GlobalTensor<K_T> &keyGm, const GlobalTensor<Q_T> &queryGm)
+                                                      const GlobalTensor<K_T> &keyGm, const GlobalTensor<Q_T> &queryGm,
+                                                      const GlobalTensor<bfloat16_t> &keyScaleGmBf16,
+                                                      const GlobalTensor<bfloat16_t> &queryScaleGmBf16)
 {
     blkTableGm_ = blkTableGm;
     keyGm_ = keyGm;
     queryGm_ = queryGm;
+    if constexpr (LIT::isMxFp8) {
+        mxKeyScaleGmBf16_ = keyScaleGmBf16;
+        mxQueryScaleGmBf16_ = queryScaleGmBf16;
+    }
 }
 
 template <typename LIT>
@@ -170,6 +224,16 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
         }else {
             KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
         }
+        if constexpr (LIT::isMxFp8) {
+            // mxFP8: K scale 与 K 数据同批入 L1。
+            // PA 分支需绝对池号查 block_table; 非 PA 分支以 tensorKeyScaleOffset
+            // (含 s2Idx 前缀) 为基 + 块内相对偏移, 不可叠加绝对偏移(双重叠加)
+            if constexpr (PAGE_ATTENTION) {
+                LoadKScaleToL1(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
+            } else {
+                LoadKScaleToL1(s2L1RealSize, s2GmOffset, runInfo);
+            }
+        }
 
         SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
         WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -185,6 +249,10 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
                 queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                 WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                 QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
+                if constexpr (LIT::isMxFp8) {
+                    // mxFP8: Q scale 与 Q 数据同批入 L1
+                    LoadQScaleToL1(s1gL1RealSize, s1gGmOffset, runInfo);
+                }
                 SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             } else {
@@ -257,7 +325,9 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2Nz(uint64_t s2L1Rea
     nd2nzPara.nValue = s2L1RealSize; // 行数
     nd2nzPara.dValue = constInfo_.headDim;
     nd2nzPara.srcDValue = constInfo_.headDim;
-    nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
+    // dstNzC0Stride 对齐单位: NZ C0 粒度按 16 元素 block 计(与 QLIv2 一致,
+    // fp8 亦为 BLOCK_CUBE 对齐; 类型相关的只是 KeyNd2NzForPA 的 dst 写偏移)
+    nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE);
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
@@ -291,7 +361,9 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
-        DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET + s2L1Offset * FP16_BLOCK_CUBE],
+        // NZ 布局偏移因子按数据类型选择(fp8: 32, fp16: 16; 参考 QLIv2 KeyNd2NzForPA;
+        // 与 dstNzC0Stride 的对齐粒度联动: QLIv2 dstNzC0Stride 对齐 16 时 fp8 实测须 32)
+        DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET + s2L1Offset * QK_BLOCK_CUBE],
                  keyGm_[keyGmOffset], nd2nzPara);
 
         s2L1Offset += s2Mte2Size;
@@ -318,6 +390,80 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1
     queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim], nd2nzPara);
 }
 
+// mxFP8: q_descale GM -> L1(Dn2Nz, 2 个 E8M0 打包 1 个 bf16; 参考 QLIv2 LoadQScaleToL1)
+// scale GM 布局: (B,S1,N1,D/64,2) 连续展开 -> 每 s1 行 scalePerToken 个 e8m0
+template <typename LIT>
+__aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadQScaleToL1(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
+                                                     const PkiCommon::RunInfo &runInfo)
+{
+    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * queryScaleBufferOffset_;
+    LocalTensor<bfloat16_t> scaleL1 = queryScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
+    uint32_t scalePerToken = MX_SCALE_PER_TOKEN;
+    Dn2NzParams dn2Nzparam;
+    dn2Nzparam.dnNum = 1;
+    dn2Nzparam.nValue = scalePerToken / FP8_TWO;
+    dn2Nzparam.dValue = s1gL1RealSize;
+    dn2Nzparam.srcDnMatrixStride = 0;
+    dn2Nzparam.srcDValue = scalePerToken / FP8_TWO;
+    dn2Nzparam.dstNzC0Stride = scalePerToken / FP8_TWO;
+    dn2Nzparam.dstNzNStride = 1;
+    dn2Nzparam.dstNzMatrixStride = 0;
+    uint64_t gmOffset = runInfo.tensorQScaleOffset + s1gGmOffset * scalePerToken;
+    DataCopy(scaleL1, mxQueryScaleGmBf16_[gmOffset / FP8_TWO], dn2Nzparam);
+}
+
+// mxFP8: k_descale GM -> L1(非 PA 连续; PA 按 block_table × keyDequantScaleStride0;
+// 参考 QLIv2 LoadKScaleToL1)
+template <typename LIT>
+__aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadKScaleToL1(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+                                                     const PkiCommon::RunInfo &runInfo)
+{
+    uint64_t scaleOffsetInBuf = (keyL1BufIdx_ % KEY_BUF_NUM) * keyScaleBufferOffset_;
+    LocalTensor<bfloat16_t> scaleL1 = keyScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
+    uint32_t scalePerToken = MX_SCALE_PER_TOKEN;
+
+    if constexpr (PAGE_ATTENTION) {
+        uint64_t s2L1Offset = 0;
+        while (s2L1Offset < s2L1RealSize) {
+            uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
+            uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
+            uint64_t physicalBlkId = blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId);
+            // kScale GM偏移: physicalBlkId * stride0 + s2BlkOffset * scalePerToken
+            uint64_t gmOffset = physicalBlkId * constInfo_.keyDequantScaleStride0 + s2BlkOffset * scalePerToken;
+
+            uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
+            s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ?
+                             constInfo_.kCacheBlockSize - s2BlkOffset :
+                             s2Mte2Size;
+
+            Dn2NzParams dn2Nzparam;
+            dn2Nzparam.dnNum = 1;
+            dn2Nzparam.nValue = scalePerToken / FP8_TWO;
+            dn2Nzparam.dValue = s2Mte2Size;
+            dn2Nzparam.srcDnMatrixStride = 0;
+            dn2Nzparam.srcDValue = scalePerToken / FP8_TWO;
+            dn2Nzparam.dstNzC0Stride = scalePerToken / FP8_TWO;
+            dn2Nzparam.dstNzNStride = 1;
+            dn2Nzparam.dstNzMatrixStride = 0;
+            DataCopy(scaleL1[s2L1Offset * scalePerToken / FP8_TWO], mxKeyScaleGmBf16_[gmOffset / FP8_TWO], dn2Nzparam);
+
+            s2L1Offset += s2Mte2Size;
+        }
+    } else {
+        Dn2NzParams dn2Nzparam;
+        dn2Nzparam.dnNum = 1;
+        dn2Nzparam.nValue = scalePerToken / FP8_TWO;
+        dn2Nzparam.dValue = s2L1RealSize;
+        dn2Nzparam.srcDnMatrixStride = 0;
+        dn2Nzparam.srcDValue = scalePerToken / FP8_TWO;
+        dn2Nzparam.dstNzC0Stride = scalePerToken / FP8_TWO;
+        dn2Nzparam.dstNzNStride = 1;
+        dn2Nzparam.dstNzMatrixStride = 0;
+        uint64_t gmOffset = runInfo.tensorKeyScaleOffset + s2GmOffset * scalePerToken;
+        DataCopy(scaleL1, mxKeyScaleGmBf16_[gmOffset / FP8_TWO], dn2Nzparam);
+    }
+}
+
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t s1gGmOffset,
                                                      uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
@@ -328,28 +474,63 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t s
         uint64_t dstOffset = 0;
         loadData2DParamsV2.kStartPosition = 0;
         loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);
-        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, QK_BLOCK_CUBE);
         loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
         loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
         loadData2DParamsV2.ifTranspose = false;
         for (int i = 0; i < 2; i++) {
             loadData2DParamsV2.mStartPosition = CeilDiv((s1gL1Offset / 2) + i * 128, BLOCK_CUBE);
             dstOffset = i * 64 * 16;
-    
-            LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET + dstOffset],
-                queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+
+            if constexpr (LIT::isMxFp8) {
+                // splitM 分支同样走 MX 5 参变体(dst mx_fp8_e4m3_t != src fp8_e4m3fn_t,
+                // 2 参模板要求同型)
+                LoadData2DMxParams loadDataMxParams;
+                loadDataMxParams.xStartPosition = CeilDiv((s1gL1Offset / 2) + i * 128, BLOCK_CUBE);
+                loadDataMxParams.yStartPosition = 0;
+                loadDataMxParams.xStep = CeilDiv(64, BLOCK_CUBE);
+                loadDataMxParams.yStep = MX_SCALE_PER_TOKEN / FP8_TWO;
+                loadDataMxParams.srcStride = loadDataMxParams.yStep;
+                loadDataMxParams.dstStride = loadDataMxParams.yStep;
+                LocalTensor<fp8_e8m0_t> queryScaleL1Tensor =
+                    queryScaleL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryScaleBufferOffset_]
+                        .template ReinterpretCast<fp8_e8m0_t>();
+                LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET + dstOffset],
+                         queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+                         queryScaleL1Tensor, loadData2DParamsV2, loadDataMxParams);
+            } else {
+                LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET + dstOffset],
+                    queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+            }
         }
     } else {
         loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
         loadData2DParamsV2.kStartPosition = 0;
         loadData2DParamsV2.mStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, QK_BLOCK_CUBE);
         loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
         loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
         loadData2DParamsV2.ifTranspose = false;
-    
-        LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-            queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+
+        if constexpr (LIT::isMxFp8) {
+            // MX 变体: 数据与 scale 同入 L0, 硬件按 32 元素组反量化(参考 QLIv2)
+            LoadData2DMxParams loadDataMxParams;
+            loadDataMxParams.xStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
+            loadDataMxParams.yStartPosition = 0;
+            loadDataMxParams.xStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
+            loadDataMxParams.yStep = MX_SCALE_PER_TOKEN / FP8_TWO;
+            loadDataMxParams.srcStride = loadDataMxParams.yStep;
+            loadDataMxParams.dstStride = loadDataMxParams.yStep;
+            LocalTensor<fp8_e8m0_t> queryScaleL1Tensor =
+                queryScaleL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryScaleBufferOffset_]
+                    .template ReinterpretCast<fp8_e8m0_t>();
+            LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+                     queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+                     queryScaleL1Tensor, loadData2DParamsV2, loadDataMxParams);
+        } else {
+            LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+                queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+        }
     }
 }
 
@@ -362,13 +543,29 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
+    loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, QK_BLOCK_CUBE);
     loadData2DParamsV2.srcStride = CeilDiv(s2L1RealSize, BLOCK_CUBE);
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
-    
-    LoadData(keyL0_[(kl0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-             keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], loadData2DParamsV2);
+
+    if constexpr (LIT::isMxFp8) {
+        LoadData2DMxParams loadDataMxParams;
+        loadDataMxParams.xStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
+        loadDataMxParams.yStartPosition = 0;
+        loadDataMxParams.xStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
+        loadDataMxParams.yStep = MX_SCALE_PER_TOKEN / FP8_TWO;
+        loadDataMxParams.srcStride = loadDataMxParams.yStep;
+        loadDataMxParams.dstStride = loadDataMxParams.yStep;
+        LocalTensor<fp8_e8m0_t> keyScaleL1Tensor =
+            keyScaleL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyScaleBufferOffset_]
+                .template ReinterpretCast<fp8_e8m0_t>();
+        LoadData(keyL0_[(kl0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+                 keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
+                 keyScaleL1Tensor, loadData2DParamsV2, loadDataMxParams);
+    } else {
+        LoadData(keyL0_[(kl0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+                 keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], loadData2DParamsV2);
+    }
 }
 
 template <typename LIT>

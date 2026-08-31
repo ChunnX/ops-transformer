@@ -85,6 +85,10 @@ public:
         // at::Tensor::stride(0) 直读传入(参考 compressor 方案); -1 表示未指定
         // (连续输入), tiling 回退到 shape 推导。
         this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1);
+        // k_descale 0轴非连续 stride(元素单位, 量化场景), 与 key_stride0 同机制:
+        // eager/aclnn 路径 GetDynamicInputStride 返回 nullptr, 属性是唯一来源;
+        // -1 表示未指定(连续输入), tiling 回退到 shape 推导。
+        this->Attr("k_descale_stride0").AttrType(OPTIONAL).Int(-1);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

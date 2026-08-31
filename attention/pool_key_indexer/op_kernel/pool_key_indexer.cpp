@@ -52,6 +52,8 @@ __global__ __aicore__ void pool_key_indexer(
     // bisheng backend rejects with
     //   "fp8eXmY/... type only supports pointer operations, scalar float type
     //    semantics are not supported" (exit code 70).
+    // QUANT_MODE tpl 值: 0=none / 1=fp8 per-token(scale=float, vector 融合) /
+    // 2=mxFP8(scale=e8m0, LoadData-Mx 硬件反量化)
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16) {
         INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, bfloat16_t, bfloat16_t, int32_t,
                            PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
@@ -59,8 +61,18 @@ __global__ __aicore__ void pool_key_indexer(
         INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, half, half, int32_t,
                            PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
     } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
-        INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
-                           PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
+        if constexpr (QUANT_MODE == PKI_TPL_QUANT_MXFP8) {
+            INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                               PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, fp8_e8m0_t);
+        } else if constexpr (QUANT_MODE == PKI_TPL_QUANT_FP8_PER_TOKEN) {
+            INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                               PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, float);
+        } else {
+            // FP8 输入但 quantMode=-1: tiling 层已拒绝(descale 校验失败),
+            // 此处兜底实例化 float scale 保持类型完备
+            INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                               PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, float);
+        }
     }
 #else
     // arch22 (A2/A3): Sort+MrgSort TopK, single-dst Fixpipe, GM workspace

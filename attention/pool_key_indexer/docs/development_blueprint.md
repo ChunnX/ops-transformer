@@ -415,113 +415,160 @@ __aicore__ void ExpandAndAppendIndices(
 
 ## 五、步骤4 — A5 量化支持（quantMode=0/1）
 
-### 5.1 设计思路
+> **2026-08-28 修订**：基于 `attention/quant_lightning_indexer_v2`（QLIv2）实际代码调研，**推翻原"Cube 侧 FP8→FP16 反量化后再 Mmad"的设想**，改为 QLIv2 的两条原生路径。两个语义决策已拍板（见 §5.2）。
+>
+> **2026-08-28 实施完成**：Phase 0-5 全部落地并在 A5（Ascend950PR）验证通过。
+> - 量化套件 `tests/pytest/test_quant.py`：**22/22 passed**（mode=0/1 × BSND/TND/PA × mask 0/3 × PA 非连续 × E8M0=0xFF NaN 传播 × 错误路径）
+> - 量化泛化套件 `tests/pytest/test_quant_general.py`：**91/91 passed**（4 布局桶 × 2 mode × 8 例确定性随机 + 27 例定向边界：S2 跨 128 边界、0 池 batch、零长度 query、topk 极值含 3072、n1 极值 1/64、PA 非连续、pa_bs=1024、tail 边界、batch 5/6 维）
+> - 非量化回归：precision+smoke 138 passed、GE 图模式 68 passed（无回归）
+> - 编译回归：ascend950 + ascend910b（共用 tiling）均通过
+> - 实施中的关键修正（相对本蓝图原稿）：① dstNzC0Stride 对齐单位保持 BLOCK_CUBE=16（QLIv2 同款，仅 KeyNd2NzForPA 的 dst 写偏移用类型因子 32）；② kScale L1 乒乓步长按 mBaseSizeMax 运行时计算（非编译期常量）；③ k_descale 乒乓搬运条件是 `(s2Idx-s2Start)%16==0`（不是 isFirstS2InnerLoop，多 s2 块场景滚动覆盖）；④ kScaleUB 需 Duplicate 0 初始化（尾块不足 s2BaseSize 时防垃圾分数）
+> - 泛化测试追加修正（2026-08-28 二轮）：⑤ **量化路径禁用 splitM**（`isQuant` 时 splitMFlag=false）——splitM 分支的 LoadData2D dst 布局按 fp16 M 切分推导（dstOffset=i*64*16 等），fp8 的 L1 NZ 行深变化后该分支布局错位（fp8+n1=64+PA+sparse<256 组合实测分数错乱出负值）；QLIv2 无 splitM 机制可参照，正确性优先，量化场景走常规单块路径；⑥ **mxFP8 多 s2 块的 LoadKScaleToL1 双重偏移**——非 PA 分支以 tensorKeyScaleOffset（含 s2Idx 前缀）为基 + 块内相对偏移，调用方此前误传绝对池号导致 s2Idx>0 时 scale 读错位（S2=300 实测分数爆炸到 1e16）
+>
+> **2026-08-29 泛化第二层（扩展包络）完成**：`test_quant_general2.py` 71 例（ps 24/64/128、topk 3072/4096、S2 至 700 跨 5+ 块、E8M0 宽编码 100..160、descale 大幅差、深 batch、pa_bs 至 512）全过。追加修复 3 个 bug：
+> ⑦ **量化 + 禁 splitM 后 mBaseSize 必须 L0 对齐钳制**：s1gL0RealSize 可达 256 直写 128 行 L0A/L0C 越界（aicore l1 error 507015 偶发崩溃，plog 显示 AIC 核 l1 error info 非零）；钳制条件是 mBaseSize=gSize×s1PerL0（s1PerL0 偶数）——半区（mBaseSize/2）必须含整数个 s1 行（dualDstCtl 按半区拆给两 AIV，Vec 按 gSize 行距读取），n1=40/48 实测半区错位导致集合失败；
+> ⑧ **GetKeyScale PA 分支块边界重写**：原 QLIv2 式按 kCacheBlockSize 步进写 UB（pa_bs>s2BaseSize 时单块写入跨段越界），改为按池号连续写段内 + GM 源按物理块跳转（段偏移与读取位置一致）；
+> ⑨ **mode=0 qScale 融合改为 UB 预乘 + BroadcastLane**：Gather 对寄存器 Mul 产物（weight×qScale）的 lane 布局不兼容（gSize≥32 时取错 lane 丢 g 贡献），改为标量预乘落 UB（weightScaleUB，行距 128 元素 bank 对齐）+ `LoadAlign<DIST_BRC_B32>` 从 UB 广播第 i 个 weight（QLIv2 BroadcastLane 模式）；
+> ⑩ **泛化第二层采样修正**：topk 采样必须落在合法档位（[1,2048]∪{3072,4096,5120,6144,7168,8192}），sparse×ps 常落入非法间隙（如 2816），重试直到合法。
+> 验证：量化三层 184/184 两轮全过；非量化回归 precision+smoke+GE 图 206 passed 无回归。
 
-在 arch35 (Ascend 950) 上实现 FP8 反量化：
+### 5.1 QLIv2 调研结论与总体架构
 
-| quantMode | 输入类型 | 反量化系数类型 | 反量化方式 |
-|-----------|---------|-------------|-----------|
-| -1 | FP16/BF16 | 无 | 直接使用 |
-| 0 | FP8_E4M3FN | FLOAT | per-token-head 反量化 |
-| 1 | FP8_E4M3FN | FLOAT8_E8M0 | mxFP8 块反量化 |
+QLIv2 实际架构（与"反量化成 FP16 再 Mmad"不同）：
 
-### 5.2 反量化计算
+| QLIv2 quant_mode | Cube 侧 | scale 消费点 | PKI 对应 |
+|------------------|---------|-------------|---------|
+| 1 (FP8 per-token) | **原生 FP8×FP8 Mmad**（L0C fp32 累加），scale 不上 Cube | **Vector 侧融合**：`BatchMulWeightAndReduceSum(..., qScale, kScale)`——qScale 乘入 weight、kScale 乘入聚合和 | quantMode=0 |
+| 3 (mxFP8) | **LoadData-Mx 硬件反量化**：数据+E8M0 scale 同入 L0（scale 按 2 个 E8M0 打包成 bf16 单位 Dn2Nz 搬入 L1） | Cube L0 内硬件完成，Vector 无 scale | quantMode=1 |
+
+数学依据：quantMode=0 的 scale 为 per-token-head 标量，可从 D 维点积中完全提出：`relu(Σ_d q·k) · dq · dk`（scale 恒正，ReLU 与乘法可交换，等价精确）。quantMode=1 的 scale 为 per-32-D-group，不可提出，必须走硬件 MX 路径。
+
+**PKI 现有代码对两条路径的适配度**（调研确认）：
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| `MulWeightAndReduceSum`（arch35 vf/pool_key_indexer_vector1.h:228） | ✅ 预留 | 已声明 regQScale/regKScale 寄存器（从 QLIv2 简化而来未使用），qk 输入已是 float，ReLU 在 vector 侧做——mode=0 加 scale 是"回归"式改动 |
+| Fixpipe float 路径（arch35 service_cube.h:399-415） | ✅ 就绪 | `Fixpipe<float,float>` dualDstCtl 双目标已存在，FP8 Mmad 的 L0C float 结果直接复用 |
+| 模板 Tiling Key FP8 组合（template_tiling_key.h:168-177） | ✅ 已注册 | QUANT_MODE 0/1/2 全枚举已含，entry 的 FP8 dtype 分支已存在（pool_key_indexer.cpp:61-64） |
+| entry 按 QUANT_MODE 分发 SCALE_T | ❌ 缺失 | 当前 FP8 分支未区分 mode，PkiType 无 SCALE_T 参数 |
+| descale GM 接线 | ❌ 缺失 | kernel.h:417 已接收 qDescale/kDescale 形参但未消费 |
+
+### 5.2 语义决策记录（已拍板）
+
+| 决策点 | 结论 | 依据 |
+|--------|------|------|
+| mxFP8 语义 | **与 QLIv2 一致**：每 32 个 D 元素一组 E8M0 scale，descale shape = query/key 去 D shape + **[D/64, 2] 尾维**（E8M0 按 2 打包） | QLIv2 tiling.cpp:1158-1199（MX shape 校验）、golden.py:104-105 |
+| E8M0=0xFF | **不拦截，NaN 传播**（0xFF 按 E8M0 约定为 NaN） | QLIv2 golden.py:199-203（`raw==255 → NaN`）；host/kernel 均无 0xFF 校验 |
+
+E8M0 解码约定（kernel/golden 共用）：`scale = 2^(raw - 127)`；`raw == 255 → NaN`；`raw == 0 → 2^-127`。
+
+⚠️ **连带影响——规格文档冲突**：`docs/aclnnKpoolIndexer.md:305-339` 现写 quantMode=1 的 descale shape 与 mode=0 相同（q:(B,S1,N1)、k:(B,S2,N2)/PA:(blockNum,blockSize,N2)），与 QLIv2 语义冲突。**Phase 0 需修订规格**（descale shape 按 mode 区分，见 §5.4）。issue.md 中"每32元素共享一个scale"的公式与 QLIv2 语义一致，无需改。
+
+### 5.3 两种量化模式的计算路径
+
+**quantMode=0（FP8 per-token-head，descale=FLOAT）**：
 
 ```
-quantMode=0 (FP8 per-token-head):
-  Q = Dequant(query, q_descale)    // q_descale shape: (B,S1,N1) 或 (T1,N1)
-  K_pool = Dequant(poolKey, k_descale)  // k_descale shape: (B,S2,N2) 或 (T2,N2) 或 (blockNum,blockSize,N2)
-  // 反量化公式: value_fp16 = fp8_value * scale
-  // 每个 token-head 有独立的 scale
-
-quantMode=1 (mxFP8):
-  // 反量化系数为 FLOAT8_E8M0（指数格式）
-  // 反量化公式: value_fp16 = fp8_value * 2^(scale_exp - 127)
-  // 每 32 个元素共享一个 scale（block 量化）
+scale shape: q=(B,S1,N1)/(T1,N1)，k=(B,S2,N2)/(T2,N2)/PA:(blockNum,blockSize,N2)
+Cube:   原生 FP8×FP8 Mmad（scale-free）→ L0C float → Fixpipe float（现有路径）
+Vector: relu(qk) 聚合时融合 scale：
+        out = (Σ_g relu(Σ_d q·k) · w_g · dq) · dk    ← dq 乘入 weight，dk 乘入聚合和
+参考: QLIv2 QUANT_MODE_FP8 → vector1.h:1183 MulWeightAndReduceSumOptionalScaleImpl<true>
 ```
 
-### 5.3 关键修改点
+**quantMode=1（mxFP8，descale=FLOAT8_E8M0）**：
 
-#### 5.3.1 op_host（已有，无需修改）
-- def.cpp 950 配置已定义 FP8_E4M3FN 和 FLOAT8_E8M0 数据类型
-- tiling.cpp 已有 quantMode 驱动的 dtype/descale 校验
-- ValueDepend + ExtendCfgInfo 已配置
-
-#### 5.3.2 arch35 kernel 新增反量化
-
-**kernel.h `Init`**：
-- 已接收 `qDescale`/`kDescale` 参数，需传递给 service
-- 在 ConstInfo 中添加 `quantMode`（已有）和 descale GM 偏移
-
-**service_cube.h 新增 `DequantInput`**：
-```cpp
-// 在 ComputeMm1 之前，对 Q 和 K 做 FP8 → FP16 反量化
-__aicore__ void DequantQuery(LocalTensor<half>& qOut, LocalTensor<fp8_e4m3fn>& qIn,
-                              LocalTensor<float>& qScale, uint32_t count) {
-    // quantMode=0: per-token-head, scale shape (...,N1)
-    //   for each token t, head h: qOut[t,h,:] = qIn[t,h,:].ToFloat() * qScale[t,h]
-    // quantMode=1: mxFP8, scale shape 每32元素1个
-    //   for each block of 32: qOut[block] = qIn[block].ToFloat() * 2^(scale[block]-127)
-}
+```
+scale shape: q=(B,S1,N1,D/64,2)/(T1,N1,D/64,2)
+             k=(B,S2,N2,D/64,2)/(T2,N2,D/64,2)/PA:(blockNum,blockSize,N2,D/64,2)
+Cube:   LoadData-Mx 变体（数据+scale 同入 L0，硬件按 32 元素组反量化）→ Mmad → L0C float → Fixpipe float
+        scale 搬运：Dn2Nz（2 个 E8M0 打包 1 个 bf16），scalePerToken = headDim/32
+Vector: 无 scale（现有路径不变）
+参考: QLIv2 QUANT_MODE_MXFP8 → service_cube.h:480-547（LoadQScale/LoadKScaleToL1）、563-586（LoadData-Mx）
 ```
 
-**关键实现**：
-- FP8 → FP16 转换：使用 `Cast` 指令
-- per-token-head 乘法：`Mul` 指令，scale 广播到 D 维度
-- mxFP8 指数转换：`Float32 → half`，先做 `2^(exp-127)` 再乘
+weights 在两种模式下均为 FP16/BF16（不量化）。arch22 不支持 FP8，quantMode 只能是 -1（tiling 层架构门禁拦截，见 §5.4）。
 
-**反量化位置**（计算流水）：
-```
-Cube 核:
-  1. Load Q FP8 from GM → UB
-  2. Dequant Q: FP8 × scale → FP16 (新增)
-  3. Load K FP8 from GM
-  4. Dequant K: FP8 × scale → FP16 (新增)
-  5. Mmad(Q_fp16, K_fp16) → Score (现有)
-```
+### 5.4 op_host 现状与缺口
 
-#### 5.3.3 arch35 service_vector.h
-- `MulWeightAndReduceSum` 中的权重 W 仍为 FP16/BF16（规格要求），无需反量化
-- score 类型从 uint32 不变（反量化后的 FP16 计算，结果仍量化为 uint32）
+**已有校验**（tiling.cpp:243-337, 532-621，覆盖较全）：
 
-#### 5.3.4 arch22 不修改
-- A2/A3 不支持 FP8，quantMode 只能是 -1
+| 校验项 | 状态 | 位置 |
+|--------|------|------|
+| quantMode 合法值 (-1/0/1) | ✅ | :155 |
+| descale 空与非空匹配（-1→null，0/1→非null） | ✅ | :259-267, 280-285, 310-315 |
+| query dtype（-1→FP16/BF16，0/1→FP8_E4M3FN） | ✅ | :269-272, 287-290, 317-320 |
+| descale dtype（0→FLOAT，1→FLOAT8_E8M0） | ✅ | :294-301, 324-331 |
+| weights dtype（-1→同query，0/1→FP16/BF16） | ✅ | :274-276, 302-306, 332-336 |
+| descale shape 与 query/poolKey 逐维一致（含 PA 三维） | ✅（仅按 mode=0 语义） | :532-621 |
+| def.cpp 950 config dtype 组合表（4组合） | ✅ | def.cpp:112-145 |
 
-### 5.4 tiling 修改
+**缺口（4项，随本步骤补齐）**：
 
-**CalcWorkspaceSize**：
-- 新增反量化中间 buffer（FP16 Q 和 K 的 UB 空间）
+1. **架构门禁缺失**：无 "quantMode 0/1 仅 DAV_3510" 校验（当前被 tiling.cpp:247-257 全局 fail-fast 掩盖，解除时必须补）
+2. **keyDequantScaleStride0 死字段**：tiling 无赋值点，`GetDynamicInputStride(PKI_K_DESCALE_INDEX, 0)` 从未调用（QLIv2 参考 tiling.cpp:228-236）
+3. **CheckKeyContiguous 不覆盖 k_descale**：k_descale 已设 `IgnoreContiguous()`（def.cpp:137），PA 0轴非连续时其余轴需校验连续（QLIv2 有 scaleNonContiguous 检查）
+4. **mode=1 的 descale shape 校验缺失**：现校验按 mode=0 语义（(B,S2,N2)），mode=1 需改为 +[D/64,2] 尾维，并补 headDim%64==0（headDim=128 恒真，校验保留防御）
 
-**k_descale 0 轴非连续接线**（参考 QLI `quant_lightning_indexer_v2_tiling.cpp:228-236, 1270-1295, 1375-1380`）：
+`k_descale` 的 `IgnoreContiguous()` 设置合理（与 QLIv2 一致）：k_descale 与 pool_key 在 token 维度一一对应，PA 场景必须跟随 pool_key 的 0 轴非连续。
 
-`k_descale` 的 `IgnoreContiguous()` 设置合理（与 QLI 一致），因为 k_descale 与 pool_key 在 token 维度一一对应，PA 场景必须跟随 pool_key 的 0 轴非连续。当前 tiling 未读取 k_descale 运行时 stride，需修复：
+**keyDequantScaleStride0 填值**（参考 QLIv2 tiling.cpp:1374-1381；PKI 无 FP4，比 QLIv2 简单）：
 
-| 改动 | 位置 | 参考QLI |
-|------|------|---------|
-| 添加 `keyDequantScaleStridesVec_` 成员 | `tiling.h` `PoolKeyIndexerTiling` | `:180, :264` |
-| 读取运行时 stride | `tiling.cpp` `ParseAndCheckParams` | `:228-236` |
-| 校验 k_descale 非连续（PA 仅 0 轴） | `CheckKeyContiguous()` 内 | `:1270-1295` |
-| 填值 `keyDequantScaleStride0` | `CalcTilingParams` | `:1375-1380` |
+| 场景 | mode=0 (per-token) | mode=1 (mxFP8) |
+|------|--------------------|----------------|
+| PA（有运行时 stride） | `keyDequantScaleStridesVec_[0]` | `keyDequantScaleStridesVec_[0]` |
+| PA（无 stride，连续推导） | `blockSize * N2` | `blockSize * N2 * (D/32)` |
+| BSND/TND | 0（连续寻址，不用） | 0（连续寻址，不用） |
 
-填值逻辑需区分 quant_mode（shape 不同）：
-- `quant_mode=0` (per-token-head): k_descale shape = (B, S2, N2, 1)
-- `quant_mode=1` (mxFP8): k_descale shape = (B, S2, N2, D/group, group)
-- PA 路径用 `keyDequantScaleStridesVec_[0]`；mxFP8 fallback 用 `blockSize * (headDim / MX_SCALE_GROUP_SIZE)`；其余置 0
+**kernel 侧 k_descale 寻址**（mode=0，Vector 侧）：非 PA 连续寻址；PA 走 `block_table × keyDequantScaleStride0`（参考 QLIv2 GetKeyScale，service_vector.h:432-485）。mode=1 的 scale 寻址在 Cube 侧 LoadKScaleToL1 内（同公式）。
 
-**kernel 侧 k_descale 寻址**：arch35/arch22 反量化路径需用 `keyDequantScaleStride0` 按 block_table 寻址 k_descale（当前 kernel 无反量化逻辑，随步骤4一起实现）。
+### 5.5 实施计划（6 Phase，每阶段独立编译验证）
 
-### 5.5 验证方法
-- quantMode=0/1，FP8_E4M3FN 输入
-- 对比：FP8 反量化后与直接 FP16 输入的结果（精度误差在允许范围内）
-- q_descale/k_descale 的各种 shape（BSND/TND/PA_BBND）
-- k_descale 0 轴非连续场景（构造 blockFusion tensor，参考 QLI golden）
-- 退化验证：quantMode=-1 时不受影响
+**Phase 0 — op_host + 规格修订**
+- fail-fast（tiling.cpp:247-257）→ 架构门禁：仅 `GetCurNpuArch()==DAV_3510` 放行 quantMode 0/1
+- descale shape 校验按 mode 分裂：mode=0 维持现状；mode=1 改为 +[D/64,2] 尾维（BSND:(B,S1,N1,D/64,2)，TND:(T1,N1,D/64,2)，PA:(blockNum,blockSize,N2,D/64,2)），补 headDim%64==0
+- `keyDequantScaleStridesVec_` 接线 + `keyDequantScaleStride0` 填值（按 §5.4 表）
+- CheckKeyContiguous 扩 k_descale（PA 仅查 0 轴起，非 PA 全连续）
+- 修订 docs/aclnnKpoolIndexer.md 的 mode=1 descale shape（消除 §5.2 所述冲突）
+
+**Phase 1 — kernel 框架**
+- `PkiType` 增加 `SCALE_T` 模板参数（mode0→float，mode1→fp8_e8m0_t）+ `isMxFp8` trait（参考 QLIv2 common.h:38-58）
+- entry arch35 FP8 分支按 QUANT_MODE tpl 值分发 SCALE_T（pool_key_indexer.cpp:61-64）
+- kernel.h：descale GM 接线（mode=1 Cube 侧按 bfloat16_t reinterpret——2×E8M0 打包；mode=0 Vector 侧）
+- RunInfo 增 `tensorQScaleOffset/tensorKeyScaleOffset`（参考 QLIv2 kernel.h:690-715 的 scale offset 公式）
+
+**Phase 2 — Cube 侧**
+- FP8 NZ 布局因子：`KeyNd2NzForPA` dst offset `×FP8_BLOCK_CUBE(32)`（现 service_cube.h:294 是 FP16_BLOCK_CUBE=16）；`LoadData kStep=CeilDiv(headDim,32)`（现 /16）
+- L1/L0 buffer 按 sizeof(Q_T) 自动折半（InitBuffers 按类型分配，FP8 实例化自动生效，验证即可）
+- mode=1 MX 路径移植：`bufQScaleL1_/bufKeyScaleL1_` + `LoadQScaleToL1/LoadKScaleToL1`（Dn2Nz，`scalePerToken=D/32`，GM offset `/FP8_TWO`，PA 按 block_table×keyDequantScaleStride0）+ LoadData-Mx 变体（LoadData2DMxParams，`yStep=D/64`）+ L0 dst type `mx_fp8_e4m3_t`
+- Mmad/ComputeL0c/Fixpipe 不变
+
+**Phase 3 — Vector 侧（仅 mode=0）**
+- `InitVecInputTensor` 增 qScaleGm/kScaleGm；ProcessVec1 增两处搬运：
+  - q_descale 与 weights 同 pattern 同 offset（shape 相同，QLIv2 直接复用 weightGmOffset，service_vector.h:523-531）
+  - k_descale：非 PA 连续寻址；PA 走 `block_table × keyDequantScaleStride0`（参考 QLIv2 GetKeyScale，service_vector.h:432-485）
+- `MulWeightAndReduceSum` 增 qScale/kScale 参数：qScale 乘入 regW 后 Gather 广播，kScale 乘入 regSum（量化 uint32 前）
+- UB 预算复核：kScaleBuf ~16KB + qScaleBuf（arch35 UB 248KB，需核算与现有 128KB mm1ResUB 的余量）
+
+**Phase 4 — torch_extension**
+- `FixPkiAclDtypes`：mode=1 校验 descale dtype 为 float8_e8m0fnu + TensorWrapper `ACL_FLOAT8_E8M0`；mode=0 直接透传（§6.3.2 预留项落地）
+
+**Phase 5 — 测试**
+- golden 扩展：mode=0 per-token 参考实现；mode=1 移植 QLIv2 `e8m0_raw_to_float`（含 0xFF→NaN）+ per-32-group 反量化
+- 用例矩阵：BSND/TND/PA × mask 0/3 × quant 0/1 × returnValue × E8M0=0xFF 用例（NaN 传播）× k_descale 0轴非连续 blockFusion
+- FP8 vs FP16 直接计算精度对比；arch22 拦截回归；quantMode=-1 无回归
+
+**验证顺序**：Phase 0 编译 → 1+2 编译 → mode=0 端到端 → mode=1 端到端 → Phase 4 → 全量回归
 
 ### 5.6 风险点
-1. **反量化性能**：FP8→FP16 转换增加计算量和 UB 占用，需评估对流水的影响
-2. **mxFP8 指数处理**：FLOAT8_E8M0 是纯指数格式，需确认 Cast/Mul 指令支持
-3. **双缓冲影响**：反量化打乱 Q/K 的双缓冲流水，需重新设计流水
-4. **k_descale 非连续寻址**：PA 场景 k_descale 需按 `keyDequantScaleStride0` 寻址，且需区分 quant_mode 的不同 shape
+
+1. **LoadData-Mx 的格式约束**（mode=1）：LoadData2DMxParams 的 yStep/srcStride 单位是打包后的 bf16（2×E8M0），与数据侧 32 元素一组的映射需逐参数核对 QLIv2 原实现（service_cube.h:563-586）
+2. **FP8 NZ 布局偏移**：L1 NZ 布局中 fp8 与 fp16 的 C0 粒度不同（32 vs 16），`KeyNd2NzForPA` 的 `s2L1Offset * FP16_BLOCK_CUBE` 类偏移必须全部按类型分支
+3. **Vector scale 融合的数值口径**（mode=0）：dq 乘入 weight 后与 weight 的 FP16/BF16 精度交互——QLIv2 先 Cast weight 到 fp32 再乘 scale，PKI 需保持同一顺序避免精度分叉
+4. **k_descale PA 寻址**（mode=0）：block_table 查表逐块搬运的同步（QLIv2 GetKeyScale 的 S_MTE2 硬同步模式需照搬）
+5. **UB 预算**（mode=0 vector）：qScale/kScale 乒乓 buffer 新增占用，需与 128KB mm1ResUB + 现有 vector 缓冲核算 248KB 上限
+6. **arch22 拦截**：quantMode 0/1 在 A2/A3 必须被 tiling 层架构门禁拒绝（Phase 0），防止错误结果静默产出
+7. **E8M0=0xFF NaN 传播**：TopK 对 NaN score 的排序行为需与 golden 一致（golden 按 NaN 参与排序，不特判）
 
 ---
 
@@ -849,9 +896,13 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 
 步骤4 (A5量化)
   ├── 依赖M3
-  ├── arch35 反量化逻辑
-  ├── 不影响arch22
-  └── 里程碑M4: 全功能完成 (规格全覆盖)
+  ├── Phase 0: tiling 架构门禁 + k_descale stride接线 + shape校验分裂 + 规格修订
+  ├── Phase 1-2: 模板 SCALE_T 分发 + Cube 原生FP8 Mmad / LoadData-Mx (mode=1)
+  ├── Phase 3: Vector scale 融合 (mode=0)
+  ├── Phase 4: torch_extension FixPkiAclDtypes
+  ├── Phase 5: golden/用例矩阵 (含 E8M0=0xFF NaN 传播)
+  ├── 不影响arch22 (架构门禁拦截)
+  └── 里程碑M4: 全功能完成 (规格全覆盖) ✅ 2026-08-28 达成 (量化 22/22, 非量化无回归)
 
 步骤5 (torch_extension接口适配)
   ├── 依赖M3（非量化路径可独立适配）
@@ -887,6 +938,9 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 | 8补: quant_mode +1 偏移映射 | def.cpp 属性 `-1` 是用户接口约定不改；tiling.h `int32_t` 保持一致；TilingData `uint32_t` 和模板 Tiling Key 通过 `+1` 统一映射为非负值，实现用户接口与 kernel 内部编码解耦 |
 | 8补: 模板常量加 TPL_ 前缀 | `PKI_TPL_QUANT_*` / `PKI_TPL_MASK_*` 消除与 tiling.h `constexpr` 同名冲突，防止 `#define` 静默覆盖 |
 | 8补: ExpandAndAppendIndices 值传递 | `LocalTensor` 是轻量包装器（指针+偏移），按值传递无性能开销，且解决临时值无法绑定左值引用问题 |
+| 步骤4: mxFP8 语义与 QLIv2 对齐 | descale 每 32 个 D 元素一组 E8M0，shape 带 [D/64,2] 尾维；规格文档 aclnnKpoolIndexer.md 需同步修订（Phase 0） |
+| 步骤4: E8M0=0xFF 不拦截 | 按 NaN 传播（与 QLIv2 golden 一致，host/kernel 均无 0xFF 校验） |
+| 步骤4: 双路径而非反量化成FP16 | mode=0 原生FP8 Mmad + Vector scale 融合（scale 可从点积提出，数学精确）；mode=1 LoadData-Mx 硬件反量化（scale 不可提出）。推翻原蓝图的 "DequantQuery 先转FP16 再 Mmad" 设想 |
 
 ---
 

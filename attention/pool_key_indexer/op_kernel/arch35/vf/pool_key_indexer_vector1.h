@@ -294,6 +294,88 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
         AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAll);
     }
 }
+
+// mode=0 (FP8 per-token-head) scale 融合版: 数学依据 —— per-token-head scale
+// 为正标量, 可从 D 维点积中完全提出:
+//   out = (Σ_g relu(Σ_d q·k) · w_g · dq) · dk
+// weight 参数为已预乘 qScale 的 fp32 UB(Gather 对寄存器 Mul 产物的 lane
+// 布局不兼容, 参考 QLIv2: weight/qScale 均为 float UB, Mul 后走
+// LoadAlign<float>+BroadcastLane/Gather 路径)。
+//   qk:      [G, S2Base] float(Mmad fp32 累加结果)
+//   weight:  [G]         float(已含 dq: w_g * dq_g)
+//   kScale:  [S2Base]    float(每池 1 个 scale, 逐 s2 元素)
+__aicore__ inline void MulWeightAndReduceSumWithScale(
+    const LocalTensor<uint32_t> &out,  // out    [S2Base]     [128   ] 2
+    const LocalTensor<float> &qk,      // q*k^t  [G, S2Base]  [64 128] 2
+    const LocalTensor<float> &weight,  // w*dq   [G]          [64    ] 1
+    const LocalTensor<float> &kScale,  // kScale [S2Base]     [128   ] 2
+    const int gSize,                   // G 64
+    const float scale)                 // 1/sqrt(headDim)
+{
+    __local_mem__ float *weight_ = (__local_mem__ float *)weight.GetPhyAddr();
+    __local_mem__ float *kScale_ = (__local_mem__ float *)kScale.GetPhyAddr();
+
+    constexpr uint32_t VL = 64; // vector length
+
+    auto qk0 = (__local_mem__ float *)qk.GetPhyAddr();
+    auto qk1 = qk0 + VL;
+    auto out0 = (__local_mem__ uint32_t *)out.GetPhyAddr();
+    auto out1 = out0 + VL;
+    auto kScale0 = kScale_;
+    auto kScale1 = kScale_ + VL;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<float> regQK[2];
+        AscendC::MicroAPI::RegTensor<float> regwBrc;
+        AscendC::MicroAPI::RegTensor<float> regKScale[2];
+        AscendC::MicroAPI::RegTensor<float> regSum[2];
+        AscendC::MicroAPI::RegTensor<float> regScale;
+
+        AscendC::MicroAPI::MaskReg maskAll =
+            AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+
+        FloatSortConstCtx<float> fp32Ctx;
+        InitFloatSortConstCtx(fp32Ctx, maskAll);
+
+        AscendC::MicroAPI::Duplicate(regSum[0], 0.0f, maskAll);
+        AscendC::MicroAPI::Duplicate(regSum[1], 0.0f, maskAll);
+
+        AscendC::MicroAPI::LoadAlign<float>(regKScale[0], kScale0);
+        AscendC::MicroAPI::LoadAlign<float>(regKScale[1], kScale1);
+
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); ++i) {
+            // BroadcastLane: 从 UB 直接广播第 i 个 weight(Gather 对 LoadAlign
+            // fp32 产物的 lane 布局不兼容, 参考 QLIv2 的 BroadcastLane 模式)
+            AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(regwBrc,
+                                                                                           weight_ + i);
+            AscendC::MicroAPI::LoadAlign<float>(regQK[0], qk0 + 128 * i);
+            AscendC::MicroAPI::LoadAlign<float>(regQK[1], qk1 + 128 * i);
+
+            AscendC::MicroAPI::Relu(regQK[0], regQK[0], maskAll);
+            AscendC::MicroAPI::Relu(regQK[1], regQK[1], maskAll);
+
+            AscendC::MicroAPI::MulAddDst(regSum[0], regQK[0], regwBrc, maskAll);
+            AscendC::MicroAPI::MulAddDst(regSum[1], regQK[1], regwBrc, maskAll);
+        }
+
+        // kScale 乘入聚合和(逐 s2 元素), 随后统一乘 1/sqrt(headDim)
+        AscendC::MicroAPI::Mul(regSum[0], regSum[0], regKScale[0], maskAll);
+        AscendC::MicroAPI::Mul(regSum[1], regSum[1], regKScale[1], maskAll);
+
+        // 池级分数乘 1/sqrt(headDim)(文档公式 S = Q@K^T/sqrt(headDim));
+        // 缩放为正数, 与 ReLU/加权求和可交换, 在聚合后统一应用
+        AscendC::MicroAPI::Duplicate(regScale, scale, maskAll);
+        AscendC::MicroAPI::Mul(regSum[0], regSum[0], regScale, maskAll);
+        AscendC::MicroAPI::Mul(regSum[1], regSum[1], regScale, maskAll);
+
+        AscendC::MicroAPI::RegTensor<uint32_t> regOut[2];
+        FloatX2ToSortableKey<float>(regOut[0], regOut[1], regSum[0], regSum[1], fp32Ctx, maskAll);
+
+        AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out0, regOut[0], maskAll);
+        AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAll);
+    }
+}
 } // namespace vector1
 
 #endif

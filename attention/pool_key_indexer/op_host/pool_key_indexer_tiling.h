@@ -51,6 +51,7 @@ constexpr uint32_t PKI_ATTR_MASK_MODE = 4;
 constexpr uint32_t PKI_ATTR_QUANT_MODE = 5;
 constexpr uint32_t PKI_ATTR_RETURN_VALUE = 6;
 constexpr uint32_t PKI_ATTR_KEY_STRIDE0 = 7;
+constexpr uint32_t PKI_ATTR_K_DESCALE_STRIDE0 = 8;
 
 // ------------------ Limits ------------------
 constexpr uint32_t PKI_HEAD_DIM = 128;
@@ -67,6 +68,11 @@ constexpr int32_t PKI_QUANT_FP8_PER_TOKEN = 0;
 constexpr int32_t PKI_QUANT_MXFP8 = 1;
 constexpr int32_t PKI_MASK_DEFAULT = 0;
 constexpr int32_t PKI_MASK_CAUSAL = 3;
+// mxFP8 scale 布局(与 QLIv2 一致): 每 MX_SCALE_GROUP_SIZE 个 D 元素共享一个
+// E8M0 scale, 尾维 [headDim/MX_SCALE_GROUP_ALIGN, MX_E8M0_SCALE_PACK_NUM] 打包
+constexpr uint32_t PKI_MX_SCALE_GROUP_SIZE = 32;  // 每 32 个 D 元素一个 scale
+constexpr uint32_t PKI_MX_E8M0_SCALE_PACK_NUM = 2; // E8M0 尾维打包数(2 个 e8m0 打包寻址)
+constexpr uint32_t PKI_MX_SCALE_SHAPE_ALIGN = 64;  // headDim 对齐约束(headDim=128 恒真, 防御保留)
 
 // ------------------ Tiling Constants ------------------
 constexpr uint32_t PKI_S1_BASE_SIZE = 4;
@@ -180,6 +186,8 @@ private:
     gert::TilingContext *context_ = nullptr;
     PoolKeyIndexerTilingData tilingData_;
     std::vector<uint32_t> keyStridesVec_;
+    // k_descale 运行时 stride(PA 0 轴非连续支持, 与 keyStridesVec_ 同源时机捕获)
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
 
     ge::graphStatus ParseAndCheckParams(PoolKeyIndexerTilingInfo &info);
     ge::graphStatus CalcTilingParams(PoolKeyIndexerTilingInfo &info);

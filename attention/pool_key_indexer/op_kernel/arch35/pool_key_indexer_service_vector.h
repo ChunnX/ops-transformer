@@ -71,7 +71,9 @@ public:
                                       const PoolKeyIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
-                                              GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm);
+                                              GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
+                                              GlobalTensor<float> qScaleGm = {},
+                                              GlobalTensor<float> kScaleGm = {});
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -84,6 +86,13 @@ private:
                                                   uint32_t validS2Len, int32_t poolTailK,
                                                   int32_t L_orig, uint32_t curS1Idx,
                                                   uint32_t curS1Size);
+    // mode=0: k_descale GM -> UB 搬运(非 PA 连续寻址 / PA 按 block_table
+    // × keyDequantScaleStride0, 参考 QLIv2 GetKeyScale)。
+    // dstOffset: 乒乓区内本 s2 块的段偏移((s2Idx-s2Start)%16 * s2BaseSize),
+    // 写入与读取(MulWeightAndReduceSumWithScale)位置一致
+    __aicore__ inline void GetKeyScale(LocalTensor<float> kScaleUB, uint64_t keyScaleGmOffset,
+                                       int64_t batchId, int64_t startS2, int64_t getLen,
+                                       uint32_t dstOffset = 0);
 
     // arch35(950) 标量(S pipe)与向量(V pipe)/MTE3 间必须显式硬同步,
     // PipeBarrier<PIPE_V> 不保证 S 侧读写顺序(参照 bsa_select_block_mask
@@ -106,6 +115,14 @@ private:
         SetFlag<HardEvent::S_MTE3>(eventID);
         WaitFlag<HardEvent::S_MTE3>(eventID);
     }
+    // mode=0 预乘标量读(S pipe)前的 MTE2->S 同步: weightUB_/qScaleUB_ 由
+    // MTE2 DataCopyPad 写入, S pipe 标量 GetValue 必须等其落地
+    __aicore__ inline void MTE2ToSSync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
+        SetFlag<HardEvent::MTE2_S>(eventID);
+        WaitFlag<HardEvent::MTE2_S>(eventID);
+    }
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
@@ -113,6 +130,9 @@ protected:
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<float> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
+    // mode=0 (FP8 per-token-head) scale GM(q/k_descale, float)
+    GlobalTensor<float> qScaleGm;
+    GlobalTensor<float> kScaleGm;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
@@ -129,6 +149,8 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT1 = EVENT_ID2;
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
+    // mode=0 k_descale 搬运: block_table 标量读(S pipe)后 MTE2 搬运的同步
+    static constexpr uint32_t KSCALE_S_MTE2_EVENT = EVENT_ID7;
 
 private:
     // ================================Local Buffer区====================================
@@ -139,6 +161,16 @@ private:
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<W_T> weightUB_;
+
+    // mode=0 (FP8 per-token-head) scale UB(乒乓, 参考 QLIv2 qScaleBuf_/kScaleBuf_)
+    TBuf<TPosition::VECCALC> qScaleBuf_;
+    LocalTensor<float> qScaleUB_;
+    // mode=0: weight(fp32) × qScale 预乘结果 UB(Gather 对寄存器 Mul 产物
+    // lane 布局不兼容, 预乘落 UB 后走纯 fp32 LoadAlign+Gather 路径)
+    TBuf<TPosition::VECCALC> weightScaleBuf_;
+    LocalTensor<float> weightScaleUB_;
+    TBuf<TPosition::VECCALC> kScaleBuf_;
+    LocalTensor<float> kScaleUB_;
 
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
@@ -182,6 +214,7 @@ private:
     uint32_t trunkLen_ = 0;
     uint32_t poolSize_ = 1;
     uint32_t outputLen_ = 0;
+    uint32_t kScaleLoop_ = 0; // mode=0: k_descale 16 轮乒乓搬运计数
     bool returnValue = false;
 
     struct PkiCommon::ConstInfo constInfo_;
@@ -197,6 +230,26 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) *
                                      PkiCommon::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
+    if constexpr (LIT::isFp8PerToken) {
+        // mode=0 scale UB: qScale 行距固定 128 元素(512B bank 对齐)——
+        // MulWeightAndReduceSumWithScale 的 LoadAlign<float> 一次取 64 lanes
+        // (256B), 要求行起点 256B 对齐; 紧凑 gSizeAlign16 布局在 n1 非 64
+        // 倍数时行距非 256B 对齐, LoadAlign 错位(参考 QLIv2 的 bank 交错布局)。
+        // kScale 为 s2 维度(16 轮乒乓 × s2BaseSize, 参考 QLIv2 kScaleBuf_)
+        pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * 128 * sizeof(float));
+        qScaleUB_ = qScaleBuf_.Get<float>();
+        // weightScale UB: 与 qScale 同布局(行距 128 元素, 512B 对齐)
+        pipe->InitBuffer(weightScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * 128 * sizeof(float));
+        weightScaleUB_ = weightScaleBuf_.Get<float>();
+        pipe->InitBuffer(kScaleBuf_, 2 * 16 * s2BaseSize_ * sizeof(float));
+        kScaleUB_ = kScaleBuf_.Get<float>();
+        // kScale 铺 0(参考 QLIv2): 尾部未搬运区(如 S2 尾块不足 s2BaseSize)是
+        // 垃圾值, 乘入聚合和会产出随机大分数污染 TopK(分数恒>=0, 0 与 ReLU
+        // 后被 mask 的无效池语义一致)
+        Duplicate(kScaleUB_, 0.0f, 2 * 16 * s2BaseSize_);
+        SetFlag<HardEvent::V_MTE2>(KSCALE_S_MTE2_EVENT);
+        WaitFlag<HardEvent::V_MTE2>(KSCALE_S_MTE2_EVENT);
+    }
     pipe->InitBuffer(outBuf_,
                      2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
     vec1OutUB_ = outBuf_.Get<SCORE_T>(); // out
@@ -268,24 +321,73 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitParams(const struct
     topkCountAlign256_ = PkiCommon::Align(constInfo.sparseCount, (uint64_t)256);
     poolSize_ = static_cast<uint32_t>(constInfo.poolSize);
     outputLen_ = constInfo.sparseCount * poolSize_ + poolSize_ - 1;
+    kScaleLoop_ = 0;
 }
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitVecInputTensor(GlobalTensor<W_T> weightsGm,
                                                                             GlobalTensor<int32_t> indiceOutGm,
                                                                             GlobalTensor<float> valueOutGm,
-                                                                            GlobalTensor<int32_t> blockTableGm)
+                                                                            GlobalTensor<int32_t> blockTableGm,
+                                                                            GlobalTensor<float> qScaleGm,
+                                                                            GlobalTensor<float> kScaleGm)
 {
     this->weightsGm = weightsGm;
     this->indiceOutGm = indiceOutGm;
     this->valueOutGm = valueOutGm;
     this->blockTableGm = blockTableGm;
+    // mode=0 (FP8 per-token-head): vector 侧 scale 融合
+    if constexpr (LIT::isFp8PerToken) {
+        this->qScaleGm = qScaleGm;
+        this->kScaleGm = kScaleGm;
+    }
 }
 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm)
 {
     this->scoreGm = scoreGm; // resucesum*k
+}
+
+// mode=0: k_descale GM -> UB(每池 1 个 float scale)
+// 非 PA: 连续寻址 tensorKeyScaleOffset + startS2 起 getLen 个;
+// PA: 按 block_table 逐物理块搬运, 块内偏移 + 物理块基址 blockId * keyDequantScaleStride0
+// (参考 QLIv2 QLIV2Vector::GetKeyScale)
+template <typename LIT>
+__aicore__ inline void PoolKeyIndexerServiceVector<LIT>::GetKeyScale(LocalTensor<float> kScaleUB,
+                                                                     uint64_t keyScaleGmOffset,
+                                                                     int64_t batchId, int64_t startS2,
+                                                                     int64_t getLen, uint32_t dstOffset)
+{
+    AscendC::DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+    AscendC::DataCopyExtParams copyInParams;
+    copyInParams.blockCount = 1;
+    copyInParams.srcStride = 0;
+    copyInParams.dstStride = 0;
+    copyInParams.rsv = 0;
+    if constexpr (PAGE_ATTENTION) {
+        // 按池号连续写入 UB 段(dstOffset 起 getLen 个), GM 源按物理块跳转。
+        // 注意 kCacheBlockSize_(=pa_block_size) 可大于 s2BaseSize(段容量),
+        // 段内偏移始终用相对本段起点的池号, 与块边界解耦。
+        int64_t written = 0;  // 段内已写池数
+        while (written < getLen) {
+            int64_t absPool = startS2 + written;  // batch 内绝对池号
+            int64_t s2BlkId = absPool / kCacheBlockSize_;
+            int64_t s2BlkOffset = absPool % kCacheBlockSize_;
+            int64_t blockId = blockTableGm.GetValue(batchId * maxBlockNumPerBatch_ + s2BlkId);
+            int64_t partLen = Min((int64_t)kCacheBlockSize_ - s2BlkOffset, getLen - written);
+            copyInParams.blockLen = partLen * sizeof(float);
+            SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+            WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
+            AscendC::DataCopyPad(kScaleUB[dstOffset + static_cast<uint32_t>(written)],
+                                 kScaleGm[blockId * constInfo_.keyDequantScaleStride0 + s2BlkOffset],
+                                 copyInParams, padParams);
+            written += partLen;
+        }
+    } else {
+        copyInParams.blockLen = getLen * sizeof(float);
+        AscendC::DataCopyPad(kScaleUB[dstOffset], kScaleGm[keyScaleGmOffset], copyInParams, padParams);
+    }
 }
 
 template <typename LIT>
@@ -484,19 +586,97 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
     DataCopyPad(weightUB_[pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16],
                 weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
+    if constexpr (LIT::isFp8PerToken) {
+        // mode=0: q_descale 与 weights 同 pattern 同 GM 偏移(shape 同构,
+        // 参考 QLIv2 直接复用 weightGmOffset 的做法)。dst 行距 128 元素
+        // (512B bank 对齐, 与 qScaleUB 布局一致; 块间 dstStride 单位 32B)
+        DataCopyPadExtParams<float> padQScaleParams{true, 0, 0, 0};
+        DataCopyExtParams qScaleDataCopyExtParams;
+        qScaleDataCopyExtParams.blockCount = curAivS1ProcNum;
+        qScaleDataCopyExtParams.blockLen = gSize_ * sizeof(float);
+        qScaleDataCopyExtParams.srcStride = 0;
+        qScaleDataCopyExtParams.dstStride = (128 - gSize_) * sizeof(float) / 32;
+        DataCopyPad(qScaleUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128],
+                    qScaleGm[weightGmOffset], qScaleDataCopyExtParams, padQScaleParams);
+        // k_descale: 每 16 轮 s2BaseSize 乒乓搬运一次(参考 QLIv2 kScale 机制:
+        // (s2Idx - s2Start) % 16 == 0 时刷新, 一次刷 16 块容量滚动覆盖)。
+        // 写入起点 = 乒乓区头 + 本块段偏移((s2Idx-s2Start)%16 * s2BaseSize),
+        // 与读取位置一致(读侧 MulWeightAndReduceSumWithScale 同偏移取段)
+        if ((info.s2Idx - info.s2Start) % 16 == 0) {
+            uint32_t kScalePingpong = (kScaleLoop_ % 2);
+            uint32_t kScaleBlkOff = ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_;
+            uint32_t getLen = 16 * s2BaseSize_ > (info.actS2Size - info.s2Idx * s2BaseSize_) ?
+                                  (info.actS2Size - info.s2Idx * s2BaseSize_) : 16 * s2BaseSize_;
+            // 钳制到本乒乓区剩余容量(理论不触发: 刷新点在段头, 防御保留)
+            uint32_t capacity = 16 * s2BaseSize_ - kScaleBlkOff;
+            if (getLen > capacity) {
+                getLen = capacity;
+            }
+            GetKeyScale(kScaleUB_[kScalePingpong * 16 * s2BaseSize_], info.tensorKeyScaleOffset,
+                        info.bIdx, curS2Idx, getLen, kScaleBlkOff);
+            kScaleLoop_++;
+        }
+    }
+
     SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
+    if constexpr (LIT::isFp8PerToken) {
+        // mode=0: weight(fp32 cast) × qScale 预乘落 UB(每 s1 行 gSize 个,
+        // 行距 128 元素)——Gather 对寄存器 Mul 产物 lane 布局不兼容,
+        // 预乘后 WithScale 走纯 fp32 LoadAlign+Gather(与 QLIv2 口径一致)。
+        // 行内 [gSize, 64) 补 0(LoadAlign 一次取 64 lanes, 0 与无效 g 语义一致)
+        for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
+            uint64_t dstOff = pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128;
+            Duplicate<float>(weightScaleUB_[dstOff], 0.0f, 128);
+        }
+        // MTE2->S: weightUB_/qScaleUB_ 的 DataCopyPad(MTE2)必须先于
+        // 标量 GetValue(S) 落地; V->S: 向量 0 填充先于标量 SetValue
+        MTE2ToSSync();
+        VToSSync();
+        for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
+            uint64_t srcOff = pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16;
+            uint64_t dstOff = pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128;
+            // 标量预乘(逐 g: fp16 weight -> fp32, 乘 qScale)。gSize<=64,
+            // 每 s1 行最多 64 次标量, 换取 Gather lane 布局的正确性。
+            // GetValue 直接作用于 tensor(同 ExpandAndAppendIndices 的
+            // poolIndices.GetValue 模式), 不经 operator[] 视图
+            for (int64_t g = 0; g < gSize_; g++) {
+                float wv = static_cast<float>(weightUB_.GetValue(srcOff + g));
+                float qs = qScaleUB_.GetValue(dstOff + g);
+                weightScaleUB_.SetValue(dstOff + g, wv * qs);
+            }
+        }
+        // S->V: 标量写落地后, WithScale 的向量 LoadAlign 才能读
+        SToVSync();
+    }
+
     for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
-        vector1::MulWeightAndReduceSum(
-            vec1OutUB_[pingpong * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
-            resMm1UB_[pingpong * CeilDiv(constInfo_.mBaseSize, 2) *
-                          s2BaseSize_ +
-                      s1IdxTmp * gSize_ * s2BaseSize_],
-            weightUB_[pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16],
-            gSize_,
-            constInfo_.qkScale);
+        if constexpr (LIT::isFp8PerToken) {
+            // mode=0: kScale 取本 s2 基本块对应的 float scale(逐 s2 元素;
+            // 乒乓区起点 + 块内偏移 (s2Idx-s2Start)%16 * s2BaseSize)
+            uint32_t kScalePingpong = ((kScaleLoop_ - 1) % 2);
+            uint32_t kScaleBlkOff = ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_;
+            vector1::MulWeightAndReduceSumWithScale(
+                vec1OutUB_[pingpong * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
+                resMm1UB_[pingpong * CeilDiv(constInfo_.mBaseSize, 2) *
+                              s2BaseSize_ +
+                          s1IdxTmp * gSize_ * s2BaseSize_],
+                weightScaleUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128],
+                kScaleUB_[kScalePingpong * 16 * s2BaseSize_ + kScaleBlkOff],
+                gSize_,
+                constInfo_.qkScale);
+        } else {
+            vector1::MulWeightAndReduceSum(
+                vec1OutUB_[pingpong * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_],
+                resMm1UB_[pingpong * CeilDiv(constInfo_.mBaseSize, 2) *
+                              s2BaseSize_ +
+                          s1IdxTmp * gSize_ * s2BaseSize_],
+                weightUB_[pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16],
+                gSize_,
+                constInfo_.qkScale);
+        }
     }
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);

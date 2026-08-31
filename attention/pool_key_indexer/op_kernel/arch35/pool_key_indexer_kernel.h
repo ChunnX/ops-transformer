@@ -92,12 +92,20 @@ protected:
     uint64_t queryCoreOffset = 0ULL;
     uint64_t keyCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
+    uint64_t qScaleCoreOffset = 0ULL;  // 量化: q_descale GM 偏移(mode=0 vector 融合)
+    uint64_t kScaleCoreOffset = 0ULL;  // 量化: k_descale GM 偏移(mode=0 vector 融合)
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t valueOutCoreOffset = 0ULL;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
     GlobalTensor<W_T> weightsGm;
+    // 量化 descale: mode=0(float) 走 vector 融合; mode=1(E8M0 按 2 打包成
+    // bf16 寻址) 走 Cube LoadData-Mx。两个模式均以 bf16 视角 SetGlobalBuffer。
+    GlobalTensor<bfloat16_t> qScaleGmBf16;
+    GlobalTensor<bfloat16_t> kScaleGmBf16;
+    GlobalTensor<float> qScaleGmFp32;
+    GlobalTensor<float> kScaleGmFp32;
 
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<float> valueOutGm;
@@ -178,6 +186,34 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValue = tilingData->returnValue;
     constInfo.splitMFlag = (constInfo.gSize == 64 && constInfo.sparseCount <= 2048);
+    if constexpr (LIT::isQuant) {
+        // 量化路径禁用 splitM: splitM 分支的 LoadData2D dst 布局按 fp16 M 切分
+        // 推导(dstOffset=i*64*16 等), fp8 的 L1 NZ 行深变化后该分支布局错位
+        // (fp8+n1=64+PA+sparse<256 组合实测分数错乱出负值); QLIv2 无 splitM 机制可参照。
+        // 正确性优先, 量化场景走常规单块路径
+        constInfo.splitMFlag = false;
+        // 禁用 splitM 后 mBaseSize 必须钳到 L0 容量(M_BASIC_BLOCK_L0=128 行):
+        // splitM 本将 gSize=64 的 256 行 M 切两半进 L0, 禁用后 s1gL0RealSize
+        // 可达 256 直写 128 行 L0A/L0C 越界(aicore l1 error, 507015 偶发崩溃)。
+        // 钳制值必须能被 gSize 整除(s1BaseSize 整数), 否则 Fixpipe dualDstCtl
+        // 的半区行(mBaseSize/2)与 Vec 读取行距(gSize)错位(n1=48 实测集合失败)
+        if (constInfo.mBaseSize > 128) {
+            uint32_t s1PerL0 = 128 / constInfo.gSize;  // L0 128 行可容纳的 s1 行数(整除截断)
+            if (s1PerL0 == 0) {
+                s1PerL0 = 1;  // gSize>128 理论不发生(N1<=64), 防御
+            }
+            // 半区(mBaseSize/2)必须含整数个 s1 行(dualDstCtl 按半区拆分给
+            // 两个 AIV, Vec 按 gSize 行距读取), s1PerL0 取偶
+            if (s1PerL0 % 2 == 1) {
+                s1PerL0 -= 1;
+                if (s1PerL0 == 0) {
+                    s1PerL0 = 1;  // gSize>64 时只能 1 行(半区整行归属, mBaseSize=gSize<=64 无此分支)
+                }
+            }
+            constInfo.mBaseSize = s1PerL0 * constInfo.gSize;
+            constInfo.s1BaseSize = s1PerL0;
+        }
+    }
     constInfo.maskMode = tilingData->maskMode;
     constInfo.quantMode = tilingData->quantMode;
     constInfo.topk = tilingData->topk;
@@ -456,7 +492,15 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
         valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        vectorService.InitVecInputTensor(weightsGm, indiceOutGm, valueOutGm, blockTableGm);
+        if constexpr (LIT::isFp8PerToken) {
+            // mode=0: q/k_descale 为 float, vector 侧融合
+            qScaleGmFp32.SetGlobalBuffer((__gm__ float *)qDescale);
+            kScaleGmFp32.SetGlobalBuffer((__gm__ float *)kDescale);
+            vectorService.InitVecInputTensor(weightsGm, indiceOutGm, valueOutGm, blockTableGm,
+                                             qScaleGmFp32, kScaleGmFp32);
+        } else {
+            vectorService.InitVecInputTensor(weightsGm, indiceOutGm, valueOutGm, blockTableGm);
+        }
         vectorService.InitVecWorkspaceTensor(scoreGm);
     } else {
         matmulService.InitParams(constInfo);
@@ -465,7 +509,16 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
         keyGm.SetGlobalBuffer((__gm__ K_T *)poolKey);
-        matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
+        if constexpr (LIT::isMxFp8) {
+            // mode=1: E8M0 scale 按 2 个打包成 1 个 bf16 寻址(参考 QLIv2),
+            // 块数 = 原始 e8m0 元素数 / 2
+            qScaleGmBf16.SetGlobalBuffer((__gm__ bfloat16_t *)qDescale);
+            kScaleGmBf16.SetGlobalBuffer((__gm__ bfloat16_t *)kDescale);
+            matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm,
+                                               kScaleGmBf16, qScaleGmBf16);
+        } else {
+            matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
+        }
     }
     InitBuffers();
 }
@@ -534,6 +587,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.bIdx = tempLoopInfo.bIdx;
     runInfo.gS1Idx = tempLoopInfo.gS1Idx;
     runInfo.s2Idx = s2LoopIdx;
+    runInfo.s2Start = splitCoreInfo.s2Start;
     runInfo.bN2Idx = tempLoopInfo.bN2Idx;
     runInfo.isValid = s2LoopIdx <= tempLoopInfo.s2LoopEnd;
 
@@ -573,6 +627,19 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
         queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         // B,S1,N1(N2,G)/T,N1(N2,G)
         weightsCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum + runInfo.n2Idx * constInfo.gSize;
+        // 量化 q_descale 偏移:
+        //   mode=0: shape 与 weights 同构(B,S1,N1 / T1,N1), 直接复用 weights 公式
+        //   mode=1: shape (B,S1,N1,D/64,2), 每 s1 行 scalePerToken=D/32 个 e8m0
+        if constexpr (LIT::isFp8PerToken) {
+            qScaleCoreOffset = weightsCoreOffset;
+        } else if constexpr (LIT::isMxFp8) {
+            qScaleCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum *
+                                   (constInfo.headDim / PKI_MX_SCALE_GROUP_SIZE) +
+                               runInfo.gS1Idx * constInfo.mBaseSize *
+                                   (constInfo.headDim / PKI_MX_SCALE_GROUP_SIZE) +
+                               runInfo.n2Idx * constInfo.gSize *
+                                   (constInfo.headDim / PKI_MX_SCALE_GROUP_SIZE);
+        }
         // B,S1,N2,k/T,N2,k
         // 注意: poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
         // 而非 sparseCount(仅 poolSize==1 时二者相等), 否则 batch>0 的行基址错位,
@@ -595,9 +662,25 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
     }
     uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
     keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
+    // 量化 k_descale 偏移:
+    //   mode=0: shape 与 key 去 D 同构(B,S2,N2 / T2,N2), 每池 1 个 float,
+    //           偏移 = 池前缀 + s2Idx * s2BaseSize
+    //   mode=1: shape (B,S2,N2,D/64,2), 每池 D/32 个 e8m0,
+    //           偏移 = (池前缀 + s2Idx*s2BaseSize) * N2 * (D/32)
+    if constexpr (LIT::isFp8PerToken) {
+        kScaleCoreOffset = actualSeqKPrefixSum * constInfo.kHeadNum +
+                           runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum;
+    } else if constexpr (LIT::isMxFp8) {
+        uint64_t kScaleS2Offset = actualSeqKPrefixSum +
+                                  static_cast<uint64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
+        kScaleCoreOffset = kScaleS2Offset * constInfo.kHeadNum *
+                           (constInfo.headDim / PKI_MX_SCALE_GROUP_SIZE);
+    }
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
+    runInfo.tensorQScaleOffset = qScaleCoreOffset;
+    runInfo.tensorKeyScaleOffset = kScaleCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.valueOutOffset = valueOutCoreOffset;
 }

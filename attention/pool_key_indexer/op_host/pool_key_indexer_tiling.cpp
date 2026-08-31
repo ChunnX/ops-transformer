@@ -231,6 +231,25 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
             return ge::GRAPH_FAILED;
         }
     }
+    // k_descale 运行时 stride 捕获(量化场景 PA 0 轴非连续支持, 参考 QLIv2 :228-236)。
+    // 与 pool_key 在 token 维度一一对应, PA 场景必须跟随 pool_key 的 0 轴非连续。
+    // 图模式下属性与运行时 stride 同时存在, 必须一致(否则以错误来源寻址)。
+    auto kDescaleStrides = context_->GetInputStride(PKI_K_DESCALE_INDEX);
+    if (kDescaleStrides == nullptr) {
+        kDescaleStrides = context_->GetDynamicInputStride(PKI_K_DESCALE_INDEX, 0);
+    }
+    if (kDescaleStrides != nullptr && kDescaleStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < kDescaleStrides->GetDimNum(); i++) {
+            keyDequantScaleStridesVec_.push_back(kDescaleStrides->GetStride(i));
+        }
+        const int64_t *kdsStride0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_K_DESCALE_STRIDE0);
+        if (kdsStride0Attr != nullptr && *kdsStride0Attr >= 0 &&
+            keyDequantScaleStridesVec_[0] != static_cast<uint32_t>(*kdsStride0Attr)) {
+            OP_LOGE(context_, "k_descale_stride0 attr(%ld) conflicts with runtime stride(%u)",
+                    *kdsStride0Attr, keyDequantScaleStridesVec_[0]);
+            return ge::GRAPH_FAILED;
+        }
+    }
     const gert::StorageShape *weightsShape = context_->GetInputShape(PKI_WEIGHTS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightsShape);
     OP_CHECK_IF(weightsShape->GetStorageShape().GetShapeSize() == 0,
@@ -260,15 +279,13 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     const gert::Tensor *qDescaleTensor = context_->GetOptionalInputTensor(PKI_Q_DESCALE_INDEX);
     const gert::Tensor *kDescaleTensor = context_->GetOptionalInputTensor(PKI_K_DESCALE_INDEX);
 
-    // ---- FP8 dequant kernel path not yet implemented: fail fast ----
-    // kernel 侧(arch35)当前不消费 q_descale/k_descale(Mmad 直接用 fp8 裸数据计算,
-    // 见 op_kernel/arch35/pool_key_indexer_service_cube.h), quant_mode=0/1 调用会
-    // 静默产出错误分数(缺 dq/dk 缩放)。在 kernel 侧反量化实现并经 950 验证前,
-    // 显式拒绝而非返回错误结果(参照 docs/build_fix_record.md FP8 审计记录)
-    if (info.quantMode == PKI_QUANT_FP8_PER_TOKEN || info.quantMode == PKI_QUANT_MXFP8) {
-        OP_LOGE(context_, "quant_mode=%d is not supported yet: kernel dequant path "
-                          "(q_descale/k_descale consumption) is not implemented",
-                info.quantMode);
+    // ---- FP8 量化仅 arch35 (Ascend 950) 支持: 架构门禁 ----
+    // kernel 侧反量化路径仅实现在 arch35(FP8 Mmad + vector scale 融合 / LoadData-Mx);
+    // arch22 (A2/A3) 硬件不支持 FP8, 必须在 tiling 层拒绝而非静默产出错误结果。
+    if ((info.quantMode == PKI_QUANT_FP8_PER_TOKEN || info.quantMode == PKI_QUANT_MXFP8) &&
+        info.npuArch != NpuArch::DAV_3510) {
+        OP_LOGE(context_, "quant_mode=%d is only supported on Ascend950 (DAV_3510), current arch=%d",
+                info.quantMode, static_cast<int32_t>(info.npuArch));
         return ge::GRAPH_FAILED;
     }
 
@@ -380,6 +397,12 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         OP_LOGE(context_, "headDim(%u) must be 128", info.headDim);
         return ge::GRAPH_FAILED;
     }
+    // mxFP8 尾维 [D/64, 2] 要求 headDim 是 64 的倍数(headDim=128 恒真, 防御保留)
+    if (info.quantMode == PKI_QUANT_MXFP8 && info.headDim % PKI_MX_SCALE_SHAPE_ALIGN != 0) {
+        OP_LOGE(context_, "quant_mode=1 (mxFP8) requires headDim %% %u == 0, got %u",
+                PKI_MX_SCALE_SHAPE_ALIGN, info.headDim);
+        return ge::GRAPH_FAILED;
+    }
     info.gSize = info.n1Size / info.n2Size;
 
     // S2 from key shape
@@ -422,6 +445,35 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         // S2 = maxBlockNumPerBatch * blockSize, 在 block_table 解析处设置
         // (kernel kSeqSize 用作 scoreGm 行距, 不可为 0)
         info.s2Size = 0;
+        // k_descale stride0 接线(量化场景, 参考 QLIv2 tiling.cpp:1374-1381 与 key_stride0 属性模式):
+        //   优先级: k_descale_stride0 属性(eager 唯一可靠来源, torch_extension 直读
+        //   at::Tensor::stride(0) 传入) > tiling context 运行时 stride(图模式) > shape 连续推导。
+        //   mode=0 (per-token-head): k_descale 每 (N2) 池 1 个 scale, 连续 stride0 = blockSize*N2
+        //   mode=1 (mxFP8): k_descale 每池 D/32 个 scale(打包 2/bf16), 连续 stride0 = blockSize*N2*(D/32)
+        //   非量化场景保持 0(kernel 不读)
+        if (info.quantMode == PKI_QUANT_FP8_PER_TOKEN || info.quantMode == PKI_QUANT_MXFP8) {
+            const int64_t *kdsStride0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_K_DESCALE_STRIDE0);
+            if (kdsStride0Attr != nullptr && *kdsStride0Attr >= 0) {
+                // 属性指定: 校验不小于连续 stride(0 轴非连续只允许加 padding)
+                uint64_t contigKdsStride0 =
+                    (info.quantMode == PKI_QUANT_MXFP8)
+                        ? static_cast<uint64_t>(info.blockSize) * info.n2Size *
+                              (info.headDim / PKI_MX_SCALE_GROUP_SIZE)
+                        : static_cast<uint64_t>(info.blockSize) * info.n2Size;
+                OP_CHECK_IF(static_cast<uint64_t>(*kdsStride0Attr) < contigKdsStride0,
+                            OP_LOGE(context_, "k_descale_stride0(%ld) must be >= contiguous stride(%lu)",
+                                    *kdsStride0Attr, contigKdsStride0),
+                            return ge::GRAPH_FAILED);
+                info.keyDequantScaleStride0 = static_cast<uint32_t>(*kdsStride0Attr);
+            } else if (!keyDequantScaleStridesVec_.empty() && keyDequantScaleStridesVec_[0] != 0) {
+                info.keyDequantScaleStride0 = keyDequantScaleStridesVec_[0];
+            } else if (info.quantMode == PKI_QUANT_MXFP8) {
+                info.keyDequantScaleStride0 =
+                    info.blockSize * info.n2Size * (info.headDim / PKI_MX_SCALE_GROUP_SIZE);
+            } else {
+                info.keyDequantScaleStride0 = info.blockSize * info.n2Size;
+            }
+        }
     } else if (info.layoutK == PkiDataLayout::BSND) {
         OP_CHECK_IF(keyShape->GetStorageShape().GetDimNum() != 4,
                     OP_LOGE(context_, "BSND key must be 4D"),
@@ -436,6 +488,23 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     OP_LOGE(context_, "BSND key D(%ld) must be %u(128)", keyShape->GetStorageShape().GetDim(3), info.headDim),
                     return ge::GRAPH_FAILED);
         // BSND: kernel KeyNd2Nz uses tensorKeyOffset for contiguous addressing, keyStride0 not used
+        // key_stride0/k_descale_stride0 属性仅 PA 分支消费; 非 PA 下显式指定(>=0)
+        // 说明输入非连续, kernel 连续寻址会静默错算, 显式拒绝(eager 由 csrc
+        // 前置拦截, 此处覆盖图模式属性透传/直调 aclnn 的场景)
+        {
+            const int64_t *ks0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_KEY_STRIDE0);
+            OP_CHECK_IF(ks0Attr != nullptr && *ks0Attr >= 0,
+                        OP_LOGE(context_, "key_stride0(%ld) is only supported with layout_k=PA_BBND, "
+                                          "but layout_k is BSND; pass a contiguous pool_key",
+                                *ks0Attr),
+                        return ge::GRAPH_FAILED);
+            const int64_t *kds0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_K_DESCALE_STRIDE0);
+            OP_CHECK_IF(kds0Attr != nullptr && *kds0Attr >= 0,
+                        OP_LOGE(context_, "k_descale_stride0(%ld) is only supported with layout_k=PA_BBND, "
+                                          "but layout_k is BSND; pass a contiguous k_descale",
+                                *kds0Attr),
+                        return ge::GRAPH_FAILED);
+        }
         info.keyStride0 = 0;
     } else {
         OP_CHECK_IF(keyShape->GetStorageShape().GetDimNum() != 3,
@@ -453,6 +522,22 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         // 区域大小, 取 0 会导致所有行的分数互相覆盖(参照 LIV2 GetS2Size 的 TND 分支)
         info.s2Size = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(0));
         // TND: kernel KeyNd2Nz uses tensorKeyOffset for contiguous addressing, keyStride0 not used
+        // key_stride0/k_descale_stride0 属性仅 PA 分支消费; 非 PA 下显式指定(>=0)
+        // 说明输入非连续, kernel 连续寻址会静默错算, 显式拒绝(与 BSND 分支同因)
+        {
+            const int64_t *ks0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_KEY_STRIDE0);
+            OP_CHECK_IF(ks0Attr != nullptr && *ks0Attr >= 0,
+                        OP_LOGE(context_, "key_stride0(%ld) is only supported with layout_k=PA_BBND, "
+                                          "but layout_k is TND; pass a contiguous pool_key",
+                                *ks0Attr),
+                        return ge::GRAPH_FAILED);
+            const int64_t *kds0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_K_DESCALE_STRIDE0);
+            OP_CHECK_IF(kds0Attr != nullptr && *kds0Attr >= 0,
+                        OP_LOGE(context_, "k_descale_stride0(%ld) is only supported with layout_k=PA_BBND, "
+                                          "but layout_k is TND; pass a contiguous k_descale",
+                                *kds0Attr),
+                        return ge::GRAPH_FAILED);
+        }
         info.keyStride0 = 0;
     }
     // block_table for PA
@@ -545,14 +630,17 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         }
     }
 
-    // q_descale shape (non-null, quantMode>=0): BSND (B,S1,N1) 3D / TND (T1,N1) 2D
+    // q_descale shape (non-null, quantMode>=0):
+    //   mode=0 (per-token-head): BSND (B,S1,N1) 3D / TND (T1,N1) 2D
+    //   mode=1 (mxFP8, 与 QLIv2 一致): 追加 [D/64, 2] 尾维 -> BSND 5D / TND 4D
     if (qDescaleTensor != nullptr) {
         const gert::StorageShape *qdsShape = context_->GetOptionalInputShape(PKI_Q_DESCALE_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, qdsShape);
         if (info.layoutQ == PkiDataLayout::BSND) {
-            OP_CHECK_IF(qdsShape->GetStorageShape().GetDimNum() != 3,
-                        OP_LOGE(context_, "BSND q_descale must be 3D (B,S1,N1), got %zu",
-                                qdsShape->GetStorageShape().GetDimNum()),
+            size_t expectDims = (info.quantMode == PKI_QUANT_MXFP8) ? 5 : 3;
+            OP_CHECK_IF(qdsShape->GetStorageShape().GetDimNum() != expectDims,
+                        OP_LOGE(context_, "BSND q_descale must be %zuD, got %zu (quant_mode=%d)",
+                                expectDims, qdsShape->GetStorageShape().GetDimNum(), info.quantMode),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(qdsShape->GetStorageShape().GetDim(0) != info.bSize,
                         OP_LOGE(context_, "q_descale B(%ld) must match query B(%u)",
@@ -566,10 +654,20 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "q_descale N1(%ld) must match query N1(%u)",
                                 qdsShape->GetStorageShape().GetDim(2), info.n1Size),
                         return ge::GRAPH_FAILED);
+            if (info.quantMode == PKI_QUANT_MXFP8) {
+                // mxFP8 尾维 [D/64, 2] 校验(参考 QLIv2 tiling.cpp:1187-1199)
+                uint32_t expectScaleD = info.headDim / PKI_MX_SCALE_SHAPE_ALIGN;
+                OP_CHECK_IF(qdsShape->GetStorageShape().GetDim(3) != static_cast<int64_t>(expectScaleD) ||
+                            qdsShape->GetStorageShape().GetDim(4) != static_cast<int64_t>(PKI_MX_E8M0_SCALE_PACK_NUM),
+                            OP_LOGE(context_, "mxFP8 q_descale last dims must be [%u, %u]",
+                                    expectScaleD, PKI_MX_E8M0_SCALE_PACK_NUM),
+                            return ge::GRAPH_FAILED);
+            }
         } else {
-            OP_CHECK_IF(qdsShape->GetStorageShape().GetDimNum() != 2,
-                        OP_LOGE(context_, "TND q_descale must be 2D (T1,N1), got %zu",
-                                qdsShape->GetStorageShape().GetDimNum()),
+            size_t expectDims = (info.quantMode == PKI_QUANT_MXFP8) ? 4 : 2;
+            OP_CHECK_IF(qdsShape->GetStorageShape().GetDimNum() != expectDims,
+                        OP_LOGE(context_, "TND q_descale must be %zuD, got %zu (quant_mode=%d)",
+                                expectDims, qdsShape->GetStorageShape().GetDimNum(), info.quantMode),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(qdsShape->GetStorageShape().GetDim(0) != info.s1Size,
                         OP_LOGE(context_, "q_descale T1(%ld) must match query T1(%u)",
@@ -579,17 +677,28 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "q_descale N1(%ld) must match query N1(%u)",
                                 qdsShape->GetStorageShape().GetDim(1), info.n1Size),
                         return ge::GRAPH_FAILED);
+            if (info.quantMode == PKI_QUANT_MXFP8) {
+                uint32_t expectScaleD = info.headDim / PKI_MX_SCALE_SHAPE_ALIGN;
+                OP_CHECK_IF(qdsShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(expectScaleD) ||
+                            qdsShape->GetStorageShape().GetDim(3) != static_cast<int64_t>(PKI_MX_E8M0_SCALE_PACK_NUM),
+                            OP_LOGE(context_, "mxFP8 q_descale last dims must be [%u, %u]",
+                                    expectScaleD, PKI_MX_E8M0_SCALE_PACK_NUM),
+                            return ge::GRAPH_FAILED);
+            }
         }
     }
 
-    // k_descale shape (non-null, quantMode>=0): BSND (B,S2,N2) 3D / TND (T2,N2) 2D / PA (blockNum,blockSize,N2) 3D
+    // k_descale shape (non-null, quantMode>=0):
+    //   mode=0: BSND (B,S2,N2) 3D / TND (T2,N2) 2D / PA (blockNum,blockSize,N2) 3D
+    //   mode=1 (mxFP8): 追加 [D/64, 2] 尾维 -> BSND/PA 5D / TND 4D
     if (kDescaleTensor != nullptr) {
         const gert::StorageShape *kdsShape = context_->GetOptionalInputShape(PKI_K_DESCALE_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, kdsShape);
         if (info.pageAttention) {
-            OP_CHECK_IF(kdsShape->GetStorageShape().GetDimNum() != 3,
-                        OP_LOGE(context_, "PA k_descale must be 3D (blockNum,blockSize,N2), got %zu",
-                                kdsShape->GetStorageShape().GetDimNum()),
+            size_t expectDims = (info.quantMode == PKI_QUANT_MXFP8) ? 5 : 3;
+            OP_CHECK_IF(kdsShape->GetStorageShape().GetDimNum() != expectDims,
+                        OP_LOGE(context_, "PA k_descale must be %zuD, got %zu (quant_mode=%d)",
+                                expectDims, kdsShape->GetStorageShape().GetDimNum(), info.quantMode),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(kdsShape->GetStorageShape().GetDim(1) != info.blockSize,
                         OP_LOGE(context_, "k_descale blockSize(%ld) must match key blockSize(%u)",
@@ -603,10 +712,19 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "PA k_descale blockNum(%ld) must match key blockNum(%ld)",
                                 kdsShape->GetStorageShape().GetDim(0), keyShape->GetStorageShape().GetDim(0)),
                         return ge::GRAPH_FAILED);
+            if (info.quantMode == PKI_QUANT_MXFP8) {
+                uint32_t expectScaleD = info.headDim / PKI_MX_SCALE_SHAPE_ALIGN;
+                OP_CHECK_IF(kdsShape->GetStorageShape().GetDim(3) != static_cast<int64_t>(expectScaleD) ||
+                            kdsShape->GetStorageShape().GetDim(4) != static_cast<int64_t>(PKI_MX_E8M0_SCALE_PACK_NUM),
+                            OP_LOGE(context_, "mxFP8 k_descale last dims must be [%u, %u]",
+                                    expectScaleD, PKI_MX_E8M0_SCALE_PACK_NUM),
+                            return ge::GRAPH_FAILED);
+            }
         } else if (info.layoutK == PkiDataLayout::BSND) {
-            OP_CHECK_IF(kdsShape->GetStorageShape().GetDimNum() != 3,
-                        OP_LOGE(context_, "BSND k_descale must be 3D (B,S2,N2), got %zu",
-                                kdsShape->GetStorageShape().GetDimNum()),
+            size_t expectDims = (info.quantMode == PKI_QUANT_MXFP8) ? 5 : 3;
+            OP_CHECK_IF(kdsShape->GetStorageShape().GetDimNum() != expectDims,
+                        OP_LOGE(context_, "BSND k_descale must be %zuD, got %zu (quant_mode=%d)",
+                                expectDims, kdsShape->GetStorageShape().GetDimNum(), info.quantMode),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(kdsShape->GetStorageShape().GetDim(0) != info.bSize,
                         OP_LOGE(context_, "k_descale B(%ld) must match query B(%u)",
@@ -620,10 +738,19 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "k_descale N2(%ld) must match key N2(%u)",
                                 kdsShape->GetStorageShape().GetDim(2), info.n2Size),
                         return ge::GRAPH_FAILED);
+            if (info.quantMode == PKI_QUANT_MXFP8) {
+                uint32_t expectScaleD = info.headDim / PKI_MX_SCALE_SHAPE_ALIGN;
+                OP_CHECK_IF(kdsShape->GetStorageShape().GetDim(3) != static_cast<int64_t>(expectScaleD) ||
+                            kdsShape->GetStorageShape().GetDim(4) != static_cast<int64_t>(PKI_MX_E8M0_SCALE_PACK_NUM),
+                            OP_LOGE(context_, "mxFP8 k_descale last dims must be [%u, %u]",
+                                    expectScaleD, PKI_MX_E8M0_SCALE_PACK_NUM),
+                            return ge::GRAPH_FAILED);
+            }
         } else {
-            OP_CHECK_IF(kdsShape->GetStorageShape().GetDimNum() != 2,
-                        OP_LOGE(context_, "TND k_descale must be 2D (T2,N2), got %zu",
-                                kdsShape->GetStorageShape().GetDimNum()),
+            size_t expectDims = (info.quantMode == PKI_QUANT_MXFP8) ? 4 : 2;
+            OP_CHECK_IF(kdsShape->GetStorageShape().GetDimNum() != expectDims,
+                        OP_LOGE(context_, "TND k_descale must be %zuD, got %zu (quant_mode=%d)",
+                                expectDims, kdsShape->GetStorageShape().GetDimNum(), info.quantMode),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(kdsShape->GetStorageShape().GetDim(0) != keyShape->GetStorageShape().GetDim(0),
                         OP_LOGE(context_, "TND k_descale T2(%ld) must match key T2(%ld)",
@@ -633,6 +760,14 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "k_descale N2(%ld) must match key N2(%u)",
                                 kdsShape->GetStorageShape().GetDim(1), info.n2Size),
                         return ge::GRAPH_FAILED);
+            if (info.quantMode == PKI_QUANT_MXFP8) {
+                uint32_t expectScaleD = info.headDim / PKI_MX_SCALE_SHAPE_ALIGN;
+                OP_CHECK_IF(kdsShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(expectScaleD) ||
+                            kdsShape->GetStorageShape().GetDim(3) != static_cast<int64_t>(PKI_MX_E8M0_SCALE_PACK_NUM),
+                            OP_LOGE(context_, "mxFP8 k_descale last dims must be [%u, %u]",
+                                    expectScaleD, PKI_MX_E8M0_SCALE_PACK_NUM),
+                            return ge::GRAPH_FAILED);
+            }
         }
     }
 
@@ -841,10 +976,11 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
 
 ge::graphStatus PoolKeyIndexerTiling::CheckKeyContiguous(const PoolKeyIndexerTilingInfo &info) const
 {
-    bool keyNonContiguous = false;
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA: check starts from axis 0 (all axes must be contiguous)
     size_t checkStartIdx = (info.layoutK == PkiDataLayout::PA_BBND) ? 1 : 0;
+
+    // ---- pool_key 连续性校验(失败日志含 tensor 名/轴号/实际 stride/期望 stride/shape) ----
     if (!keyStridesVec_.empty()) {
         const gert::StorageShape *keyShape = context_->GetInputShape(PKI_POOL_KEY_INDEX);
         if (keyShape != nullptr) {
@@ -858,17 +994,76 @@ ge::graphStatus PoolKeyIndexerTiling::CheckKeyContiguous(const PoolKeyIndexerTil
                 expectedStrides = {static_cast<uint32_t>(shape.GetDim(1) * shape.GetDim(2)),
                                    static_cast<uint32_t>(shape.GetDim(2)), 1U};
             }
+            std::string shapeStr = "shape=(";
+            for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+                shapeStr += std::to_string(shape.GetDim(i)) + (i + 1 < shape.GetDimNum() ? "," : ")");
+            }
+            std::string actualStridesStr = "actual strides=(";
+            for (size_t i = 0; i < keyStridesVec_.size(); ++i) {
+                actualStridesStr += std::to_string(keyStridesVec_[i]) + (i + 1 < keyStridesVec_.size() ? "," : ")");
+            }
+            std::string expectedStridesStr = "expected strides=(";
+            for (size_t i = 0; i < expectedStrides.size(); ++i) {
+                expectedStridesStr += std::to_string(expectedStrides[i]) +
+                                      (i + 1 < expectedStrides.size() ? "," : ")");
+            }
             for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
                 if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
-                    keyNonContiguous = true;
-                    break;
+                    OP_LOGE(context_,
+                            "pool_key only supports non-contiguous on the 0-axis, but axis[%zu] stride mismatch: "
+                            "actual stride[%zu]=%u, expected stride[%zu]=%u, %s, %s, %s, layout_k=%s.",
+                            i, i, keyStridesVec_[i], i, expectedStrides[i],
+                            shapeStr.c_str(), actualStridesStr.c_str(), expectedStridesStr.c_str(),
+                            info.layoutK == PkiDataLayout::PA_BBND ? "PA_BBND" :
+                            (info.layoutK == PkiDataLayout::BSND ? "BSND" : "TND"));
+                    return ge::GRAPH_FAILED;
                 }
             }
         }
     }
-    OP_CHECK_IF(keyNonContiguous,
-                OP_LOGE(context_, "pool_key only supports non-contiguous on the 0-axis."),
-                return ge::GRAPH_FAILED);
+    // ---- k_descale 非连续校验(量化场景, 与 pool_key 同规则: PA 仅 0 轴可非连续,
+    // 其余轴必须连续; 参考 QLIv2 tiling.cpp CheckKeyContiguous 的 scale 检查) ----
+    if (info.quantMode == PKI_QUANT_FP8_PER_TOKEN || info.quantMode == PKI_QUANT_MXFP8) {
+        if (!keyDequantScaleStridesVec_.empty()) {
+            const gert::StorageShape *kdsShape = context_->GetOptionalInputShape(PKI_K_DESCALE_INDEX);
+            if (kdsShape != nullptr) {
+                auto &sShape = kdsShape->GetStorageShape();
+                size_t dimNum = sShape.GetDimNum();
+                // 逐轴推导连续 stride(倒序), 末轴 stride 恒 1
+                std::vector<uint32_t> expectedStrides(dimNum, 1U);
+                for (size_t i = dimNum - 1; i > 0; --i) {
+                    expectedStrides[i - 1] = expectedStrides[i] *
+                        static_cast<uint32_t>(sShape.GetDim(i));
+                }
+                std::string shapeStr = "shape=(";
+                for (size_t i = 0; i < dimNum; ++i) {
+                    shapeStr += std::to_string(sShape.GetDim(i)) + (i + 1 < dimNum ? "," : ")");
+                }
+                std::string actualStridesStr = "actual strides=(";
+                for (size_t i = 0; i < keyDequantScaleStridesVec_.size(); ++i) {
+                    actualStridesStr += std::to_string(keyDequantScaleStridesVec_[i]) +
+                                        (i + 1 < keyDequantScaleStridesVec_.size() ? "," : ")");
+                }
+                std::string expectedStridesStr = "expected strides=(";
+                for (size_t i = 0; i < expectedStrides.size(); ++i) {
+                    expectedStridesStr += std::to_string(expectedStrides[i]) +
+                                          (i + 1 < expectedStrides.size() ? "," : ")");
+                }
+                for (size_t i = checkStartIdx; i < dimNum; ++i) {
+                    if (i < keyDequantScaleStridesVec_.size() &&
+                        keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
+                        OP_LOGE(context_,
+                                "k_descale only supports non-contiguous on the 0-axis, but axis[%zu] stride mismatch: "
+                                "actual stride[%zu]=%u, expected stride[%zu]=%u, %s, %s, %s, quant_mode=%d.",
+                                i, i, keyDequantScaleStridesVec_[i], i, expectedStrides[i],
+                                shapeStr.c_str(), actualStridesStr.c_str(), expectedStridesStr.c_str(),
+                                info.quantMode);
+                        return ge::GRAPH_FAILED;
+                    }
+                }
+            }
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -315,8 +315,8 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>ND</td>
       <td>
           <ul>
-                <li>layoutQueryOptional为BSND时，shape为(B,S1,N1)。</li>
-                <li>layoutQueryOptional为TND时，shape为(T1,N1)。</li>
+                <li>quantMode为0时：layoutQueryOptional为BSND时shape为(B,S1,N1)；layoutQueryOptional为TND时shape为(T1,N1)。</li>
+                <li>quantMode为1时（mxFP8，每32个D维度元素共享一个E8M0 scale）：layoutQueryOptional为BSND时shape为(B,S1,N1,D/64,2)；layoutQueryOptional为TND时shape为(T1,N1,D/64,2)。</li>
           </ul>
       </td>
       <td>√</td>
@@ -335,9 +335,8 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>ND</td>
       <td>
           <ul>
-                <li>layoutKeyOptional为BSND时，shape为(B,S2,N2)。</li>
-                <li>layoutKeyOptional为TND时，shape为(T2,N2)。</li>
-                <li>layoutKeyOptional为PA_BBND时，shape为(block_num, block_size, N2)。</li>
+                <li>quantMode为0时：layoutKeyOptional为BSND时shape为(B,S2,N2)；layoutKeyOptional为TND时shape为(T2,N2)；layoutKeyOptional为PA_BBND时shape为(block_num, block_size, N2)。</li>
+                <li>quantMode为1时（mxFP8）：layoutKeyOptional为BSND时shape为(B,S2,N2,D/64,2)；layoutKeyOptional为TND时shape为(T2,N2,D/64,2)；layoutKeyOptional为PA_BBND时shape为(block_num, block_size, N2, D/64,2)。</li>
           </ul>
       </td>
       <td>√</td>

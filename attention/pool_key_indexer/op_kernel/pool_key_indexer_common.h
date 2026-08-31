@@ -11,8 +11,15 @@
 #ifndef POOL_KEY_INDEXER_COMMON_H
 #define POOL_KEY_INDEXER_COMMON_H
 
+#include <type_traits>
+
 using namespace AscendC;
 namespace PkiCommon {
+
+// mxFP8 scale 布局(与 QLIv2/host tiling 常量一致): 每 32 个 D 元素共享一个
+// E8M0 scale, 2 个 E8M0 打包成 1 个 bf16 寻址单位
+constexpr uint32_t PKI_MX_SCALE_GROUP_SIZE = 32;
+constexpr uint32_t PKI_FP8_TWO = 2;
 
 enum class PkiLayout : uint32_t {
     BSND = 0,
@@ -23,15 +30,26 @@ enum class PkiLayout : uint32_t {
 template <typename Q_T, typename K_T, typename OUT_T,
           PkiLayout LAYOUT_T = PkiLayout::BSND,
           PkiLayout K_LAYOUT_T = PkiLayout::BSND,
-          bool DT_W_FLAG = false>
+          bool DT_W_FLAG = false,
+          typename SCALE_T = void>
 struct PkiType {
     static constexpr bool weightsTypeFlag = DT_W_FLAG;
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
+    using scaleType = SCALE_T;
     static constexpr bool pageAttention = (K_LAYOUT_T == PkiLayout::PA_BSND);
     static constexpr PkiLayout layout = LAYOUT_T;
     static constexpr PkiLayout keyLayout = K_LAYOUT_T;
+    // 量化模式判定(与 QLIv2 一致): FP8 输入 + E8M0 scale => mxFP8 硬件路径;
+    // FP8 输入 + float scale => per-token-head vector 融合路径
+    static constexpr bool isMxFp8 = std::is_same<Q_T, fp8_e4m3fn_t>::value &&
+                                    std::is_same<K_T, fp8_e4m3fn_t>::value &&
+                                    std::is_same<SCALE_T, fp8_e8m0_t>::value;
+    static constexpr bool isFp8PerToken = std::is_same<Q_T, fp8_e4m3fn_t>::value &&
+                                          std::is_same<K_T, fp8_e4m3fn_t>::value &&
+                                          std::is_same<SCALE_T, float>::value;
+    static constexpr bool isQuant = isMxFp8 || isFp8PerToken;
 };
 
 struct RunInfo {
@@ -41,6 +59,7 @@ struct RunInfo {
     uint32_t n2Idx = 0;
     uint32_t gS1Idx;
     uint32_t s2Idx;
+    uint32_t s2Start = 0; // 本核 s2 循环起始块号(k_descale 乒乓刷新用)
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
@@ -53,6 +72,9 @@ struct RunInfo {
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
     uint64_t tensorWeightsOffset;
+    // 量化场景 scale GM 偏移(仅 quantMode>=0 有效; 参考 QLIv2 RunInfo)
+    uint64_t tensorQScaleOffset = 0;
+    uint64_t tensorKeyScaleOffset = 0;
     uint64_t indiceOutOffset;
     uint64_t valueOutOffset;
 

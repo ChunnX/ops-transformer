@@ -129,6 +129,7 @@ REG_OP(PoolKeyIndexer)
     .ATTR(quant_mode, Int, -1)
     .ATTR(return_value, Bool, false)
     .ATTR(key_stride0, Int, -1)
+    .ATTR(k_descale_stride0, Int, -1)
     .OP_END_FACTORY_REG(PoolKeyIndexer)
 } // namespace ge
 
