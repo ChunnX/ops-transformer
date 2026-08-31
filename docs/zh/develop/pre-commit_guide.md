@@ -173,6 +173,25 @@ git commit --no-verify -m "emergency fix"
 
 > **注意**: 仅在紧急情况下使用，正常开发流程应保证检查通过。
 
+### 日志排查
+
+在 pre-commit 输出中搜索 `Failed`，可快速定位失败的检查项：
+
+```text
+trim trailing whitespace.................................................Failed
+fix end of files.........................................................Passed
+clang-format.............................................................Failed
+```
+
+找到 `.................................................Failed` 行后，查看该 hook 下方的输出人工处理，或将报错内容直接粘贴给 AI 助手获取修复建议。
+
+**常见报错及处理：**
+
+| 报错 | 原因 | 处理方式 |
+|------|------|---------|
+| `clang-format ......................Failed` | 代码已被自动格式化 | 重新 `git add` 后再次 `git commit` 即可 |
+| OAT Compliance Check Failed | 缺版权声明等合规问题 | 搜索 `OAT Scan Result Summary` 定位问题文件；版权声明目前无法自动订正，需参照仓内其他文件头部手动补齐 |
+
 ### 补查历史提交（--no-verify 跳过后）
 
 若使用 `--no-verify` 跳过了检查，可对指定范围内的提交变更文件补跑检查（等价于 CI `codecheck_precommit` 门禁对 PR 变更文件列表执行 `xargs pre-commit run --files` 的行为）：
