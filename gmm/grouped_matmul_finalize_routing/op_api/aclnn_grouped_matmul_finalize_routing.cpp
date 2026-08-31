@@ -1378,12 +1378,12 @@ static aclnnStatus ValidateV2Inputs(const aclTensor *x1, const aclTensor *x2,
     }
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0, but is %lld.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0 (FLOAT32), but is %lld.",
                 dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should greater than 1, but is %lld.",
+                "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should be greater than 1, but is %lld.",
                 viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {

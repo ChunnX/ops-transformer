@@ -595,7 +595,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape
                     return false);
     } else {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
-                    OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+                    OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeM failed."), return false);
     }
     return true;
 }
