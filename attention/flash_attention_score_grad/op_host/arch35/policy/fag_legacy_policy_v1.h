@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "../model/fag_route_model.h"
+#include "../candidate/fag_initial_variant_candidates.h"
 
 namespace optiling {
 namespace fag {
@@ -32,6 +32,38 @@ struct OutputFormatDecision {
 
 class LegacyPolicyV1 {
 public:
+    static RuleId GetVariantRule(VariantId variantId)
+    {
+        switch (variantId) {
+            case VariantId::BN2_MULTI_BLOCK:
+                return FAG_RULE_LEGACY_INITIAL_BN2_MULTI_BLOCK;
+            case VariantId::BN2:
+                return FAG_RULE_LEGACY_INITIAL_BN2;
+            case VariantId::BN2S2:
+                return FAG_RULE_LEGACY_INITIAL_BN2S2;
+            case VariantId::BN2GS1S2:
+                return FAG_RULE_LEGACY_INITIAL_BN2GS1S2;
+            default:
+                return FAG_RULE_LEGACY_DEFAULT;
+        }
+    }
+
+    static SelectionResult SelectInitialVariant(const InitialVariantCandidateSet &candidates)
+    {
+        static constexpr VariantId LEGACY_PRIORITY[FAG_INITIAL_VARIANT_CANDIDATE_CAPACITY] = {
+            VariantId::BN2_MULTI_BLOCK, VariantId::BN2, VariantId::BN2S2, VariantId::BN2GS1S2};
+        SelectionResult result;
+        for (const VariantId variantId : LEGACY_PRIORITY) {
+            const CandidateOutcome *outcome = candidates.Find(variantId);
+            if (outcome != nullptr && outcome->accepted) {
+                result.selected = outcome->plan;
+                result.winningRule = GetVariantRule(variantId);
+                return result;
+            }
+        }
+        return result;
+    }
+
     static VariantId ResolveVariant(bool isBn2, bool isBn2MultiBlock, bool isBn2S2)
     {
         if (isBn2 && isBn2MultiBlock) {

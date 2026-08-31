@@ -914,7 +914,6 @@ void FlashAttentionScoreGradTilingNormalRegbase::DetermineOutputFormat()
 
     const bool isNzOutBefore = fBaseParams.isNzOut;
     fBaseParams.isNzOut = decision.plan.format == OutputFormat::NZ;
-    selectionResult_.winningRule = decision.winningRule;
     RouteReason reason = RouteReason::LEGACY_NZ_POLICY_SELECTED;
     if (!decision.capabilityAccepted) {
         reason = RouteReason::LEGACY_NZ_CAPABILITY_REJECTED;
@@ -954,6 +953,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::SyncLegacySelectionResult()
     selected.metrics.activeAiv = static_cast<uint32_t>(
         std::min(static_cast<uint64_t>(fBaseParams.blockOuter) * AICV_RATIO_DEFAULT, fBaseParams.coreNum));
     selected.metrics.maxCoreWork = selected.cores.maxCoreWork;
+    selectionResult_.winningRule = LegacyPolicyV1::GetVariantRule(selected.variantId);
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::LogRouteTrace() const
@@ -977,7 +977,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::LogRouteTrace() const
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
 {
     CaptureProblemFacts();
-    SetSplitAxis(fBaseParams, tndBaseInfo, deterministicRequested_, &routeTrace_);
+    SetSplitAxis(fBaseParams, tndBaseInfo, deterministicRequested_, &routeTrace_, &selectionResult_);
     DoSplit();
     auto ret = DoSparse();
     if (ret != ge::GRAPH_SUCCESS) {

@@ -624,7 +624,7 @@ ge::graphStatus ProcessPseInfo(const gert::TilingContext *context_, FuzzyBaseInf
 void SetPseLayout(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tndBaseInfo, bool deterministicRequested,
-                  RouteTrace *routeTrace = nullptr);
+                  RouteTrace *routeTrace = nullptr, SelectionResult *selectionResult = nullptr);
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SupportTrans2BS2N2GD(const FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus SetAttenMaskShapeType(FuzzyBaseInfoParamsRegbase &fBaseParams, const gert::StorageShape *attenMaskShape,

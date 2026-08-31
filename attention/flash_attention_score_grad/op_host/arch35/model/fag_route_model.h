@@ -20,10 +20,15 @@ namespace fag {
 using PolicyVersion = uint32_t;
 constexpr PolicyVersion FAG_ARCH35_LEGACY_POLICY_VERSION = 1U;
 constexpr size_t FAG_ROUTE_TRACE_CAPACITY = 32U;
+constexpr size_t FAG_INITIAL_VARIANT_CANDIDATE_CAPACITY = 4U;
 
 using RuleId = uint32_t;
 constexpr RuleId FAG_RULE_LEGACY_DEFAULT = 1000U;
 constexpr RuleId FAG_RULE_LEGACY_NZ_LARGE_SEQUENCE = 1001U;
+constexpr RuleId FAG_RULE_LEGACY_INITIAL_BN2_MULTI_BLOCK = 1100U;
+constexpr RuleId FAG_RULE_LEGACY_INITIAL_BN2 = 1101U;
+constexpr RuleId FAG_RULE_LEGACY_INITIAL_BN2S2 = 1102U;
+constexpr RuleId FAG_RULE_LEGACY_INITIAL_BN2GS1S2 = 1103U;
 
 enum class VariantId : uint8_t {
     UNKNOWN = 0,
@@ -45,6 +50,41 @@ enum class SourceLayoutId : uint8_t {
 enum class OutputFormat : uint8_t {
     ND = 0,
     NZ,
+};
+
+enum class CandidateField : uint8_t {
+    NONE = 0,
+    S1 = 1,
+    S2 = 2,
+    BATCH_HEAD_PRODUCT = 3,
+    HEAD_TOPOLOGY = 4,
+    HEAD_DIM = 5,
+    VALUE_HEAD_DIM = 6,
+    QUERY_TYPE = 7,
+    SEQUENCE_ZERO = 8,
+    DROP_MASK = 9,
+    EXECUTION_LAYOUT = 10,
+    SPARSE_MODE = 11,
+    ROPE = 12,
+    DETERMINISTIC = 13,
+    DROPOUT = 14,
+};
+
+enum class CandidateRejectReason : uint16_t {
+    NONE = 0,
+    SEQUENCE_RANGE_UNSUPPORTED = 1000,
+    HEAD_TOPOLOGY_UNSUPPORTED = 1001,
+    HEAD_DIM_UNSUPPORTED = 1002,
+    QUERY_TYPE_UNSUPPORTED = 1003,
+    SEQUENCE_CONTAINS_ZERO = 1004,
+    DROP_MASK_UNSUPPORTED = 1005,
+    BATCH_HEAD_TOO_SMALL = 1006,
+    EXECUTION_LAYOUT_UNSUPPORTED = 1007,
+    SPARSE_MODE_UNSUPPORTED = 1008,
+    ROPE_UNSUPPORTED = 1009,
+    VALUE_HEAD_DIM_MISMATCH = 1010,
+    SPARSE_OR_DETERMINISTIC_UNSUPPORTED = 1011,
+    DROPOUT_HEAD_DIM_UNSUPPORTED = 1012,
 };
 
 enum class RouteStage : uint8_t {
@@ -290,6 +330,20 @@ struct CandidatePlan {
     bool effectiveDeterministic = false;
     uint32_t blockDim = 0;
     uint64_t tilingKey = 0;
+};
+
+struct CandidateRejected {
+    VariantId variantId = VariantId::UNKNOWN;
+    CandidateRejectReason reason = CandidateRejectReason::NONE;
+    CandidateField field = CandidateField::NONE;
+    int64_t actual = 0;
+    int64_t expected = 0;
+};
+
+struct CandidateOutcome {
+    bool accepted = false;
+    CandidatePlan plan;
+    CandidateRejected rejected;
 };
 
 struct SelectionResult {
