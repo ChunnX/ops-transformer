@@ -34,12 +34,13 @@ constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t RELAY_BUFFER_NUM = 2U;
 
 constexpr uint32_t STATE_OFFSET = 32U;
-constexpr uint32_t WIN_REGION_COUNT = 8U;
+constexpr uint32_t WIN_REGION_COUNT = 6U;
 constexpr uint32_t NUM_SLOTS = 4U;
 constexpr uint32_t INDICES_RATIO = 50U;
 constexpr uint32_t UB_RESERVED_SIZE = 8U * 1024U;
 constexpr uint32_t SENDER_CHANNEL_IDX = 0U;
 constexpr uint32_t RECEIVER_CHANNEL_IDX = 1U;
+constexpr uint32_t HANDLE_ARRAY_SIZE = 72U;
 
 struct EngramCommContext {
     uint32_t rankId;
