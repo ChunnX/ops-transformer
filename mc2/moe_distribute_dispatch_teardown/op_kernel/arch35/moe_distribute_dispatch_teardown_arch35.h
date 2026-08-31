@@ -269,6 +269,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     tempTotalWinSize_ = tilingData->moeDistributeDispatchTeardownInfo.totalWinSize;
     windowGM_ = GetWindAddrByRankId(epRankId_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
+    windowInstatusFp32Tensor_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_); // 7k*2 + 32 + 6
     expertIdsCnt_ = axisBS_ * axisK_;
@@ -405,14 +406,21 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
     uint32_t mask = 1; // gatherMask + sum 相关参数
     float compareTarget = sumTarget_ * recStatusNumPerCore_;
+    // 乘 2 是因为 dispatch_setup 每块写的 flag 为 float 2.0，而 sumTarget_ 按 1.0 计
+    float expectFlag = compareTarget * 2;
+    float minTarget = expectFlag - static_cast<float>(0.5);
+    float maxTarget = expectFlag + static_cast<float>(0.5);
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1,
                                static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
     SyncFunc<AscendC::HardEvent::S_V>();
-    // 乘 2 是因为 dispatch_setup 每块写的 flag 为 float 2.0，而 sumTarget_ 按 1.0 计
-    while (sumOfFlag != compareTarget * 2) {
-        DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
-                 intriParams);
+    auto statusIndex = startStatusIndex_ * stateOffset_ / sizeof(float);
+    // 不用 == 精确比较：ReduceSum 可能带入邻接 tokenCnt 的 bit pattern，arch22 用 EPSILON、combine 用区间
+    while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+        // URMA 写入 GM 后必须 DCCI，否则可能一直读到 cache 里的 0，死等直到 aivec timeout
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            windowInstatusFp32Tensor_[statusIndex]);
+        DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[statusIndex], intriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();

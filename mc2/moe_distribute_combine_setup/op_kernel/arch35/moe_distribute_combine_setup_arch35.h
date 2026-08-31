@@ -225,10 +225,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     uint64_t reservedUbSize = HCOMM_INIT_SIZE + assistInfoQueueSize;
     if (reservedUbSize > totalUbSize) {
         printf("[ERROR] hcomm_.Init UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
-        remain_ub_space = 0;
-    } else {
-        remain_ub_space = totalUbSize - reservedUbSize;
     }
+    remain_ub_space = totalUbSize - reservedUbSize;
     tpipe_->Reset();
     if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
         !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
@@ -309,9 +307,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
         hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
         hcomm_.Commit(channelId);
-        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-        // 开启时会造成性能下降
-        // hcomm_.Drain(channelId);
+        // 联跑必须回收 CQ：不 Drain 时 SQ/CQ 堆积，teardown 等不到状态或 jetty 进 error
+        hcomm_.Drain(channelId);
     }
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
@@ -351,24 +348,22 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankCo
         DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
         DataCopyPadExtParams<uint8_t> padParams{false, 0U, 0U, 0U};
 
-        if (remain_ub_space > 0) {
-            uint64_t i = 0;
-            for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
-                DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[i * remain_ub_space], copyParams, padParams);
-                expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
-                expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
-                DataCopyPad(selfDataDstTensor[i * remain_ub_space], expertTokenTmpU8, copyParams);
-                ++i;
-
-                AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-            }
-
-            copyParams.blockLen = sendBytes;
+        uint64_t i = 0;
+        for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
             DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[i * remain_ub_space], copyParams, padParams);
             expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
             expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
             DataCopyPad(selfDataDstTensor[i * remain_ub_space], expertTokenTmpU8, copyParams);
+            ++i;
+
+            AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         }
+
+        copyParams.blockLen = sendBytes;
+        DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[i * remain_ub_space], copyParams, padParams);
+        expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
+        expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
+        DataCopyPad(selfDataDstTensor[i * remain_ub_space], expertTokenTmpU8, copyParams);
 
         expertTokenTmpQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
     }
