@@ -260,7 +260,6 @@ __aicore__ inline void GMMProcess<ComputeType>::Process()
         while (curBlock < curCount) {
             MNBlockIdxCompute(mnConfig, curBlock, count, thresholdM_dimN);
             computeOp.MMCompute(groupIdx, mnConfig, coreIdx);
-            return;
             computeOp.VectorCompute(mnConfig);
             curBlock += gmmBaseParams->coreNum;
         }
@@ -416,7 +415,6 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
     mm.SetTensorB(weightGmLocal, transposeW);
 
     yGm.SetGlobalBuffer((__gm__ bfloat16_t *)yTensorPtr + mnConfig.yBaseOffset);
-    return;
     mm.template IterateAll<sync>(yGm[outOffset], 0);
 }
 

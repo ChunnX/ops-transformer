@@ -29,12 +29,19 @@ RUN_GMM="${RUN_GMM:-1}"
 # 自动检测平台: npu-smi info 输出的芯片名映射到 SOC_VERSION
 if [ -z "$SOC_VERSION" ]; then
     CHIP_NAME=$(npu-smi info 2>/dev/null | grep -o 'Ascend[0-9A-Za-z_]*' | head -1)
+    if [ -z "$CHIP_NAME" ]; then
+        # npu-smi 不可用时（如 host 侧 dcmi 初始化失败），回退用 aclrtGetSocName 探测
+        CHIP_NAME=$(python3 -c "
+import ctypes; lib=ctypes.CDLL('libascendcl.so'); lib.aclInit(None); lib.aclrtSetDevice(0)
+fn=lib.aclrtGetSocName; fn.restype=ctypes.c_char_p; print(fn().decode())
+" 2>/dev/null)
+    fi
     case "$CHIP_NAME" in
         Ascend950*)    SOC_VERSION="ascend950" ;;
         Ascend910)     SOC_VERSION="ascend910_93" ;;
         Ascend910_93*) SOC_VERSION="ascend910_93" ;;
         Ascend910B1)   SOC_VERSION="ascend910b" ;;
-        *) echo "[ERROR] 无法识别芯片: $CHIP_NAME，请手动设置 NPU_SOC_VERSION"; exit 1 ;;
+        *) echo "[ERROR] 无法识别芯片: $CHIP_NAME，请手动设置 NPU_SOC_VERSION (如 ascend950)"; exit 1 ;;
     esac
 fi
 
@@ -162,27 +169,36 @@ build_wheel() {
 }
 
 # ============================================================
-# 采集函数 (capture 模式: NPUGraph capture + replay)
+# 采集函数 (capture 模式: NPUGraph capture + replay + cycle dump)
 # ============================================================
 SCAN_REPLAY_PY="$(pwd)/scan_replay.py"
+PARSE_STARS_PY="$(pwd)/parse_stars_log.py"
 if [ ! -f "$SCAN_REPLAY_PY" ]; then
     echo "[ERROR] scan_replay.py 不存在: $SCAN_REPLAY_PY"
+    exit 1
+fi
+if [ ! -f "$PARSE_STARS_PY" ]; then
+    echo "[ERROR] parse_stars_log.py 不存在: $PARSE_STARS_PY"
     exit 1
 fi
 
 collect_add() {
     local label=$1 outdir=$2
-    echo "[COLLECT] 采集 add ($label, capture 模式)..."
+    echo "[COLLECT] 采集 add ($label, capture 模式 + T0/T1 打点)..."
     rm -rf "$outdir"
-    OP_TYPE=add msprof --output="$outdir" python3 "$SCAN_REPLAY_PY" 2>&1 | tail -1
+    OP_TYPE=add msprof --output="$outdir" python3 "$SCAN_REPLAY_PY" \
+        > "$outdir.stdout.log" 2> "$outdir.stderr.log" || true
+    grep -aE "valid blocks|T1-T0:|WARN" "$outdir.stdout.log" | head -3
 }
 
 collect_gmm() {
     local label=$1 outdir=$2
-    echo "[COLLECT] 采集 grouped_matmul ($label, capture 模式)..."
+    echo "[COLLECT] 采集 grouped_matmul ($label, capture 模式 + T0/T1 打点)..."
     rm -rf "$outdir"
     # gemm 悬垂引用修复后 capture 可用; Cube 核 capture 模式 msprof 可正常生成 op_summary
-    OP_TYPE=gemm msprof --output="$outdir" python3 "$SCAN_REPLAY_PY" 2>&1 | tail -1
+    OP_TYPE=gemm msprof --output="$outdir" python3 "$SCAN_REPLAY_PY" \
+        > "$outdir.stdout.log" 2> "$outdir.stderr.log" || true
+    grep -aE "valid blocks|T1-T0:|WARN" "$outdir.stdout.log" | head -3
 }
 
 # ============================================================
@@ -201,35 +217,92 @@ if [ "$RUN_GMM" = "1" ]; then
 fi
 
 # ============================================================
-# 汇总分析
+# 汇总分析 (TaskDuration + STARS 三指标: T0-stars / T1-T0 / T1-stars)
 # ============================================================
 echo "========== 汇总 =========="
-python3 - "$OUTPUT_DIR" "$SOC_VERSION" << 'PYEOF'
-import csv, statistics, sys, os, glob
+python3 - "$OUTPUT_DIR" "$SOC_VERSION" "$PARSE_STARS_PY" << 'PYEOF'
+import csv, statistics, sys, os, glob, re, subprocess
 
 output_dir = sys.argv[1]
 soc_version = sys.argv[2]
+parse_stars_py = sys.argv[3]
 if soc_version == "ascend950":
-    add_cores, gmm_cores = 56, 28
+    add_cores, gmm_cores, freq = 56, 28, 283.0
 else:
-    add_cores, gmm_cores = 48, 24
+    add_cores, gmm_cores, freq = 48, 24, 200.0  # A3 SYS_CNT 频率按实际标定
+
+def parse_stars_dispatches(prof_dir):
+    """解析 PROF 目录下的 stars_soc.data, 返回排序的 dispatch sys_cnt 列表"""
+    data_dirs = glob.glob(os.path.join(prof_dir, "**", "device_*", "data"), recursive=True)
+    if not data_dirs:
+        return []
+    out_csv = os.path.join(output_dir, f"stars_{os.path.basename(prof_dir)}.csv")
+    try:
+        subprocess.run([sys.executable, parse_stars_py, "-p", data_dirs[0], "--output", out_csv],
+                       capture_output=True, check=True)
+        disp = []
+        for row in csv.DictReader(open(out_csv)):
+            try:
+                if int(row["func type"]) == 0:
+                    disp.append(int(row["sys cnt"]))
+            except (ValueError, KeyError):
+                continue
+        disp.sort()
+        return disp
+    except Exception:
+        return []
+
+BLOCK_RE = re.compile(r"ReplayLast Block (\d+): T0=(\d+) T1=(\d+)")
+
+def parse_cycle_blocks(stderr_log):
+    """解析 scan_replay.py dump 的每 block T0/T1 明细"""
+    recs = []
+    if not os.path.exists(stderr_log):
+        return recs
+    for line in open(stderr_log, errors="ignore"):
+        m = BLOCK_RE.search(line)
+        if m:
+            recs.append((int(m.group(2)), int(m.group(3))))
+    return recs
+
+def three_metrics(prof_dir, op):
+    """T0-stars / T1-T0 / T1-stars 三指标 (kernel 打点 + STARS 联合)"""
+    stderr_log = f"{prof_dir}.stderr.log"
+    recs = parse_cycle_blocks(stderr_log)
+    if not recs:
+        return None
+    disp = parse_stars_dispatches(prof_dir)
+    if not disp:
+        return None
+    t0s, t1t0, t1s = [], [], []
+    for a, b in recs:
+        near = min(disp, key=lambda d: abs(a - d))
+        d0 = a - near
+        if 50 <= d0 <= 20000:
+            t0s.append(d0); t1t0.append(b - a); t1s.append(b - near)
+    if not t0s:
+        return None
+    return {
+        'n': len(t0s),
+        't0_stars': statistics.mean(t0s) / freq,
+        't1_t0': statistics.mean(t1t0) / freq,
+        't1_stars': statistics.mean(t1s) / freq,
+    }
 
 def analyze_add(prof_dir, label):
-    # capture 模式: add 有 op_summary (AIV 核)
     csvs = glob.glob(os.path.join(prof_dir, "**", "op_summary_*.csv"), recursive=True)
     if not csvs:
         print(f"  {label}: [未找到 op_summary CSV]")
-        return None
+        return None, None
     with open(csvs[0]) as f:
         rows = list(csv.DictReader(f))
     kr = [r for r in rows if 'add_kernel' in r.get('Op Name', '')]
     if not kr:
         print(f"  {label}: [未找到 add_kernel 数据]")
-        return None
+        return None, None
     durs = [float(r['Task Duration(us)'].strip().rstrip('\t')) for r in kr[2:]]
     result = {'label': label, 'mean': statistics.mean(durs)}
-    print(f"  {label:12s} steady mean={result['mean']:.3f}us  n={len(durs)}")
-    return result
+    return result, three_metrics(prof_dir, 'add')
 
 def analyze_gmm(prof_dir, label):
     csvs = glob.glob(os.path.join(prof_dir, "**", "op_summary_*.csv"), recursive=True)
@@ -239,13 +312,13 @@ def analyze_gmm(prof_dir, label):
         kr = [r for r in rows if 'groupedmatmul' in r.get('Op Name', '')]
         if not kr:
             print(f"  {label}: [op_summary 中未找到 groupedmatmul 数据]")
-            return None
+            return None, None
         all_durs = [float(r['Task Duration(us)'].strip().rstrip('\t')) for r in kr]
     else:
         csvs = glob.glob(os.path.join(prof_dir, "**", "OpBasicInfo_*.csv"), recursive=True)
         if not csvs:
             print(f"  {label}: [未找到 op_summary 或 OpBasicInfo CSV]")
-            return None
+            return None, None
         all_durs = []
         for csv_path in sorted(csvs):
             with open(csv_path) as f:
@@ -255,37 +328,52 @@ def analyze_gmm(prof_dir, label):
                     except: pass
     if not all_durs:
         print(f"  {label}: [无有效数据]")
-        return None
+        return None, None
     steady = all_durs[2:]
     result = {'label': label, 'mean': statistics.mean(steady)}
-    print(f"  {label:12s} steady mean={result['mean']:.3f}us  n={len(steady)}")
-    return result
+    return result, three_metrics(prof_dir, 'gemm')
 
 print()
 print("============================================")
 print("  头开销测试结果 (稳态=跳过前2次)")
+print("  新增 STARS 三指标: T0-stars / T1-T0 / T1-stars")
+print("  (T0-stars=调度+硬件启动, T1-T0=软件头, T1-stars=总头开销)")
 print("============================================")
 print()
 
 results = []
 if os.path.isdir(os.path.join(output_dir, 'add_full')):
     print("add (Vector):")
-    r = analyze_add(os.path.join(output_dir, 'add_full'), 'add 满核')
-    if r: results.append(('add', 'Vector', add_cores, r['mean']))
+    r, m = analyze_add(os.path.join(output_dir, 'add_full'), 'add 满核')
+    if r:
+        print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
+        if m:
+            print(f"  {'':12s} T0-stars={m['t0_stars']:.3f}us  T1-T0={m['t1_t0']:.3f}us  "
+                  f"T1-stars={m['t1_stars']:.3f}us  (n={m['n']} blocks)")
+        results.append(('add', 'Vector', add_cores, r['mean'], m))
     print()
 if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     print("grouped_matmul (Cube):")
-    r = analyze_gmm(os.path.join(output_dir, 'gmm_full'), 'gmm 满核')
-    if r: results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean']))
+    r, m = analyze_gmm(os.path.join(output_dir, 'gmm_full'), 'gmm 满核')
+    if r:
+        print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
+        if m:
+            print(f"  {'':12s} T0-stars={m['t0_stars']:.3f}us  T1-T0={m['t1_t0']:.3f}us  "
+                  f"T1-stars={m['t1_stars']:.3f}us  (n={m['n']} blocks)")
+        results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean'], m))
     print()
 
 # 生成汇总表
 summary_path = os.path.join(output_dir, 'summary.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
-    w.writerow(['算子', '类型', '核数', '稳态mean(us)'])
-    for op, typ, cores, mean in results:
-        w.writerow([op, typ, cores, f"{mean:.3f}"])
+    w.writerow(['算子', '类型', '核数', 'TaskDur稳态mean(us)', 'T0-stars(us)', 'T1-T0(us)', 'T1-stars(us)'])
+    for op, typ, cores, mean, m in results:
+        if m:
+            w.writerow([op, typ, cores, f"{mean:.3f}", f"{m['t0_stars']:.3f}",
+                        f"{m['t1_t0']:.3f}", f"{m['t1_stars']:.3f}"])
+        else:
+            w.writerow([op, typ, cores, f"{mean:.3f}", "N/A", "N/A", "N/A"])
 
 print(f"汇总 CSV: {summary_path}")
 print()
