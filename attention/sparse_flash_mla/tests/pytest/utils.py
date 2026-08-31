@@ -395,6 +395,18 @@ def fill_random_used_len(SMax, B, random_seq=False):
     return used_lens
 
 
+def is_swa_case(params):
+    """Return whether a case selects SWA, including the legacy implicit mode."""
+    template_mode = params.get("template_mode")
+    if template_mode == "SWA":
+        return True
+    return (
+        template_mode is None
+        and (params.get("K") is None or params.get("K") == ["None"])
+        and params.get("cmp_ratio") is None
+    )
+
+
 def generate_case_with_default_param(param_combinations):
     case_param = param_combinations.copy()
     case_param.setdefault("testcase_name", "case_" + str(int(time.time() * 1000000)))
@@ -446,6 +458,24 @@ def generate_case_with_default_param(param_combinations):
     S1 = case_param["S1"]
     S2 = case_param["S2"]
     cmp_ratio = case_param["cmp_ratio"]
+    is_swa = is_swa_case(case_param)
+
+    # SWA has no compressed-KV branch. Clear values that may have come from a
+    # shared parameter set before any compressed tensors or PA shapes are derived.
+    if is_swa:
+        for key in (
+            "cmp_kv_type",
+            "T3",
+            "K",
+            "block_num2",
+            "block_size2",
+            "cu_seqlens_cmp_kv",
+            "seqused_cmp_kv",
+            "cmp_residual_kv",
+            "cmp_topk_length",
+        ):
+            case_param[key] = None
+
     # 数据预填充
     if case_param["cu_seqlens_q"] is None:
         if layout_q == "TND":
@@ -468,6 +498,7 @@ def generate_case_with_default_param(param_combinations):
         case_param["cu_seqlens_cmp_kv"] is None
         and layout_kv == "TND"
         and cmp_ratio is not None
+        and not is_swa
     ):
         case_param["seqused_ori_kv"] = generate_seqused(case_param["cu_seqlens_ori_kv"])
         case_param["seqused_cmp_kv"] = [
@@ -503,7 +534,11 @@ def generate_case_with_default_param(param_combinations):
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param["block_size1"])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
-            if cmp_ratio is not None and case_param["block_size2"] is not None:
+            if (
+                not is_swa
+                and cmp_ratio is not None
+                and case_param["block_size2"] is not None
+            ):
                 cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
                 cur_cmp_kv_block_num = math.ceil(
                     cur_cmp_act_kv / case_param["block_size2"]
@@ -511,5 +546,5 @@ def generate_case_with_default_param(param_combinations):
                 cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
                 cmp_block_num_sum += cur_cmp_kv_block_num
     case_param["block_num1"] = ori_block_num_sum
-    case_param["block_num2"] = cmp_block_num_sum
+    case_param["block_num2"] = None if is_swa else cmp_block_num_sum
     return case_param
