@@ -948,7 +948,7 @@
   </tr>
   <tr>
     <td>mc2</td>
-    <td><a href="../../mc2/attention_to_ffn/README.md">attention_to_ffn</a></td>
+    <td><a href="../../mc2/attention_to_ffn_v2/README.md">attention_to_ffn_v2</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
