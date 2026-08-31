@@ -248,6 +248,9 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
     if (p.g != 1) {
         return false;
     }
+    if (p.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && !p.isS1S2Same) {
+        return false;
+    }
     if (p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
         p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
         return false;
@@ -391,9 +394,9 @@ inline void ApplyTNDLineDeterParam(FuzzyBaseInfoParamsRegbase &p, const TNDLineD
 
 class FlashAttentionScoreGradTilingVarlenRegbase : public FlashAttentionScoreGradTilingNormalRegbase {
 public:
-    explicit FlashAttentionScoreGradTilingVarlenRegbase(gert::TilingContext *curContext_)
-        : FlashAttentionScoreGradTilingNormalRegbase(curContext_)
-    {}
+    explicit FlashAttentionScoreGradTilingVarlenRegbase(gert::TilingContext *curContext_) : FlashAttentionScoreGradTilingNormalRegbase(curContext_)
+    {
+    }
     ~FlashAttentionScoreGradTilingVarlenRegbase() override = default;
 
 protected:
@@ -504,7 +507,7 @@ protected:
         int64_t m0Max{0}, m1Max{0}, m2Max{0};
         DeterPrefixData deterPrefixData;
         CalcleTNDCausalDeterPrefix(deterPrefixData, m0Max, m1Max, m2Max);
-
+        
         deterPrefixData.deterPrefix = SliceVector(deterPrefixData.deterPrefix, fBaseParams.deterPrefixStep);
         deterPrefixData.deterPrefixAlign = SliceVector(deterPrefixData.deterPrefixAlign, fBaseParams.deterPrefixStep);
         std::copy(deterPrefixData.deterPrefix.begin(), deterPrefixData.deterPrefix.end(), fBaseParams.deterPrefix);
@@ -537,7 +540,7 @@ protected:
 
         // 将最大轮次append在了prefix的最后，需要的时候可以直接取用，形式更简洁
         // prefix0的是乘了N1的结果，也可以不乘，乘了后二分查找不用额外申请空间
-        int64_t R1 = fBaseParams.g == 1 ?
+        int64_t R1 = fBaseParams.g == 1 ? 
             (N12 > 0 ? std::max(CeilDivideBy(deterPrefixData.prefix1.back() * N12, static_cast<int64_t>(fBaseParams.aicNum)), mnMax) : 0) :
             std::max(CeilDivideBy(deterPrefixData.prefix1.back() * fBaseParams.n1, static_cast<int64_t>(fBaseParams.aicNum)), mnMax);
         std::vector<int64_t> slicePrefix1 = SliceVector(deterPrefixData.prefix1, fBaseParams.deterPrefixStep);
@@ -894,7 +897,7 @@ protected:
             w += 1;
         }
         int64_t delta = ID - deterPrefixData.prefix1[w] * N1;
-
+        
         if (w >= fBaseParams.b) {
             return std::make_tuple(-1, -1, -1);
         }
@@ -1728,11 +1731,11 @@ protected:
             p = p > s1OuterTmp ? s1OuterTmp : p;
             q = q > s2OuterTmp ? s2OuterTmp : q;
             if (p + q <= s1OuterTmp) {
-                tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] = tndBaseInfo.tndS2BlockPrefixSum[bIdx] +
+                tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] = tndBaseInfo.tndS2BlockPrefixSum[bIdx] + 
                     CeilDivideBy(s2OuterTmp * fBaseParams.n2 * fBaseParams.g, static_cast<int64_t>(fBaseParams.aicNum))
                     * (p + q - 1);
             } else {
-                tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] = tndBaseInfo.tndS2BlockPrefixSum[bIdx] +
+                tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] = tndBaseInfo.tndS2BlockPrefixSum[bIdx] + 
                     CeilDivideBy(s2OuterTmp * fBaseParams.n2 * fBaseParams.g, static_cast<int64_t>(fBaseParams.aicNum))
                     * s1OuterTmp;
             }

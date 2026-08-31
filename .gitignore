@@ -48,8 +48,6 @@ third_party/
 .agents/
 .opencode/
 .claude/
-.cursor/
-_tmp_*
 
 # pre-commit log
 log/
