@@ -432,7 +432,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckA16W4PergroupMultiScenario
         OP_CHECK_NULL_WITH_CONTEXT(context, wShape_i);
         int64_t kSize = wShape_i->GetDim(wKDimIdx);
         int64_t groupNum = antiquantScaleShape->GetDim(0);
-        OP_CHECK_IF(groupNum <= 0, OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0."),
+        OP_CHECK_IF(groupNum <= 0,
+                    OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0, but current value is %ld.", groupNum),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(kSize % groupNum != 0,
                     OP_LOGE(context->GetNodeName(), "GroupNum must be multiple of the k axis of weight."),
