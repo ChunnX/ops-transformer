@@ -812,29 +812,20 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseIndices() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFATilingCheck::CheckSingleParaDequantScale() const
+{
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFATilingCheck::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() || ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseIndices() || ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() || ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize()) {
+        ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize() || ge::GRAPH_SUCCESS != CheckSingleParaDequantScale()) {
         return ge::GRAPH_FAILED;
     }
 
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
-{
-    if (quantScaleRepoMode_ == 1) {
-        OP_CHECK_IF(
-            (opParamInfo_.keyDequantScale.tensor == nullptr || opParamInfo_.valueDequantScale.tensor == nullptr),
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                opName_, "key_dequant_scale and value_dequant_scale",
-                "When quant_scale_repo_mode is 1(combine), "
-                "key_dequant_scale and value_dequant_scale should be both provided"),
-            return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -894,10 +885,6 @@ ge::graphStatus QSFATilingCheck::CheckParaExistenceMla() const
 
 ge::graphStatus QSFATilingCheck::CheckParaExistence()
 {
-    if (ge::GRAPH_SUCCESS != CheckDequantScaleNotExistence()) {
-        return ge::GRAPH_FAILED;
-    }
-
     return CheckParaExistenceMla();
 }
 
@@ -1130,8 +1117,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensDType()
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             opName_, "actual_seq_lengths_kv",
-            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            QSFADataTypeToSerialString(opParamInfo_.actualSeqLengths.desc->GetDataType()).c_str(),
             "The dtype of actual_seq_lengths_kv must be DT_INT32");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }

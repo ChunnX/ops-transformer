@@ -85,8 +85,12 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttentionV2(gert::InferShapeContext 
         } else {
             kvHeadNum = keyShape->GetDim(DIM_INDEX_2);
         }
+        OP_CHECK_IF(
+            kvHeadNum <= 0,
+            OP_LOGE("KvQuantSparseFlashAttentionV2", "kv head num should be greater than 0 but got %ld", kvHeadNum),
+            return ge::GRAPH_FAILED);
         if (inputLayoutQueryPtrStr == "BSND") {
-            int64_t g = queryShape->GetDim(DIM_INDEX_2) / kvHeadNum;
+            int64_t g = (queryShape->GetDim(DIM_INDEX_2) == -1) ? -1 : queryShape->GetDim(DIM_INDEX_2) / kvHeadNum;
             softmaxMaxShape->SetDimNum(DIM_NUM_4);
             softmaxMaxShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
             softmaxMaxShape->SetDim(DIM_INDEX_1, kvHeadNum);
@@ -99,7 +103,7 @@ ge::graphStatus InferShapeKvQuantSparseFlashAttentionV2(gert::InferShapeContext 
             softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
             softmaxSumShape->SetDim(DIM_INDEX_3, g);
         } else {
-            int64_t g = queryShape->GetDim(DIM_INDEX_1) / kvHeadNum;
+            int64_t g = (queryShape->GetDim(DIM_INDEX_1) == -1) ? -1 : queryShape->GetDim(DIM_INDEX_1) / kvHeadNum;
             softmaxMaxShape->SetDimNum(DIM_NUM_3);
             softmaxMaxShape->SetDim(DIM_INDEX_0, kvHeadNum);
             softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));

@@ -29,8 +29,8 @@ constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
 constexpr uint32_t VALUE_INPUT_INDEX = 2;
 constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
-constexpr uint32_t KEY_DEQUANT_SCALE_INPUT_INDEX = 3;
-constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 3;
+constexpr uint32_t KEY_DEQUANT_SCALE_INPUT_INDEX = 4;
+constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 5;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 6;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 7;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
@@ -415,9 +415,9 @@ private:
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaSparseIndices() const;
+    ge::graphStatus CheckSingleParaDequantScale() const;
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus CheckMultiParaConsistency() const;
-    ge::graphStatus CheckDequantScaleNotExistence();
     template <typename T>
     ge::graphStatus CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const;
     ge::graphStatus CheckParaExistenceMlaAntiquant() const;
