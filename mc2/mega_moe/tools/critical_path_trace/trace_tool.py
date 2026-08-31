@@ -2313,6 +2313,98 @@ def _json_pretty(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def _percentile(values: list[int], fraction: float) -> float:
+    """Return a linearly interpolated percentile for a non-empty sample."""
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * fraction
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = position - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * weight
+
+
+def _format_cycle_stat(value: int | float) -> str:
+    if isinstance(value, int) or value.is_integer():
+        return f"{int(value):,}"
+    return f"{value:,.1f}"
+
+
+def _render_gmm2_statistics(
+    rendered_spans: dict[tuple[str, int], list[dict[str, Any]]],
+) -> str:
+    span_ids = ("gmm2_problem", "gmm2_ready_fix_wait")
+    samples: dict[str, list[dict[str, Any]]] = {span_id: [] for span_id in span_ids}
+    for row_spans in rendered_spans.values():
+        for rendered in row_spans:
+            span_id = rendered["span"]["id"]
+            if span_id in samples and rendered["derived_gap"] is None:
+                samples[span_id].append(rendered)
+
+    if not samples["gmm2_problem"]:
+        return ""
+
+    wave_ids = sorted(
+        {
+            rendered["wave_id"]
+            for values in samples.values()
+            for rendered in values
+            if isinstance(rendered["wave_id"], int)
+        }
+    )
+    scopes: list[tuple[str, int | None]] = [("全部 Wave", None)]
+    scopes.extend((f"Wave {wave_id}", wave_id) for wave_id in wave_ids)
+    metric_labels = {
+        "gmm2_problem": "GMM2 tile 总段（ready 后至 FIX 完成）",
+        "gmm2_ready_fix_wait": "其中生产 FIX_S 等待",
+    }
+
+    rows: list[str] = []
+    for scope_label, wave_id in scopes:
+        scoped: dict[str, list[int]] = {}
+        for span_id in span_ids:
+            scoped[span_id] = [
+                rendered["duration"]
+                for rendered in samples[span_id]
+                if wave_id is None or rendered["wave_id"] == wave_id
+            ]
+        gmm2_sum = sum(scoped["gmm2_problem"])
+        for span_id in span_ids:
+            values = scoped[span_id]
+            if not values:
+                continue
+            total = sum(values)
+            share = (
+                "100.0%"
+                if span_id == "gmm2_problem"
+                else f"{100.0 * total / gmm2_sum:.1f}%"
+                if gmm2_sum
+                else "—"
+            )
+            rows.append(
+                "<tr>"
+                f"<td>{html.escape(scope_label)}</td>"
+                f"<td>{html.escape(metric_labels[span_id])}</td>"
+                f"<td>{len(values)}</td>"
+                f"<td>{_format_cycle_stat(total)}</td>"
+                f"<td>{_format_cycle_stat(total / len(values))}</td>"
+                f"<td>{_format_cycle_stat(_percentile(values, 0.5))}</td>"
+                f"<td>{_format_cycle_stat(_percentile(values, 0.9))}</td>"
+                f"<td>{_format_cycle_stat(max(values))}</td>"
+                f"<td>{share}</td>"
+                "</tr>"
+            )
+
+    return (
+        '<section class="panel"><h2>GMM2 时长统计</h2>'
+        "<p>Mean、Median、P90 和 Max 按单个记录区间统计；Sum 是所有并行 AIC "
+        "区间的累计 cycles，不是跨 AI Block 的墙钟耗时。FIX 占比按同一范围内的 "
+        "FIX Sum / GMM2 Sum 计算。</p>"
+        "<table><thead><tr><th>范围</th><th>区间</th><th>Count</th><th>Sum（累计 AIC cycles）</th>"
+        "<th>Mean</th><th>Median</th><th>P90</th><th>Max</th><th>占 GMM2 Sum</th>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></section>"
+    )
+
+
 def _render_html(
     spec: dict[str, Any],
     trace_data: dict[str, Any],
@@ -2876,6 +2968,7 @@ def _render_html(
             "GMM2 activation-ready 等待与生产逐 tile FIX 等待另行分段。"
             "诊断 fence 与 scratch 写会扰动流水，禁止把 tracing-on 总延迟当作生产性能。</div>"
         )
+    gmm2_statistics = _render_gmm2_statistics(rendered_spans)
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
         f"<title>{html.escape(trace_spec['name'])} 关键路径</title>"
@@ -2888,6 +2981,7 @@ def _render_html(
         "</style></head><body><main>"
         f"<h1>{html.escape(trace_spec['name'])}</h1>{warning}"
         f'<section class="panel"><h2>协议与运行信息</h2><table>{overview_rows}{metadata_rows}</table></section>'
+        f"{gmm2_statistics}"
         f'<section class="panel">{"".join(svg)}</section>'
         '<section class="panel"><h2>打点位置与语义说明</h2>'
         "<table><thead><tr><th>时间点</th><th>角色</th><th>打点位置</th><th>什么时候打</th>"

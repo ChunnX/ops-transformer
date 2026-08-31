@@ -391,6 +391,15 @@ class TraceContractTests(unittest.TestCase):
             self.assertIn("Dispatch 间 Scalar 规划/游标推进", rendered_html)
             self.assertIn("GMM2 等待 activation-ready", rendered_html)
             self.assertIn("GMM2 group-ready 逐 tile FIX 等待（生产）", rendered_html)
+            self.assertIn("GMM2 时长统计", rendered_html)
+            self.assertIn("Sum（累计 AIC cycles）", rendered_html)
+            self.assertIn("GMM2 tile 总段（ready 后至 FIX 完成）", rendered_html)
+            self.assertIn("其中生产 FIX_S 等待", rendered_html)
+            self.assertIn("<td>550</td>", rendered_html)
+            self.assertIn("<td>183.3</td>", rendered_html)
+            self.assertIn("<td>180</td>", rendered_html)
+            self.assertIn("<td>212</td>", rendered_html)
+            self.assertIn("<td>7.3%</td>", rendered_html)
             self.assertIn(
                 "Combine（非量化 tile / 量化 group，MTE3 完成）", rendered_html
             )
