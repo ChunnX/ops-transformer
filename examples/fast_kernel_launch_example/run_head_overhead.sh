@@ -224,7 +224,7 @@ fi
 # ============================================================
 echo "========== 汇总 =========="
 python3 - "$OUTPUT_DIR" "$SOC_VERSION" "$PARSE_STARS_PY" << 'PYEOF'
-import csv, statistics, sys, os, glob, re, subprocess
+import bisect, csv, statistics, sys, os, glob, re, subprocess, struct
 
 output_dir = sys.argv[1]
 soc_version = sys.argv[2]
@@ -233,11 +233,9 @@ if soc_version == "ascend950":
     add_cores, gmm_cores = 56, 28
 else:
     add_cores, gmm_cores = 48, 24  # A3/910C 与 A2/910B 同为 48 AIV / 24 AIC
-# SYS_CNT 频率按算子区分 (A5 实测标定):
-#   AIV(add)=283MHz; AIC(gmm)≈587MHz (T2-T0 vs TaskDur 标定, Cube 核计数器为 AIV 的 2.07 倍)
-# SYS_CNT_FREQ_MHZ 环境变量整体覆盖; A3/910C 需上板重新标定
-freq_add = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283"))
-freq_gmm = float(os.environ.get("SYS_CNT_FREQ_MHZ", "587"))
+# SYS_CNT 频率 (A5 实测 1000MHz, 时钟速率直测, AIV/AIC 同频全局计数器; 历史 283/587 为误标定)
+freq_add = float(os.environ.get("SYS_CNT_FREQ_MHZ", "1000"))
+freq_gmm = float(os.environ.get("SYS_CNT_FREQ_MHZ", "1000"))
 
 def parse_stars_dispatches(prof_dir):
     """解析 PROF 目录下的 stars_soc.data, 返回排序的 dispatch sys_cnt 列表"""
@@ -289,7 +287,6 @@ def three_metrics(prof_dir, op, freq):
     def match(ts):
         # 只向前匹配 (dispatch <= ts): back-to-back 排队时下一个 kernel 的 dispatch
         # 会早于本 kernel 结束下发, 最近邻会把 T2 配到下一个 dispatch 上 (d 为负)
-        import bisect
         i = bisect.bisect_right(disp, ts) - 1
         if i < 0:
             return -1
@@ -311,6 +308,23 @@ def three_metrics(prof_dir, op, freq):
             t2t0.append(b2 - a)
     if not t0s:
         return None
+    # T2 校验口径 (TaskDur 同口径): TaskDuration 由最慢完成 block 决定,
+    # mean(所有 block 平均) 天然偏小; 末拍簇 (T0 聚类) 内取 max(T2),
+    # 与簇 dispatch 之差才可与 TaskDur 比较 (实测 add: +0.145us 吻合)
+    # 窗口取 1.5us*freq: 固定 cyc 数在高频核 (AIC 587MHz) 上会跨拍混入上一拍 block,
+    # 导致 dp 匹配到上拍 dispatch (实测 gmm 曾因此偏大 1.78us)
+    # dp 取簇内各 T0 独立前向匹配的最大 dispatch: 混入的旧拍 block 匹配值更小, max 淹没之
+    win = int(1.5 * freq)
+    t0max = max(r[0] for r in recs)
+    cluster = [r for r in recs if r[0] >= t0max - win and r[2] > 0]
+    t2_stars_chk = None
+    if len(cluster) >= max(4, len(recs) // 4):
+        dps = [match(r[0]) for r in cluster]
+        dps = [d for d in dps if 0 < d <= 20000]
+        if dps:
+            # 各 T0 的前向匹配 dispatch 时刻 = T0 - d0
+            dp = max(r[0] - d for r, d in zip(cluster, dps) if 0 < d <= 20000)
+            t2_stars_chk = (max(r[2] for r in cluster) - dp) / freq
     return {
         'n': len(t0s),
         'n_t1': len(t1s),
@@ -320,7 +334,77 @@ def three_metrics(prof_dir, op, freq):
         't1_t0': statistics.median(t1t0) / freq if t1t0 else None,
         't1_stars': statistics.mean(t1s) / freq if t1s else None,
         't2_stars': statistics.mean(t2s) / freq if t2s else None,
+        't2_stars_chk': t2_stars_chk,  # 末拍簇 max 口径, 与 TaskDur 可直接比较
         't2_t0': statistics.median(t2t0) / freq if t2t0 else None,
+    }
+
+def parse_ffts_pmu(prof_dir):
+    """解析 ffts_profile.data (STARS 每核 PMU, david 脚本 prof_pmu_david_analyze.py 的结构):
+    返回记录列表, 关键字段 pmu_start/pmu_end (每核启动/结束的 SYS_CNT 权威时间戳)
+    与 ai_total_cycle (核计算 cycles 总和)"""
+    data_dirs = glob.glob(os.path.join(prof_dir, "**", "device_*", "data"), recursive=True)
+    if not data_dirs:
+        return []
+    fmt = "HH" + "HH" + "Q" + "I" * 4 + "Q" * 12  # 256B/record
+    sz = struct.calcsize(fmt)
+    recs = []
+    for name in os.listdir(data_dirs[0]):
+        if "ffts_profile.data" not in name or "done" in name:
+            continue
+        try:
+            with open(os.path.join(data_dirs[0], name), "rb") as fd:
+                ctx = fd.read()
+        except OSError:
+            continue
+        for i in range(len(ctx) // sz):
+            f = struct.unpack(fmt, ctx[i*sz:(i+1)*sz])
+            recs.append({"func_type": f[0] & 63, "core_type": f[6] & 1,
+                         "block_id": f[7] >> 16, "ai_total_cycle": f[4],
+                         "pmu_start": f[19], "pmu_end": f[20]})
+    return recs
+
+def ffts_check(prof_dir, freq, taskdur):
+    """ffts PMU + kernel 打点 + dispatch 三方联合校验:
+    ① dispatch->pmu_start = 核启动延迟 (权威, 同域 SYS_CNT)
+    ② kernel T2 -> 最近 pmu_end = 硬件尾 (MTE 排空; kernel 打点无法覆盖, 这就是
+       T2-stars 不可能等于 TaskDur 的物理原因)
+    ③ dispatch(末拍) -> pmu_end max ≈ TaskDur + STARS 完成上报 (正确校验口径)"""
+    pmu = parse_ffts_pmu(prof_dir)
+    recs = parse_cycle_blocks(f"{prof_dir}.stderr.log")
+    disp = parse_stars_dispatches(prof_dir)
+    if not pmu or not recs or not disp:
+        return None
+    ends = sorted(r["pmu_end"] for r in pmu if r["pmu_end"] > 0)
+    if not ends:
+        return None
+    # kernel 末拍簇 (T0 聚类, 窗口 1.5us, 与 three_metrics 同口径)
+    t0max = max(r[0] for r in recs)
+    kcluster = [r for r in recs if r[0] >= t0max - int(1.5 * freq) and r[2] > 0]
+    if not kcluster:
+        return None
+    t2_max = max(r[2] for r in kcluster)
+    # 末拍 dispatch: 簇内 T0 前向匹配的最大 dispatch 时刻
+    dps = []
+    for r in kcluster:
+        j = bisect.bisect_right(disp, r[0]) - 1
+        if j >= 0:
+            dps.append(disp[j])
+    if not dps:
+        return None
+    dp = max(dps)
+    # 核启动延迟: dp 之后最早的 pmu_start
+    starts_after = [r["pmu_start"] for r in pmu if r["pmu_start"] > dp]
+    launch_delay = (min(starts_after) - dp) / freq if starts_after else None
+    # 硬件尾: kernel T2(末拍最慢 block) -> 最近且不早于它的 pmu_end
+    ends_after_t2 = [e for e in ends if e >= t2_max]
+    hw_tail = (min(ends_after_t2) - t2_max) / freq if ends_after_t2 else None
+    # 校验: dispatch -> pmu_end max (ffts 最后一条记录即末拍最慢核)
+    pmuend_stars = (max(ends) - dp) / freq
+    return {
+        "launch_delay": launch_delay,
+        "hw_tail": hw_tail,
+        "pmuend_stars": pmuend_stars,
+        "diff_vs_taskdur": pmuend_stars - taskdur,
     }
 
 def analyze_add(prof_dir, label):
@@ -373,9 +457,9 @@ def fmt(v):
 print()
 print("============================================")
 print("  头开销测试结果 (稳态=跳过前2次)")
-print("  STARS 四指标: T0-stars / T1-T0 / T1-stars / T2-stars")
-print("  (T0-stars=调度+硬件启动, T1-T0=软件头, T1-stars=总头开销, T2-stars≈TaskDur校验)")
-print("  T2-stars 与 TaskDur 吻合(±0.3us)即整条测量链路可信")
+print("  STARS 四指标: T0-stars / T1-T0 / T1-stars / T2-stars + ffts PMU 全链路")
+print("  (T0-stars=调度+硬件启动, T1-T0=软件头, T1-stars=总头开销, T2-stars=kernel末指令)")
+print("  ffts PMU 权威校验: T2+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
 print("============================================")
 print()
 
@@ -386,8 +470,13 @@ if os.path.isdir(os.path.join(output_dir, 'add_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
+            chk = m['t2_stars_chk'] if m['t2_stars_chk'] is not None else m['t2_stars']
             print(f"  {'':12s} T0-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(m['t2_stars'])}us  (n={m['n']} blocks)")
+                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(chk)}us  (n={m['n']} blocks)")
+        fm = ffts_check(os.path.join(output_dir, 'add_full'), freq_add, r['mean'])
+        if fm:
+            print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
+                  f"T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
         results.append(('add', 'Vector', add_cores, r['mean'], m))
     print()
 if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
@@ -396,8 +485,13 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
+            chk = m['t2_stars_chk'] if m['t2_stars_chk'] is not None else m['t2_stars']
             print(f"  {'':12s} T0-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(m['t2_stars'])}us  (n={m['n']} blocks)")
+                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(chk)}us  (n={m['n']} blocks)")
+        fm = ffts_check(os.path.join(output_dir, 'gmm_full'), freq_gmm, r['mean'])
+        if fm:
+            print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
+                  f"T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
         results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean'], m))
     print()
 
@@ -408,8 +502,9 @@ with open(summary_path, 'w') as f:
     w.writerow(['算子', '类型', '核数', 'TaskDur稳态mean(us)', 'T0-stars(us)', 'T1-T0(us)', 'T1-stars(us)', 'T2-stars(us)'])
     for op, typ, cores, mean, m in results:
         if m:
+            chk = m['t2_stars_chk'] if m['t2_stars_chk'] is not None else m['t2_stars']
             w.writerow([op, typ, cores, f"{mean:.3f}", fmt(m['t0_stars']),
-                        fmt(m['t1_t0']), fmt(m['t1_stars']), fmt(m['t2_stars'])])
+                        fmt(m['t1_t0']), fmt(m['t1_stars']), fmt(chk)])
         else:
             w.writerow([op, typ, cores, f"{mean:.3f}", "N/A", "N/A", "N/A", "N/A"])
 

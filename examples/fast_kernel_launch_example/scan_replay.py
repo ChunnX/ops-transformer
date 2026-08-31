@@ -31,11 +31,11 @@ os.environ["TASK_QUEUE_ENABLE"] = "1"
 
 op_type = os.environ.get("OP_TYPE", "add")
 op_iters = int(os.environ.get("OP_ITERS", "101"))
-# SYS_CNT 频率 (cycle→us 换算), A5 实测标定:
-#   AIV (add) = 283 MHz (aiv_time 交叉标定)
-#   AIC (gemm) ≈ 587 MHz (T2-T0 vs TaskDur 标定: 2555cyc / 4.351us, Cube 核计数器约为 AIV 的 2.07 倍)
-# 环境变量 SYS_CNT_FREQ_MHZ 可整体覆盖; A3/910C 需上板重新标定
-sys_cnt_freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283" if op_type == "add" else "587"))
+# SYS_CNT 频率 (cycle→us 换算): A5 实测 1000 MHz (时钟速率直测: 两次 replay 间隔 host 1s,
+# 计数差 1e9; AIV 与 AIC 比值 1.000, SoC 全局计数器核类型无关)。
+# 历史 283/587MHz 均为误标定 (依赖跨域匹配的间接推断), 已废弃。
+# 环境变量 SYS_CNT_FREQ_MHZ 可整体覆盖; A3/910C 需上板重测
+sys_cnt_freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "1000"))
 
 # === 数据准备 + run 函数 ===
 if op_type == "add":
