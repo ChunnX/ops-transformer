@@ -1132,6 +1132,37 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoSplit()
     fBaseParams.sfmgdInner = sfmgdInner;
 }
 
+CorePartitionOutcome FlashAttentionScoreGradTilingNormalRegbase::BuildDenseCorePartitionPlan(VariantId variantId) const
+{
+    DenseCorePartitionInput input;
+    input.b = fBaseParams.b;
+    input.n2 = fBaseParams.n2;
+    input.g = fBaseParams.g;
+    input.s1Outer = fBaseParams.s1Outer;
+    input.s2Outer = fBaseParams.s2Outer;
+    input.availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+    return DenseCorePartitionPlanner::TryBuild(variantId, input);
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::ApplyCorePartitionPlan(const CorePartitionPlan &plan)
+{
+    static_assert(FAG_CORE_PARTITION_RANGE_CAPACITY == CORE_LIST_NUM,
+                  "CorePartitionPlan range capacity must match the FAG tiling ABI capacity.");
+    fBaseParams.blockOuter = plan.activeCoreCount;
+    fBaseParams.blockFactor = plan.blockFactor;
+    fBaseParams.maxValidBBLen = static_cast<int64_t>(plan.maxCoreWork);
+    for (size_t coreIndex = 0; coreIndex < FAG_CORE_PARTITION_RANGE_CAPACITY; ++coreIndex) {
+        fBaseParams.blockStarts[coreIndex] = plan.ranges[coreIndex].begin;
+        fBaseParams.blockEnds[coreIndex] = plan.ranges[coreIndex].end;
+    }
+
+    selectionResult_.selected.cores = plan;
+    selectionResult_.selected.metrics.activeAic = plan.activeCoreCount;
+    selectionResult_.selected.metrics.maxCoreWork = plan.maxCoreWork;
+    selectionResult_.selected.metrics.averageCoreWork =
+        plan.activeCoreCount == 0 ? 0 : static_cast<uint64_t>(plan.totalWork) / plan.activeCoreCount;
+}
+
 bool FlashAttentionScoreGradTilingNormalRegbase::DoBn2s2Sparse()
 {
     if (fBaseParams.splitAxis != SplitAxisEnum::BN2S2 ||
@@ -1141,30 +1172,11 @@ bool FlashAttentionScoreGradTilingNormalRegbase::DoBn2s2Sparse()
     if (fBaseParams.isSparse || fBaseParams.layoutType == INPUT_FORMAT_TND) {
         return GetBlockInfoOfBNS4TND();
     } else {
-        int64_t blockStarts[CORE_LIST_NUM];
-        int64_t blockEnds[CORE_LIST_NUM];
-        // block split
-        int64_t fusedOuter = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2Outer;
-        int64_t bns2Factor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
-        int64_t blockOuter = (fusedOuter + bns2Factor - 1) / bns2Factor;
-        int64_t totalBlock = fusedOuter * fBaseParams.s1Outer;
-        int64_t blockFactor = bns2Factor * fBaseParams.s1Outer;
-
-        for (int64_t i = 0; i < blockOuter; i++) {
-            blockStarts[i] = blockFactor * i;
-            blockEnds[i] = std::min(blockFactor * (i + 1), totalBlock);
+        const CorePartitionOutcome outcome = BuildDenseCorePartitionPlan(VariantId::BN2S2);
+        if (!outcome.accepted) {
+            return false;
         }
-        for (uint32_t i = static_cast<uint32_t>(blockOuter); i < CORE_LIST_NUM; i++) {
-            blockStarts[i] = 0;
-            blockEnds[i] = 0;
-        }
-
-        std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
-        std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
-
-        fBaseParams.blockOuter = blockOuter;
-        fBaseParams.blockFactor = blockFactor;
-        fBaseParams.maxValidBBLen = blockFactor;
+        ApplyCorePartitionPlan(outcome.plan);
         return true;
     }
     return false;
@@ -1250,32 +1262,15 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoBn2MultiBlkSparse(
     } else if (fBaseParams.isSparse) {
         return GetSparseBlockInfoBn2();
     } else {
-        int64_t blockStarts[CORE_LIST_NUM];
-        int64_t blockEnds[CORE_LIST_NUM];
-        // block split, Core partitioning by BN
-        int64_t fusedOuter = fBaseParams.b * fBaseParams.n2 * fBaseParams.g;
-        int64_t blockFactor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
-        int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
-        blockFactor *= (fBaseParams.s1Outer * fBaseParams.s2Outer);
-        fusedOuter *= (fBaseParams.s1Outer * fBaseParams.s2Outer);
-
-        fBaseParams.blockOuter = blockOuter;
-        fBaseParams.blockFactor = blockFactor;
-        fBaseParams.maxValidBBLen = blockFactor;
-
-        for (int64_t i = 0; i < blockOuter; i++) {
-            blockStarts[i] = blockFactor * i;
-            blockEnds[i] = std::min(blockFactor * (i + 1), fusedOuter);
-            OP_LOGD("DoBn2MultiBlkSparse", "Normally partition, blockStarts[%ld] = %ld, blockEnds[%ld] = %ld", i,
-                    blockStarts[i], i, blockEnds[i]);
+        const CorePartitionOutcome outcome = BuildDenseCorePartitionPlan(VariantId::BN2_MULTI_BLOCK);
+        if (!outcome.accepted) {
+            return ge::GRAPH_FAILED;
         }
-        for (uint32_t i = static_cast<uint32_t>(blockOuter); i < CORE_LIST_NUM; i++) {
-            blockStarts[i] = 0;
-            blockEnds[i] = 0;
+        ApplyCorePartitionPlan(outcome.plan);
+        for (uint32_t coreIndex = 0; coreIndex < outcome.plan.activeCoreCount; ++coreIndex) {
+            OP_LOGD("DoBn2MultiBlkSparse", "Normally partition, blockStarts[%u] = %ld, blockEnds[%u] = %ld", coreIndex,
+                    outcome.plan.ranges[coreIndex].begin, coreIndex, outcome.plan.ranges[coreIndex].end);
         }
-
-        std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
-        std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
         return ge::GRAPH_SUCCESS;
     }
     return ge::GRAPH_FAILED;
@@ -1352,27 +1347,15 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
             GetSparseBlockInfo();
         }
     } else {
-        int64_t blockStarts[CORE_LIST_NUM];
-        int64_t blockEnds[CORE_LIST_NUM];
-        int64_t fusedOuter = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1Outer * fBaseParams.s2Outer;
-        int64_t blockFactor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
-        int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
-
-        fBaseParams.blockOuter = blockOuter;
-        fBaseParams.blockFactor = blockFactor;
-        fBaseParams.maxValidBBLen = blockFactor;
-
-        for (int64_t i = 0; i < blockOuter; i++) {
-            blockStarts[i] = blockFactor * i;
-            blockEnds[i] = std::min(blockFactor * (i + 1), fusedOuter);
+        const CorePartitionOutcome outcome = BuildDenseCorePartitionPlan(ResolveSelectedVariant());
+        if (!outcome.accepted) {
+            OP_LOGE(context_->GetNodeName(),
+                    "Failed to build dense core partition, variant=[%u], reason=[%u], actual=[%ld], expected=[%ld].",
+                    static_cast<uint32_t>(outcome.rejected.variantId), static_cast<uint32_t>(outcome.rejected.reason),
+                    outcome.rejected.actual, outcome.rejected.expected);
+            return ge::GRAPH_FAILED;
         }
-        for (uint32_t i = static_cast<uint32_t>(blockOuter); i < CORE_LIST_NUM; i++) {
-            blockStarts[i] = 0;
-            blockEnds[i] = 0;
-        }
-
-        std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
-        std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
+        ApplyCorePartitionPlan(outcome.plan);
     }
     // each bit init 1
     std::fill(std::begin(fBaseParams.dqIsNeedDeter), std::end(fBaseParams.dqIsNeedDeter), static_cast<uint64_t>(-1));

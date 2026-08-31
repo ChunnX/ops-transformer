@@ -22,6 +22,7 @@ constexpr PolicyVersion FAG_ARCH35_LEGACY_POLICY_VERSION = 1U;
 constexpr size_t FAG_ROUTE_TRACE_CAPACITY = 32U;
 constexpr size_t FAG_INITIAL_VARIANT_CANDIDATE_CAPACITY = 4U;
 constexpr size_t FAG_CANDIDATE_REJECTION_CAPACITY = 8U;
+constexpr size_t FAG_CORE_PARTITION_RANGE_CAPACITY = 36U;
 
 using RuleId = uint32_t;
 constexpr RuleId FAG_RULE_LEGACY_DEFAULT = 1000U;
@@ -72,6 +73,7 @@ enum class CandidateField : uint8_t {
     CORE_PARTITION = 15,
     ACTIVE_CORE_COUNT = 16,
     INVALID_BASIC_BLOCK = 17,
+    CORE_RANGE_CAPACITY = 18,
 };
 
 enum class CandidateRejectStage : uint8_t {
@@ -98,6 +100,7 @@ enum class CandidateRejectReason : uint16_t {
     CORE_PARTITION_UNAVAILABLE = 1013,
     INSUFFICIENT_CORE_UTILIZATION = 1014,
     INVALID_BASIC_BLOCK = 1015,
+    CORE_RANGE_CAPACITY_EXCEEDED = 1016,
 };
 
 enum class RouteStage : uint8_t {
@@ -293,11 +296,26 @@ struct TilePlan {
     uint32_t dInner = 0;
 };
 
+enum class CorePartitionMode : uint8_t {
+    UNKNOWN = 0,
+    FUSED_BN2GS1S2 = 1,
+    FUSED_BN2GS2 = 2,
+    FUSED_BN2G = 3,
+};
+
+struct WorkRange {
+    int64_t begin = 0;
+    int64_t end = 0;
+};
+
 struct CorePartitionPlan {
+    CorePartitionMode mode = CorePartitionMode::UNKNOWN;
     uint32_t activeCoreCount = 0;
     int64_t blockFactor = 0;
+    int64_t totalWork = 0;
     uint64_t maxCoreWork = 0;
     bool isSplitByBlockIndex = false;
+    std::array<WorkRange, FAG_CORE_PARTITION_RANGE_CAPACITY> ranges{};
 };
 
 struct SparsePlan {
@@ -357,6 +375,12 @@ struct CandidateRejected {
 struct CandidateOutcome {
     bool accepted = false;
     CandidatePlan plan;
+    CandidateRejected rejected;
+};
+
+struct CorePartitionOutcome {
+    bool accepted = false;
+    CorePartitionPlan plan;
     CandidateRejected rejected;
 };
 

@@ -18,6 +18,7 @@
 #include "flash_attention_score_grad_tiling_common_regbase.h"
 #include "candidate/fag_kernel_capability.h"
 #include "candidate/fag_planned_candidate_verifier.h"
+#include "planner/fag_dense_core_partition_planner.h"
 #include "policy/fag_legacy_policy_v1.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
@@ -82,6 +83,8 @@ protected:
     VariantId ResolveSelectedVariant() const;
     void LogRouteTrace() const;
     void DoSplit();
+    CorePartitionOutcome BuildDenseCorePartitionPlan(VariantId variantId) const;
+    void ApplyCorePartitionPlan(const CorePartitionPlan &plan);
     void DetermineBlockSchedule();
     ge::graphStatus DoSparse();
     bool DoBn2s2Sparse();

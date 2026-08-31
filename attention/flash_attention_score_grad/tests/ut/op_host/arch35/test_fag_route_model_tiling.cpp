@@ -8,11 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
 #include <gtest/gtest.h>
 
 #include "../../../../op_host/arch35/candidate/fag_kernel_capability.h"
 #include "../../../../op_host/arch35/candidate/fag_planned_candidate_verifier.h"
 #include "../../../../op_host/arch35/model/fag_route_model.h"
+#include "../../../../op_host/arch35/planner/fag_dense_core_partition_planner.h"
 #include "../../../../op_host/arch35/policy/fag_legacy_policy_v1.h"
 
 namespace optiling {
@@ -88,6 +90,36 @@ LegacyPostPlanningDecision SelectWithFrozenLegacyPostPlanning(VariantId initialV
         decision.effectiveDeterministic = deterministicRequested;
     }
     return decision;
+}
+
+CorePartitionPlan BuildFrozenLegacyDenseCorePartition(VariantId variantId, const DenseCorePartitionInput &input)
+{
+    int64_t groupedWork = input.b * input.n2 * input.g * input.s1Outer * input.s2Outer;
+    int64_t workPerGroup = 1;
+    CorePartitionMode mode = CorePartitionMode::FUSED_BN2GS1S2;
+    if (variantId == VariantId::BN2S2) {
+        groupedWork = input.b * input.n2 * input.g * input.s2Outer;
+        workPerGroup = input.s1Outer;
+        mode = CorePartitionMode::FUSED_BN2GS2;
+    } else if (variantId == VariantId::BN2_MULTI_BLOCK) {
+        groupedWork = input.b * input.n2 * input.g;
+        workPerGroup = input.s1Outer * input.s2Outer;
+        mode = CorePartitionMode::FUSED_BN2G;
+    }
+
+    const int64_t groupsPerCore =
+        (groupedWork + static_cast<int64_t>(input.availableCoreCount) - 1) / input.availableCoreCount;
+    CorePartitionPlan plan;
+    plan.mode = mode;
+    plan.activeCoreCount = static_cast<uint32_t>((groupedWork + groupsPerCore - 1) / groupsPerCore);
+    plan.blockFactor = groupsPerCore * workPerGroup;
+    plan.totalWork = groupedWork * workPerGroup;
+    plan.maxCoreWork = plan.blockFactor;
+    for (uint32_t coreIndex = 0; coreIndex < plan.activeCoreCount; ++coreIndex) {
+        plan.ranges[coreIndex].begin = plan.blockFactor * coreIndex;
+        plan.ranges[coreIndex].end = std::min(plan.blockFactor * static_cast<int64_t>(coreIndex + 1U), plan.totalWork);
+    }
+    return plan;
 }
 
 LegacyInitialVariantDecision SelectWithFrozenLegacyExpression(const InitialVariantCandidateInput &input,
@@ -194,6 +226,8 @@ TEST(FagRouteModel, TraceProtocolIdsAreExplicitAndStable)
     EXPECT_EQ(1004U, static_cast<uint32_t>(CandidateRejectReason::SEQUENCE_CONTAINS_ZERO));
     EXPECT_EQ(1013U, static_cast<uint32_t>(CandidateRejectReason::CORE_PARTITION_UNAVAILABLE));
     EXPECT_EQ(1015U, static_cast<uint32_t>(CandidateRejectReason::INVALID_BASIC_BLOCK));
+    EXPECT_EQ(1016U, static_cast<uint32_t>(CandidateRejectReason::CORE_RANGE_CAPACITY_EXCEEDED));
+    EXPECT_EQ(3U, static_cast<uint32_t>(CorePartitionMode::FUSED_BN2G));
     EXPECT_EQ(1100U, FAG_RULE_LEGACY_INITIAL_BN2_MULTI_BLOCK);
     EXPECT_EQ(1103U, FAG_RULE_LEGACY_INITIAL_BN2GS1S2);
 }
@@ -314,6 +348,134 @@ TEST(FagPlannedCandidateVerifier, RejectsBn2MultiBlockWithStableInvalidBlockMask
               static_cast<uint32_t>(outcome.rejected.reason));
     EXPECT_EQ(3, outcome.rejected.actual);
     EXPECT_EQ(0, outcome.rejected.expected);
+}
+
+TEST(FagDenseCorePartitionPlanner, BuildsVariantSpecificGroupingPlans)
+{
+    DenseCorePartitionInput input;
+    input.b = 2;
+    input.n2 = 4;
+    input.g = 1;
+    input.s1Outer = 3;
+    input.s2Outer = 5;
+    input.availableCoreCount = 32;
+
+    CorePartitionOutcome outcome = DenseCorePartitionPlanner::TryBuild(VariantId::BN2GS1S2, input);
+    ASSERT_TRUE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionMode::FUSED_BN2GS1S2), static_cast<uint32_t>(outcome.plan.mode));
+    EXPECT_EQ(30U, outcome.plan.activeCoreCount);
+    EXPECT_EQ(4, outcome.plan.blockFactor);
+    EXPECT_EQ(120, outcome.plan.totalWork);
+
+    outcome = DenseCorePartitionPlanner::TryBuild(VariantId::BN2S2, input);
+    ASSERT_TRUE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionMode::FUSED_BN2GS2), static_cast<uint32_t>(outcome.plan.mode));
+    EXPECT_EQ(20U, outcome.plan.activeCoreCount);
+    EXPECT_EQ(6, outcome.plan.blockFactor);
+    EXPECT_EQ(120, outcome.plan.totalWork);
+
+    outcome = DenseCorePartitionPlanner::TryBuild(VariantId::BN2_MULTI_BLOCK, input);
+    ASSERT_TRUE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionMode::FUSED_BN2G), static_cast<uint32_t>(outcome.plan.mode));
+    EXPECT_EQ(8U, outcome.plan.activeCoreCount);
+    EXPECT_EQ(15, outcome.plan.blockFactor);
+    EXPECT_EQ(120, outcome.plan.totalWork);
+}
+
+TEST(FagDenseCorePartitionPlanner, MatchesFrozenLegacyFormulasAndProducesContiguousRanges)
+{
+    const VariantId variants[] = {VariantId::BN2_MULTI_BLOCK, VariantId::BN2, VariantId::BN2S2, VariantId::BN2GS1S2};
+    const int64_t batchSizes[] = {1, 2, 8};
+    const int64_t headCounts[] = {1, 4};
+    const int64_t groupCounts[] = {1, 2};
+    const int64_t s1OuterSizes[] = {1, 3, 9};
+    const int64_t s2OuterSizes[] = {1, 5, 17};
+    const uint32_t coreCounts[] = {1, 8, 32};
+    size_t acceptanceMismatchCount = 0;
+    size_t planMismatchCount = 0;
+    size_t rangePropertyViolationCount = 0;
+
+    for (const VariantId variantId : variants) {
+        for (const int64_t batchSize : batchSizes) {
+            for (const int64_t headCount : headCounts) {
+                for (const int64_t groupCount : groupCounts) {
+                    for (const int64_t s1Outer : s1OuterSizes) {
+                        for (const int64_t s2Outer : s2OuterSizes) {
+                            for (const uint32_t coreCount : coreCounts) {
+                                DenseCorePartitionInput input;
+                                input.b = batchSize;
+                                input.n2 = headCount;
+                                input.g = groupCount;
+                                input.s1Outer = s1Outer;
+                                input.s2Outer = s2Outer;
+                                input.availableCoreCount = coreCount;
+                                const CorePartitionPlan expected =
+                                    BuildFrozenLegacyDenseCorePartition(variantId, input);
+                                const CorePartitionOutcome actual =
+                                    DenseCorePartitionPlanner::TryBuild(variantId, input);
+                                if (!actual.accepted) {
+                                    ++acceptanceMismatchCount;
+                                    continue;
+                                }
+                                planMismatchCount += expected.mode != actual.plan.mode;
+                                planMismatchCount += expected.activeCoreCount != actual.plan.activeCoreCount;
+                                planMismatchCount += expected.blockFactor != actual.plan.blockFactor;
+                                planMismatchCount += expected.totalWork != actual.plan.totalWork;
+                                int64_t previousEnd = 0;
+                                for (uint32_t coreIndex = 0; coreIndex < actual.plan.activeCoreCount; ++coreIndex) {
+                                    const WorkRange &expectedRange = expected.ranges[coreIndex];
+                                    const WorkRange &actualRange = actual.plan.ranges[coreIndex];
+                                    planMismatchCount += expectedRange.begin != actualRange.begin;
+                                    planMismatchCount += expectedRange.end != actualRange.end;
+                                    rangePropertyViolationCount += actualRange.begin != previousEnd;
+                                    rangePropertyViolationCount += actualRange.begin >= actualRange.end;
+                                    rangePropertyViolationCount += actualRange.end > actual.plan.totalWork;
+                                    previousEnd = actualRange.end;
+                                }
+                                rangePropertyViolationCount += previousEnd != actual.plan.totalWork;
+                                for (size_t coreIndex = actual.plan.activeCoreCount;
+                                     coreIndex < FAG_CORE_PARTITION_RANGE_CAPACITY; ++coreIndex) {
+                                    rangePropertyViolationCount += actual.plan.ranges[coreIndex].begin != 0;
+                                    rangePropertyViolationCount += actual.plan.ranges[coreIndex].end != 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(0U, acceptanceMismatchCount);
+    EXPECT_EQ(0U, planMismatchCount);
+    EXPECT_EQ(0U, rangePropertyViolationCount);
+}
+
+TEST(FagDenseCorePartitionPlanner, RejectsMissingCoresAndRangeCapacityOverflow)
+{
+    DenseCorePartitionInput input;
+    input.b = 1;
+    input.n2 = 1;
+    input.g = 1;
+    input.s1Outer = 10;
+    input.s2Outer = 10;
+
+    CorePartitionOutcome outcome = DenseCorePartitionPlanner::TryBuild(VariantId::BN2GS1S2, input);
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::CORE_PARTITION_UNAVAILABLE),
+              static_cast<uint32_t>(outcome.rejected.reason));
+
+    input.availableCoreCount = 100;
+    outcome = DenseCorePartitionPlanner::TryBuild(VariantId::BN2GS1S2, input);
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::CORE_RANGE_CAPACITY_EXCEEDED),
+              static_cast<uint32_t>(outcome.rejected.reason));
+    EXPECT_EQ(100, outcome.rejected.actual);
+    EXPECT_EQ(static_cast<int64_t>(FAG_CORE_PARTITION_RANGE_CAPACITY), outcome.rejected.expected);
+
+    outcome = DenseCorePartitionPlanner::TryBuild(VariantId::UNKNOWN, input);
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::CORE_PARTITION_UNAVAILABLE),
+              static_cast<uint32_t>(outcome.rejected.reason));
 }
 
 TEST(FagLegacyPolicyV1, FallbackSelectionPreservesCandidateRejectionHistory)
