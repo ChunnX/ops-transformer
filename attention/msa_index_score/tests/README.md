@@ -5,7 +5,7 @@
 `examples/test_aclnn_msa_index_score.cpp` 自包含 aclnn 调用 + CPU golden。
 
 ```bash
-# Atlas A2
+# Atlas A2/A3
 bash build.sh --pkg --soc=ascend910b --ops=msa_index_score -j32
 bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/tmp/msa_opp
 export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer

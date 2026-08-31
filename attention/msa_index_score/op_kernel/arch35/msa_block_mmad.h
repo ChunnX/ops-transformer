@@ -327,7 +327,7 @@ private:
             }
         } else {
             // 950 L0C→UB：nSize 上限 64。ndNum=2 用 panel 布局（QLI）：每 AIV 先 [M/2,64]
-            // 再紧接第二块 [M/2,64]，总 32KB ping。packed dstNdStride=64 实测后半没进同一行。
+            // 再紧接第二块 [M/2,64]，总 32KB ping。
             constexpr uint32_t N_PER_ND = 64;
             const uint32_t rowsPerAiv = mEven / MSA_AIV_PER_AIC;
             AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fp;
