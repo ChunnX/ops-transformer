@@ -253,13 +253,14 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
 
 void MhcPreBackwardTiling::SetC0TilingParams()
 {
+    // 两块M分组只在已验证的N=4满块规格启用；N=6/8或短T恢复单块，避免L1步长与实际shape不匹配。
+    const uint32_t c0MStep = (N_ == 4 && totalLength_ >= C0_SET_SHAPE_M) ? C0_M_STEP : C0_SET_VALUE;
     tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKa(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKb(C0_SET_VALUE);
-    // C0满块包含两个baseM，将A侧L1深度与M方向步长设为2以复用B侧数据。
-    tilingData_.matmulTilingC0.set_depthA1(C0_M_STEP);
+    tilingData_.matmulTilingC0.set_depthA1(c0MStep);
     tilingData_.matmulTilingC0.set_depthB1(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_stepM(C0_M_STEP);
+    tilingData_.matmulTilingC0.set_stepM(c0MStep);
     tilingData_.matmulTilingC0.set_stepN(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_baseM(C0_BASE_M);
     tilingData_.matmulTilingC0.set_baseN(C0_BASE_N);
