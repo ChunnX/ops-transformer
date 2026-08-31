@@ -19,10 +19,12 @@
 #if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #else
 #include "../../common/offset_calculator.h"
 #include "../../common/matmul.h"
+#include "../../common/const_def.h"
 #include "../../common/FixpipeOut.h"
 #endif
 #include "memory_copy_arch35.h"
@@ -33,14 +35,6 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace fa_base_matmul;
 using namespace AttentionCommon;
-
-// 静态布局成员偏移/大小推断（镜像 flash_attn_common_def.h:241-242；本算子自洽，避免跨算子宏依赖）
-#ifndef MLA_OFFSET_OF_MEMBER
-#define MLA_OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
-#endif
-#ifndef MLA_SIZE_OF_MEMBER
-#define MLA_SIZE_OF_MEMBER(TYPE, MEMBER) (sizeof(((TYPE *)0)->MEMBER))
-#endif
 
 namespace FlashAttnKernel {
 
@@ -171,11 +165,11 @@ public:
             uint8_t kvpBuffers[L1_KVP_BUFCNT][L1_KVP_BUF_BYTES];
         };
         static_assert(sizeof(L1Layout) <= 512 * 1024, "L1 buffer too large");
-        l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, 0U, MLA_SIZE_OF_MEMBER(L1Layout, qBuffers));
+        l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, 0U, SIZE_OF_MEMBER(L1Layout, qBuffers));
         // KV/P 区从 A1 72K 起；vec 写 P 的目标偏移必须与本布局逐字节一致（表 2 注 2）：
         //   l1KvpBuffers_[loop%3 * L1_KVP_BUF_BYTES] + s2BaseSize*dVBaseSize（rope 段）
-        l1KvpBuffers_ = LocalTensor<uint8_t>(TPosition::A1, L1_Q_BUFCNT * L1_Q_BUF_BYTES,
-                                             MLA_SIZE_OF_MEMBER(L1Layout, kvpBuffers));
+        l1KvpBuffers_ =
+            LocalTensor<uint8_t>(TPosition::A1, L1_Q_BUFCNT * L1_Q_BUF_BYTES, SIZE_OF_MEMBER(L1Layout, kvpBuffers));
 
         /*--------------------------------------------L0A/B--------------------------------------------*/
         l0aBufferManager_.Init(BUFFER_SIZE_BYTE_64K);
@@ -208,12 +202,10 @@ public:
                      constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
     }
 
-    __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
-                                       uint32_t headDim, GlobalTensor<uint32_t> actualSeqLengthsGmQ,
-                                       uint32_t actualLenQDims,
-                                       FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND>
-                                           &qGmTensor,
-                                       __gm__ uint8_t *gm)
+    __aicore__ inline void InitQBuffer(
+        uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize, uint32_t headDim,
+        GlobalTensor<uint32_t> actualSeqLengthsGmQ, uint32_t actualLenQDims,
+        FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND> &qGmTensor, __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
@@ -343,7 +335,8 @@ public:
         }
     }
 
-    __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, FlashMlaWithKvcacheRunInfoX &runInfo)
+    __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C,
+                                      FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -354,7 +347,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 1;         // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -452,7 +445,8 @@ public:
                 MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV, (uint32_t)runInfo.actSingleLoopS2Size,
                             false, false, true, true, 0, (uint32_t)runInfo.actMSize);
 
-            LocalTensor<KV_T> kvpL1Tensor = l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
+            LocalTensor<KV_T> kvpL1Tensor =
+                l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
             // A = P（本槽 rope 段，AIV vec1 写入，v1c2 旗标门控）；B = V（本槽 nope 段，即 K）
             MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
                 kvpL1Tensor[s2BaseSize * VDsize], kvpL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
