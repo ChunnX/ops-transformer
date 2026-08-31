@@ -65,7 +65,7 @@ TILING_DATA_FIELD_DEF(uint32_t, strideOutHead)
 TILING_DATA_FIELD_DEF(uint32_t, strideOutToken)
 TILING_DATA_FIELD_DEF(uint32_t, kScratchOffsetElems)
 TILING_DATA_FIELD_DEF(uint32_t, keyLayout) // MSA_KEY_LAYOUT_BBND / BNBD / TND
-TILING_DATA_FIELD_DEF(uint32_t, totalK)    // TND：key 第 0 维 T2；PA：0
+TILING_DATA_FIELD_DEF(uint32_t, totalK)    // TND：key 第 0 维 T2； PA：0
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(MsaIndexScore, MsaIndexScoreTilingData)
 
