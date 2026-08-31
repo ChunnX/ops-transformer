@@ -22,8 +22,8 @@
 namespace MegaMoeImpl {
 namespace MxQuant {
 
-__aicore__ inline void ComputeGroupMaxExp(__ubuf__ bfloat16_t *input, __ubuf__ uint16_t *maxExp,
-                                           uint32_t dataCount, uint16_t dataLoopCount)
+__aicore__ inline void ComputeGroupMaxExp(__ubuf__ bfloat16_t *input, __ubuf__ uint16_t *maxExp, uint32_t dataCount,
+                                          uint16_t dataLoopCount)
 {
     int64_t inputElementCountPerLoop = DATA_ELEMENT_COUNT_PER_LOOP;
     int64_t scaleElementCountPerLoop = SCALE_ELEMENT_COUNT_PER_DATA_LOOP;
@@ -40,12 +40,12 @@ __aicore__ inline void ComputeGroupMaxExp(__ubuf__ bfloat16_t *input, __ubuf__ u
             // DINTLV_B16 每轮消费两个 BF16 寄存器，第二次调用必须保留以推进剩余计数。
             dataMask1 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(dataCount);
             AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(
-                inputReg0, inputReg1, input, inputElementCountPerLoop);
-            AscendC::MicroAPI::And(exponentReg0, (AscendC::MicroAPI::RegTensor<uint16_t> &)inputReg0,
-                                   exponentMaskReg, dataMask0);
-            AscendC::MicroAPI::And(exponentReg1, (AscendC::MicroAPI::RegTensor<uint16_t> &)inputReg1,
-                                   exponentMaskReg, dataMask0);
+                                        AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(inputReg0, inputReg1, input,
+                                                                                      inputElementCountPerLoop);
+            AscendC::MicroAPI::And(exponentReg0, (AscendC::MicroAPI::RegTensor<uint16_t> &)inputReg0, exponentMaskReg,
+                                   dataMask0);
+            AscendC::MicroAPI::And(exponentReg1, (AscendC::MicroAPI::RegTensor<uint16_t> &)inputReg1, exponentMaskReg,
+                                   dataMask0);
             AscendC::MicroAPI::Max(maxExponentReg, exponentReg0, exponentReg1, dataMask0);
             AscendC::MicroAPI::ReduceMaxWithDataBlock(maxExponentReg, maxExponentReg, dataMask0);
             AscendC::MicroAPI::DataCopyUnAlign<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -57,8 +57,7 @@ __aicore__ inline void ComputeGroupMaxExp(__ubuf__ bfloat16_t *input, __ubuf__ u
 
 template <typename OutputType>
 __aicore__ inline void ComputeMxScale(__ubuf__ uint16_t *maxExp, __ubuf__ uint16_t *outputScale,
-                                       __ubuf__ uint16_t *reciprocalScale, uint32_t scaleCount,
-                                       uint16_t scaleLoopCount)
+                                      __ubuf__ uint16_t *reciprocalScale, uint32_t scaleCount, uint16_t scaleLoopCount)
 {
     const uint16_t outputMaxExponent = GetOutputMaxExponent<OutputType>();
     __VEC_SCOPE__
@@ -81,33 +80,27 @@ __aicore__ inline void ComputeMxScale(__ubuf__ uint16_t *maxExp, __ubuf__ uint16
             scaleMask = AscendC::MicroAPI::UpdateMask<uint16_t>(scaleCount);
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 maxExponentReg, maxExp, SCALE_ELEMENT_COUNT_PER_VECTOR);
-            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::NE>(
-                validExponentMask, maxExponentReg, exponentMaskReg, scaleMask);
-            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::NE>(
-                nonzeroMask, maxExponentReg, zeroReg, scaleMask);
-            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::LE>(
-                belowMaxExponentMask, maxExponentReg, outputMaxExponentReg, scaleMask);
-            AscendC::MicroAPI::Select<uint16_t>(
-                maxExponentReg, outputMaxExponentReg, maxExponentReg, belowMaxExponentMask);
+            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::NE>(validExponentMask, maxExponentReg,
+                                                                       exponentMaskReg, scaleMask);
+            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::NE>(nonzeroMask, maxExponentReg, zeroReg, scaleMask);
+            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::LE>(belowMaxExponentMask, maxExponentReg,
+                                                                       outputMaxExponentReg, scaleMask);
+            AscendC::MicroAPI::Select<uint16_t>(maxExponentReg, outputMaxExponentReg, maxExponentReg,
+                                                belowMaxExponentMask);
             AscendC::MicroAPI::Sub(sharedExponentReg, maxExponentReg, outputMaxExponentReg, scaleMask);
-            AscendC::MicroAPI::ShiftRights(
-                outputScaleReg, sharedExponentReg, BF16_EXPONENT_SHIFT, scaleMask);
-            AscendC::MicroAPI::Select<uint16_t>(
-                outputScaleReg, outputScaleReg, fp8NanReg, validExponentMask);
+            AscendC::MicroAPI::ShiftRights(outputScaleReg, sharedExponentReg, BF16_EXPONENT_SHIFT, scaleMask);
+            AscendC::MicroAPI::Select<uint16_t>(outputScaleReg, outputScaleReg, fp8NanReg, validExponentMask);
             AscendC::MicroAPI::Select<uint16_t>(outputScaleReg, outputScaleReg, zeroReg, nonzeroMask);
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
                                         AscendC::MicroAPI::StoreDist::DIST_PACK_B16>(
                 outputScale, outputScaleReg, SCALE_PACK_ELEMENT_COUNT, scaleMask);
-            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::EQ>(
-                specialExponentMask, sharedExponentReg, exponentBiasReg, scaleMask);
-            AscendC::MicroAPI::Sub(
-                reciprocalScaleReg, exponentBiasReg, sharedExponentReg, scaleMask);
-            AscendC::MicroAPI::Select<uint16_t>(
-                reciprocalScaleReg, reciprocalScaleReg, bf16NanReg, validExponentMask);
-            AscendC::MicroAPI::Select<uint16_t>(
-                reciprocalScaleReg, reciprocalScaleReg, zeroReg, nonzeroMask);
-            AscendC::MicroAPI::Select<uint16_t>(
-                reciprocalScaleReg, specialExponentReg, reciprocalScaleReg, specialExponentMask);
+            AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialExponentMask, sharedExponentReg,
+                                                                       exponentBiasReg, scaleMask);
+            AscendC::MicroAPI::Sub(reciprocalScaleReg, exponentBiasReg, sharedExponentReg, scaleMask);
+            AscendC::MicroAPI::Select<uint16_t>(reciprocalScaleReg, reciprocalScaleReg, bf16NanReg, validExponentMask);
+            AscendC::MicroAPI::Select<uint16_t>(reciprocalScaleReg, reciprocalScaleReg, zeroReg, nonzeroMask);
+            AscendC::MicroAPI::Select<uint16_t>(reciprocalScaleReg, specialExponentReg, reciprocalScaleReg,
+                                                specialExponentMask);
             AscendC::MicroAPI::DataCopy<uint16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 reciprocalScale, reciprocalScaleReg, SCALE_ELEMENT_COUNT_PER_VECTOR, scaleMask);
         }

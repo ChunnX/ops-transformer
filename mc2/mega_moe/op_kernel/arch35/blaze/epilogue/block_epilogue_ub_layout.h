@@ -51,8 +51,7 @@ __aicore__ constexpr inline ActivationMxQuantUbOffsets BuildActivationMxQuantUbO
     constexpr uint32_t activationOutputOffsetBytes = 0;
     constexpr uint32_t quantOutputOffsetBytes =
         activationOutputOffsetBytes + activationQuantElementCapacity * sizeof(bfloat16_t);
-    constexpr uint32_t quantScaleOffsetBytes =
-        quantOutputOffsetBytes + activationQuantElementCapacity * sizeof(int8_t);
+    constexpr uint32_t quantScaleOffsetBytes = quantOutputOffsetBytes + activationQuantElementCapacity * sizeof(int8_t);
     constexpr uint32_t scaleElementCapacity = activationQuantElementCapacity / AscendC::ONE_BLK_SIZE;
     constexpr uint32_t maxExpOffsetBytes = quantScaleOffsetBytes + scaleElementCapacity * sizeof(int8_t);
     constexpr uint32_t reciprocalScaleOffsetBytes = maxExpOffsetBytes + scaleElementCapacity * sizeof(uint16_t);
@@ -88,17 +87,14 @@ struct ActivationMxQuantUbPointers {
 
 template <typename InputType, uint32_t MaxSingleElementCount, bool IsInterleaved>
 __aicore__ inline ActivationMxQuantUbPointers<InputType> ResolveActivationMxQuantUbPointers(
-    __ubuf__ InputType *firstInputBase, __ubuf__ InputType *secondInputBase,
-    __ubuf__ bfloat16_t *activationOutputBase, __ubuf__ int8_t *quantOutputBase,
-    __ubuf__ uint16_t *quantScaleBase, __ubuf__ uint16_t *maxExpBase, __ubuf__ uint16_t *reciprocalScaleBase,
-    uint32_t validColumnCount, uint16_t pingpongIdx)
+    __ubuf__ InputType *firstInputBase, __ubuf__ InputType *secondInputBase, __ubuf__ bfloat16_t *activationOutputBase,
+    __ubuf__ int8_t *quantOutputBase, __ubuf__ uint16_t *quantScaleBase, __ubuf__ uint16_t *maxExpBase,
+    __ubuf__ uint16_t *reciprocalScaleBase, uint32_t validColumnCount, uint16_t pingpongIdx)
 {
     constexpr uint32_t pongElementOfInput = MaxSingleElementCount;
-    constexpr uint32_t pongElementOfBfloat16 =
-        MaxSingleElementCount * sizeof(InputType) / sizeof(bfloat16_t);
+    constexpr uint32_t pongElementOfBfloat16 = MaxSingleElementCount * sizeof(InputType) / sizeof(bfloat16_t);
     constexpr uint32_t pongElementOfInt8 = MaxSingleElementCount * sizeof(InputType);
-    constexpr uint32_t pongElementOfUint16 =
-        MaxSingleElementCount * sizeof(InputType) / sizeof(uint16_t);
+    constexpr uint32_t pongElementOfUint16 = MaxSingleElementCount * sizeof(InputType) / sizeof(uint16_t);
     const uint32_t pongMultiplier = (IsInterleaved && pingpongIdx == 1U) ? 1U : 0U;
 
     ActivationMxQuantUbPointers<InputType> pointers{};

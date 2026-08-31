@@ -172,12 +172,10 @@ private:
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M = TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
 
-    using BlockEpilogue =
-        BlockEpilogueActivationMxQuant<ActivationType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch,
-                                       GMM1_INTERLEAVED>;
+    using BlockEpilogue = BlockEpilogueActivationMxQuant<ActivationType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
+                                                         TopkWeightsPrefetch, GMM1_INTERLEAVED>;
     using SharedBlockEpilogue =
-        BlockEpilogueActivationMxQuant<ActivationType, bfloat16_t, L1_TILE_M_256, L1_TILE_N, false,
-                                       GMM1_INTERLEAVED>;
+        BlockEpilogueActivationMxQuant<ActivationType, bfloat16_t, L1_TILE_M_256, L1_TILE_N, false, GMM1_INTERLEAVED>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
