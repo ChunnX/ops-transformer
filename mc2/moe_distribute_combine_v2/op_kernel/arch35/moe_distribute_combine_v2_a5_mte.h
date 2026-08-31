@@ -891,6 +891,7 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Ch
     GM_ADDR flagBaseAddr, uint16_t blockCount, uint32_t flagFloatNum, uint32_t srcStrideBytes)
 {
     LocalTensor<float> flagTensor = rowTmpFloatBuf_.Get<float>();
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
     uint32_t processedBlockCount = 0U;
     uint32_t processedFlagNum = 0U;
     while (processedBlockCount < blockCount) {
