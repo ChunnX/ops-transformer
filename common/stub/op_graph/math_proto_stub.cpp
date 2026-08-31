@@ -78,21 +78,4 @@ REG_OP(Transpose)
     .REQUIRED_ATTR(type, Type)
     .ATTR(keep_dim, Bool, false)
     .OP_END_FACTORY_REG(Bitcast)
-
-        REG_OP(Add)
-    .INPUT(x1, TensorType({DT_BOOL, DT_FLOAT, DT_INT32, DT_INT64, DT_FLOAT16, DT_BF16, DT_INT16, DT_INT8, DT_UINT8,
-                           DT_DOUBLE, DT_COMPLEX128, DT_COMPLEX64, DT_STRING, DT_COMPLEX32}))
-    .INPUT(x2, TensorType({DT_BOOL, DT_FLOAT, DT_INT32, DT_INT64, DT_FLOAT16, DT_BF16, DT_INT16, DT_INT8, DT_UINT8,
-                           DT_DOUBLE, DT_COMPLEX128, DT_COMPLEX64, DT_STRING, DT_COMPLEX32}))
-    .OUTPUT(y, TensorType({DT_BOOL, DT_FLOAT, DT_INT32, DT_INT64, DT_FLOAT16, DT_BF16, DT_INT16, DT_INT8, DT_UINT8,
-                           DT_DOUBLE, DT_COMPLEX128, DT_COMPLEX64, DT_STRING, DT_COMPLEX32}))
-    .OP_END_FACTORY_REG(Add)
-
-        REG_OP(Reshape)
-    .INPUT(x, TensorType::ALL())
-    .INPUT(shape, TensorType({DT_INT32, DT_INT64}))
-    .OUTPUT(y, TensorType::ALL())
-    .ATTR(axis, Int, 0)
-    .ATTR(num_axes, Int, -1)
-    .OP_END_FACTORY_REG(Reshape)
 } // namespace ge

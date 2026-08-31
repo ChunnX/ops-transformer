@@ -14,7 +14,6 @@
 #include "es_MatmulAllReduce.h"
 #include "es_MatmulAllReduceAddRmsNorm.h"
 #include "es_InplaceMatmulAllReduceAddRmsNorm.h"
-#include "es_TransposeD.h"
 #include "es_math_ops.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_platform_info.h"
@@ -28,7 +27,6 @@ namespace {
 const std::string PASS_NAME = "MatmulAllReduceTransposeFusionPass";
 const std::string PASS_NAME_310P = "MatmulAllReduceTransposeFusion310PPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
-const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_BIAS = "HasBias";
 const std::string PATTERN_SCALE = "HasScale";
 const std::string PATTERN_OFFSET = "HasOffset";
@@ -48,11 +46,6 @@ const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
 
-enum class TransposeNode {
-    Transpose,
-    TransposeD
-};
-
 enum class Mc2OpKind {
     Mar,
     Arn,
@@ -67,7 +60,6 @@ struct OriginalGraphInfo {
     bool hasDequant = false; // 仅拓扑：canndev 非 A5 不吸 dequant，但有边时必须进 pattern 才能匹配
     bool scaleTranspose = false;
     bool offsetTranspose = false;
-    TransposeNode node = TransposeNode::Transpose;
 };
 
 struct ReplaceGraphInputs {
@@ -103,12 +95,7 @@ ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::
 {
     static EsTransposeFunc func = GetEsTransposeFunc();
     auto *builder = ge::es::ResolveBuilder(x, perm);
-    auto xHolder = x.ToTensorHolder(builder);
-    if (func == nullptr) {
-        OPS_LOG_E(PASS_NAME.c_str(), "EsTranspose is unavailable, fallback to TransposeD.");
-        return ge::es::TransposeD(xHolder, std::vector<int64_t>{1, 0});
-    }
-    return func(xHolder.GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
+    return func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
 }
 
 ge::CustomPassStage GetPassStage()
@@ -158,12 +145,9 @@ size_t GetPatternInputNum(const OriginalGraphInfo &info)
     return n;
 }
 
-ge::es::EsTensorHolder MakeTransposeNode(const OriginalGraphInfo &info, const ge::es::EsTensorHolder &x)
+ge::es::EsTensorHolder MakeTransposeNode(const ge::es::EsTensorHolder &x)
 {
-    if (info.node == TransposeNode::Transpose) {
-        return TransposeDL(x, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
-    }
-    return ge::es::TransposeD(x, std::vector<int64_t>{1, 0});
+    return TransposeDL(x, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
 }
 
 ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const OriginalGraphInfo &info)
@@ -174,7 +158,7 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
     } else if (info.opKind == Mc2OpKind::InplaceArn) {
         patternName += PATTERN_INPLACE_ARN;
     }
-    patternName += info.node == TransposeNode::Transpose ? PATTERN_TRANSPOSE : PATTERN_TRANSPOSE_D;
+    patternName += PATTERN_TRANSPOSE;
     if (info.hasBias) {
         patternName += PATTERN_BIAS;
     }
@@ -222,17 +206,17 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
         dequantScale = inputs[idx++];
     }
 
-    auto transposeX2 = MakeTransposeNode(info, x2);
+    auto transposeX2 = MakeTransposeNode(x2);
     ge::es::EsTensorHolder transposeScale = nullptr;
     ge::es::EsTensorHolder scaleIn = antiquantScale;
     if (info.scaleTranspose) {
-        transposeScale = MakeTransposeNode(info, antiquantScale);
+        transposeScale = MakeTransposeNode(antiquantScale);
         scaleIn = transposeScale;
     }
     ge::es::EsTensorHolder transposeOffset = nullptr;
     ge::es::EsTensorHolder offsetIn = antiquantOffset;
     if (info.offsetTranspose) {
-        transposeOffset = MakeTransposeNode(info, antiquantOffset);
+        transposeOffset = MakeTransposeNode(antiquantOffset);
         offsetIn = transposeOffset;
     }
 
@@ -283,11 +267,9 @@ std::vector<ge::fusion::PatternUniqPtr> BuildAllPatterns(const std::string &pass
                                 continue;
                             }
                             for (bool hasDequant : {false, true}) {
-                                for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
-                                    OriginalGraphInfo info{opKind,     hasBias,        hasScale,        hasOffset,
-                                                           hasDequant, scaleTranspose, offsetTranspose, node};
-                                    patternGraphs.emplace_back(MakePattern(passName, info));
-                                }
+                                OriginalGraphInfo info{opKind,     hasBias,        hasScale,       hasOffset,
+                                                       hasDequant, scaleTranspose, offsetTranspose};
+                                patternGraphs.emplace_back(MakePattern(passName, info));
                             }
                         }
                     }
@@ -322,17 +304,6 @@ size_t GetExpectedSubgraphInputNum(const std::string &patternNameStr)
 
 bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t> &permValue)
 {
-    ge::AscendString nodeType("");
-    transposeNode.GetType(nodeType);
-    std::string nodeTypeStr = nodeType.GetString();
-    if (nodeTypeStr == PATTERN_TRANSPOSE_D) {
-        if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_W(PASS_NAME.c_str(), "Get perm Attr from TransposeD node failed.");
-            return false;
-        }
-        return !permValue.empty();
-    }
-
     ge::TensorDesc permDesc;
     transposeNode.GetInputDesc(TRANSPOSE_PERM_IDX, permDesc);
     ge::Shape permShape = permDesc.GetShape();

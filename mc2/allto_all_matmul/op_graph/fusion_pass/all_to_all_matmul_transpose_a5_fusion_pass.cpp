@@ -12,7 +12,6 @@
 
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_AlltoAllMatmul.h" // es autogen header
-#include "es_TransposeD.h"     // es autogen header for stub op
 #include "es_math_ops.h"       // math ops stub
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
@@ -23,7 +22,6 @@
 namespace ops {
 const std::string FUSION_PASS_NAME = "AllToAllMatmulTransposeA5FusionPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
-const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_BIAS = "HasBias";
 const std::string PATTERN_SCALE = "HasScale"; // MX：scale 固定进 pattern，仅写入名字便于区分
 const std::string PATTERN_BITCAST = "X2Bitcast";
@@ -42,15 +40,9 @@ const size_t PERM_SIZE_THREE = 3;
 // Pattern 中 Bitcast 的 type 仅占位；默认 matcher 不校验 IR attr，Replacement 用真实 MC2 输入 dtype
 const ge::DataType BITCAST_PATTERN_DTYPE = ge::DT_HIFLOAT8;
 
-enum class TransposeNode {
-    Transpose,
-    TransposeD
-};
-
 struct OriginalGraphInfo {
     bool hasBias = false;
     bool hasBitcast = false; // true：Transpose → Bitcast → x2
-    TransposeNode node = TransposeNode::Transpose;
 };
 
 struct ReplaceGraphInputs {
@@ -88,12 +80,7 @@ ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::
 {
     static EsTransposeFunc func = GetEsTransposeFunc();
     auto *builder = ge::es::ResolveBuilder(x, perm);
-    auto xHolder = x.ToTensorHolder(builder);
-    if (func == nullptr) {
-        OPS_LOG_E("AllToAllMatmulTransposeA5FusionPass", "EsTranspose is unavailable, fallback to TransposeD.");
-        return ge::es::TransposeD(xHolder, std::vector<int64_t>{1, 0});
-    }
-    auto result = func(xHolder.GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
+    auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
     return result;
 }
 
@@ -120,7 +107,7 @@ static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const
 static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
 {
     std::string patternName = FUSION_PASS_NAME;
-    patternName += info.node == TransposeNode::Transpose ? PATTERN_TRANSPOSE : PATTERN_TRANSPOSE_D;
+    patternName += PATTERN_TRANSPOSE;
     if (info.hasBias) {
         patternName += PATTERN_BIAS;
     }
@@ -143,12 +130,7 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
     auto x1Scale = inputs[idx++];
     auto x2Scale = inputs[idx++];
 
-    ge::es::EsTensorHolder transpose;
-    if (info.node == TransposeNode::Transpose) {
-        transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
-    } else {
-        transpose = ge::es::TransposeD(x2, std::vector<int64_t>{1, 0});
-    }
+    auto transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
     auto x2In = MaybeBitcastAfterTranspose(info.hasBitcast, transpose);
 
     const char *group = "";
@@ -184,17 +166,6 @@ static bool IsMXQuantMode(const std::unique_ptr<ge::fusion::MatchResult> &matchR
 
 static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t> &permValue)
 {
-    ge::AscendString nodeType("");
-    transposeNode.GetType(nodeType);
-    std::string nodeTypeStr = nodeType.GetString();
-    if (nodeTypeStr == PATTERN_TRANSPOSE_D) {
-        if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get perm Attr from TransposeD node failed.");
-            return false;
-        }
-        return !permValue.empty();
-    }
-
     ge::TensorDesc permDesc;
     transposeNode.GetInputDesc(TRANSPOSE_PERM_IDX, permDesc);
     ge::Shape permShape = permDesc.GetShape();
@@ -497,13 +468,11 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Patterns for AllToAllMatmulTransposeA5FusionPass");
-    // ES：排列 hasBias × hasBitcast × Transpose/TransposeD；MX scale 固定 → 共 8 种
+    // ES：排列 hasBias × hasBitcast；MX scale 固定 → 共 4 种
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     for (bool hasBias : {false, true}) {
         for (bool hasBitcast : {false, true}) {
-            for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
-                patternGraphs.emplace_back(MakePattern({hasBias, hasBitcast, node}));
-            }
+            patternGraphs.emplace_back(MakePattern({hasBias, hasBitcast}));
         }
     }
     return patternGraphs;

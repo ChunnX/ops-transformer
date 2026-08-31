@@ -12,7 +12,6 @@
 
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_AlltoAllvQuantGroupedMatMul.h" // es autogen header
-#include "es_TransposeD.h"                  // es autogen header for stub op
 #include "es_math_ops.h"                    // math ops stub
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
@@ -23,7 +22,6 @@
 namespace ops {
 const std::string FUSION_PASS_NAME = "AlltoAllvQuantGroupedMatMulTransposeFusionPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
-const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_HAS_MM = "HasMm";
 const std::string PATTERN_GMM_WEIGHT_TRANSPOSE = "GmmWeightTranspose";
 const std::string PATTERN_GMM_WEIGHT_SCALE_TRANSPOSE = "GmmWeightScaleTranspose";
@@ -48,11 +46,6 @@ const size_t PERM_SIZE_FOUR = 4;
 // Pattern 中 Bitcast 的 type 仅占位；默认 matcher 不校验 IR attr，Replacement 用真实 MC2 输入 dtype
 const ge::DataType BITCAST_PATTERN_DTYPE = ge::DT_HIFLOAT8;
 
-enum class TransposeNode {
-    Transpose,
-    TransposeD
-};
-
 enum class WeightTransposePort {
     GmmWeight,
     GmmWeightScale,
@@ -64,7 +57,6 @@ enum class WeightTransposePort {
 // - hasMm：可选 mm 路径
 // - 四路 weight/scale 是否挂 Transpose（至少一路）
 // - 对应口是否为 Transpose→Bitcast→MC2（仅 Transpose=true 时可开）
-// - Transpose / TransposeD
 struct OriginalGraphInfo {
     bool hasMm = false;
     bool gmmWeightTranspose = false;
@@ -75,7 +67,6 @@ struct OriginalGraphInfo {
     bool gmmWeightScaleBitcast = false;
     bool mmWeightBitcast = false;
     bool mmWeightScaleBitcast = false;
-    TransposeNode node = TransposeNode::Transpose;
 };
 
 struct ReplaceGraphInputs {
@@ -113,13 +104,7 @@ ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::
 {
     static EsTransposeFunc func = GetEsTransposeFunc();
     auto *builder = ge::es::ResolveBuilder(x, perm);
-    auto xHolder = x.ToTensorHolder(builder);
-    if (func == nullptr) {
-        OPS_LOG_E("AlltoAllvQuantGroupedMatMulTransposeFusionPass",
-                  "EsTranspose is unavailable, fallback to TransposeD.");
-        return ge::es::TransposeD(xHolder, std::vector<int64_t>{1, 0});
-    }
-    auto result = func(xHolder.GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
+    auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
     return result;
 }
 
@@ -139,12 +124,9 @@ static size_t GetPatternInputNum(const OriginalGraphInfo &info)
     return info.hasMm ? INPUT_NUM_HAS_MM : INPUT_NUM_NO_MM;
 }
 
-static ge::es::EsTensorHolder MakeTransposeNode(const OriginalGraphInfo &info, const ge::es::EsTensorHolder &x)
+static ge::es::EsTensorHolder MakeTransposeNode(const ge::es::EsTensorHolder &x)
 {
-    if (info.node == TransposeNode::Transpose) {
-        return TransposeDL(x, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
-    }
-    return ge::es::TransposeD(x, std::vector<int64_t>{1, 0});
+    return TransposeDL(x, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
 }
 
 static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const ge::es::EsTensorHolder &transposed)
@@ -159,7 +141,7 @@ static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const
 static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
 {
     std::string patternName = FUSION_PASS_NAME;
-    patternName += info.node == TransposeNode::Transpose ? PATTERN_TRANSPOSE : PATTERN_TRANSPOSE_D;
+    patternName += PATTERN_TRANSPOSE;
     if (info.hasMm) {
         patternName += PATTERN_HAS_MM;
     }
@@ -212,28 +194,28 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
     ge::es::EsTensorHolder transposeGmmWeight = nullptr;
     ge::es::EsTensorHolder gmmWeightIn = gmmWeight;
     if (info.gmmWeightTranspose) {
-        transposeGmmWeight = MakeTransposeNode(info, gmmWeight);
+        transposeGmmWeight = MakeTransposeNode(gmmWeight);
         gmmWeightIn = MaybeBitcastAfterTranspose(info.gmmWeightBitcast, transposeGmmWeight);
     }
 
     ge::es::EsTensorHolder transposeGmmWeightScale = nullptr;
     ge::es::EsTensorHolder gmmWeightScaleIn = gmmWeightScale;
     if (info.gmmWeightScaleTranspose) {
-        transposeGmmWeightScale = MakeTransposeNode(info, gmmWeightScale);
+        transposeGmmWeightScale = MakeTransposeNode(gmmWeightScale);
         gmmWeightScaleIn = MaybeBitcastAfterTranspose(info.gmmWeightScaleBitcast, transposeGmmWeightScale);
     }
 
     ge::es::EsTensorHolder transposeMmWeight = nullptr;
     ge::es::EsTensorHolder mmWeightIn = mmWeight;
     if (info.mmWeightTranspose) {
-        transposeMmWeight = MakeTransposeNode(info, mmWeight);
+        transposeMmWeight = MakeTransposeNode(mmWeight);
         mmWeightIn = MaybeBitcastAfterTranspose(info.mmWeightBitcast, transposeMmWeight);
     }
 
     ge::es::EsTensorHolder transposeMmWeightScale = nullptr;
     ge::es::EsTensorHolder mmWeightScaleIn = mmWeightScale;
     if (info.mmWeightScaleTranspose) {
-        transposeMmWeightScale = MakeTransposeNode(info, mmWeightScale);
+        transposeMmWeightScale = MakeTransposeNode(mmWeightScale);
         mmWeightScaleIn = MaybeBitcastAfterTranspose(info.mmWeightScaleBitcast, transposeMmWeightScale);
     }
 
@@ -269,7 +251,7 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
 std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusionPass::Patterns()
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Patterns for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
-    // hasMm × 四路 Transpose（至少一路）× 对应 Bitcast（仅 Transpose 口）× Transpose/TransposeD
+    // hasMm × 四路 Transpose（至少一路）× 对应 Bitcast（仅 Transpose 口）
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     for (bool hasMm : {false, true}) {
         for (bool gmmWeightTranspose : {false, true}) {
@@ -307,12 +289,8 @@ std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusi
                                                                gmmWeightBitcast,
                                                                gmmWeightScaleBitcast,
                                                                mmWeightBitcast,
-                                                               mmWeightScaleBitcast,
-                                                               TransposeNode::Transpose};
-                                        for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
-                                            info.node = node;
-                                            patternGraphs.emplace_back(MakePattern(info));
-                                        }
+                                                               mmWeightScaleBitcast};
+                                        patternGraphs.emplace_back(MakePattern(info));
                                     }
                                 }
                             }
@@ -327,17 +305,6 @@ std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusi
 
 static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t> &permValue)
 {
-    ge::AscendString nodeType("");
-    transposeNode.GetType(nodeType);
-    std::string nodeTypeStr = nodeType.GetString();
-    if (nodeTypeStr == PATTERN_TRANSPOSE_D) {
-        if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get perm Attr from TransposeD node failed.");
-            return false;
-        }
-        return !permValue.empty();
-    }
-
     ge::TensorDesc permDesc;
     transposeNode.GetInputDesc(TRANSPOSE_PERM_IDX, permDesc);
     ge::Shape permShape = permDesc.GetShape();
