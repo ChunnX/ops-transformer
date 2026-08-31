@@ -423,8 +423,8 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
-// A8W4 的 Activation/SwiGLU 会覆盖 AIV1 UB 0 开始的 prefix 表。每次 Dispatch WAVE 前，
-// 从当前物理 block 的 GM 备份恢复“首专家前缀 + WAVE 覆盖的全部专家前缀”。
+// W4 的 Activation/SwiGLU 会覆盖 AIV1 UB 0 开始的 prefix 表。Dispatch 前从当前物理
+// block 的 GM 备份恢复“首专家前缀 + 本次覆盖的专家前缀”。
 template <typename ActivationType>
 __aicore__ inline void ReloadWaveDispatchCumsumRange(const MoeStageCommonConfig &common,
                                                      TokenDispatchScratch<ActivationType> &scratch,
@@ -453,7 +453,61 @@ __aicore__ inline void ReloadWaveDispatchCumsumRange(const MoeStageCommonConfig 
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 }
 
-// 三条 WAVE 路径的唯一 Dispatch 入口：先确定完整 WAVE，再统一按全局连续 row 分核并发送。
+// 发送当前 WAVE 中一个专家的 slice，并推进 Dispatch 位置与 WAVE group 计数。
+// 返回 true 表示本 WAVE 仍有 Dispatch 工作；空专家会在本次调用内跳过。
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
+          bool NeedCumsumReload = false>
+__aicore__ inline bool DispatchWaveExpertSliceAndAdvance(
+    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
+    const BlockWorkspaceContext &countWorkspace, const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+    GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch, ExpertTokenPosition &dispatchPosition,
+    uint32_t mGroupsPerWave, uint32_t &processedMGroupCount)
+{
+    if constexpr (g_coreType == AIC) {
+        return false;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return false;
+    }
+
+    uint32_t expertTokenCount = 0U;
+    while (dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave) {
+        expertTokenCount = GetExpertTokenCountFromWorkspace(params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace,
+                                                            common.moeExpertPerRank, dispatchPosition.expertIdx);
+        if (expertTokenCount != 0U && dispatchPosition.tokenIndexInExpert < expertTokenCount) {
+            break;
+        }
+        ++dispatchPosition.expertIdx;
+        dispatchPosition.tokenIndexInExpert = 0U;
+    }
+    if (dispatchPosition.expertIdx >= common.moeExpertPerRank || processedMGroupCount >= mGroupsPerWave) {
+        return false;
+    }
+
+    ExpertTokenPosition sliceBeginPosition = dispatchPosition;
+    AdvanceExpertTokenPositionInWave<PipelineTileM>(expertTokenCount, mGroupsPerWave, processedMGroupCount,
+                                                    dispatchPosition);
+    uint32_t sliceGlobalRowBegin =
+        static_cast<uint32_t>(sliceBeginPosition.globalTokenIndex < context.maxOutputSize ?
+                                  sliceBeginPosition.globalTokenIndex :
+                                  context.maxOutputSize);
+    uint32_t sliceGlobalRowEnd =
+        static_cast<uint32_t>(dispatchPosition.globalTokenIndex < context.maxOutputSize ?
+                                  dispatchPosition.globalTokenIndex :
+                                  context.maxOutputSize);
+    if (sliceGlobalRowEnd > sliceGlobalRowBegin) {
+        if constexpr (NeedCumsumReload) {
+            ReloadWaveDispatchCumsumRange(common, scratch, sliceBeginPosition.expertIdx,
+                                          sliceBeginPosition.expertIdx);
+        }
+        RunWaveDispatchStage<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+            context, common, blockJob, syncLayout, params, winRankAddr, scratch, sliceBeginPosition.expertIdx,
+            sliceGlobalRowBegin, sliceGlobalRowEnd - sliceGlobalRowBegin);
+    }
+    return dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave;
+}
+
+// A8W8 与启动阶段的整 WAVE Dispatch 入口：先确定完整 WAVE，再按全局连续 row 分核并发送。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
           bool NeedCumsumReload = false>
 __aicore__ inline ExpertTokenPosition DispatchWaveAndGetEndPosition(
