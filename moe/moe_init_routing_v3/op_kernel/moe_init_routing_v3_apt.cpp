@@ -165,17 +165,12 @@
 /*
  * CountingSort 性能模板（计数排序）
  */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 400000   // 模板1、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 410000   // 模板1、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 411000 // 模板1、非量化、SCATTER
 #define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED 500000  // 模板2、非量化、GATHER
 #define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT 510000 // 模板2、静态量化、GATHER
-// rowIdxType=1(Scatter) 变体：base + ROWIDX_TYPE_TILINGKEY_BASE(1000)。
-// kernel 内部按运行时 rowIdxType_ 分流(GATHER/SCATTER)，此处枚举 key 仅为让编译系统生成对应 binary。
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 401000   // 模板1、非量化、SCATTER
 #define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S 501000  // 模板2、非量化、SCATTER
 #define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S 511000 // 模板2、静态量化、SCATTER
-// dropPadMode=1 变体：base + DROP_MODE_TILINGKEY_BASE(100)。
-// 算子契约(ValidateQuantMode/ValidateRowIdxType)强制 dropPad => quant_mode=-1 且 GATHER，
-// 因此仅非量化 GATHER 的 dropPad key 可达。
 #define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D 500100 // 模板2、非量化、GATHER、dropPad
 
 #define EMPTY_TENSOR 3000000
@@ -190,6 +185,7 @@
 #define PERF_STAGE5_ENABLE 0
 #define PERF_STAGE3_ENABLE 0
 #define PERF_STAGE2_ENABLE 0
+
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -352,12 +348,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     }
 
     // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
-    // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化/静态量化场景（dynamic 已被 tiling IsCountingSortApplicable 排除），
-    // 其余扩展类型（fp8/fp4/hifloat8/int8 X 等）回退到原分阶段路径。
+    // 类型守卫：全载模板仅承接 X∈{bf16,fp16,fp32,int8} 的非量化场景，其余扩展类型回退到原分阶段路径。
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float>::value) {
+                      IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
             MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
             csOp.Init(x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
@@ -460,13 +455,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     sortPipe.Destroy();
 
     // 2.TokensCount阶段，计算输出expertTokensCountOrCumsum
-#if PERF_STAGE2_ENABLE
     TPipe histogramPipe;
     ExpertTokensCount countOp;
     countOp.Init(expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &histogramPipe);
     countOp.Process();
     histogramPipe.Destroy();
-#endif
 
     // 3.若rowIdxType=0(Gather)，映射计算输出expandedRowIdx；否则该输出在阶段1就被写出
     // GATHER模式：直接调用RowIdxGather生成expandedRowIdx

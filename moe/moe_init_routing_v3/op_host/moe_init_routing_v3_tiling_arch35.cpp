@@ -2160,13 +2160,20 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortFullLoadTiling()
 
 void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
 {
-    // 迁移 A3 MoeV3CutOriginT：镜像 A3 ComputeCountingSortCutOriginTiling 的 UB 推导，
-    // 启用真列切分（csColsLoops > 1 大列分多轮搬运），量化差异编译进 kernel 运行时 quantMode_ 分支。
-    // 与 A3 对齐的三点关键语义：
-    //   1) UB 预算 = availUbSize_（已扣 SIMT DCache 64KB，等价 A3 aicoreParams_.ubSize 口径）
-    //   2) 持久区 + Max(PhaseA, PhaseB, PhaseC) 布局，Phase B 恒用 192KB 预算（kernel 硬编码 196608）
-    //   3) 真列切分仅限 UNQUANT：csColsLoops>1 && quantMode_!=UNQUANT → 整体回退（countingSortMode=0，
-    //      走原分阶段路径），与 A3 L960 countingSortFullLoad_=-1 等价。
+    // 计数排序非全载（CutOrigin）模式 tiling。对应 kernel 模板：
+    //   op_kernel/arch35/moe_v3_counting_sort_unfull_load.h（MoeV3CutOriginPhaseAB）。
+    // 该模板将原 CutOrigin 单类拆为 Phase A（Filter+Count）→ Phase B（Offset+离散搬出+bridge 产物）
+    // 在单 Process 内串行执行；Phase C（搬 x / 量化）由既有 Stage3/Stage5 承接。
+    //
+    // UB 布局（kernel Init 自算，host 推导需 >= kernel 实占）：
+    //   totalUB = persistentSize + Max(phaseASize, phaseBSize, phaseCSize)
+    //   - 持久区：expertCountLocal（Phase A→B 存活，跨阶段不释放）
+    //   - Phase A/B/C 各自 temp 区永不同时存活，共享持久区之后的同一段 UB
+    //
+    // 三点关键约束（与 kernel 严格一致，改动任一处需同步 kernel）：
+    //   1) UB 预算 = availUbSize_（已扣 SIMT DCache 64KB）
+    //   2) Phase B batchBuf 按 kernel 硬编码的 196608（192KB）预算封顶
+    //   3) 真列切分（csColsLoops>1）仅限 UNQUANT，否则整体回退到原分阶段路径
     auto *cs = &tilingDataPtr_->countingSortParamsOp;
     cs->countingSortMode = 2;
 
@@ -2177,40 +2184,56 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     int64_t actualExpertNum = expertEnd_ - expertStart_;
     int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, CS_ONE_BLOCK_ELEMENT);
 
-    // ---- A3 Phase A/B 镜像（kernel Init 自算，host 需 >= kernel 实占）----
+    // =====================================================================
+    // Phase A/B 镜像推导（kernel Init 自算，host 需 >= kernel 实占）
+    // =====================================================================
     int64_t chunkAligned = Ops::Base::CeilAlign(CS_FILTER_CHUNK_SIZE, CS_ONE_BLOCK_ELEMENT);
-    // 持久区：expertCountLocal（Phase A→B 存活）+ shortPath gathered 双区（coreEntries<=2048 && ep_==1）
+
+    // ---- 持久区 ----
+    // 仅 expertCountLocal（Phase A→B 存活）。kernel 已删除 shortPath 分支：
+    // gatheredExpert/gatheredIdx 恒计入 Phase A temp（已拆分为 GM 路径），
+    // persistentSize 不含 shortPath 双区。
     int64_t persistentSize = Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)),
                                                   UB_BLOCK_SIZE);
-    if (coreEntries <= 2048 && ep_ == 1) {
-        persistentSize += Ops::Base::CeilAlign(2048 * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    }
-    // Phase A：chunked filtering（expertIdxLocal + expertIdxFp32Local + 3 mask + flatIdxBuffer + gatheredExpert/gatheredIdx）
+
+    // ---- Phase A temp：分块过滤 ----
+    // expertIdxLocal + expertIdxFp32Local + 3 mask(compareMask0/1+gatherMask)
+    //   + flatIdxBufferLocal(单份) + gatheredExpert/gatheredIdx(恒计入*2)
     int64_t phaseASize = Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
     int64_t maskBytesA = Ops::Base::CeilAlign(
         Ops::Base::CeilDiv(chunkAligned, static_cast<int64_t>(8)), static_cast<int64_t>(sizeof(int8_t)));
     phaseASize += maskBytesA * NUM_THREE;
-    phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
-    if (coreEntries > 2048 || ep_ == 0) {
-        // 非 shortPath 时 gatheredExpert/gatheredIdx 计入 Phase A（kernel 同条件分支）
-        phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)),
-                                           UB_BLOCK_SIZE);
-    }
-    // Phase B：batchBuf 按 kernel 公式（196608 预算）封顶，仅校验总量
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)),
+                                       UB_BLOCK_SIZE);
+
+    // ---- Phase B temp：全局 offset + 离散搬出 + bridge 产物 ----
+    // 布局：totalCount + prefixSum(2*expertCountAlign) + batchBuf + scatter temp
     int64_t expertCountAlign =
         Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // batchBuf 按 kernel 硬编码 196608 预算封顶（fixedOverhead = persistentSize + 2*expertCountAlign）
     int64_t maxBatchBufSize = static_cast<int64_t>(196608) - persistentSize - NUM_TWO * expertCountAlign - LENGTH_1024;
     int64_t allCoresBufSize =
         Ops::Base::CeilAlign(needCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     int64_t batchBufSize = std::min(allCoresBufSize, std::max(maxBatchBufSize, expertCountAlign));
     int64_t phaseBSize = NUM_TWO * expertCountAlign + batchBufSize;
-    // expertTokensLocal 复用 prefixSum+batchBuf（kernel 偏移 = prefixSumLocalOffset_），按 COUNT 上界计入 Phase B
+    // scatter temp：离散搬出 flatIdx+expertIdx batch（pairsBatchSlot*2）+ idxBuf(UB_BLOCK_SIZE)。
+    // pairsBatchElements_=2048 为 kernel 硬编码；scatter 区在 batchBuf 之后，
+    // 与 totalCount/prefixSum/batchBuf 不重叠，必须计入 Phase B 总量。
+    int64_t pairsBatchSlot = Ops::Base::CeilAlign(2048 * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    int64_t scatterTempSize = pairsBatchSlot * NUM_TWO + UB_BLOCK_SIZE;
+    phaseBSize += scatterTempSize;
+    // expertTokensLocal 复用 prefixSum+batchBuf（kernel expertTokensLocalOffset_ = prefixSumLocalOffset_），
+    // 按 COUNT 上界（actualExpertNum * int64）取 Max，确保复用区容量足够。
     phaseBSize = std::max(phaseBSize, static_cast<int64_t>(NUM_TWO) * expertCountAlign +
                                           Ops::Base::CeilAlign(actualExpertNum * static_cast<int64_t>(sizeof(int64_t)),
                                                                UB_BLOCK_SIZE));
 
-    // ---- Phase C：真列切分（A3 算法）----
+    // =====================================================================
+    // Phase C：真列切分（搬 x / 量化，A3 算法）
+    // =====================================================================
+    // Phase C 可用预算 = 总预算 - 持久区 - 1 个 UB_BLOCK_SIZE 对齐裕量
     int64_t phaseCBudget = availUbSize_ - persistentSize - UB_BLOCK_SIZE;
     // 固定开销（与 perLoopCols 无关）：pairsBuf(2048*2*4) + idxBuf(32B)
     int64_t phaseCFixedOverhead = Ops::Base::CeilAlign(2048 * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)),
@@ -2244,8 +2267,8 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     int64_t csPerLoopColsAligned =
         Ops::Base::CeilDiv(csPerLoopCols * inputXDtypeSize_, UB_BLOCK_SIZE) * UB_BLOCK_SIZE / inputXDtypeSize_;
 
-    // A3 回退规则：多列循环 + 非 unquant 不支持 → 整体回退（dynamic 已被 IsCountingSortApplicable 排除，
-    // 实际拦截的是 static + 大列场景）
+    // 回退规则：多列循环 + 非 unquant 不支持 → 整体回退（countingSortMode=0，走原分阶段路径）。
+    // dynamic 量化已被 IsCountingSortApplicable 排除，此处实际拦截 static + 大列场景。
     if (csColsLoops > 1 && quantMode_ != QUANT_MODE_UNQUANT) {
         cs->countingSortMode = 0;
         return;
@@ -2260,12 +2283,17 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
             Ops::Base::CeilAlign(csPerLoopColsAligned * static_cast<int64_t>(sizeof(int8_t)), UB_BLOCK_SIZE) * NUM_TWO;
         phaseCSize += UB_BLOCK_SIZE;
     }
+
+    // ---- UB 总量校验：持久区 + Max(PhaseA, PhaseB, PhaseC) ----
     int64_t totalUB = persistentSize + std::max({phaseASize, phaseBSize, phaseCSize});
     if (totalUB > availUbSize_) {
         cs->countingSortMode = 0;
         return;
     }
 
+    // =====================================================================
+    // 下发 tiling 参数
+    // =====================================================================
     cs->filterNeedCoreNum = needCoreNum;
     cs->filterPerCoreTokens = perCoreTokens;
     cs->lastCoreTokens = lastCoreTokens;
@@ -2277,10 +2305,14 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     cs->csColsLoops = csColsLoops;
     cs->csLastLoopCols = csLastLoopCols;
     cs->maxPerLoopEntries = CS_FILTER_CHUNK_SIZE;
-    // CutOrigin 拆分 workspace：pairs/expertCount 区后移到 meta 区之后（pairsWsOffset），
-    // 避免与硬编码消费者偏移重叠：sortedRowIdx（ws+Align(n*k)）、expertTotalCount/expertIdxValue
-    // （ws+2*Align(n*k)+Align(actualExpertNum)）、expandedExpertIdx（ws 起始）。
-    // metaBase = 2*Align(n*k,4) + Align(actualExpertNum,4)（int32 元素）；再为 expertIdxValue 预留 2*coreNum 元素。
+
+    // workspace 布局：pairs/expertCount 区后移到 meta 区之后（pairsWsOffset），
+    // 避免与硬编码消费者偏移重叠：
+    //   - sortedRowIdx（ws + Align(n*k)）
+    //   - expertTotalCount / expertIdxValue（ws + 2*Align(n*k) + Align(actualExpertNum)）
+    //   - expandedExpertIdx（ws 起始，dropPad 专用）
+    // metaBase = 2*Align(n*k,4) + Align(actualExpertNum,4)（int32 元素）；
+    // 再为 expertIdxValue 预留 2*coreNum 元素。
     int64_t metaBase = Align(n_ * k_, static_cast<int64_t>(sizeof(int32_t))) * NUM_TWO +
                        Align(actualExpertNum, static_cast<int64_t>(sizeof(int32_t)));
     cs->pairsWsOffset = metaBase +
