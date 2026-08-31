@@ -56,7 +56,10 @@ static bool ApplyTranspose(size_t index, bool enableTranspose, ge::DataType data
                            std::vector<int64_t> &viewShape, std::vector<int64_t> &strides)
 {
     if (index == INDEX_INPUT_SCALE1 && dataType_ge == ge::DataType::DT_FLOAT8_E8M0 && enableTranspose) {
-        OP_CHECK_IF(viewShape.size() < 3, OP_LOGE("aclnnfallback", "Mx tpyek wrong pertokenscale size"), return false);
+        OP_CHECK_IF(viewShape.size() < 3,
+                    OP_LOGE("aclnnfallback",
+                            "Mx type: wrong perTokenScale size, dim num should be greater than or equal to 3."),
+                    return false);
         auto swap = viewShape[0];
         viewShape[0] = viewShape[1];
         viewShape[1] = swap;
