@@ -64,6 +64,8 @@ option(CATCCOS_UDMA_MSSANITIZER
     "Build Ascend950 device kernels with source-line information for msSanitizer" OFF)
 option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS
     "Compile device-side printf diagnostics (never enable for performance delivery)" OFF)
+option(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+    "Compile the validation-only GMM-AllToAllV A/B/C/D root-cause matrix" OFF)
 set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "")
 if(CATCCOS_UDMA_MSSANITIZER)
     # Ascend 950 does not support --cce-enable-sanitizer/--sanitizer. Those
@@ -85,6 +87,14 @@ if(CATCCOS_UDMA_DEVICE_DIAGNOSTICS)
         "Enable device printf diagnostics; this Wheel is not valid for performance measurement")
 else()
     message(STATUS "Disable AscendC device Dump/printf in the production Wheel")
+endif()
+set(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG
+    "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=0")
+if(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE)
+    set(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG
+        "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1")
+    message(WARNING
+        "Enable validation-only GMM-AllToAllV root-cause kernels; do not use this Wheel for performance delivery")
 endif()
 if(NOT NPU_SOC_VERSION STREQUAL "ascend950")
     message(FATAL_ERROR "CatCCOS UDMA operators currently support only NPU_SOC_VERSION=ascend950")
@@ -216,6 +226,7 @@ set(COMPILE_OPTIONS
     -DCATLASS_ARCH=3510
     -DL2_CACHE_HINT
     -DTORCH_MODE
+    ${CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG}
 )
 
 set(OBJECTS_LIST "" CACHE INTERNAL "CatCCOS UDMA operator objects" FORCE)

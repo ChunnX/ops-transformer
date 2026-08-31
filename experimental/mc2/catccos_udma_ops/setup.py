@@ -114,6 +114,11 @@ class CMakeBuild(Command):
             "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS={}".format(
                 cmake_boolean_from_env("CATCCOS_UDMA_DEVICE_DIAGNOSTICS")
             ),
+            "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE={}".format(
+                cmake_boolean_from_env(
+                    "CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE"
+                )
+            ),
         ]
         if os.environ.get("CATCCOS_SOURCE_PATH"):
             config.append(f"-DCATCCOS_SOURCE_PATH={os.environ['CATCCOS_SOURCE_PATH']}")

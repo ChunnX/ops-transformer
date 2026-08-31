@@ -253,7 +253,11 @@ public:
     // Reserve the same conservative size as the existing generic UDMA tile.
     // Current WQE formats need no more than this amount.
     static constexpr uint32_t UDMA_WQE_SCRATCH_BYTES = 256;
-    static constexpr bool DEFER_QUIET = false;
+    // Match the PIPE_S tile's completion contract: the owning CommBlock
+    // submits all WQEs for one peer and performs one checked CQ drain at the
+    // end of the block loop.  Keeping the completion point identical makes
+    // PIPE_S versus PIPE_MTE3 a single-variable diagnostic comparison.
+    static constexpr bool DEFER_QUIET = true;
     static_assert(sizeof(ElementSrc) == sizeof(ElementDst),
         "UDMA copies bytes and therefore requires equal source and destination element sizes");
 
@@ -295,7 +299,54 @@ public:
                 Submit(dstRow, srcRow, tmpUb, bytesPerRow, peerIdx);
             }
         }
+    }
+
+    CATLASS_DEVICE
+    void Finalize(uint32_t peerIdx)
+    {
         aclshmemx_udma_quiet(peerIdx);
+    }
+
+    CATLASS_DEVICE
+    uint32_t FinalizeWithStatus(uint32_t peerIdx)
+    {
+        __gm__ aclshmemi_aiv_udma_info_t *udmaInfo =
+            aclshmemi_udma_qp_info_fetch();
+        __gm__ aclshmemi_udma_qp_table_t *table =
+            aclshmemi_udma_active_table(udmaInfo);
+        uint32_t qpNum = udmaInfo->qp_num;
+        uint32_t firstError = 0;
+        if constexpr (ACLSHMEM_RELAY_SUPPORTED) {
+            uint32_t rankCount =
+                static_cast<uint32_t>(aclshmemi_get_total_pe());
+            for (uint32_t relayPeer = 0; relayPeer < rankCount; ++relayPeer) {
+                if (relayPeer == peerIdx) {
+                    continue;
+                }
+                uint32_t slot = peerIdx * rankCount + relayPeer;
+                __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
+                    (__gm__ aclshmemi_udma_wq_ctx_t *)(
+                        table->sq_ptr +
+                        (slot * qpNum) * sizeof(aclshmemi_udma_wq_ctx_t));
+                uint32_t wqeCount = qpContext->wqe_cnt;
+                if (wqeCount == 0) {
+                    continue;
+                }
+                uint32_t status =
+                    aclshmemi_udma_poll_cq(slot, 0, wqeCount);
+                if (firstError == 0 && status != 0) {
+                    firstError = status;
+                }
+            }
+        } else {
+            __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
+                (__gm__ aclshmemi_udma_wq_ctx_t *)(
+                    table->sq_ptr +
+                    (peerIdx * qpNum) * sizeof(aclshmemi_udma_wq_ctx_t));
+            firstError = aclshmemi_udma_poll_cq(
+                peerIdx, 0, qpContext->wqe_cnt);
+        }
+        return firstError;
     }
 
 private:

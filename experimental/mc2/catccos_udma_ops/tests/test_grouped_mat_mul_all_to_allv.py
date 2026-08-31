@@ -265,7 +265,7 @@ def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():
         assert end > match.end()
 
 
-def test_balanced_route_experiment_uses_paired_global_stage_barriers():
+def test_balanced_route_experiment_runtime_selects_local_or_global_sync():
     kernel = (
         PROJECT_ROOT
         / "csrc"
@@ -277,11 +277,8 @@ def test_balanced_route_experiment_uses_paired_global_stage_barriers():
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
 
-    # Each path has two launch-boundary barriers and a producer/consumer pair
-    # inside the communication loop. This experiment is intentionally limited
-    # to balanced routes whose commLoops match on every rank.
-    assert kernel.count("aclshmemx_barrier_all_vec();") == 8
-    assert kernel.count("AscendC::SyncAll<true>();") == 0
-    assert kernel.count("Balanced-route synchronization experiment") == 2
-    assert "same commLoops" in kernel
-    assert "commLoops differ across ranks" in kernel
+    assert "UsesProducerBarrier(params.diagnosticMode)" in kernel
+    assert "UsesRecycleBarrier(params.diagnosticMode)" in kernel
+    assert kernel.count("AscendC::SyncAll<true>();") == 2
+    assert "Validation barrier modes require balanced routes" in kernel
+    assert "Original protocol: only this rank's active AIVs" in kernel

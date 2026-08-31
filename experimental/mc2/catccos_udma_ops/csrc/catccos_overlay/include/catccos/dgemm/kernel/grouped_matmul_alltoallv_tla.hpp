@@ -10,6 +10,10 @@
 #ifndef CATCCOS_DGEMM_KERNEL_GROUPED_MATMUL_ALLTOALLV_TLA_HPP
 #define CATCCOS_DGEMM_KERNEL_GROUPED_MATMUL_ALLTOALLV_TLA_HPP
 
+#ifndef CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+#define CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE 0
+#endif
+
 #include "catlass/arch/resource.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
@@ -22,6 +26,16 @@ namespace Catccos::DGemm::Kernel {
 
 using Catlass::MatrixCoord;
 using Catlass::GemmCoord;
+
+// Runtime modes used only by the validation-only raw PyTorch entrypoint.  The
+// public operator always passes PRODUCTION, preserving its current protocol.
+enum GroupedMatmulAllToAllVDiagnosticMode : uint32_t {
+    GMM_A2AV_DIAGNOSTIC_PRODUCTION = 0,
+    GMM_A2AV_DIAGNOSTIC_BASELINE = 1,
+    GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER = 2,
+    GMM_A2AV_DIAGNOSTIC_FULL_BARRIER = 3,
+    GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 = 4,
+};
 
 template <
     class ProblemShape_,
@@ -66,6 +80,14 @@ public:
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
 
+    // Diagnostic tensor ABI. The worker allocates a regular int64 NPU tensor;
+    // each communication AIV writes a unique [round, source] record and Host
+    // parses it only after stream synchronization.
+    static constexpr uint32_t DIAGNOSTIC_HEADER_WORDS = 32;
+    static constexpr uint32_t DIAGNOSTIC_RECORD_WORDS = 16;
+    static constexpr uint64_t DIAGNOSTIC_MAGIC = 0x474d4d4132415631ULL;
+    static constexpr uint64_t DIAGNOSTIC_VERSION = 1;
+
     using MoeConstraints = typename BlockMmadScheduler::MoeConstraints;
 
     struct Params {
@@ -81,6 +103,9 @@ public:
         GM_ADDR ptrSymmetric;
         GM_ADDR syncMmadFinish;
         GM_ADDR syncCommFinish;
+        GM_ADDR ptrDiagnostic;
+        uint32_t diagnosticWords;
+        uint32_t diagnosticMode;
         BlockCommParams blockCommParams;
         BlockCommSchedulerParams blockCommSchedulerParams;
 
@@ -95,6 +120,8 @@ public:
             GM_ADDR ptrB_, LayoutB const &layoutB_,
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
+            GM_ADDR ptrDiagnostic_, uint32_t diagnosticWords_,
+            uint32_t diagnosticMode_,
             BlockCommParams const &blockCommParams_,
             BlockCommSchedulerParams const &blockCommSchedulerParams_
         ) : problemShape(problemShape_), commInterval(commInterval_),
@@ -103,6 +130,8 @@ public:
             ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)), layoutB(layoutB_),
             ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)), layoutC(layoutC_),
             ptrSymmetric(ptrSymmetric_), syncMmadFinish(syncMmadFinish_), syncCommFinish(syncCommFinish_),
+            ptrDiagnostic(ptrDiagnostic_), diagnosticWords(diagnosticWords_),
+            diagnosticMode(diagnosticMode_),
             blockCommParams(blockCommParams_),
             blockCommSchedulerParams(blockCommSchedulerParams_)
         {
@@ -131,6 +160,11 @@ public:
         // Zero preserves the legacy balanced-route layout. It is also safe for
         // a zero-token rank because the scheduler emits no C writes.
         uint32_t outputRows{0};
+        // Internal validation-only fields. Production callers leave them at
+        // their zero defaults and incur no diagnostic GM writes.
+        GM_ADDR ptrDiagnostic{nullptr};
+        uint32_t diagnosticWords{0};
+        uint32_t diagnosticMode{GMM_A2AV_DIAGNOSTIC_PRODUCTION};
     };
 
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr)
@@ -168,6 +202,7 @@ public:
             args.ptrB, layoutB,
             args.ptrC, layoutC,
             gmSymmetric, syncMmadFinish, syncCommFinish,
+            args.ptrDiagnostic, args.diagnosticWords, args.diagnosticMode,
             blockCommParams,
             blockCommSchedulerParams
         );
@@ -418,6 +453,163 @@ public:
     }
 
 private:
+    CATLASS_HOST_DEVICE
+    static constexpr bool UsesProducerBarrier(uint32_t mode)
+    {
+        return mode == GMM_A2AV_DIAGNOSTIC_PRODUCTION ||
+            mode >= GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER;
+    }
+
+    CATLASS_HOST_DEVICE
+    static constexpr bool UsesRecycleBarrier(uint32_t mode)
+    {
+        return mode == GMM_A2AV_DIAGNOSTIC_PRODUCTION ||
+            mode >= GMM_A2AV_DIAGNOSTIC_FULL_BARRIER;
+    }
+
+    CATLASS_DEVICE
+    static void StoreDiagnosticWord(
+        Params const &params, uint32_t wordOffset, uint64_t value)
+    {
+        if (params.ptrDiagnostic == nullptr ||
+            wordOffset >= params.diagnosticWords) {
+            return;
+        }
+        auto words = reinterpret_cast<__gm__ uint64_t *>(
+            params.ptrDiagnostic);
+        words[wordOffset] = value;
+    }
+
+    CATLASS_DEVICE
+    static void RecordTargetOrderHeader(
+        Params const &params, uint32_t rankIdx, uint32_t rankSize,
+        uint32_t commLoops, uint32_t stageRows, bool isSyncCore)
+    {
+        if (!isSyncCore || params.ptrDiagnostic == nullptr) {
+            return;
+        }
+        StoreDiagnosticWord(params, 0, DIAGNOSTIC_MAGIC);
+        StoreDiagnosticWord(params, 1, DIAGNOSTIC_VERSION);
+        StoreDiagnosticWord(params, 2, params.diagnosticMode);
+        StoreDiagnosticWord(params, 3, rankIdx);
+        StoreDiagnosticWord(params, 4, rankSize);
+        StoreDiagnosticWord(params, 5, AscendC::GetBlockNum());
+        StoreDiagnosticWord(params, 6, AscendC::GetSubBlockNum());
+        StoreDiagnosticWord(
+            params, 7,
+            static_cast<uint64_t>(AscendC::GetBlockNum()) *
+                AscendC::GetSubBlockNum());
+        StoreDiagnosticWord(params, 8, commLoops);
+        StoreDiagnosticWord(params, 9, stageRows);
+        StoreDiagnosticWord(params, 10, WORKSPACE_STAGES);
+        StoreDiagnosticWord(params, 11, params.problemShape.n());
+        StoreDiagnosticWord(params, 12, AscendC::GetBlockNum());
+        StoreDiagnosticWord(params, 13, params.problemShape.m());
+        StoreDiagnosticWord(params, 14, DIAGNOSTIC_RECORD_WORDS);
+        StoreDiagnosticWord(
+            params, 15,
+            static_cast<uint64_t>(commLoops) * rankSize);
+    }
+
+    CATLASS_DEVICE
+    static uint32_t DiagnosticRecordBase(
+        uint32_t commIdx, uint32_t rankSize, uint32_t srcRankIdx)
+    {
+        return DIAGNOSTIC_HEADER_WORDS +
+            (commIdx * rankSize + srcRankIdx) * DIAGNOSTIC_RECORD_WORDS;
+    }
+
+    CATLASS_DEVICE
+    static void RecordTargetOrderComm(
+        Params const &params, uint32_t commIdx, uint32_t rankSize,
+        uint32_t srcRankIdx, uint32_t stageIdx, bool hasInput,
+        uint32_t actualRows, uint32_t outputRowOffset,
+        uint32_t quietStatus, bool completionPublished)
+    {
+        if (params.ptrDiagnostic == nullptr) {
+            return;
+        }
+        uint32_t base = DiagnosticRecordBase(
+            commIdx, rankSize, srcRankIdx);
+        if (base + DIAGNOSTIC_RECORD_WORDS > params.diagnosticWords) {
+            StoreDiagnosticWord(params, 16, 1);
+            return;
+        }
+        StoreDiagnosticWord(params, base + 0, commIdx);
+        StoreDiagnosticWord(params, base + 1, srcRankIdx);
+        StoreDiagnosticWord(params, base + 2, stageIdx);
+        StoreDiagnosticWord(params, base + 3, params.diagnosticMode);
+        StoreDiagnosticWord(params, base + 4, hasInput ? 1 : 0);
+        StoreDiagnosticWord(params, base + 5, actualRows);
+        StoreDiagnosticWord(params, base + 6, outputRowOffset);
+        StoreDiagnosticWord(
+            params, base + 7,
+            static_cast<uint64_t>(actualRows) *
+                params.problemShape.n() * sizeof(ElementC));
+        StoreDiagnosticWord(params, base + 8, quietStatus);
+        StoreDiagnosticWord(
+            params, base + 9, completionPublished ? 1 : 0);
+        StoreDiagnosticWord(
+            params, base + 10,
+            UsesProducerBarrier(params.diagnosticMode) ? 1 : 0);
+        StoreDiagnosticWord(
+            params, base + 11,
+            UsesRecycleBarrier(params.diagnosticMode) ? 1 : 0);
+    }
+
+    CATLASS_DEVICE
+    static void RecordTargetOrderStageReleased(
+        Params const &params, uint32_t commIdx, uint32_t rankSize,
+        uint32_t srcRankIdx)
+    {
+        uint32_t base = DiagnosticRecordBase(
+            commIdx, rankSize, srcRankIdx);
+        StoreDiagnosticWord(params, base + 12, 1);
+    }
+
+    CATLASS_DEVICE
+    static void FlushDiagnosticCacheLine(
+        Params const &params, uint32_t wordOffset)
+    {
+        if (params.ptrDiagnostic == nullptr ||
+            wordOffset >= params.diagnosticWords) {
+            return;
+        }
+        AscendC::GlobalTensor<uint8_t> cacheLine;
+        cacheLine.SetGlobalBuffer(
+            params.ptrDiagnostic +
+            static_cast<uint64_t>(wordOffset) * sizeof(uint64_t));
+        __asm__ __volatile__("");
+        AscendC::DataCacheCleanAndInvalid<
+            uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(cacheLine);
+        __asm__ __volatile__("");
+    }
+
+    CATLASS_DEVICE
+    static void FlushTargetOrderDiagnostic(
+        Params const &params, uint32_t rankSize, uint32_t srcRankIdx,
+        uint32_t commLoops, bool isSyncCore, bool isCommCore)
+    {
+        if (params.ptrDiagnostic == nullptr) {
+            return;
+        }
+        if (isSyncCore) {
+            for (uint32_t word = 0; word < DIAGNOSTIC_HEADER_WORDS;
+                 word += 8) {
+                FlushDiagnosticCacheLine(params, word);
+            }
+        }
+        if (isCommCore) {
+            for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
+                uint32_t base = DiagnosticRecordBase(
+                    commIdx, rankSize, srcRankIdx);
+                FlushDiagnosticCacheLine(params, base);
+                FlushDiagnosticCacheLine(params, base + 8);
+            }
+        }
+    }
+
     CATLASS_DEVICE
     void RunTargetOrderAic(Params const &params)
     {
@@ -558,6 +750,10 @@ private:
 
         uint32_t receiveAccum = 0;
         uint32_t commLoops = scheduler.GetCommLoops();
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+        RecordTargetOrderHeader(
+            params, rankIdx, rankSize, commLoops, stageRows, isSyncCore);
+#endif
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
         bool quietFailureReported = false;
 #endif
@@ -567,23 +763,38 @@ private:
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
 
             Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
-            // Balanced-route synchronization experiment: this is not safe
-            // when route-dependent commLoops differ across ranks.
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+            if (UsesProducerBarrier(params.diagnosticMode)) {
+                // Validation barrier modes require balanced routes: every
+                // rank must execute the same number of communication rounds.
+                aclshmemx_barrier_all_vec();
+            } else {
+                // Original protocol: only this rank's active AIVs rendezvous.
+                AscendC::SyncAll<true>();
+            }
+#else
             aclshmemx_barrier_all_vec();
+#endif
             if (isSyncCore) {
                 aclshmemx_signal_op(
                     syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
             }
 
-            if (isCommCore && scheduler.HasInput()) {
+            bool hasInput = scheduler.HasInput();
+            uint32_t actualRows = scheduler.GetActualRows();
+            uint32_t outputRowOffset = scheduler.GetOutputRowOffset();
+            uint32_t quietStatus = hasInput ? 0U : 0xffffffffU;
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+            bool completionPublished = false;
+#endif
+            if (isCommCore && hasInput) {
                 aclshmem_signal_wait_until(
                     syncMmadFinish, ACLSHMEM_CMP_EQ, commIdx + 1);
 
-                uint32_t actualRows = scheduler.GetActualRows();
                 MatrixCoord actualShape{actualRows, params.problemShape.n()};
                 auto const &gmBlockSrc = gmSymmetricList[stageIdx];
                 auto layoutBlockSrc = layoutSymmetric.GetTileLayout(actualShape);
-                MatrixCoord outputOffset{scheduler.GetOutputRowOffset(), 0};
+                MatrixCoord outputOffset{outputRowOffset, 0};
                 auto gmBlockDst = gmC[layoutC.GetOffset(outputOffset)];
                 auto layoutBlockDst = layoutC.GetTileLayout(actualShape);
 
@@ -591,14 +802,16 @@ private:
                 blockRemoteCopy(
                     gmBlockSrc, layoutBlockSrc, gmBlockDst, layoutBlockDst,
                     actualShape, srcRankIdx);
-                uint32_t quietStatus =
-                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                quietStatus = blockRemoteCopy.FinalizeBlockLoopWithStatus();
 
                 if (quietStatus == 0) {
                     aclshmem_fence();
                     aclshmemx_signal_op(
                         syncCommFinish, 1,
                         ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+                    completionPublished = true;
+#endif
                 }
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
                 else if (!quietFailureReported) {
@@ -611,6 +824,14 @@ private:
                 }
 #endif
             }
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+            if (isCommCore) {
+                RecordTargetOrderComm(
+                    params, commIdx, rankSize, srcRankIdx, stageIdx,
+                    hasInput, actualRows, outputRowOffset, quietStatus,
+                    completionPublished);
+            }
+#endif
 
             if (isSyncCore) {
                 aclshmem_signal_wait_until(
@@ -618,13 +839,32 @@ private:
             }
 
             if (commIdx + WORKSPACE_STAGES < commLoops) {
-                // All ranks leave the current balanced-route GET phase before
-                // this symmetric stage is released back to AIC.
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+                if (UsesRecycleBarrier(params.diagnosticMode)) {
+                    // All ranks leave the balanced-route GET phase before the
+                    // symmetric stage is released back to AIC.
+                    aclshmemx_barrier_all_vec();
+                } else {
+                    AscendC::SyncAll<true>();
+                }
+#else
                 aclshmemx_barrier_all_vec();
+#endif
                 Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
                     flagAivFinishComm[stageIdx]);
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+                if (isCommCore) {
+                    RecordTargetOrderStageReleased(
+                        params, commIdx, rankSize, srcRankIdx);
+                }
+#endif
             }
         }
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+        FlushTargetOrderDiagnostic(
+            params, rankSize, srcRankIdx, commLoops,
+            isSyncCore, isCommCore);
+#endif
     }
 
     Catlass::Arch::CrossCoreFlag flagAicFinishStore[WORKSPACE_STAGES];

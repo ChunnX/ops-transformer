@@ -344,6 +344,39 @@ a deterministic uniform sample capped at that size; `report.json` records the
 total, finite and sampled element counts plus `quantiles_approximate`. Mean and
 maximum remain exact full-tensor reductions.
 
+For the balanced GroupedMatMul-AllToAllV synchronization failure, run the
+single-process-lifetime A/B/C/D matrix. It generates each Rank's input and CPU
+Golden once, then reuses the same resident tensors for every mode and launch:
+
+```bash
+bash scripts/run_gmm_a2av_root_cause.sh \
+  --cases validation/cases/grouped_mat_mul_all_to_allv.yaml \
+  --case-id model_case_1 \
+  --launches-per-mode 3 \
+  --build-install
+```
+
+`--build-install` rebuilds and force-installs the Wheel before the one
+`torchrun`; it automatically sets
+`CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1`. When building manually, set the same
+environment variable before `scripts/build_wheel.sh`; the validation-only raw
+operator is compiled out of ordinary delivery Wheels. The matrix compares
+the original local-`SyncAll` protocol, producer-only SHMEM barrier, paired
+producer/recycle barriers, and paired barriers with official-style PIPE_MTE3
+WQE publication. Barrier modes require `route: balanced` because every Rank
+must execute identical communication-loop counts. The safer modes run first
+and the original baseline runs last.
+
+Every launch allocates a 1 MiB regular NPU diagnostic tensor. Device AIVs write
+per-round/source records containing actual rows, output offset, GET bytes, CQ
+status, completion publication, barrier selection and stage release. After
+stream synchronization Host writes these records to
+`rank_<N>/modes/<mode>/launch_<I>/diagnostic.json`. Device printf is not used,
+so the experiment does not reserve the AscendC printf buffer. `summary.json`
+classifies producer visibility, premature stage reuse, PIPE_S topology
+sensitivity, or CQ/transport failure. Input and Golden reuse identities are
+recorded in `reuse_manifest.json`.
+
 Performance is collected from exported `msprof` `op_summary` rows, following
 the official [`--task-time` collection definition](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/Profiling/atlasprofiling_16_0011.html),
 rather than Python or NPU Event wall time:

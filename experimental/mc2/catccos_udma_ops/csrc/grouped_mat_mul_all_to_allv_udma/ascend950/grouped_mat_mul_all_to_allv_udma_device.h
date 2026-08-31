@@ -6,6 +6,8 @@
 #ifndef OPS_TRANSFORMER_GROUPED_MAT_MUL_ALL_TO_ALLV_UDMA_DEVICE_H
 #define OPS_TRANSFORMER_GROUPED_MAT_MUL_ALL_TO_ALLV_UDMA_DEVICE_H
 
+#include <type_traits>
+
 #include "info.h"
 
 #include "catlass/arch/arch.hpp"
@@ -33,7 +35,8 @@
 namespace OpsTransformer::CatccosUdma {
 
 template <class ElementA, class LayoutA, class ElementB, class LayoutB,
-          class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0>
+          class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0,
+          bool UseMte3Udma = false>
 struct GroupedMatMulAllToAllVUdmaConfig {
     using ArchTag = Catlass::Arch::Ascend950;
     static constexpr uint32_t kM0 = M0;
@@ -63,8 +66,12 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using TileLocalCopy = Catccos::Comm::Tile::TileRemoteCopy<
         ArchTag, kIsDynamic, CType, CType, void,
         Catccos::detail::CopyDirect::Get, Catccos::detail::CopyTransport::Mte>;
-    using TileRemoteCopy = Catccos::Comm::Tile::TileRemoteCopyUdma2D<
-        ArchTag, CType, CType, Catccos::detail::CopyDirect::Get>;
+    using TileRemoteCopy = std::conditional_t<
+        UseMte3Udma,
+        Catccos::Comm::Tile::TileRemoteCopyUdma2DWithScratch<
+            ArchTag, CType, CType, Catccos::detail::CopyDirect::Get>,
+        Catccos::Comm::Tile::TileRemoteCopyUdma2D<
+            ArchTag, CType, CType, Catccos::detail::CopyDirect::Get>>;
     using TileScheduler = Catlass::Epilogue::Tile::EpilogueIdentityTileSwizzle;
     using LocalDispatch = Catccos::Comm::AtlasCommRemoteCopy<ArchTag, kUbStages, kIsDynamic>;
     using RemoteDispatch = Catccos::Comm::AtlasCommUdmaRemoteCopy<ArchTag, kUbStages>;
@@ -92,6 +99,20 @@ using GroupedMatMulAllToAllVUdmaM0_256Config = GroupedMatMulAllToAllVUdmaConfig<
     bfloat16_t, Catlass::layout::RowMajor,
     bfloat16_t, Catlass::layout::RowMajor,
     256, 128, 256>;
+
+// Validation-only variants. They keep the same GMM and communication tiling,
+// but publish UDMA GET WQEs through the official PIPE_MTE3 + UB scratch path.
+using GroupedMatMulAllToAllVUdmaMte3Config = GroupedMatMulAllToAllVUdmaConfig<
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    128, 256, 256, true>;
+
+using GroupedMatMulAllToAllVUdmaM0_256Mte3Config = GroupedMatMulAllToAllVUdmaConfig<
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    bfloat16_t, Catlass::layout::RowMajor,
+    256, 128, 256, true>;
 
 } // namespace OpsTransformer::CatccosUdma
 
