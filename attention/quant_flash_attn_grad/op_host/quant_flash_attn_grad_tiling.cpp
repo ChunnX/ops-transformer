@@ -58,9 +58,6 @@ static ge::graphStatus ParseAttrs(gert::TilingContext *context, const string &op
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *quantMode = attrs->GetAttrPointer<int64_t>(QUANT_MODE_IDX);
-    OP_CHECK_IF(quantMode == nullptr, OP_LOGE(opName, "quantMode is nullptr."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*quantMode != 0, OP_LOGE(opName, "quantMode must be 0."), return ge::GRAPH_FAILED);
     const int64_t *maxSeqlenQ = attrs->GetAttrPointer<int64_t>(MAX_SEQLEN_Q);
     OP_CHECK_IF(maxSeqlenQ != nullptr, OP_LOGE(opName, "maxSeqlenQ not support."), return ge::GRAPH_FAILED);
     const int64_t *maxSeqlenKV = attrs->GetAttrPointer<int64_t>(MAX_SEQLEN_KV);
