@@ -60,7 +60,7 @@ public:
     FaGmTensorQ queryGm_;
     FaGmTensorKV keyGm_;
     FaGmTensorKV valueGm_;
-    CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1_;
+    CopyQueryGmToL1<Q_T, Q_FORMAT, L1Format::NZ, InnerMLayout::S1_ONLY_LAYOUT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
     GlobalTensor<int32_t> blockTableGm_;
 
@@ -238,12 +238,14 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.n2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
+        // DN分支中realGSize=1，gS1Idx即S1Idx，gIdx恒为0
+        GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> gmCoord{.bIdx = runInfo.bIdx,
+                                                       .n2Idx = runInfo.n2Idx,
+                                                       .gIdx = 0,
+                                                       .s1Idx = runInfo.gS1Idx,
+                                                       .dIdx = dOffset,
+                                                       .s1DealSize = runInfo.actMSize,
+                                                       .dDealSize = dRealSize};
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 

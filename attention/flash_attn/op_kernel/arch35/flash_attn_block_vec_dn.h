@@ -136,7 +136,7 @@ public:
     static constexpr GmFormat OUT_FORMAT = GetAttentionOutGmFormat<LAYOUT_OUT>();
     using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
     FaGmTensorOut outGmTensor_;
-    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
+    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, UbFormat::S1_ONLY> copyAttenOutUbToGm_;
     GlobalTensor<OUTPUT_T> attentionOutGm_;
     GlobalTensor<float> softmaxLseGm_;
     GlobalTensor<float> accumOutGm_;
@@ -433,12 +433,14 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
         FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
+        // DN分支中realGSize=1，gS1Idx即S1Idx，gIdx恒为0
+        GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> gmCoord{.bIdx = info.bIdx,
+                                                       .n2Idx = info.n2Idx,
+                                                       .gIdx = 0,
+                                                       .s1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                                                       .dIdx = 0,
+                                                       .s1DealSize = dealRowCount,
+                                                       .dDealSize = (uint32_t)constInfo_.dSizeV};
         copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }
 
