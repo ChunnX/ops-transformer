@@ -474,6 +474,21 @@ def fill_none_params(params_dict):
         "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
         "ori_topk_length": params_dict.get("ori_topk_length", None),
         "cmp_topk_length": params_dict.get("cmp_topk_length", None),
+        "batch_consistency": params_dict.get("batch_consistency"),
+        "batch_consistency_seed": params_dict.get("batch_consistency_seed"),
+        "batch_consistency_order": params_dict.get("batch_consistency_order"),
+        "batch_consistency_batch_split": params_dict.get(
+            "batch_consistency_batch_split"
+        ),
+        "batch_consistency_mode_batch": params_dict.get(
+            "batch_consistency_mode_batch"
+        ),
+        "batch_consistency_token_split": params_dict.get(
+            "batch_consistency_token_split"
+        ),
+        "batch_consistency_shape_change": params_dict.get(
+            "batch_consistency_shape_change"
+        ),
     }
 
     return filled_params

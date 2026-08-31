@@ -210,6 +210,28 @@ class ConsistencyRunner:
             "pass": consistency["pass"] and precision["pass"],
         }
 
+    def compare_baseline_precision(
+        self,
+        input_data: Dict[str, Any],
+        baseline: RunResult,
+        origins: Sequence[Any],
+    ) -> Dict[str, Any]:
+        physical, valid = self.lengths(input_data)
+        compare_lse = bool(input_data["params"].get("return_softmax_lse", False))
+        return self.comparator.compare_results(
+            self.cpu_result(input_data),
+            origins,
+            physical,
+            valid,
+            baseline,
+            origins,
+            physical,
+            valid,
+            CaseAdapter(input_data).get_layout_q(),
+            compare_lse,
+            False,
+        )
+
     def run_cases(
         self,
         input_data: Dict[str, Any],
@@ -226,6 +248,9 @@ class ConsistencyRunner:
         with DeterministicLevelGuard():
             baseline = self.execute(input_data, classify_case_boundary=True)
             origins = build_baseline_origins(input_data, valid_only=True)
+            baseline_precision = self.compare_baseline_precision(
+                input_data, baseline, origins
+            )
             reports = [
                 self.compare_case(
                     input_data,
@@ -239,8 +264,13 @@ class ConsistencyRunner:
             ]
         return {
             "deterministic_level": 3,
+            "baseline_precision": baseline_precision,
             "relations": reports,
-            "pass": bool(reports) and all(report["pass"] for report in reports),
+            "pass": (
+                baseline_precision["pass"]
+                and bool(reports)
+                and all(report["pass"] for report in reports)
+            ),
         }
 
     @staticmethod

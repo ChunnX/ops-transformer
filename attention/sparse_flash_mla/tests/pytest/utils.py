@@ -323,6 +323,21 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "return_softmax_lse": params.get("return_softmax_lse", [False]),
             "ori_topk_length": params.get("ori_topk_length", [None]),
             "cmp_topk_length": params.get("cmp_topk_length", [None]),
+            "batch_consistency": params.get("batch_consistency", [None]),
+            "batch_consistency_seed": params.get("batch_consistency_seed", [None]),
+            "batch_consistency_order": params.get("batch_consistency_order", [None]),
+            "batch_consistency_batch_split": params.get(
+                "batch_consistency_batch_split", [None]
+            ),
+            "batch_consistency_mode_batch": params.get(
+                "batch_consistency_mode_batch", [None]
+            ),
+            "batch_consistency_token_split": params.get(
+                "batch_consistency_token_split", [None]
+            ),
+            "batch_consistency_shape_change": params.get(
+                "batch_consistency_shape_change", [None]
+            ),
         }
         param_names = list(param_values.keys())
         for key, value in param_values.items():

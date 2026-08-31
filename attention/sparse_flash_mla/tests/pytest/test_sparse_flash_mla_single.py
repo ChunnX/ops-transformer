@@ -18,6 +18,12 @@ import sparse_flash_mla_golden
 import os
 import pytest
 from batch import sparse_flash_mla_process
+from batch_consistency.config import resolve_consistency_config
+from batch_consistency.model import RunResult
+from batch_consistency.pytest_support import (
+    consistency_fulfill_percent,
+    run_configured_consistency,
+)
 
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
 pt_save_path = os.environ.get("SMLA_PT_SAVE_PATH", "data")
@@ -36,8 +42,30 @@ def test_example(param_combinations):
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_flash_mla_golden.gen_data(test_data)
+    consistency_config = resolve_consistency_config(
+        input_data,
+        os.environ.get("SMLA_BATCH_CONSISTENCY", "auto"),
+        persist=save_pt,
+    )
     if save_pt:
         sparse_flash_mla_golden.save_test_case(input_data, pt_save_path)
+    if consistency_config is not None:
+        report = run_configured_consistency(
+            input_data,
+            consistency_config,
+            lambda data: RunResult(*sparse_flash_mla_process.call_npu(data)),
+            result_compare_method.check_result,
+            lambda: torch_npu.npu.set_device(0),
+        )
+        print("batch consistency report:", report)
+        fulfill_percent = consistency_fulfill_percent(report)
+        result = "Passed" if report["pass"] else "Failed"
+        utils.save_result(result, fulfill_percent, test_data, result_path)
+        if not report["relations"]:
+            pytest.skip(f"batch consistency has no applicable relation: {report}")
+        if not report["pass"]:
+            pytest.fail(f"batch consistency failed: {report}")
+        return
     npu_error_msg = None
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(input_data)
