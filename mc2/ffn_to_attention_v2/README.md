@@ -119,7 +119,7 @@
     <tr>
     <td>cclBufferSize</td>
     <td>属性</td>
-    <td>CCL通信缓冲区总大小（Bytes），由 <code>get_ffn_to_attention_v2_ccl_buffer_size</code> 接口计算得到。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
+    <td>CCL通信缓冲区总大小（Bytes），由 <code>get_ffn_to_attention_ccl_buffer_size</code> 接口计算得到。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
     <td>INT64</td>
     <td>-</td>
     </tr>
@@ -150,7 +150,7 @@ $$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
 
-可通过`get_ffn_to_attention_v2_ccl_buffer_size`接口计算所需最小值。
+可通过`get_ffn_to_attention_ccl_buffer_size`接口计算所需最小值。
 
 - 通信域使用约束：
     - FFNToAttentionV2算子的通信域中不允许有其他算子。
