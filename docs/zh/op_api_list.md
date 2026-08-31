@@ -65,7 +65,7 @@
 |[aclnnCompressorGrad](../../attention/compressor_grad/docs/aclnnCompressorGrad.md)|Compressor的反向算子，用于计算输入X、权重W^KV/W^Gate与位置编码Ape的梯度，前向在gradEnabled为true时导出softmax_score与kv中间结果作为本算子输入。|- | 默认确定性实现 |
 |[aclnnFFNToAttention](../../mc2/ffn_to_attention/docs/aclnnFFNToAttention.md)|将FFN节点上的token数据发往Attention节点。|默认确定性实现| - |
 |[aclnnFfnWorkerBatching](../../ffn/ffn_worker_batching/docs/aclnnFfnWorkerBatching.md)|Attention和FFN分离场景下，FFN侧数据扫描及token重排。|默认确定性实现| - |
-|[aclnnDequantRopeQuantKvcache](../../posembedding/dequant_rope_quant_kvcache/docs/aclnnDequantRopeQuantKvcache.md)|对输入张量进行dequant后，对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，并进行量化。|默认确定性实现| - |
+|[aclnnDequantRopeQuantKvcache](../../posembedding/dequant_rope_quant_kvcache/docs/aclnnDequantRopeQuantKvcache.md)|对输入张量进行dequant后，对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，并进行量化。|默认确定性实现| 默认确定性实现 |
 |[aclnnDistributeBarrier](../../mc2/distribute_barrier/docs/aclnnDistributeBarrier.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现| 默认确定性实现 |
 |[aclnnDistributeBarrierV2](../../mc2/distribute_barrier/docs/aclnnDistributeBarrierV2.md)|完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。|默认确定性实现| 默认确定性实现 |
 |[aclnnDenseLightningIndexerGradKLLoss](../../attention/dense_lightning_indexer_grad_kl_loss/docs/aclnnDenseLightningIndexerGradKLLoss.md)|dense场景LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
@@ -96,6 +96,7 @@
 |[aclnnFusedInferAttentionScoreV4](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV4.md)|适配Decode & Prefill场景的FlashAttention算子。|默认确定性实现| - |
 |[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现| 默认确定性实现 |
 |[aclnnGatherPaKvCache](../../attention/gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)|根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。|默认确定性实现| 默认确定性实现 |
+|[aclnnGenericBlockSparseAttention](../../attention/generic_block_sparse_attention/docs/aclnnGenericBlockSparseAttention.md)|GenericBlockSparseAttention通过sparseBlockIdx指定每个Q块选择的KV块，sparseBlockCount指定每个Q块保留的KV块数量，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulAdd](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAdd.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulAddV2](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAddV2.md)|实现分组矩阵乘计算后原地累加，每组矩阵乘的维度大小可以不同。|默认确定性实现|-|
@@ -185,8 +186,8 @@
 |[aclnnMoeTokenPermuteWithRoutingMapGrad](../../moe/moe_token_permute_with_routing_map_grad/docs/aclnnMoeTokenPermuteWithRoutingMapGrad.md)|[aclnnMoeTokenPermuteWithRoutingMap](../../moe/moe_token_permute_with_routing_map/docs/aclnnMoeTokenPermuteWithRoutingMap.md)的反向传播。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnMoeTokenUnpermute](../../moe/moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)|根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenUnpermuteGrad](../../moe/moe_token_unpermute_grad/docs/aclnnMoeTokenUnpermuteGrad.md)|[aclnnMoeTokenUnpermute](../../moe/moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)的反向传播。|默认确定性实现| 默认确定性实现 |
-|[aclnnMoeTokenUnpermuteWithEp](../../moe/moe_token_unpermute_with_ep/docs/aclnnMoeTokenUnpermuteWithEp.md)|根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。|默认确定性实现| - |
-|[aclnnMoeTokenUnpermuteWithEpGrad](../../moe/moe_token_unpermute_with_ep_grad/docs/aclnnMoeTokenUnpermuteWithEpGrad.md)|[aclnnMoeTokenUnpermuteWithEp](../../moe/moe_token_unpermute_with_ep/docs/aclnnMoeTokenUnpermuteWithEp.md)的反向传播。|默认确定性实现| - |
+|[aclnnMoeTokenUnpermuteWithEp](../../moe/moe_token_unpermute_with_ep/docs/aclnnMoeTokenUnpermuteWithEp.md)|根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。|默认确定性实现| 默认确定性实现 |
+|[aclnnMoeTokenUnpermuteWithEpGrad](../../moe/moe_token_unpermute_with_ep_grad/docs/aclnnMoeTokenUnpermuteWithEpGrad.md)|[aclnnMoeTokenUnpermuteWithEp](../../moe/moe_token_unpermute_with_ep/docs/aclnnMoeTokenUnpermuteWithEp.md)的反向传播。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenUnpermuteWithRoutingMap](../../moe/moe_token_unpermute_with_routing_map/docs/aclnnMoeTokenUnpermuteWithRoutingMap.md)|对经过aclnnMoeTokenUpermuteWithRoutingMap处理的permutedTokens，累加回原unpermutedTokens。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeTokenUnpermuteWithRoutingMapGrad](../../moe/moe_token_unpermute_with_routing_map_grad/docs/aclnnMoeTokenUnpermuteWithRoutingMapGrad.md)|[aclnnMoeTokenUnpermuteWithRoutingMap](../../moe/moe_token_unpermute_with_routing_map/docs/aclnnMoeTokenUnpermuteWithRoutingMap.md)的反向传播。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnMoeUpdateExpert](../../mc2/moe_update_expert/docs/aclnnMoeUpdateExpert.md)|本API支持负载均衡和专家剪枝功能。经过映射后的专家表和Mask可传入MoE层进行数据分发和处理。|默认确定性实现| 默认确定性实现 |
@@ -243,6 +244,7 @@
 |[aclnnSparseFlashAttention](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttention.md)|根据sparse_indices选取重要性较高的key和value进行attention运算，得到attention_out输出。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashAttentionV2](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttentionV2.md)|根据sparse_indices选取重要性较高的key和value进行attention运算，得到attention_out输出。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认确定性实现 |
+|[aclnnSparseFlashAttentionGradV2](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGradV2.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。本接口相较于[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)，新增可选OSS Sink输入与对应梯度输出。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnSparseFlashMla](../../attention/sparse_flash_mla/docs/aclnnSparseFlashMla.md)|支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashMlaMetadata](../../attention/sparse_flash_mla_metadata/docs/aclnnSparseFlashMlaMetadata.md)|生成aclnnSparseFlashMla主算子使用的任务切分metadata。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashMlaGrad](../../attention/sparse_flash_mla_grad/docs/aclnnSparseFlashMlaGrad.md)|计算SparseFlashMla训练场景下注意力的反向输出，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）以及HCA（Heavily Compressed Attention）。|默认非确定性实现，不支持配置开启| 默认非确定性实现，支持配置开启 |
