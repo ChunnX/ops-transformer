@@ -69,8 +69,8 @@ public:
     using INPUT_T = typename FA_T::inputType;
     using T = typename FA_T::mmType;
     using OUTPUT_T = typename FA_T::outputType;
-    static constexpr LayOutTypeEnum LAYOUT_T = FA_T::qLayout;
-    static constexpr LayOutTypeEnum outLayout = FA_T::attnOutLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT_T = FA_T::qLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = FA_T::attnOutLayout;
     static constexpr bool hasAtten = FA_T::hasMask;
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
@@ -91,8 +91,9 @@ public:
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_T, (FA_T::kvLayoutType > 0)>();
     using SeqLensToolType = FlashMlaSeqLensTool<Q_MODE, KV_MODE>;
     static constexpr MaskFormat MASK_LAYOUT =
-        (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) ? MaskFormat::SG :
-                                                                                             MaskFormat::GS;
+        (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH || LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) ?
+            MaskFormat::SG :
+            MaskFormat::GS;
 
     using pseShiftType = INPUT_T;
 
@@ -252,8 +253,9 @@ public:
     __aicore__ inline bool IsInitAttentionOutGm()
     {
         // TND、NTD场景且不存在无效行,不需要初始化
-        if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND || LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD ||
-                      LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD_TND) {
+        if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND ||
+                      LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD ||
+                      LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD_TND) {
             /*
              * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
              * 对于FD场景, 有可能整体是没有无效行的,
@@ -276,8 +278,9 @@ public:
         if (IsInitAttentionOutGm()) {
             uint32_t vecCoreNum = 2 * constInfo.coreNum;
             int64_t tSize = constInfo.bSize * constInfo.s1Size;
-            if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND || LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD ||
-                          LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD_TND) {
+            if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND ||
+                          LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD ||
+                          LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD_TND) {
                 tSize = seqLensTool_.qActSeqLensParser.GetTSize();
             }
             int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV;
@@ -333,18 +336,18 @@ public:
 
         // flash_mla_with_kvcache LSE 契约为 (N,T) 头主序：runInfo 的 gS1 区间是 [gIdx][s1Idx] token 主序排布，
         // 用 TND→(N,T) 转置写出（flash_attn 范式）；bN2Offset = n2Idx * gSize * t1Size = head 块 GM 起址。
-        if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
             uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                              runInfo.actVecMSize, constInfo, s1Size);
-        } else if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) {
+        } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, prefixBS1, constInfo);
-        } else if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH) {
+        } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
@@ -563,7 +566,8 @@ public:
         int32_t s1StartTdx;
         int32_t s1EndTdx;
         bool ret = false;
-        if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH ||
+                      LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             // S1G layout
             s1StartTdx = vecMStartIdx / constInfo.gSize;
             s1EndTdx = vecMEndIdx / constInfo.gSize;

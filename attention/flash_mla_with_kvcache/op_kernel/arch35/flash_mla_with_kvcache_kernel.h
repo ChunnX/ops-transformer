@@ -46,8 +46,8 @@ public:
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT_Q = CubeBlockType::LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT_KV = CubeBlockType::LAYOUT;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
 
@@ -540,7 +540,8 @@ public:
         info.bIdx = bN2Cur / constInfo_.n2Size;
         info.n2Idx = bN2Cur % constInfo_.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT_Q == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH ||
+                      LAYOUT_Q == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo_.gSize;
         } else {

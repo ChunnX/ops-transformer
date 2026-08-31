@@ -47,7 +47,7 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
     static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
-    static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT = FA_T::qLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
@@ -128,7 +128,7 @@ public:
     // seq-lens（cu_seqlens_q/cache_seqlens）为 INT32，ACTLEN_T=uint32_t。
     // WITH_ZERO_HEAD 仅对 TND（cu_seqlens 首零头）成立；BSND/BNSD 走 GM_Q_OUT_BNGSD 3-参实现
     // （offset_calculator_v2.h，无 WITH_ZERO_HEAD 形参），与 flash_attn IS_TND 同构。
-    FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND> queryGm;
+    FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> kCacheGm;
     GlobalTensor<int32_t> blockTableGm;
     // seq-lens GM 张量与解析器所有权在 kernel 侧 FlashMlaSeqLensTool，本 block 只读引用
@@ -205,7 +205,8 @@ public:
     __aicore__ inline void InitQBuffer(
         uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize, uint32_t headDim,
         GlobalTensor<uint32_t> actualSeqLengthsGmQ, uint32_t actualLenQDims,
-        FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == LayOutTypeEnum::LAYOUT_TND> &qGmTensor, __gm__ uint8_t *gm)
+        FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND> &qGmTensor,
+        __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
@@ -480,7 +481,7 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
     static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
-    static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT = FA_T::qLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
 
     using Q_T = INPUT_T;

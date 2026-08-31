@@ -33,13 +33,16 @@
 namespace AttentionCommon {
 
 enum class FLASH_MLA_WITH_KVCACHE_LAYOUT : uint32_t {
+    NONE = 8,
     BSH = 0,
     BSND = 0,
     BNSD = 1,
     NZ = 2,
     TND = 3,
     NBSD = 4,
-    NTD = 5
+    NTD = 5,
+    SBH = 6,
+    NTD_TND = 7
 };
 
 enum class FlashMlaWithKvcacheKernelType : uint8_t {
@@ -230,15 +233,16 @@ __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue,
     return sInnerToken;
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT>
 __aicore__ inline constexpr fa_base_vector::UbInputFormat GeInputUbFormat()
 {
-    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
-                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
+    static_assert((LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) || (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) ||
+                      (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) || (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD),
                   "Get Query GmFormat fail, LAYOUT_T is incorrect");
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH || LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
         return fa_base_vector::UbInputFormat::S1G;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+    } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD ||
+                         LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
         return fa_base_vector::UbInputFormat::GS1;
     }
 }
