@@ -25,7 +25,7 @@ __attribute__((constructor)) static void DisableFpeEarly()
  * 用例矩阵覆盖：Prefill 多 M-tile、prefix 非 128 对齐的边界 block、varlen 多 batch、
  * Decode(q_len=1)、投机解码(q_len>1)、长序列多 S-tile 轮转、block_table 乱序、
  * 无效尾填充、q_len/kv_len=0 的 mixed-batch pad、bf16 / fp16 双 dtype、
- * int8 key 前融合反量化、PA BNBD、TND packed key。
+ * int8 key 前融合反量化、PA BNBD、TND packed key、950 PA key dim0 非连续。
  */
 
 #include <algorithm>
@@ -68,6 +68,8 @@ constexpr float kBoostThr = 1.0e28F;
 constexpr float kInt8Scale = 64.0F;
 constexpr float kDeqScaleBase = 0.01F;
 constexpr float kDeqScaleSpan = 0.02F;
+constexpr float kKeyStridePoisonFp = 99.0F;
+constexpr int8_t kKeyStridePoisonI8 = 90;
 constexpr uint32_t kKeySeedOff = 999983U;
 constexpr uint32_t kDeqSeedOff = 424242U;
 constexpr int64_t kBlockTableMulB = 7;
@@ -109,6 +111,8 @@ struct TestCase {
     KeyLayout keyLayout = KeyLayout::BBND;
     // 0=无；1=float8_e4m3fn；2=float8_e5m2。仅 950，query/key 同型。
     int fp8Kind = 0;
+    // PA key dim0 间隔：1=紧凑；>1 时 storage 为 key|gap|key|...，仅 950。
+    int64_t keyDim0Gap = 1;
 };
 
 constexpr float kLocalScoreInit = 1.0e30F;
@@ -204,6 +208,27 @@ uint8_t FloatToFp8Nearest(float v, bool e5m2)
     return best;
 }
 
+template <typename T>
+std::vector<T> ScatterPaKeyDim0(const std::vector<T> &packed, int64_t numPages, int64_t pageElems, int64_t gap, T poison)
+{
+    std::vector<T> wide(static_cast<size_t>(numPages * gap * pageElems), poison);
+    for (int64_t p = 0; p < numPages; ++p) {
+        const auto src = packed.begin() + static_cast<size_t>(p * pageElems);
+        const auto dst = wide.begin() + static_cast<size_t>(p * gap * pageElems);
+        std::copy(src, src + static_cast<size_t>(pageElems), dst);
+    }
+    return wide;
+}
+
+std::vector<int64_t> ContiguousStrides(const std::vector<int64_t> &shape)
+{
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - kPrevDimOffset; i >= 0; i--) {
+        strides[static_cast<size_t>(i)] = shape[static_cast<size_t>(i + 1)] * strides[static_cast<size_t>(i + 1)];
+    }
+    return strides;
+}
+
 class DeviceBuffer {
 public:
     ~DeviceBuffer()
@@ -222,7 +247,8 @@ public:
 
     template <typename T>
     aclTensor *Create(const std::vector<T> &host, const std::vector<int64_t> &shape, aclDataType dtype,
-                      void **addrOut = nullptr)
+                      void **addrOut = nullptr, const std::vector<int64_t> *storageShape = nullptr,
+                      const std::vector<int64_t> *stridesIn = nullptr)
     {
         void *devAddr = nullptr;
         const size_t bytes = host.size() * sizeof(T);
@@ -235,12 +261,18 @@ public:
         if (bytes > 0 && aclrtMemcpy(devAddr, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
             return nullptr;
         }
-        std::vector<int64_t> strides(shape.size(), 1);
-        for (int64_t i = static_cast<int64_t>(shape.size()) - kPrevDimOffset; i >= 0; i--) {
-            strides[i] = shape[i + 1] * strides[i + 1];
+        const std::vector<int64_t> &stShape = (storageShape != nullptr) ? *storageShape : shape;
+        std::vector<int64_t> strides;
+        if (stridesIn != nullptr) {
+            strides = *stridesIn;
+        } else {
+            strides.assign(shape.size(), 1);
+            for (int64_t i = static_cast<int64_t>(shape.size()) - kPrevDimOffset; i >= 0; i--) {
+                strides[static_cast<size_t>(i)] = shape[static_cast<size_t>(i + 1)] * strides[static_cast<size_t>(i + 1)];
+            }
         }
-        aclTensor *t = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
-                                       shape.size(), devAddr);
+        aclTensor *t = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
+                                       stShape.data(), stShape.size(), devAddr);
         tensors_.push_back(t);
         if (addrOut != nullptr) {
             *addrOut = devAddr;
@@ -583,14 +615,56 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     } else {
         queryT = tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
     }
+
+    const int64_t keyDim0Gap = (isTnd || tc.keyDim0Gap < 1) ? 1 : tc.keyDim0Gap;
+    std::vector<int64_t> keyStorageShape = keyShape;
+    std::vector<int64_t> keyStrides = ContiguousStrides(keyShape);
+    const std::vector<int64_t> *keyStoragePtr = nullptr;
+    const std::vector<int64_t> *keyStridePtr = nullptr;
+    int64_t pageElems = 1;
+    if (keyDim0Gap > 1) {
+        for (size_t d = 1; d < keyShape.size(); ++d) {
+            pageElems *= keyShape[d];
+        }
+        keyStorageShape[0] = tc.numPages * keyDim0Gap;
+        keyStrides[0] = keyDim0Gap * keyStrides[0];
+        keyStoragePtr = &keyStorageShape;
+        keyStridePtr = &keyStrides;
+    }
+
     aclTensor *keyT = nullptr;
     if (tc.useInt8Key) {
-        keyT = buf.Create(keyI8, keyShape, ACL_INT8);
+        if (keyDim0Gap > 1) {
+            const auto wide = ScatterPaKeyDim0(keyI8, tc.numPages, pageElems, keyDim0Gap, kKeyStridePoisonI8);
+            keyT = buf.Create(wide, keyShape, ACL_INT8, nullptr, keyStoragePtr, keyStridePtr);
+        } else {
+            keyT = buf.Create(keyI8, keyShape, ACL_INT8);
+        }
     } else if (isFp8) {
         const aclDataType fp8Dt = isE5M2 ? ACL_FLOAT8_E5M2 : ACL_FLOAT8_E4M3FN;
-        keyT = buf.Create(keyFp8, keyShape, fp8Dt);
+        if (keyDim0Gap > 1) {
+            const uint8_t poison = FloatToFp8Nearest(kKeyStridePoisonFp, isE5M2);
+            const auto wide = ScatterPaKeyDim0(keyFp8, tc.numPages, pageElems, keyDim0Gap, poison);
+            keyT = buf.Create(wide, keyShape, fp8Dt, nullptr, keyStoragePtr, keyStridePtr);
+        } else {
+            keyT = buf.Create(keyFp8, keyShape, fp8Dt);
+        }
+    } else if (tc.useBf16) {
+        if (keyDim0Gap > 1) {
+            const auto wide =
+                ScatterPaKeyDim0(keyBf, tc.numPages, pageElems, keyDim0Gap, FloatToBf16(kKeyStridePoisonFp));
+            keyT = buf.Create(wide, keyShape, ACL_BF16, nullptr, keyStoragePtr, keyStridePtr);
+        } else {
+            keyT = buf.Create(keyBf, keyShape, ACL_BF16);
+        }
     } else {
-        keyT = tc.useBf16 ? buf.Create(keyBf, keyShape, ACL_BF16) : buf.Create(keyHf, keyShape, ACL_FLOAT16);
+        if (keyDim0Gap > 1) {
+            const auto wide =
+                ScatterPaKeyDim0(keyHf, tc.numPages, pageElems, keyDim0Gap, aclFloatToFloat16(kKeyStridePoisonFp));
+            keyT = buf.Create(wide, keyShape, ACL_FLOAT16, nullptr, keyStoragePtr, keyStridePtr);
+        } else {
+            keyT = buf.Create(keyHf, keyShape, ACL_FLOAT16);
+        }
     }
     aclTensor *blockTableT = nullptr;
     if (!isTnd) {
@@ -759,6 +833,14 @@ int main()
         {"L0-tnd-all-q0", 8, 128, 0, {0}, {256}, {1}, false, false, kSparseModeRightDown, KeyLayout::TND},
         {"L0-tnd-all-kv0", 8, 128, 0, {32}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
         {"L0-tnd-all-q0-kv0", 8, 128, 0, {0}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
+        // 950 PA key dim0 非连续：间隔槽下毒，错 stride 会读到 poison。
+        {"L0-stride-bbnd", 2, 16, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 0, 2},
+        {"L1-stride-bbnd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, kSparseModeRightDown, KeyLayout::BBND,
+         0, 2},
+        {"L1-stride-bnbd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, kSparseModeRightDown, KeyLayout::BNBD,
+         0, 2},
+        {"L1-stride-int8", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true, kSparseModeRightDown, KeyLayout::BBND, 0,
+         2},
     };
 
     size_t passed = 0;
@@ -774,12 +856,17 @@ int main()
             ++skipped;
             continue;
         }
+        if (tc.keyDim0Gap > 1 && !isAscend950) {
+            (void)printf("  [%s] SKIP: PA key dim0 stride is Ascend 950 only\n", tc.name.c_str());
+            ++skipped;
+            continue;
+        }
         ++ran;
         if (RunCase(tc, stream)) {
             ++passed;
         }
     }
-    const std::string extra = (skipped == 0) ? "" : (" (skipped " + std::to_string(skipped) + " FP8)");
+    const std::string extra = (skipped == 0) ? "" : (" (skipped " + std::to_string(skipped) + ")");
     (void)printf("%s: %zu/%zu cases passed%s\n", passed == ran ? "[PASS]" : "[FAIL]", passed, ran, extra.c_str());
 
     (void)aclrtDestroyStream(stream);
