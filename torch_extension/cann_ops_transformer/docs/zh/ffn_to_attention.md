@@ -68,7 +68,7 @@
 先用get_buffer_for_ffn_to_attention接口封装输入参数并创建通信上下文（buffer），再调用ffn_to_attention接口进行数据发送。
 
 ```python
-get_buffer_for_ffn_to_attention(group, world_size, token_info_table_shape, token_data_shape) -> FFNToAttentionV2Buffer
+get_buffer_for_ffn_to_attention(group, world_size, token_info_table_shape, token_data_shape) -> FFNToAttentionBuffer
 ```
 
 ```python
@@ -121,7 +121,7 @@ ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offs
 </tbody>
 </table>
 
-该接口返回<code>FFNToAttentionV2Buffer</code>对象，内部自动计算CCL通信缓冲区大小并创建通信上下文，供<code>ffn_to_attention</code>使用。
+该接口返回<code>FFNToAttentionBuffer</code>对象，内部自动计算CCL通信缓冲区大小并创建通信上下文，供<code>ffn_to_attention</code>使用。
 
 ### ffn_to_attention
 
@@ -148,7 +148,7 @@ ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offs
 <tbody>
     <tr>
         <td>buffer</td>
-        <td>FFNToAttentionV2Buffer</td>
+        <td>FFNToAttentionBuffer</td>
         <td>必选</td>
         <td>由<a href="#get_buffer_for_ffn_to_attention">get_buffer_for_ffn_to_attention</a>创建的通信buffer，内部封装了<code>context</code>、<code>group</code>、<code>world_size</code>、<code>token_info_table_shape</code>、<code>token_data_shape</code>及<code>ccl_buffer_size</code>。</td>
         <td>int32</td>
