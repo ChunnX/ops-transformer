@@ -22,9 +22,10 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
 RCS_TILING_SIZE = 128  # 16*u32(64) + 3*u64(24) + 9*u32(36) + 4(pad to align 8) = 128
-MRSV2_TILING_DATA_SIZE = 1408     # 64+512+128+4+4+4+2*236+4(pad)+8+208
-QUANT_MRSV2_TILING_DATA_SIZE = 1656  # 64+512+128+4+4+4+2*360+4(pad)+8+208
+MRSV2_TILING_DATA_SIZE = 1400       # native header + 2*236 + workspaceLayout + tilingKey
+QUANT_MRSV2_TILING_DATA_SIZE = 1648 # native header + 2*360 + workspaceLayout + tilingKey
 TILING_DUMP_SIZE = 2048
+MMRS_QUANT_TILING_FLAG = 1 << 31
 
 WORKSPACE_SEG_INFO_SIZE = 24
 MAX_WORKSPACE_SEGMENTS = 8
@@ -35,21 +36,22 @@ RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
 OFFSET_RCS_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_QUANT_MODE = OFFSET_RCS_TILING + RCS_TILING_SIZE + 4 + 4  # 704
-OFFSET_WS_LAYOUT_NON_QUANT = MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1188
-OFFSET_WS_LAYOUT_QUANT = QUANT_MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1436
+OFFSET_DEBUG_MODE = OFFSET_RCS_TILING + RCS_TILING_SIZE + 4  # 708
+OFFSET_WS_LAYOUT_NON_QUANT = OFFSET_DEBUG_MODE + 4 + 2 * 236  # 1184
+OFFSET_WS_LAYOUT_QUANT = OFFSET_DEBUG_MODE + 4 + 2 * 360      # 1432
 
 ARGS_INDEX_NAMES = [
-    "aGM",            # [0]
-    "bGM",            # [1]
-    "biasGM",         # [2]
-    "x1ScaleGM",      # [3]
-    "x2ScaleGM",      # [4]
-    "quantScaleGM",   # [5]
-    "cGM",            # [6]
-    "amaxOutGM",      # [7]
-    "workspaceGM",    # [8]
-    "tilingGM",       # [9]
+    "hcommContextGM", # [0], framework-injected hidden argument
+    "aGM",            # [1]
+    "bGM",            # [2]
+    "biasGM",         # [3]
+    "x1ScaleGM",      # [4]
+    "x2ScaleGM",      # [5]
+    "quantScaleGM",   # [6]
+    "cGM",            # [7]
+    "amaxOutGM",      # [8]
+    "workspaceGM",    # [9]
+    "tilingGM",       # [10]
 ]
 
 POS_TAG_MAP_MRSV2 = {
@@ -70,7 +72,7 @@ RUNTIME_PHASE_MAP = {
 WS_SEG_TYPE_MAP = {
     0: "LIB_API", 1: "ND2NZ", 2: "GATHER", 3: "GATHER_SCALE1", 4: "GATHER_SCALE",
     5: "COMM_OUT", 6: "PERMUTE_OUT", 7: "BIAS", 8: "MM_RESULT", 9: "RECV_BUF",
-    10: "COMM_INT8", 11: "DYNAMIC_QUANT", 12: "RUNTIME_INFO", 255: "RESERVED",
+    10: "COMM_INT8", 11: "DYNAMIC_QUANT", 12: "RUNTIME_INFO", 13: "MM_WORKSPACE", 255: "RESERVED",
 }
 
 
@@ -118,9 +120,10 @@ def parse_rcs_tiling(data, offset):
 
 
 def detect_quant_mode(data):
-    if len(data) < OFFSET_QUANT_MODE + 4:
+    if len(data) < OFFSET_DEBUG_MODE + 4:
         return False
-    return struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0] != 0
+    debug_mode = struct.unpack_from("<I", data, OFFSET_DEBUG_MODE)[0]
+    return (debug_mode & MMRS_QUANT_TILING_FLAG) != 0
 
 
 def parse_non_quant_tiling_data(data):
@@ -129,9 +132,9 @@ def parse_non_quant_tiling_data(data):
         "mc2CcTiling": parse_mc2_cc_tiling(data, MC2_INIT_TILING_SIZE),
         "param": parse_rcs_tiling(data, OFFSET_RCS_TILING),
         "dataType": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE)[0],
-        "debugMode": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE + 4)[0],
-        "quantMode": struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0],
-        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_NON_QUANT - 8)[0],
+        "debugMode": struct.unpack_from("<I", data, OFFSET_DEBUG_MODE)[0] & ~MMRS_QUANT_TILING_FLAG,
+        "quantMode": 0,
+        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_NON_QUANT + WORKSPACE_LAYOUT_INFO_SIZE)[0],
     }
 
 
@@ -141,9 +144,9 @@ def parse_quant_tiling_data(data):
         "mc2CcTiling": parse_mc2_cc_tiling(data, MC2_INIT_TILING_SIZE),
         "param": parse_rcs_tiling(data, OFFSET_RCS_TILING),
         "dataType": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE)[0],
-        "debugMode": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE + 4)[0],
-        "quantMode": struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0],
-        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_QUANT - 8)[0],
+        "debugMode": struct.unpack_from("<I", data, OFFSET_DEBUG_MODE)[0] & ~MMRS_QUANT_TILING_FLAG,
+        "quantMode": 1,
+        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_QUANT + WORKSPACE_LAYOUT_INFO_SIZE)[0],
     }
 
 
@@ -335,8 +338,9 @@ def main():
         return
 
     is_quant = detect_quant_mode(data)
-    logging.info("解析模式: %s (quantMode=%d)", "量化" if is_quant else "非量化",
-                 struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0])
+    debug_mode_raw = struct.unpack_from("<I", data, OFFSET_DEBUG_MODE)[0]
+    logging.info("解析模式: %s (debugMode=0x%x, quantFlag=%d)", "量化" if is_quant else "非量化",
+                 debug_mode_raw & ~MMRS_QUANT_TILING_FLAG, int(is_quant))
     result = parse_quant_tiling_data(data) if is_quant else parse_non_quant_tiling_data(data)
     ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
     if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:

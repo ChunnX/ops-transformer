@@ -48,20 +48,31 @@ inline void MatmulReduceScatterV2ExceptionImplWrapper(aclrtExceptionInfo *args, 
         OP_LOGE("MatmulReduceScatterV2", "DFX callback skipped: null exception info or unsupported SoC.");
         return;
     }
-    static_assert(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode) ==
-                  offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, quantMode),
-                  "MMRS quant/non-quant tiling must share the quantMode header offset");
+    static_assert(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, debugMode) ==
+                  offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, debugMode),
+                  "MMRS quant/non-quant tiling must share the debugMode header offset");
+    static_assert(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mC2Mmv3TileTilingData) == 712U,
+                  "MMRS non-quant native compute tiling offset changed");
+    static_assert(offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, quantBmmV3TileTiling) == 712U,
+                  "MMRS quant native compute tiling offset changed");
+    static_assert(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout) == 1184U &&
+                  sizeof(Mc2Tiling::MatmulReduceScatterV2TilingData) == 1400U,
+                  "MMRS non-quant DFX layout does not match its parser");
+    static_assert(offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout) == 1432U &&
+                  sizeof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData) == 1648U,
+                  "MMRS quant DFX layout does not match its parser");
     // Save operator evidence before accessing the potentially-faulting CCU context.
     // The hidden HCCL context is args[0], so workspace/tiling are args[9]/args[10].
     Mc2Exception::Mc2DumpTilingData(args, "MatmulReduceScatterV2",
         10U,   // tilingGmArgIdx
         0U,    // argsOffset
         9U,    // workspaceGmArgIdx
-        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode),                   // quantModeOffset
+        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, debugMode),                   // mode flag offset
         offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout),             // wsLayoutOffsetNonQuant
         offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout),  // wsLayoutOffsetQuant
         sizeof(Mc2Tiling::MatmulReduceScatterV2TilingData),
-        sizeof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData));
+        sizeof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData),
+        Mc2Tiling::MMRS_QUANT_TILING_FLAG);
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "MatmulReduceScatterV2");
     OP_LOGE("MatmulReduceScatterV2", "DFX callback end.");
 }
