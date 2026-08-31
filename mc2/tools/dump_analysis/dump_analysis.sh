@@ -207,12 +207,16 @@ echo "-----------------------------"
 # 检测单卡/多卡: 多卡时 TARGET_DIR 下有数字命名的子目录且包含 exception_info 文件
 is_multi_card=0
 card_dirs_list=()
-if find "$TARGET_DIR" -maxdepth 2 -name "exception_info"* -path "*/[0-9]*/*" | grep -q . 2>/dev/null; then
+if find "$TARGET_DIR" -maxdepth 2 -name "exception_info*" -path "*/[0-9]*/*" | grep -q . 2>/dev/null; then
     is_multi_card=1
     while IFS= read -r d; do
         card_dirs_list+=("$d")
     done < <(find "$TARGET_DIR" -maxdepth 1 -type d -name "[0-9]*" | sort -V)
     file_num=${#card_dirs_list[@]}
+    if [ $file_num -eq 0 ]; then
+        echo "error:未找到数字命名的卡目录"
+        exit 1
+    fi
 else
     file_num=1
 fi
