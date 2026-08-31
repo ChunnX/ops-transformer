@@ -84,10 +84,12 @@ protected:
     void LogRouteTrace() const;
     void DoSplit();
     CorePartitionOutcome BuildDenseCorePartitionPlan(VariantId variantId) const;
+    CorePartitionOutcome CaptureLegacyCorePartitionOutcome(VariantId variantId, bool available) const;
     void ApplyCorePartitionPlan(const CorePartitionPlan &plan);
+    PlannedCandidateExecutionResult ExecuteBn2s2CorePartition();
+    PlannedCandidateExecutionResult ExecuteBn2MultiBlockCorePartition();
     void DetermineBlockSchedule();
     ge::graphStatus DoSparse();
-    bool DoBn2s2Sparse();
     uint32_t GetDeterSparseTilingKey();
     uint8_t GetSparseType();
     void CalcleDeterParam();
@@ -115,7 +117,6 @@ protected:
     virtual bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx) {
     };
     virtual bool IsValidUnpad(int64_t blockIdx) {};
-    ge::graphStatus DoBn2MultiBlkSparse();
     virtual ge::graphStatus GetBlockInfoOfTNDForBn2() {};
     ge::graphStatus GetSparseBlockInfoBn2();
     FuzzyBaseInfoParamsRegbase fBaseParams;

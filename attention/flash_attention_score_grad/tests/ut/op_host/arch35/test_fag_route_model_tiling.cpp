@@ -291,7 +291,7 @@ TEST(FagPlannedCandidateVerifier, RejectsBn2S2WhenCorePartitionIsUnavailable)
 {
     CandidatePlan candidate;
     candidate.variantId = VariantId::BN2S2;
-    PlannedCandidateVerificationInput input;
+    PlannedCandidateObservation input;
     const CandidateOutcome outcome = PlannedCandidateVerifier::Verify(candidate, input);
 
     EXPECT_FALSE(outcome.accepted);
@@ -307,12 +307,15 @@ TEST(FagPlannedCandidateVerifier, VerifiesBn2S2CoreUtilizationWithoutMutatingInp
     CandidatePlan candidate;
     candidate.variantId = VariantId::BN2S2;
     candidate.cores.activeCoreCount = 7;
-    PlannedCandidateVerificationInput input;
-    input.corePartitionAvailable = true;
-    input.activeCoreCount = 31;
+    PlannedCandidateObservation input;
+    input.corePartition.accepted = true;
+    input.corePartition.plan.mode = CorePartitionMode::FUSED_BN2GS2;
+    input.corePartition.plan.activeCoreCount = 31;
+    input.corePartition.plan.blockFactor = 64;
+    input.corePartition.plan.totalWork = 2000;
+    input.corePartition.plan.maxCoreWork = 63;
+    input.corePartition.plan.ranges[0].end = 64;
     input.availableCoreCount = 32;
-    input.blockFactor = 64;
-    input.maxCoreWork = 63;
 
     CandidateOutcome outcome = PlannedCandidateVerifier::Verify(candidate, input);
     EXPECT_FALSE(outcome.accepted);
@@ -322,21 +325,78 @@ TEST(FagPlannedCandidateVerifier, VerifiesBn2S2CoreUtilizationWithoutMutatingInp
     EXPECT_EQ(32, outcome.rejected.expected);
     EXPECT_EQ(7U, candidate.cores.activeCoreCount);
 
-    input.activeCoreCount = input.availableCoreCount;
+    input.corePartition.plan.activeCoreCount = input.availableCoreCount;
     outcome = PlannedCandidateVerifier::Verify(candidate, input);
     ASSERT_TRUE(outcome.accepted);
     EXPECT_EQ(32U, outcome.plan.cores.activeCoreCount);
     EXPECT_EQ(64, outcome.plan.cores.blockFactor);
     EXPECT_EQ(63U, outcome.plan.cores.maxCoreWork);
+    EXPECT_EQ(2000, outcome.plan.cores.totalWork);
+    EXPECT_EQ(64, outcome.plan.cores.ranges[0].end);
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionMode::FUSED_BN2GS2), static_cast<uint32_t>(outcome.plan.cores.mode));
     EXPECT_EQ(7U, candidate.cores.activeCoreCount);
+}
+
+TEST(FagPlannedCandidateVerifier, PreservesSpecificCorePartitionRejection)
+{
+    CandidatePlan candidate;
+    candidate.variantId = VariantId::BN2S2;
+    PlannedCandidateObservation input;
+    input.corePartition.rejected.variantId = VariantId::BN2S2;
+    input.corePartition.rejected.stage = CandidateRejectStage::CORE_PARTITION;
+    input.corePartition.rejected.reason = CandidateRejectReason::CORE_RANGE_CAPACITY_EXCEEDED;
+    input.corePartition.rejected.field = CandidateField::CORE_RANGE_CAPACITY;
+    input.corePartition.rejected.actual = 40;
+    input.corePartition.rejected.expected = 36;
+
+    const CandidateOutcome outcome = PlannedCandidateVerifier::Verify(candidate, input);
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::CORE_RANGE_CAPACITY_EXCEEDED),
+              static_cast<uint32_t>(outcome.rejected.reason));
+    EXPECT_EQ(40, outcome.rejected.actual);
+    EXPECT_EQ(36, outcome.rejected.expected);
+}
+
+TEST(FagPlannedCandidateResolver, SeparatesAcceptanceFallbackAndExecutionFailure)
+{
+    CandidatePlan candidate;
+    candidate.variantId = VariantId::BN2S2;
+    PlannedCandidateExecutionResult execution;
+    execution.succeeded = true;
+    execution.observation.availableCoreCount = 32;
+
+    PlannedCandidateDecision decision = PlannedCandidateResolver::Resolve(candidate, execution);
+    EXPECT_EQ(static_cast<uint32_t>(PlannedCandidateAction::FALLBACK), static_cast<uint32_t>(decision.action));
+
+    execution.observation.corePartition.accepted = true;
+    execution.observation.corePartition.plan.activeCoreCount = 32;
+    decision = PlannedCandidateResolver::Resolve(candidate, execution);
+    EXPECT_EQ(static_cast<uint32_t>(PlannedCandidateAction::ACCEPT), static_cast<uint32_t>(decision.action));
+
+    execution.succeeded = false;
+    decision = PlannedCandidateResolver::Resolve(candidate, execution);
+    EXPECT_EQ(static_cast<uint32_t>(PlannedCandidateAction::FAIL), static_cast<uint32_t>(decision.action));
+
+    candidate.variantId = VariantId::BN2_MULTI_BLOCK;
+    execution.observation.hasInvalidColumn = true;
+    decision = PlannedCandidateResolver::Resolve(candidate, execution);
+    EXPECT_EQ(static_cast<uint32_t>(PlannedCandidateAction::FALLBACK), static_cast<uint32_t>(decision.action));
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::INVALID_BASIC_BLOCK),
+              static_cast<uint32_t>(decision.candidate.rejected.reason));
+
+    candidate.variantId = VariantId::UNKNOWN;
+    execution.succeeded = true;
+    execution.observation.hasInvalidColumn = false;
+    decision = PlannedCandidateResolver::Resolve(candidate, execution);
+    EXPECT_EQ(static_cast<uint32_t>(PlannedCandidateAction::FALLBACK), static_cast<uint32_t>(decision.action));
 }
 
 TEST(FagPlannedCandidateVerifier, RejectsBn2MultiBlockWithStableInvalidBlockMask)
 {
     CandidatePlan candidate;
     candidate.variantId = VariantId::BN2_MULTI_BLOCK;
-    PlannedCandidateVerificationInput input;
-    input.corePartitionAvailable = true;
+    PlannedCandidateObservation input;
+    input.corePartition.accepted = true;
     input.hasInvalidRow = true;
     input.hasInvalidColumn = true;
 
@@ -522,23 +582,24 @@ TEST(FagLegacyPolicyV1, PlannedCandidateVerificationMatchesFrozenLegacyFallback)
             initial.variantId = variantId;
             initial.effectiveDeterministic =
                 variantId == VariantId::BN2 || variantId == VariantId::BN2_MULTI_BLOCK ? false : deterministicRequested;
-            PlannedCandidateVerificationInput input;
-            input.corePartitionAvailable = corePartitionAvailable;
-            input.activeCoreCount = activeCoreCount;
-            input.availableCoreCount = 32U;
-            input.hasInvalidRow = hasInvalidRow;
-            input.hasInvalidColumn = hasInvalidColumn;
-            const CandidateOutcome verified = PlannedCandidateVerifier::Verify(initial, input);
+            PlannedCandidateExecutionResult execution;
+            execution.succeeded = true;
+            execution.observation.corePartition.accepted = corePartitionAvailable;
+            execution.observation.corePartition.plan.activeCoreCount = activeCoreCount;
+            execution.observation.availableCoreCount = 32U;
+            execution.observation.hasInvalidRow = hasInvalidRow;
+            execution.observation.hasInvalidColumn = hasInvalidColumn;
+            const PlannedCandidateDecision decision = PlannedCandidateResolver::Resolve(initial, execution);
 
             SelectionResult actual;
             actual.selected = initial;
-            if (!verified.accepted) {
+            if (decision.action == PlannedCandidateAction::FALLBACK) {
                 CandidatePlan fallback;
                 fallback.variantId = VariantId::BN2GS1S2;
                 fallback.effectiveDeterministic = deterministicRequested;
-                actual = LegacyPolicyV1::SelectFallbackAfterRejection(actual, verified.rejected, fallback);
+                actual = LegacyPolicyV1::SelectFallbackAfterRejection(actual, decision.candidate.rejected, fallback);
             } else {
-                actual.selected = verified.plan;
+                actual.selected = decision.candidate.plan;
             }
             variantMismatchCount += expected.variantId != actual.selected.variantId;
             deterministicMismatchCount += expected.effectiveDeterministic != actual.selected.effectiveDeterministic;
