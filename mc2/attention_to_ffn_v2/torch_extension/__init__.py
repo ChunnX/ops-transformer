@@ -8,6 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-__all__ = ["attention_to_ffn_v2", "get_buffer_for_attention_to_ffn_v2"]
+__all__ = ["attention_to_ffn", "get_buffer_for_attention_to_ffn"]
 
-from .attention_to_ffn_v2 import attention_to_ffn_v2, get_buffer_for_attention_to_ffn_v2
+from .attention_to_ffn import attention_to_ffn, get_buffer_for_attention_to_ffn

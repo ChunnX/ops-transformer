@@ -17,18 +17,18 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from ..common import CommContextManager
 
 
-class _AttentionToFfnV2OpBuilder(OpBuilder):
+class _AttentionToFfnOpBuilder(OpBuilder):
     def __init__(self):
-        super(_AttentionToFfnV2OpBuilder, self).__init__(
-            "npu_attention_to_ffn_v2", category="mc2"
+        super(_AttentionToFfnOpBuilder, self).__init__(
+            "npu_attention_to_ffn", category="mc2"
         )
 
     def sources(self):
-        return ["csrc/mc2/attention_to_ffn_v2.cpp"]
+        return ["csrc/mc2/attention_to_ffn.cpp"]
 
     def schema(self) -> str:
         return (
-            "npu_attention_to_ffn_v2(Tensor(a!) context, Tensor x, Tensor session_id, "
+            "npu_attention_to_ffn(Tensor(a!) context, Tensor x, Tensor session_id, "
             "Tensor micro_batch_id, Tensor layer_id, Tensor expert_ids, Tensor expert_rank_table, "
             "str group, int world_size, "
             "int[] ffn_token_info_table_shape, int[] ffn_token_data_shape, int[] attn_token_info_table_shape, "
@@ -38,7 +38,7 @@ class _AttentionToFfnV2OpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
-        def npu_attention_to_ffn_v2_meta(
+        def npu_attention_to_ffn_meta(
             context,
             x,
             session_id,
@@ -100,12 +100,12 @@ class _AttentionToFfnV2OpBuilder(OpBuilder):
             )
 
 
-_attention_to_ffn_v2_op_builder = _AttentionToFfnV2OpBuilder()
-_attention_to_ffn_v2_op_builder._ensure_initialized()
+_attention_to_ffn_op_builder = _AttentionToFfnOpBuilder()
+_attention_to_ffn_op_builder._ensure_initialized()
 
 
-@impl(get_as_library(), _attention_to_ffn_v2_op_builder.name, "PrivateUse1")
-def _npu_attention_to_ffn_v2(
+@impl(get_as_library(), _attention_to_ffn_op_builder.name, "PrivateUse1")
+def _npu_attention_to_ffn(
     context,
     x,
     session_id,
@@ -126,8 +126,8 @@ def _npu_attention_to_ffn_v2(
     scales=None,
     active_mask=None,
 ):
-    _op_module = _attention_to_ffn_v2_op_builder.load()
-    _op_module.npu_attention_to_ffn_v2(
+    _op_module = _attention_to_ffn_op_builder.load()
+    _op_module.npu_attention_to_ffn(
         context,
         x,
         session_id,
@@ -158,19 +158,19 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
-def _get_attention_to_ffn_v2_ccl_buffer_size(
+def _get_attention_to_ffn_ccl_buffer_size(
     ffn_token_info_table_shape: List[int],
     ffn_token_data_shape: List[int],
     quant_mode: int = 0,
 ) -> int:
-    _op_module = _attention_to_ffn_v2_op_builder.load()
-    return _op_module.get_attention_to_ffn_v2_ccl_buffer_size(
+    _op_module = _attention_to_ffn_op_builder.load()
+    return _op_module.get_attention_to_ffn_ccl_buffer_size(
         ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
     )
 
 
-class AttentionToFfnV2Buffer:
-    """Communication buffer for attention_to_ffn_v2, wraps CommContextManager.
+class AttentionToFfnBuffer:
+    """Communication buffer for attention_to_ffn, wraps CommContextManager.
 
     Uses the HCCL Channel backend (HcclCommMemReg + HcclChannelGetRemoteMems)
     to allocate and exchange window memory, compatible with Ascend 950.
@@ -192,7 +192,7 @@ class AttentionToFfnV2Buffer:
         self.ffn_token_data_shape = list(ffn_token_data_shape)
         self.quant_mode = quant_mode
 
-        required_buffer_size = _get_attention_to_ffn_v2_ccl_buffer_size(
+        required_buffer_size = _get_attention_to_ffn_ccl_buffer_size(
             ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
         )
         self._ctx_manager = CommContextManager(
@@ -204,7 +204,7 @@ class AttentionToFfnV2Buffer:
                 "Ascend950": "channel",
             },
             commAlg="urma",
-            opName="attention_to_ffn_v2",
+            opName="attention_to_ffn",
             customCclBufferSize=required_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
@@ -231,19 +231,19 @@ class AttentionToFfnV2Buffer:
         return int(addr_bytes.value)
 
 
-def get_buffer_for_attention_to_ffn_v2(
+def get_buffer_for_attention_to_ffn(
     group: "torch.distributed.ProcessGroup",
     world_size: int,
     ffn_token_info_table_shape: List[int],
     ffn_token_data_shape: List[int],
     *,
     quant_mode: int = 0,
-) -> AttentionToFfnV2Buffer:
-    """Create a communication buffer for attention_to_ffn_v2.
+) -> AttentionToFfnBuffer:
+    """Create a communication buffer for attention_to_ffn.
 
-    This is a thin factory around ``AttentionToFfnV2Buffer`` that computes the
+    This is a thin factory around ``AttentionToFfnBuffer`` that computes the
     required CCL buffer size, creates the communication context, and returns a
-    buffer object holding all the information ``attention_to_ffn_v2`` needs.
+    buffer object holding all the information ``attention_to_ffn`` needs.
 
     Args:
         group (ProcessGroup): HCCL process group.
@@ -256,10 +256,10 @@ def get_buffer_for_attention_to_ffn_v2(
             6=mx_clip+FP8_E5M2, 7=mx_clip+FP8_E4M3. Default 0.
 
     Returns:
-        AttentionToFfnV2Buffer: Buffer holding the communication context,
+        AttentionToFfnBuffer: Buffer holding the communication context,
         CCL buffer size and the FFN-side token shapes.
     """
-    return AttentionToFfnV2Buffer(
+    return AttentionToFfnBuffer(
         group,
         world_size,
         ffn_token_info_table_shape,
@@ -268,8 +268,8 @@ def get_buffer_for_attention_to_ffn_v2(
     )
 
 
-def attention_to_ffn_v2(
-    buffer: AttentionToFfnV2Buffer,
+def attention_to_ffn(
+    buffer: AttentionToFfnBuffer,
     x: torch.Tensor,
     session_id: torch.Tensor,
     micro_batch_id: torch.Tensor,
@@ -290,8 +290,8 @@ def attention_to_ffn_v2(
     addresses to the kernel, compatible with Ascend 950 (Channel backend).
 
     Args:
-        buffer (AttentionToFfnV2Buffer): Communication buffer created by
-            ``get_buffer_for_attention_to_ffn_v2``. Holds the context tensor,
+        buffer (AttentionToFfnBuffer): Communication buffer created by
+            ``get_buffer_for_attention_to_ffn``. Holds the context tensor,
             group name, world size, FFN-side token shapes, quant mode and CCL
             buffer size.
         x (Tensor): Token data to send, shape (1, BS, H), dtype float16/bfloat16.
@@ -313,7 +313,7 @@ def attention_to_ffn_v2(
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
-    torch.ops.cann_ops_transformer.npu_attention_to_ffn_v2(
+    torch.ops.cann_ops_transformer.npu_attention_to_ffn(
         buffer.context,
         x,
         session_id,

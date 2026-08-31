@@ -21,11 +21,11 @@ const int DIM_TWO = 2;
 const int DIM_THREE = 3;
 
 /**
- * @brief Wrapper for attention_to_ffn_v2. The op has no host-visible output tensors;
+ * @brief Wrapper for attention_to_ffn. The op has no host-visible output tensors;
  *        data is sent to peer ranks via the HCCL window. We therefore return an empty
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
-void NpuAttentionToFfnV2(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionId,
+void NpuAttentionToFfn(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionId,
                          const at::Tensor &microBatchId, const at::Tensor &layerId, const at::Tensor &expertIds,
                          const at::Tensor &expertRankTable, const c10::optional<at::Tensor> &scalesOptional,
                          const c10::optional<at::Tensor> &activeMaskOptional, std::string group, int64_t worldSize,
@@ -86,7 +86,7 @@ int64_t CeilAlign(int64_t val, int64_t align)
 }
 } // namespace
 
-int64_t GetAttentionToFfnV2CclBufferSize(const std::vector<int64_t> &ffnTokenInfoTableShape,
+int64_t GetAttentionToFfnCclBufferSize(const std::vector<int64_t> &ffnTokenInfoTableShape,
                                          const std::vector<int64_t> &ffnTokenDataShape, int64_t quantMode)
 {
     TORCH_CHECK(ffnTokenInfoTableShape.size() == 3, "ffn_token_info_table_shape should have 3 elements, but got ",
@@ -111,8 +111,8 @@ int64_t GetAttentionToFfnV2CclBufferSize(const std::vector<int64_t> &ffnTokenInf
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_attention_to_ffn_v2", &NpuAttentionToFfnV2, "npu_attention_to_ffn_v2");
-    m.def("get_attention_to_ffn_v2_ccl_buffer_size", &GetAttentionToFfnV2CclBufferSize,
-          "get_attention_to_ffn_v2_ccl_buffer_size");
+    m.def("npu_attention_to_ffn", &NpuAttentionToFfn, "npu_attention_to_ffn");
+    m.def("get_attention_to_ffn_ccl_buffer_size", &GetAttentionToFfnCclBufferSize,
+          "get_attention_to_ffn_ccl_buffer_size");
 }
 } // namespace op_api
