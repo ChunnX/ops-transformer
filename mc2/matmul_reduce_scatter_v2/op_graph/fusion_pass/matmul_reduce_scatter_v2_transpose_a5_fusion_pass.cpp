@@ -12,7 +12,6 @@
 
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulReduceScatterV2.h" // es autogen header
-#include "es_TransposeD.h"            // es autogen header for stub op
 #include "es_math_ops.h"              // math ops stub
 #include "common/utils/op_mc2.h"
 #include "mc2_platform_info.h"
@@ -24,7 +23,6 @@
 namespace ops {
 const std::string FUSION_PASS_NAME = "MatmulReduceScatterV2TransposeA5FusionPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
-const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_BIAS = "HasBias";
 const std::string PATTERN_SCALE = "HasScale";
 const std::string PATTERN_X2SCALE_TRANSPOSE = "X2ScaleTranspose";
@@ -46,11 +44,6 @@ const size_t PERM_SIZE_THREE = 3;
 // Pattern 中 Bitcast 的 type 仅占位；默认 matcher 不校验 IR attr，Replacement 用真实 MC2 输入 dtype
 const ge::DataType BITCAST_PATTERN_DTYPE = ge::DT_HIFLOAT8;
 
-enum class TransposeNode {
-    Transpose,
-    TransposeD
-};
-
 // ES matcher 需覆盖会改变入边个数/拓扑的组合：bias、scale、x2_scale Transpose、以及 Transpose→Bitcast
 struct OriginalGraphInfo {
     bool hasBias = false;
@@ -58,7 +51,6 @@ struct OriginalGraphInfo {
     bool x2ScaleTranspose = false; // true 时必须 hasScale，且 Capture x2 与 x2_scale 两个 Transpose
     bool x2Bitcast = false;
     bool x2ScaleBitcast = false; // 仅 x2ScaleTranspose=true 时可开
-    TransposeNode node = TransposeNode::Transpose;
 };
 
 struct ReplaceGraphInputs {
@@ -94,12 +86,7 @@ ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::
 {
     static EsTransposeFunc func = GetEsTransposeFunc();
     auto *builder = ge::es::ResolveBuilder(x, perm);
-    auto xHolder = x.ToTensorHolder(builder);
-    if (func == nullptr) {
-        OPS_LOG_E("MatmulReduceScatterV2TransposeA5FusionPass", "EsTranspose is unavailable, fallback to TransposeD.");
-        return ge::es::TransposeD(xHolder, std::vector<int64_t>{1, 0});
-    }
-    auto result = func(xHolder.GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
+    auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
     return result;
 }
 
@@ -122,12 +109,9 @@ static size_t GetPatternInputNum(const OriginalGraphInfo &info)
     return info.hasBias ? INPUT_NUM_HAS_BIAS : INPUT_NUM_NO_BIAS;
 }
 
-static ge::es::EsTensorHolder MakeTransposeNode(const OriginalGraphInfo &info, const ge::es::EsTensorHolder &x)
+static ge::es::EsTensorHolder MakeTransposeNode(const ge::es::EsTensorHolder &x)
 {
-    if (info.node == TransposeNode::Transpose) {
-        return TransposeDL(x, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
-    }
-    return ge::es::TransposeD(x, std::vector<int64_t>{1, 0});
+    return TransposeDL(x, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
 }
 
 static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const ge::es::EsTensorHolder &transposed)
@@ -142,7 +126,7 @@ static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const
 static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
 {
     std::string patternName = FUSION_PASS_NAME;
-    patternName += info.node == TransposeNode::Transpose ? PATTERN_TRANSPOSE : PATTERN_TRANSPOSE_D;
+    patternName += PATTERN_TRANSPOSE;
     if (info.x2ScaleTranspose) {
         patternName += PATTERN_X2SCALE_TRANSPOSE;
     }
@@ -176,12 +160,12 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
         x2Scale = inputs[idx++];
     }
 
-    auto transposeX2 = MakeTransposeNode(info, x2);
+    auto transposeX2 = MakeTransposeNode(x2);
     auto x2In = MaybeBitcastAfterTranspose(info.x2Bitcast, transposeX2);
     ge::es::EsTensorHolder x2ScaleIn = x2Scale;
     ge::es::EsTensorHolder transposeX2Scale = nullptr;
     if (info.x2ScaleTranspose) {
-        transposeX2Scale = MakeTransposeNode(info, x2Scale);
+        transposeX2Scale = MakeTransposeNode(x2Scale);
         x2ScaleIn = MaybeBitcastAfterTranspose(info.x2ScaleBitcast, transposeX2Scale);
     }
 
@@ -228,17 +212,6 @@ static size_t GetMinRequiredSubgraphInputNum(const std::string &patternNameStr)
 
 static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t> &permValue)
 {
-    ge::AscendString nodeType("");
-    transposeNode.GetType(nodeType);
-    std::string nodeTypeStr = nodeType.GetString();
-    if (nodeTypeStr == PATTERN_TRANSPOSE_D) {
-        if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get perm Attr from TransposeD node failed.");
-            return false;
-        }
-        return !permValue.empty();
-    }
-
     ge::TensorDesc permDesc;
     transposeNode.GetInputDesc(TRANSPOSE_PERM_IDX, permDesc);
     ge::Shape permShape = permDesc.GetShape();
@@ -604,22 +577,18 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
 std::vector<ge::fusion::PatternUniqPtr> MatmulReduceScatterV2TransposeA5FusionPass::Patterns()
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Patterns for MatmulReduceScatterV2TransposeA5FusionPass");
-    // 仅 x2 Transpose：hasBias × hasScale × x2Bitcast × Transpose类型 → 16 种
-    // x2 + x2_scale 双 Transpose：hasBias × x2Bitcast × x2ScaleBitcast × Transpose类型 → 16 种；共 32 种
+    // 仅 x2 Transpose：hasBias × hasScale × x2Bitcast → 8 种
+    // x2 + x2_scale 双 Transpose：hasBias × x2Bitcast × x2ScaleBitcast → 8 种；共 16 种
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     for (bool hasBias : {false, true}) {
         for (bool hasScale : {false, true}) {
             for (bool x2Bitcast : {false, true}) {
-                for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
-                    patternGraphs.emplace_back(MakePattern({hasBias, hasScale, false, x2Bitcast, false, node}));
-                }
+                patternGraphs.emplace_back(MakePattern({hasBias, hasScale, false, x2Bitcast, false}));
             }
         }
         for (bool x2Bitcast : {false, true}) {
             for (bool x2ScaleBitcast : {false, true}) {
-                for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
-                    patternGraphs.emplace_back(MakePattern({hasBias, true, true, x2Bitcast, x2ScaleBitcast, node}));
-                }
+                patternGraphs.emplace_back(MakePattern({hasBias, true, true, x2Bitcast, x2ScaleBitcast}));
             }
         }
     }
