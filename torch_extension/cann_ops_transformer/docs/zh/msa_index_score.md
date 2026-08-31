@@ -26,8 +26,7 @@ $$
 - `init_blocks` / `local_blocks`：Maxpool 之后的强制高分块；与 Triton raw score 对齐时置 0。默认 `0` / `1`。
 - Ascend 950 额外支持 query/key 同型 `torch.float8_e4m3fn` / `torch.float8_e5m2` / `torch_npu.hifloat8`（无 `scale`）。`hifloat8.npu()` 当前不安全，测试脚本跳过；kernel 已注册。
 - A2/A3 与 Ascend 950：`q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 为 `-inf`。
-- Ascend 950：PageAttention `key` 允许 dim0（物理 page）非连续，须保持为 view（不要 `.contiguous()`）；TND 不允许。A2/A3 会把 key 打成连续。
-- Ascend 950：PageAttention `key` 允许 dim0（物理 page）非连续，须保持为 view（不要 `.contiguous()`）；TND 不允许。A2/A3 会把 key 打成连续。
+- A2/A3 与 Ascend 950：PageAttention `key` 允许 dim0（物理 page）非连续，须保持为 view（不要 `.contiguous()`）；TND 不允许。
 
 ## 函数原型
 
@@ -78,7 +77,7 @@ cann_ops_transformer.msa_index_score(
   <tr>
     <td>key</td>
     <td>必选</td>
-    <td>$K_{idx}$ PA BBND/BNBD 或 TND。950 上 PA 允许 dim0 非连续。</td>
+    <td>$K_{idx}$ PA BBND/BNBD 或 TND。A2/A3 与 950 上 PA 允许 dim0 非连续。</td>
     <td>同 query 或 int8（int8 配 fp16 query）</td>
     <td><code>[NP,P,N2,D]</code> / <code>[NP,N2,P,D]</code> / <code>[T2,N2,D]</code></td>
   </tr>
