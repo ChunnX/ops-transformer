@@ -29,6 +29,10 @@ def get_as_library():
     return _as_library
 
 
+# Backward-compatible alias for modules that import AS_LIBRARY directly
+AS_LIBRARY = get_as_library()
+
+
 class OpBuilder(ABC):
     _loaded_ops = {}
 
