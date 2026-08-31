@@ -193,7 +193,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitInp
     aivJob_ = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_};
     quantProcessConfig_ = CreateQuantProcessConfig<ActivationType, QuantScaleOutType, TopkWeightsPrefetch,
                                                    PackedElementTraits<ActivationType>::ELEMENTS_PER_BYTE>(k_, params_);
-    sendMaskConfig_ = CreateSendMaskConfig(params_, aivCoreIdx_, true, true);
+    sendMaskConfig_ = CreateSendMaskConfig(params_, aivCoreIdx_, true);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -288,7 +288,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     const int64_t tileM = static_cast<int64_t>(GMM1_TILE_M);
     int32_t dispatchFlagSlotsPerExpert = static_cast<int32_t>(Ops::Base::CeilDiv(maxOutput, tileM)) * INT_CACHELINE;
     InitInputPrepareConfigs();
-    tokenDispatchConfig_ = CreateTokenDispatchConfig(params_, quantProcessConfig_, sendMaskConfig_.maskAlignSize, true);
+    tokenDispatchConfig_ = CreateTokenDispatchConfig(params_, quantProcessConfig_, sendMaskConfig_.maskAlignSize);
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig();
 
@@ -316,8 +316,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     // 与 route batch 无关的固定占用
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // compact route 已消除 mask 扫描，只需一份接收 index batch。
-    bufferConfig = params_.tilingData->compactDispatchBufferConfig;
+    // A8W8 使用 mask route 对应的 Dispatch UB 配置。
+    bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
     // 按既定顺序落地址。Tensor 保存所有 [expert][source rank] count 的前缀和。
@@ -325,12 +325,23 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     uint32_t cumsumInfoTensorAddr = 0U;
     tokenDispatchScratch_.cumsumInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
-    // Tensor 用途：接收 compact topkIndex 的当前 batch。
-    uint32_t validTopkIndexTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    // Tensor 用途：接收当前 batch 的 mask 切片，每个 bit 对应一个路由项。
+    uint32_t maskBatchAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    uint32_t maskBatchSize = static_cast<uint32_t>(routeItemsPerBatch / 8);
+    tokenDispatchScratch_.maskBatchTensor =
+        LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint8_t));
+    tokenDispatchScratch_.maskBatchU32Tensor =
+        LocalTensor<uint32_t>(TPosition::VECCALC, maskBatchAddr, maskBatchSize / sizeof(uint32_t));
+    // GatherMask 的目标 Tensor，保存当前 batch 命中的全局 topkIndex。
+    uint32_t validTopkIndexTensorAddr = maskBatchAddr + maskBatchSize;
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(routeItemsPerBatch * sizeof(int32_t)),
                                                              static_cast<int64_t>(ALIGN_32));
     tokenDispatchScratch_.validTopkIndexTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
+    // GatherMask 的源 Tensor，保存当前 batch 的连续全局 topkIndex。
+    uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
+    tokenDispatchScratch_.topkIndexTensor =
+        LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
     // 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
     // Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
     // EVENT_ID0..EVENT_ID(bufferCount-1) 形成软流水；
@@ -339,7 +350,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     // 每块 tokenDispatchConfig_.quantTokenScaleAlignBytes；
     // 该值即 Init() 算好的 Align256(token) + Align32(scale) + optional Align32(weight)，与 host
     // CalcDispatchBufferConfig 的 copyBufferBytes 恒相等，故连续 ring 中每个槽位均保持 32B 对齐。
-    tokenDispatchScratch_.copyTmpBaseAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
+    tokenDispatchScratch_.copyTmpBaseAddr = topkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t copyTmpTotalSize =
         static_cast<uint32_t>(bufferConfig.bufferCount) * tokenDispatchConfig_.quantTokenScaleAlignBytes;
     uint32_t expertTokenNumsOutTensorAddr = tokenDispatchScratch_.copyTmpBaseAddr + copyTmpTotalSize;
@@ -395,8 +406,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
 
     // 必须与 host SetAdaptiveBufferConfigs 的 quotient/remainder 分核保持一致。
     bufferConfig = aivCoreIdx_ < params_.tilingData->sendMaskCoreCountWithExtraExpert ?
-                       params_.tilingData->compactSendConfigForCoreWithExtraExpert :
-                       params_.tilingData->compactSendConfigForCoreWithoutExtraExpert;
+                       params_.tilingData->sendMaskConfigForCoreWithExtraExpert :
+                       params_.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
     // 按既定顺序落地址。routeItemsPerBatch 按 256 个 item 对齐，因此两个 int32 tensor 均天然满足 256B 对齐。
@@ -405,11 +416,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
     sendMaskScratch_.topkIdsTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
-    uint32_t topkIndexTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
-    sendMaskScratch_.topkIndexTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIdsTensorSize / sizeof(int32_t));
-
-    uint32_t resetAddrActual = topkIndexTensorAddr + topkIdsTensorSize;
+    uint32_t resetAddrActual = topkIdsTensorAddr + topkIdsTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetAddrActual, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
 
@@ -447,11 +454,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
                                           (sendMaskAddr - mxTempTensorAddr) / sizeof(int16_t));
     Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((sendMaskAddr - mxTempTensorAddr) / sizeof(int16_t)));
     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
+    uint32_t sendGatherOutSize =
+        static_cast<uint32_t>(routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
     uint32_t sendMaskTotalBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
     sendMaskScratch_.sendMaskTensor = LocalTensor<uint8_t>(TPosition::VECCALC, sendMaskAddr, sendMaskTotalBytes);
-    // compact ring drain 后 topkIndex 不再使用，可安全复用为跨 rank count 重排 scratch。
-    sendMaskScratch_.sendGatherOutTensor = sendMaskScratch_.topkIndexTensor;
-    uint32_t sendCntAccAddr = sendMaskAddr + sendMaskTotalBytes;
+    uint32_t sendGatherOutAddr = sendMaskAddr + sendMaskTotalBytes;
+    sendMaskScratch_.sendGatherOutTensor =
+        LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr, sendGatherOutSize / sizeof(int32_t));
+    uint32_t sendCntAccAddr = sendGatherOutAddr + sendGatherOutSize;
     sendMaskScratch_.sendCntAccTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntAccAddr, sendCntAccSize / sizeof(int32_t));
     if (sharedExpertNum_ > 0U) {
@@ -582,8 +592,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     uint32_t waveGlobalRowBegin = GetGlobalRowForPosition(waveBeginPosition);
     uint32_t waveGlobalRowEnd = GetGlobalRowForPosition(dispatchPosition);
     if (waveGlobalRowEnd > waveGlobalRowBegin) {
-        RunGlobalWaveDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true,
-                                   A8W8_DISPATCH_GROUP_READY>(
+        RunGlobalWaveDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, false, false>(
             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
             g_winRankAddr_, tokenDispatchScratch_, waveBeginPosition.expertIdx, waveGlobalRowBegin,
             waveGlobalRowEnd - waveGlobalRowBegin);
@@ -970,8 +979,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
-    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_);
+    GatherAndSendExpertMasks(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         // 可选：为共享专家拆分连续布局的输入数据与 scale。
