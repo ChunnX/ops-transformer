@@ -1299,6 +1299,9 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
     uint32_t readyRows = bsChunkEnd - bsStart;
     if (readyRows % C1_K_EVENT_SIZE == 0 || bsChunkEnd == bsEnd) {
         uint32_t readyFlag = buffId * C1_EVENTS_PER_BUFFER + (readyRows - 1) / C1_K_EVENT_SIZE;
+        // 显式串起C0读取后的V流水与MTE3通知，不再借用尚未执行的输出队列依赖。
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
         AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(readyFlag);
     }
 
