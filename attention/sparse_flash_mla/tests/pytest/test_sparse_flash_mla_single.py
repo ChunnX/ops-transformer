@@ -36,7 +36,10 @@ param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
-    test_data = utils.generate_case_with_default_param(param_combinations)
+    batch_consistency_policy = os.environ.get("SMLA_BATCH_CONSISTENCY", "auto")
+    test_data = utils.generate_case_with_default_param(
+        param_combinations, batch_consistency_policy
+    )
     torch_npu.npu.set_device(0)
 
     print("test_data:", test_data)
@@ -44,7 +47,7 @@ def test_example(param_combinations):
     input_data = sparse_flash_mla_golden.gen_data(test_data)
     consistency_config = resolve_consistency_config(
         input_data,
-        os.environ.get("SMLA_BATCH_CONSISTENCY", "auto"),
+        batch_consistency_policy,
         persist=save_pt,
     )
     if save_pt:

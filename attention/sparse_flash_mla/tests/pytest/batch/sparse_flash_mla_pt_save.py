@@ -61,13 +61,16 @@ def record_failed_case(param_combinations, error_msg):
 def generate_and_save(param_combinations):
     global case_id
     try:
-        test_data = utils.generate_case_with_default_param(param_combinations)
+        batch_consistency_policy = os.getenv("SMLA_BATCH_CONSISTENCY", "auto")
+        test_data = utils.generate_case_with_default_param(
+            param_combinations, batch_consistency_policy
+        )
         print("data parsed.", test_data)
         print("strat to generate data")
         input_data = sparse_flash_mla_golden.gen_data(test_data)
         config = resolve_consistency_config(
             input_data,
-            os.getenv("SMLA_BATCH_CONSISTENCY", "auto"),
+            batch_consistency_policy,
             persist=True,
         )
         if config is not None:

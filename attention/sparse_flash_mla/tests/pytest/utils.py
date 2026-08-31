@@ -18,6 +18,8 @@ import pandas as pd
 from pathlib import Path
 import pytest
 import torch
+
+from batch_consistency.config import prepare_consistency_params
 import time
 import random
 
@@ -423,8 +425,11 @@ def fill_random_used_len(SMax, B, random_seq=False):
     return used_lens
 
 
-def generate_case_with_default_param(param_combinations):
+def generate_case_with_default_param(
+    param_combinations, batch_consistency_policy="auto"
+):
     case_param = param_combinations.copy()
+    prepare_consistency_params(case_param, batch_consistency_policy)
     case_param.setdefault("testcase_name", "case_" + str(int(time.time() * 1000000)))
     case_param.update(
         {

@@ -31,7 +31,10 @@ SMLA_PYTEST_PATH = Path(__file__).resolve().parents[4] / "sparse_flash_mla/tests
 if str(SMLA_PYTEST_PATH) not in sys.path:
     sys.path.append(str(SMLA_PYTEST_PATH))
 
-from batch_consistency.config import resolve_consistency_config  # noqa: E402
+from batch_consistency.config import (  # noqa: E402
+    prepare_consistency_params,
+    resolve_consistency_config,
+)
 
 # 读取表格（支持通过环境变量传入）
 save_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
@@ -281,6 +284,10 @@ def mqsmla(param_combinations):
     global case_id
     try:
         params = utils.fill_none_params(param_combinations)
+        batch_consistency_policy = os.environ.get(
+            "MQSMLA_BATCH_CONSISTENCY", "auto"
+        )
+        prepare_consistency_params(params, batch_consistency_policy)
 
         Testcase_Name = params["Testcase_Name"]
         if Testcase_Name is None:
@@ -305,12 +312,10 @@ def mqsmla(param_combinations):
             pytest.skip(f"输入参数校验失败:{e}")
 
         # 生成测试数据
-        input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
-            params, save_pt=False
-        )
+        input_data = mixed_quant_sparse_flash_mla_golden.gen_data(params)
         config = resolve_consistency_config(
             input_data,
-            os.environ.get("MQSMLA_BATCH_CONSISTENCY", "auto"),
+            batch_consistency_policy,
             persist=True,
         )
         if config is not None:
