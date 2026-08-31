@@ -373,13 +373,16 @@ bash dump_analysis.sh \
 
 ```bash
 # 单卡
-python3 dump_analysis_moe_ep.py <dump_data_path> <file_num> <is_multi>
+python3 dump_analysis_moe_ep.py <dump_data_path> <file_num> <is_multi> [card_names]
 
 # 示例: 单卡
 python3 dump_analysis_moe_ep.py /path/to/dump 1 0
 
-# 示例: 多卡 (2 张卡)
+# 示例: 多卡 (2 张卡, 卡名为 0,1)
 python3 dump_analysis_moe_ep.py /path/to/dump 2 1
+
+# 示例: 多卡 (卡名非连续, 如 3,4,5,6)
+python3 dump_analysis_moe_ep.py /path/to/dump 4 1 3,4,5,6
 ```
 
 | 参数 | 说明 |
@@ -387,6 +390,7 @@ python3 dump_analysis_moe_ep.py /path/to/dump 2 1
 | `dump_data_path` | dump 数据目录, 单卡为 exception_info 所在目录, 多卡为包含 0/ 1/ 子目录的父目录 |
 | `file_num` | 总卡数 |
 | `is_multi` | 0: 单卡, 1: 多卡 |
+| `card_names` | 选填, 多卡时传入实际卡目录名列表(逗号分隔), 不传则按 0~file_num-1 生成 |
 
 ### dump 文件说明
 
