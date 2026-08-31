@@ -63,6 +63,21 @@ pre-commit install
 pre-commit installed at .git/hooks/pre-commit
 ```
 
+### 4. 配置 git pc 别名
+
+配置 `git pc` 别名，用于对指定范围的提交变更文件运行 pre-commit 检查（每个环境执行一次，全局生效）：
+
+```bash
+git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
+```
+
+配置后即可使用（详见[补查历史提交](#补查历史提交-no-verify-跳过后)）：
+
+```bash
+git pc HEAD~2 HEAD   # 检查最近2笔提交
+git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
+```
+
 ## 使用方法
 
 ### 自动检查（推荐）
@@ -116,6 +131,27 @@ git commit --no-verify -m "emergency fix"
 ```
 
 > **注意**: 仅在紧急情况下使用，正常开发流程应保证检查通过。
+
+### 补查历史提交（--no-verify 跳过后）
+
+若使用 `--no-verify` 跳过了检查，可对指定范围内的提交变更文件补跑检查（等价于 CI `codecheck_precommit` 门禁对 PR 变更文件列表执行 `xargs pre-commit run --files` 的行为）：
+
+```bash
+# 检查最近2笔提交涉及的文件
+pre-commit run --files $(git diff --name-only HEAD~2 HEAD)
+
+# 检查某个提交
+pre-commit run --files $(git diff --name-only <commit>^ <commit>)
+```
+
+推荐使用已配置的 `git pc` 别名（见安装步骤第 4 步）：
+
+```bash
+git pc HEAD~2 HEAD   # 检查最近2笔提交
+git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
+```
+
+> **注意**: `git pc` 检查的是文件的当前磁盘内容。部分钩子（clang-format、ruff-format 等）会自动修复文件，修复后需重新 `git add` 并追加提交。
 
 ## 检查项说明
 
