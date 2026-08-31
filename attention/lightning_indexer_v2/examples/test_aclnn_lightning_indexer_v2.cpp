@@ -98,6 +98,7 @@ struct TensorResources {
     aclTensor *keyTensor = nullptr;
     aclTensor *weightsTensor = nullptr;
     aclTensor *cmpResidualKTensor = nullptr;
+    aclTensor *metadataTensor = nullptr;
     aclTensor *sparseIndicesTensor = nullptr;
     aclTensor *sparseValuesTensor = nullptr;
 };
@@ -381,6 +382,9 @@ int main()
     int64_t B = 2;
     int64_t S1 = 64;
     int64_t N2 = 1;
+    int64_t S2 = 32;
+    int64_t N1 = 16;
+    int64_t D = 128;
     int64_t topk = 32;
     std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
     int ret = ACL_SUCCESS;
