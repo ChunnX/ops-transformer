@@ -47,6 +47,11 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
+  <!-- npu="A3" id7a -->
+  - <term>Atlas A3系列产品</term>：支持`ai_cpu`和`aiv`。
+
+  <!-- end id7a -->
+
   <!-- npu="950" id7 -->
   - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 
@@ -185,7 +190,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
     <td>commMode(char*)</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入"ai_cpu"和"ccu"。</td>
+    <td><term>Atlas A3系列产品</term>支持"ai_cpu"和"aiv"；<term>Ascend 950DT</term>支持"ai_cpu"和"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
