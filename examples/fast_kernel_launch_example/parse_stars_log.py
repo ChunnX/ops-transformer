@@ -18,7 +18,7 @@
 #   cnt:       全局计数器（dispatch/complete 成对递增）
 #   head:      固定 head 标识（如 27603）
 #   task_id / stream_id: 任务与流编号
-#   sys cnt:   SYS_CNT 寄存器绝对值（A5 ~283MHz, 1 cyc ≈ 3.53ns）
+#   sys cnt:   SYS_CNT 寄存器绝对值（A5 实测 1000MHz, 1 cyc = 1ns）
 # ----------------------------------------------------------------------------
 import os
 import argparse
@@ -74,8 +74,8 @@ def main():
                         help="要解析的 data 目录（PROF_xxx/device_N/data/）")
     parser.add_argument("--output", default="stars_log.csv",
                         help="输出 CSV 路径（默认 ./stars_log.csv）")
-    parser.add_argument("--freq", type=float, default=283.0,
-                        help="SYS_CNT 频率 MHz（默认 283，A5）")
+    parser.add_argument("--freq", type=float, default=1000.0,
+                        help="SYS_CNT 频率 MHz（默认 1000，A5 实测；A3 需上板标定）")
     args = parser.parse_args()
 
     print(f"start parse: {args.path}")
