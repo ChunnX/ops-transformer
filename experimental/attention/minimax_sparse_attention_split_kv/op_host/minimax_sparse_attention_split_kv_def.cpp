@@ -43,7 +43,7 @@ public:
         // (TND / BNSD / BSND).
         this->Input("blockTable")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND});
         // k2qRowPtr: per-head CSR row pointers [kvHeads, totalKvRows+1], int32. A plain runtime
         // tensor Input (no const-fold) — the kernel reads csrStart/csrEnd from this GM tensor
@@ -51,27 +51,27 @@ public:
         // only (no host value-read, so no .tolist / aclIntArray / ConvertToTensor front-end).
         this->Input("k2qRowPtr")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND});
         // k2qQIndices: CSR 格式的列数据，全局 Q token id 列表
         this->Input("k2qQIndices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND});
         // k2qSlotIndices: workspace 中的槽位索引，范围 [0, topK)
         this->Input("k2qSlotIndices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND});
         // actualSeqLengths: 每个 batch 的实际 Q 序列长度
         this->Input("actualSeqLengths")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND});
         // actualSeqLengthsKv: 每个 batch 的实际 KV 序列长度
         this->Input("actualSeqLengthsKv")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND});
         // attentionOut: [total_q_tokens, num_q_heads, D], 与 query 同 dtype 的注意力计算输出
         this->Output("attentionOut")
