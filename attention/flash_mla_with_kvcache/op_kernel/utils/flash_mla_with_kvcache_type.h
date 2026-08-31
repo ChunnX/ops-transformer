@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache_type.h
- * \brief arch35 flash_mla_with_kvcache 编译期模板参数聚合类型（镜像 flash_attn 的
+ * \brief flash_mla_with_kvcache 编译期模板参数聚合类型（镜像 flash_attn 的
  *        utils/flash_attn_type.h FAType 组织模式，语义命名保留 MLA 语境）。
  *        cube/vec/fd 三类 block 参数集不一致（vec 多 OUTPUT_T/outLayout/hasMask，
  *        cube 无 mask/out 概念），故分别为每类建聚合类型；无 isFd——FD block 与 vec
@@ -21,21 +21,16 @@
 #ifndef FLASH_MLA_WITH_KVCACHE_TYPE_H_
 #define FLASH_MLA_WITH_KVCACHE_TYPE_H_
 
+#include "flash_mla_with_kvcache_common_def.h"
+#include "../arch35/memory_copy_arch35.h"
 #if __has_include("../../../common/op_kernel/arch35/util_regbase.h")
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
-#include "../../../common/op_kernel/memcopy/parser.h"
-#include "../../../common/op_kernel/memcopy/gm_layout.h"
-#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
-#include "flash_mla_with_kvcache_public_define_arch35.h"
 #else
 #include "../../common/arch35/util_regbase.h"
 #include "../../common/arch35/infer_flash_attention_comm_arch35.h"
-#include "../../common/memcopy/parser.h"
-#include "../../common/memcopy/gm_layout.h"
-#include "../../common/memcopy/fa_ub_tensor.h"
-#include "flash_mla_with_kvcache_public_define_arch35.h"
 #endif
+#include "../arch35/flash_mla_with_kvcache_public_define_arch35.h"
 
 namespace FlashAttnKernel {
 

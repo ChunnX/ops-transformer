@@ -25,7 +25,7 @@
 
 #include "memory_copy_arch35.h"
 #include "flash_mla_with_kvcache_public_define_arch35.h"
-#include "flash_mla_with_kvcache_type.h"
+#include "../utils/flash_mla_with_kvcache_type.h"
 
 namespace FlashAttnKernel {
 // ConstInfo_t 解析为 MLA 的 ConstInfoX（= ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>）；

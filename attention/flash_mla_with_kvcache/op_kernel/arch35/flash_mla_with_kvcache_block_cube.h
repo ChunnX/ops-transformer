@@ -23,9 +23,8 @@
 #include "../../common/matmul.h"
 #include "../../common/const_def.h"
 #endif
-#include "memory_copy_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "flash_mla_with_kvcache_type.h"
+#include "../utils/flash_mla_with_kvcache_type.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;

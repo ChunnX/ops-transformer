@@ -56,7 +56,7 @@
 #include "../../common/vector_common.h"
 #endif
 #include "memory_copy_arch35.h"
-#include "flash_mla_with_kvcache_type.h"
+#include "../utils/flash_mla_with_kvcache_type.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;

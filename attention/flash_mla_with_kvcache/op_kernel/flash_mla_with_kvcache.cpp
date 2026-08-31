@@ -34,7 +34,7 @@
 #include "../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #endif
 #include "adv_api/activation/softmax.h"
-#include "arch35/flash_mla_with_kvcache_type.h"
+#include "utils/flash_mla_with_kvcache_type.h"
 using namespace optiling;
 #include "arch35/flash_mla_with_kvcache_kernel.h"
 
@@ -115,7 +115,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
 
     // —— 模板参数聚合（FAType 式，镜像 flash_attn utils/flash_attn_type.h；
-    // cube/vec/fd 参数集不一致 → 各建聚合类型，见 arch35/flash_mla_with_kvcache_type.h）——
+    // cube/vec/fd 参数集不一致 → 各建聚合类型，见 utils/flash_mla_with_kvcache_type.h）——
     using FA_T_Cube = FlashAttnKernel::FATypeCube<INPUT_T, float, qLayout, s1TemplateType, s2TemplateType,
                                                   dTemplateType, dVTemplateType, KvLayoutType>;
     using FA_T_Vec =
