@@ -52,7 +52,7 @@ constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL;
 
-constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
+constexpr int64_t HIDDEN_BYTES_ALIGN = 32;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 
 static const std::vector<ge::DataType> GRAD_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
@@ -233,10 +233,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched",
                                               (std::string("dim1=") + std::to_string(hiddenDim)).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
+    int64_t gradBytesPerElem = ge::GetSizeByDataType(context->GetInputDesc(IN_GRAD_FETCHED)->GetDataType());
     OP_TILING_CHECK(
-        hiddenDim % HIDDEN_SIZE_ALIGN != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched", (std::string("dim1=") + std::to_string(hiddenDim)).c_str(),
-                                  (std::string("must be ") + std::to_string(HIDDEN_SIZE_ALIGN) + "-aligned").c_str()),
+        hiddenDim * gradBytesPerElem % HIDDEN_BYTES_ALIGN != 0,
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "gradFetched", (std::string("dim1=") + std::to_string(hiddenDim)).c_str(),
+            (std::string("dim1 * dtype_size must be ") + std::to_string(HIDDEN_BYTES_ALIGN) + "-byte aligned").c_str()),
         return ge::GRAPH_FAILED);
 
     // perm: 1D (T,), dim0 == numTokens

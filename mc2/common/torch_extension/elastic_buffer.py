@@ -428,7 +428,8 @@ class ElasticBuffer:
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
-            hidden: the hidden dimension of each entry (must be 128-aligned and positive).
+            hidden: the hidden dimension of each entry (must be positive, and
+                hidden * dtype_size must be 32-byte aligned).
             dtype: the data type, defaults to `torch.bfloat16`.
 
         Returns:
@@ -443,12 +444,16 @@ class ElasticBuffer:
             lambda: f"hidden must be positive, got {hidden}",
         )
         torch._check(
-            hidden % 128 == 0,
-            lambda: f"hidden must be 128-aligned, got {hidden}",
-        )
-        torch._check(
             dtype in (torch.bfloat16, torch.float16, torch.float32),
             lambda: f"dtype must be bfloat16/float16/float32, got {dtype}",
+        )
+        dtype_size = torch.empty((), dtype=dtype).element_size()
+        torch._check(
+            hidden * dtype_size % 32 == 0,
+            lambda: (
+                f"hidden * dtype_size must be 32-byte aligned, "
+                f"got hidden={hidden}, dtype={dtype} ({dtype_size} bytes)"
+            ),
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
@@ -585,7 +590,8 @@ class ElasticBuffer:
         Write data to the host pinned memory of ElasticBuffer.
 
         Arguments:
-            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32).
+            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32,
+                and storage.size(1) * element_size() must be 32-byte aligned).
 
         Returns:
             None
@@ -610,8 +616,11 @@ class ElasticBuffer:
             lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
         )
         torch._check(
-            storage.size(1) % 128 == 0,
-            lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
+            storage.size(1) * storage.element_size() % 32 == 0,
+            lambda: (
+                f"storage second dimension must be 32-byte aligned in bytes "
+                f"(size(1) * element_size() % 32 == 0), got: {storage.size(1)} x {storage.element_size()}"
+            ),
         )
         self._runtime.engram_write(storage)
         self._engram_context_tensor = self._runtime.get_context_tensor()
@@ -756,9 +765,10 @@ class ElasticBuffer:
             ),
         )
         _torch_check(
-            grad_fetched.size(1) % 128 == 0,
+            grad_fetched.size(1) * grad_fetched.element_size() % 32 == 0,
             lambda: (
-                f"grad_fetched hidden size must be 128-aligned, got {grad_fetched.size(1)}"
+                f"grad_fetched hidden size must be 32-byte aligned in bytes "
+                f"(size(1) * element_size() % 32 == 0), got: {grad_fetched.size(1)}"
             ),
         )
         for _name, _tensor in (
