@@ -21,7 +21,7 @@
 #include "arch35/mhc_pre_sinkhorn_backward_deterministic.h"
 
 using namespace AscendC;
-using namespace MicroAPI;
+using namespace Reg;
 
 template<bool DETERMINISTIC>
 __global__ __aicore__ void mhc_pre_sinkhorn_backward(
