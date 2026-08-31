@@ -12,12 +12,14 @@
  * \file all_gather_matmul_def.cpp
  * \brief
  */
+
 #include "register/op_def_registry.h"
 
 namespace ops {
 class AllGatherMatmul : public OpDef {
 public:
-    explicit AllGatherMatmul(const char *name) : OpDef(name)
+    explicit AllGatherMatmul(const char *name)
+        : OpDef(name)
     {
         this->Input("x1")
             .ParamType(REQUIRED)
