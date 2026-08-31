@@ -71,8 +71,7 @@ inline uint64_t GetDefaultStride0(const gert::Shape &shape)
 // StorageShape 在 dim0 插空时可能是 [NP*gap, ...]，不能当 numPages。
 inline const gert::Shape &KeyLogicalShape(const gert::StorageShape *keyShape, uint32_t keyLayout)
 {
-    const size_t expectRank =
-        (keyLayout == MSA_KEY_LAYOUT_TND) ? MSA_KEY_TND_DIM_NUM : MSA_KEY_PA_DIM_NUM;
+    const size_t expectRank = (keyLayout == MSA_KEY_LAYOUT_TND) ? MSA_KEY_TND_DIM_NUM : MSA_KEY_PA_DIM_NUM;
     const gert::Shape &origin = keyShape->GetOriginShape();
     if (origin.GetDimNum() == expectRank) {
         return origin;
@@ -80,7 +79,7 @@ inline const gert::Shape &KeyLogicalShape(const gert::StorageShape *keyShape, ui
     return keyShape->GetStorageShape();
 }
 
-// aclnn TensorV2 优先 GetRequiredInputStride（与 mla_preprocess 一致）；
+// aclnn TensorV2 优先 GetRequiredInputStride；
 // 文档接口 GetInputStride 作为兼容回退。
 inline const gert::Stride *GetKeyStrideDesc(gert::TilingContext *context)
 {
@@ -117,7 +116,7 @@ inline bool ValidateKeyInnerAxesContiguous(gert::TilingContext *context, const g
     return true;
 }
 
-// PA：strideKvBlock 取 key dim0 元素 stride（A2/A3 与 950 同一套）。连续输入写入值与 shape 推算相同。
+// PA：strideKvBlock 取 key dim0 元素 stride。连续输入写入值与 shape 推算相同。
 inline ge::graphStatus ResolveStrideKvBlock(gert::TilingContext *context, const MsaIndexScoreInfo &info,
                                             uint32_t defaultStrideKvBlock, uint32_t &strideKvBlock)
 {
@@ -133,8 +132,8 @@ inline ge::graphStatus ResolveStrideKvBlock(gert::TilingContext *context, const 
     const uint64_t defaultStride0 = GetDefaultStride0(kc);
     const gert::Stride *stride = GetKeyStrideDesc(context);
     if (stride == nullptr || stride->GetDimNum() != kc.GetDimNum()) {
-        OP_LOGD(context->GetNodeName(),
-                "key has no stride desc, treat as contiguous, strideKvBlock=%u.", strideKvBlock);
+        OP_LOGD(context->GetNodeName(), "key has no stride desc, treat as contiguous, strideKvBlock=%u.",
+                strideKvBlock);
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(!ValidateKeyInnerAxesContiguous(context, stride, kc),
@@ -157,8 +156,7 @@ inline ge::graphStatus ResolveStrideKvBlock(gert::TilingContext *context, const 
                 OP_LOGE(context, "PA key dim0 stride %ld exceeds uint32 strideKvBlock.", actualStride0),
                 return ge::GRAPH_FAILED);
     strideKvBlock = static_cast<uint32_t>(actualStride0);
-    OP_LOGI(context->GetNodeName(), "PA key strideKvBlock=%u (contiguous default=%lu).", strideKvBlock,
-            defaultStride0);
+    OP_LOGI(context->GetNodeName(), "PA key strideKvBlock=%u (contiguous default=%lu).", strideKvBlock, defaultStride0);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -308,7 +306,7 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
                 OP_LOGE(context, "numQHeads(%u) must be divisible by numKvHeads(%u).", info.numQHeads, info.numKvHeads),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(info.batch == 0, OP_LOGE(context, "batch must be positive."), return ge::GRAPH_FAILED);
-    // A2/A3 与 950：q_len/kv_len 全 0 跳过计算（FIA PR 9246）。InferShape 已把空 KV 的 score 末维钳到 16。
+    // q_len/kv_len 全 0 跳过计算。InferShape 已把空 KV 的 score 末维钳到 16。
     OP_CHECK_IF(info.maxBlocksPerBatch == 0,
                 OP_LOGE(context, "maxBlocksPerBatch must be positive (empty kv uses aligned score stride)."),
                 return ge::GRAPH_FAILED);
@@ -321,9 +319,8 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     OP_CHECK_NULL_WITH_CONTEXT(context, queryDesc);
     info.queryDtype = queryDesc->GetDataType();
     OP_CHECK_IF(!IsNonQuantQueryDtype(info.queryDtype, info.isAscend950),
-                OP_LOGE(context,
-                        "query dtype must be bf16 or fp16 on A2/A3; Ascend 950 also allows hifloat8 / "
-                        "float8_e5m2 / float8_e4m3fn."),
+                OP_LOGE(context, "query dtype must be bf16 or fp16 on A2/A3; Ascend 950 also allows hifloat8 / "
+                                 "float8_e5m2 / float8_e4m3fn."),
                 return ge::GRAPH_FAILED);
 
     info.isQuant = (info.keyDtype == ge::DT_INT8);
@@ -421,8 +418,7 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     // 950 C_to_UB：S 不进 GM；int8/TND 尾页仍要一页 K scratch。A2 与 950 回退（MSA_A5_USE_C2UB=0）走 8-stage S。
     const uint32_t sElemBytes = info.isQuant ? sizeof(float) : sizeof(uint16_t);
     const bool c2ub = info.isAscend950 && (MSA_A5_USE_C2UB != 0);
-    const uint32_t sWsBytes =
-        c2ub ? 0U : (aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM * sElemBytes);
+    const uint32_t sWsBytes = c2ub ? 0U : (aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM * sElemBytes);
     const bool useKScratch = info.isQuant || (info.keyLayout == MSA_KEY_LAYOUT_TND);
     uint32_t scratchElemBytes = sizeof(uint16_t);
     if (info.isAscend950 && !info.isQuant && IsFp8ComputeDtype(info.queryDtype)) {
@@ -483,9 +479,9 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     // MIX 1AIC:2AIV：CalcTschBlockDim 的 sliceNum 按 AIV 计数，内部再 / (aiv/aic)。
-    // 传入 aicNum 会再除一次得到 blockDim=aic/2（910B3: 20→10），只能打一半 Cube。
-    // 与 LightningIndexer 等 MIX 算子一致：sliceNum = aivNum → 910B3 blockDim=20。
-    // 整 batch q_len=0：对齐 FIA PR 9246（queryS==0 → BlockDim=1），避免 totalTaskNum=0。A2/A3 与 950 相同。
+    // 传入 aicNum 会再除一次得到 blockDim=aic/2，只能打一半 Cube。
+    // sliceNum = aivNum。
+    // 整 batch q_len=0：queryS==0 → BlockDim=1，避免 totalTaskNum=0。
     if (info.totalQ == 0U) {
         context->SetBlockDim(1);
     } else {
@@ -496,7 +492,7 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
     workspaces[0] =
         ascendcPlatform.GetLibApiWorkSpaceSize() + static_cast<size_t>(sWsBytes) + static_cast<size_t>(kScratchBytes);
-    // 950 非量化 PA 无 S GM / K scratch 时 user workspace 为 0，GetUserWorkspace 可能返回 nullptr。
+    // 非量化 PA 无 S GM / K scratch 时 user workspace 为 0，GetUserWorkspace 可能返回 nullptr。
     if (info.isAscend950 && sWsBytes == 0U && kScratchBytes == 0U) {
         workspaces[0] += 64U;
     }

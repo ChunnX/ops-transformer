@@ -15,10 +15,6 @@
  * dtype 组合（按列表下标对齐）：
  *   A2/A3（3 组，全 ND）：0 bf16/bf16、1 fp16/fp16、2 fp16/int8
  *   Ascend 950（6 组）：0–2 同上（ND），3 hifloat8、4 fp8_e5m2、5 fp8_e4m3fn
- *
- * A2/A3：PageAttention BBND/BNBD key 与 TND packed key；sparse_mode∈{0,3}；
- *        PA key 允许 dim0 非连续。
- * Ascend 950：同功能 + query/key FP8 计算（无 scale）；PA key 允许 dim0 非连续。
  */
 
 #include <cstdint>
@@ -37,7 +33,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // K_idx：BBND [block_num, block_size, N2, D]、BNBD [block_num, N2, block_size, D]、TND [T2, N2, D]
-        // A2/A3 与 950：PA key 允许 dim0（物理 page）非连续；TND 仍须连续（tiling 拒绝）。
+        // PA key 允许 dim0（物理 page）非连续；TND 仍须连续（tiling 拒绝）。
         this->Input("key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8})
@@ -110,11 +106,10 @@ public:
                        ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // 950 PA key 允许 dim0（物理 page）非连续（与 A2/A3 默认 IR 相同；本配置独立列出以免与 910b 互扰）。
         aicoreConfig950.Input("key")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN})
+            .DataType(
+                {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
         aicoreConfig950.Input("block_table")

@@ -205,15 +205,11 @@
 编译与运行（Ascend 950，x86 包名为 `linux-x86_64.run`；A2/A3 将 `--soc` 换成对应平台）：
 
 ```bash
-conda activate py311
-source /home/chenlyucheng/community_pkg/Ascend_0819/cann/set_env.sh
 cd /path/to/ops-transformer-ar-950
-
 bash build.sh --pkg --soc=ascend950 --ops=msa_index_score -j32
-rm -rf /tmp/msa_opp/
-bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/tmp/msa_opp/
-source /tmp/msa_opp/vendors/custom_transformer/bin/set_env.bash
-export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
+bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/path/to/msa_opp/
+source /path/to/msa_opp/vendors/custom_transformer/bin/set_env.bash
+export ASCEND_CUSTOM_OPP_PATH=/path/to/msa_opp/vendors/custom_transformer
 
 # aclnn example 必须带 --soc=ascend950（否则默认 910b）
 bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
@@ -236,4 +232,4 @@ torch_extension 见 [msa_index_score.md](../../torch_extension/cann_ops_transfor
 > - **950 当前交付**（`op_kernel/arch35/`）：计算骨架与 A2 相同（Q 驻留 × K pingpong × **8-page S GM** + MODE 0x2 握手）。Cube **原生** FP8（TilingKey 4/5/6，`hifloat8_t` / `fp8_e5m2_t` / `fp8_e4m3fn_t`，无 scale，禁止 Cast→fp16）。L0C→AIV UB（C_to_UB）尚未作为主路径。`arch22/` 冻结。
 > - **PA key dim0 stride**（A2/A3 与 950）：key 为 `IgnoreContiguous`；tiling 用 `GetInputStride` / `GetRequiredInputStride` 读首轴元素 stride，写入已有 `strideKvBlock`。TND 不允许非连续。scale 仍按逻辑 page 紧凑布局。
 > - torch 的 `torch_npu.hifloat8.npu()` 当前会打出非法 device id，脚本跳过；kernel / aclnn 已挂 HIFLOAT8。
-> - 测性能须选 Health=OK 且空闲的卡。本机经验：物理 **0 / 5** 与基线墙钟一致；**3 / 6** 同 kernel 墙钟可差约 2×（PipeUtilization 仍接近）。物理 0 若 `SetDevice` 卡住，换 5。
+> - 测性能须选 Health=OK 且空闲的卡。
