@@ -81,9 +81,7 @@ public:
                                                        uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
                                                           uint32_t currentChunkSize, uint32_t buffId,
-                                                          LocalTensor<P> &sumBuf, uint32_t offsetND);
-    __aicore__ inline void PrefetchV2ChunkGradXPost(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
-                                                   uint32_t currentChunkSize);
+                                                          LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
                                                      uint32_t currentChunkSize, uint32_t chunkNDSize);
 
@@ -1297,7 +1295,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
     ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, buffId);
 
     // 4. 融合计算xRsGrad并处理xRsGradMm
-    ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf, offsetND);
+    ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
 
     // 5. 融合处理gradXPost并输出grad_x
     ProcessV2ChunkOutputXGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, chunkNDSize);
@@ -1421,7 +1419,7 @@ template <class T, class P>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
                                                            uint32_t currentChunkSize, uint32_t buffId,
-                                                           LocalTensor<P> &sumBuf, uint32_t offsetND)
+                                                           LocalTensor<P> &sumBuf)
 {
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
@@ -1438,11 +1436,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
     DataCopyPad(xRsGradMmInBuf_, workSpaceGm_[offsetXRsGradMm], blockCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(xRsGradMmInBuf_);
     vecInQueue0_.DeQue<P>(xRsGradMmInBuf_);
-
-    // C0梯度已发起并就绪，再用已释放x输入的q1预取grad_x_post。
-    if (withGradXPost_) {
-        PrefetchV2ChunkGradXPost(offsetND, copySizeND, bsChunkStart, currentChunkSize);
-    }
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
@@ -1506,24 +1499,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2AddGradXPostAndCast(
     }
 }
 
-// 预取可选梯度，最终加法与转换仍在原输出函数执行。
-template <class T, class P>
-__aicore__ inline void
-MhcPreBackwardKernel<T, P>::PrefetchV2ChunkGradXPost(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
-                                                     uint32_t currentChunkSize)
-{
-    DataCopyExtParams gradXPostCopyParams;
-    DataCopyPadExtParams<T> gradXPostPadParams;
-    gradXPostCopyParams.blockCount = currentChunkSize;
-    gradXPostCopyParams.blockLen = copySizeND * sizeof(T);
-    gradXPostCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
-    gradXPostCopyParams.dstStride = 0;
-    gradXPostBuf_ = vecInQueue1_.AllocTensor<T>();
-    DataCopyPad(gradXPostBuf_, gradXPostOptionalGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND],
-                gradXPostCopyParams, gradXPostPadParams);
-    vecInQueue1_.EnQue(gradXPostBuf_);
-}
-
 // 子函数6: 融合处理gradXPost并输出grad_x
 template <class T, class P>
 __aicore__ inline void
@@ -1534,6 +1509,16 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
     __ubuf__ T *outputAddr = (__ubuf__ T *)bf16OutputBuf_.GetPhyAddr();
     __ubuf__ P *xGradAddr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     if (withGradXPost_) {
+        DataCopyExtParams gradXPostCopyParams;
+        DataCopyPadExtParams<T> gradXPostPadParams;
+        gradXPostCopyParams.blockCount = currentChunkSize;
+        gradXPostCopyParams.blockLen = copySizeND * sizeof(T);
+        gradXPostCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
+        gradXPostCopyParams.dstStride = 0;
+        gradXPostBuf_ = vecInQueue1_.AllocTensor<T>();
+        DataCopyPad(gradXPostBuf_, gradXPostOptionalGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], gradXPostCopyParams,
+                    gradXPostPadParams);
+        vecInQueue1_.EnQue(gradXPostBuf_);
         gradXPostBuf_ = vecInQueue1_.DeQue<T>();
         __ubuf__ T *gradXPostAddr = (__ubuf__ T *)gradXPostBuf_.GetPhyAddr();
         VFDoV2AddGradXPostAndCast<true>(outputAddr, xGradAddr, gradXPostAddr, chunkNDSize);
