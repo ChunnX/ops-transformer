@@ -164,7 +164,8 @@ $$
 
 ## 约束说明
 
-- $T$和$D$必须是已知正整数，且$D$的取值范围为$[1, 8192]$。
+- Kernel/Tiling非空计算场景要求$T$和$D$为已知正整数，且$D$的取值范围为$[1, 8192]$。
+  ACLNN和PyTorch接口在$T=0$或$D=0$时直接返回空Tensor，不进入Tiling和Kernel。
 - partial_block、delta、numerator及输出partial_block、h的shape必须相同，均为$(T, D)$；pseudo_query、logit_max和exp_sum的shape必须分别为$(D)$、$(T)$和$(T)$。
 - 所有输入的原始格式和存储格式均必须为ND；所有输入、输出的StorageShape必须与OriginShape完全一致。
 - numerator、logit_max和exp_sum是位于GM（Global Memory）中的运行时只读状态，Host Tiling不读取或校验其元素值。
@@ -189,6 +190,11 @@ $$
     <td>aclnn调用</td>
     <td><a href="examples/arch35/test_aclnn_block_attn_res_update.cpp">test_aclnn_block_attn_res_update.cpp</a></td>
     <td>通过aclnnBlockAttnResUpdate接口调用，详细说明参见<a href="docs/aclnnBlockAttnResUpdate.md">接口文档</a>。</td>
+  </tr>
+  <tr>
+    <td>PyTorch API</td>
+    <td>-</td>
+    <td>通过<a href="../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_update.md">cann_ops_transformer.block_attn_res_update</a>接口调用。</td>
   </tr>
 </tbody>
 </table>
