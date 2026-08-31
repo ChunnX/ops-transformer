@@ -1019,7 +1019,7 @@ ge::graphStatus AllGatherQuantBmmHelper::GetShapeAttrsInfo()
 
 ge::graphStatus AllGatherQuantBmmHelper::PostTiling()
 {
-    // 此处需要后续考虑补充相关tiling打印，当前该函数已不存在。
+    // 此处需要后续考虑补充相关tilingdd打印，当前该函数已不存在。
     tilingProcesser_.myWorkSpaceSize_ = std::max(tilingProcesser_.myWorkSpaceSize_, workspaceSize_);
     OP_LOGI(tilingProcesser_.opName_, " set mm workspace size %lu to mc2", tilingProcesser_.myWorkSpaceSize_);
     return ge::GRAPH_SUCCESS;
