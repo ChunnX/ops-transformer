@@ -102,8 +102,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
  * 控制总负载；空间不足时可在专家内部切分，但同一 Wave 的 GMM1 和 GMM2 始终处理相同的 token 范围。
  *
  * Dispatch 预取用于提前准备下一 Wave 的 GMM1 输入。启动阶段先 Dispatch 第一个完整 Wave；稳态阶段
- * 由 AIV1 准备下一 Wave，同时 AIC/AIV0 执行当前 Wave 的 GMM1/Activation。当前 Wave 完成后执行其
- * GMM2/Combine，再切换到已经准备好的下一 Wave。
+ * 由 AIV1 按专家 slice 交替执行下一 Wave 的 Dispatch 和当前 Wave 的 Activation，同时 AIC/AIV0 执行当前
+ * Wave 的 GMM1。当前 Wave 完成后执行其 GMM2/Combine，再切换到已经准备好的下一 Wave。
  */
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages()
@@ -157,24 +157,24 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         uint32_t waveLastActiveExpertIdx = commonConfig_.moeExpertPerRank;
         bool currentWaveNeedsGmm1 = true;
 
+        uint32_t nextDispatchWaveMGroupCount = 0U;
         bool nextWaveNeedsDispatch = false;
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                nextWaveNeedsDispatch = dispatchPosition.expertIdx < commonConfig_.moeExpertPerRank;
+                nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
             }
         }
 
         // 两侧进度可能不同：只有当前计算和下一 Wave 的 Dispatch 都结束后，才能切换到当前 Wave 的 GMM2。
         while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
-            // AIV1 一次准备完整的下一 Wave；AIC/AIV0 同时推进当前 Wave 的 GMM1/Activation。
+            // AIV1 每轮先发送下一 Wave 的一个专家 slice，再处理当前 Wave 的一个专家 slice。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    MegaMoeImpl::DispatchWaveAndGetEndPosition<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                                               TopkWeightsPrefetch, true>(
+                    nextWaveNeedsDispatch = MegaMoeImpl::DispatchWaveExpertSliceAndAdvance<
+                        ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true>(
                         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
                         syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
-                        mGroupsPerWave_);
-                    nextWaveNeedsDispatch = false;
+                        mGroupsPerWave_, nextDispatchWaveMGroupCount);
                 }
             }
 
