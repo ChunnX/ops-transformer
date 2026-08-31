@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file flash_mla_with_kvcache_kernel_noquant_mla.h
- * \brief arch35 flash_mla_with_kvcache 非量化 MLA kernel（由 fia_kernel_noquant_mla.h 复制改名；
+ * \file flash_mla_with_kvcache_kernel_mla.h
+ * \brief arch35 flash_mla_with_kvcache MLA kernel（由 fia_kernel_noquant_mla.h 复制改名；
  *        metadata 消费改为 flash_attn AICPU 多 section 布局，与 flash_attn 同构）
  */
 
-#ifndef FLASH_MLA_WITH_KVCACHE_KERNEL_NOQUANT_MLA_H_
-#define FLASH_MLA_WITH_KVCACHE_KERNEL_NOQUANT_MLA_H_
+#ifndef FLASH_MLA_WITH_KVCACHE_KERNEL_MLA_H_
+#define FLASH_MLA_WITH_KVCACHE_KERNEL_MLA_H_
 
 #include "flash_mla_with_kvcache_public_define_arch35.h"
-#include "flash_mla_with_kvcache_block_cube_noquant_mla.h"
-#include "flash_mla_with_kvcache_block_vec_noquant_mla.h"
+#include "flash_mla_with_kvcache_block_cube_mla.h"
+#include "flash_mla_with_kvcache_block_vec_mla.h"
 #include "memory_copy_arch35.h"
 #include "flash_mla_with_kvcache_block_vec_flashdecode_mla.h"
 
@@ -41,7 +41,7 @@ public:
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2 C2
+    static constexpr uint32_t PRELOAD_N = 2;                            // C1 C1 C2 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N << 1; // 4 (power-of-2 for bitmask)
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -102,10 +102,10 @@ public:
         : cubeBlock_(constInfo_, seqLensTool_),
           vecFaBlock_(constInfo_, seqLensTool_),
           vecFdBlock_(constInfo_, seqLensTool_){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *kCache,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *kCache, __gm__ uint8_t *attenMask,
+                                __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cacheSeqlens,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tiling)
     {
         this->tilingData_ = tiling;
@@ -560,8 +560,8 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(BaseApi::FA_BYTE_BLOCK / sizeof(INPUT_T)));
+        info.actSingleLoopS2SizeAlign = AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size,
+                                                               (uint32_t)(BaseApi::FA_BYTE_BLOCK / sizeof(INPUT_T)));
         info.isChangeBatch = false;
 
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, info.preTokensLeftUp, info.nextTokensLeftUp);
@@ -677,4 +677,4 @@ public:
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_MLA_WITH_KVCACHE_KERNEL_NOQUANT_MLA_H_
+#endif // FLASH_MLA_WITH_KVCACHE_KERNEL_MLA_H_

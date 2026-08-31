@@ -238,7 +238,7 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::GenMetadata(load_balance::SectionStre
     // kernel template base sizes 64/128 (D17) and do NOT trust the value derived by
     // fa_tiling_util::AdjustSinnerAndSouter + the aiv/aic ratio scaling above. The invariant source is
     // the kernel-side static_assert mBaseSize==64 && s2BaseSize==128 (fia_block_cube_noquant_mla.h:106,
-    // ported as flash_mla_block_cube_noquant_mla.h) for D=576; this forced head-field write keeps the
+    // ported as flash_mla_block_cube_mla.h) for D=576; this forced head-field write keeps the
     // AICPU producer in agreement. The per-core split math (BalanceSchedule -> SectionStreamK::Compute)
     // is intentionally UNCHANGED - only the two head fields are overridden. Trigger rule: if the Todo 13
     // byte-golden / on-board smoke shows SectionStreamK mis-splitting D=576, port FIA split_core_v2

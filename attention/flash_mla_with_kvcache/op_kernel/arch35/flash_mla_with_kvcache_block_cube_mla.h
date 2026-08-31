@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file flash_mla_with_kvcache_block_cube_noquant_mla.h
- * \brief arch35 flash_mla_with_kvcache block cube 非量化 MLA（由 fia_block_cube_noquant_mla.h 复制改名）；
+ * \file flash_mla_with_kvcache_block_cube_mla.h
+ * \brief arch35 flash_mla_with_kvcache block cube MLA（由 fia_block_cube_noquant_mla.h 复制改名）；
  *        静态 tensor buffer + Mutex/cross-core 显式同步（镜像 flash_attn_block_cube_nd.h）。
  *        L0C 例外（表 2 注 3）：bmm2 单次 Mmad 足迹 128K，槽保持 2×128K 静态 + 2 Mutex（不得拆 4×64K）。
  */
-#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_NOQUANT_MLA_H_
-#define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_NOQUANT_MLA_H_
+#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_MLA_H_
+#define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_MLA_H_
 #if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
@@ -495,4 +495,4 @@ public:
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_NOQUANT_MLA_H_
+#endif // FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_MLA_H_

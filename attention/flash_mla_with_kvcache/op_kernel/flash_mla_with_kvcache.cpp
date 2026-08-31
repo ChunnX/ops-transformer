@@ -41,7 +41,7 @@
 #endif
 #include "arch35/flash_mla_with_kvcache_type.h"
 using namespace optiling; // tiling_regbase 提供；kernel 头 static_assert 需在解析期可见 optiling 域（与 FA 入口同款）
-#include "arch35/flash_mla_with_kvcache_kernel_noquant_mla.h"
+#include "arch35/flash_mla_with_kvcache_kernel_mla.h"
 
 using namespace AscendC;
 
@@ -74,7 +74,7 @@ template <uint8_t inOutLayoutType, uint8_t KvLayoutType>
 __aicore__ inline constexpr GmFormat GetKvLayoutMla()
 {
     return FlashAttnKernel::GetKVGmFormat<GetQueryLayoutMla<inOutLayoutType>(), KvLayoutType,
-                                  IsPageAttentionMla<KvLayoutType>()>();
+                                          IsPageAttentionMla<KvLayoutType>()>();
 }
 
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
@@ -121,13 +121,14 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
 
     // —— 模板参数聚合（FAType 式，镜像 flash_attn utils/flash_attn_type.h；
     // cube/vec/fd 参数集不一致 → 各建聚合类型，见 arch35/flash_mla_with_kvcache_type.h）——
-    using FA_T_Cube = FlashAttnKernel::FATypeCube<INPUT_T, float, qLayout, s1TemplateType, s2TemplateType, dTemplateType,
-                                          dVTemplateType, KvLayoutType>;
-    using FA_T_Vec = FlashAttnKernel::FATypeVec<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
-                                        dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
+    using FA_T_Cube = FlashAttnKernel::FATypeCube<INPUT_T, float, qLayout, s1TemplateType, s2TemplateType,
+                                                  dTemplateType, dVTemplateType, KvLayoutType>;
+    using FA_T_Vec =
+        FlashAttnKernel::FATypeVec<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
+                                   dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     // FD block 参数聚合（无 flashDecode：FD 恒实例化，运行时由 metadata mLen>0 驱动）
     using FA_T_Fd = FlashAttnKernel::FATypeFd<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
-                                      dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
+                                              dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
 
     // 编译期 core-type 选型（与 flash_attn.cpp 的 #ifdef __DAV_C310_CUBE__ 同构）：该宏由 950
     // 编译在 AIC TU 定义、AIV TU 不定义（mla 编译产物实测确认），语义与

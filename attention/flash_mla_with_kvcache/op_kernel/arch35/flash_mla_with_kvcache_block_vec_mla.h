@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file flash_mla_with_kvcache_block_vec_noquant_mla.h
- * \brief arch35 flash_mla_with_kvcache 非量化 MLA vector（由 fia_block_vec_noquant_mla.h 复制改名）；
+ * \file flash_mla_with_kvcache_block_vec_mla.h
+ * \brief arch35 flash_mla_with_kvcache MLA vector（由 fia_block_vec_noquant_mla.h 复制改名）；
  *        静态 tensor UbLayout + Mutex/cross-core 显式同步 + FA 协同清零
  *        （镜像 flash_attn_block_vec_nd.h；FD 阶段 buffer 复用见表 1 注 4/注 5）
  */
-#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_NOQUANT_MLA_H_
-#define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_NOQUANT_MLA_H_
+#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_MLA_H_
+#define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_MLA_H_
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -69,7 +69,7 @@ public:
     using INPUT_T = typename FA_T::inputType;
     using T = typename FA_T::mmType;
     using OUTPUT_T = typename FA_T::outputType;
-    static constexpr LayOutTypeEnum layout = FA_T::qLayout;
+    static constexpr LayOutTypeEnum LAYOUT_T = FA_T::qLayout;
     static constexpr LayOutTypeEnum outLayout = FA_T::attnOutLayout;
     static constexpr bool hasAtten = FA_T::hasMask;
     /* =================编译期常量的基本块信息================= */
@@ -87,12 +87,12 @@ public:
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
 
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
-    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, (FA_T::kvLayoutType > 0)>();
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_T>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_T, (FA_T::kvLayoutType > 0)>();
     using SeqLensToolType = FlashMlaSeqLensTool<Q_MODE, KV_MODE>;
     static constexpr MaskFormat MASK_LAYOUT =
-        (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) ? MaskFormat::SG :
-                                                                                         MaskFormat::GS;
+        (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) ? MaskFormat::SG :
+                                                                                             MaskFormat::GS;
 
     using pseShiftType = INPUT_T;
 
@@ -252,8 +252,8 @@ public:
     __aicore__ inline bool IsInitAttentionOutGm()
     {
         // TND、NTD场景且不存在无效行,不需要初始化
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
-                      layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
+        if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND || LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD ||
+                      LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD_TND) {
             /*
              * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
              * 对于FD场景, 有可能整体是没有无效行的,
@@ -276,8 +276,8 @@ public:
         if (IsInitAttentionOutGm()) {
             uint32_t vecCoreNum = 2 * constInfo.coreNum;
             int64_t tSize = constInfo.bSize * constInfo.s1Size;
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
-                          layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
+            if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND || LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD ||
+                          LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD_TND) {
                 tSize = seqLensTool_.qActSeqLensParser.GetTSize();
             }
             int64_t totalOutputSize = tSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV;
@@ -333,18 +333,18 @@ public:
 
         // flash_mla_with_kvcache LSE 契约为 (N,T) 头主序：runInfo 的 gS1 区间是 [gIdx][s1Idx] token 主序排布，
         // 用 TND→(N,T) 转置写出（flash_attn 范式）；bN2Offset = n2Idx * gSize * t1Size = head 块 GM 起址。
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseNTDArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                              runInfo.actVecMSize, constInfo, s1Size);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        } else if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = runInfo.n2Idx * constInfo.n2Size * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoNoQuant>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, prefixBS1, constInfo);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+        } else if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
@@ -563,7 +563,7 @@ public:
         int32_t s1StartTdx;
         int32_t s1EndTdx;
         bool ret = false;
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
             s1StartTdx = vecMStartIdx / constInfo.gSize;
             s1EndTdx = vecMEndIdx / constInfo.gSize;
@@ -636,7 +636,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                               constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
@@ -645,7 +645,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                               constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -653,7 +653,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
                                               seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
@@ -661,7 +661,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
                                               seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
@@ -670,7 +670,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                               constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
@@ -876,4 +876,4 @@ public:
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_NOQUANT_MLA_H_
+#endif // FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_MLA_H_

@@ -158,7 +158,7 @@ struct FlashMlaWithKvcacheEmptyTensorParams {
 };
 
 // FIA FusedInferAttentionScoreTilingData 的字段布局改名保留；FiaMetaData 成员已移除
-// （metadata 走 GM 输入，见 flash_mla_with_kvcache_kernel_noquant_mla.h）
+// （metadata 走 GM 输入，见 flash_mla_with_kvcache_kernel_mla.h）
 class FlashMlaWithKvcacheNoQuantTilingArch35 {
 public:
     FlashMlaWithKvcacheBaseParams flashMlaWithKvcacheBaseParams;

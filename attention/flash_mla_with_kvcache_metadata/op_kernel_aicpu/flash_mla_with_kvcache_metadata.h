@@ -45,7 +45,7 @@ constexpr uint32_t HEAD_S2_BASE_SIZE_INDEX = 3U;
 
 // MLA fixed base sizes (D17/B3): hard-forced into the head metadata by GenMetadata. The MLA kernel
 // template asserts mBaseSize==64 && s2BaseSize==128 for D=576 (fia_block_cube_noquant_mla.h:106,
-// ported as flash_mla_block_cube_noquant_mla.h) - that static_assert is the invariant source, so these
+// ported as flash_mla_block_cube_mla.h) - that static_assert is the invariant source, so these
 // MUST NOT be derived from fa_tiling_util::AdjustSinnerAndSouter.
 constexpr uint32_t HEAD_M_BASE_SIZE_MLA = 64U;
 constexpr uint32_t HEAD_S2_BASE_SIZE_MLA = 128U;
