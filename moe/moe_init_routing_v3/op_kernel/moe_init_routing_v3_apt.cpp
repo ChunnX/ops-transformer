@@ -1,693 +1,497 @@
 /**
- * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file moe_init_routing_v3_apt.cpp
+ * \file moe_init_routing_v3_tiling_arch35.h
  * \brief
  */
-#include "arch35/moe_v3_mrgsort_out_arch35.h"
-#include "arch35/moe_v3_mrgsort_arch35.h"
-#include "arch35/moe_v3_sort_one_core_arch35.h"
-#include "arch35/moe_v3_sort_multi_core_arch35.h"
-#include "arch35/moe_v3_expert_tokens_count_arch35.h"
-#include "arch35/moe_v3_row_idx_gather_arch35.h"
-#include "arch35/moe_v3_gather_out_arch35.h"
-#include "arch35/moe_v3_gather_static_quant_arch35.h"
-#include "arch35/moe_v3_gather_dynamic_quant_arch35.h"
-#include "arch35/moe_v3_gather_mxfp8_quant.h"
-#include "arch35/moe_v3_gather_fp8_perblock_quant.h"
-#include "arch35/moe_v3_gather_fp8_group_quant.h"
-#include "arch35/moe_v3_gather_hif8_pertensor_quant.h"
-#include "arch35/moe_v3_gather_hif8_pertoken_quant.h"
-#include "arch35/moe_v3_gather_hif8_quant.h"
-#include "arch35/moe_v3_gather_out_mxfp8.h"
-#include "arch35/moe_v3_gather_out_mxfp4.h"
-#include "arch35/moe_v3_gather_mxfp4_quant.h"
-#include "arch35/moe_v3_counting_sort_full_load_unquantized.h"
-#include "arch35/moe_v3_full_load_unquantized_arch35.h"
-#include "arch35/moe_v3_full_load_dynamic_quant_arch35.h"
-#include "arch35/moe_v3_full_load_static_quant_arch35.h"
-#include "arch35/moe_v3_row_idx_gather_droppad_arch35.h"
-#include "arch35/moe_v3_gather_out_droppad_arch35.h"
-#include "arch35/moe_v3_topk_weight_out.h"
 
-/*
- * 非量化
- */
-#define MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC 1
-#define MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC 13
+#ifndef MOE_INIT_ROUTING_V3_TILING_ARCH35_H
+#define MOE_INIT_ROUTING_V3_TILING_ARCH35_H
 
-#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER 10000000        // 单核排序、非量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER 10001000       // 单核排序、非量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER 11000000      // 多核排序、非量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER 11001000     // 多核排序、非量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP 10000100   // 单核排序、非量化、GATHER索引、DROP_PAD
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP 11000100 // 多核排序、非量化、GATHER索引、DROP_PAD
+#include <cmath>
+#include <sstream>
+#include <string>
+#include <unordered_set>
+#include "register/op_def_registry.h"
+#include "moe_init_routing_v3_tiling.h"
+#include "../op_kernel/arch35/moe_init_routing_v3_arch35_tiling_def.h"
+#include "op_host/tiling_util.h"
 
-/*
- * 静态量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER 10010000    // 单核排序、静态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER 10011000   // 单核排序、静态量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER 11010000  // 多核排序、静态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER 11011000 // 多核排序、静态量化、SCATTER索引
+#define MIRV3_CHECK_GE_RET(expr) \
+    if (ge::graphStatus ret = (expr); ret != ge::GRAPH_SUCCESS) { \
+        return ret; \
+    }
 
-/*
- * 动态量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER 10020000    // 单核排序、动态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_SCATTER 10021000   // 单核排序、动态量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER 11020000  // 多核排序、动态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER 11021000 // 多核排序、动态量化、SCATTER索引
+namespace optiling {
+using Ops::Transformer::OpTiling::TilingBaseClass;
+constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // UB要给SIMT预留64k的DCache空间，然后要用SetLocalMemSize()
+constexpr int64_t SORT_API_MAX_ELEM = 32 * 255LL; // AscendC::Sort全排序模式最多支持一次排序(32*255rep)个元素
+constexpr int64_t MRG_SORT_API_MAX_ELEM = 1024LL;
+constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
+constexpr int64_t MXFPX_SCALE_BLOCK_SIZE = 64LL;
+constexpr int64_t SCALE_FACTOR_WITH_X = 32LL;
+constexpr int64_t NUM_THOUSAND = 1000LL;
+constexpr int64_t FP8_PERBLOCK_BLOCK_SIZE = 128LL;
+constexpr int64_t FP8_GROUP_SIZE = 128LL;
+constexpr int64_t DOUBLE_BUFFER = 2LL;
 
-/*
- * MXFP8量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER 10030000    // 单核排序、MXFP8量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER 10031000   // 单核排序、MXFP8量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER 11030000  // 多核排序、MXFP8量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER 11031000 // 多核排序、MXFP8量化、SCATTER索引
+constexpr int64_t MAX_QUEUE_BUFFER_NUM = 6LL;
 
-/*
- * FP8 PerGroup量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER 10050000 // 单核排序、FP8 PerGroup量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER 10051000 // 单核排序、FP8 PerGroup量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER 11050000 // 多核排序、FP8 PerGroup量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER 11051000 // 多核排序、FP8 PerGroup量化、SCATTER索引
+constexpr int64_t NUM_TWO = 2LL;
+constexpr int64_t NUM_THREE = 3LL;
+constexpr int64_t NUM_FOUR = 4LL;
+constexpr int64_t MRG_LIST_NUM = 4LL;
+constexpr int64_t SORT32_ALIGN_ELEMENT = 32LL;
+constexpr int64_t UB_BLOCK_SIZE = 32LL;
+constexpr size_t DIM_ONE = 1ULL;
+constexpr size_t DIM_TWO = 2ULL;
+constexpr int32_t SIZE_16 = 16;
+constexpr int32_t LENGTH_1024 = 1024;
+constexpr int64_t KV_FACTOR = 2LL;
+constexpr int64_t ONE_CORE_SORT_BUFFER = 6LL;
+constexpr int64_t EXPERT_IDX_MAX = 10240LL;
+constexpr int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
+constexpr int64_t RANK_ONE = 1LL;
+constexpr int64_t RANK_TWO = 2LL;
+constexpr int64_t RANK_THREE = 3LL;
+constexpr int64_t BF16_TO_FP32_SIZE_FACTOR = 2LL;
 
-/*
- * MXFP8 RoundScale + Amax钳位量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_GATHER 10170000
-#define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_SCATTER 10171000
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_GATHER 11170000
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_SCATTER 11171000
+// 输入输出的位置索引（V3 回归后 topk_weight 相关索引不再使用，V4 子类使用独立索引常量）
+constexpr int64_t INPUT_X_INDEX = 0LL;
+constexpr int64_t INPUT_EXPERT_IDX_INDEX = 1LL;
+constexpr int64_t INPUT_SCALE_INDEX = 2LL;
+constexpr int64_t INPUT_OFFSET_INDEX = 3LL;
+constexpr int64_t OUTPUT_EXPANDED_X_INDEX = 0LL;
+constexpr int64_t OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
+constexpr int64_t OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
+constexpr int64_t OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
+constexpr int64_t ATTR_ACTIVE_NUM_INDEX = 0LL;
+constexpr int64_t ATTR_EXPERT_CAPACITY_INDEX = 1LL;
+constexpr int64_t ATTR_EXPERT_NUM_INDEX = 2LL;
+constexpr int64_t ATTR_DROP_PAD_MODE_INDEX = 3LL;
+constexpr int64_t ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 4LL;
+constexpr int64_t ATTR_EXPERT_TOKEN_NUM_FLAG_INDEX = 5LL;
+constexpr int64_t ATTR_QUANT_MODE_INDEX = 6LL;
+constexpr int64_t ATTR_EXPERT_RANGE_INDEX = 7LL;
+constexpr int64_t ATTR_ROW_IDX_TYPE_INDEX = 8LL;
 
-/*
- * Hif8 直转
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER 10070000    // 单核排序、Hif8直转、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_SCATTER 10071000   // 单核排序、Hif8直转、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER 11070000  // 多核排序、Hif8直转、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_SCATTER 11071000 // 多核排序、Hif8直转、SCATTER索引
+constexpr int64_t ACTIVE_NUM_MIN_VALUE = -1LL;
+constexpr int64_t DYNAMIC_QUANT_COLS_BUFFER = 21LL;
+constexpr int64_t HIF8_PERTENSOR_QUANT_COLS_BUFFER = 5LL;
+constexpr int64_t HIF8_PERTOKEN_QUANT_COLS_BUFFER = 5LL;
+constexpr int64_t STATIC_QUANT_ROW_MULTIPLE = 2LL; // 静态量化行方向Buffer乘数
+constexpr int64_t STATIC_QUANT_FULLLOAD_COLS_BUFFER = 5LL;
+constexpr int64_t DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER = 9LL;
 
-/*
- * HIF8 PENTENSOR量化
- */
-// 单核排序、HIF8 PENTENSOR量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER 10080000
-// 单核排序、HIF8 PENTENSOR量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_SCATTER 10081000
-// 多核排序、HIF8 PENTENSOR量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER 11080000
-// 多核排序、HIF8 PENTENSOR量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_SCATTER 11081000
+// 输入attrs相关
+constexpr int64_t ROW_IDX_GATHER = 0LL;
+constexpr int64_t ROW_IDX_SCATTER = 1LL;
+constexpr int64_t QUANT_MODE_UNQUANT = -1LL;
+constexpr int64_t QUANT_MODE_STATIC = 0LL;
+constexpr int64_t QUANT_MODE_DYNAMIC = 1LL;
+constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2LL;
+constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E5M2 = 4LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E4M3FN = 5LL;
+constexpr int64_t QUANT_MODE_HIF8_CAST = 6LL;
+constexpr int64_t QUANT_MODE_HIF8_PERTENSOR = 7LL;
+constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
+constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
+constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11LL;
+constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
+constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15LL;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16LL;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17LL;
+constexpr int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 
-/*
- * HIF8 PENTEOKEN量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER 10090000 // 单核排序、HIF8 PENTEOKEN量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_SCATTER \
-    10091000 // 单核排序、HIF8 PENTEOKEN量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER \
-    11090000 // 多核排序、HIF8 PENTEOKEN量化、GATHER索引
-// 多核排序、HIF8 PENTEOKEN量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_SCATTER 11091000
+constexpr int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
+constexpr int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
+constexpr int64_t DROP_PAD_MODE_DROPLESS = 0LL;
+constexpr int64_t DROP_PAD_MODE_DROPPAD = 1LL;
+constexpr int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
+constexpr int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
+constexpr int64_t REG_SIZE = 256LL;
 
-/*
- * MXFP4量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER 10100000    // 单核排序、MXFP4量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_SCATTER 10101000   // 单核排序、MXFP4量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER 11100000  // 多核排序、MXFP4量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_SCATTER 11101000 // 多核排序、MXFP4量化、SCATTER索引
+constexpr int64_t TILINGKEY_BASE = 10000000LL;
+constexpr int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
+constexpr int64_t SORT_CORE_TILINGKEY_BASE = 1000000LL;
+constexpr int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
+constexpr int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
+constexpr int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
+constexpr uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
+constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
-/*
- * FP8 PerBlock量化
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER 10120000 // 单核排序、FP8 PerBlock量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER 10121000 // 单核排序、FP8 PerBlock量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER 11120000 // 多核排序、FP8 PerBlock量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER 11121000 // 多核排序、FP8 PerBlock量化、SCATTER索引
+const static int64_t COUNT_SORT_BASE = 400000LL;
+const static int64_t FULL_LOAD_BASE = 10000;
 
-/*
- * INT4动态量化（非全载路径）
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_GATHER 10140000
-#define MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_SCATTER 10141000
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_GATHER 11140000
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_SCATTER 11141000
-
-/*
- * FP8 PerGroup量化 + amax clamp
- */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER 10150000
-#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER 10151000
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER 11150000
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER 11151000
-
-/*
- * 全载模版
- */
-#define MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED 200000   // 全载、非量化
-#define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000  // 全载、静态量化
-#define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
-
-/*
- * CountingSort 性能模板（计数排序）
- */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 410000   // 模板1、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 411000 // 模板1、非量化、SCATTER
-
-#define EMPTY_TENSOR 3000000
-
-using namespace AscendC;
-using namespace MoeInitRoutingV3;
-extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
-                                                          GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                                          GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                                          GM_ADDR workspace, GM_ADDR tiling)
+inline static int64_t CeilLog4(int64_t x)
 {
-    if (g_coreType == AIC) {
-        return;
+    if (x <= 0) {
+        return 0;
     }
-
-    if (workspace == nullptr) {
-        return;
-    }
-
-    REGISTER_TILING_DEFAULT(MoeInitRoutingV3Arch35TilingData);
-    GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV3Arch35TilingData, tilingData, tiling);
-
-    GM_ADDR userWS = GetUserWorkspace(workspace);
-    if (userWS == nullptr) {
-        return;
-    }
-
-#if (__NPU_ARCH__ == 3510)
-    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
-#endif
-
-    auto t = &tilingData;
-    const bool isInt8DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC;
-    const bool isInt4DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC;
-
-    if (TILING_KEY_IS(EMPTY_TENSOR)) {
-        if (GetBlockIdx() != 0) {
-            return;
-        }
-        // EMPTY_TENSOR分支主要适用于n==0或k==0的空tensor场景，此时expandedRowIdx/expandedScale为0元素。
-        // 当cols==0但n*k>0时（n>0且k>0），expandedRowIdx和expandedScale仍有n*k个元素，需初始化后再返回。
-        if (t->n > 0 && t->k > 0) {
-            int64_t rowIdxElements = t->n * t->k;
-            GlobalTensor<int32_t> expandedRowIdxGm;
-            expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, rowIdxElements);
-            InitGlobalMemory(expandedRowIdxGm, rowIdxElements, static_cast<int32_t>(0));
-
-            constexpr bool isMXFPXNoQuant = IsSameType<DTYPE_X, fp8_e4m3fn_t>::value ||
-                                            IsSameType<DTYPE_X, fp8_e5m2_t>::value ||
-                                            IsSameType<DTYPE_X, fp4x2_e2m1_t>::value;
-            const int64_t quantModeUnquant = -1;
-            const int64_t quantModeDynamic = 1;
-            const int64_t quantModeHif8Pertoken = 8;
-            const int64_t quantModeInt4Dynamic = 13;
-            // expandedScale为1D float [n*k]（或droppad时[expertNum*expertCapacity]）的量化模式，
-            // 无论isInputScale是否为1，输出均有元素需初始化。MXFP8/MXFP4/FP8_PERBLOCK在cols==0时
-            // expandedScale含ceilDiv(0,blockSize)=0的维度，总元素为0，无需init。
-            bool needScaleInit =
-                !isMXFPXNoQuant && (t->quantMode == quantModeUnquant || t->quantMode == quantModeDynamic ||
-                                    t->quantMode == quantModeInt4Dynamic || t->quantMode == quantModeHif8Pertoken);
-            if (needScaleInit) {
-                int64_t scaleElements = rowIdxElements;
-                if (t->dropPadMode == DROP_PAD_MODE && t->quantMode != quantModeHif8Pertoken) {
-                    scaleElements = t->expertNum * t->expertCapacity;
-                }
-                if (scaleElements > 0) {
-                    GlobalTensor<float> expandedScaleGm;
-                    expandedScaleGm.SetGlobalBuffer((__gm__ float *)expandedScale, scaleElements);
-                    InitGlobalMemory(expandedScaleGm, scaleElements, 0.0f);
-                }
-            }
-        }
-        if (t->expertTokensNumFlag) {
-            GlobalTensor<int64_t> expertTokensCountGm;
-            TBuf<TPosition::VECCALC> zeroBuf;
-            TPipe pipe;
-            int32_t expertCountElements = (t->expertTokensNumType == EXERPT_TOKENS_KEY_VALUE) ?
-                                              static_cast<int32_t>(t->expertNum * EXERPT_TOKENS_KEY_VALUE) :
-                                              static_cast<int32_t>(t->actualExpertNum);
-            expertTokensCountGm.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum, expertCountElements);
-            pipe.InitBuffer(zeroBuf, AlignBytes(expertCountElements, sizeof(int64_t)));
-
-            LocalTensor<int64_t> zeroLocal = zeroBuf.Get<int64_t>();
-            Duplicate<int32_t>(
-                zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
-                static_cast<int32_t>(Align(expertCountElements, static_cast<int32_t>(sizeof(int64_t))) * 2));
-            DataCopyExtParams dataCopyParams = {1, static_cast<uint32_t>(expertCountElements * sizeof(int64_t)), 0, 0,
-                                                0};
-            DataCopyPad(expertTokensCountGm, zeroLocal, dataCopyParams);
-            pipe.Destroy();
-        }
-        return;
-    }
-
-    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED)) {
-        if constexpr (!IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value &&
-                      !IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value && !IsSameType<DTYPE_X, fp4x2_e2m1_t>::value) {
-            TPipe fullLoadPipe;
-            MoeV3FullLoadUnquantized<DTYPE_X> fullLoadOp;
-            fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            nullptr, nullptr, userWS, t, &fullLoadPipe);
-            fullLoadOp.Process();
-            fullLoadPipe.Destroy();
-        }
-#if (__NPU_ARCH__ == 3510)
-        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-#endif
-        return;
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT)) {
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                       IsSameType<DTYPE_X, float32_t>::value) &&
-                      IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
-            if (isInt8DynamicQuant) {
-                TPipe fullLoadPipe;
-                MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
-                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum,
-                                expandedScale, nullptr, nullptr, userWS, t, &fullLoadPipe);
-                fullLoadOp.Process();
-                fullLoadPipe.Destroy();
-            }
-        } else if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
-                             IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
-            if (isInt4DynamicQuant) {
-                TPipe fullLoadPipe;
-                MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
-                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum,
-                                expandedScale, nullptr, nullptr, userWS, t, &fullLoadPipe);
-                fullLoadOp.Process();
-                fullLoadPipe.Destroy();
-            }
-        }
-
-#if (__NPU_ARCH__ == 3510)
-        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-#endif
-        return;
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT)) {
-        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float>::value) {
-            TPipe fullLoadPipe;
-            MoeV3FullLoadStaticQuant<DTYPE_X> fullLoadOp;
-            fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            nullptr, nullptr, userWS, offset, t, &fullLoadPipe);
-            fullLoadOp.Process();
-            fullLoadPipe.Destroy();
-        }
-
-#if (__NPU_ARCH__ == 3510)
-        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-#endif
-        return;
-    }
-
-    // CountingSort 全载模板
-    // 类型守卫：仅承接 X∈{bf16,fp16,fp32,int8} 的非量化场景，其余扩展类型回退到原分阶段路径。
-    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
-        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
-            TPipe csPipe;
-            MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
-            csOp.Init(x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                      userWS, t, &csPipe);
-            csOp.Process();
-            csPipe.Destroy();
-        }
-#if (__NPU_ARCH__ == 3510)
-        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-#endif
-        return;
-    }
-
-    // 1.排序阶段，计算SortedExpertIdx和SortedRowIdx。若rowIdxType=1(Scatter)，则SortedRowIdx直接写到输出expandedRowIdx。
-    TPipe sortPipe;
-    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
-        // 单核排序
-        MoeSortOneCore op;
-        op.Init(expertIdx, expandedRowIdx, userWS, t, &sortPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
-        // 多核排序
-        MoeSortMultiCore op;
-        op.Init(expertIdx, expandedRowIdx, userWS, t, &sortPipe);
-        op.Process();
-    }
-    sortPipe.Destroy();
-
-    // 2.TokensCount阶段，计算输出expertTokensCountOrCumsum
-    TPipe histogramPipe;
-    ExpertTokensCount countOp;
-    countOp.Init(expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &histogramPipe);
-    countOp.Process();
-    histogramPipe.Destroy();
-
-    // 3.若rowIdxType=0(Gather)，映射计算输出expandedRowIdx；否则该输出在阶段1就被写出
-    // GATHER模式：直接调用RowIdxGather生成expandedRowIdx
-    // SCATTER模式：仅useGatherCopy时调用RowIdxGather生成workspace中的gather索引
-    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER)) {
-        RowIdxGather rowIdxGatherOp;
-        rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
-        rowIdxGatherOp.Process();
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
-        if (t->useGatherCopy) {
-            RowIdxGather rowIdxGatherOp;
-            rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
-            rowIdxGatherOp.Process();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
-        // GATHER索引 + DropPad
-        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
-                      IsSameType<DTYPE_X, hifloat8_t>::value) {
-            TPipe rowIdxGatherDropPadPipe;
-            MoeV3RowIdxGatherDropPad<DTYPE_X> rowIdxGatherDropPadOp;
-            rowIdxGatherDropPadOp.Init(expandedRowIdx, expandedX, expandedScale, userWS, t, &rowIdxGatherDropPadPipe);
-            rowIdxGatherDropPadOp.Process();
-            rowIdxGatherDropPadPipe.Destroy();
-        }
-    }
-
-    // 4.TopkWeightOut（仅非FullLoad路径）
-    // V3 regression: isInputTopkWeight 恒为 0，此分支不会执行。
-    // topkWeight/expandedTopkWeight 传 nullptr 仅为占位，不可在 isInputTopkWeight==1 时执行，
-    // 否则 Init 内 SetGlobalBuffer 会解引用空指针。V4 通过 tiling 设置 isInputTopkWeight=1 启用此路径。
-    if (t->isInputTopkWeight == 1) {
-        TPipe topkWeightPipe;
-        MoeV3TopkWeightOut topkWeightOp;
-        topkWeightOp.Init(nullptr, expandedRowIdx, nullptr, userWS, t, &topkWeightPipe);
-        topkWeightOp.Process();
-        topkWeightPipe.Destroy();
-    }
-
-    // 5.直接搬运或是搬运的过程中对x进行量化
-    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER)) {
-        if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
-                      IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
-            TPipe gatherPipe;
-            MoeV3GatherOutMxfp8<DTYPE_X> gatherOp;
-            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
-            gatherPipe.Destroy();
-        } else if constexpr (IsSameType<DTYPE_X, fp4x2_e2m1_t>::value) {
-            TPipe gatherPipe;
-            MoeV3GatherOutMxFp4<DTYPE_X> gatherOp;
-            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
-            gatherPipe.Destroy();
-        } else {
-            // 非量化
-            TPipe gatherPipe;
-            MoeGatherOut<DTYPE_X> gatherOp;
-            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
-            gatherPipe.Destroy();
-        }
-        // 5.直接搬运或是搬运的过程中对x进行量化
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
-        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
-                      IsSameType<DTYPE_X, hifloat8_t>::value) {
-            // 非量化、Drop/Pad
-            TPipe gatherPipe;
-            MoeV3GatherOutDropPad<DTYPE_X> gatherDroppadOp;
-            gatherDroppadOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherDroppadOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER)) {
-        // 静态量化
-        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                      IsSameType<DTYPE_X, float>::value) {
-            TPipe gatherPipe;
-            MoeV3GatherStaticQuant<DTYPE_X> gatherStaticQuantOp;
-            gatherStaticQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, offset, t, &gatherPipe);
-            gatherStaticQuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER)) {
-        // 动态量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                       IsSameType<DTYPE_X, float32_t>::value) &&
-                      IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
-            if (isInt8DynamicQuant) {
-                TPipe gatherPipe;
-                MoeGatherOutDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
-                gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-                gatherDynamicQuantOp.Process();
-                gatherPipe.Destroy();
-            }
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_SCATTER)) {
-        // INT4动态量化（非全载路径）：复用动态量化kernel，通过quantMode区分INT8/INT4。
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
-                      IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
-            if (isInt4DynamicQuant) {
-                TPipe gatherPipe;
-                MoeGatherOutDynamicQuant<DTYPE_X, int4b_t> gatherDynamicQuantOp;
-                gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-                gatherDynamicQuantOp.Process();
-                gatherPipe.Destroy();
-            }
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER)) {
-        // MXFP8量化。由于MXFP8模板用到的指令不支持DTYPE_X为int8_t等类型，因此需要constexpr-if来规避编译
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
-                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
-            TPipe gatherPipe;
-            MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X, false> gatherMxfp8QuantOp;
-            gatherMxfp8QuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherMxfp8QuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER)) {
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
-                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
-            TPipe gatherPipe;
-            MoeV3GatherFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, false> gatherFP8GroupQuantOp;
-            gatherFP8GroupQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherFP8GroupQuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_SCATTER)) {
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
-                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
-            TPipe gatherPipe;
-            MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X, true> gatherMxfp8QuantOp;
-            gatherMxfp8QuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherMxfp8QuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_SCATTER)) {
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      IsSameType<DTYPE_EXPANDED_X, hifloat8_t>::value) {
-            TPipe gatherPipe;
-            MoeGatherOutHif8Quant<DTYPE_X> gatherHif8QuantOp;
-            gatherHif8QuantOp.Init(x, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
-            gatherHif8QuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_SCATTER)) {
-        // HIF8 PERTENSOR量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      IsSameType<DTYPE_EXPANDED_X, hifloat8_t>::value) {
-            TPipe gatherPipe;
-            MoeGatherOutHif8PertensorQuant<DTYPE_X> gatherHif8PerTensorQuantOp;
-            gatherHif8PerTensorQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
-            gatherHif8PerTensorQuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_SCATTER)) {
-        // HIF8 PERTOKENR量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      IsSameType<DTYPE_EXPANDED_X, hifloat8_t>::value) {
-            TPipe gatherPipe;
-            MoeGatherOutHif8PertokenQuant<DTYPE_X> gatherHif8PerTokenQuantOp;
-            gatherHif8PerTokenQuantOp.Init(x, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherHif8PerTokenQuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_SCATTER)) {
-        // MXFP4量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      (IsSameType<DTYPE_EXPANDED_X, fp4x2_e2m1_t>::value)) {
-            TPipe gatherPipe;
-            MoeV3GatherMxfp4Quant<DTYPE_X, DTYPE_EXPANDED_X> gatherMxfp4QuantOp;
-            gatherMxfp4QuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherMxfp4QuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER)) {
-        // FP8 PerBlock量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
-                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
-            TPipe gatherPipe;
-            MoeGatherOutFP8PerBlockQuant<DTYPE_X, DTYPE_EXPANDED_X> gatherFP8PerBlockQuantOp;
-            gatherFP8PerBlockQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherFP8PerBlockQuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
-                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
-                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
-            TPipe gatherPipe;
-            MoeV3GatherFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, true> gatherFP8GroupQuantOp;
-            gatherFP8GroupQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherFP8GroupQuantOp.Process();
-            gatherPipe.Destroy();
-        }
-    }
-
-#if (__NPU_ARCH__ == 3510)
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
-#endif
+    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
 }
+
+inline static int64_t Align(int64_t elementNum, int64_t bytes)
+{
+    if (bytes == 0) {
+        return 0;
+    }
+    return (elementNum * bytes + UB_BLOCK_SIZE - 1) / UB_BLOCK_SIZE * UB_BLOCK_SIZE / bytes;
+}
+
+inline static int64_t AlignBytes(int64_t elementNum, int64_t bytes)
+{
+    if (bytes == 0) {
+        return 0;
+    }
+    return (elementNum * bytes + UB_BLOCK_SIZE - 1) / UB_BLOCK_SIZE * UB_BLOCK_SIZE;
+}
+
+struct MultipleParams {
+    int64_t colMultiple = 0;
+    int64_t rowMultiple = 0;
+};
+
+struct PerLoopParams {
+    int64_t xCopyInQueueBufferNum = 2;
+    int64_t perLoopCols = 0;
+    int64_t perLoopMaxIndicesElements = 0;
+};
+
+class MoeInitRoutingV3TilingArch35 : public TilingBaseClass {
+public:
+    explicit MoeInitRoutingV3TilingArch35(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {
+        Reset();
+    }
+    ~MoeInitRoutingV3TilingArch35() override = default;
+
+    void Reset(gert::TilingContext *context) override
+    {
+        TilingBaseClass::Reset(context);
+        Reset();
+    }
+
+protected:
+    // 1、获取INPUT/OUTPUT/ATTR信息：DelayedGetShapeAttrsInfo()，延后到DoOpTiling内执行，以便先检查IsCapable()
+    ge::graphStatus GetShapeAttrsInfo() override
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetShapeAttrsInfo()");
+        return ge::GRAPH_SUCCESS;
+    }
+    // 2、获取平台信息比如CoreNum、UB/L1/L0C资源大小
+    ge::graphStatus GetPlatformInfo() override;
+    // 3、判断此Tiling模板是否适配当前SOC
+    bool IsCapable() override
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::IsCapable()");
+        return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+    }
+    // 4、计算数据切分TilingData
+    ge::graphStatus DoOpTiling() override;
+    // 5、计算高阶API的TilingData
+    ge::graphStatus DoLibApiTiling() override
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::DoLibApiTiling()");
+        return ge::GRAPH_SUCCESS;
+    }
+    // 6、计算TilingKey
+    uint64_t GetTilingKey() const override;
+    // 7、计算Workspace 大小
+    ge::graphStatus GetWorkspaceSize() override;
+    // 8、保存Tiling数据
+    ge::graphStatus PostTiling() override;
+
+    void Reset()
+    {
+        opName = nullptr;
+    }
+
+    // DoGetShapeAttrsInfo使用的子函数（V4 需覆盖）
+    virtual ge::graphStatus GetInputTensorsInfo();
+    virtual ge::graphStatus GetOutputTensorsInfo();
+    virtual ge::graphStatus GetInputAttrsInfo();
+
+    // 辅助工具函数（V4 子类需要使用）
+    template <bool IS_INPUT_TENSOR = true, bool IS_OPTIONAL_INPUT = false>
+    ge::graphStatus GetTensorShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t index)
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetTensorShapeDtype(...)");
+        const gert::StorageShape *shapePtr{nullptr};
+        const gert::CompileTimeTensorDesc *descPtr{nullptr};
+        if constexpr (IS_INPUT_TENSOR) {
+            if constexpr (IS_OPTIONAL_INPUT) {
+                shapePtr = context_->GetOptionalInputShape(index);
+                descPtr = context_->GetOptionalInputDesc(index);
+            } else {
+                shapePtr = context_->GetInputShape(index);
+                descPtr = context_->GetInputDesc(index);
+            }
+        } else {
+            shapePtr = context_->GetOutputShape(index);
+            descPtr = context_->GetOutputDesc(index);
+        }
+        OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
+        shape = shapePtr->GetStorageShape();
+        OP_CHECK_NULL_WITH_CONTEXT(context_, descPtr);
+        dtype = descPtr->GetDataType();
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus GetOptionalInputShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t &marker, int64_t index)
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetOptionalInputShapeDtype(...)");
+        if (context_->GetOptionalInputShape(index) != nullptr) {
+            marker = 1;
+            return GetTensorShapeDtype<true, true>(shape, dtype, index);
+        } else {
+            // 该Tensor没有输入
+            marker = 0;
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+
+    template <typename ATTR_T>
+    ge::graphStatus GetInputAttr(ATTR_T &attr, const gert::RuntimeAttrs *attrsPtr, int64_t index)
+    {
+        OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetInputAttr(...)");
+        const auto *attrPtr = attrsPtr->GetAttrPointer<ATTR_T>(index);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, attrPtr);
+        attr = *attrPtr;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // op variables
+    const char *opName = "";
+    MoeInitRoutingV3Arch35TilingData *tilingDataPtr_{nullptr};
+
+    // platform infos
+    int64_t aivCoreNum_ = 0LL;
+    int64_t totalUbSize_ = 0LL;
+    int64_t availUbSize_ = 0LL;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+
+    // important values
+    int64_t sortLoopMaxElement_ = 0LL;
+    int64_t totalLength_ = 0LL;
+    int64_t n_ = 0LL;
+    int64_t k_ = 0LL;
+    int64_t cols_ = 0LL;
+    int64_t inputXDtypeSize_ = 0LL;
+    int64_t inputScaleDTypeSize_ = 0LL;
+    int64_t isInputScale_ = 0LL;
+    int64_t isInputOffset_ = 0LL;
+    int64_t isInputTopkWeight_ = 0LL;
+    int64_t isOutputExpandedTopkWeight_ = 0LL;
+    int64_t sortMode_ = 0LL;
+
+    // full load flag
+    bool isFullload_ = false;
+    bool isEmptyTensor_ = false;
+    int64_t ep_ = 0LL;
+
+    // CountingSort 性能模板标志：0=未启用, 1=FullLoad, 2=CutOrigin
+    int64_t countingSortMode_ = 0LL;
+
+    // input attrs
+    int64_t activeNum_ = -1LL;
+    int64_t expertCapacity_ = -1LL;
+    int64_t expertNum_ = -1LL;
+    int64_t dropPadMode_ = -1LL;
+    int64_t expertTokensNumType_ = -1LL;
+    bool expertTokensNumFlag_ = false;
+    int64_t quantMode_ = -1LL;
+    int64_t expertStart_ = -1LL;
+    int64_t expertEnd_ = -1LL;
+    int64_t rowIdxType_ = -1LL;
+
+    // input tensors shape
+    gert::Shape xShape_;
+    gert::Shape expertIdxShape_;
+    gert::Shape scaleShape_;
+    gert::Shape offsetShape_;
+    gert::Shape topkWeightShape_;
+    // output tensors shape
+    gert::Shape expandedXShape_;
+    gert::Shape expandedRowIdxShape_;
+    gert::Shape expertTokensCountOrCumsumShape_;
+    gert::Shape expandedScaleShape_;
+    gert::Shape expandedTopkWeightShape_;
+
+    // input tensors dtype
+    ge::DataType xDtype_;
+    ge::DataType expertIdxDtype_;
+    ge::DataType scaleDtype_;
+    ge::DataType offsetDtype_;
+    ge::DataType topkWeightDtype_;
+    // output tensors dtype
+    ge::DataType expandedXDtype_;
+    ge::DataType expandedRowIdxDtype_;
+    ge::DataType expertTokensCountOrCumsumDtype_;
+    ge::DataType expandedScaleDtype_;
+    ge::DataType expandedTopkWeightDtype_;
+
+private:
+    ge::graphStatus CheckSetPlatformInfo();
+    ge::graphStatus DoGetShapeAttrsInfo();
+    ge::graphStatus CheckSetAttrs();
+    ge::graphStatus CheckSetListAttrs();
+    ge::graphStatus ValidateExpertTokensNumType();
+    ge::graphStatus ValidateExpertNum();
+    ge::graphStatus ValidateDropPadMode();
+    ge::graphStatus ValidateExpertCapacity();
+    ge::graphStatus ValidateQuantMode();
+    ge::graphStatus ValidateRowIdxType();
+    ge::graphStatus CheckSetInputs();
+    ge::graphStatus CheckSetEmptyTensor();
+    ge::graphStatus CheckOutputs();
+    ge::graphStatus GetEmptyTensorWorkspaceSize();
+    ge::graphStatus GetCountingSortWorkspaceSize();
+    ge::graphStatus GetNormalWorkspaceSize();
+
+    // CheckInputShape使用的子函数
+    ge::graphStatus CheckInputX();
+    ge::graphStatus CheckInputExpertIdx();
+    ge::graphStatus CheckInputScale();
+    ge::graphStatus CheckStaticQuantScale();
+    struct ScaleShapeCheckInfo {
+        int64_t rank = -1;
+        int64_t dim0 = -1;
+        int64_t dim1 = -1;
+        int64_t dim2 = -1;
+    };
+    ScaleShapeCheckInfo GetExpectedInputScaleShape() const;
+    ge::graphStatus CheckInputScaleShape(const ScaleShapeCheckInfo &expected);
+    ge::graphStatus CheckInputScaleDtype();
+    ge::graphStatus CheckInputOffset();
+    ge::graphStatus CheckInputTopkWeight();
+    ge::graphStatus CheckTopkWeightConsistency();
+    // CheckOutShape使用的子函数
+    ge::graphStatus CheckOutputExpandedX();
+    ge::graphStatus CheckOutputExpandedRowIdx();
+    ge::graphStatus CheckOutputExpertTokensCountOrCumsum();
+    ge::graphStatus CheckOutputExpandedScale();
+    ge::graphStatus CheckOutputExpandedTopkWeight();
+    ge::graphStatus ValidateExpandedXShapeDropPad();
+    ge::graphStatus ValidateExpandedXShapeDropless();
+    ge::graphStatus ValidateExpandedXDtype();
+    void CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0, int64_t &expectedDim1,
+                                     int64_t &expectedDim2);
+    ge::graphStatus ValidateScaleShape(int64_t expectedRank, int64_t expectedDim0, int64_t expectedDim1,
+                                       int64_t expectedDim2);
+
+    // 各阶段TilingData计算函数
+    MultipleParams GetMultipleParams();
+    PerLoopParams GetPerLoopParams(MultipleParams &multipleParams, int64_t perCoreIndicesElements);
+    void AlignInt4DynamicQuantPerLoopCols(PerLoopParams &perLoopParams) const;
+    void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
+                                         const int64_t perCoreIndicesElements);
+    int64_t GetXBufferNum(const int additionalBufferNum);
+    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams, const int64_t perCoreIndicesElements);
+    void Tiling4GatherOutCompute();
+    void Tiling4GatherOutMxFP8NoQuantCompute();
+    void Tiling4GatherOutMxQuant();
+    void Tiling4GatherOutFP8Quant();
+    void Tiling4SortOutCompute();
+    void Tiling4VMSMiddleCompute();
+    void Tiling4VBSCompute();
+    void Tiling4ExpertTokensCountCompute();
+    void Tiling4VBSOneCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
+    void Tiling4VBSMultiCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
+    int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
+    int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
+    int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
+    bool IsFullLoad();
+    bool IsSupportGatherCopyKernels() const;
+    void ComputeUseGatherCopy();
+    void Tiling4TopkWeightOut();
+    void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
+                                        int64_t lastCoreIndicesElements);
+    void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
+                                  int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
+
+    // CountingSort 性能模板
+    bool IsCountingSortApplicable();
+    void ComputeCountingSortMode();
+    int64_t EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens);
+    void ComputeArch35CountingSortFullLoadTiling();
+    void ComputeArch35CountingSortCutOriginTiling();
+
+    // DropPad模式Tiling计算函数
+    void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
+    void SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows);
+    void Tiling4SrcToDstDropPadCompute();
+    void Tiling4GatherOutDropPadCompute();
+    bool UseCompactGatherOutDropPad(int64_t outputRows) const;
+    void SetGatherOutDropPadCoreSplitParams(int64_t &needCoreNum, int64_t &perCoreIndicesElements,
+                                            int64_t &lastCoreIndicesElements);
+    void SetGatherOutDropPadLoopParams(int64_t perCoreIndicesElements, int64_t lastCoreIndicesElements);
+
+    // LogTilingData
+    void LogBaseTilingData();
+    void LogVbsTilingData();
+    void LogVmsMiddleTilingData();
+    void LogSortOutTilingData();
+    void LogExpertTokensCountTilingData();
+    void LogGatherOutTilingData();
+
+    bool IsMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype) const
+    {
+        return quantMode == QUANT_MODE_UNQUANT &&
+               (xDtype == ge::DataType::DT_FLOAT8_E5M2 || xDtype == ge::DataType::DT_FLOAT8_E4M3FN ||
+                xDtype == ge::DataType::DT_FLOAT4_E2M1);
+    }
+
+    bool IsSupportFullloadQuantMode() const
+    {
+        return (quantMode_ == QUANT_MODE_UNQUANT && !IsMXFPXNoQuantCase(quantMode_, xDtype_)) ||
+               (quantMode_ == QUANT_MODE_STATIC) || IsAnyDynamicQuantCase();
+    }
+
+    bool IsMXFP8NoQuantCase(int64_t quantMode, ge::DataType xDtype) const
+    {
+        return quantMode == QUANT_MODE_UNQUANT &&
+               (xDtype == ge::DataType::DT_FLOAT8_E5M2 || xDtype == ge::DataType::DT_FLOAT8_E4M3FN);
+    }
+
+    bool IsInt8DynamicQuantCase() const
+    {
+        return quantMode_ == QUANT_MODE_DYNAMIC;
+    }
+
+    bool IsInt4DynamicQuantCase() const
+    {
+        return quantMode_ == QUANT_MODE_INT4_DYNAMIC;
+    }
+
+    bool IsAnyDynamicQuantCase() const
+    {
+        return IsInt8DynamicQuantCase() || IsInt4DynamicQuantCase();
+    }
+
+    bool NeedQuantTempWorkspace() const
+    {
+        return (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
+                quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_MXFP8_E5M2 &&
+                quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 &&
+                quantMode_ != QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN && quantMode_ != QUANT_MODE_FP8_GROUP_E5M2 &&
+                quantMode_ != QUANT_MODE_FP8_GROUP_E4M3FN && quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E5M2 &&
+                quantMode_ != QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
+    }
+};
+
+} // namespace optiling
+
+#endif // MOE_INIT_ROUTING_V3_TILING_ARCH35_H
