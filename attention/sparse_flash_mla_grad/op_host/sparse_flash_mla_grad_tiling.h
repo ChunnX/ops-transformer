@@ -80,6 +80,9 @@ TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio);
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft);
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight);
+TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqQ);
+TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqOriKV);
+TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqCmpKV);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaGradBasicParamsOp, SparseFlashMlaGradBasicParams)
 
