@@ -41,7 +41,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::DoOpTiling()
     }
     if (blockNumB_ * blockNumS_ > coreNum_) {
         OP_LOGE(
-            context_->GetNodeName(), "split coreNum [%ld] large than coreNum[%ld]", blockNumB_ * blockNumS_, coreNum_);
+            context_->GetNodeName(), "split coreNum [%ld] larger than coreNum [%ld]", blockNumB_ * blockNumS_, coreNum_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
