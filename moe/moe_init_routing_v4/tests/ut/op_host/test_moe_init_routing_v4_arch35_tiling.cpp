@@ -14,6 +14,7 @@
 #include <limits>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_init_routing_v4_tiling_arch35.h"
+#include "../../../../moe_init_routing_v3/op_kernel/arch35/moe_init_routing_v3_arch35_tiling_def.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -346,11 +347,173 @@ void RunV4Testcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity, int6
         hasActiveNum, activeNumVal, hasTopkWeight, &compileInfo);
     ExecuteTestCase(tilingContextPara, expectResult, expectTilingKey, "", {});
 }
+
+struct V4TilingDataCase {
+    int64_t n;
+    int64_t h;
+    int64_t k;
+    int64_t expertCapacity;
+    int64_t dropPadMode;
+    std::vector<int64_t> activeExpertRange;
+    int64_t rowIdxType;
+    uint64_t expectedTilingKey;
+    int64_t expertTokensNumType = EXPERT_TOKENS_TYPE_COUNT;
+    int64_t quantMode = QUANT_MODE_UNQUANT;
+    ge::DataType xDataType = ge::DT_FLOAT;
+    std::vector<int64_t> scaleShape;
+    ge::DataType scaleDtype = ge::DT_FLOAT;
+    std::vector<int64_t> offsetShape;
+    ge::DataType offsetDtype = ge::DT_FLOAT;
+    bool hasTopkWeight = true;
+    int64_t expectedUseGatherCopy = -1;
+};
+
+void ExpectV4TilingData(const V4TilingDataCase &testCase)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara = MakeV4TilingContextPara(
+        testCase.n, testCase.h, testCase.k, testCase.expertCapacity, testCase.dropPadMode,
+        testCase.expertTokensNumType, true, testCase.quantMode, testCase.xDataType, testCase.activeExpertRange,
+        testCase.rowIdxType, testCase.scaleShape, testCase.scaleDtype, testCase.offsetShape, testCase.offsetDtype,
+        kExpandedXDtypeAuto, false, 0, testCase.hasTopkWeight, &compileInfo);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MoeInitRoutingV3Arch35TilingData));
+    const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
+
+    EXPECT_EQ(tilingInfo.tilingKey, testCase.expectedTilingKey);
+    EXPECT_EQ(tilingData->coreNum, 40);
+    EXPECT_EQ(tilingData->n, testCase.n);
+    EXPECT_EQ(tilingData->cols, testCase.h);
+    EXPECT_EQ(tilingData->k, testCase.k);
+    EXPECT_EQ(tilingData->expertStart, testCase.activeExpertRange[0]);
+    EXPECT_EQ(tilingData->expertEnd, testCase.activeExpertRange[1]);
+    EXPECT_EQ(tilingData->actualExpertNum, testCase.activeExpertRange[1] - testCase.activeExpertRange[0]);
+    EXPECT_EQ(tilingData->quantMode, testCase.quantMode);
+    EXPECT_EQ(tilingData->rowIdxType, testCase.rowIdxType);
+    if (testCase.expectedUseGatherCopy >= 0) {
+        EXPECT_EQ(tilingData->useGatherCopy, testCase.expectedUseGatherCopy);
+    }
+    EXPECT_EQ(tilingData->isInputScale, testCase.scaleShape.empty() ? 0 : 1);
+    EXPECT_EQ(tilingData->isInputOffset, testCase.offsetShape.empty() ? 0 : 1);
+    EXPECT_EQ(tilingData->expertNum, EXPERT_NUM);
+    EXPECT_EQ(tilingData->expertTokensNumType, testCase.expertTokensNumType);
+    EXPECT_EQ(tilingData->expertTokensNumFlag, 1);
+    EXPECT_EQ(tilingData->activeNum, testCase.n * testCase.k);
+    EXPECT_EQ(tilingData->dropPadMode, testCase.dropPadMode);
+    EXPECT_EQ(tilingData->expertCapacity, testCase.expertCapacity);
+    EXPECT_EQ(tilingData->isInputTopkWeight, testCase.hasTopkWeight ? 1 : 0);
+    EXPECT_EQ(tilingData->topkWeightOutPerCorePerLoopElements, 0);
+
+    EXPECT_GT(tilingData->vbsComputeParamsOp.needCoreNum, 0);
+    if (testCase.dropPadMode == 1) {
+        EXPECT_GT(tilingData->srcToDstDropPadParamsOp.needCoreNum, 0);
+    } else if (testCase.quantMode == QUANT_MODE_UNQUANT &&
+               (testCase.xDataType == ge::DT_FLOAT8_E5M2 || testCase.xDataType == ge::DT_FLOAT8_E4M3FN)) {
+        EXPECT_GT(tilingData->gatherOutComputeParamsOp.colsLoops, 0);
+        EXPECT_GT(tilingData->gatherOutComputeParamsOp.perCorePerLoopIndicesElements, 0);
+    } else {
+        EXPECT_GT(tilingData->gatherOutComputeParamsOp.needCoreNum, 0);
+    }
+}
 } // namespace
 
 class MoeInitRoutingV4Tiling : public testing::Test {
 protected:
 };
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_fullload_gather_topkweight)
+{
+    ExpectV4TilingData({1, 83, 27, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 200000});
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_fullload_scatter_topkweight)
+{
+    ExpectV4TilingData({1, 83, 27, 0, 0, {180, 192}, ROW_IDX_TYPE_SCATTER, 200000});
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_nonfull_gather_topkweight)
+{
+    ExpectV4TilingData({160, 96, 1450, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 11000000});
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_nonfull_scatter_topkweight)
+{
+    ExpectV4TilingData({160, 96, 1450, 0, 0, {180, 192}, ROW_IDX_TYPE_SCATTER, 11001000});
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_droppad_topkweight)
+{
+    ExpectV4TilingData({1000000, 16, 1, 1, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, 11000100});
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_fullload_dynamic_scale_topkweight)
+{
+    V4TilingDataCase testCase{1, 83, 27, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 220000};
+    testCase.quantMode = QUANT_MODE_DYNAMIC;
+    testCase.scaleShape = {12, 83};
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_nonfull_dynamic_gather_scale_topkweight)
+{
+    V4TilingDataCase testCase{160, 96, 1450, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 11020000};
+    testCase.quantMode = QUANT_MODE_DYNAMIC;
+    testCase.scaleShape = {12, 96};
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_nonfull_dynamic_scatter_bf16_topkweight)
+{
+    V4TilingDataCase testCase{160, 96, 1450, 0, 0, {0, 100}, ROW_IDX_TYPE_SCATTER, 11021000};
+    testCase.quantMode = QUANT_MODE_DYNAMIC;
+    testCase.xDataType = ge::DT_BF16;
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_fullload_static_scale_offset_topkweight)
+{
+    V4TilingDataCase testCase{1, 83, 27, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 210000};
+    testCase.quantMode = QUANT_MODE_STATIC;
+    testCase.scaleShape = {1};
+    testCase.offsetShape = {1};
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_fullload_int4_dynamic_topkweight)
+{
+    V4TilingDataCase testCase{1, 84, 27, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 220000};
+    testCase.quantMode = QUANT_MODE_INT4_DYNAMIC;
+    testCase.scaleShape = {1, 84};
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_mxfp8_roundscale_topkweight)
+{
+    V4TilingDataCase testCase{1, 65, 27, 0, 0, {180, 192}, ROW_IDX_TYPE_GATHER, 10170000};
+    testCase.quantMode = QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2;
+    testCase.xDataType = ge::DT_FLOAT16;
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_key_value_scatter_topkweight)
+{
+    V4TilingDataCase testCase{8, 60, 32, 0, 0, {0, 100}, ROW_IDX_TYPE_SCATTER, 200000};
+    testCase.expertTokensNumType = EXPERT_TOKENS_TYPE_KEY_VALUE;
+    testCase.xDataType = ge::DT_FLOAT16;
+    ExpectV4TilingData(testCase);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_data_unquant_fp8_gather_copy_topkweight)
+{
+    V4TilingDataCase testCase{16, 64, 8, 0, 0, {0, 100}, ROW_IDX_TYPE_SCATTER, 10001000};
+    testCase.xDataType = ge::DT_FLOAT8_E5M2;
+    testCase.scaleShape = {16, 1, 2};
+    testCase.scaleDtype = ge::DT_FLOAT8_E8M0;
+    testCase.expectedUseGatherCopy = 1;
+    ExpectV4TilingData(testCase);
+}
 
 // fullload + not quant, no topk_weight
 TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_fullload_unquant_no_topkweight)

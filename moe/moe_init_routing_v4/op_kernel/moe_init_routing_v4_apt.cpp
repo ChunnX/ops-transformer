@@ -468,12 +468,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
 
     // 4.TopkWeightOut（仅非FullLoad路径）
     if (t->isInputTopkWeight == 1) {
-        TPipe topkWeightPipe;
         MoeV3TopkWeightOut topkWeightOp;
-        topkWeightOp.Init(topkWeight, expandedRowIdx, expandedTopkWeight,
-                          userWS, t, &topkWeightPipe);
+        topkWeightOp.Init(topkWeight, expandedRowIdx, expandedTopkWeight, userWS, t);
         topkWeightOp.Process();
-        topkWeightPipe.Destroy();
     }
 
     // 5.直接搬运或是搬运的过程中对x进行量化
