@@ -183,30 +183,6 @@ __aicore__ inline void GetGroupSyncSlotRange(uint32_t groupIndex, const GroupSyn
     firstSyncSlot = groupIndex * slotLayout.baseSlotCountPerGroup + precedingExtraSlotCount;
 }
 
-__aicore__ inline void ComputeCombineGroupsForCore(uint32_t logicalCoreId, uint32_t groupCount,
-                                                   uint32_t logicalCoreCount, uint32_t &firstGroupIndex,
-                                                   uint32_t &groupStride, uint32_t &coreIndexWithinGroup,
-                                                   uint32_t &coresAssignedToGroup)
-{
-    uint32_t totalSyncSlotCount = groupCount > logicalCoreCount ? groupCount : logicalCoreCount;
-    uint32_t baseSlotCountPerGroup = totalSyncSlotCount / groupCount;
-    uint32_t extraSlotGroupCount = totalSyncSlotCount % groupCount;
-    uint32_t slotBoundaryAfterExtraSlotGroups = extraSlotGroupCount * (baseSlotCountPerGroup + 1U);
-
-    if (logicalCoreId < slotBoundaryAfterExtraSlotGroups) {
-        coresAssignedToGroup = baseSlotCountPerGroup + 1U;
-        firstGroupIndex = logicalCoreId / coresAssignedToGroup;
-        coreIndexWithinGroup = logicalCoreId % coresAssignedToGroup;
-    } else {
-        uint32_t slotOffsetAfterExtraSlotGroups = logicalCoreId - slotBoundaryAfterExtraSlotGroups;
-        coresAssignedToGroup = baseSlotCountPerGroup;
-        firstGroupIndex = extraSlotGroupCount + slotOffsetAfterExtraSlotGroups / coresAssignedToGroup;
-        coreIndexWithinGroup = slotOffsetAfterExtraSlotGroups % coresAssignedToGroup;
-    }
-
-    groupStride = groupCount < logicalCoreCount ? groupCount : logicalCoreCount;
-}
-
 /*
  * 计算单个专家贡献的独立 M 分组数。不同专家使用不同权重，因此各专家不足
  * rowsPerMGroup 的尾块也必须分别占用一个分组。
@@ -331,21 +307,6 @@ __aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
         } else {
             WaitForVector();
         }
-    }
-}
-
-__aicore__ inline void EndGMM2Sync(int32_t &vecSetSyncCom, uint16_t gmm2PingPongIdx)
-{
-    if constexpr (g_coreType == AIV) {
-        return;
-    }
-    if (vecSetSyncCom <= 0) {
-        return;
-    } else if (vecSetSyncCom == 1) {
-        WaitForVector();
-    } else {
-        WaitForVector(gmm2PingPongIdx);
-        WaitForVector(1U - gmm2PingPongIdx);
     }
 }
 
