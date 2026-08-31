@@ -195,10 +195,12 @@ void InplacePartialRotaryMulTiling::PrintInfo()
 ge::graphStatus InplacePartialRotaryMulTiling::CalTilingData()
 {
     OP_CHECK_IF(!isSpecail_, OP_LOGI("Tiling4InplacePartialRotaryMul", "not special"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!isAlign_, OP_LOGI("Tiling4InplacePartialRotaryMul", "d = %ld is not aligned to %ld", xdim3_, oneBlockSize_),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(xdim3_ > REPEAT_FP32, OP_LOGI("Tiling4InplacePartialRotaryMul", "D = %ld exceeds repeat limit %ld", xdim3_, REPEAT_FP32),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!isAlign_,
+                OP_LOGI("Tiling4InplacePartialRotaryMul", "d = %ld is not aligned to %ld", xdim3_, oneBlockSize_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(xdim3_ > REPEAT_FP32,
+                OP_LOGI("Tiling4InplacePartialRotaryMul", "D = %ld exceeds repeat limit %ld", xdim3_, REPEAT_FP32),
+                return ge::GRAPH_FAILED);
     int64_t ubNum = ubSize_ / sizeof(float);
     int64_t last = ubNum - dim1_ * dim2_;
     int64_t preCoreNumFactor = (dim0_ + coreNum_ - 1) / coreNum_;
@@ -211,7 +213,9 @@ ge::graphStatus InplacePartialRotaryMulTiling::CalTilingData()
     }
 
     OP_LOGI(context_->GetNodeName(), "ubFactor_ = %ld.", ubFactor_);
-    OP_CHECK_IF(ubFactor_ <= 0, OP_LOGI("Tiling4InplacePartialRotaryMul", "ubFactor = %ld is non-positive, input size is too large, not supported", ubFactor_),
+    OP_CHECK_IF(ubFactor_ <= 0,
+                OP_LOGI("Tiling4InplacePartialRotaryMul",
+                        "ubFactor = %ld is non-positive, input size is too large, not supported", ubFactor_),
                 return ge::GRAPH_FAILED);
     coreBUbLoopTime_ = (preCoreNumFactor + ubFactor_ - 1) / ubFactor_;
     coreBUbLoopTail_ = preCoreNumFactor % ubFactor_;

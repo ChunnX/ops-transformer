@@ -391,7 +391,8 @@ static bool RopeHalfGradSetTiling(const gert::TilingContext* context, int64_t av
     OP_CHECK_IF(
         halfDimDAlignNum * 2 > alignUbSize || alignUbSize == 0 || calcUbSize == 0,
         OP_LOGE(
-            "RopeHalfGrad", "halfDimDAlignNum * 2 = %lu is too large, aicore does not support it.", halfDimDAlignNum * 2),
+            "RopeHalfGrad", "halfDimDAlignNum * 2 = %lu is too large, aicore does not support it.",
+            halfDimDAlignNum * 2),
         return false);
 
     uint64_t taskNum = tiling.ropeHalfGradParams.get_cosShapeSize();
