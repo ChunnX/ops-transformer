@@ -41,7 +41,7 @@
 #endif
 #include "arch35/flash_mla_with_kvcache_type.h"
 using namespace optiling; // tiling_regbase 提供；kernel 头 static_assert 需在解析期可见 optiling 域（与 FA 入口同款）
-#include "arch35/flash_mla_with_kvcache_kernel_mla.h"
+#include "arch35/flash_mla_with_kvcache_kernel.h"
 
 using namespace AscendC;
 
