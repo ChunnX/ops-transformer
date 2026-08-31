@@ -350,7 +350,7 @@ static EngramFetchGradTestParam g_testCases[] = {
      "",
      {}},
 
-    {"fail_hidden_size_not_aligned",
+    {"success_hidden_size_unaligned",
      {6146},
      ge::DT_INT32,
      ge::FORMAT_ND,
@@ -369,7 +369,7 @@ static EngramFetchGradTestParam g_testCases[] = {
      4,
      4194304,
      "3510",
-     ge::GRAPH_FAILED,
+     ge::GRAPH_SUCCESS,
      0UL,
      "",
      {}},

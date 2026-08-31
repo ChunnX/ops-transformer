@@ -51,7 +51,6 @@ constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
-constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t UB_ALIGN = 32;
 
@@ -135,11 +134,11 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
 
     auto permDesc = context->GetInputDesc(IN_PERM);
-    OP_TILING_CHECK(permDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "perm",
-                                                          Ops::Base::ToString(permDesc->GetDataType()).c_str(),
-                                                          "The dtype of perm must be DT_INT32."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        permDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "perm", Ops::Base::ToString(permDesc->GetDataType()).c_str(),
+                                              "The dtype of perm must be DT_INT32."),
+        return ge::GRAPH_FAILED);
 
     auto sendCountsDesc = context->GetInputDesc(IN_SEND_COUNTS);
     OP_TILING_CHECK(sendCountsDesc->GetDataType() != ge::DT_INT32,
@@ -201,28 +200,28 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     const gert::StorageShape *commContextShape = context->GetInputShape(IN_COMM_CONTEXT);
     OP_TILING_CHECK(commContextShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commContext"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commContextShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "commContext",
-                        (std::to_string(commContextShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of commContext must be 1D."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commContextShape->GetStorageShape().GetDim(0) <= 0,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, "commContext",
-                        (std::string("dim0=") + std::to_string(commContextShape->GetStorageShape().GetDim(0))).c_str(),
-                        "> 0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        commContextShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "commContext", (std::to_string(commContextShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of commContext must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        commContextShape->GetStorageShape().GetDim(0) <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "commContext",
+            (std::string("dim0=") + std::to_string(commContextShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
 
     // gradFetched: 2D (T, H)
     const gert::StorageShape *gradShape = context->GetInputShape(IN_GRAD_FETCHED);
     OP_TILING_CHECK(gradShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "gradFetched"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gradShape->GetStorageShape().GetDimNum() != DIM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "gradFetched",
-                        (std::to_string(gradShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of gradFetched must be 2D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        gradShape->GetStorageShape().GetDimNum() != DIM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "gradFetched", (std::to_string(gradShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of gradFetched must be 2D."),
+        return ge::GRAPH_FAILED);
     numTokens = gradShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(numTokens < 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched",
@@ -233,11 +232,6 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched",
                                               (std::string("dim1=") + std::to_string(hiddenDim)).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        hiddenDim % HIDDEN_SIZE_ALIGN != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched", (std::string("dim1=") + std::to_string(hiddenDim)).c_str(),
-                                  (std::string("must be ") + std::to_string(HIDDEN_SIZE_ALIGN) + "-aligned").c_str()),
-        return ge::GRAPH_FAILED);
 
     // perm: 1D (T,), dim0 == numTokens
     const gert::StorageShape *permShape = context->GetInputShape(IN_PERM);
@@ -247,47 +241,47 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                         nodeName, "perm", (std::to_string(permShape->GetStorageShape().GetDimNum()) + "D").c_str(),
                         "The shape dim of perm must be 1D."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(permShape->GetStorageShape().GetDim(0) != numTokens,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "perm",
-                        (std::string("dim0=") + std::to_string(permShape->GetStorageShape().GetDim(0))).c_str(),
-                        (std::string("dim0 must equal gradFetched dim0=") + std::to_string(numTokens)).c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        permShape->GetStorageShape().GetDim(0) != numTokens,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName, "perm", (std::string("dim0=") + std::to_string(permShape->GetStorageShape().GetDim(0))).c_str(),
+            (std::string("dim0 must equal gradFetched dim0=") + std::to_string(numTokens)).c_str()),
+        return ge::GRAPH_FAILED);
 
     // sendCounts: 1D (W,)
     const gert::StorageShape *sendCountsShape = context->GetInputShape(IN_SEND_COUNTS);
     OP_TILING_CHECK(sendCountsShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sendCounts"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sendCountsShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "sendCounts",
-                        (std::to_string(sendCountsShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of sendCounts must be 1D."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sendCountsShape->GetStorageShape().GetDim(0) <= 0,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, "sendCounts",
-                        (std::string("dim0=") + std::to_string(sendCountsShape->GetStorageShape().GetDim(0))).c_str(),
-                        "> 0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        sendCountsShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "sendCounts", (std::to_string(sendCountsShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of sendCounts must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        sendCountsShape->GetStorageShape().GetDim(0) <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "sendCounts",
+            (std::string("dim0=") + std::to_string(sendCountsShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsShape->GetStorageShape().GetDim(0));
 
     // recvCounts: 1D (W,)
     const gert::StorageShape *recvCountsShape = context->GetInputShape(IN_RECV_COUNTS);
     OP_TILING_CHECK(recvCountsShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "recvCounts"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvCountsShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "recvCounts",
-                        (std::to_string(recvCountsShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of recvCounts must be 1D."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvCountsShape->GetStorageShape().GetDim(0) <= 0,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, "recvCounts",
-                        (std::string("dim0=") + std::to_string(recvCountsShape->GetStorageShape().GetDim(0))).c_str(),
-                        "> 0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        recvCountsShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "recvCounts", (std::to_string(recvCountsShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of recvCounts must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        recvCountsShape->GetStorageShape().GetDim(0) <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "recvCounts",
+            (std::string("dim0=") + std::to_string(recvCountsShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
 
     // recvLocalEntry: 1D (R,)
     const gert::StorageShape *recvLocalEntryShape = context->GetInputShape(IN_RECV_LOCAL_ENTRY);
@@ -310,12 +304,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     // numRecv: 1D, dim0 == 1
     const gert::StorageShape *numRecvShape = context->GetInputShape(IN_NUM_RECV);
     OP_TILING_CHECK(numRecvShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numRecv"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numRecvShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "numRecv",
-                        (std::to_string(numRecvShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of numRecv must be 1D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        numRecvShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "numRecv", (std::to_string(numRecvShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of numRecv must be 1D."),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numRecvShape->GetStorageShape().GetDim(0) != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "numRecv",
@@ -327,12 +321,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     const gert::StorageShape *gradUniqueShape = context->GetOutputShape(OUT_GRAD_UNIQUE);
     OP_TILING_CHECK(gradUniqueShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "gradUniqueOut"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gradUniqueShape->GetStorageShape().GetDimNum() != DIM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "gradUniqueOut",
-                        (std::to_string(gradUniqueShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of gradUniqueOut must be 2D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        gradUniqueShape->GetStorageShape().GetDimNum() != DIM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "gradUniqueOut", (std::to_string(gradUniqueShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of gradUniqueOut must be 2D."),
+        return ge::GRAPH_FAILED);
 
     // uniqueLocalEntryOut: 1D
     const gert::StorageShape *uniqueLocalEntryShape = context->GetOutputShape(OUT_UNIQUE_LOCAL_ENTRY);
@@ -349,12 +343,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     const gert::StorageShape *numUniqueShape = context->GetOutputShape(OUT_NUM_UNIQUE);
     OP_TILING_CHECK(numUniqueShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numUniqueOut"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numUniqueShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "numUniqueOut",
-                        (std::to_string(numUniqueShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of numUniqueOut must be 1D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        numUniqueShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "numUniqueOut", (std::to_string(numUniqueShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of numUniqueOut must be 1D."),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numUniqueShape->GetStorageShape().GetDim(0) != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "numUniqueOut",
@@ -571,15 +565,14 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     OP_TILING_CHECK(totalRecv > 0 && hiddenBytes > INT64_MAX / totalRecv,
                     OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(totalRecv > 0 && tilingData.hiddenDim > INT64_MAX / totalRecv,
-                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
-                            totalRecv, tilingData.hiddenDim),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(totalRecv > 0 &&
-                        tilingData.hiddenDim > (INT64_MAX / static_cast<int64_t>(sizeof(float))) / totalRecv,
-                    OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld",
-                            totalRecv, tilingData.hiddenDim),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        totalRecv > 0 && tilingData.hiddenDim > INT64_MAX / totalRecv,
+        OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld", totalRecv, tilingData.hiddenDim),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        totalRecv > 0 && tilingData.hiddenDim > (INT64_MAX / static_cast<int64_t>(sizeof(float))) / totalRecv,
+        OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenDim=%ld", totalRecv, tilingData.hiddenDim),
+        return ge::GRAPH_FAILED);
 
     int64_t wsGradSorted = numTokens * hiddenBytes;
     int64_t wsRecvGrad = totalRecv * hiddenBytes;
@@ -591,8 +584,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
 
     int64_t maxSortCount = totalRecv;
     OP_TILING_CHECK(maxSortCount > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
-                    OP_LOGE(nodeName, "sort temp overflow: totalRecv=%ld", totalRecv),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "sort temp overflow: totalRecv=%ld", totalRecv), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxSortCount > INT64_MAX - 4095,
                     OP_LOGE(nodeName, "sortTileCount CeilDiv overflow: totalRecv=%ld", totalRecv),
                     return ge::GRAPH_FAILED);
