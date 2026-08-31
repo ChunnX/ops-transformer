@@ -22,6 +22,19 @@ from pathlib import Path
 import utils
 import logging
 import os
+import sys
+import torch_npu
+
+SMLA_PYTEST_PATH = Path(__file__).resolve().parents[3] / "sparse_flash_mla/tests/pytest"
+if str(SMLA_PYTEST_PATH) not in sys.path:
+    sys.path.append(str(SMLA_PYTEST_PATH))
+
+from batch_consistency.config import resolve_consistency_config  # noqa: E402
+from batch_consistency.model import RunResult  # noqa: E402
+from batch_consistency.pytest_support import (  # noqa: E402
+    consistency_fulfill_percent,
+    run_configured_consistency,
+)
 
 pt_save_path = "qsmla_testcase"
 device_id = 0
@@ -86,6 +99,21 @@ for params in ENABLED_PARAMS:
         "q_datarange": params.get("q_datarange", [[-5, 5]]),
         "ori_kv_datarange": params.get("ori_kv_datarange", [[-5, 5]]),
         "cmp_kv_datarange": params.get("cmp_kv_datarange", [[-5, 5]]),
+        "batch_consistency": params.get("batch_consistency", [None]),
+        "batch_consistency_seed": params.get("batch_consistency_seed", [None]),
+        "batch_consistency_order": params.get("batch_consistency_order", [None]),
+        "batch_consistency_batch_split": params.get(
+            "batch_consistency_batch_split", [None]
+        ),
+        "batch_consistency_mode_batch": params.get(
+            "batch_consistency_mode_batch", [None]
+        ),
+        "batch_consistency_token_split": params.get(
+            "batch_consistency_token_split", [None]
+        ),
+        "batch_consistency_shape_change": params.get(
+            "batch_consistency_shape_change", [None]
+        ),
     }
 
     param_names = list(param_values.keys())
@@ -121,8 +149,45 @@ def qsmla(param_combinations):
 
     # 生成测试数据及golden
     test_data = quant_sparse_flash_mla_golden.generate_and_save_testdata(
-        params, save_pt=save_pt, save_path=pt_save_path
+        params, save_pt=False
     )
+    consistency_config = resolve_consistency_config(
+        test_data,
+        os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto"),
+        persist=save_pt,
+    )
+    if save_pt:
+        quant_sparse_flash_mla_golden.save_test_case(test_data, pt_save_path)
+
+    if consistency_config is not None:
+        def consistency_executor(data):
+            if is_run_graph:
+                values = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+                    data, device_id=device_id
+                )
+            else:
+                values = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+                    data, device_id=device_id
+                )
+            return RunResult(values[0], values[3])
+
+        report = run_configured_consistency(
+            test_data,
+            consistency_config,
+            consistency_executor,
+            result_compare_method.check_result,
+            lambda: torch_npu.npu.set_device(device_id),
+        )
+        logging.info(f"batch consistency report: {report}")
+        fulfill_percent = consistency_fulfill_percent(report)
+        result = "PASS" if report["pass"] else "FAILED"
+        case_id += 1
+        utils.save_result(test_data["params"], result, fulfill_percent, result_path)
+        if not report["relations"]:
+            pytest.skip(f"batch consistency has no applicable relation: {report}")
+        if not report["pass"]:
+            pytest.fail(f"batch consistency failed: {report}")
+        return
 
     # 获得cpu结果(真值)和算子结果（测试值）
     try:

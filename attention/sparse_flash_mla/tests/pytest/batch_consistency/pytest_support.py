@@ -24,12 +24,27 @@ import pytest
 import torch
 
 from .adapter import CaseAdapter
+from .config import (
+    BATCH_SPLIT_KEY,
+    MODE_BATCH_KEY,
+    ORDER_KEY,
+    SEED_KEY,
+    SHAPE_CHANGE_KEY,
+    TOKEN_SPLIT_KEY,
+)
 from .runner import (
     BatchConsistencyUnsupportedError,
     ConsistencyRunner,
 )
 from .schema import get_q_lengths
-from .transform import InvalidTransformError, groups_from_split_sizes
+from .transform import (
+    InvalidTransformError,
+    groups_from_split_sizes,
+    transform_mode1_reorder,
+    transform_mode2_split,
+    transform_mode3_token_partition,
+    transform_mode4_shape_change,
+)
 
 
 DEFAULT_MODES = ("reorder", "split", "token-split", "shape-change")
@@ -317,6 +332,88 @@ def run_selected_mode(
         common_tokens = max(1, token_count - 1)
         derived_extra = token_count - common_tokens + 1
     return runner.run_mode4(data, batch_id, common_tokens, derived_extra)
+
+
+def run_configured_consistency(
+    data: Dict[str, Any],
+    config: Mapping[str, Any],
+    executor: Callable[[Dict[str, Any]], Any],
+    precision_compare: Callable[[Any, Any], Any],
+    set_device: Callable[[], None],
+) -> Dict[str, Any]:
+    """Run all persisted single-PT relations with one level-3 baseline call."""
+    cases = []
+    overrides = []
+    skipped = {}
+    seed = int(config[SEED_KEY])
+
+    order = config.get(ORDER_KEY)
+    if order is None:
+        skipped["reorder"] = "NOT_APPLICABLE: reorder requires at least two batches"
+    else:
+        cases.append(transform_mode1_reorder(data, list(order), seed))
+        overrides.append(None)
+
+    batch_split = config.get(BATCH_SPLIT_KEY)
+    if batch_split is None:
+        skipped["split"] = "NOT_APPLICABLE: split requires at least two batches"
+    else:
+        split_cases = transform_mode2_split(
+            data,
+            groups_from_split_sizes(CaseAdapter(data).get_batch_size(), batch_split),
+            seed,
+        )
+        cases.extend(split_cases)
+        overrides.extend([None] * len(split_cases))
+
+    mode_batch = int(config[MODE_BATCH_KEY])
+    token_split = config.get(TOKEN_SPLIT_KEY)
+    if token_split is None:
+        skipped["token-split"] = (
+            "NOT_APPLICABLE: token-split requires at least two valid Q tokens"
+        )
+    else:
+        try:
+            token_cases = transform_mode3_token_partition(
+                data, mode_batch, token_split
+            )
+        except InvalidTransformError as error:
+            skipped["token-split"] = f"NOT_APPLICABLE: {error}"
+        else:
+            cases.extend(token_cases)
+            overrides.extend([None] * len(token_cases))
+
+    common_tokens, derived_extra = config[SHAPE_CHANGE_KEY]
+    try:
+        shape_case = transform_mode4_shape_change(
+            data, mode_batch, int(common_tokens), int(derived_extra)
+        )
+    except InvalidTransformError as error:
+        skipped["shape-change"] = f"NOT_APPLICABLE: {error}"
+    else:
+        cases.append(shape_case)
+        overrides.append([int(common_tokens)])
+
+    runner = ConsistencyRunner(executor, precision_compare, set_device)
+    report = runner.run_cases(data, cases, overrides)
+    report["config"] = dict(config)
+    report["skipped_modes"] = skipped
+    return report
+
+
+def consistency_fulfill_percent(report: Mapping[str, Any]) -> float:
+    """Return the minimum numeric precision percentage in a consistency report."""
+    values = []
+    precision_reports = [report.get("baseline_precision", {})]
+    precision_reports.extend(
+        relation.get("precision", {}) for relation in report.get("relations", [])
+    )
+    for precision in precision_reports:
+        for name in ("output", "softmax_lse"):
+            value = precision.get(name, {}).get("fulfill_percent")
+            if value is not None:
+                values.append(float(value))
+    return min(values) if values else 0.0
 
 
 def run_pytest_case(

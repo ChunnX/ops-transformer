@@ -21,10 +21,17 @@ from pathlib import Path
 import numpy as np
 import math
 import os
+import sys
 import utils
 import argparse
 import concurrent.futures
 import traceback
+
+SMLA_PYTEST_PATH = Path(__file__).resolve().parents[4] / "sparse_flash_mla/tests/pytest"
+if str(SMLA_PYTEST_PATH) not in sys.path:
+    sys.path.append(str(SMLA_PYTEST_PATH))
+
+from batch_consistency.config import resolve_consistency_config  # noqa: E402
 
 # 读取表格（支持通过环境变量传入）
 save_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
@@ -85,6 +92,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         "tile_size",
         "rope_head_dim",
         "topk_value_mode",
+        "batch_consistency_seed",
+        "batch_consistency_mode_batch",
     ]
     for ik in int_keys:
         v = normalized_params.get(ik)
@@ -102,6 +111,13 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = utils.parse_list_param(params.get(key))
     for key in ["q_datarange", "ori_kv_datarange", "cmp_kv_datarange"]:
         normalized_params[key] = utils.parse_datarange_param(params.get(key))
+    for key in [
+        "batch_consistency_order",
+        "batch_consistency_batch_split",
+        "batch_consistency_token_split",
+        "batch_consistency_shape_change",
+    ]:
+        normalized_params[key] = utils.parse_list_param(params.get(key))
     template_run_mode = normalized_params["template_run_mode"]
     if isinstance(template_run_mode, list):
         template_run_mode = template_run_mode[0]
@@ -155,6 +171,13 @@ for _, params in enumerate(ENABLED_PARAMS):
         "q_datarange",
         "ori_kv_datarange",
         "cmp_kv_datarange",
+        "batch_consistency",
+        "batch_consistency_seed",
+        "batch_consistency_order",
+        "batch_consistency_batch_split",
+        "batch_consistency_mode_batch",
+        "batch_consistency_token_split",
+        "batch_consistency_shape_change",
     ]
 
     param_values = [
@@ -206,6 +229,13 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["q_datarange"]],
         [normalized_params["ori_kv_datarange"]],
         [normalized_params["cmp_kv_datarange"]],
+        [normalized_params.get("batch_consistency")],
+        [normalized_params.get("batch_consistency_seed")],
+        [normalized_params.get("batch_consistency_order")],
+        [normalized_params.get("batch_consistency_batch_split")],
+        [normalized_params.get("batch_consistency_mode_batch")],
+        [normalized_params.get("batch_consistency_token_split")],
+        [normalized_params.get("batch_consistency_shape_change")],
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -275,9 +305,17 @@ def mqsmla(param_combinations):
             pytest.skip(f"输入参数校验失败:{e}")
 
         # 生成测试数据
-        mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
-            params, save_pt=True, save_path=save_path
+        input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
+            params, save_pt=False
         )
+        config = resolve_consistency_config(
+            input_data,
+            os.environ.get("MQSMLA_BATCH_CONSISTENCY", "auto"),
+            persist=True,
+        )
+        if config is not None:
+            print("batch consistency config:", config)
+        mixed_quant_sparse_flash_mla_golden.save_test_case(input_data, save_path)
     except Exception as e:
         record_failed_case(param_combinations, e)
         pytest.fail(
