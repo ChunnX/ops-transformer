@@ -109,9 +109,10 @@ public:
                                             __ubuf__ P *hPreUbAddr, uint32_t currentChunkSize, uint32_t copySizeND,
                                             uint32_t currentN, uint32_t bsGlobalOffset);
 
-    template <bool hasGamma, bool reuseGamma>
+    template <bool hasGamma, bool reuseGamma, bool isFirstChunk>
     __aicore__ inline void VFDoV2XCastAndMulGamma(__ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr,
-                                                  __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaInAddr,
+                                                  __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaSrcAddr,
+                                                  __ubuf__ P *gammaInAddr,
                                                   uint32_t currentChunkSize,
                                                   uint32_t copySizeND);
 
@@ -1076,18 +1077,27 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
 }
 
 template <class T, class P>
-template <bool hasGamma, bool reuseGamma>
+template <bool hasGamma, bool reuseGamma, bool isFirstChunk>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
-    __ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr, __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaInAddr,
+    __ubuf__ P *xRsFp32Addr, __ubuf__ P *gammaOutAddr, __ubuf__ T *bf16InputAddr, __ubuf__ P *gammaSrcAddr,
+    __ubuf__ P *gammaInAddr,
     uint32_t currentChunkSize, uint32_t copySizeND)
 {
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> xInB16Reg;
         Reg::RegTensor<P> xFp32Reg, gammaReg, resultReg;
+        if constexpr (hasGamma && isFirstChunk) {
+            // 首chunk在现有VF中将队列中的gamma保存到工作区，后续chunk复用。
+            uint32_t gammaLen = copySizeND;
+            Reg::MaskReg gammaMask = Reg::UpdateMask<P>(gammaLen);
+            Reg::RegTensor<P> gammaCacheReg;
+            Reg::LoadAlign(gammaCacheReg, gammaSrcAddr);
+            Reg::StoreAlign(gammaInAddr, gammaCacheReg, gammaMask);
+        }
         if constexpr (hasGamma && reuseGamma) {
             // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
-            Reg::LoadAlign(gammaReg, gammaInAddr);
+            Reg::LoadAlign(gammaReg, gammaSrcAddr);
         }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
             // copySizeND最大为64，一个向量指令即可处理整行，无需额外的VF分块循环。
@@ -1102,7 +1112,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
 
             if constexpr (hasGamma) {
                 if constexpr (!reuseGamma) {
-                    Reg::LoadAlign(gammaReg, gammaInAddr);
+                    Reg::LoadAlign(gammaReg, gammaSrcAddr);
                 }
                 Reg::Mul(resultReg, gammaReg, xFp32Reg, mask); // 逐元素乘：gamma * x
                 Reg::StoreAlign(gammaOutAddr + offset, resultReg, mask);
@@ -1253,10 +1263,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     bsCopyParams.dstStride = 0;
     SetFlag<HardEvent::V_MTE2>(EVENT_ID3);
     WaitFlag<HardEvent::V_MTE2>(EVENT_ID3);
-    if (withGamma_) {
-        bsCopyParams.blockLen = copySizeND * sizeof(P);
-        DataCopyPad(gammaIn_, gammaGm_[offsetND], bsCopyParams, dataCopyPadParams);
-    }
     bsCopyParams.blockLen = currentBsSize * N_ * sizeof(P);
     DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams);
 
@@ -1370,6 +1376,22 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     vecInQueue1_.EnQue(bf16InputBuf_);
     bf16InputBuf_ = vecInQueue1_.DeQue<T>();
 
+    LocalTensor<P> gammaUb;
+    if (withGamma_ && bsChunkStart == bsStart) {
+        // 与参考实现一致，首次gamma通过q0搬入；VF消费并缓存后立即释放。
+        gammaUb = vecInQueue0_.AllocTensor<P>();
+        DataCopyParams gammaCopyParams;
+        gammaCopyParams.blockCount = 1;
+        gammaCopyParams.blockLen = copySizeND * sizeof(P);
+        gammaCopyParams.srcStride = 0;
+        gammaCopyParams.dstStride = 0;
+        DataCopyPadParams gammaPadParams;
+        gammaPadParams.isPad = false;
+        DataCopyPad(gammaUb, gammaGm_[offsetND], gammaCopyParams, gammaPadParams);
+        vecInQueue0_.EnQue(gammaUb);
+        gammaUb = vecInQueue0_.DeQue<P>();
+    }
+
     // 计算xRs和gamma
     __ubuf__ T *bf16InputAddr = (__ubuf__ T *)bf16InputBuf_.GetPhyAddr();
     __ubuf__ P *xRsFp32Addr = (__ubuf__ P *)xRsFp32Buf_.GetPhyAddr();
@@ -1377,16 +1399,28 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     __ubuf__ P *gammaOutAddr = (__ubuf__ P *)gammaOutUb_.GetPhyAddr();
     if (withGamma_) {
         __ubuf__ P *gammaInAddr = (__ubuf__ P *)gammaIn_.GetPhyAddr();
-        if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
-            VFDoV2XCastAndMulGamma<true, true>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, gammaInAddr,
-                                              currentChunkSize, copySizeND);
+        if (bsChunkStart == bsStart) {
+            __ubuf__ P *gammaSrcAddr = (__ubuf__ P *)gammaUb.GetPhyAddr();
+            if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
+                VFDoV2XCastAndMulGamma<true, true, true>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, gammaSrcAddr,
+                                                         gammaInAddr, currentChunkSize, copySizeND);
+            } else {
+                VFDoV2XCastAndMulGamma<true, false, true>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, gammaSrcAddr,
+                                                          gammaInAddr, currentChunkSize, copySizeND);
+            }
+            vecInQueue0_.FreeTensor(gammaUb);
         } else {
-            VFDoV2XCastAndMulGamma<true, false>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, gammaInAddr,
-                                               currentChunkSize, copySizeND);
+            if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
+                VFDoV2XCastAndMulGamma<true, true, false>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, gammaInAddr,
+                                                          gammaInAddr, currentChunkSize, copySizeND);
+            } else {
+                VFDoV2XCastAndMulGamma<true, false, false>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, gammaInAddr,
+                                                           gammaInAddr, currentChunkSize, copySizeND);
+            }
         }
     } else {
-        VFDoV2XCastAndMulGamma<false, false>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, nullptr, currentChunkSize,
-                                            copySizeND);
+        VFDoV2XCastAndMulGamma<false, false, false>(xRsFp32Addr, gammaOutAddr, bf16InputAddr, nullptr, nullptr,
+                                                    currentChunkSize, copySizeND);
     }
     vecInQueue1_.FreeTensor(bf16InputBuf_);
     vecOutQueue1_.EnQue(gammaOutUb_);
