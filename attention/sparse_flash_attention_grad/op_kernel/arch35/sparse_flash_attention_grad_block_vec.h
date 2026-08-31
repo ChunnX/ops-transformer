@@ -247,8 +247,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<I
     LocalTensor<INPUT_TYPE> gatherRopeTensorPong = gatherTensorPong[2 * constInfo.commonConstInfo.dSize];
 
     for (i = curBlk; i < curBlk + curActualSelCntOffset / 2 * 2; i += 2) {
-        int64_t keyOffset1 = topkIndicesGm.GetValue(gmOffset + i) * constInfo.selectedBlockSize;
-        int64_t keyOffset2 = topkIndicesGm.GetValue(gmOffset + i + 1) * constInfo.selectedBlockSize;
+        int32_t indices1 = topkIndicesGm.GetValue(gmOffset + i);
+        int32_t indices2 = topkIndicesGm.GetValue(gmOffset + i + 1);
+        if (unlikely(indices1 < 0 || indices1 >= runInfo.actualSelectedBlockCount)) {
+            break;
+        }
+        bool multiCopy = (indices2 >= 0 && indices2 < runInfo.actualSelectedBlockCount);
+        int64_t keyOffset1 = indices1 * constInfo.selectedBlockSize;
+        int64_t keyOffset2 = indices2 * constInfo.selectedBlockSize;
 
         uint32_t s2OrgStride = keyOffset2 - keyOffset1 - constInfo.selectedBlockSize;
         intriParamsKey.blockCount = 2;
@@ -265,8 +271,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<I
         if (keyOffset2 <= keyOffset1) {
             intriParamsKey.blockCount = 1;
             DataCopyPad(gatherTensor, keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize], intriParamsKey, padParams);
-            DataCopyPad(gatherTensor[constInfo.selectedBlockSize * constInfo.commonConstInfo.dSize], keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset2 * constInfo.n2Size * constInfo.commonConstInfo.dSize], intriParamsKey, padParams);
+            if (multiCopy) {
+                DataCopyPad(gatherTensor[constInfo.selectedBlockSize * constInfo.commonConstInfo.dSize], keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset2 * constInfo.n2Size * constInfo.commonConstInfo.dSize], intriParamsKey, padParams);
+            }
         } else {
+            intriParamsKey.blockCount = multiCopy ? 2 : 1;
             DataCopyPad(gatherTensor, keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize], intriParamsKey, padParams);
         }
 
@@ -280,11 +289,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<I
                     gatherRopeTensor,
                     keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
                     intriParamsRope, padParams);
-                DataCopyPad(
-                    gatherRopeTensor[constInfo.selectedBlockSize * constInfo.dRopeSize],
-                    keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset2 * constInfo.n2Size * constInfo.dRopeSize],
-                    intriParamsRope, padParams);
+                if (multiCopy) {
+                    DataCopyPad(
+                        gatherRopeTensor[constInfo.selectedBlockSize * constInfo.dRopeSize],
+                        keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset2 * constInfo.n2Size * constInfo.dRopeSize],
+                        intriParamsRope, padParams);
+                }
             } else {
+                intriParamsRope.blockCount = multiCopy ? 2 : 1;
                 DataCopyPad(
                     gatherRopeTensor,
                     keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
@@ -304,7 +316,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<I
         mergePingPong = 1 - mergePingPong;
     }
     if (i < curActualSelCntEnd) {
-        int64_t keyOffset1 = topkIndicesGm.GetValue(gmOffset + i) * constInfo.selectedBlockSize;
+        int32_t indices1 = topkIndicesGm.GetValue(gmOffset + i);
 
         mte2WaitMte3EventId = mergePingPong ? mte2WaitMte3Ping : mte2WaitMte3Pong;
         mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Ping : mte3WaitMte2Pong;
@@ -317,24 +329,27 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<I
         LocalTensor<INPUT_TYPE> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
         LocalTensor<INPUT_TYPE> &gatherRopeTensor = mergePingPong ? gatherRopeTensorPing : gatherRopeTensorPong;
 
-        DataCopyPad(gatherTensor, keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize], intriParamsKey, padParams);
-        if constexpr (IS_ROPE) {
-            DataCopyPad(
-                gatherRopeTensor,
-                keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
-                intriParamsRope, padParams);
-        }
+        if (indices1 >= 0 && indices1 < runInfo.actualSelectedBlockCount) {
+            int64_t keyOffset1 = indices1 * constInfo.selectedBlockSize;
+            DataCopyPad(gatherTensor, keyGm[runInfo.keyOffsetWithRopeForMm12 + keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize], intriParamsKey, padParams);
+            if constexpr (IS_ROPE) {
+                DataCopyPad(
+                    gatherRopeTensor,
+                    keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
+                    intriParamsRope, padParams);
+            }
 
-        SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
-        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
+            SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
+            WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
 
-        outParamK.blockCount = 1;
-        outParamRope.blockCount = 1;
-        // CopyOut
-        DataCopyPad(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
-        if constexpr (IS_ROPE) {
-            DataCopyPad(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + constInfo.commonConstInfo.dSize + outWsOffset],
-                        gatherRopeTensor, outParamRope);
+            outParamK.blockCount = 1;
+            outParamRope.blockCount = 1;
+            // CopyOut
+            DataCopyPad(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
+            if constexpr (IS_ROPE) {
+                DataCopyPad(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + constInfo.commonConstInfo.dSize + outWsOffset],
+                            gatherRopeTensor, outParamRope);
+            }
         }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
         mergePingPong = 1 - mergePingPong;
@@ -530,7 +545,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
         WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
         for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
             int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
-            if (s2Idx >= 0) {
+            if (s2Idx >= 0 && s2Idx < runInfo.actualSelectedBlockCount) {
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
@@ -555,7 +570,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
     WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
     for (int64_t row = 0; row < tailRows; row++) {
         int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
-        if (s2Idx >= 0) {
+        if (s2Idx >= 0 && s2Idx < runInfo.actualSelectedBlockCount) {
             SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
@@ -651,7 +666,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
-                if (s2Idx >= 0) {
+                if (s2Idx >= 0 && s2Idx < runInfo.actualSelectedBlockCount) {
                     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                     WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                     DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
@@ -680,7 +695,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
         for (int64_t row = 0; row < tailRows; row++) {
             int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
-            if (s2Idx >= 0) {
+            if (s2Idx >= 0 && s2Idx < runInfo.actualSelectedBlockCount) {
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],

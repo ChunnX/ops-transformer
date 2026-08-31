@@ -480,7 +480,7 @@ __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, V
 
     runInfo.commonRunInfo.actualS1Size = curS1;
     runInfo.commonRunInfo.actualS2Size = curS2;
-    runInfo.actualSelectedBlockCount = IS_ORI_KV ? actualOriSelectedBlockCount : actualSelectedBlockCount;
+    runInfo.actualSelectedBlockCount = IS_ORI_KV ? actualOriSelectedBlockCount : actualCmpSelectedBlockCount;
     runInfo.actualCmpSelectedBlockCount = actualCmpSelectedBlockCount;
 
     runInfo.commonRunInfo.s2RealSize =

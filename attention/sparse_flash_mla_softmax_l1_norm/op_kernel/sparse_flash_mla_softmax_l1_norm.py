@@ -173,7 +173,7 @@ def gather_k(
         sparse_indices_s1k_offset = sparse_indices_s1_offset + sparse_indices_k_offset
         for i in pl.range(actual_row_num):
             k_index = pl.getval(sparse_indices, sparse_indices_s1k_offset + i)
-            if k_index < 0:
+            if k_index < 0 or k_index >= run_info.s2_valid_size:
                 break
             gather_k_slot_single_row = gather_k_slot[i:, :]
             pl.set_validshape(gather_k_slot_single_row, [1, D_TOTAL])
@@ -598,6 +598,7 @@ def set_preload_info(run_info, preload_info, ki):
     preload_info.used_t1_index = run_info.used_t1_index
     preload_info.batch_id = run_info.batch_id
     preload_info.s1_idx = run_info.s1_idx
+    preload_info.s2_valid_size = run_info.s2_valid_size
     if IS_TND == 1:
         preload_info.t1_offset = run_info.t1_offset
         preload_info.t2_offset = run_info.t2_offset
@@ -822,6 +823,7 @@ def sparse_flash_mla_softmax_l1_norm(
         s1_idx=0,
         s1_size=tiling.sq,
         s2_size=tiling.sk,
+        s2_valid_size=0,
         used_t1_index=0,
         used_t1_offset=0,
         next_used_t1_offset=0,
@@ -840,6 +842,7 @@ def sparse_flash_mla_softmax_l1_norm(
         s1_idx=0,
         s1_size=tiling.sq,
         s2_size=tiling.sk,
+        s2_valid_size=0,
         used_t1_index=0,
         used_t1_offset=0,
         next_used_t1_offset=0,
@@ -1064,6 +1067,7 @@ def sparse_flash_mla_softmax_l1_norm(
         if IS_SPARSE == 0:
             if SPARSE_MODE == 0:
                 s2_real_size = current_s2_size
+                run_info.s2_valid_size = current_s2_size
             else:
                 if const_info.cmp_ratio > 1:
                     ori_s2_size = (
@@ -1077,6 +1081,7 @@ def sparse_flash_mla_softmax_l1_norm(
                     // const_info.cmp_ratio,
                     0,
                 )
+                run_info.s2_valid_size = s2_real_size
         else:
             cur_k_length = const_info.k_length
             if has_topk_length:
@@ -1092,6 +1097,7 @@ def sparse_flash_mla_softmax_l1_norm(
                     )
             if SPARSE_MODE == 0:
                 s2_real_size = pl.min(cur_k_length, current_s2_size)
+                run_info.s2_valid_size = current_s2_size
             else:
                 if const_info.cmp_ratio > 1:
                     ori_s2_size = (
@@ -1105,6 +1111,7 @@ def sparse_flash_mla_softmax_l1_norm(
                     // const_info.cmp_ratio,
                     0,
                 )
+                run_info.s2_valid_size = s2_valid_size
                 s2_real_size = pl.min(cur_k_length, s2_valid_size)
 
         run_info.s2_real_size = s2_real_size

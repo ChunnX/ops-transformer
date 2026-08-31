@@ -378,7 +378,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             if (runInfo.isSparse) {
                 for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                     int s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
-                    if (s2Idx >= 0) {
+                    if (s2Idx >= 0 && s2Idx < currentSelectedBlockCount) {
                         Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
                             dvInTensor[row * constInfo.commonConstInfo.dSizeV], constInfo.commonConstInfo.dSizeV);
                         SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -412,7 +412,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         if (runInfo.isSparse) {
             for (int64_t row = 0; row < tailRows; row++) {
                 int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
-                if (s2Idx >= 0) {
+                if (s2Idx >= 0 && s2Idx < currentSelectedBlockCount) {
                     Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
                         dvInTensor[row * constInfo.commonConstInfo.dSizeV], constInfo.commonConstInfo.dSizeV);
                     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -621,6 +621,7 @@ __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTenso
         return 0;
     }
 
+    int64_t s2IdxLimit = Min(runInfo.selectedBlockCount, runInfo.commonRunInfo.actualS2Size);
     int32_t s2RealSize = 0;
     bool multiCopy = true;
     outParamK.blockCount = 2;
@@ -653,10 +654,10 @@ __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTenso
         int32_t indices1 = curTopkIndicesGm.GetValue(indicesGmOffset + i);
         int32_t indices2 = curTopkIndicesGm.GetValue(indicesGmOffset + i + 1);
 
-        if (unlikely(indices1 < 0)) {
+        if (unlikely(indices1 < 0 || indices1 >= s2IdxLimit)) {
             multiCopy = false;
             break;
-        } else if (unlikely(indices2 < 0)) {
+        } else if (unlikely(indices2 < 0 || indices2 >= s2IdxLimit)) {
             s2RealSize += 1;
             multiCopy = false;
         } else {
@@ -691,6 +692,7 @@ __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTenso
                             intriParamsKey, padParams);
             }
         } else {
+            intriParamsKey.blockCount = multiCopy ? 2 : 1;
             DataCopyPad(gatherTensor,
                         keyGm[runInfo.commonRunInfo.keyOffset +
                               keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
@@ -707,8 +709,8 @@ __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTenso
     }
     if (i < curActualSelCntEnd && multiCopy) {
         int64_t indices1 = curTopkIndicesGm.GetValue(indicesGmOffset + i);
-        int64_t keyOffset1 = indices1 * constInfo.selectedBlockSize;
-        if (indices1 >= 0) {
+        bool indices1Valid = (indices1 >= 0 && indices1 < s2IdxLimit);
+        if (indices1Valid) {
             s2RealSize += 1;
         }
 
@@ -719,7 +721,8 @@ __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTenso
         // CopyIn
         intriParamsKey.blockCount = 1;
         LocalTensor<INPUT_TYPE> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
-        if (indices1 >= 0) {
+        if (indices1Valid) {
+            int64_t keyOffset1 = indices1 * constInfo.selectedBlockSize;
             DataCopyPad(gatherTensor,
                         keyGm[runInfo.commonRunInfo.keyOffset +
                               keyOffset1 * constInfo.n2Size * constInfo.commonConstInfo.dSize],
@@ -985,6 +988,8 @@ FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWork
         return;
     }
 
+    int64_t s2IdxLimit = Min(runInfo.selectedBlockCount, runInfo.commonRunInfo.actualS2Size);
+
     SetAtomicAdd<CALC_TYPE>();
     int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
     int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
@@ -1018,7 +1023,7 @@ FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWork
         if constexpr (IS_SPARSE) {
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 int32_t s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
-                if (s2Idx >= 0) {
+                if (s2Idx >= 0 && s2Idx < s2IdxLimit) {
                     Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
                         dvInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
                     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -1049,7 +1054,7 @@ FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWork
     if constexpr (IS_SPARSE) {
         for (int64_t row = 0; row < tailRows; row++) {
             int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
-            if (s2Idx >= 0) {
+            if (s2Idx >= 0 && s2Idx < s2IdxLimit) {
                 Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
                     dvInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
