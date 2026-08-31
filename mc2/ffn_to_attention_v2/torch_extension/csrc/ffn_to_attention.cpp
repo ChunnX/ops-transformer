@@ -25,10 +25,10 @@ const int DIM_TWO = 2;
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
 void NpuFFNToAttention(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds,
-                         const at::Tensor &microBatchIds, const at::Tensor &tokenIds, const at::Tensor &expertOffsets,
-                         const at::Tensor &actualTokenNum, const c10::optional<at::Tensor> &attnRankTable,
-                         std::string group, int64_t worldSize, const std::vector<int64_t> &tokenInfoTableShape,
-                         const std::vector<int64_t> &tokenDataShape, int64_t cclBufferSize)
+                       const at::Tensor &microBatchIds, const at::Tensor &tokenIds, const at::Tensor &expertOffsets,
+                       const at::Tensor &actualTokenNum, const c10::optional<at::Tensor> &attnRankTable,
+                       std::string group, int64_t worldSize, const std::vector<int64_t> &tokenInfoTableShape,
+                       const std::vector<int64_t> &tokenDataShape, int64_t cclBufferSize)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D, current dim is: ", x.dim());
     TORCH_CHECK((sessionIds.dim() == DIM_ONE) && (microBatchIds.dim() == DIM_ONE) && (tokenIds.dim() == DIM_ONE) &&
