@@ -315,7 +315,8 @@ private:
         Duplicate(sumVreg1, 0);
 
         MaskReg maskReg16TailN = UpdateMask<half>(tailN);
-        MaskReg maskReg16PackedTailN = UpdateMask<half>(tailN * 2);
+        uint32_t packedTailN = tailN * 2;
+        MaskReg maskReg16PackedTailN = UpdateMask<half>(packedTailN);
         MaskReg maskReg16VL64 = CreateMask<half, MaskPattern::VL64>();
 
         __ubuf__ half *pUb0 = pUb;
