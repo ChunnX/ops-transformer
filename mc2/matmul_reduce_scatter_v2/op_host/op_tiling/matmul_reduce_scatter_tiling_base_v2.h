@@ -38,7 +38,7 @@ constexpr size_t OUTPUT_AMAX = 2;
 // Attr
 constexpr size_t GROUPSIZE_IDX = 7;
 constexpr int64_t PEER_ONLY_RANK_SIZE = 2;
-inline constexpr char PEER_ONLY_ALGORITHM[] = "CcuReduceScatterMeshMem2Mem1DPeerOnly";
+inline constexpr char PEER_ONLY_ALGORITHM[] = "CcuSchedReduceScatterSoleMeshPeerOnly";
 
 // Dtype
 constexpr std::initializer_list<ge::DataType> MXDTYPE_SUPPORT_LIST = {
