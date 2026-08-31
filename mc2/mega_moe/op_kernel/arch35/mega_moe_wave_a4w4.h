@@ -48,7 +48,6 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
     using MegaMoeBase::DispatchBuffInit;
-    using MegaMoeBase::DispatchMoeExpert;
     using MegaMoeBase::RunGmm2CombineForExpert;
     using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmmLoopCount_;
@@ -142,16 +141,11 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
-            uint32_t dispatchedWaveMGroupCount = 0U;
-            while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
-                uint32_t expertTokenCount =
-                    dispatchPosition.tokenIndexInExpert == 0U ?
-                        DispatchMoeExpert(dispatchPosition.expertIdx) :
-                        GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
-                                                         commonConfig_.moeExpertPerRank, dispatchPosition.expertIdx);
-                AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
-                                                              dispatchedWaveMGroupCount, dispatchPosition);
-            }
+            MegaMoeImpl::DispatchWaveAndGetEndPosition<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                                       TopkWeightsPrefetch, true>(
+                tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
+                syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
+                mGroupsPerWave_);
         }
     }
 
@@ -163,27 +157,24 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         uint32_t waveLastActiveExpertIdx = commonConfig_.moeExpertPerRank;
         bool currentWaveNeedsGmm1 = true;
 
-        uint32_t nextDispatchWaveMGroupCount = 0U;
         bool nextWaveNeedsDispatch = false;
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
+                nextWaveNeedsDispatch = dispatchPosition.expertIdx < commonConfig_.moeExpertPerRank;
             }
         }
 
         // 两侧进度可能不同：只有当前计算和下一 Wave 的 Dispatch 都结束后，才能切换到当前 Wave 的 GMM2。
         while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
-            // AIV1 逐专家准备下一 Wave；AIC/AIV0 同时推进当前 Wave 的 GMM1/Activation。
+            // AIV1 一次准备完整的下一 Wave；AIC/AIV0 同时推进当前 Wave 的 GMM1/Activation。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    uint32_t expertTokenCount = dispatchPosition.tokenIndexInExpert == 0U ?
-                                                    DispatchMoeExpert(dispatchPosition.expertIdx) :
-                                                    GetExpertTokenCountFromWorkspace(
-                                                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
-                                                        commonConfig_.moeExpertPerRank, dispatchPosition.expertIdx);
-                    AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
-                                                                  nextDispatchWaveMGroupCount, dispatchPosition);
-                    nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
+                    MegaMoeImpl::DispatchWaveAndGetEndPosition<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                                               TopkWeightsPrefetch, true>(
+                        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
+                        syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
+                        mGroupsPerWave_);
+                    nextWaveNeedsDispatch = false;
                 }
             }
 

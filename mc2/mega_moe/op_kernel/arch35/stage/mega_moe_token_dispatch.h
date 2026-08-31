@@ -42,7 +42,6 @@ struct TokenDispatchScratch {
     LocalTensor<int32_t> expertTokenNumsOutTensor;
     int64_t revTokenElemCnt;
     int64_t revScaleElemCnt;
-    uint32_t nextDispatchCoreIdx;
 };
 
 // Wave Dispatch 将专家有效行在全部物理 AIV1 上连续均分，并跨专家滚动首核。
@@ -52,65 +51,6 @@ struct WaveDispatchCoreRange {
     uint32_t localExpertRowBegin;
     uint32_t localExpertRowEnd;
 };
-
-template <typename ActivationType>
-__aicore__ inline WaveDispatchCoreRange PlanWaveExpertDispatch(const TokenDispatchConfig &context,
-                                                               const MoeStageCommonConfig &common,
-                                                               const BlockJobContext &blockJob,
-                                                               TokenDispatchScratch<ActivationType> &scratch,
-                                                               uint32_t localExpertId)
-{
-    // 相邻专家的最后一个 source-rank 前缀值给出专家的全局连续行区间。
-    uint32_t expertPrefixIndex = (localExpertId + 1U) * common.worldSize - 1U;
-    int32_t expertGlobalRowEndValue = scratch.cumsumInfoTensor.GetValue(expertPrefixIndex);
-    int32_t expertGlobalRowBeginValue = 0;
-    if (localExpertId != 0U) {
-        expertGlobalRowBeginValue = scratch.cumsumInfoTensor.GetValue(localExpertId * common.worldSize - 1U);
-    }
-
-    uint32_t expertGlobalRowBegin = static_cast<uint32_t>(expertGlobalRowBeginValue);
-    uint32_t expertGlobalRowEnd = static_cast<uint32_t>(expertGlobalRowEndValue);
-    uint64_t expertRowCount = expertGlobalRowEnd > expertGlobalRowBegin ?
-                                  static_cast<uint64_t>(expertGlobalRowEnd - expertGlobalRowBegin) :
-                                  0U;
-    WaveDispatchCoreRange range{expertRowCount, expertGlobalRowBegin, 0U, 0U};
-
-    uint32_t totalCoreCount = blockJob.totalJobs;
-    if (expertRowCount == 0U || totalCoreCount == 0U || expertGlobalRowBegin >= context.maxOutputSize) {
-        return range;
-    }
-
-    // maxOutputSize 只裁剪输出容量，不改变后续专家的原始前缀位置。
-    uint64_t validGlobalRowEnd =
-        expertGlobalRowEnd < context.maxOutputSize ? expertGlobalRowEnd : context.maxOutputSize;
-    uint32_t validExpertRowCount = static_cast<uint32_t>(validGlobalRowEnd - expertGlobalRowBegin);
-    uint32_t activeCoreCount = validExpertRowCount < totalCoreCount ? validExpertRowCount : totalCoreCount;
-
-    // 将当前专家的有效行从滚动首核开始连续均分；冷专家每行恰好交给一个活跃核。
-    uint32_t firstPhysicalCoreIdx = scratch.nextDispatchCoreIdx;
-    uint32_t logicalCoreIdx = blockJob.jobIndex >= firstPhysicalCoreIdx ?
-                                  blockJob.jobIndex - firstPhysicalCoreIdx :
-                                  blockJob.jobIndex + totalCoreCount - firstPhysicalCoreIdx;
-    if (logicalCoreIdx < activeCoreCount) {
-        if (validExpertRowCount < totalCoreCount) {
-            range.localExpertRowBegin = logicalCoreIdx;
-            range.localExpertRowEnd = logicalCoreIdx + 1U;
-        } else {
-            uint32_t rowsPerCore = validExpertRowCount / totalCoreCount;
-            uint32_t extraRowCoreCount = validExpertRowCount % totalCoreCount;
-            range.localExpertRowBegin = logicalCoreIdx * rowsPerCore +
-                                        (logicalCoreIdx < extraRowCoreCount ? logicalCoreIdx : extraRowCoreCount);
-            range.localExpertRowEnd =
-                range.localExpertRowBegin + rowsPerCore + (logicalCoreIdx < extraRowCoreCount ? 1U : 0U);
-        }
-    }
-
-    // 下一专家从本专家最后一个活跃核之后继续，避免冷专家总是集中到低编号核。
-    uint32_t nextPhysicalCoreIdx = firstPhysicalCoreIdx + activeCoreCount;
-    scratch.nextDispatchCoreIdx =
-        nextPhysicalCoreIdx >= totalCoreCount ? nextPhysicalCoreIdx - totalCoreCount : nextPhysicalCoreIdx;
-    return range;
-}
 
 // 由 tiling/peermem/quant 配置装配 Token Dispatch 阶段配置（普通与 wave 编排模板共用）。
 __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &params,
@@ -442,27 +382,6 @@ __aicore__ inline void RunWaveDispatchStage(const TokenDispatchConfig &context,
     }
 }
 
-// 非 layered 路径统一入口：使用独立 count 表规划跨专家滚动分核，并发送当前专家的有效行。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
-__aicore__ inline uint32_t RunWaveDispatchStage(
-    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
-    const MoeSyncWorkspaceLayout &syncLayout, const Params &params, GM_ADDR *winRankAddr,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId)
-{
-    if constexpr (g_coreType == AIC) {
-        return 0U;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return 0U;
-    }
-    WaveDispatchCoreRange coreRange = PlanWaveExpertDispatch(context, common, blockJob, scratch, localExpertId);
-    if (coreRange.localExpertRowBegin < coreRange.localExpertRowEnd) {
-        DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
-            context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
-    }
-    return static_cast<uint32_t>(coreRange.expertRowCount);
-}
-
 // Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
 // W4 Wave-ahead 路径同时将 prefix 持久化到 GM，避免后续 Activation 覆盖 UB 后丢失 Dispatch 状态。
 template <bool NeedCumsumReload = false, typename ActivationType>
@@ -504,13 +423,12 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
-// W4 的 Activation/SwiGLU 会覆盖从 UB 0 开始的 prefix 表。每次进入新专家 Dispatch 前，
-// 从当前物理 block 的 GM 备份恢复“上一专家尾值 + 当前专家各 source-rank 前缀”。
-// 起点向下对齐 32B，兼顾 MTE 地址约束，并避免重载与当前专家无关的整张表。
+// A8W4 的 Activation/SwiGLU 会覆盖 AIV1 UB 0 开始的 prefix 表。每次 Dispatch WAVE 前，
+// 从当前物理 block 的 GM 备份恢复“首专家前缀 + WAVE 覆盖的全部专家前缀”。
 template <typename ActivationType>
-__aicore__ inline void ReloadWaveExpertDispatchCumsum(const MoeStageCommonConfig &common,
-                                                      TokenDispatchScratch<ActivationType> &scratch,
-                                                      uint32_t localExpertId)
+__aicore__ inline void ReloadWaveDispatchCumsumRange(const MoeStageCommonConfig &common,
+                                                     TokenDispatchScratch<ActivationType> &scratch,
+                                                     uint32_t firstExpertIdx, uint32_t lastExpertIdx)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -519,14 +437,72 @@ __aicore__ inline void ReloadWaveExpertDispatchCumsum(const MoeStageCommonConfig
         return;
     }
 
+    if (firstExpertIdx >= common.moeExpertPerRank || firstExpertIdx > lastExpertIdx) {
+        return;
+    }
+    if (lastExpertIdx >= common.moeExpertPerRank) {
+        lastExpertIdx = common.moeExpertPerRank - 1U;
+    }
     constexpr uint32_t INT32_PER_32B = ALIGN_32 / sizeof(int32_t);
-    uint32_t requiredBeginIndex = localExpertId == 0U ? 0U : localExpertId * common.worldSize - 1U;
+    uint32_t requiredBeginIndex = firstExpertIdx == 0U ? 0U : firstExpertIdx * common.worldSize - 1U;
     uint32_t alignedBeginIndex = requiredBeginIndex / INT32_PER_32B * INT32_PER_32B;
-    uint32_t requiredEndIndex = (localExpertId + 1U) * common.worldSize;
+    uint32_t requiredEndIndex = (lastExpertIdx + 1U) * common.worldSize;
     uint32_t reloadElementCount = requiredEndIndex - alignedBeginIndex;
     DataCopyPad(scratch.cumsumInfoTensor[alignedBeginIndex], scratch.cumsumInfoGlobalTensor[alignedBeginIndex],
                 {1U, reloadElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+}
+
+// 三条 WAVE 路径的唯一 Dispatch 入口：先确定完整 WAVE，再统一按全局连续 row 分核并发送。
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
+          bool NeedCumsumReload = false>
+__aicore__ inline ExpertTokenPosition DispatchWaveAndGetEndPosition(
+    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
+    const BlockWorkspaceContext &countWorkspace, const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+    GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch, ExpertTokenPosition &dispatchPosition,
+    uint32_t mGroupsPerWave)
+{
+    if constexpr (g_coreType == AIC) {
+        return dispatchPosition;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return dispatchPosition;
+    }
+
+    ExpertTokenPosition waveBeginPosition = dispatchPosition;
+    uint32_t processedMGroupCount = 0U;
+    while (dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
+            params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace, common.moeExpertPerRank,
+            dispatchPosition.expertIdx);
+        if (expertTokenCount == 0U || dispatchPosition.tokenIndexInExpert >= expertTokenCount) {
+            ++dispatchPosition.expertIdx;
+            dispatchPosition.tokenIndexInExpert = 0U;
+            continue;
+        }
+        AdvanceExpertTokenPositionInWave<PipelineTileM>(expertTokenCount, mGroupsPerWave, processedMGroupCount,
+                                                        dispatchPosition);
+    }
+
+    uint32_t waveGlobalRowBegin = static_cast<uint32_t>(waveBeginPosition.globalTokenIndex < context.maxOutputSize ?
+                                                            waveBeginPosition.globalTokenIndex :
+                                                            context.maxOutputSize);
+    uint32_t waveGlobalRowEnd = static_cast<uint32_t>(dispatchPosition.globalTokenIndex < context.maxOutputSize ?
+                                                          dispatchPosition.globalTokenIndex :
+                                                          context.maxOutputSize);
+    if (waveGlobalRowEnd <= waveGlobalRowBegin) {
+        return dispatchPosition;
+    }
+
+    if constexpr (NeedCumsumReload) {
+        uint32_t lastExpertIdx = dispatchPosition.tokenIndexInExpert == 0U ? dispatchPosition.expertIdx - 1U :
+                                                                           dispatchPosition.expertIdx;
+        ReloadWaveDispatchCumsumRange(common, scratch, waveBeginPosition.expertIdx, lastExpertIdx);
+    }
+    RunWaveDispatchStage<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+        context, common, blockJob, syncLayout, params, winRankAddr, scratch, waveBeginPosition.expertIdx,
+        waveGlobalRowBegin, waveGlobalRowEnd - waveGlobalRowBegin);
+    return dispatchPosition;
 }
 
 template <typename ActivationType>
