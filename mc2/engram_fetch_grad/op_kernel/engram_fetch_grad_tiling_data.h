@@ -30,5 +30,6 @@ struct EngramFetchGradTilingData {
     int64_t commBufferSize;    // a2a GM 收发缓冲大小（即 commBuffer 200MB）
     int32_t inputDtype;        // gradFetched 的 dtype（ge::DataType）
     int32_t outputDtype;       // gradUniqueOut 的 dtype（ge::DataType）
+    uint32_t gradSubBatch;     // unique 阶段每批处理的 grad 数量
 };
 #endif

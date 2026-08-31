@@ -1085,9 +1085,9 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(const at::Tens
     int64_t maxR = numMaxTokensPerRank_ * rankSizeI64;
 
     auto gradUnique =
-        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
-    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+        at::zeros({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::zeros({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::zeros({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
 
     ACLNN_CMD(aclnnEngramFetchGrad, engramContextTensor_, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
               numRecv, gradUnique, uniqueLocalEntry, numUnique, engramNumEntries_, commBufferSize_);
@@ -1113,9 +1113,9 @@ ElasticBuffer::EngramFetchGradOutput ElasticBuffer::EngramFetchGrad(
     int64_t maxR = numMaxTokensPerRank * rankSize;
 
     auto gradUnique =
-        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
-    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+        at::zeros({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::zeros({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::zeros({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
 
     ACLNN_CMD(aclnnEngramFetchGrad, context, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
               gradUnique, uniqueLocalEntry, numUnique, numEntries, commBufferSize);
