@@ -595,7 +595,7 @@ if __name__ == "__main__":
     target_dir = os.path.realpath(sys.argv[1])
     file_num = int(sys.argv[2])
     is_multi = int(sys.argv[3])
-    card_names = sys.argv[4].split(",") if len(sys.argv) > 4 else []
+    card_names = [os.path.basename(name) for name in sys.argv[4].split(",")] if len(sys.argv) > 4 else []
     if not os.path.isdir(target_dir):
         logging.error("路径不存在: %s", target_dir)
         sys.exit(1)
