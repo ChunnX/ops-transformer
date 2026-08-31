@@ -65,6 +65,13 @@ constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 } // namespace
 
+static void QuantBmmDisableTailSplit(DequantBmm::Mc2SlidingWindowParams &win, const char *tag)
+{
+    win.mTailTile = 1;
+    win.nTailTile = 1;
+    OP_LOGD("AllGatherMatMulV2", "[%s] disable tail split: mTailTile=%u nTailTile=%u", tag, win.mTailTile,
+            win.nTailTile);
+}
 static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherQuantBmmTiling::IsCapable()
@@ -814,8 +821,9 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
         AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
         MC2_CHECK_LOG_RET(opName_, mmLocalTile.DoTiling());
         //DEBUG
-        MutableTCubeLocalTilingWindowParam().mTailTile = 1;
-        MutableTCubeLocalTilingWindowParam().nTailTile = 1;
+        // MutableTCubeLocalTilingWindowParam().mTailTile = 1;
+        // MutableTCubeLocalTilingWindowParam().nTailTile = 1;
+        QuantBmmDisableTailSplit(MutableTCubeLocalTilingWindowParam(), "local");
         std::cout << "ISPASS LOCAL" << std::endl;
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
@@ -827,8 +835,9 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         // 与local debug处理一致
-        MutableTCubeTileTilingWindowParam().mTailTile = 1;
-        MutableTCubeTileTilingWindowParam().nTailTile = 1;
+        // MutableTCubeTileTilingWindowParam().mTailTile = 1;
+        // MutableTCubeTileTilingWindowParam().nTailTile = 1;
+        QuantBmmDisableTailSplit(MutableTCubeTileTilingWindowParam(), "tile");
         std::cout << "ISPASS GATHER" << std::endl;
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
@@ -846,6 +855,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     // 当N=0时，跳过matmul tiling，避免shape检查失败
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+        QuantBmmDisableTailSplit(MutableTCubeTailTilingWindowParam(), "tail");
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTailTilingData().M = tailMValue_;
