@@ -11,8 +11,9 @@
 /*!
  * \file msa_index_score.cpp
  * \brief torch_extension 适配：aclnnMsaIndexScore C++ wrapper。
- *        Atlas A2/A3 + Ascend 950；key 支持 PA BBND/BNBD 与 TND packed。
- *        950 另支持 query/key 同型 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN。
+        *        Atlas A2/A3 + Ascend 950；key 支持 PA BBND/BNBD 与 TND packed。
+         *        950 另支持 query/key 同型 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN；
+         *        PA key 允许 dim0 非连续（torch view stride 经 ConvertType 传入）。
  */
 
 #include <string>

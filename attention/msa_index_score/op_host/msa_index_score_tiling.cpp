@@ -10,12 +10,14 @@
 
 /*!
  * \file msa_index_score_tiling.cpp
- * \brief MsaIndexScore Tiling 实现（A2/A3：PA BBND/BNBD + TND packed key；sparse_mode 0/3）。
+ * \brief MsaIndexScore Tiling 实现（A2/A3：PA BBND/BNBD + TND packed key；sparse_mode 0/3；
+ *        950 PA key 允许 dim0 非连续，strideKvBlock 来自 GetInputStride）。
  */
 
 #include "msa_index_score_tiling.h"
 #include "../op_kernel/msa_index_score_common.h"
 
+#include <limits>
 #include <string>
 #include "graph/utils/type_utils.h"
 
@@ -54,6 +56,113 @@ inline bool IsNonQuantQueryDtype(ge::DataType dt, bool isAscend950)
 inline uint32_t RoundUpU32(uint32_t value, uint32_t align)
 {
     return (value + align - 1) / align * align;
+}
+
+inline uint64_t GetDefaultStride0(const gert::Shape &shape)
+{
+    uint64_t stride = 1;
+    for (size_t dim = 1; dim < shape.GetDimNum(); ++dim) {
+        stride *= static_cast<uint64_t>(shape.GetDim(dim));
+    }
+    return stride;
+}
+
+// 逻辑 view：优先 OriginShape（aclCreateTensor 的 viewDims / torch sizes）。
+// StorageShape 在 dim0 插空时可能是 [NP*gap, ...]，不能当 numPages。
+inline const gert::Shape &KeyLogicalShape(const gert::StorageShape *keyShape, uint32_t keyLayout)
+{
+    const size_t expectRank =
+        (keyLayout == MSA_KEY_LAYOUT_TND) ? MSA_KEY_TND_DIM_NUM : MSA_KEY_PA_DIM_NUM;
+    const gert::Shape &origin = keyShape->GetOriginShape();
+    if (origin.GetDimNum() == expectRank) {
+        return origin;
+    }
+    return keyShape->GetStorageShape();
+}
+
+// aclnn TensorV2 优先 GetRequiredInputStride（与 mla_preprocess 一致）；
+// 文档接口 GetInputStride 作为兼容回退。
+inline const gert::Stride *GetKeyStrideDesc(gert::TilingContext *context)
+{
+    const gert::Stride *stride = context->GetRequiredInputStride(MSA_IDX_KEY);
+    if (stride != nullptr) {
+        return stride;
+    }
+    return context->GetInputStride(MSA_IDX_KEY);
+}
+
+inline bool ValidateKeyInnerAxesContiguous(gert::TilingContext *context, const gert::Stride *stride,
+                                           const gert::Shape &shape)
+{
+    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        return true;
+    }
+    uint64_t expectedStride = 1;
+    for (int64_t i = static_cast<int64_t>(shape.GetDimNum()) - 1; i >= 1; --i) {
+        const int64_t dimSize = shape.GetDim(static_cast<size_t>(i));
+        if (dimSize <= 1) {
+            // size-1 轴不参与寻址；PyTorch 对其 stride 不做连续约束（BNBD 且 N2=1 时常见）。
+            continue;
+        }
+        const uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(static_cast<size_t>(i)));
+        if (actualStride != expectedStride) {
+            OP_LOGE(context,
+                    "key dim%ld must be contiguous, actual stride=%lu, expected=%lu. "
+                    "Only dim0 (PA page axis) may be non-contiguous.",
+                    i, actualStride, expectedStride);
+            return false;
+        }
+        expectedStride *= static_cast<uint64_t>(dimSize);
+    }
+    return true;
+}
+
+// 950 PA：strideKvBlock 取 key dim0 元素 stride。A2/A3 只用 shape 推连续值。
+inline ge::graphStatus ResolveStrideKvBlock(gert::TilingContext *context, const MsaIndexScoreInfo &info,
+                                            uint32_t defaultStrideKvBlock, uint32_t &strideKvBlock)
+{
+    strideKvBlock = defaultStrideKvBlock;
+    if (!info.isAscend950) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::StorageShape *keyShape = context->GetInputShape(MSA_IDX_KEY);
+    OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
+    const gert::Shape &kc = KeyLogicalShape(keyShape, info.keyLayout);
+    if (kc.GetShapeSize() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const uint64_t defaultStride0 = GetDefaultStride0(kc);
+    const gert::Stride *stride = GetKeyStrideDesc(context);
+    if (stride == nullptr || stride->GetDimNum() != kc.GetDimNum()) {
+        OP_LOGD(context->GetNodeName(),
+                "key has no stride desc, treat as contiguous, strideKvBlock=%u.", strideKvBlock);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(!ValidateKeyInnerAxesContiguous(context, stride, kc),
+                OP_LOGE(context, "key inner axes must stay contiguous."), return ge::GRAPH_FAILED);
+
+    const int64_t actualStride0 = stride->GetStride(MSA_DIM_0);
+    if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
+        OP_CHECK_IF(actualStride0 < 0 || static_cast<uint64_t>(actualStride0) != defaultStride0,
+                    OP_LOGE(context, "TND key dim0 must be contiguous, actual=%ld expected=%lu.", actualStride0,
+                            defaultStride0),
+                    return ge::GRAPH_FAILED);
+        strideKvBlock = 0;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_CHECK_IF(actualStride0 < 0 || static_cast<uint64_t>(actualStride0) < defaultStride0,
+                OP_LOGE(context, "PA key dim0 stride must be >= %lu, got %ld.", defaultStride0, actualStride0),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(static_cast<uint64_t>(actualStride0) > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                OP_LOGE(context, "PA key dim0 stride %ld exceeds uint32 strideKvBlock.", actualStride0),
+                return ge::GRAPH_FAILED);
+    strideKvBlock = static_cast<uint32_t>(actualStride0);
+    OP_LOGI(context->GetNodeName(), "PA key strideKvBlock=%u (contiguous default=%lu).", strideKvBlock,
+            defaultStride0);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ParseLayoutKeyAttr(gert::TilingContext *context, const std::string &layoutKey, uint32_t &keyLayout)
@@ -103,8 +212,6 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     OP_CHECK_IF(static_cast<ge::Format>(ge::GetPrimaryFormat(keyDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE(context, "FRACTAL_NZ key is not supported."), return ge::GRAPH_FAILED);
 
-    const gert::Shape &kc = keyShape->GetStorageShape();
-
     OP_CHECK_IF(q.GetDimNum() != MSA_QUERY_DIM_NUM,
                 OP_LOGE(context, "query must be TND(3 dims), got %zu.", q.GetDimNum()), return ge::GRAPH_FAILED);
     OP_CHECK_IF(qlen.GetDimNum() != MSA_RANK_1D || qlen.GetDim(MSA_DIM_0) < MSA_QLEN_MIN_DIM0,
@@ -122,6 +229,7 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     if (ParseLayoutKeyAttr(context, layoutKey, info.keyLayout) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    const gert::Shape &kc = KeyLogicalShape(keyShape, info.keyLayout);
 
     if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
         info.totalK = static_cast<uint32_t>(kc.GetDim(MSA_DIM_0));
@@ -348,22 +456,28 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
 
     tilingData.set_strideQt(info.numQHeads * info.headDim);
     tilingData.set_strideQn(info.headDim);
+    uint32_t defaultStrideKvBlock = 0;
     if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
-        tilingData.set_strideKvBlock(0);
+        defaultStrideKvBlock = 0;
         tilingData.set_strideKvToken(info.numKvHeads * info.headDim);
         tilingData.set_strideScalePage(info.numKvHeads);
         tilingData.set_strideScaleHead(1);
     } else if (info.keyLayout == MSA_KEY_LAYOUT_BNBD) {
-        tilingData.set_strideKvBlock(info.numKvHeads * info.blockSize * info.headDim);
+        defaultStrideKvBlock = info.numKvHeads * info.blockSize * info.headDim;
         tilingData.set_strideKvToken(info.headDim);
         tilingData.set_strideScalePage(info.numKvHeads * info.blockSize);
         tilingData.set_strideScaleHead(info.blockSize);
     } else {
-        tilingData.set_strideKvBlock(info.blockSize * info.numKvHeads * info.headDim);
+        defaultStrideKvBlock = info.blockSize * info.numKvHeads * info.headDim;
         tilingData.set_strideKvToken(info.numKvHeads * info.headDim);
         tilingData.set_strideScalePage(info.numKvHeads * info.blockSize);
         tilingData.set_strideScaleHead(info.blockSize);
     }
+    uint32_t strideKvBlock = defaultStrideKvBlock;
+    if (ResolveStrideKvBlock(context, info, defaultStrideKvBlock, strideKvBlock) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    tilingData.set_strideKvBlock(strideKvBlock);
     tilingData.set_strideOutHead(info.totalQ * scoreBlockStride);
     tilingData.set_strideOutToken(scoreBlockStride);
     tilingData.set_kScratchOffsetElems(kScratchOffsetElems);
@@ -403,8 +517,8 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
         tilingKey = (info.queryDtype == ge::DT_BF16) ? MSA_TILING_KEY_BF16 : MSA_TILING_KEY_FP16;
     }
     context->SetTilingKey(tilingKey);
-    OP_LOGI(context->GetNodeName(), "MsaIndexScore tilingKey=%lu headDim=%u layout=%u", tilingKey, info.headDim,
-            info.keyLayout);
+    OP_LOGI(context->GetNodeName(), "MsaIndexScore tilingKey=%lu headDim=%u layout=%u strideKvBlock=%u", tilingKey,
+            info.headDim, info.keyLayout, strideKvBlock);
     return ge::GRAPH_SUCCESS;
 }
 } // namespace
