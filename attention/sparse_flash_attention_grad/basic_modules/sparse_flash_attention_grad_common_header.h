@@ -75,7 +75,6 @@ struct RunInfo {
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;
     int64_t selectedKGmOffset;
-    int64_t selectedVGmOffset;
     int64_t lastBlockSize;
     bool isLastBasicBlock;
     bool valid = false;

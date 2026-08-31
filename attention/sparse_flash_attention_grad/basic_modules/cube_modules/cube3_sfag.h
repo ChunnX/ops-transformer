@@ -78,9 +78,17 @@ CubeOp<T1>::cube3ProcessSparse(const int64_t dsGmOffset, const int64_t keyGmOffs
             mmParam.isOutKFisrt = isFirstLoop;
             mmParam.isFixOut = isLastLoop;
 
-            MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_key_tensor,
-                                        aL0TensorPingPong, bL0TensorPingPong,
-                                        mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, dqWorkspaceGm[currentOutGmOffset]);
+            if (blkCntOffset == 0) {
+                MmadInnerWithSync<T1, false>(l0cTensor, current_l1_ds_tensor, l1_key_tensor,
+                                             aL0TensorPingPong, bL0TensorPingPong,
+                                             mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_,
+                                             true, dqWorkspaceGm[currentOutGmOffset]);
+            } else {
+                MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_key_tensor,
+                                            aL0TensorPingPong, bL0TensorPingPong,
+                                            mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_,
+                                            true, dqWorkspaceGm[currentOutGmOffset]);
+            }
             SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             UpdatePingPongFlag(ping_pong_flag_l1_common_);
         }
@@ -149,9 +157,17 @@ CubeOp<T1>::cube3ProcessDense(const int32_t blkCntOffset, const int32_t mmPingPo
             mmParam.isOutKFisrt = isFirstLoop;
             mmParam.isFixOut = isLastLoop;
 
-            MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_key_tensor,
-                                        aL0TensorPingPong, bL0TensorPingPong,
-                                        mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, dqWorkspaceGm[currentOutGmOffset]);
+            if (blkCntOffset == 0) {
+                MmadInnerWithSync<T1, false>(l0cTensor, current_l1_ds_tensor, l1_key_tensor,
+                                             aL0TensorPingPong, bL0TensorPingPong,
+                                             mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_,
+                                             true, dqWorkspaceGm[currentOutGmOffset]);
+            } else {
+                MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_key_tensor,
+                                            aL0TensorPingPong, bL0TensorPingPong,
+                                            mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_,
+                                            true, dqWorkspaceGm[currentOutGmOffset]);
+            }
             SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             UpdatePingPongFlag(ping_pong_flag_l1_common_);
         }

@@ -47,8 +47,6 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset, 
     int64_t currentDsGmOffset = useNonOptimizedSmallS2Path ? runInfo.mm345GmOffset : dsGmOffset;
     CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[currentDsGmOffset], dimG, totalSel, TOTAL_BLOCK_SIZE);
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
-        int32_t topkIdx = topkIndicesGm[indicesGmOffset].GetValue(mIdx);
-        int32_t startS2Idx = topkIdx * selectedBlockSize * dimN2 * dimDTotal;
         int32_t l1Offset = (mIdx - blkCntOffset) * selectedBlockSize * dimGAlign;
 
         mmParam.singleN = perLoopDSize;

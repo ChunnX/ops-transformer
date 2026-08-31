@@ -113,13 +113,11 @@ private:
     uint64_t mm12GmOffset;
     uint64_t mm345GmOffset;
     uint64_t selectedKGmOffset;
-    uint64_t selectedVGmOffset;
     int32_t blkCntOffset{0};
 
     int32_t lastblkCntOffset;
     // workspace
     uint64_t selectedKWorkspaceLen;
-    uint64_t selectedVWorkspaceLen;
     uint64_t mm12WorkspaceLen;
     uint64_t mm345WorkspaceLen;
     // Index
@@ -132,7 +130,6 @@ private:
     int64_t s1IndexScatterIndex{0};
     // 地址相关
     int64_t selectedKWspOffset{0};
-    int64_t selectedVWspOffset{0};
     uint32_t scatterPingPongIdx{0};
     uint32_t mmPingPongIdx{0};
     uint32_t selectdKPPPidx{0};
@@ -215,10 +212,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Init(const TILING_CLAS
     }
 
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
-    selectedVWorkspaceLen = tilingData->opInfo.selectedVWorkspaceLen;
-    selectedVWorkspaceLen = tilingData->opInfo.selectedVWorkspaceLen;
     selectedKWspOffset = selectedKWorkspaceLen / sizeof(T1) / 4;
-    selectedVWspOffset = selectedVWorkspaceLen / sizeof(T1) / 2;
     selectedCountOffset = PER_LOOP_BLOCK_SIZE / tilingData->opInfo.selectedBlockSize;
     if (tilingData->opInfo.selectedBlockSize * tilingData->opInfo.selectedBlockCount <= PER_LOOP_BLOCK_SIZE) {
         selectedCountOffset = tilingData->opInfo.selectedBlockCount;
@@ -352,6 +346,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 t1HasTask = t1HasTask || actualSelectedBlockCount != 0;
+                if (unlikely(actualSelectedBlockCount == 0)) {
+                    UpdateGmOffset(task, false);
+                    vecOp.CleanDqRow(runInfo[mmPingPongIdx]);
+                }
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
                     UpdateGmOffset(task, true);
                     VecCompute(vecOp, actual_seq_qlen, actual_seq_kvlen);
@@ -546,6 +544,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
                         tmpScatterRunInfoDet.changeS1 = false;
                     }
                     UpdateGmOffset(task, false);
+                    vecOp.CleanDqRow(runInfo[mmPingPongIdx]);
 
                     if (!isValidBegin) {
                         scatterRunInfo = runInfo[mmPingPongIdx];
@@ -853,11 +852,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     mm12GmOffset = mmPingPongIdx * mm12WorkspaceLen;
     mm345GmOffset = mmPingPongIdx * mm345WorkspaceLen;
     selectedKGmOffset = selectdKPPPidx * selectedKWspOffset;
-    if (enableOptimizedScatter) {
-        selectedVGmOffset = mmPingPongIdx * selectedVWspOffset;
-    } else {
-        selectedVGmOffset = selectedKGmOffset;
-    }
 
     curMaxS2 = ATTEN_ENABLE ? (s1Index + curS2 - curS1 + 1) : curS2;
     
@@ -898,7 +892,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     runInfo[mmPingPongIdx].curS1 = curS1;
     runInfo[mmPingPongIdx].curS2 = curS2;
     runInfo[mmPingPongIdx].selectedKGmOffset = selectedKGmOffset;
-    runInfo[mmPingPongIdx].selectedVGmOffset = selectedVGmOffset;
     runInfo[mmPingPongIdx].isSmallS2 = (curMaxS2 <= actualSelectedBlockCount * selectedBlockSize);
 }
 

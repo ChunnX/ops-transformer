@@ -198,7 +198,6 @@ private:
     GlobalTensor<T1> dvGm;
     // workspace
     GlobalTensor<T1> selectedKWorkspaceGm;
-    GlobalTensor<T1> selectedVWorkspaceGm;
     GlobalTensor<float> mm1WorkspaceGm;
     GlobalTensor<float> mm2WorkspaceGm;
     GlobalTensor<T1> pWorkspaceGm;
@@ -214,7 +213,6 @@ private:
     int64_t dkWorkspaceLen;
     int64_t dvWorkspaceLen;
     int64_t selectedKWorkspaceLen;
-    int64_t selectedVWorkspaceLen;
 
     static constexpr uint32_t M_SPLIT_SIZE = 128;                     // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;                     // n方向切分
@@ -303,7 +301,6 @@ __aicore__ inline void CubeOp<SFAGT>::Init(GM_ADDR query, GM_ADDR key, GM_ADDR v
     dkWorkspaceLen = tilingData->opInfo.dkWorkspaceLen;
     dvWorkspaceLen = tilingData->opInfo.dvWorkspaceLen;
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
-    selectedVWorkspaceLen = tilingData->opInfo.selectedVWorkspaceLen;
     selectedBlockSizeDqk = selectedBlockSize * dimDqk;
     selectedBlockSizeDrope = selectedBlockSize * dimRope;
     selectedBlockSizeDtotal = selectedBlockSize * dimDTotal;
@@ -378,9 +375,6 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     // select
     int64_t selectedKAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedKWorkspaceLen / sizeof(T1);
     usedWorkspaceLen += selectedKWorkspaceLen * usedCoreNum;
-    int64_t selectedVAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedVWorkspaceLen / sizeof(T1);
-    usedWorkspaceLen += selectedVWorkspaceLen * usedCoreNum;
-
     int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t pAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
@@ -411,7 +405,6 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     dkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
     dvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dvAddr);
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
-    selectedVWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedVAddr);
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
 }

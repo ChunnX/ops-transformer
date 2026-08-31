@@ -27,6 +27,7 @@ constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t SCATTER_BUFFER_NUM = 3;
+constexpr uint64_t KERNEL_UB_SIZE = 191 * 1024;
 
 namespace {
 struct OptimizedScatterGateDecision {
@@ -260,17 +261,13 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     // Gather/Scatter
     int64_t selectedKWorkspaceLen = selectedS2 * (tmpData.d + tmpData.ropeDim) * inputDtypeSize;
-    int64_t selectedVWorkspaceLen = selectedS2 * tmpData.d2 * inputDtypeSize;
-
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN);
-    selectedVWorkspaceLen = AlignData(selectedVWorkspaceLen, GM_ALIGN);
 
     selectedKWorkspaceLen *= 4;
-    selectedVWorkspaceLen *= PING_PONG_BUFFER;
 
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
-    workspaces[0] += (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
+    workspaces[0] += selectedKWorkspaceLen * currentUseCoreNum;
     workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
@@ -281,9 +278,9 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
-    tilingData.opInfo.set_selectedVWorkspaceLen(selectedVWorkspaceLen);
+    tilingData.opInfo.set_selectedVWorkspaceLen(0);
 
-    int64_t workspaceOffsets = (selectedKWorkspaceLen + selectedVWorkspaceLen) * currentUseCoreNum;
+    int64_t workspaceOffsets = selectedKWorkspaceLen * currentUseCoreNum;
     workspaceOffsets += mm12WorkspaceLen * 4 * currentUseCoreNum;
     tilingData.postTilingData.set_dqWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + tilingData.opInfo.get_dqWorkspaceLen();
@@ -369,10 +366,78 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
     /*
      * softmax tiling切分策略
      */
-    constexpr int32_t maxProcessDataSize = 8 * 1024;
+    constexpr uint32_t blockFp32 = BLOCK / B32;
+    constexpr uint32_t optimizedUbRowSize = 4;
+    constexpr uint32_t nonOptimizedUbRowSize = 16;
+    constexpr uint32_t optimizedMaxGatherSize = 32;
+    constexpr uint32_t nonOptimizedMaxGatherSize = 64;
 
-    uint32_t sftBaseN = tmpData.singleN;
-    uint32_t sftBaseM = tmpData.enableOptimizedScatter ? 6 : 16;
+    const uint32_t sftBaseN = tmpData.singleN;
+    const uint64_t availableUbSize = std::min<uint64_t>(KERNEL_UB_SIZE, aicoreParams_.ubSize);
+    const uint64_t inputTypeSize = tmpData.queryType == ge::DT_FLOAT ? B32 : B16;
+    const uint64_t blockT1 = BLOCK / inputTypeSize;
+    const uint64_t dimDAlign = CeilCommon(tmpData.d + tmpData.ropeDim, blockT1) * blockT1;
+    const uint64_t dimD2Align = CeilCommon(tmpData.d2, blockT1) * blockT1;
+
+    // Keep this calculation in the same order as VecOp::InitUB. The optimized
+    // path persists row parameters; the non-optimized path recalculates one
+    // tile and aliases Gather with the Process area.
+    auto calcUbUsed = [&](uint32_t baseM) -> uint64_t {
+        const uint64_t alignedBaseM = CeilCommon(baseM, blockFp32) * blockFp32;
+
+        // attention/dAttention FP16(or FP32) + FP32, p/dp workspaces and
+        // softmax/softmax-grad cast output.
+        const uint64_t softmaxWorkSize = static_cast<uint64_t>(baseM) *
+            (2ULL * tmpData.d2 * (inputTypeSize + B32) +
+             sftBaseN * (2ULL * B32 + inputTypeSize));
+
+        if (tmpData.enableOptimizedScatter) {
+            // Optimized Process reuses rowSum/max/sum across K blocks, so the
+            // complete aligned [G, 8] parameter area is persistent.
+            const uint64_t alignedSingleM = CeilCommon(tmpData.singleM, blockFp32) * blockFp32;
+            uint64_t persistentSize = 3ULL * alignedSingleM * BLOCK;
+            persistentSize += 2ULL * alignedBaseM * B32; // maxTmp and sumTmp
+            const uint64_t scatterVStride = tmpData.kvMerge ? dimDAlign : dimD2Align;
+            const uint64_t scatterSize =
+                2ULL * optimizedUbRowSize * (dimDAlign + scatterVStride) * B32;
+            const uint64_t scatterTmpSize =
+                (2ULL * optimizedUbRowSize + 1) * (dimDAlign + dimD2Align) * B32;
+            const uint64_t gatherSize = 2ULL * optimizedMaxGatherSize *
+                (std::max<int64_t>(tmpData.d, tmpData.d2) + tmpData.ropeDim) * inputTypeSize;
+            return persistentSize + softmaxWorkSize + scatterSize + scatterTmpSize + gatherSize;
+        }
+
+        // Non-optimized Process recalculates rowSum/max/sum for every K block,
+        // so only one aligned tile is needed. Gather starts after topk indices
+        // and aliases the whole Process area, matching the original layout.
+        const uint64_t softmaxParamSize =
+            3ULL * alignedBaseM * BLOCK + 2ULL * alignedBaseM * B32;
+        const uint64_t scatterSize =
+            2ULL * nonOptimizedUbRowSize * (dimDAlign + dimD2Align) * B32;
+        const uint64_t gatherSize = 2ULL * nonOptimizedMaxGatherSize *
+            (tmpData.d + tmpData.ropeDim) * inputTypeSize;
+        return std::max(gatherSize, softmaxParamSize + std::max(softmaxWorkSize, scatterSize));
+    };
+
+    uint32_t sftBaseM = tmpData.singleM;
+    // Brcb works on eight FP32 rows per repeat. For G >= 8, keeping baseM a
+    // multiple of eight prevents one tile's broadcast from entering the next.
+    if (sftBaseM >= blockFp32) {
+        sftBaseM = sftBaseM / blockFp32 * blockFp32;
+    }
+    while (sftBaseM > 0 && calcUbUsed(sftBaseM) > availableUbSize) {
+        sftBaseM -= sftBaseM > blockFp32 ? blockFp32 : 1;
+    }
+    OP_CHECK_IF(sftBaseM == 0,
+        OPS_REPORT_VECTOR_INNER_ERR(opName,
+            "No valid sftBaseM fits UB: ubSize=%lu, G=%u, N=%u, D=%ld, D2=%ld, ropeD=%ld, optimized=%d.",
+            availableUbSize, tmpData.singleM, sftBaseN, tmpData.d, tmpData.d2, tmpData.ropeDim,
+            static_cast<int32_t>(tmpData.enableOptimizedScatter)),
+        return ge::GRAPH_FAILED);
+
+    OP_LOGI(context_->GetNodeName(), "SFAG sftBaseM=%u, estimated vector UB=%lu/%lu bytes, optimized=%d.",
+        sftBaseM, calcUbUsed(sftBaseM), availableUbSize,
+        static_cast<int32_t>(tmpData.enableOptimizedScatter));
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
