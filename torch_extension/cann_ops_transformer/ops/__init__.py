@@ -171,3 +171,4 @@ if __name__ == "cann_ops_transformer.ops":
 
 
 # Centralized operators not yet migrated to distributed structure
+from .generic_sparse_attention_grad import generic_sparse_attention_grad
