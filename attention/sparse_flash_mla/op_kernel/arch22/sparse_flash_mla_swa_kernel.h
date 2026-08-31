@@ -487,7 +487,8 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::GetSparseActualSeqLen()
 
     // 对于cmp部分还有top k, tempLoopInfo.actS2Size只针对cmp
     if constexpr (TEMPLATE_MODE == HCA_TEMPLATE) {
-        int32_t thresHold = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        int32_t thresHold = (tempLoopInfo.cmpMaskRight + static_cast<int32_t>(tempLoopInfo.s1EndIdx) + 1) /
+                            static_cast<int32_t>(constInfo.cmpRatio);
         tempLoopInfo.actCmpS2Size = Min(tempLoopInfo.actCmpS2Size, Max(thresHold, 0));
     }
 }
@@ -763,7 +764,8 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::CalcParams(uint32_t loop, uint3
                 info.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
             }
             info.s2StartPoint = tempLoopInfo.cmpMixSize;
-            info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+            info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + static_cast<int32_t>(tempLoopInfo.s1EndIdx) + 1) /
+                                static_cast<int32_t>(constInfo.cmpRatio);
         }
     }
 
