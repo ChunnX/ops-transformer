@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。相较于aclnnFusedCausalConv1dV1，本接口新增支持maxDraftTokens参数，表示最大支持的投机个数。<br>
+- 接口功能：对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。相较于aclnnFusedCausalConv1dV1，本接口新增支持maxDraftTokens参数，表示最大支持的投机个数。相比于InplaceCausalConv1d，该算子不支持输入x的原地更新。<br>
 
 - 支持以下场景：
   - 场景一（prefill场景）：
@@ -44,7 +44,6 @@
     blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
     initialStateIdxOptional: 不开APC:None,开APC:[batch]
     activationMode:（无作用）
-    padSlotId: 默认值 -1
     runMode:（无作用）
     residualConnection: 不做残差: 0,做残差：1
     blockSize: 典型值128/256
@@ -70,12 +69,11 @@
     blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
     initialStateIdxOptional: 不开APC:None,开APC:[batch]
     activationMode:（无作用）
-    padSlotId: 默认值 -1
     runMode:（无作用）
     residualConnection: 不做残差: 0,做残差：1
     blockSize: 典型值128/256
     convMode：Qwen3-Next模式: 0, Pangu V2: 1
-    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]
     y: [cuSeqLen, dim]
     ```
 
@@ -97,12 +95,11 @@
     blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
     initialStateIdxOptional: 不开APC:None,开APC:[batch]
     activationMode:（无作用）
-    padSlotId: 默认值 -1
     runMode:（无作用）
     residualConnection: 不做残差: 0,做残差：1
     blockSize: 典型值128/256
     convMode：Qwen3-Next模式: 0, Pangu V2: 1
-    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]
     y: [cuSeqLen, dim]
     ```
 
@@ -124,13 +121,11 @@
     blockIdxLastScheduledTokenOptional: 不开APC:None,开APC:[batch]
     initialStateIdxOptional: 不开APC:None,开APC:[batch]
     activationMode:（无作用）
-    padSlotId: 默认值 -1
     runMode:（无作用）
-    maxQueryLen:默认值 -1
     residualConnection: 不做残差: 0,做残差：1
     blockSize: 典型值128/256
     convMode：Qwen3-Next模式: 0, Pangu V2: 1
-    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    maxDraftTokens: 投机个数（multiTokenNum），取值范围[0, 16]
     y: [batch, m+1, dim]
     ```
 
@@ -707,7 +702,7 @@ aclnnStatus aclnnFusedCausalConv1dV2(
   - numComputedTokensOptional中每个元素取值大于等于0。
   - cacheIndicesOptional的取值范围为[0, convStates.dim[0]-1],且值均不能相等（除非等于padSlotId）。
   - maxQueryLen = batch中的最大seqLen。
-  - maxDraftTokens的取值范围为[0, 16]，默认值为7。
+  - maxDraftTokens的取值范围为[0, 16]。
   - Pangu V2 模式（convMode = 1）下，numComputedTokensOptional不能为 None。
   - 算子入参与中间计算结果，在对应数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。
   - 算子输入不支持有±inf和nan的情况。
