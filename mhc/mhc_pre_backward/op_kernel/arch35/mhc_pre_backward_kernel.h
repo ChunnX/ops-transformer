@@ -1356,7 +1356,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     xCopyParams.dstStride = 0;
 
     bf16InputBuf_ = vecInQueue1_.AllocTensor<T>();
-    DataCopyPad(bf16InputBuf_, xGm_[bsChunkStart * nD_ + offsetND], xCopyParams, xCopyPadParams);
+    // 先提升为64位再乘，避免大T乘ND超过2^32个元素时地址回绕。
+    DataCopyPad(bf16InputBuf_, xGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], xCopyParams, xCopyPadParams);
     vecInQueue1_.EnQue(bf16InputBuf_);
     bf16InputBuf_ = vecInQueue1_.DeQue<T>();
 
@@ -1503,7 +1504,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
         gradXPostCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
         gradXPostCopyParams.dstStride = 0;
         gradXPostBuf_ = vecInQueue1_.AllocTensor<T>();
-        DataCopyPad(gradXPostBuf_, gradXPostOptionalGm_[bsChunkStart * nD_ + offsetND], gradXPostCopyParams,
+        DataCopyPad(gradXPostBuf_, gradXPostOptionalGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], gradXPostCopyParams,
                     gradXPostPadParams);
         vecInQueue1_.EnQue(gradXPostBuf_);
         gradXPostBuf_ = vecInQueue1_.DeQue<T>();
@@ -1524,7 +1525,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
     bf16ExtCopyParams.blockLen = copySizeND * sizeof(T);
     bf16ExtCopyParams.srcStride = 0;
     bf16ExtCopyParams.dstStride = (nD_ - copySizeND) * sizeof(T);
-    DataCopyPad(xGradGm_[bsChunkStart * nD_ + offsetND], bf16OutputBuf_, bf16ExtCopyParams);
+    DataCopyPad(xGradGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], bf16OutputBuf_, bf16ExtCopyParams);
     vecOutQueue1_.FreeTensor(bf16OutputBuf_);
 }
 
