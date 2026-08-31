@@ -44,6 +44,11 @@
 using namespace std;
 using namespace optiling;
 
+// Conservative Ascend 950 buffer-allocation bounds. The producer writes the actual platform
+// core counts into metadata, and all layout parsing below uses those self-described values.
+constexpr uint32_t METADATA_BUFFER_AIC_CORE_UPPER_BOUND = 36;
+constexpr uint32_t METADATA_BUFFER_AIV_CORE_UPPER_BOUND = 72;
+
 #define CHECK_RET(cond) ((cond) ? true : (false))
 
 #define LOG_PRINT(message, ...) \
@@ -106,7 +111,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int64_t CapacityWords(int64_t batch)
 {
-    return ((AIC_CORE_NUM + AIV_CORE_NUM) * batch * 1 + 1) * 16;
+    return ((METADATA_BUFFER_AIC_CORE_UPPER_BOUND + METADATA_BUFFER_AIV_CORE_UPPER_BOUND) * batch * 1 + 1) * 16;
 }
 
 int64_t CapacityAlignedWords(int64_t batch)
@@ -238,7 +243,10 @@ static int RunByteGolden(aclrtStream stream)
     }
 
     int32_t sectionNum = mlaOut[HEAD_SECTION_NUM_INDEX];
+    uint32_t aicCoreNum = static_cast<uint32_t>(mlaOut[HEAD_AIC_NUM_INDEX]);
+    uint32_t aivCoreNum = static_cast<uint32_t>(mlaOut[HEAD_AIV_NUM_INDEX]);
     LOG_PRINT("  sectionNum=%d (>=2 expected for kvS=32768 multi-section)\n", sectionNum);
+    LOG_PRINT("  platform cores: aic=%u aiv=%u\n", aicCoreNum, aivCoreNum);
     if (sectionNum < 2) {
         LOG_PRINT("  [FAIL] expected >=2 sections\n");
         return -1;
@@ -252,14 +260,14 @@ static int RunByteGolden(aclrtStream stream)
     }
 
     int64_t headWords = HEAD_METADATA_STRIDE;
-    int64_t faWords = static_cast<int64_t>(sectionNum) * AIC_CORE_NUM * FA_METADATA_STRIDE;
-    int64_t fdWords = static_cast<int64_t>(sectionNum) * AIV_CORE_NUM * FD_METADATA_STRIDE;
+    int64_t faWords = static_cast<int64_t>(sectionNum) * aicCoreNum * FA_METADATA_STRIDE;
+    int64_t fdWords = static_cast<int64_t>(sectionNum) * aivCoreNum * FD_METADATA_STRIDE;
     int64_t firstSectionBatches = 0; // bn2 span of section 0 (continuity vs prior/core0 start==0)
     for (int32_t sec = 0; sec < sectionNum; ++sec) {
-        int64_t secBase = headWords + static_cast<int64_t>(sec) * AIC_CORE_NUM * FA_METADATA_STRIDE;
+        int64_t secBase = headWords + static_cast<int64_t>(sec) * aicCoreNum * FA_METADATA_STRIDE;
         int32_t lastActive = -1;
         int32_t prevBn2Start = -1, prevBn2End = -1;
-        for (uint32_t aicIdx = 0; aicIdx < AIC_CORE_NUM; ++aicIdx) {
+        for (uint32_t aicIdx = 0; aicIdx < aicCoreNum; ++aicIdx) {
             int32_t rowBase = static_cast<int32_t>(secBase + aicIdx * FA_METADATA_STRIDE);
             int32_t bn2s = mlaOut[rowBase + 0];
             int32_t gs1s = mlaOut[rowBase + 1];
@@ -271,7 +279,7 @@ static int RunByteGolden(aclrtStream stream)
             if (!active) {
                 if (lastActive >= 0) {
                     bool restZero = true;
-                    for (uint32_t rest = aicIdx; rest < AIC_CORE_NUM; ++rest) {
+                    for (uint32_t rest = aicIdx; rest < aicCoreNum; ++rest) {
                         int32_t rb = static_cast<int32_t>(secBase + rest * FA_METADATA_STRIDE);
                         for (int m = 0; m < FA_METADATA_STRIDE; ++m) {
                             if (mlaOut[rb + m] != 0) {
@@ -307,8 +315,8 @@ static int RunByteGolden(aclrtStream stream)
         LOG_PRINT("  FA sec %d: active cores [0..%d] contiguity OK (bn2 span ends at %d)\n", (int)sec, lastActive,
                   prevBn2End);
         // FD 区全零（fdOn=false，无核间归约 section）
-        for (uint32_t aivIdx = 0; aivIdx < AIV_CORE_NUM; ++aivIdx) {
-            int64_t fdB = headWords + faWords + static_cast<int64_t>(sec) * AIV_CORE_NUM * FD_METADATA_STRIDE +
+        for (uint32_t aivIdx = 0; aivIdx < aivCoreNum; ++aivIdx) {
+            int64_t fdB = headWords + faWords + static_cast<int64_t>(sec) * aivCoreNum * FD_METADATA_STRIDE +
                           aivIdx * FD_METADATA_STRIDE;
             for (int m = 0; m < FD_METADATA_STRIDE; ++m) {
                 if (mlaOut[fdB + m] != 0) {
@@ -369,7 +377,9 @@ static int RunNegativeCapacity(aclrtStream stream)
 static void DumpMetaCompact(void *data)
 {
     int32_t sectionNum = static_cast<int32_t>(((int32_t *)data)[0]);
-    detail::FaMetadata meta(data, sectionNum);
+    uint32_t aicCoreNum = static_cast<uint32_t>(((int32_t *)data)[HEAD_AIC_NUM_INDEX]);
+    uint32_t aivCoreNum = static_cast<uint32_t>(((int32_t *)data)[HEAD_AIV_NUM_INDEX]);
+    detail::FaMetadata meta(data, sectionNum, aicCoreNum, aivCoreNum);
     LOG_PRINT("  isFd:%d mBaseSize:%d s2BaseSize:%d\n", meta.GetHeadMetadata(HEAD_IS_FD_INDEX),
               meta.GetHeadMetadata(HEAD_M_BASE_SIZE_INDEX), meta.GetHeadMetadata(HEAD_S2_BASE_SIZE_INDEX));
 }
@@ -382,14 +392,16 @@ static void DumpMeta(void *data)
         return;
     }
     int32_t sectionNum = static_cast<int32_t>(((int32_t *)data)[0]);
-    optiling::detail::FaMetadata faMetadata(data, sectionNum);
+    uint32_t aicCoreNum = static_cast<uint32_t>(((int32_t *)data)[HEAD_AIC_NUM_INDEX]);
+    uint32_t aivCoreNum = static_cast<uint32_t>(((int32_t *)data)[HEAD_AIV_NUM_INDEX]);
+    optiling::detail::FaMetadata faMetadata(data, sectionNum, aicCoreNum, aivCoreNum);
     printf("sectionNum:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX));
     printf("isFd:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_IS_FD_INDEX));
     printf("mBaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_M_BASE_SIZE_INDEX));
     printf("s2BaseSize:%d\n", faMetadata.GetHeadMetadata(optiling::HEAD_S2_BASE_SIZE_INDEX));
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         printf("sectionIdx:%d\n", sectionId);
-        for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
+        for (size_t i = 0; i < aicCoreNum; ++i) {
             printf("bn2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
             printf("m start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
             printf("s2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
@@ -399,7 +411,7 @@ static void DumpMeta(void *data)
             printf("first fd data ws idx: %d\n", faMetadata.GetFaMetadata(sectionId, i,
                                                                           optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
-        for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
+        for (size_t i = 0; i < aivCoreNum; ++i) {
             printf("bn2 idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
             printf("m idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
             printf("fd workspace idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));
@@ -522,7 +534,7 @@ int main()
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
         ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, qS, kvS,
-                                                               numHeads, numKeyValueHeads, headDim,
+                                                               numHeads, numKeyValueHeads, 576, headDim,
                                                                3, "TND",
                                                                metadataTensor, &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
