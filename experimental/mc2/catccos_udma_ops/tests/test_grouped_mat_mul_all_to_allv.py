@@ -263,3 +263,24 @@ def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():
         end = kernel.find("#endif", match.end())
         assert guard >= 0
         assert end > match.end()
+
+
+def test_per_round_stage_sync_remains_rank_local_for_imbalanced_routes():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+
+    # Each of the legacy and target-order paths has two launch-boundary SHMEM
+    # barriers. Per-round producer/consumer joins must stay local because an
+    # imbalanced route can give different ranks different commLoops.
+    assert kernel.count("aclshmemx_barrier_all_vec();") == 4
+    assert kernel.count("AscendC::SyncAll<true>();") == 4
+    assert "different ranks different commLoops" in kernel
+    assert "number of communication rounds is route-dependent" in kernel
