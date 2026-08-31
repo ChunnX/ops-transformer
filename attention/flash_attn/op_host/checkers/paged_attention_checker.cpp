@@ -118,7 +118,6 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     if (!faInfo.hasViewStride) {
         return ge::GRAPH_SUCCESS;
     }
-    
     // PA场景下kvcache非连续stride校验 (dimIndex由parser预计算)
     if (faInfo.kvLayout == FaLayout::PA_BBND) {
         OP_CHECK_IF((faInfo.keyNonContigDim > 0),
