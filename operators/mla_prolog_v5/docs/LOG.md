@@ -37,7 +37,8 @@
 | C. 测试验证（Python 接口 + NPU 精度） | ✅ | 2026-08-29 | 当时按分层验证（后证实分层不必要，见 D/E） |
 | D. 多头输出问题攻坚 | ✅ | 2026-08-31 | 根因确证：测试 harness 权重布局错误，kernel 正确；插桩全移除 |
 | E. 全量精度验证 | ✅ | 2026-08-31 | test.py 全输出全用例 5/5 PASS |
-| 收尾：pre-commit + commit | ✅ | 2026-08-29/31 | 0d3921f92 / 3d423a4c0 + 本轮提交 |
+| 收尾：pre-commit + commit | ✅ | 2026-08-29/31 | 0d3921f92 / 3d423a4c0 / ed2e1f7f4 |
+| G. opbase 前向兼容（9.0.0 基线编译） | ✅ | 2026-08-31 | 继承主仓 opbase 机制，模拟 9.0.0 验证通过 |
 
 ## 交付物清单
 
@@ -77,3 +78,16 @@
   （-12345→-12352）。修复 golden.py/test.py 后全量 5/5 PASS（全部输出、全部用例）。
   排查用全部插桩已移除，kernel/tiling vendored 代码还原为源仓原版（零逻辑改动）。详见
   issues/issue_20260829_mm-split-multihead_01.md 的关闭结论。
+- 2026-08-31 阶段G（接口前向兼容）：用户指出 OP_LOGE_FOR_INVALID_SHAPEDIM 等日志宏为 9.1.0 后
+  新增，9.0.0 基线 toolkit 编译会失败；主仓通过 opbase 解决。採查确认主仓机制为
+  cmake/third_party/opbase.cmake（FetchContent 拉取 cann/opbase @ ec8c387b，include 顺序前置于
+  CANN 包，使新版 log.h 生效）。本工程继承该机制：新增 cmake/third_party/opbase.cmake（同 tag、
+  同查找链 ../../ops-base → third_party/opbase → FetchContent），op_host（npu_op_code_gen
+  COMPILE_OPTIONS + cust_optiling）与 cust_opapi 的 include 列表前置 opbase 路径；opapi 库按上游
+  模式加 -DOP_LOG_LIBOPAPI_ONLY（消除 log.h 与 opdev/op_log.h 宏重定义，EZ 宏不受影响）；
+  log.cpp 编入 tiling 库（提供 ToString 符号，对齐上游 opbase_util_objs）。根 .gitignore 增加
+  operators/mla_prolog_v5/cmake/third_party/ 反忽略（下载缓存 third_party/ 仍忽略）。
+  验证：① 9.0.0 模拟（剥离新宏的 log.h stub）：4 个使用新宏的源文件"无 opbase 编译失败
+  （错误信息与用户报告一致）→ opbase 前置编译通过"；② 9.1.0 实机全量重建零警告、功能回归
+  5/5 PASS；③ 负路径触发 tiling 层 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON，EZ0012 错误码与
+  信息经 opbase log.h 端到端正确上报。

@@ -43,6 +43,8 @@ dist/
 third_party/
 !cmake/third_party/
 !cmake/third_party/ops-tensor.cmake
+# mla_prolog_v5 独立工程的 opbase 引入脚本（third_party/ 规则的例外；其下载缓存仍被忽略）
+!operators/mla_prolog_v5/cmake/third_party/
 
 # ai
 .agents/

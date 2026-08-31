@@ -38,6 +38,26 @@ mla_prolog_v5/
 └── docs/                   # REQUIREMENTS / DESIGN / LOG / aclnnAPI 文档
 ```
 
+## 构建依赖：opbase（旧版 CANN toolkit 前向兼容）
+
+本工程的 op_host/op_api 源码使用 `OP_LOGE_FOR_INVALID_SHAPEDIM`（EZ0011）、
+`OP_LOGE_FOR_INVALID_VALUE`（EZ0025）等 **9.1.0 后新增** 的日志宏；若以 9.0.0 等
+旧版 toolkit 为基线编译会直接失败。为此本工程继承 ops-transformer 主仓的
+**opbase** 机制（`cmake/third_party/opbase.cmake`，与主仓同 tag
+`ec8c387b251655664f4679f1bc5fd30a69efc5a7`）：
+
+- opbase 的 `include/op_common/log/log.h`（含全部 EZ0008-EZ0034 新宏）在 include
+  顺序上**优先于** CANN 包自带头，任意 toolkit 版本下均提供完整宏定义；
+- 查找优先级：`../../ops-base`（并列检出）→ `third_party/opbase`（缓存，存在则
+  checkout 固定 tag）→ FetchContent 从 `https://gitcode.com/cann/opbase.git` 拉取；
+- **离线环境**预先手工执行：
+  ```bash
+  git clone https://gitcode.com/cann/opbase.git operators/mla_prolog_v5/third_party/opbase
+  git -C operators/mla_prolog_v5/third_party/opbase checkout ec8c387b251655664f4679f1bc5fd30a69efc5a7
+  ```
+- opapi 库按上游模式以 `-DOP_LOG_LIBOPAPI_ONLY` 编译（host 风格日志宏由
+  opdev/op_log.h 提供，规避宏重定义）；`third_party/` 为下载缓存，不入库。
+
 ## 快速开始
 
 ### 1. 编译算子包

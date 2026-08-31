@@ -15,6 +15,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ASC REQUIRED)
 
 # =============================================================================
+# 引入 opbase（cann/opbase）：提供新版 op_common/log/log.h，向前兼容 9.0.0 等旧基线
+# toolkit（OP_LOGE_FOR_* 等日志宏为 9.1.0 后新增）。详见 cmake/third_party/opbase.cmake。
+# =============================================================================
+include(cmake/third_party/opbase.cmake)
+
+# =============================================================================
 # 架构配置：mla_prolog_v5 仅支持 A2（ascend910b / ascend910_93，arch22）
 # =============================================================================
 set(ARCH32_COMPUTE_UNITS ascend910b ascend910_93)
