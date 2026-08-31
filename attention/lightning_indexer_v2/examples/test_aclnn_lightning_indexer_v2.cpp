@@ -184,7 +184,7 @@ int InitializeTensors(TensorResources &resources)
 }
 
 int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, int64_t S1, int64_t S2, int64_t N1,
-                     int64_t N2, int64_t D, int64_t topk, int64_t quantMode, int64_t maskMode, int64_t cmpRatio)
+                     int64_t N2, int64_t D, int64_t topk, int64_t maskMode, int64_t cmpRatio)
 {
     constexpr const char layoutQ[] = "BSND";
     constexpr const char layoutK[] = "BSND";
@@ -205,8 +205,8 @@ int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, 
     aclOpExecutor *executor;
     uint64_t workspaceSize = 0;
     int ret = aclnnLightningIndexerV2MetadataGetWorkspaceSize(
-        nullptr, nullptr, nullptr, nullptr, nullptr, N1, N2, D, topk, quantMode, B, S1, S2, layoutQCopy, layoutKCopy,
-        maskMode, cmpRatio, resources.metadataTensor, &workspaceSize, &executor);
+        nullptr, nullptr, nullptr, nullptr, nullptr, N1, N2, D, topk, B, S1, S2, layoutQCopy, layoutKCopy, maskMode,
+        cmpRatio, resources.metadataTensor, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -401,7 +401,7 @@ int main()
         CleanupResources(resources, workspaceAddr, stream, deviceId);
         return ret;
     }
-    ret = GenerateMetadata(resources, stream, B, S1, S2, N1, N2, D, topk, 1, 0, 1);
+    ret = GenerateMetadata(resources, stream, B, S1, S2, N1, N2, D, topk, 3, 4);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("GenerateMetadata failed. ERROR: %d\n", ret);
         CleanupResources(resources, workspaceAddr, stream, deviceId);
