@@ -29,7 +29,10 @@ SMLA_PYTEST_PATH = Path(__file__).resolve().parents[3] / "sparse_flash_mla/tests
 if str(SMLA_PYTEST_PATH) not in sys.path:
     sys.path.append(str(SMLA_PYTEST_PATH))
 
-from batch_consistency.config import resolve_consistency_config  # noqa: E402
+from batch_consistency.config import (  # noqa: E402
+    prepare_consistency_params,
+    resolve_consistency_config,
+)
 from batch_consistency.model import RunResult  # noqa: E402
 from batch_consistency.pytest_support import (  # noqa: E402
     consistency_fulfill_percent,
@@ -131,6 +134,8 @@ def qsmla(param_combinations):
 
     # 填充None参数的默认值
     params = utils.fill_none_params(param_combinations)
+    batch_consistency_policy = os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto")
+    prepare_consistency_params(params, batch_consistency_policy)
 
     # 生成测试用例名称
     Testcase_Name = params["Testcase_Name"]
@@ -148,12 +153,10 @@ def qsmla(param_combinations):
         pytest.skip(f"输入参数校验失败:{e}")
 
     # 生成测试数据及golden
-    test_data = quant_sparse_flash_mla_golden.generate_and_save_testdata(
-        params, save_pt=False
-    )
+    test_data = quant_sparse_flash_mla_golden.gen_data(params)
     consistency_config = resolve_consistency_config(
         test_data,
-        os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto"),
+        batch_consistency_policy,
         persist=save_pt,
     )
     if save_pt:

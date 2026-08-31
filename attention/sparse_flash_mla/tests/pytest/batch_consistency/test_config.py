@@ -16,7 +16,11 @@ import pytest
 import torch
 import torch_npu
 
-from .config import PERSISTED_KEYS, resolve_consistency_config
+from .config import (
+    PERSISTED_KEYS,
+    prepare_consistency_params,
+    resolve_consistency_config,
+)
 from .runner import DeterministicLevelGuard
 
 
@@ -81,16 +85,20 @@ def test_seed_makes_generated_parameters_reproducible():
     assert first == second
 
 
-def test_off_clears_persisted_parameters():
-    case = make_case(
-        {
-            "batch_consistency": True,
-            "batch_consistency_seed": 3,
-            "npu_deterministic_level": 3,
-        }
-    )
-    assert resolve_consistency_config(case, "off", persist=True) is None
-    assert not any(key in case["params"] for key in PERSISTED_KEYS)
+def test_off_filters_parameters_before_testcase_generation():
+    params = {
+        "batch_consistency": True,
+        "batch_consistency_seed": 3,
+        "npu_deterministic_level": 3,
+    }
+    assert not prepare_consistency_params(params, "off")
+    assert not any(key in params for key in PERSISTED_KEYS)
+
+
+def test_on_marks_testcase_enabled_before_generation():
+    params = {}
+    assert prepare_consistency_params(params, "on")
+    assert params == {"batch_consistency": True}
 
 
 def test_invalid_explicit_split_fails_instead_of_falling_back():

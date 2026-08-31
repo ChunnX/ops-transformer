@@ -116,6 +116,16 @@ def clear_consistency_params(params: Dict[str, Any]) -> None:
         params.pop(key, None)
 
 
+def prepare_consistency_params(params: Dict[str, Any], policy: str = "auto") -> bool:
+    """Decide which consistency fields enter generated testcase data."""
+    enabled = consistency_enabled(params, policy)
+    if enabled:
+        params[ENABLED_KEY] = True
+    else:
+        clear_consistency_params(params)
+    return enabled
+
+
 def _random_partition(total: int, rng: random.Random) -> Optional[List[int]]:
     if total < 2:
         return None
@@ -169,8 +179,6 @@ def resolve_consistency_config(
     """Resolve explicit and generated values against the actual saved case shape."""
     params = input_data["params"]
     if not consistency_enabled(params, policy):
-        if persist:
-            clear_consistency_params(params)
         return None
 
     configured_level = parse_optional_int(params.get(LEVEL_KEY), LEVEL_KEY)
