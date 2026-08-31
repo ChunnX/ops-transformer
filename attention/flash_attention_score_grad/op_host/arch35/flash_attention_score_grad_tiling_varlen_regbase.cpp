@@ -505,7 +505,8 @@ protected:
         if (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
             return;
         }
-        fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+        SetSplitAxisWithTrace(SplitAxisEnum::BN2GS1S2, RouteStage::DETERMINISTIC_PLANNING,
+                              RouteReason::TND_DETER_CAUSAL_REQUIRES_BN2GS1S2);
         int64_t m0Max{0}, m1Max{0}, m2Max{0};
         DeterPrefixData deterPrefixData;
         CalcleTNDCausalDeterPrefix(deterPrefixData, m0Max, m1Max, m2Max);
@@ -575,7 +576,8 @@ protected:
 
         // 最多允许coreNum列分给不同的核fBaseParams.deterMaxRound
         if (!SupportTNDBns2(deterPrefixData, fBaseParams.deterMaxRound)) {
-            fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+            SetSplitAxisWithTrace(SplitAxisEnum::BN2GS1S2, RouteStage::DETERMINISTIC_PLANNING,
+                                  RouteReason::TND_DETER_BN2S2_UNSUPPORTED);
             return;
         }
 
@@ -808,7 +810,8 @@ protected:
 
         // 最多允许coreNum列分给不同的核
         if (!SupportTNDBns2(deterPrefixData, deterPrefixData.prefix1.back())) {
-            fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+            SetSplitAxisWithTrace(SplitAxisEnum::BN2GS1S2, RouteStage::DETERMINISTIC_PLANNING,
+                                  RouteReason::TND_DETER_BN2S2_UNSUPPORTED);
             OP_LOGD("CalcleTNDBandBns2DeterParam", "Not support BNS2, change to BN2GS1S2.");
             return;
         }
@@ -1193,7 +1196,8 @@ protected:
             }
         }
         if (fBaseParams.deterMaxRound < static_cast<int64_t>(allNeedSyncLoopNums) * NUM_TWO) {
-            fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+            SetSplitAxisWithTrace(SplitAxisEnum::BN2GS1S2, RouteStage::DETERMINISTIC_PLANNING,
+                                  RouteReason::TND_DETER_SYNC_COST_FALLBACK);
         }
     }
 

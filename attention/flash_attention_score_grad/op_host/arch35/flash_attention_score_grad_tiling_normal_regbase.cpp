@@ -13,6 +13,7 @@
  * \brief
  */
 #include "flash_attention_score_grad_tiling_normal_regbase.h"
+#include <cstring>
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
 #include "err/ops_err.h"
@@ -415,7 +416,8 @@ bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bSh
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 {
-    fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
+    deterministicRequested_ = (context_->GetDeterministic() == 1);
+    fBaseParams.isDeterministic = deterministicRequested_;
     const gert::StorageShape *queryShape = context_->GetInputShape(QUERY_IDX); // [B, N2, G, S1, D]
     const gert::StorageShape *keyShape = context_->GetInputShape(KEY_IDX);     // [B, N2, 1, S2, D]
     const gert::StorageShape *valueShape = context_->GetInputShape(VALUE_IDX); // [B, N2, 1, S2, D_V]
@@ -467,6 +469,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     int64_t kRopeD = 0;
 
     if (strcmp(inputLayout, "SBH") == 0) {
+        sourceLayout_ = SourceLayoutId::SBH;
         OP_LOGD(context_, "inputLayout == SBH queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_S2BN2GD;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_1);
@@ -508,6 +511,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BSH") == 0) {
+        sourceLayout_ = SourceLayoutId::BSH;
         OP_LOGD(context_, "inputLayout == BSH queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
@@ -549,6 +553,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BNSD") == 0) {
+        sourceLayout_ = SourceLayoutId::BNSD;
         OP_LOGD(context_, "inputLayout == BNSD queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BN2GS2D;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
@@ -589,6 +594,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "TND") == 0) {
+        sourceLayout_ = SourceLayoutId::TND;
         OP_LOGD(context_, "inputLayout == TND");
         fBaseParams.layoutType = INPUT_FORMAT_TND;
 
@@ -695,6 +701,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else {
+        sourceLayout_ = SourceLayoutId::BSND;
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
         fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
@@ -812,28 +819,221 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsCapable()
     return false;
 }
 
+void FlashAttentionScoreGradTilingNormalRegbase::CaptureProblemFacts()
+{
+    problemFacts_.sourceLayout = sourceLayout_;
+    problemFacts_.queryType = fBaseParams.queryType;
+    problemFacts_.sparseMode = fBaseParams.sparseMode;
+    problemFacts_.pseOptional = fBaseParams.pseOptional;
+    problemFacts_.attenMaskOptional = fBaseParams.attenMaskOptional;
+    problemFacts_.sinkOptional = fBaseParams.sinkOptional;
+    problemFacts_.outputType = static_cast<uint32_t>(fBaseParams.outDtype);
+    static_assert(sizeof(problemFacts_.keepProbBits) == sizeof(fBaseParams.keepProb), "Unexpected float size");
+    std::memcpy(&problemFacts_.keepProbBits, &fBaseParams.keepProb, sizeof(problemFacts_.keepProbBits));
+    problemFacts_.deterministicRequested = deterministicRequested_;
+    problemFacts_.hasRope = fBaseParams.hasRope;
+    problemFacts_.dropMaskOuter = fBaseParams.dropMaskOuter;
+    problemFacts_.allSequencesSame = fBaseParams.isAllSame;
+    problemFacts_.b = fBaseParams.b;
+    problemFacts_.s1 = fBaseParams.s1;
+    problemFacts_.s2 = fBaseParams.s2;
+    problemFacts_.n1 = fBaseParams.n1;
+    problemFacts_.n2 = fBaseParams.n2;
+    problemFacts_.g = fBaseParams.g;
+    problemFacts_.d = fBaseParams.d;
+    problemFacts_.d1 = fBaseParams.d1;
+    problemFacts_.aicNum = fBaseParams.aicNum;
+    problemFacts_.aivNum = fBaseParams.coreNum;
+    problemFacts_.l2CacheSize = fBaseParams.l2CacheSize;
+    problemFacts_.tailZeroCount = fBaseParams.tailZeroCount;
+    uint64_t sequenceFingerprint = 1469598103934665603ULL;
+    const auto hashSequenceValue = [&sequenceFingerprint](int64_t value) {
+        uint64_t data = static_cast<uint64_t>(value);
+        for (size_t byteIndex = 0; byteIndex < sizeof(data); ++byteIndex) {
+            sequenceFingerprint ^= data & 0xFFULL;
+            sequenceFingerprint *= 1099511628211ULL;
+            data >>= 8U;
+        }
+    };
+    hashSequenceValue(static_cast<int64_t>(fBaseParams.actualSeqQlen.size()));
+    for (const int64_t value : fBaseParams.actualSeqQlen) {
+        hashSequenceValue(value);
+    }
+    hashSequenceValue(static_cast<int64_t>(fBaseParams.actualSeqKvlen.size()));
+    for (const int64_t value : fBaseParams.actualSeqKvlen) {
+        hashSequenceValue(value);
+    }
+    problemFacts_.actualSequenceFingerprint = sequenceFingerprint;
+
+    selectionResult_ = SelectionResult();
+    routeTrace_.Reset(problemFacts_.Fingerprint(), FAG_ARCH35_LEGACY_POLICY_VERSION);
+    routeTrace_.Record(RouteStage::VALIDATED_PROBLEM, RouteField::SOURCE_LAYOUT, RouteReason::INPUT_FACT_CAPTURED,
+                       static_cast<int64_t>(problemFacts_.sourceLayout),
+                       static_cast<int64_t>(problemFacts_.sourceLayout));
+    routeTrace_.Record(RouteStage::VALIDATED_PROBLEM, RouteField::DETERMINISTIC_REQUESTED,
+                       RouteReason::INPUT_FACT_CAPTURED, static_cast<int64_t>(problemFacts_.deterministicRequested),
+                       static_cast<int64_t>(problemFacts_.deterministicRequested));
+    const RouteReason executionLayoutReason =
+        sourceLayout_ == SourceLayoutId::TND && fBaseParams.layoutType != INPUT_FORMAT_TND ?
+            RouteReason::TND_EQUAL_LENGTH_EXECUTION_LAYOUT :
+            RouteReason::INPUT_FACT_CAPTURED;
+    routeTrace_.Record(RouteStage::VALIDATED_PROBLEM, RouteField::EXECUTION_LAYOUT, executionLayoutReason,
+                       static_cast<int64_t>(fBaseParams.layoutType), static_cast<int64_t>(fBaseParams.layoutType));
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::SetSplitAxisWithTrace(SplitAxisEnum splitAxis, RouteStage stage,
+                                                                       RouteReason reason)
+{
+    const SplitAxisEnum before = fBaseParams.splitAxis;
+    fBaseParams.splitAxis = splitAxis;
+    routeTrace_.Record(stage, RouteField::SPLIT_AXIS, reason, static_cast<int64_t>(before),
+                       static_cast<int64_t>(splitAxis));
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::DetermineOutputFormat()
+{
+    NzOutputCapabilityInput capabilityInput;
+    capabilityInput.isBn2Gs1S2 = fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2;
+    capabilityInput.queryTypeSupported =
+        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+          fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT);
+    capabilityInput.isLegacyDeterministic =
+        fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD);
+    capabilityInput.headDim = fBaseParams.d;
+    capabilityInput.minimumHeadDimExclusive = static_cast<uint32_t>(ConstAxisTemplateNum::NUM64);
+    capabilityInput.maximumHeadDimExclusive = static_cast<uint32_t>(ConstAxisTemplateNum::NUM128);
+    capabilityInput.headDimAlignment = FP16_C0_SIZE;
+
+    LegacyOutputFormatPolicyInput policyInput;
+    policyInput.nzKernelSupported = KernelCapabilityVerifier::SupportsNzOutput(capabilityInput);
+    policyInput.enableSwizzle = fBaseParams.enableSwizzle;
+    policyInput.s1 = fBaseParams.s1;
+    policyInput.s2 = fBaseParams.s2;
+    policyInput.minimumSequenceLength = NZ_OUT_MIN_S_SIZE;
+    const OutputFormatDecision decision = LegacyPolicyV1::SelectOutputFormat(policyInput);
+
+    const bool isNzOutBefore = fBaseParams.isNzOut;
+    fBaseParams.isNzOut = decision.plan.format == OutputFormat::NZ;
+    RouteReason reason = RouteReason::LEGACY_NZ_POLICY_SELECTED;
+    if (!decision.capabilityAccepted) {
+        reason = RouteReason::LEGACY_NZ_CAPABILITY_REJECTED;
+    } else if (!decision.performanceAccepted) {
+        reason = RouteReason::LEGACY_NZ_POLICY_REJECTED;
+    }
+    routeTrace_.Record(RouteStage::OUTPUT_FORMAT, RouteField::OUTPUT_FORMAT, reason,
+                       static_cast<int64_t>(isNzOutBefore), static_cast<int64_t>(fBaseParams.isNzOut));
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::SelectFallbackAfterCandidateRejection(
+    const CandidateRejected &rejected, RouteReason reason)
+{
+    CandidatePlan fallback;
+    fallback.variantId = VariantId::BN2GS1S2;
+    fallback.split.axis = static_cast<uint32_t>(SplitAxisEnum::BN2GS1S2);
+    fallback.executionLayout = fBaseParams.layoutType;
+    fallback.effectiveDeterministic = deterministicRequested_;
+
+    const bool deterministicBefore = fBaseParams.isDeterministic;
+    const SplitAxisEnum splitAxisBefore = fBaseParams.splitAxis;
+    selectionResult_ = LegacyPolicyV1::SelectFallbackAfterRejection(selectionResult_, rejected, fallback);
+    ApplySelectedVariantPlan(fBaseParams, selectionResult_.selected);
+
+    if (rejected.variantId == VariantId::BN2_MULTI_BLOCK) {
+        routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EFFECTIVE_DETERMINISTIC, reason,
+                           static_cast<int64_t>(deterministicBefore),
+                           static_cast<int64_t>(fBaseParams.isDeterministic));
+    }
+    routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::SPLIT_AXIS, reason,
+                       static_cast<int64_t>(splitAxisBefore), static_cast<int64_t>(fBaseParams.splitAxis));
+    OP_LOGI(context_,
+            "Reject FAG candidate: variant=[%u], stage=[%u], reason=[%u], field=[%u], actual=[%ld], expected=[%ld]; "
+            "fallback=[%u].",
+            static_cast<uint32_t>(rejected.variantId), static_cast<uint32_t>(rejected.stage),
+            static_cast<uint32_t>(rejected.reason), static_cast<uint32_t>(rejected.field), rejected.actual,
+            rejected.expected, static_cast<uint32_t>(fallback.variantId));
+}
+
+VariantId FlashAttentionScoreGradTilingNormalRegbase::ResolveSelectedVariant() const
+{
+    return LegacyPolicyV1::ResolveVariant(fBaseParams.splitAxis == SplitAxisEnum::BN2, fBaseParams.isBn2MultiBlk,
+                                          fBaseParams.splitAxis == SplitAxisEnum::BN2S2);
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::SyncLegacySelectionResult()
+{
+    CandidatePlan &selected = selectionResult_.selected;
+    selected.variantId = ResolveSelectedVariant();
+    selected.split.axis = static_cast<uint32_t>(fBaseParams.splitAxis);
+    selected.split.isMultiBlock = fBaseParams.isBn2MultiBlk;
+    selected.tile.s1Inner = static_cast<uint32_t>(fBaseParams.s1Inner);
+    selected.tile.s2Inner = static_cast<uint32_t>(fBaseParams.s2Inner);
+    selected.tile.dInner = fBaseParams.sfmgdInner;
+    selected.cores.activeCoreCount =
+        static_cast<uint32_t>(std::min(static_cast<uint64_t>(fBaseParams.blockOuter), fBaseParams.aicNum));
+    selected.cores.blockFactor = fBaseParams.blockFactor;
+    selected.cores.maxCoreWork = static_cast<uint64_t>(std::max<int64_t>(0, fBaseParams.maxValidBBLen));
+    selected.cores.isSplitByBlockIndex = fBaseParams.isSplitByBlockIdx;
+    selected.sparse.sparseType = fBaseParams.sparseType;
+    selected.sparse.deterministicSparseType = fBaseParams.deterSparseType;
+    selected.outputFormat.format = fBaseParams.isNzOut ? OutputFormat::NZ : OutputFormat::ND;
+    selected.executionLayout = fBaseParams.layoutType;
+    selected.effectiveDeterministic = fBaseParams.isDeterministic;
+    selected.metrics.activeAic = selected.cores.activeCoreCount;
+    selected.metrics.activeAiv = static_cast<uint32_t>(
+        std::min(static_cast<uint64_t>(fBaseParams.blockOuter) * AICV_RATIO_DEFAULT, fBaseParams.coreNum));
+    selected.metrics.maxCoreWork = selected.cores.maxCoreWork;
+    selectionResult_.winningRule = LegacyPolicyV1::GetVariantRule(selected.variantId);
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::LogRouteTrace() const
+{
+    OP_LOGI(context_,
+            "FAG route summary: fingerprint=[%lu], policyVersion=[%u], variant=[%u], rule=[%u], key=[%lu], "
+            "decisionCount=[%lu], droppedDecisionCount=[%lu], rejectionCount=[%lu], droppedRejectionCount=[%lu].",
+            routeTrace_.GetInputFingerprint(), routeTrace_.GetPolicyVersion(),
+            static_cast<uint32_t>(routeTrace_.GetSelectedVariant()), selectionResult_.winningRule,
+            routeTrace_.GetFinalTilingKey(), static_cast<uint64_t>(routeTrace_.GetDecisionCount()),
+            static_cast<uint64_t>(routeTrace_.GetDroppedDecisionCount()),
+            static_cast<uint64_t>(selectionResult_.GetRejectionCount()),
+            static_cast<uint64_t>(selectionResult_.GetDroppedRejectionCount()));
+    for (size_t decisionIndex = 0; decisionIndex < routeTrace_.GetDecisionCount(); ++decisionIndex) {
+        const RouteDecision &decision = routeTrace_.GetDecision(decisionIndex);
+        OP_LOGD(context_, "FAG route trace[%lu]: stage=[%u], field=[%u], reason=[%s], value=[%ld->%ld].",
+                static_cast<uint64_t>(decisionIndex), static_cast<uint32_t>(decision.stage),
+                static_cast<uint32_t>(decision.field), GetRouteReasonName(decision.reason), decision.before,
+                decision.after);
+    }
+    for (size_t rejectionIndex = 0; rejectionIndex < selectionResult_.GetRejectionCount(); ++rejectionIndex) {
+        const CandidateRejected &rejected = selectionResult_.GetRejection(rejectionIndex);
+        OP_LOGD(context_,
+                "FAG candidate rejection[%lu]: variant=[%u], stage=[%u], reason=[%u], field=[%u], "
+                "actual=[%ld], expected=[%ld].",
+                static_cast<uint64_t>(rejectionIndex), static_cast<uint32_t>(rejected.variantId),
+                static_cast<uint32_t>(rejected.stage), static_cast<uint32_t>(rejected.reason),
+                static_cast<uint32_t>(rejected.field), rejected.actual, rejected.expected);
+    }
+}
+
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
 {
-    SetSplitAxis(context_, fBaseParams, tndBaseInfo);
+    CaptureProblemFacts();
+    SetSplitAxis(fBaseParams, tndBaseInfo, deterministicRequested_, &routeTrace_, &selectionResult_);
     DoSplit();
     auto ret = DoSparse();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
+    routeTrace_.Record(RouteStage::CORE_PARTITION, RouteField::BLOCK_OUTER, RouteReason::CORE_PARTITION_SELECTED, 0,
+                       static_cast<int64_t>(fBaseParams.blockOuter));
 
     // 分核优化，对于超出l2 cache的case优先多个核处理BN下的S1S2
     bool isExceedL2Cache = CheckExceedL2Cache();
     bool isLargeInvalidBlk = CheckIsLargeInvalidBlk(fBaseParams);
     fBaseParams.enableSwizzle = (isExceedL2Cache || isLargeInvalidBlk) && fBaseParams.blockOuter == fBaseParams.aicNum;
+    routeTrace_.Record(RouteStage::SCHEDULE, RouteField::ENABLE_SWIZZLE, RouteReason::L2_OR_INVALID_BLOCK_SWIZZLE, 0,
+                       static_cast<int64_t>(fBaseParams.enableSwizzle));
     // dqkv fixp nz出优化开关
-    fBaseParams.isNzOut =
-        (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
-         fBaseParams.d < static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) && fBaseParams.d % FP16_C0_SIZE != 0 &&
-         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
-           fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT) &&
-         fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
-        fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
+    DetermineOutputFormat();
     // TND场景下，确定性计算+MHA+Dense支持BN2GS1S2/BN2S2模板，非确定性计算支持BN2S2模板。
     // kernel侧确定性swizzle尚未适配GQA，需通过g == 1将GQA筛除。
     // Mode 2 pads every batch's (N2, S2) columns to a full AIC group. Reject schedules whose aggregate
@@ -852,6 +1052,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
+    routeTrace_.Record(RouteStage::SCHEDULE, RouteField::TND_SWIZZLE, RouteReason::TND_SWIZZLE_SELECTED, 0,
+                       static_cast<int64_t>(tndBaseInfo.isTndSwizzle));
     if (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && tndBaseInfo.isTndSwizzle) {
         ConfigureTndDeterBn2S2Swizzle(fBaseParams, tndBaseInfo);
     }
@@ -870,6 +1072,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     DoPostTiling();
     DetermineMode(fBaseParams);
     DetermineBlockSchedule();
+    SyncLegacySelectionResult();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -890,6 +1093,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::DetermineBlockSchedule()
     }
     OP_LOGI(context_, "Determine block schedule, isSplitByBlockIdx=[%d], deterBandScheduleMode=[%u]",
             static_cast<int>(fBaseParams.isSplitByBlockIdx), static_cast<uint32_t>(fBaseParams.deterBandScheduleMode));
+    const uint32_t encodedSchedule = (static_cast<uint32_t>(fBaseParams.deterBandScheduleMode) << 1U) |
+                                     static_cast<uint32_t>(fBaseParams.isSplitByBlockIdx);
+    routeTrace_.Record(RouteStage::SCHEDULE, RouteField::BLOCK_SCHEDULE, RouteReason::BLOCK_SCHEDULE_SELECTED, 0,
+                       static_cast<int64_t>(encodedSchedule));
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoSplit()
@@ -925,42 +1132,87 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoSplit()
     fBaseParams.sfmgdInner = sfmgdInner;
 }
 
-bool FlashAttentionScoreGradTilingNormalRegbase::DoBn2s2Sparse()
+CorePartitionOutcome FlashAttentionScoreGradTilingNormalRegbase::BuildDenseCorePartitionPlan(VariantId variantId) const
 {
-    if (fBaseParams.splitAxis != SplitAxisEnum::BN2S2 ||
-        fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
-        return false;
+    DenseCorePartitionInput input;
+    input.b = fBaseParams.b;
+    input.n2 = fBaseParams.n2;
+    input.g = fBaseParams.g;
+    input.s1Outer = fBaseParams.s1Outer;
+    input.s2Outer = fBaseParams.s2Outer;
+    input.availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+    return DenseCorePartitionPlanner::TryBuild(variantId, input);
+}
+
+CorePartitionOutcome FlashAttentionScoreGradTilingNormalRegbase::CaptureLegacyCorePartitionOutcome(VariantId variantId,
+                                                                                                   bool available) const
+{
+    CorePartitionOutcome outcome;
+    CorePartitionPlan &plan = outcome.plan;
+    const int64_t activeCoreCount = std::max<int64_t>(0, fBaseParams.blockOuter);
+    if (activeCoreCount > static_cast<int64_t>(FAG_CORE_PARTITION_RANGE_CAPACITY)) {
+        outcome.rejected.variantId = variantId;
+        outcome.rejected.stage = CandidateRejectStage::CORE_PARTITION;
+        outcome.rejected.reason = CandidateRejectReason::CORE_RANGE_CAPACITY_EXCEEDED;
+        outcome.rejected.field = CandidateField::CORE_RANGE_CAPACITY;
+        outcome.rejected.actual = activeCoreCount;
+        outcome.rejected.expected = static_cast<int64_t>(FAG_CORE_PARTITION_RANGE_CAPACITY);
+        return outcome;
     }
-    if (fBaseParams.isSparse || fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        return GetBlockInfoOfBNS4TND();
-    } else {
-        int64_t blockStarts[CORE_LIST_NUM];
-        int64_t blockEnds[CORE_LIST_NUM];
-        // block split
-        int64_t fusedOuter = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2Outer;
-        int64_t bns2Factor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
-        int64_t blockOuter = (fusedOuter + bns2Factor - 1) / bns2Factor;
-        int64_t totalBlock = fusedOuter * fBaseParams.s1Outer;
-        int64_t blockFactor = bns2Factor * fBaseParams.s1Outer;
 
-        for (int64_t i = 0; i < blockOuter; i++) {
-            blockStarts[i] = blockFactor * i;
-            blockEnds[i] = std::min(blockFactor * (i + 1), totalBlock);
-        }
-        for (uint32_t i = static_cast<uint32_t>(blockOuter); i < CORE_LIST_NUM; i++) {
-            blockStarts[i] = 0;
-            blockEnds[i] = 0;
-        }
-
-        std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
-        std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
-
-        fBaseParams.blockOuter = blockOuter;
-        fBaseParams.blockFactor = blockFactor;
-        fBaseParams.maxValidBBLen = blockFactor;
-        return true;
+    plan.activeCoreCount = static_cast<uint32_t>(activeCoreCount);
+    plan.blockFactor = fBaseParams.blockFactor;
+    plan.maxCoreWork = static_cast<uint64_t>(std::max<int64_t>(0, fBaseParams.maxValidBBLen));
+    plan.isSplitByBlockIndex = fBaseParams.isSplitByBlockIdx;
+    for (uint32_t coreIndex = 0; coreIndex < plan.activeCoreCount; ++coreIndex) {
+        WorkRange &range = plan.ranges[coreIndex];
+        range.begin = fBaseParams.blockStarts[coreIndex];
+        range.end = fBaseParams.blockEnds[coreIndex];
+        plan.totalWork = std::max(plan.totalWork, range.end);
     }
-    return false;
+    outcome.accepted = available;
+    if (!available) {
+        outcome.rejected.variantId = variantId;
+        outcome.rejected.stage = CandidateRejectStage::CORE_PARTITION;
+        outcome.rejected.reason = CandidateRejectReason::CORE_PARTITION_UNAVAILABLE;
+        outcome.rejected.field = CandidateField::CORE_PARTITION;
+        outcome.rejected.actual = 0;
+        outcome.rejected.expected = 1;
+    }
+    return outcome;
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::ApplyCorePartitionPlan(const CorePartitionPlan &plan)
+{
+    static_assert(FAG_CORE_PARTITION_RANGE_CAPACITY == CORE_LIST_NUM,
+                  "CorePartitionPlan range capacity must match the FAG tiling ABI capacity.");
+    fBaseParams.blockOuter = plan.activeCoreCount;
+    fBaseParams.blockFactor = plan.blockFactor;
+    fBaseParams.maxValidBBLen = static_cast<int64_t>(plan.maxCoreWork);
+    for (size_t coreIndex = 0; coreIndex < FAG_CORE_PARTITION_RANGE_CAPACITY; ++coreIndex) {
+        fBaseParams.blockStarts[coreIndex] = plan.ranges[coreIndex].begin;
+        fBaseParams.blockEnds[coreIndex] = plan.ranges[coreIndex].end;
+    }
+
+    selectionResult_.selected.cores = plan;
+    selectionResult_.selected.metrics.activeAic = plan.activeCoreCount;
+    selectionResult_.selected.metrics.maxCoreWork = plan.maxCoreWork;
+    selectionResult_.selected.metrics.averageCoreWork =
+        plan.activeCoreCount == 0 ? 0 : static_cast<uint64_t>(plan.totalWork) / plan.activeCoreCount;
+}
+
+CorePartitionDispatchInput FlashAttentionScoreGradTilingNormalRegbase::CaptureCorePartitionDispatchInput(
+    VariantId variantId) const
+{
+    CorePartitionDispatchInput input;
+    input.variantId = variantId;
+    input.isTnd = fBaseParams.layoutType == INPUT_FORMAT_TND;
+    input.isSparse = fBaseParams.isSparse;
+    input.isPrefixSparse = fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
+                           fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS);
+    input.bn2s2Eligible = fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
+                          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD);
+    return input;
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockInfoBn2()
@@ -1036,42 +1288,64 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockInfoBn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoBn2MultiBlkSparse()
+PlannedCandidateExecutionResult FlashAttentionScoreGradTilingNormalRegbase::ExecuteCorePartition(VariantId variantId)
 {
-    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        return GetBlockInfoOfTNDForBn2();
-    } else if (fBaseParams.isSparse) {
-        return GetSparseBlockInfoBn2();
-    } else {
-        int64_t blockStarts[CORE_LIST_NUM];
-        int64_t blockEnds[CORE_LIST_NUM];
-        // block split, Core partitioning by BN
-        int64_t fusedOuter = fBaseParams.b * fBaseParams.n2 * fBaseParams.g;
-        int64_t blockFactor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
-        int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
-        blockFactor *= (fBaseParams.s1Outer * fBaseParams.s2Outer);
-        fusedOuter *= (fBaseParams.s1Outer * fBaseParams.s2Outer);
-
-        fBaseParams.blockOuter = blockOuter;
-        fBaseParams.blockFactor = blockFactor;
-        fBaseParams.maxValidBBLen = blockFactor;
-
-        for (int64_t i = 0; i < blockOuter; i++) {
-            blockStarts[i] = blockFactor * i;
-            blockEnds[i] = std::min(blockFactor * (i + 1), fusedOuter);
-            OP_LOGD("DoBn2MultiBlkSparse", "Normally partition, blockStarts[%ld] = %ld, blockEnds[%ld] = %ld", i,
-                    blockStarts[i], i, blockEnds[i]);
-        }
-        for (uint32_t i = static_cast<uint32_t>(blockOuter); i < CORE_LIST_NUM; i++) {
-            blockStarts[i] = 0;
-            blockEnds[i] = 0;
-        }
-
-        std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
-        std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
-        return ge::GRAPH_SUCCESS;
+    const uint32_t availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+    const CorePartitionStrategy strategy =
+        CorePartitionDispatcher::Select(CaptureCorePartitionDispatchInput(variantId));
+    routeTrace_.Record(RouteStage::CORE_PARTITION, RouteField::CORE_PARTITION_STRATEGY,
+                       RouteReason::CORE_PARTITION_STRATEGY_SELECTED, 0, static_cast<int64_t>(strategy));
+    bool executionSucceeded = false;
+    CorePartitionOutcome corePartition;
+    switch (strategy) {
+        case CorePartitionStrategy::DENSE:
+            executionSucceeded = true;
+            corePartition = BuildDenseCorePartitionPlan(variantId);
+            break;
+        case CorePartitionStrategy::BN2S2_LOAD_BALANCE:
+            executionSucceeded = GetBlockInfoOfBNS4TND();
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, executionSucceeded);
+            break;
+        case CorePartitionStrategy::BN2_MULTI_BLOCK_TND:
+            executionSucceeded = GetBlockInfoOfTNDForBn2() == ge::GRAPH_SUCCESS;
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, executionSucceeded);
+            break;
+        case CorePartitionStrategy::BN2_MULTI_BLOCK_SPARSE:
+            executionSucceeded = GetSparseBlockInfoBn2() == ge::GRAPH_SUCCESS;
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, executionSucceeded);
+            break;
+        case CorePartitionStrategy::TND_UNPAD:
+            executionSucceeded = GetSparseUnpadBlockInfo() == ge::GRAPH_SUCCESS;
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, executionSucceeded);
+            break;
+        case CorePartitionStrategy::SPARSE_PREFIX:
+            executionSucceeded = GetSparsePrefixBlockInfo() == ge::GRAPH_SUCCESS;
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, executionSucceeded);
+            break;
+        case CorePartitionStrategy::SPARSE_GENERAL:
+            executionSucceeded = GetSparseBlockInfo() == ge::GRAPH_SUCCESS;
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, executionSucceeded);
+            break;
+        default:
+            corePartition = CaptureLegacyCorePartitionOutcome(variantId, false);
+            break;
     }
-    return ge::GRAPH_FAILED;
+
+    PlannedCandidateExecutionResult result =
+        PlannedCandidateExecutionResult::FromCorePartition(executionSucceeded, availableCoreCount, corePartition);
+    if (variantId == VariantId::BN2_MULTI_BLOCK) {
+        result.observation.hasInvalidRow = fBaseParams.isInvalidRow;
+        result.observation.hasInvalidColumn = fBaseParams.isInvalidCol;
+        if (strategy == CorePartitionStrategy::DENSE) {
+            for (uint32_t coreIndex = 0; coreIndex < result.observation.corePartition.plan.activeCoreCount;
+                 ++coreIndex) {
+                OP_LOGD("DoBn2MultiBlkSparse", "Normally partition, blockStarts[%u] = %ld, blockEnds[%u] = %ld",
+                        coreIndex, result.observation.corePartition.plan.ranges[coreIndex].begin, coreIndex,
+                        result.observation.corePartition.plan.ranges[coreIndex].end);
+            }
+        }
+    }
+    return result;
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
@@ -1079,65 +1353,67 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
     fBaseParams.sparseType = GetSparseType(); // 非确定性计算下获取sparseType
     fBaseParams.deterSparseType = GetDeterSparseTilingKey();
     CalcleDeterParam();
-    if (DoBn2s2Sparse() && fBaseParams.blockOuter >= fBaseParams.aicNum) {
-        return ge::GRAPH_SUCCESS;
-    } else {
-        // TND S1 S2全等场景下if分支尝试走BN2S2分核优化,如果判断不能走则恢复layoutType赋值
-        if (SupportTrans2BS2N2GD(fBaseParams)) {
-            fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
-            fBaseParams.sparseType = GetSparseType(); // 确保sparseType正确
+    bool skipLegacySparseNormalization = false;
+    PlannedCandidateDecision bn2s2Decision;
+    if (selectionResult_.selected.variantId == VariantId::BN2S2) {
+        const PlannedCandidateExecutionResult execution = ExecuteCorePartition(VariantId::BN2S2);
+        bn2s2Decision = PlannedCandidateResolver::Resolve(selectionResult_.selected, execution);
+        if (bn2s2Decision.action == PlannedCandidateAction::ACCEPT) {
+            selectionResult_.selected = bn2s2Decision.candidate.plan;
+            ApplyCorePartitionPlan(selectionResult_.selected.cores);
+            return ge::GRAPH_SUCCESS;
+        }
+        if (bn2s2Decision.action == PlannedCandidateAction::FAIL) {
+            return ge::GRAPH_FAILED;
         }
     }
-    if (fBaseParams.splitAxis == SplitAxisEnum::BN2 && fBaseParams.isBn2MultiBlk) {
-        bool earlyReturn = true;
-        bool res = DoBn2MultiBlkSparse();
+
+    // TND S1 S2全等场景下if分支尝试走BN2S2分核优化,如果判断不能走则恢复layoutType赋值
+    if (SupportTrans2BS2N2GD(fBaseParams)) {
+        const uint32_t layoutBefore = fBaseParams.layoutType;
+        fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
+        routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EXECUTION_LAYOUT,
+                           RouteReason::TND_EQUAL_LENGTH_EXECUTION_LAYOUT, static_cast<int64_t>(layoutBefore),
+                           static_cast<int64_t>(fBaseParams.layoutType));
+        fBaseParams.sparseType = GetSparseType(); // 确保sparseType正确
+    }
+    if (selectionResult_.selected.variantId == VariantId::BN2S2) {
+        SelectFallbackAfterCandidateRejection(bn2s2Decision.candidate.rejected, RouteReason::BN2S2_INSUFFICIENT_CORES);
+        // The BN2S2 rejection is the legacy normalization decision itself; do not record it twice below.
+        skipLegacySparseNormalization = true;
+    }
+    if (selectionResult_.selected.variantId == VariantId::BN2_MULTI_BLOCK) {
+        const PlannedCandidateExecutionResult execution = ExecuteCorePartition(VariantId::BN2_MULTI_BLOCK);
         // 当BN2多基本块场景，上方函数判断遇到无效行、列后，需要走S1S2模板，性能达到最优
         OP_LOGD("DoBn2MultiBlkSparse", "fBaseParams.isInvalidCol %d, fBaseParams.isInvalidRow %d",
-                fBaseParams.isInvalidCol, fBaseParams.isInvalidRow);
-        if ((fBaseParams.isInvalidCol || fBaseParams.isInvalidRow)) {
-            fBaseParams.isBn2 = false;
-            fBaseParams.isBn2MultiBlk = false;
-            fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
-            fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
-            earlyReturn = false;
+                execution.observation.hasInvalidColumn, execution.observation.hasInvalidRow);
+        const PlannedCandidateDecision decision =
+            PlannedCandidateResolver::Resolve(selectionResult_.selected, execution);
+        if (decision.action == PlannedCandidateAction::ACCEPT) {
+            selectionResult_.selected = decision.candidate.plan;
+            ApplyCorePartitionPlan(selectionResult_.selected.cores);
+            return ge::GRAPH_SUCCESS;
         }
-        if (earlyReturn) {
-            return res;
+        if (decision.action == PlannedCandidateAction::FAIL) {
+            return ge::GRAPH_FAILED;
         }
+        SelectFallbackAfterCandidateRejection(decision.candidate.rejected, RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK);
     }
-    fBaseParams.splitAxis = fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2;
-    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        GetSparseUnpadBlockInfo();
-    } else if (fBaseParams.isSparse) {
-        if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
-            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) {
-            GetSparsePrefixBlockInfo();
-        } else {
-            GetSparseBlockInfo();
-        }
-    } else {
-        int64_t blockStarts[CORE_LIST_NUM];
-        int64_t blockEnds[CORE_LIST_NUM];
-        int64_t fusedOuter = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1Outer * fBaseParams.s2Outer;
-        int64_t blockFactor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
-        int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
-
-        fBaseParams.blockOuter = blockOuter;
-        fBaseParams.blockFactor = blockFactor;
-        fBaseParams.maxValidBBLen = blockFactor;
-
-        for (int64_t i = 0; i < blockOuter; i++) {
-            blockStarts[i] = blockFactor * i;
-            blockEnds[i] = std::min(blockFactor * (i + 1), fusedOuter);
-        }
-        for (uint32_t i = static_cast<uint32_t>(blockOuter); i < CORE_LIST_NUM; i++) {
-            blockStarts[i] = 0;
-            blockEnds[i] = 0;
-        }
-
-        std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
-        std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
+    if (!skipLegacySparseNormalization) {
+        SetSplitAxisWithTrace(fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2,
+                              RouteStage::SPARSE_PLANNING, RouteReason::LEGACY_SPARSE_NORMALIZATION);
     }
+    const PlannedCandidateExecutionResult execution = ExecuteCorePartition(selectionResult_.selected.variantId);
+    if (!execution.succeeded) {
+        OP_LOGE(context_->GetNodeName(),
+                "Failed to execute core partition, variant=[%u], reason=[%u], actual=[%ld], expected=[%ld].",
+                static_cast<uint32_t>(selectionResult_.selected.variantId),
+                static_cast<uint32_t>(execution.observation.corePartition.rejected.reason),
+                execution.observation.corePartition.rejected.actual,
+                execution.observation.corePartition.rejected.expected);
+        return ge::GRAPH_FAILED;
+    }
+    ApplyCorePartitionPlan(execution.observation.corePartition.plan);
     // each bit init 1
     std::fill(std::begin(fBaseParams.dqIsNeedDeter), std::end(fBaseParams.dqIsNeedDeter), static_cast<uint64_t>(-1));
     std::fill(std::begin(fBaseParams.dkDvIsNeedDeter), std::end(fBaseParams.dkDvIsNeedDeter),
@@ -1841,6 +2117,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
 
     workspaceSize += WORKSPACE_BUFFER;
     workspaces[0] = workspaceSize;
+    selectionResult_.selected.workspace.workspaceBytes = workspaceSize;
+    selectionResult_.selected.metrics.workspaceBytes = workspaceSize;
+    routeTrace_.Record(RouteStage::WORKSPACE, RouteField::WORKSPACE_BYTES, RouteReason::WORKSPACE_PLANNED, 0,
+                       static_cast<int64_t>(workspaceSize));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1899,6 +2179,9 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
         static_cast<uint8_t>(fBaseParams.outDtype), static_cast<uint8_t>(fBaseParams.isNzOut),
         static_cast<uint8_t>(tndBaseInfo.isTndSwizzle), static_cast<uint8_t>(isRegbasePlatformValue));
 
+    selectionResult_.selected.tilingKey = tilingKey;
+    routeTrace_.Finalize(selectionResult_.selected.variantId, tilingKey);
+    LogRouteTrace();
     OP_LOGI(context_, "FAGTiling S1s2Bn2gs1s2 DoTiling success, tiling is %lu.", tilingKey);
     return tilingKey;
 }
@@ -1929,6 +2212,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::PostTiling()
                         fBaseParams.aicNum, fBaseParams.coreNum),
                 return ge::GRAPH_FAILED);
     context_->SetBlockDim(numBlocks);
+    selectionResult_.selected.blockDim = static_cast<uint32_t>(numBlocks);
+    routeTrace_.Record(RouteStage::ENCODER, RouteField::BLOCK_DIM, RouteReason::BLOCK_DIM_SELECTED, 0,
+                       static_cast<int64_t>(numBlocks));
 
     // 使用SyncAll，需要设置为batch mode模式，所有核同时启动，否则在多流方式下执行可能会卡死
     if (fBaseParams.splitAxis != SplitAxisEnum::BN2 || !fBaseParams.isBn2MultiBlk ||

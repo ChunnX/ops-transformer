@@ -16,6 +16,11 @@
 #pragma once
 
 #include "flash_attention_score_grad_tiling_common_regbase.h"
+#include "candidate/fag_kernel_capability.h"
+#include "candidate/fag_planned_candidate_verifier.h"
+#include "planner/fag_core_partition_dispatcher.h"
+#include "planner/fag_dense_core_partition_planner.h"
+#include "policy/fag_legacy_policy_v1.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
 #include "err/ops_err.h"
@@ -71,15 +76,26 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus InitTilingData();
+    void CaptureProblemFacts();
+    void SetSplitAxisWithTrace(SplitAxisEnum splitAxis, RouteStage stage, RouteReason reason);
+    void DetermineOutputFormat();
+    void SelectFallbackAfterCandidateRejection(const CandidateRejected &rejected, RouteReason reason);
+    void SyncLegacySelectionResult();
+    VariantId ResolveSelectedVariant() const;
+    void LogRouteTrace() const;
     void DoSplit();
+    CorePartitionOutcome BuildDenseCorePartitionPlan(VariantId variantId) const;
+    CorePartitionOutcome CaptureLegacyCorePartitionOutcome(VariantId variantId, bool available) const;
+    CorePartitionDispatchInput CaptureCorePartitionDispatchInput(VariantId variantId) const;
+    void ApplyCorePartitionPlan(const CorePartitionPlan &plan);
+    PlannedCandidateExecutionResult ExecuteCorePartition(VariantId variantId);
     void DetermineBlockSchedule();
     ge::graphStatus DoSparse();
-    bool DoBn2s2Sparse();
     uint32_t GetDeterSparseTilingKey();
     uint8_t GetSparseType();
     void CalcleDeterParam();
-    virtual void CalcleTNDDeterParam() {};
-    virtual void CalcTNDSwizzleParam() {};
+    virtual void CalcleTNDDeterParam() {}
+    virtual void CalcTNDSwizzleParam() {}
 
     void GetWorkspaceSize4Deter(size_t &workspaceSize);
     void GetIsDeterArr();
@@ -92,23 +108,44 @@ protected:
     void DoPostTiling();
     ge::graphStatus SaveToTilingData();
     ge::graphStatus GetSparsePrefixBlockInfo();
-    virtual ge::graphStatus GetSparseUnpadBlockInfo() {};
-    virtual bool GetBlockInfoOfBNS4TND() {};
+    virtual ge::graphStatus GetSparseUnpadBlockInfo()
+    {
+        return ge::GRAPH_FAILED;
+    }
+    virtual bool GetBlockInfoOfBNS4TND()
+    {
+        return false;
+    }
     void FillBlockInfoLoadBalance(std::vector<std::vector<int64_t>> &totalBlockInfo,
                                   std::vector<std::vector<float>> &acturalBlockInfo);
     void GetParseS1S2OuterInfo(int64_t (*parseInfo)[ARRAY_LENGTH]);
     bool CheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx = 0,
                                  int64_t blockIdx = 0);
-    virtual bool CheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx) {
-    };
-    virtual bool IsValidUnpad(int64_t blockIdx) {};
-    ge::graphStatus DoBn2MultiBlkSparse();
-    virtual ge::graphStatus GetBlockInfoOfTNDForBn2() {};
+    virtual bool CheckUnpadSparseLeftAndRight(int64_t, int64_t, int64_t, int64_t)
+    {
+        return false;
+    }
+    virtual bool IsValidUnpad(int64_t)
+    {
+        return false;
+    }
+    virtual ge::graphStatus GetBlockInfoOfTNDForBn2()
+    {
+        return ge::GRAPH_FAILED;
+    }
     ge::graphStatus GetSparseBlockInfoBn2();
     FuzzyBaseInfoParamsRegbase fBaseParams;
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch = NpuArch::DAV_RESV;
     TndBaseInfo tndBaseInfo;
+
+private:
+    SourceLayoutId sourceLayout_ = SourceLayoutId::UNKNOWN;
+    bool deterministicRequested_ = false;
+    // Captured once before legacy routing; policy code must treat these facts as immutable.
+    ProblemFacts problemFacts_;
+    mutable RouteTrace routeTrace_;
+    mutable SelectionResult selectionResult_;
 };
 
 } // namespace fag

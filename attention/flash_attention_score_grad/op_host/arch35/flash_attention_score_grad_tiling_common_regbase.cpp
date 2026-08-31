@@ -14,6 +14,8 @@
  */
 
 #include "flash_attention_score_grad_tiling_common_regbase.h"
+#include "candidate/fag_initial_variant_candidates.h"
+#include "policy/fag_legacy_policy_v1.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 
@@ -1654,68 +1656,94 @@ bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsReg
     return false;
 }
 
-void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
-                  const TndBaseInfo &tndBaseInfo)
+void ApplySelectedVariantPlan(FuzzyBaseInfoParamsRegbase &fBaseParams, const CandidatePlan &selectedPlan)
 {
-    fBaseParams.isBn2 = (fBaseParams.s1 <= BN2_MAX_S && fBaseParams.s2 <= BN2_MAX_S) &&
-                        (fBaseParams.n1 == fBaseParams.n2) && (fBaseParams.d <= BN2_MAX_D) &&
-                        (fBaseParams.queryType != ge::DT_FLOAT) &&
-                        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 ||
-                          fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
-                        (fBaseParams.tailZeroCount == 0 && !tndBaseInfo.isSeqExistZero);
+    const VariantId selectedVariant = selectedPlan.variantId;
+    fBaseParams.isBn2 = selectedVariant == VariantId::BN2 || selectedVariant == VariantId::BN2_MULTI_BLOCK;
+    fBaseParams.isBn2MultiBlk = selectedVariant == VariantId::BN2_MULTI_BLOCK;
+    fBaseParams.isDeterministic = selectedPlan.effectiveDeterministic;
+    fBaseParams.layoutType = selectedPlan.executionLayout;
+    fBaseParams.splitAxis = static_cast<SplitAxisEnum>(selectedPlan.split.axis);
+}
 
-    bool bnLimit = ((fBaseParams.b * fBaseParams.n1) >= BN2_MULTIBLK_BN_256) ||
-                   ((fBaseParams.b * fBaseParams.n1) >= BN2_MULTIBLK_BN_128 && (fBaseParams.s1 % ALIGN128 == 0) &&
-                    (fBaseParams.s2 % ALIGN128 == 0));
-    bool bnSparseLimit = bnLimit && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
-                         (fBaseParams.sparseMode != static_cast<uint32_t>(SparseMode::PREFIX)) &&
-                         (fBaseParams.sparseMode != static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS));
-    fBaseParams.isBn2MultiBlk =
-        bnSparseLimit && (fBaseParams.s1 > BN2_MAX_S || fBaseParams.s2 > BN2_MAX_S) &&
-        (fBaseParams.s1 <= BN2_MULTIBLK_SEQ && fBaseParams.s2 <= BN2_MULTIBLK_SEQ) &&
-        (fBaseParams.n1 == fBaseParams.n2) && fBaseParams.d <= BN2_MAX_D && (fBaseParams.queryType != ge::DT_FLOAT) &&
-        (fBaseParams.d == fBaseParams.d1) &&
-        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
-          fBaseParams.queryType == ge::DT_HIFLOAT8) &&
-        !fBaseParams.hasRope;
-    fBaseParams.isBn2 = fBaseParams.isBn2MultiBlk ? true : fBaseParams.isBn2; // 多基本块场景是原始bn2的子集
-    if (fBaseParams.isBn2 && !fBaseParams.isBn2MultiBlk) {
-        fBaseParams.isDeterministic = false;
-        if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128) || fBaseParams.dropMaskOuter) {
-            fBaseParams.isBn2 = false;
-            fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
-        }
-    }
-    if (fBaseParams.isBn2MultiBlk) {
-        fBaseParams.isDeterministic = false;
-        if (fBaseParams.dropMaskOuter) {
-            fBaseParams.isBn2 = false;
-            fBaseParams.isBn2MultiBlk = false;
-            fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
-        }
-    }
+void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tndBaseInfo, bool deterministicRequested,
+                  RouteTrace *routeTrace, SelectionResult *selectionResult)
+{
+    const bool deterministicBefore = fBaseParams.isDeterministic;
+    const uint32_t layoutBefore = fBaseParams.layoutType;
+    const SplitAxisEnum splitAxisBefore = fBaseParams.splitAxis;
+    InitialVariantCandidateInput input;
+    input.b = fBaseParams.b;
+    input.s1 = fBaseParams.s1;
+    input.s2 = fBaseParams.s2;
+    input.n1 = fBaseParams.n1;
+    input.n2 = fBaseParams.n2;
+    input.d = fBaseParams.d;
+    input.d1 = fBaseParams.d1;
+    input.tailZeroCount = fBaseParams.tailZeroCount;
+    input.executionLayout = fBaseParams.layoutType;
+    input.sparseMode = fBaseParams.sparseMode;
+    input.queryTypeSupported = fBaseParams.queryType != ge::DT_FLOAT && fBaseParams.queryType != ge::DT_FLOAT8_E5M2 &&
+                               fBaseParams.queryType != ge::DT_FLOAT8_E4M3FN &&
+                               fBaseParams.queryType != ge::DT_HIFLOAT8;
+    input.sequenceContainsZero = tndBaseInfo.isSeqExistZero;
+    input.isSparse = fBaseParams.isSparse;
+    input.deterministicRequested = deterministicRequested;
+    input.hasRope = fBaseParams.hasRope;
+    input.dropMaskOuter = fBaseParams.dropMaskOuter;
+    input.allSequencesSame = fBaseParams.isAllSame;
+    input.dropoutDisabled = fBaseParams.keepProb >= 1;
+    input.dropoutEnabled = fBaseParams.keepProb < 1;
 
-    bool bn2S2NotTndLimit = (fBaseParams.s1 < fBaseParams.s2) && (fBaseParams.s2 <= BN2S2_MAX_S) &&
-                            (fBaseParams.s2 - fBaseParams.s1 >= BN2_MAX_S) && (fBaseParams.d <= BN2S2_WRITE_UB_D) &&
-                            (!fBaseParams.isSparse) && (!fBaseParams.isDeterministic);
-    bool bn2S2RouteLimit =
-        !fBaseParams.hasRope && fBaseParams.d <= BN2_MAX_D &&
-        (fBaseParams.layoutType == INPUT_FORMAT_TND || (fBaseParams.isAllSame && !fBaseParams.isDeterministic) ||
-         bn2S2NotTndLimit) &&
-        (fBaseParams.keepProb >= 1 ||
-         (fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) && fBaseParams.keepProb < 1)) &&
-        (fBaseParams.n1 == fBaseParams.n2) && (fBaseParams.queryType != ge::DT_FLOAT) &&
-        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
-          fBaseParams.queryType == ge::DT_HIFLOAT8);
+    InitialVariantLimits limits;
+    limits.bn2MaxSequence = BN2_MAX_S;
+    limits.bn2MaxHeadDim = BN2_MAX_D;
+    limits.bn2MultiBlockMaxSequence = BN2_MULTIBLK_SEQ;
+    limits.bn2MultiBlockBatchHeadLow = BN2_MULTIBLK_BN_128;
+    limits.bn2MultiBlockBatchHeadHigh = BN2_MULTIBLK_BN_256;
+    limits.bn2s2MaxSequence = BN2S2_MAX_S;
+    limits.bn2s2WriteUbMaxHeadDim = BN2S2_WRITE_UB_D;
+    limits.bn2TndMaxHeadDim = ALIGN128;
+    limits.bn2MultiBlockSequenceAlignment = ALIGN128;
+    limits.bn2s2MinimumSequenceGap = BN2_MAX_S;
+    limits.bn2s2DropoutMaxHeadDim = static_cast<uint32_t>(ConstAxisTemplateNum::NUM128);
+    limits.tndExecutionLayout = INPUT_FORMAT_TND;
+    limits.prefixSparseMode = static_cast<uint32_t>(SparseMode::PREFIX);
+    limits.prefixCompressSparseMode = static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS);
+    limits.bn2SplitAxis = static_cast<uint32_t>(SplitAxisEnum::BN2);
+    limits.bn2s2SplitAxis = static_cast<uint32_t>(SplitAxisEnum::BN2S2);
+    limits.bn2gs1s2SplitAxis = static_cast<uint32_t>(SplitAxisEnum::BN2GS1S2);
 
-    if (!fBaseParams.isBn2 && bn2S2RouteLimit) {
-        fBaseParams.layoutType = fBaseParams.isAllSame ? INPUT_FORMAT_TND : fBaseParams.layoutType;
-        fBaseParams.splitAxis = SplitAxisEnum::BN2S2;
-    } else if (fBaseParams.isBn2) {
-        fBaseParams.splitAxis = SplitAxisEnum::BN2;
-    } else {
-        fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+    const InitialVariantCandidateSet candidates = InitialVariantCandidatePlanner::Build(input, limits);
+    const SelectionResult selected = LegacyPolicyV1::SelectInitialVariant(candidates);
+    const VariantId selectedVariant = selected.selected.variantId;
+    ApplySelectedVariantPlan(fBaseParams, selected.selected);
+    if (selectionResult != nullptr) {
+        *selectionResult = selected;
     }
+    if (routeTrace == nullptr) {
+        return;
+    }
+    if (deterministicBefore != fBaseParams.isDeterministic) {
+        routeTrace->Record(RouteStage::INITIAL_VARIANT, RouteField::EFFECTIVE_DETERMINISTIC,
+                           RouteReason::BN2_DISABLES_DETERMINISTIC, static_cast<int64_t>(deterministicBefore),
+                           static_cast<int64_t>(fBaseParams.isDeterministic));
+    }
+    if (layoutBefore != fBaseParams.layoutType) {
+        routeTrace->Record(RouteStage::INITIAL_VARIANT, RouteField::EXECUTION_LAYOUT,
+                           RouteReason::BN2S2_EXECUTION_LAYOUT, static_cast<int64_t>(layoutBefore),
+                           static_cast<int64_t>(fBaseParams.layoutType));
+    }
+    RouteReason splitReason = RouteReason::INITIAL_BN2GS1S2;
+    if (selectedVariant == VariantId::BN2_MULTI_BLOCK) {
+        splitReason = RouteReason::INITIAL_BN2_MULTI_BLOCK;
+    } else if (selectedVariant == VariantId::BN2) {
+        splitReason = RouteReason::INITIAL_BN2;
+    } else if (selectedVariant == VariantId::BN2S2) {
+        splitReason = RouteReason::INITIAL_BN2S2;
+    }
+    routeTrace->Record(RouteStage::INITIAL_VARIANT, RouteField::SPLIT_AXIS, splitReason,
+                       static_cast<int64_t>(splitAxisBefore), static_cast<int64_t>(fBaseParams.splitAxis));
 }
 
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams)

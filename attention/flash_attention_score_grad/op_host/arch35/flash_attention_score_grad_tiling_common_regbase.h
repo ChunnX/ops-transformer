@@ -23,6 +23,7 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
+#include "model/fag_route_model.h"
 
 namespace optiling {
 namespace fag {
@@ -149,6 +150,7 @@ constexpr int64_t DETER_BAND_SWIZZLE_MIN_SLOT_UTILIZATION_PERCENT = 90;
 constexpr int64_t DETER_BAND_SWIZZLE_MAX_ROUND_GROWTH_PERCENT = 3;
 constexpr int64_t DETER_BAND_SWIZZLE_PERCENT_BASE = 100;
 
+// POLICY(LegacyPolicyV1): minimum S1/S2 used by the measured NZ output route.
 constexpr uint32_t NZ_OUT_MIN_S_SIZE = 2048;
 constexpr uint32_t FP16_C0_SIZE = 16;
 constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE = 2048;
@@ -622,8 +624,9 @@ ge::graphStatus ProcessPseInfo(const gert::TilingContext *context_, FuzzyBaseInf
                                const char *inputLayout);
 void SetPseLayout(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
-                  const TndBaseInfo &tndBaseInfo);
+void ApplySelectedVariantPlan(FuzzyBaseInfoParamsRegbase &fBaseParams, const CandidatePlan &selectedPlan);
+void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tndBaseInfo, bool deterministicRequested,
+                  RouteTrace *routeTrace = nullptr, SelectionResult *selectionResult = nullptr);
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SupportTrans2BS2N2GD(const FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus SetAttenMaskShapeType(FuzzyBaseInfoParamsRegbase &fBaseParams, const gert::StorageShape *attenMaskShape,
