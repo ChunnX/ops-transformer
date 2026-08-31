@@ -23,6 +23,31 @@ namespace {
 constexpr int64_t TAIL_DIM_ALIGN = 32; // x 尾轴 d 必须 32 对齐
 constexpr int64_t QUANT_MODE_MIN = 0;
 constexpr int64_t QUANT_MODE_MAX = 3; // 0:MX-FP8 1:Normal 2:HiFloat8 3:MX-FP4
+constexpr int64_t MXFP4_QUANT_MODE = 3;
+
+TensorWrapper MakeTensorWrapper(const at::Tensor &tensor)
+{
+    return {tensor, ConvertToAclDataType(tensor.scalar_type())};
+}
+
+void FixMxfp4AclDtypes(int64_t quantMode, TensorWrapper &cacheWrapper, TensorWrapper &cacheScaleWrapper)
+{
+    if (quantMode != MXFP4_QUANT_MODE) {
+        return;
+    }
+
+    const auto cacheType = cacheWrapper.tensor_.scalar_type();
+    TORCH_CHECK(cacheType == at::kByte || cacheType == at::kFloat4_e2m1fn_x2,
+                "When quant_mode is 3, cache must be packed torch.uint8 or torch.float4_e2m1fn_x2, but got ",
+                cacheType);
+    const auto cacheScaleType = cacheScaleWrapper.tensor_.scalar_type();
+    TORCH_CHECK(cacheScaleType == at::kByte || cacheScaleType == at::kFloat8_e8m0fnu,
+                "When quant_mode is 3, cache_scale must be torch.uint8 or torch.float8_e8m0fnu, but got ",
+                cacheScaleType);
+
+    cacheWrapper.dtype = ACL_FLOAT4_E2M1;
+    cacheScaleWrapper.dtype = ACL_FLOAT8_E8M0;
+}
 } // namespace
 
 void IndexerQuantCache(at::Tensor &cache, at::Tensor &cacheScale, const at::Tensor &x, const at::Tensor &slotMapping,
@@ -44,9 +69,13 @@ void IndexerQuantCache(at::Tensor &cache, at::Tensor &cacheScale, const at::Tens
     const c10::OptionalDeviceGuard deviceGuard(localDevice);
 
     float xScaleF = static_cast<float>(xScale);
+    auto cacheWrapped = MakeTensorWrapper(cache);
+    auto cacheScaleWrapped = MakeTensorWrapper(cacheScale);
+    FixMxfp4AclDtypes(quantMode, cacheWrapped, cacheScaleWrapped);
     StorageShapeTensor xWrapped{x};
     StorageShapeTensor slotMappingWrapped{slotMapping};
-    ACLNN_CMD(aclnnIndexerQuantCache, cache, cacheScale, xWrapped, slotMappingWrapped, quantMode, roundScale, xScaleF);
+    ACLNN_CMD(aclnnIndexerQuantCache, cacheWrapped, cacheScaleWrapped, xWrapped, slotMappingWrapped, quantMode,
+              roundScale, xScaleF);
 }
 
 // Bind the C++ function to Python module
