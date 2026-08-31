@@ -102,8 +102,8 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoOpTiling()
     // Init
     int32_t selBlkCntAlign = CeilCommon(tilingData.opInfo.get_selectedBlockCount(), 8) * 8;
     tmpData.singleM = tmpData.mode == SMLAG_SCFA_MODE ? tilingData.opInfo.get_G() : SINGLE_M;
-    tmpData.singleN = tmpData.mode == SMLAG_SCFA_MODE && selBlkCntAlign >= SINGLE_N_512 ? 
-                      SINGLE_N_512 : 
+    tmpData.singleN = tmpData.mode == SMLAG_SCFA_MODE && selBlkCntAlign >= SINGLE_N_512 ?
+                      SINGLE_N_512 :
                       SINGLE_N_128;
     tmpData.s1BasicSize = tmpData.mode == SMLAG_SCFA_MODE ? 1 : tmpData.singleM / tilingData.opInfo.get_G();
 
@@ -216,8 +216,10 @@ uint64_t SparseFlashMlaGradBasicTiling::GetTilingKey() const
     // -------------set tilingkey-----------------
     // LAYOUT: 0(BSND); 1(TND)
     // CMP_MODE: 0(SWA); 1(CFA); 2(SCFA)
+    // HAS_SEQUSED: 0(无seqused); 1(任一seqused存在，按对应seqused限制有效长度)
     uint32_t layout = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? 1U : 0U;
-    return GET_TPL_TILING_KEY(layout, tmpData.mode);
+    bool hasSeqused = tmpData.usedSeqQ || tmpData.usedSeqOriKV || tmpData.usedSeqCmpKV;
+    return GET_TPL_TILING_KEY(layout, tmpData.mode, static_cast<uint8_t>(hasSeqused));
 }
 
 
@@ -252,12 +254,12 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::DoSftTiling()
     uint32_t sftBaseNAlign = (tmpData.singleN + 8 - 1) / 8 * 8;
     uint32_t sftBaseM = (maxUbSize - tilingData.opInfo.get_G() * 32 - sftBaseNAlign * B32) / (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2 + 2 * B32);
 
-    uint32_t actualUsed = sftBaseM * (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2) + 
+    uint32_t actualUsed = sftBaseM * (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2) +
                           ((sftBaseM + 8 - 1) / 8 * 8) * B32 * 2 +
                           sftBaseNAlign * B32 + tilingData.opInfo.get_G() * 32;
     while (actualUsed > maxUbSize) {
         sftBaseM -= 1;
-        actualUsed = sftBaseM * (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2) + 
+        actualUsed = sftBaseM * (3 * 32 + sftBaseN * (B32 * 3 + B16) + tilingData.opInfo.get_D() * (B16 + B32) * 2) +
                     ((sftBaseM + 8 - 1) / 8 * 8) * B32 * 2 +
                     sftBaseNAlign * B32 + tilingData.opInfo.get_G() * 32;
     }
@@ -386,18 +388,25 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
 
     // -------------- 当前不支持参数必须传空校验 --------------
     auto oriSparseIndicesTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ORI_SPARSE_INDICES));
-    auto seqUsedQTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_Q));
-    auto seqUsedOriKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_ORI_KV));
-    auto seqUsedCmpKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
     auto oriTopkLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ORI_TOPK_LENGTH));
     auto cmpTopkLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_TOPK_LENGTH));
     auto metadataTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::METADATA));
     OP_CHECK_IF(oriSparseIndicesTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "oriSparseIndices should be nullptr now."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqUsedQTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedQ should be nullptr now."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqUsedOriKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedOriKv should be nullptr now."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqUsedCmpKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedCmpKv should be nullptr now."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "oriTopkLength should be nullptr now."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpTopkLength should be nullptr now."), return ge::GRAPH_FAILED);
+
+    auto usedSeqQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_Q));
+    if (usedSeqQ != nullptr) {
+        tmpData.usedSeqQ = true;
+    }
+    auto usedSeqOriKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_ORI_KV));
+    if (usedSeqOriKV != nullptr) {
+        tmpData.usedSeqOriKV = true;
+    }
+    auto usedSeqCmpKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
+    if (usedSeqCmpKV != nullptr) {
+        tmpData.usedSeqCmpKV = true;
+    }
 
     // -------------- attrs ----------------
     const char *inputLayoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
@@ -516,7 +525,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     tilingData.opInfo.set_cmpRatio(cmpRatio);
     tilingData.opInfo.set_oriWinLeft(oriWinLeft);
     tilingData.opInfo.set_oriWinRight(oriWinRight);
-    
+
     tmpData.d = tilingData.opInfo.get_D();
     tmpData.dataTypeSize = B32;
     tmpData.queryType =
@@ -536,15 +545,15 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         if (strcmp(inputLayoutQ, TND_STR) == 0) {
             OP_CHECK_IF(cmpSoftmaxL1Shape.GetDim(DIM_0) != cmpIndicesShape.GetDim(DIM_0) ||
                         cmpSoftmaxL1Shape.GetDim(DIM_1) != cmpIndicesShape.GetDim(DIM_1) ||
-                        cmpSoftmaxL1Shape.GetDim(DIM_2) != cmpIndicesShape.GetDim(DIM_2), 
-                        OP_LOGE("SparseFlashMlaGrad", "In SCFA mode, the shape of cmpSoftmaxL1Norm should be the same with cmpSparseIndices."), 
+                        cmpSoftmaxL1Shape.GetDim(DIM_2) != cmpIndicesShape.GetDim(DIM_2),
+                        OP_LOGE("SparseFlashMlaGrad", "In SCFA mode, the shape of cmpSoftmaxL1Norm should be the same with cmpSparseIndices."),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(cmpSoftmaxL1Shape.GetDim(DIM_0) != cmpIndicesShape.GetDim(DIM_0) ||
                         cmpSoftmaxL1Shape.GetDim(DIM_1) != cmpIndicesShape.GetDim(DIM_1) ||
                         cmpSoftmaxL1Shape.GetDim(DIM_2) != cmpIndicesShape.GetDim(DIM_2) ||
-                        cmpSoftmaxL1Shape.GetDim(DIM_3) != cmpIndicesShape.GetDim(DIM_3), 
-                        OP_LOGE("SparseFlashMlaGrad", "In SCFA mode, the shape of cmpSoftmaxL1Norm should be the same with cmpSparseIndices."), 
+                        cmpSoftmaxL1Shape.GetDim(DIM_3) != cmpIndicesShape.GetDim(DIM_3),
+                        OP_LOGE("SparseFlashMlaGrad", "In SCFA mode, the shape of cmpSoftmaxL1Norm should be the same with cmpSparseIndices."),
                         return ge::GRAPH_FAILED);
         }
     } else if (cmpKvTensor == nullptr) {
@@ -560,16 +569,20 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         if (cmpMaskMode == 3){
             // check cmpResidual tensor shape
             auto cmpResidualKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_RESIDUAL_KV));
-            OP_CHECK_IF(cmpResidualKvTensor == nullptr, 
-                        OP_LOGE("SparseFlashMlaGrad", "cmpResidual cannot be null when CFA/SCFA and cmpMaskMode=3"), 
+            OP_CHECK_IF(cmpResidualKvTensor == nullptr,
+                        OP_LOGE("SparseFlashMlaGrad", "cmpResidual cannot be null when CFA/SCFA and cmpMaskMode=3"),
                         return ge::GRAPH_FAILED);
-            
+
             const gert::Shape &cmpResidualKvShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_RESIDUAL_KV))->GetStorageShape();
-            OP_CHECK_IF(cmpResidualKvShape.GetDim(DIM_0) != tmpData.b, 
-                        OP_LOGE("SparseFlashMlaGrad", "cmpResidual length should be equal to batchNum."), 
+            OP_CHECK_IF(cmpResidualKvShape.GetDim(DIM_0) != tmpData.b,
+                        OP_LOGE("SparseFlashMlaGrad", "cmpResidual length should be equal to batchNum."),
                         return ge::GRAPH_FAILED);
         }
     }
+
+    tilingData.opInfo.set_hasUsedSeqQ(tmpData.usedSeqQ);
+    tilingData.opInfo.set_hasUsedSeqOriKV(tmpData.usedSeqOriKV);
+    tilingData.opInfo.set_hasUsedSeqCmpKV(tmpData.usedSeqCmpKV);
     tilingData.opInfo.set_selectedBlockSize(1);
 
     return ge::GRAPH_SUCCESS;
