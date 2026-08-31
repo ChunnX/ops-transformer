@@ -18,16 +18,6 @@
  * int8 key 前融合反量化、PA BNBD、TND packed key、A2/A3 与 950 PA key dim0 非连续。
  */
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#include <fenv.h>
-__attribute__((constructor)) static void DisableFpeEarly()
-{
-#if defined(__linux__)
-    (void)fedisableexcept(FE_ALL_EXCEPT);
-#endif
-}
 #include <algorithm>
 #include <cmath>
 #include <cfenv>
@@ -77,6 +67,16 @@ constexpr int64_t kBlockTableMulK = 3;
 constexpr int64_t kTraceExtraTok = 2;
 constexpr int64_t kPrevDimOffset = 2; // 从末维向前推 stride 时的偏移
 constexpr size_t kLayoutKeyBufSize = 8;
+constexpr int kFp8E4M3ExpBits = 4;
+constexpr int kFp8E4M3MantissaBits = 3;
+constexpr int kFp8E4M3ExpBias = (1 << (kFp8E4M3ExpBits - 1)) - 1;
+constexpr float kFp8E4M3MantissaScale = static_cast<float>(1 << kFp8E4M3MantissaBits);
+constexpr int kFp8E5M2ExpBits = 5;
+constexpr int kFp8E5M2MantissaBits = 2;
+constexpr int kFp8E5M2ExpBias = (1 << (kFp8E5M2ExpBits - 1)) - 1;
+constexpr float kFp8E5M2MantissaScale = static_cast<float>(1 << kFp8E5M2MantissaBits);
+constexpr int kFp8MinNormalExp = 1; // IEEE 次正规数 ldexp 指数为 1-bias
+constexpr int kFp8CodeCount = static_cast<int>(std::numeric_limits<uint8_t>::max()) + 1;
 
 enum class KeyLayout {
     BBND = 0,
@@ -174,9 +174,10 @@ float Fp8E4M3fnToFloat(uint8_t x)
     }
     const float sign = (s != 0U) ? -1.0F : 1.0F;
     if (e == 0U) {
-        return sign * std::ldexp(static_cast<float>(m) / 8.0F, 1 - 7);
+        return sign * std::ldexp(static_cast<float>(m) / kFp8E4M3MantissaScale, kFp8MinNormalExp - kFp8E4M3ExpBias);
     }
-    return sign * std::ldexp(1.0F + static_cast<float>(m) / 8.0F, static_cast<int>(e) - 7);
+    return sign *
+           std::ldexp(1.0F + static_cast<float>(m) / kFp8E4M3MantissaScale, static_cast<int>(e) - kFp8E4M3ExpBias);
 }
 
 // IEEE-like E5M2：bias=15，exp=31 为 Inf/NaN。
@@ -190,16 +191,17 @@ float Fp8E5M2ToFloat(uint8_t x)
         return (m == 0U) ? (sign * std::numeric_limits<float>::infinity()) : std::numeric_limits<float>::quiet_NaN();
     }
     if (e == 0U) {
-        return sign * std::ldexp(static_cast<float>(m) / 4.0F, 1 - 15);
+        return sign * std::ldexp(static_cast<float>(m) / kFp8E5M2MantissaScale, kFp8MinNormalExp - kFp8E5M2ExpBias);
     }
-    return sign * std::ldexp(1.0F + static_cast<float>(m) / 4.0F, static_cast<int>(e) - 15);
+    return sign *
+           std::ldexp(1.0F + static_cast<float>(m) / kFp8E5M2MantissaScale, static_cast<int>(e) - kFp8E5M2ExpBias);
 }
 
 uint8_t FloatToFp8Nearest(float v, bool e5m2)
 {
     uint8_t best = 0;
     float bestDiff = std::numeric_limits<float>::infinity();
-    for (int i = 0; i < 256; ++i) {
+    for (int i = 0; i < kFp8CodeCount; ++i) {
         const uint8_t b = static_cast<uint8_t>(i);
         const float d = e5m2 ? Fp8E5M2ToFloat(b) : Fp8E4M3fnToFloat(b);
         if (!std::isfinite(d)) {

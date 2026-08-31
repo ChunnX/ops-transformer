@@ -496,7 +496,7 @@ struct CopyL1ToL0B<Arch::AtlasA5, Gemm::GemmType<Element, layout::nZ, AscendC::T
         AscendC::LoadData2DParamsV2 loadDataParams;
         loadDataParams.mStartPosition = 0;
         loadDataParams.kStartPosition = 0;
-        loadDataParams.mStep = layoutDst.shape(3);
+        loadDataParams.mStep = layoutDst.shape(LayoutDst::RANK - 1);
         loadDataParams.kStep = layoutDst.shape(1);
         loadDataParams.srcStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutSrc.stride(1));
         loadDataParams.dstStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutDst.stride(1));

@@ -212,7 +212,7 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA5, ElementAccumulator_, Gemm::GemmType<E
         AscendC::DataCopyCO12DstParams copyParams;
         copyParams.nSize = dstLayout.shape(1);
         copyParams.mSize = dstLayout.shape(0);
-        copyParams.srcStride = srcLayout.stride(3) / srcLayout.stride(0);
+        copyParams.srcStride = srcLayout.stride(LayoutSrc::RANK - 1) / srcLayout.stride(0);
         copyParams.dstStride = dstLayout.stride(0);
         copyParams.quantPre = quantPre;
         copyParams.nz2ndEn = true;

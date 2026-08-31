@@ -883,8 +883,11 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         for (uint32_t r = 0; r < mSub_; ++r) {
-            AscendC::Mul(ubPage[r * 64U], ubPage[r * 64U], ubDeqScale_, 64);
-            AscendC::Mul(ubPage[mSub_ * 64U + r * 64U], ubPage[mSub_ * 64U + r * 64U], ubDeqScale_[64], 64);
+            AscendC::Mul(ubPage[r * MSA_FP32_PER_REPEAT], ubPage[r * MSA_FP32_PER_REPEAT], ubDeqScale_,
+                         MSA_FP32_PER_REPEAT);
+            AscendC::Mul(ubPage[mSub_ * MSA_FP32_PER_REPEAT + r * MSA_FP32_PER_REPEAT],
+                         ubPage[mSub_ * MSA_FP32_PER_REPEAT + r * MSA_FP32_PER_REPEAT],
+                         ubDeqScale_[MSA_FP32_PER_REPEAT], MSA_FP32_PER_REPEAT);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
