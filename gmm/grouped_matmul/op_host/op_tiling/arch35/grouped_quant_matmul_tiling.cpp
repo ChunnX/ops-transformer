@@ -402,8 +402,6 @@ bool GroupedQmmTiling::AnalyzeDtype()
                                                                                             inputParams_.scaleDtype;
     if (scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32) {
         inputParams_.scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scaleDesc->GetStorageFormat()));
-        const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ;
-        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
     }
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
@@ -444,8 +442,10 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeMImpl(const gert::Shape &xScaleS
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
+    const bool isScaleNzList = isScaleNzStorage && wScaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM - 1;
     const size_t expectedWScaleDimNum =
-        IsWeightNzMultiTensorLayout() ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) : MXFP_TYPE_M_SCALE_DIM_NUM;
+        isScaleNzList || (!isScaleNzStorage && IsWeightNzMultiTensorLayout()) ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) :
+                                                                                MXFP_TYPE_M_SCALE_DIM_NUM;
     OP_CHECK_IF(
         wScaleDimNum != expectedWScaleDimNum,
         OP_LOGE(inputParams_.opName, "When split m, the dim num of scale should be %zu in mx quant mode, but actual \
@@ -458,7 +458,7 @@ is %zu",
 actual is %zu",
                 xScaleDimNum),
         return false);
-    const bool isMultiTensorWeight = IsWeightNzMultiTensorLayout();
+    const bool isMultiTensorWeight = isScaleNzList || (!isScaleNzStorage && IsWeightNzMultiTensorLayout());
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t logicalNSize = expectedNSize == 0UL ? inputParams_.nSize : expectedNSize;
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
@@ -707,10 +707,19 @@ bool GroupedQmmTiling::CheckScaleNzShape(const gert::StorageShape *wScaleStorage
 
     const gert::Shape &originShape = wScaleStorageShape->GetOriginShape();
     const gert::Shape &storageShape = wScaleStorageShape->GetStorageShape();
-    const bool isMultiTensorWeight = IsWeightNzMultiTensorLayout();
+    const bool isSingleTensorScale = originShape.GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM &&
+                                     storageShape.GetDimNum() == MXFP_SCALE_NZ_DIM_NUM;
+    const bool isMultiTensorScale = originShape.GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM - 1 &&
+                                    storageShape.GetDimNum() == MXFP_SCALE_NZ_DIM_NUM - 1;
+    OP_CHECK_IF(!isSingleTensorScale && !isMultiTensorScale,
+                OP_LOGE(inputParams_.opName,
+                        "Scale nz only supports origin/storage dim num 4/5 for tensor, or 3/4 for tensor list, "
+                        "but actual are %zu/%zu.",
+                        originShape.GetDimNum(), storageShape.GetDimNum()),
+                return false);
     const size_t expectedOriginDimNum =
-        isMultiTensorWeight ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) : MXFP_TYPE_M_SCALE_DIM_NUM;
-    const size_t expectedStorageDimNum = isMultiTensorWeight ? (MXFP_SCALE_NZ_DIM_NUM - 1) : MXFP_SCALE_NZ_DIM_NUM;
+        isMultiTensorScale ? (MXFP_TYPE_M_SCALE_DIM_NUM - 1) : MXFP_TYPE_M_SCALE_DIM_NUM;
+    const size_t expectedStorageDimNum = isMultiTensorScale ? (MXFP_SCALE_NZ_DIM_NUM - 1) : MXFP_SCALE_NZ_DIM_NUM;
     OP_CHECK_IF(
         originShape.GetDimNum() != expectedOriginDimNum,
         OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale origin", std::to_string(originShape.GetDimNum()),
@@ -725,10 +734,10 @@ bool GroupedQmmTiling::CheckScaleNzShape(const gert::StorageShape *wScaleStorage
     const uint64_t logicalNSize = expectedNSize == 0UL ? inputParams_.nSize : expectedNSize;
     const uint64_t expectedKScale = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t expectedN1 = CeilDiv(logicalNSize, CUBE_BLOCK);
-    const size_t originOffset = isMultiTensorWeight ? 0UL : 1UL;
-    const size_t storageOffset = isMultiTensorWeight ? 0UL : 1UL;
+    const size_t originOffset = isMultiTensorScale ? 0UL : 1UL;
+    const size_t storageOffset = isMultiTensorScale ? 0UL : 1UL;
 
-    if (!isMultiTensorWeight) {
+    if (!isMultiTensorScale) {
         OP_CHECK_IF(static_cast<uint64_t>(originShape.GetDim(0)) != inputParams_.groupNum,
                     OP_LOGE_FOR_INVALID_SHAPE(
                         inputParams_.opType, "scale origin", ShapeToString(originShape),
@@ -1024,11 +1033,19 @@ bool GroupedQmmTiling::AnalyzeInputs()
                                                       "scaleStorageShape cannot be nullptr when cDtype is not INT32"),
                 return false);
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
+    const gert::Shape &wScaleStorageShape = scaleStorageShape->GetStorageShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(
         scaleDimNum < 1,
         OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale", std::to_string(scaleDimNum), "positive integer"),
         return false);
+    const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ;
+    const bool singleScaleNzStorage = scaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM &&
+                                      wScaleStorageShape.GetDimNum() == MXFP_SCALE_NZ_DIM_NUM;
+    const bool listScaleNzStorage = scaleDimNum == MXFP_TYPE_M_SCALE_DIM_NUM - 1 &&
+                                    wScaleStorageShape.GetDimNum() == MXFP_SCALE_NZ_DIM_NUM - 1;
+    inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
+                               (singleScaleNzStorage || listScaleNzStorage);
     auto xScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(!SetQuantMode(wScaleShape, xScaleStorageShape, wShape),
                 OP_LOGE(inputParams_.opName, "SetQuantMode failed."), return false);
