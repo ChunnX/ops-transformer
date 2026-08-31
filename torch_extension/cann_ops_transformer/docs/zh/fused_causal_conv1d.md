@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-    对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。相较于标准causal_conv1d算子，本算子新增APC缓存复用、PD混部、残差连接可选等功能。<br>
+    对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。相较于标准causal_conv1d算子，本算子新增APC缓存复用、PD混部、残差连接可选等功能。相比于fused_causal_conv1d_，本接口不支持输入x的原地更新。<br>
 
 
 - **计算公式**：
@@ -211,46 +211,46 @@ cann_ops_transformer.fused_causal_conv1d(
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
     - query_start_loc必须存在。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, max_num_blocks]，其中1维表示未开启APC，2维表示开启APC。
     - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G], batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_num_blocks >= ceiv(max_query_len, block_size)。
     - max_query_len > max_draft_tokens + 1。
   - prefill和decode混合场景：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
     - query_start_loc必须存在。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, max_num_blocks]，其中1维表示未开启APC，2维表示开启APC。
     - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G], batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_num_blocks >= ceiv(max_query_len, block_size)。
     - max_query_len > max_draft_tokens + 1。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
     - query_start_loc必须存在。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, max_num_blocks]，其中1维表示未开启APC，2维表示开启APC。
     - cu_seq_len范围[batch, batch * (max_draft_tokens + 1)]，每个batch的seq_len范围为[1, max_draft_tokens + 1]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_num_blocks >= ceiv(max_query_len, block_size)。
     - max_query_len范围[1, max_draft_tokens + 1]。
   - decode场景（固定batch）：
     - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cache_indices不等于pad_slot_id的batch个数）。
-    - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - cache_indices为1维[batch, ]或2维[batch, max_num_blocks]，其中1维表示未开启APC，2维表示开启APC。
     - m范围[0, max_draft_tokens]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
-    - maxNumBlocks >= ceiv(max_query_len, block_size)。
+    - max_num_blocks >= ceiv(max_query_len, block_size)。
     - max_query_len范围[1, max_draft_tokens + 1]，可为-1。
 
 - 输入值域限制：
   - query_start_loc是累计偏移量，取值范围[0, cu_seq_len]，长度为batch+1，query_start_loc[i]表示第i个序列的起始偏移，query_start_loc[batch+1]表示最后一个序列的结束位置。
-  - blockSize 为0或者大于等于2，apc开启时不为0。
-  - blockIdxFirstScheduledToken、blockIdxLastScheduledToken、initialStateIdx、num_computed_tokens和cache_indices均存在时表示APC开启，且满足以下条件（i为batch的索引）：
+  - block_size 为0或者大于等于2，apc开启时不为0。
+  - block_idx_first_scheduled_token、block_idx_last_scheduled_token、initial_state_idx、num_computed_tokens和cache_indices均存在时表示APC开启，且满足以下条件（i为batch的索引）：
     - cache_indices为2维
-    - initialStateIdx[i] <= blockIdxFirstScheduledToken[i]+1
-    - initialStateIdx[i] <= blockIdxLastScheduledToken[i]
-    - blockIdxFirstScheduledToken[i] <= blockIdxLastScheduledToken[i]
-    - blockIdxLastScheduledToken[i] < maxNumBlocks
+    - initial_state_idx[i] <= block_idx_first_scheduled_token[i] + 1
+    - initial_state_idx[i] <= block_idx_last_scheduled_token[i]
+    - block_idx_first_scheduled_token[i] <= block_idx_last_scheduled_token[i]
+    - block_idx_last_scheduled_token[i] < max_num_blocks
   - num_accepted_tokens分为None和非None，非None情况下长度为batch，prefile对应的元素值为0，decode对应的元素值大于0且小于等于当前batch的seq_len-1。
   - num_computed_tokens中每个元素取值大于等于0。
   - cache_indices的取值范围为[0, conv_states.dim[0]-1],且值均不能相等（除非等于pad_slot_id）。
