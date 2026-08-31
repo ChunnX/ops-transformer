@@ -88,11 +88,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
-        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmTileSequence,
-        gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+    uint32_t expertBeforeCnt = static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert;
+    epilogueOp_.SetMetaInfo(gmmAddrInfo.metaInfoGlobal, expertBeforeCnt);
+    Gmm1A8W4SyncPolicy<TopkWeightsPrefetch, false, true> sync(gmmAddrInfo.dispatchToGmm1Flag,
+        gmmAddrInfo.activationToGmm2Flag, gmmAddrInfo.gmm1TileStatus, state.expertIdx,
+        gmmAddrInfo.gmmToEpilogueFlag, gmTileSequence, sliceTokenCount, GMM1_TILE_M);
+    using GmmKernel = Gmm1A8W4Kernel<decltype(sync), decltype(epilogueOp_), QuantOutType, Weight1Type, bfloat16_t,
+                                     QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M>;
+    typename GmmKernel::Params params{gmmAddrInfo, sliceProblemShape, &startBlockIdx};
+    GmmKernel kernel;
+    kernel(sync, epilogueOp_, params);
 }
 
 // 对已完成 Wave 中的一个专家执行 GMM2 及后续 Combine 调度。
@@ -109,9 +114,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
                                                                    gmmAddrInfo, state, tokenStartIndexInExpert);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm2A8W4<CombineQuantMode, ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                GMM1_TILE_M, TopkWeightsPrefetch, false, false, true>(
-        params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, gmmExecutionConfig_.blockJob,
+    RunGmm2A8W4Stage<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
+                     false, false, true, GMM1_TILE_M, TopkWeightsPrefetch>(
+        gmmExecutionConfig_, params_, gmmAddrInfo, sliceProblemShape, startBlockIdx, gmTileSequence,
         expertTokenCount, tokenStartIndexInExpert);
     ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
         quantCombineConfig_, commonConfig_, quantCombineBufferConfig_, params_, gmmAddrInfo, expertTokenCount,

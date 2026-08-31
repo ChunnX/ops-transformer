@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -8,29 +8,49 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GMM_COMMON_H
-#define MEGA_MOE_GMM_COMMON_H
+#ifndef APACE_GMM_COMMON_H
+#define APACE_GMM_COMMON_H
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
-#include "mega_moe_constants.h"
-#include "mega_moe_types.h"
-#include "mega_moe_utils.h"
+#include "lib/matmul_intf.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "apace/block/scheduler/block_scheduler_swizzle.h"
 #include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
 #include "apace/block/prologue/block_prologue_mx_fp8fp4.h"
 
-namespace MegaMoeImpl {
+namespace Apace {
+namespace Gemm {
+namespace Kernel {
 
 using namespace AscendC;
+using AscendC::Te::Get;
 
-namespace GmmKernel {
+constexpr uint64_t M_VALUE = 0UL;
+constexpr uint64_t N_VALUE = 1UL;
+constexpr uint64_t K_VALUE = 2UL;
+constexpr int32_t MXFP_DIVISOR_SIZE = 64;
+constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
+constexpr uint32_t L1_TILE_M_256 = 256U;
+constexpr uint32_t L1_TILE_M_128 = 128U;
+constexpr uint32_t L1_TILE_N = 256U;
+constexpr uint32_t L0_TILE_K = 128U;
+constexpr uint32_t ACTIVATION_N_HALF = 2U;
 
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
 using BlockScheduler = typename Apace::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
+
+// GMM kernel 通用 GM 地址集合；MoE 专属地址由调用方在 GMMAddrInfo 中组合扩展。
+struct GmmTensorAddrs {
+    GM_ADDR aGlobal;
+    GM_ADDR bGlobal;
+    GM_ADDR aScaleGlobal;
+    GM_ADDR bScaleGlobal;
+    GM_ADDR gmm1OutGlobal;
+    GM_ADDR gmm2OutGlobal;
+};
 
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
@@ -56,14 +76,10 @@ struct BlockMmadSelector<true, C> {
 };
 
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
-template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+template <bool IsA8W4, bool IsGmm1Interleaved, typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
 struct Config {
-    static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
-    static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
     using ElementAType = ElementA;
     using ElementBType = ElementB;
     using ElementCType = ElementC;
@@ -172,10 +188,10 @@ struct Config {
          * 先计算一个 256K 基础窗口的字节数。当前只允许 kL1=256/512，且 256 同时是
          * FP4 打包和 MX scale group 的整数倍，因此 512K 窗口的占用严格等于两倍基础窗口。
          */
-        const uint64_t dataBytesPerUnit = Ops::Base::CeilDiv(blockM64 * L1_TILE_K, aElementsPerByte) +
-                                          Ops::Base::CeilDiv(blockN64 * L1_TILE_K, bElementsPerByte);
+        const uint64_t dataBytesPerUnit = Blaze::Gemm::CeilDiv(blockM64 * L1_TILE_K, aElementsPerByte) +
+                                          Blaze::Gemm::CeilDiv(blockN64 * L1_TILE_K, bElementsPerByte);
         const uint64_t scaleKBytesPerUnit =
-            Ops::Base::CeilDiv(static_cast<uint64_t>(L1_TILE_K), scaleGroupK) * scaleBytesPerGroup;
+            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(L1_TILE_K), scaleGroupK) * scaleBytesPerGroup;
         const uint64_t scaleABytesPerUnit = blockM64 * scaleKBytesPerUnit;
         const uint64_t scaleBBytesPerUnit = blockN64 * scaleKBytesPerUnit;
         const uint64_t scaleBytesPerUnit = scaleABytesPerUnit + scaleBBytesPerUnit;
@@ -221,7 +237,7 @@ struct Config {
     {
         constexpr uint32_t blockMAlign = 16U;
         // blockM 是 BlockMmad 的容量上限；实际 MMAD 仍使用 actualShape 中的有效 M，不会补算对齐行。
-        const uint32_t blockM = Ops::Base::CeilAlign(m, blockMAlign);
+        const uint32_t blockM = Blaze::Gemm::CeilAlign(m, blockMAlign);
         return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N, k)};
     }
 
@@ -259,9 +275,9 @@ struct Config {
 
             // kL1 不能增大时，仅在扩大 scale 窗口能减少搬运轮数时采用动态配置。
             const uint64_t adaptiveScaleLoops =
-                Ops::Base::CeilDiv(static_cast<uint64_t>(k), adaptiveConfig.l1Params.scaleKL1);
+                Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k), adaptiveConfig.l1Params.scaleKL1);
             const uint64_t baselineScaleLoops =
-                Ops::Base::CeilDiv(static_cast<uint64_t>(k), baselineConfig.l1Params.scaleKL1);
+                Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k), baselineConfig.l1Params.scaleKL1);
             return adaptiveScaleLoops < baselineScaleLoops ? adaptiveConfig : baselineConfig;
         }
         return baselineConfig;
@@ -269,8 +285,6 @@ struct Config {
 
     struct ProblemConfig {
         using KernelConfig = Config;
-        static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
-        static constexpr bool IS_WAVE_FLAG_GRAINED = IsWaveFlagGrained;
 
         uint32_t m = 0;
         uint32_t n = 0;
@@ -281,7 +295,6 @@ struct Config {
         uint32_t blockIdx = 0;
         uint32_t scaleK = 0;
         uint32_t tileM = 0;
-        uint32_t activationTileM = L1_TILE_M_256;
         BlockMmadTilingConfig blockMmadTiling{};
     };
 
@@ -294,18 +307,15 @@ struct Config {
         LayoutBiasType bias;
     };
 
-    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config, const BlockJobContext &blockJob,
-                                                        uint32_t gmm1TileM)
+    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config)
     {
-        config.blockNum = blockJob.totalJobs;
-        config.blockIdx = blockJob.jobIndex;
         config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        config.activationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
         config.blockMmadTiling = SelectBlockMmadTilingConfig(config.m, config.k, config.tileM);
+        config.blockNum = GetBlockNum();
+        config.blockIdx = GetBlockIdx() / GetTaskRation();
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob,
                                                                   uint32_t gmm1TileM)
     {
         ProblemConfig config;
@@ -315,12 +325,11 @@ struct Config {
         config.outputN = config.n / ACTIVATION_N_HALF;
         config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
         config.tileM = gmm1TileM;
-        FinalizeProblemConfig(config, blockJob, gmm1TileM);
+        FinalizeProblemConfig(config);
         return config;
     }
 
     __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob,
                                                                   uint32_t gmm1TileM)
     {
         ProblemConfig config;
@@ -330,7 +339,7 @@ struct Config {
         config.outputN = config.n;
         config.schedulerN = config.outputN;
         config.tileM = L1_TILE_M_256;
-        FinalizeProblemConfig(config, blockJob, gmm1TileM);
+        FinalizeProblemConfig(config);
         return config;
     }
 
@@ -446,7 +455,8 @@ struct GroupMatmulWorkSet {
     TensorC &gmC;
 };
 
-} // namespace GmmKernel
-} // namespace MegaMoeImpl
+} // namespace Kernel
+} // namespace Gemm
+} // namespace Apace
 
-#endif // MEGA_MOE_GMM_COMMON_H
+#endif // APACE_GMM_COMMON_H

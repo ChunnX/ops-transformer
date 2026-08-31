@@ -15,6 +15,7 @@
 #include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
+#include "apace/kernel/matmul/grouped_matmul/gmm_common.h"
 #include "mega_moe_workspace.h"
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
@@ -28,6 +29,7 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+using Apace::Gemm::Kernel::GmmTensorAddrs;
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 
@@ -55,13 +57,7 @@ struct ExpertTokenPosition {
 
 using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
-struct GMMAddrInfo {
-    GM_ADDR aGlobal;
-    GM_ADDR bGlobal;
-    GM_ADDR aScaleGlobal;
-    GM_ADDR bScaleGlobal;
-    GM_ADDR gmm1OutGlobal;
-    GM_ADDR gmm2OutGlobal;
+struct GMMAddrInfo : GmmTensorAddrs {
     GM_ADDR metaInfoGlobal;
     __gm__ int32_t *activationToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;

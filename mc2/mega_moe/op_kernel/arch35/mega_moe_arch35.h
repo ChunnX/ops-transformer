@@ -167,10 +167,12 @@ protected:
 
     using BlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
+                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch,
+                                       ENABLE_A8W4 || ENABLE_A4W4 || TopkWeightsPrefetch>;
     using SharedBlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       L1_TILE_M_256, L1_TILE_N, false>;
+                                       L1_TILE_M_256, L1_TILE_N, false,
+                                       ENABLE_A8W4 || ENABLE_A4W4>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
@@ -513,7 +515,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
                                            ENABLE_A8W4>(commonConfig_, gmmExecutionConfig_, params_.workspaceInfo,
                                                         sharedWeightTensorListAddrs_, sharedEpilogueOp_, gmmAddrInfo,
                                                         sharedExpertIdx);
-        RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
+        RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, QuantScaleOutType,
                                            ENABLE_A8W4, GMM1_TILE_M>(commonConfig_, gmmExecutionConfig_, params_,
                                                                      sharedEpilogueOp_, gmmAddrInfo, problemShape,
                                                                      runtimeState, sharedExpertIdx);
@@ -539,7 +541,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
             sharedExpertIdx);
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
                       ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false>(
-            gmmExecutionConfig_, params_, gmmAddrInfo, problemShape, runtimeState);
+            gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState);
     }
 }
 

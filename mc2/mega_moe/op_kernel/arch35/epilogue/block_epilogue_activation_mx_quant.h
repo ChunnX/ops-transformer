@@ -22,8 +22,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/mega_moe_constants.h"
-#include "../../common/mega_moe_utils.h"
+#include "../common/mega_moe_constants.h"
+#include "../common/mega_moe_utils.h"
 #include "gated_activation.h"
 
 namespace ActivationQuantMsg {
@@ -111,20 +111,23 @@ using namespace ActivationQuantMsg;
 
 #define BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS \
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_, \
-              bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch, bool IsInterleaved_>
+              bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch, bool IsInterleaved_, \
+              bool PrefetchToGm_>
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS \
     DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch, \
-        IsInterleaved_
+        IsInterleaved_, PrefetchToGm_
 
 template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,
           bool IsTensorList_, uint32_t TileM = 256, uint32_t TileN = 256, bool TopkWeightsPrefetch = false,
-          bool IsInterleaved_ = false>
+          bool IsInterleaved_ = false, bool PrefetchToGm_ = false>
 class BlockEpilogueActivationMxQuant {
 public:
     __aicore__ inline BlockEpilogueActivationMxQuant() {}
 
     static constexpr uint32_t MAX_TILE_M = TileM;
     static constexpr uint32_t MAX_SINGLE_MN = TileM * TileN;
+    static constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
+    static constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
 
     struct Arguments {
         GM_ADDR yGmAddr{nullptr};
@@ -155,14 +158,23 @@ public:
     // y, yScale, x2Scale, x1Scale, bias
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
+    static constexpr uint32_t C0_SIZE_C = AuxGetC0Size<DataTypeIn>();
+    using MakeLayoutC = Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Std::Int<C0_SIZE_C>>;
+
 public:
     __aicore__ inline void Init(Params const &params);
     __aicore__ inline auto GetFirstL0c2UbTensor();
     __aicore__ inline auto GetSecondL0c2UbTensor();
     __aicore__ inline auto GetTopkWeightTensor();
-    // 计算并写回一个激活/量化 tile，不包含流水通知。
-    __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
-                                      uint16_t pingpongIdx = 0);
+    __aicore__ inline void SetMetaInfo(GM_ADDR metaInfoGm, uint32_t expertBeforeCnt) {
+        metaInfoGm_ = metaInfoGm;
+        expertBeforeCnt_ = expertBeforeCnt;
+    }
+    __aicore__ inline void ProcessActivationTile(const BlockShape &blockShape, const BlockCoord &blockCoord,
+                                                  uint16_t pingpongIdx = 0);
+    template <typename SyncPolicy, typename TensorC, typename ShapeType>
+    __aicore__ inline void operator()(TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc,
+                                        SyncPolicy &sync, uint16_t pingpongIdx = 0);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
@@ -199,12 +211,32 @@ private:
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
     __aicore__ inline void CopyScaleFromUb2GmCompact(uint64_t blockCount, uint64_t offset,
-                                                     AscendC::LocalTensor<int8_t> &src);
+                                                      AscendC::LocalTensor<int8_t> &src);
+
+    template <typename SyncPolicy, typename TensorC, typename ShapeType>
+    __aicore__ inline void ProcessFromGmInterleaved(TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc,
+                                                      uint32_t nLoc, SyncPolicy &sync);
+
+    template <typename SyncPolicy, typename TensorC, typename ShapeType>
+    __aicore__ inline void ProcessFromGmNonInterleaved(TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc,
+                                                        uint32_t nLoc, SyncPolicy &sync);
+
+    template <typename SyncPolicy, typename TensorC, typename ShapeType>
+    __aicore__ inline void ProcessFromGmFullTile(TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc,
+                                                   uint32_t nLoc, SyncPolicy &sync);
+
+    template <typename SyncPolicy, typename ShapeType>
+    __aicore__ inline void ProcessFromUb(const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc,
+                                          SyncPolicy &sync, uint16_t pingpongIdx);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
     GM_ADDR yGmAddr_{nullptr};
     GM_ADDR yScaleGmAddr_{nullptr};
+
+    // topkWeight 加载（Prefetch 路径用）
+    GM_ADDR metaInfoGm_{0};
+    uint32_t expertBeforeCnt_{0};
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
@@ -218,8 +250,8 @@ private:
     AscendC::LocalTensor<uint16_t> halfScale_;
     AscendC::LocalTensor<float> weightUb_;
 
-    int64_t n_;
-    int64_t scaleN_;
+    int64_t n_{0};
+    int64_t scaleN_{0};
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
     uint32_t singleM_; // cur singleShapeM
     uint32_t singleN_;
@@ -717,7 +749,7 @@ __aicore__ inline auto BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ProcessActivationTile(
     const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx)
 {
     singleM_ = Get<M_VALUE>(blockShape); // 128
@@ -758,6 +790,235 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+template <typename SyncPolicy, typename TensorC, typename ShapeType>
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ProcessFromGmInterleaved(
+    TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc, SyncPolicy &sync)
+{
+    uint32_t mLen = static_cast<uint32_t>(Get<M_VALUE>(blockShape));
+    if (mLen == 0U) {
+        return;
+    }
+    constexpr uint32_t subTileM = L1_TILE_M_128;
+    auto topkWeightTensor = GetTopkWeightTensor();
+    AscendC::GlobalTensor<float> metaInfoGm;
+    metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(metaInfoGm_));
+
+    auto layoutL0cUb = MakeLayoutC{}(subTileM, L1_TILE_N);
+    auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, DataTypeIn>(0), layoutL0cUb);
+    auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    for (uint32_t subOffset = 0; subOffset < mLen; subOffset += subTileM) {
+        uint32_t subM = mLen - subOffset < subTileM ? mLen - subOffset : subTileM;
+        uint32_t subMLoc = mLoc + subOffset;
+        uint64_t metaInfoRow = expertBeforeCnt_ + subMLoc;
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+        AscendC::DataCopy(topkWeightTensor, metaInfoGm[metaInfoRow * INT32_PER_256B], subM * INT32_PER_256B);
+        auto tensorBlockGm = gmC.Slice(
+            Te::MakeCoord(subMLoc, nLoc), Te::MakeShape(subM, Get<N_VALUE>(blockShape)));
+        AscendC::Te::Copy(copyGm2Ub, tensorBlockUb, tensorBlockGm);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+
+        uint32_t epilogueN = Get<N_VALUE>(blockShape) / ACTIVATION_N_HALF;
+        uint32_t epilogueNLoc = nLoc / ACTIVATION_N_HALF;
+        BlockShape epilogueShape{static_cast<int64_t>(subM), static_cast<int64_t>(epilogueN), 0, 0};
+        BlockCoord epilogueOffset{
+            static_cast<int64_t>(subMLoc * n_ + epilogueNLoc),
+            static_cast<int64_t>(subMLoc * scaleN_ +
+                CeilDiv(epilogueNLoc, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE),
+            static_cast<int64_t>(subMLoc / L1_TILE_M_256),
+            0,
+            static_cast<int64_t>(metaInfoRow),
+            0};
+        AscendC::SetCtrlSpr<60, 60>(0);
+        ProcessActivationTile(epilogueShape, epilogueOffset);
+        sync.NotifyDownstreamReady(subMLoc);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    }
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+template <typename SyncPolicy, typename TensorC, typename ShapeType>
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ProcessFromGmNonInterleaved(
+    TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc, SyncPolicy &sync)
+{
+    uint32_t mLen = static_cast<uint32_t>(Get<M_VALUE>(blockShape));
+    if (mLen == 0U) {
+        return;
+    }
+    constexpr uint32_t subTileM = L1_TILE_M_128;
+    uint64_t firstMetaInfoRow = expertBeforeCnt_ + mLoc;
+    auto topkWeightTensor = GetTopkWeightTensor();
+    AscendC::GlobalTensor<float> metaInfoGm;
+    metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(metaInfoGm_));
+
+    AscendC::DataCopy(topkWeightTensor, metaInfoGm[firstMetaInfoRow * INT32_PER_256B],
+                      static_cast<uint32_t>(mLen < subTileM ? mLen : subTileM) * INT32_PER_256B);
+
+    auto layoutL0cUb = MakeLayoutC{}(subTileM, L1_TILE_N);
+    int64_t ubOffsetFirst = 0;
+    int64_t ubOffsetSecond = static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM_128) * sizeof(DataTypeIn);
+    auto tensorBlockUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, DataTypeIn>(ubOffsetFirst),
+                                               layoutL0cUb);
+    auto tensorBlockUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, DataTypeIn>(ubOffsetSecond),
+                                                layoutL0cUb);
+    auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    for (uint32_t subOffset = 0; subOffset < mLen; subOffset += subTileM) {
+        uint32_t subM = mLen - subOffset < subTileM ? mLen - subOffset : subTileM;
+        uint32_t subMLoc = mLoc + subOffset;
+        uint64_t metaInfoRow = expertBeforeCnt_ + subMLoc;
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+        if (subOffset != 0) {
+            AscendC::DataCopy(topkWeightTensor, metaInfoGm[metaInfoRow * INT32_PER_256B],
+                              subM * INT32_PER_256B);
+        }
+        auto tensorBlockGmFirst = gmC.Slice(
+            Te::MakeCoord(subMLoc, nLoc), Te::MakeShape(subM, Get<N_VALUE>(blockShape)));
+        auto tensorBlockGmSecond = gmC.Slice(
+            Te::MakeCoord(subMLoc, nLoc + static_cast<uint32_t>(n_)),
+            Te::MakeShape(subM, Get<N_VALUE>(blockShape)));
+        AscendC::Te::Copy(copyGm2Ub, tensorBlockUbFirst, tensorBlockGmFirst);
+        AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+
+        BlockShape epilogueShape{static_cast<int64_t>(subM), static_cast<int64_t>(Get<N_VALUE>(blockShape)), 0, 0};
+        BlockCoord epilogueOffset{
+            static_cast<int64_t>(subMLoc * n_ + nLoc),
+            static_cast<int64_t>(subMLoc * scaleN_ +
+                CeilDiv(nLoc, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE),
+            0,
+            0,
+            static_cast<int64_t>(metaInfoRow),
+            0};
+        AscendC::SetCtrlSpr<60, 60>(0);
+        ProcessActivationTile(epilogueShape, epilogueOffset);
+        sync.NotifyDownstreamReady(subMLoc);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    }
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+template <typename SyncPolicy, typename TensorC, typename ShapeType>
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ProcessFromGmFullTile(
+    TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc, SyncPolicy &sync)
+{
+    uint32_t mLen = static_cast<uint32_t>(Get<M_VALUE>(blockShape));
+    if (mLen == 0U) {
+        return;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+
+    auto layoutL0cUb = MakeLayoutC{}(TileM, L1_TILE_N);
+    int64_t ubOffsetFirst = 0;
+
+    uint32_t ubBufferSize =
+        TileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
+    int64_t ubOffsetSecond = static_cast<int64_t>(ubBufferSize) * sizeof(DataTypeIn);
+    auto tensorBlockUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, DataTypeIn>(ubOffsetFirst),
+                                               layoutL0cUb);
+    auto tensorBlockUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, DataTypeIn>(ubOffsetSecond),
+                                                layoutL0cUb);
+    auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+
+    auto tensorBlockGmFirst = gmC.Slice(
+        Te::MakeCoord(mLoc, nLoc), Te::MakeShape(mLen, Get<N_VALUE>(blockShape)));
+    auto tensorBlockGmSecond = gmC.Slice(
+        Te::MakeCoord(mLoc, nLoc + static_cast<uint32_t>(n_)),
+        Te::MakeShape(mLen, Get<N_VALUE>(blockShape)));
+    AscendC::Te::Copy(copyGm2Ub, tensorBlockUbFirst, tensorBlockGmFirst);
+    AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+
+    BlockShape epilogueShape{static_cast<int64_t>(mLen), static_cast<int64_t>(Get<N_VALUE>(blockShape)), 0, 0};
+    BlockCoord epilogueOffset{
+        static_cast<int64_t>(mLoc * n_ + nLoc),
+        static_cast<int64_t>(mLoc * scaleN_ +
+            CeilDiv(nLoc, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE),
+        0,
+        0,
+        0,
+        0};
+    AscendC::SetCtrlSpr<60, 60>(0);
+    ProcessActivationTile(epilogueShape, epilogueOffset);
+    sync.NotifyDownstreamReady(mLoc);
+    AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+template <typename SyncPolicy, typename ShapeType>
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ProcessFromUb(
+    const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc,
+    SyncPolicy &sync, uint16_t pingpongIdx)
+{
+    uint32_t mLen = static_cast<uint32_t>(Get<M_VALUE>(blockShape));
+    if (mLen == 0U) {
+        return;
+    }
+    if constexpr (IsInterleaved_) {
+        uint32_t epilogueN = Get<N_VALUE>(blockShape) / ACTIVATION_N_HALF;
+        uint32_t epilogueNLoc = nLoc / ACTIVATION_N_HALF;
+        BlockShape epilogueShape{static_cast<int64_t>(mLen), static_cast<int64_t>(epilogueN), 0, 0};
+        BlockCoord epilogueOffset{
+            static_cast<int64_t>(mLoc * n_ + epilogueNLoc),
+            static_cast<int64_t>(mLoc * scaleN_ +
+                CeilDiv(epilogueNLoc, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE),
+            static_cast<int64_t>(mLoc / L1_TILE_M_256),
+            0,
+            0,
+            0};
+        AscendC::SetCtrlSpr<60, 60>(0);
+        ProcessActivationTile(epilogueShape, epilogueOffset, pingpongIdx);
+    } else {
+        BlockShape epilogueShape{static_cast<int64_t>(mLen), static_cast<int64_t>(Get<N_VALUE>(blockShape)), 0, 0};
+        BlockCoord epilogueOffset{
+            static_cast<int64_t>(mLoc * n_ + nLoc),
+            static_cast<int64_t>(mLoc * scaleN_ +
+                CeilDiv(nLoc, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE),
+            static_cast<int64_t>(mLoc / L1_TILE_M_256),
+            0,
+            0,
+            0};
+        AscendC::SetCtrlSpr<60, 60>(0);
+        ProcessActivationTile(epilogueShape, epilogueOffset, pingpongIdx);
+    }
+    sync.NotifyDownstreamReady(mLoc);
+}
+
+BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+template <typename SyncPolicy, typename TensorC, typename ShapeType>
+__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()(
+    TensorC &gmC, const ShapeType &blockShape, uint32_t mLoc, uint32_t nLoc,
+    SyncPolicy &sync, uint16_t pingpongIdx)
+{
+    uint32_t mLen = static_cast<uint32_t>(Get<M_VALUE>(blockShape));
+    if (mLen == 0U) {
+        return;
+    }
+    if constexpr (PrefetchToGm_) {
+        if constexpr (TopkWeightsPrefetch) {
+            if constexpr (IsInterleaved_) {
+                ProcessFromGmInterleaved(gmC, blockShape, mLoc, nLoc, sync);
+            } else {
+                ProcessFromGmNonInterleaved(gmC, blockShape, mLoc, nLoc, sync);    // Gmm1Aiv1PrefetchEpilogueTileA8W4
+            }
+        } else {
+            ProcessFromGmFullTile(gmC, blockShape, mLoc, nLoc, sync);   // Gmm1Aiv1EpilogueTileA8W4
+        }
+    } else {
+        ProcessFromUb(blockShape, mLoc, nLoc, sync, pingpongIdx);
+    }
 }
 
 } // namespace MegaMoeImpl

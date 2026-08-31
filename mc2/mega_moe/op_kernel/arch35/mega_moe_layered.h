@@ -179,6 +179,7 @@ private:
     __gm__ int32_t *gmmToEpilogueFlag_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     Params params_{};
+    GmmExecutionConfig gmmExecutionConfig_{};
 
     GlobalTensor<int32_t> activationToGmm2FlagGm_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
@@ -304,10 +305,12 @@ private:
 
     using BlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
+                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch,
+                                       ENABLE_A8W4 || ENABLE_A4W4 || TopkWeightsPrefetch>;
     using SharedBlockEpilogue =
         BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       L1_TILE_M_256, L1_TILE_N, false>;
+                                       L1_TILE_M_256, L1_TILE_N, false,
+                                       ENABLE_A8W4 || ENABLE_A4W4>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
 };
@@ -422,6 +425,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceMetaBytes_;
     uint64_t flagSnapshotBytes = static_cast<uint64_t>(m_) * sizeof(uint64_t);
     dispatchL2ScratchBytes_ = Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
+    gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
+                           .groupedMatmulMode = params_.tilingData->groupedMatmulMode,
+                           .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
 }
 
 // =================================================================================================
@@ -2436,51 +2442,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     }
+    GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmTileSequence, gmm1PingPongIdx_};
     if constexpr (IsShared) {
-        // 共享专家不参与权重前移，走原 UB ping-pong + 硬同步路径
-        if constexpr (ENABLE_A8W4) {
-            RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                        L1_TILE_M_256, false, IsShared>(sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo,
-                                                        startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
-                                                        expertIdx);
-        } else {
-            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-                params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-                RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                               QuantScaleOutType, true, GMM1_TILE_M, L1_TILE_M_256, false, IsShared, false>(
-                    sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
-            } else {
-                RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                               QuantScaleOutType, false, GMM1_TILE_M, L1_TILE_M_256, false, IsShared, false>(
-                    sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
-            }
-        }
+        RunGmm1ActivationStage<QuantOutType, Weight1Type, QuantScaleOutType,
+                               ENABLE_A8W4, GMM1_TILE_M, false, true>(
+            gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, state.problemShape,
+            runtimeState, state.expertBeforeCnt, expertIdx);
     } else {
-        // MoE 专家走 prefetch 路径
-        if constexpr (ENABLE_A8W4) {
-            RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                        EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(epilogueOp_, params_, state.problemShape,
-                                                                        gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                                                                        state.expertBeforeCnt, expertIdx);
-        } else {
-            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-                params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-                // NZ format (A8W8_NZ / A4W4_NZ): isWeightNZ=true, EpilogueElementA 由 ActivationQuantOutType
-                // 自动处理类型提升
-                RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                               QuantScaleOutType, true, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
-                               false>(epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                      vecSetSyncCom, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
-            } else {
-                // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
-                RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                               QuantScaleOutType, false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
-                               false>(epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                      vecSetSyncCom, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
-            }
-        }
+        RunGmm1ActivationStage<QuantOutType, Weight1Type, QuantScaleOutType,
+                               ENABLE_A8W4, GMM1_TILE_M, TopkWeightsPrefetch, false>(
+            gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, state.problemShape,
+            runtimeState, state.expertBeforeCnt, expertIdx);
     }
 }
 
@@ -2494,19 +2466,29 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &gmTileSequence)
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-        RunGmm2A8W4<CombineQuantMode, ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-                    QuantScaleOutType, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true>(
-            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence);
+        uint32_t m = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
+        RunGmm2A8W4Stage<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
+                         IsShared, true, false, L1_TILE_M_256, TopkWeightsPrefetch>(
+            gmmExecutionConfig_, params_, gmmAddrInfo, state.problemShape, startBlockIdx_, gmTileSequence,
+            m, 0U);
     } else {
-        // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
+        uint32_t activationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
+        Gmm2UbSyncPolicy<IsShared, CombineQuantMode, true> sync(
+            gmmAddrInfo.activationToGmm2Flag, gmmAddrInfo.gmm2CombineSyncCounter,
+            gmmAddrInfo.sharedExpertGmm2TileCounter, state.problemShape, activationTileM,
+            gmmExecutionConfig_.blockJob.totalJobs);
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, true, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared>(
-                state.problemShape, gmmAddrInfo, startBlockIdx_);
+            using GmmKernel = Gmm2GenericKernel<decltype(sync), QuantOutType, QuantOutType, bfloat16_t,
+                                                QuantScaleOutType, QuantScaleOutType, true, L1_TILE_M_256>;
+            typename GmmKernel::Params params{gmmAddrInfo, state.problemShape, &startBlockIdx_};
+            GmmKernel kernel;
+            kernel(sync, params);
         } else {
-            RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, false, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared>(
-                state.problemShape, gmmAddrInfo, startBlockIdx_);
+            using GmmKernel = Gmm2GenericKernel<decltype(sync), QuantOutType, QuantOutType, bfloat16_t,
+                                                QuantScaleOutType, QuantScaleOutType, false, L1_TILE_M_256>;
+            typename GmmKernel::Params params{gmmAddrInfo, state.problemShape, &startBlockIdx_};
+            GmmKernel kernel;
+            kernel(sync, params);
         }
     }
     if constexpr (g_coreType == AIV && !IsShared) {
