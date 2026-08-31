@@ -25,6 +25,16 @@ struct PlannedCandidateObservation {
 struct PlannedCandidateExecutionResult {
     bool succeeded = false;
     PlannedCandidateObservation observation;
+
+    static PlannedCandidateExecutionResult FromCorePartition(bool executionSucceeded, uint32_t availableCoreCount,
+                                                             const CorePartitionOutcome &corePartition)
+    {
+        PlannedCandidateExecutionResult result;
+        result.succeeded = executionSucceeded && corePartition.accepted;
+        result.observation.availableCoreCount = availableCoreCount;
+        result.observation.corePartition = corePartition;
+        return result;
+    }
 };
 
 enum class PlannedCandidateAction : uint8_t {

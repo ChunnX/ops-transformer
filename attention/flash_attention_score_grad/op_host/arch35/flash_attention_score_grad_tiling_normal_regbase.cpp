@@ -1203,25 +1203,20 @@ void FlashAttentionScoreGradTilingNormalRegbase::ApplyCorePartitionPlan(const Co
 
 PlannedCandidateExecutionResult FlashAttentionScoreGradTilingNormalRegbase::ExecuteBn2s2CorePartition()
 {
-    PlannedCandidateExecutionResult result;
-    result.observation.availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+    const uint32_t availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
     if (fBaseParams.splitAxis != SplitAxisEnum::BN2S2 ||
         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
-        result.observation.corePartition = CaptureLegacyCorePartitionOutcome(VariantId::BN2S2, false);
-        return result;
+        const CorePartitionOutcome corePartition = CaptureLegacyCorePartitionOutcome(VariantId::BN2S2, false);
+        return PlannedCandidateExecutionResult::FromCorePartition(false, availableCoreCount, corePartition);
     }
     if (fBaseParams.isSparse || fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        result.succeeded = GetBlockInfoOfBNS4TND();
-        result.observation.corePartition = CaptureLegacyCorePartitionOutcome(VariantId::BN2S2, result.succeeded);
-        return result;
+        const bool legacySucceeded = GetBlockInfoOfBNS4TND();
+        const CorePartitionOutcome corePartition = CaptureLegacyCorePartitionOutcome(VariantId::BN2S2, legacySucceeded);
+        return PlannedCandidateExecutionResult::FromCorePartition(legacySucceeded, availableCoreCount, corePartition);
     }
 
-    result.observation.corePartition = BuildDenseCorePartitionPlan(VariantId::BN2S2);
-    result.succeeded = result.observation.corePartition.accepted;
-    if (result.succeeded) {
-        ApplyCorePartitionPlan(result.observation.corePartition.plan);
-    }
-    return result;
+    const CorePartitionOutcome corePartition = BuildDenseCorePartitionPlan(VariantId::BN2S2);
+    return PlannedCandidateExecutionResult::FromCorePartition(true, availableCoreCount, corePartition);
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockInfoBn2()
@@ -1300,21 +1295,20 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockInfoBn
 PlannedCandidateExecutionResult FlashAttentionScoreGradTilingNormalRegbase::ExecuteBn2MultiBlockCorePartition()
 {
     PlannedCandidateExecutionResult result;
-    result.observation.availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+    const uint32_t availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        result.succeeded = GetBlockInfoOfTNDForBn2() == ge::GRAPH_SUCCESS;
-        result.observation.corePartition =
-            CaptureLegacyCorePartitionOutcome(VariantId::BN2_MULTI_BLOCK, result.succeeded);
+        const bool legacySucceeded = GetBlockInfoOfTNDForBn2() == ge::GRAPH_SUCCESS;
+        const CorePartitionOutcome corePartition =
+            CaptureLegacyCorePartitionOutcome(VariantId::BN2_MULTI_BLOCK, legacySucceeded);
+        result = PlannedCandidateExecutionResult::FromCorePartition(legacySucceeded, availableCoreCount, corePartition);
     } else if (fBaseParams.isSparse) {
-        result.succeeded = GetSparseBlockInfoBn2() == ge::GRAPH_SUCCESS;
-        result.observation.corePartition =
-            CaptureLegacyCorePartitionOutcome(VariantId::BN2_MULTI_BLOCK, result.succeeded);
+        const bool legacySucceeded = GetSparseBlockInfoBn2() == ge::GRAPH_SUCCESS;
+        const CorePartitionOutcome corePartition =
+            CaptureLegacyCorePartitionOutcome(VariantId::BN2_MULTI_BLOCK, legacySucceeded);
+        result = PlannedCandidateExecutionResult::FromCorePartition(legacySucceeded, availableCoreCount, corePartition);
     } else {
-        result.observation.corePartition = BuildDenseCorePartitionPlan(VariantId::BN2_MULTI_BLOCK);
-        result.succeeded = result.observation.corePartition.accepted;
-        if (result.succeeded) {
-            ApplyCorePartitionPlan(result.observation.corePartition.plan);
-        }
+        const CorePartitionOutcome corePartition = BuildDenseCorePartitionPlan(VariantId::BN2_MULTI_BLOCK);
+        result = PlannedCandidateExecutionResult::FromCorePartition(true, availableCoreCount, corePartition);
         for (uint32_t coreIndex = 0; coreIndex < result.observation.corePartition.plan.activeCoreCount; ++coreIndex) {
             OP_LOGD("DoBn2MultiBlkSparse", "Normally partition, blockStarts[%u] = %ld, blockEnds[%u] = %ld", coreIndex,
                     result.observation.corePartition.plan.ranges[coreIndex].begin, coreIndex,
@@ -1324,6 +1318,31 @@ PlannedCandidateExecutionResult FlashAttentionScoreGradTilingNormalRegbase::Exec
     result.observation.hasInvalidRow = fBaseParams.isInvalidRow;
     result.observation.hasInvalidColumn = fBaseParams.isInvalidCol;
     return result;
+}
+
+PlannedCandidateExecutionResult FlashAttentionScoreGradTilingNormalRegbase::ExecuteSelectedCorePartition()
+{
+    const uint32_t availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+    const VariantId variantId = selectionResult_.selected.variantId;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        const bool legacySucceeded = GetSparseUnpadBlockInfo() == ge::GRAPH_SUCCESS;
+        const CorePartitionOutcome corePartition = CaptureLegacyCorePartitionOutcome(variantId, legacySucceeded);
+        return PlannedCandidateExecutionResult::FromCorePartition(legacySucceeded, availableCoreCount, corePartition);
+    }
+    if (fBaseParams.isSparse) {
+        bool legacySucceeded = false;
+        if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) {
+            legacySucceeded = GetSparsePrefixBlockInfo() == ge::GRAPH_SUCCESS;
+        } else {
+            legacySucceeded = GetSparseBlockInfo() == ge::GRAPH_SUCCESS;
+        }
+        const CorePartitionOutcome corePartition = CaptureLegacyCorePartitionOutcome(variantId, legacySucceeded);
+        return PlannedCandidateExecutionResult::FromCorePartition(legacySucceeded, availableCoreCount, corePartition);
+    }
+
+    const CorePartitionOutcome corePartition = BuildDenseCorePartitionPlan(variantId);
+    return PlannedCandidateExecutionResult::FromCorePartition(true, availableCoreCount, corePartition);
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
@@ -1336,9 +1355,13 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
     if (selectionResult_.selected.variantId == VariantId::BN2S2) {
         const PlannedCandidateExecutionResult execution = ExecuteBn2s2CorePartition();
         bn2s2Decision = PlannedCandidateResolver::Resolve(selectionResult_.selected, execution);
-        if (bn2s2Decision.action != PlannedCandidateAction::FALLBACK) {
+        if (bn2s2Decision.action == PlannedCandidateAction::ACCEPT) {
             selectionResult_.selected = bn2s2Decision.candidate.plan;
-            return bn2s2Decision.action == PlannedCandidateAction::ACCEPT ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+            ApplyCorePartitionPlan(selectionResult_.selected.cores);
+            return ge::GRAPH_SUCCESS;
+        }
+        if (bn2s2Decision.action == PlannedCandidateAction::FAIL) {
+            return ge::GRAPH_FAILED;
         }
     }
 
@@ -1363,9 +1386,13 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
                 execution.observation.hasInvalidColumn, execution.observation.hasInvalidRow);
         const PlannedCandidateDecision decision =
             PlannedCandidateResolver::Resolve(selectionResult_.selected, execution);
-        if (decision.action != PlannedCandidateAction::FALLBACK) {
+        if (decision.action == PlannedCandidateAction::ACCEPT) {
             selectionResult_.selected = decision.candidate.plan;
-            return decision.action == PlannedCandidateAction::ACCEPT ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+            ApplyCorePartitionPlan(selectionResult_.selected.cores);
+            return ge::GRAPH_SUCCESS;
+        }
+        if (decision.action == PlannedCandidateAction::FAIL) {
+            return ge::GRAPH_FAILED;
         }
         SelectFallbackAfterCandidateRejection(decision.candidate.rejected, RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK);
     }
@@ -1373,26 +1400,17 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
         SetSplitAxisWithTrace(fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2,
                               RouteStage::SPARSE_PLANNING, RouteReason::LEGACY_SPARSE_NORMALIZATION);
     }
-    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        GetSparseUnpadBlockInfo();
-    } else if (fBaseParams.isSparse) {
-        if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
-            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) {
-            GetSparsePrefixBlockInfo();
-        } else {
-            GetSparseBlockInfo();
-        }
-    } else {
-        const CorePartitionOutcome outcome = BuildDenseCorePartitionPlan(ResolveSelectedVariant());
-        if (!outcome.accepted) {
-            OP_LOGE(context_->GetNodeName(),
-                    "Failed to build dense core partition, variant=[%u], reason=[%u], actual=[%ld], expected=[%ld].",
-                    static_cast<uint32_t>(outcome.rejected.variantId), static_cast<uint32_t>(outcome.rejected.reason),
-                    outcome.rejected.actual, outcome.rejected.expected);
-            return ge::GRAPH_FAILED;
-        }
-        ApplyCorePartitionPlan(outcome.plan);
+    const PlannedCandidateExecutionResult execution = ExecuteSelectedCorePartition();
+    if (!execution.succeeded) {
+        OP_LOGE(context_->GetNodeName(),
+                "Failed to execute core partition, variant=[%u], reason=[%u], actual=[%ld], expected=[%ld].",
+                static_cast<uint32_t>(selectionResult_.selected.variantId),
+                static_cast<uint32_t>(execution.observation.corePartition.rejected.reason),
+                execution.observation.corePartition.rejected.actual,
+                execution.observation.corePartition.rejected.expected);
+        return ge::GRAPH_FAILED;
     }
+    ApplyCorePartitionPlan(execution.observation.corePartition.plan);
     // each bit init 1
     std::fill(std::begin(fBaseParams.dqIsNeedDeter), std::end(fBaseParams.dqIsNeedDeter), static_cast<uint64_t>(-1));
     std::fill(std::begin(fBaseParams.dkDvIsNeedDeter), std::end(fBaseParams.dkDvIsNeedDeter),

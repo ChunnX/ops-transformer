@@ -391,6 +391,30 @@ TEST(FagPlannedCandidateResolver, SeparatesAcceptanceFallbackAndExecutionFailure
     EXPECT_EQ(static_cast<uint32_t>(PlannedCandidateAction::FALLBACK), static_cast<uint32_t>(decision.action));
 }
 
+TEST(FagPlannedCandidateExecutionResult, RequiresBothExecutionAndPartitionSuccess)
+{
+    CorePartitionOutcome corePartition;
+    corePartition.accepted = true;
+    corePartition.plan.activeCoreCount = 17;
+    corePartition.plan.blockFactor = 64;
+
+    PlannedCandidateExecutionResult result =
+        PlannedCandidateExecutionResult::FromCorePartition(true, 32, corePartition);
+    EXPECT_TRUE(result.succeeded);
+    EXPECT_EQ(32U, result.observation.availableCoreCount);
+    EXPECT_EQ(17U, result.observation.corePartition.plan.activeCoreCount);
+
+    result = PlannedCandidateExecutionResult::FromCorePartition(false, 32, corePartition);
+    EXPECT_FALSE(result.succeeded);
+
+    corePartition.accepted = false;
+    corePartition.rejected.reason = CandidateRejectReason::CORE_PARTITION_UNAVAILABLE;
+    result = PlannedCandidateExecutionResult::FromCorePartition(true, 32, corePartition);
+    EXPECT_FALSE(result.succeeded);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::CORE_PARTITION_UNAVAILABLE),
+              static_cast<uint32_t>(result.observation.corePartition.rejected.reason));
+}
+
 TEST(FagPlannedCandidateVerifier, RejectsBn2MultiBlockWithStableInvalidBlockMask)
 {
     CandidatePlan candidate;
