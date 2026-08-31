@@ -221,7 +221,6 @@ private:
     uint16_t eleNumPerVf_;
     bool withGamma_;
     bool withGradXPost_;
-    bool cacheFullInvRms_;
     float scaleMean_;
 };
 
@@ -1037,24 +1036,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         hPreGatherOffsetBuf_.SetValue(i, i * N_ * sizeof(P));
     }
 
-    // 仅在工作区和输入队列均容纳完整系数时跨BS/ND块缓存，否则保持块内缓存。
-    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
-    uint32_t maxBsSize = Min(SINGLE_M, totalLength_);
-    uint32_t workBytes = 2 * chunkSize * (ND_BLOCK_SIZE / 2) * sizeof(P) +
-        MhcPreBackwardUtils::CeilAlign(uint32_t(maxBsSize * N_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
-    if (withGamma_) {
-        workBytes += (ND_BLOCK_SIZE / 2) * sizeof(P);
-    }
-    uint64_t fullInvRmsBytes = (static_cast<uint64_t>(totalLength_) * sizeof(P) + CEIL_ALIGN_DEFAULT - 1) /
-        CEIL_ALIGN_DEFAULT * CEIL_ALIGN_DEFAULT;
-    cacheFullInvRms_ = fullInvRmsBytes <= INOUT_QUEUE_SIZE &&
-        static_cast<uint64_t>(globalUbOffset_) + workBytes + fullInvRmsBytes <= FP32_BUF_SIZE;
-    if (cacheFullInvRms_) {
-        invRmsUb_ = fp32TBuf_.GetWithOffset<P>(totalLength_, globalUbOffset_);
-        globalUbOffset_ += static_cast<uint32_t>(fullInvRmsBytes);
-        ProcessV2ChunkLoadInvRms(0, totalLength_);
-    }
-
     // 确定处理范围 （1C2V 模式）
     uint32_t vecIdx = blockIdx_ % VEC_CORE_VECIDX_MOD;
     uint32_t buffId = 0;
@@ -1243,11 +1224,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     ubOffset =
         MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + maxChunkNDSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
-    if (!cacheFullInvRms_) {
-        invRmsUb_ = fp32TBuf_.GetWithOffset<P>(currentBsSize, ubOffset);
-        ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * sizeof(P)),
-                                                  uint32_t(CEIL_ALIGN_DEFAULT));
-    }
+    invRmsUb_ = fp32TBuf_.GetWithOffset<P>(currentBsSize, ubOffset);
+    ubOffset =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
     hPreUb_ = fp32TBuf_.GetWithOffset<P>(currentBsSize * N_, ubOffset);
     ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * N_ * sizeof(P)),
@@ -1272,10 +1251,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     bsCopyParams.blockLen = currentBsSize * N_ * sizeof(P);
     DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams);
 
-    // 完整缓存未启用时，仍按当前BS块搬入并计算系数。
-    if (!cacheFullInvRms_) {
-        ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
-    }
+    // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
+    ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
@@ -1448,8 +1425,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     __ubuf__ P *xRsFp32Addr = (__ubuf__ P *)xRsFp32Buf_.GetPhyAddr();
-    __ubuf__ P *invRmsAddr = (__ubuf__ P *)invRmsUb_.GetPhyAddr() +
-        (cacheFullInvRms_ ? bsChunkStart : (bsChunkStart - bsStart));
+    __ubuf__ P *invRmsAddr = (__ubuf__ P *)invRmsUb_.GetPhyAddr() + (bsChunkStart - bsStart);
     if (withGamma_) {
         __ubuf__ P *gammaInAddr = (__ubuf__ P *)gammaIn_.GetPhyAddr();
         if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
