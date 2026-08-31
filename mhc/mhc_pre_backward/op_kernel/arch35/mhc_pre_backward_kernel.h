@@ -285,7 +285,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
-    // AIC与两个AIV通过相同物理偏移访问共享L1；顶部128KB划分为两块64KB缓冲。
+    // AIC与两个AIV通过相同物理偏移访问共享L1；起始128KB划分为两块64KB缓冲。
     xRsL1_ = LocalTensor<P>(TPosition::TSCM, C1_L1_OFFSET_BYTES, C1_L1_BUFFER_ELEMENTS);
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;

@@ -68,10 +68,10 @@ constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数
 constexpr uint32_t SINGLE_M = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t B32_CUBE_BLOCK_SIZE = 8;
-// 每块保存最多128行、128列FP32的NZ数据；双缓冲固定占用L1顶部128KB。
+// 每块保存最多128行、128列FP32的NZ数据；双缓冲共占用L1起始128KB。
 constexpr uint32_t C1_L1_CHUNK_ELEMENTS = PROCESS_V2_CHUNK_SIZE * ND_BLOCK_SIZE;
 constexpr uint32_t C1_L1_BUFFER_ELEMENTS = DOUBLE_BUFFER * C1_L1_CHUNK_ELEMENTS;
-constexpr uint32_t C1_L1_OFFSET_BYTES = 384 * 1024;
+constexpr uint32_t C1_L1_OFFSET_BYTES = 0;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
 constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
