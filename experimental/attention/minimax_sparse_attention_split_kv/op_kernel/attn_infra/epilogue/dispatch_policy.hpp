@@ -16,6 +16,24 @@
 
 namespace NpuArch::Epilogue {
 
+enum class LseMode {NONE = 0, OUT_ONLY = 1};
+
+// For AtlasA2, FA Infer online Softmax
+template <LseMode LSE_MODE_, typename SM_DTYPE_>
+struct EpilogueAtlasA2OnlineSoftmax {
+    using ArchTag = Arch::AtlasA2;
+    using IntermPrec = SM_DTYPE_;
+    static constexpr LseMode LSE_MODE = LSE_MODE_;
+};
+
+// For AtlasA2, FA Infer RescaleO
+template <LseMode LSE_MODE_, typename SM_DTYPE_>
+struct EpilogueAtlasA2RescaleO {
+    using ArchTag = Arch::AtlasA2;
+    using IntermPrec = SM_DTYPE_;
+    static constexpr LseMode LSE_MODE = LSE_MODE_;
+};
+
 // Prefill Phase1 online softmax (bf16 S / fp32 S specializations)
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
@@ -26,6 +44,16 @@ struct EpilogueRescaleOSplitKvArch35 {
     using ArchTag = Arch::AtlasA5;
 };
 
-} // namespace NpuArch::Epilogue
+// For AtlasA2 prefill Phase1 online softmax (mirror A5, ArchTag = AtlasA2)
+struct EpilogueOnlineSoftmaxPrefillA2 {
+    using ArchTag = Arch::AtlasA2;
+};
+
+// For AtlasA2 prefill Phase2 rescale-O combine (mirror A5, ArchTag = AtlasA2)
+struct EpilogueRescaleOPrefillA2 {
+    using ArchTag = Arch::AtlasA2;
+};
+
+}  // namespace NpuArch::Epilogue
 
 #endif // EPILOGUE_DISPATCH_POLICY_HPP

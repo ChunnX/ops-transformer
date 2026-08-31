@@ -16,6 +16,90 @@
 #include "../../../tla/tensor.hpp"
 namespace NpuArch::Gemm::Tile {
 
+#if (__CCE_AICORE__ == 220)
+///////////////////////////////////////////////////////////
+
+template <
+    /// Tag indicating architecture
+    class ArchTag_,
+    /// GemmType for A matrix operand
+    class AType_,
+    /// GemmType type for B matrix operand
+    class BType_,
+    /// GemmType type for Bias operand
+    class BiasType_
+>
+struct TileMmad {
+    using ElementA = typename AType_::Element;
+    using ElementB = typename BType_::Element;
+    using ElementAccumulator =
+        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
+
+    // Methods
+
+    __aicore__ inline
+    TileMmad() {}
+
+    __aicore__ inline
+    void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
+         AscendC::LocalTensor<ElementA> const &l0ATensor,
+         AscendC::LocalTensor<ElementB> const &l0BTensor,
+         uint32_t m, uint32_t n, uint32_t k,
+         bool initC = true, uint8_t unitFlag = 0)
+    {
+        AscendC::MmadParams mmadParams;
+        mmadParams.m = m;
+        mmadParams.n = n;
+        mmadParams.k = k;
+        mmadParams.unitFlag = unitFlag;
+        mmadParams.cmatrixInitVal = initC;
+        if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<typename AType_::Layout, layout::ColumnMajor>) {
+            mmadParams.kDirectionAlign = true;
+        }
+
+        AscendC::Mmad(l0CTensor,
+                      l0ATensor,
+                      l0BTensor,
+                      mmadParams);
+
+        const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
+        if ((m / C0_NUM_PER_FRACTAL) * (n / C0_NUM_PER_FRACTAL) < PIPE_M_BARRIER_THRESHOLD) {
+            AscendC::PipeBarrier<PIPE_M>();
+        }
+    }
+
+    __aicore__ inline
+    void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
+         AscendC::LocalTensor<ElementA> const &l0ATensor,
+         AscendC::LocalTensor<ElementB> const &l0BTensor,
+         AscendC::LocalTensor<ElementAccumulator> const &l0BiasTensor,
+         uint32_t m, uint32_t n, uint32_t k,
+         bool initC = true, uint8_t unitFlag = 0)
+    {
+        AscendC::MmadParams mmadParams;
+        mmadParams.m = m;
+        mmadParams.n = n;
+        mmadParams.k = k;
+        mmadParams.unitFlag = unitFlag;
+        mmadParams.cmatrixInitVal = false;
+        if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<typename AType_::Layout, layout::ColumnMajor>) {
+            mmadParams.kDirectionAlign = true;
+        }
+
+        AscendC::Mmad(l0CTensor,
+                      l0ATensor,
+                      l0BTensor,
+                      l0BiasTensor,
+                      mmadParams);
+
+        const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
+        if ((m / C0_NUM_PER_FRACTAL) * (n / C0_NUM_PER_FRACTAL) < PIPE_M_BARRIER_THRESHOLD) {
+            AscendC::PipeBarrier<PIPE_M>();
+        }
+    }
+};
+#endif
+
 template <
     /// Tag indicating architecture
     class ArchTag,
@@ -25,6 +109,8 @@ template <
     class LayoutTagL1A
 >
 struct TileMmadTla {
+    // Methods
+
     __aicore__ inline
     TileMmadTla() {}
 
@@ -42,11 +128,18 @@ struct TileMmadTla {
         mmadParams.k = k;
         mmadParams.unitFlag = unitFlag;
         mmadParams.cmatrixInitVal = initC;
+#if (__CCE_AICORE__ == 310)
         if constexpr(std::is_same_v<LayoutTagL1A, layout::VectorLayout>) {
             mmadParams.disableGemv = false;
         } else {
             mmadParams.disableGemv = true;
         }
+#endif
+#if (__CCE_AICORE__ == 220)
+        if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
+            mmadParams.kDirectionAlign = true;
+        }
+#endif
 
         AscendC::Mmad(l0CTensor.data(),
                       l0ATensor.data(),
@@ -74,7 +167,14 @@ struct TileMmadTla {
         mmadParams.k = k;
         mmadParams.unitFlag = unitFlag;
         mmadParams.cmatrixInitVal = false;
+#if (__CCE_AICORE__ == 310)
         mmadParams.disableGemv = true;
+#endif
+#if (__CCE_AICORE__ == 220)
+        if constexpr (std::is_same_v<ElementA, float> && std::is_same_v<LayoutTagL1A, layout::nZ>) {
+            mmadParams.kDirectionAlign = true;
+        }
+#endif
 
         AscendC::Mmad(l0CTensor.data(),
                       l0ATensor.data(),
@@ -109,7 +209,9 @@ struct TileMmadTla {
         mmadParams.k = k;
         mmadParams.unitFlag = 0;
         mmadParams.cmatrixInitVal = true;
+#if (__CCE_AICORE__ == 310)
         mmadParams.disableGemv = true;
+#endif
 
         for (uint32_t l0BatchIdx = 0; l0BatchIdx < l0Batch; l0BatchIdx++) {
             AscendC::Mmad(l0CTensor.data()[l0BatchIdx * L0CM * L0CN],
@@ -119,6 +221,8 @@ struct TileMmadTla {
         }
     }
 };
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 } // namespace NpuArch::Gemm::Tile
 

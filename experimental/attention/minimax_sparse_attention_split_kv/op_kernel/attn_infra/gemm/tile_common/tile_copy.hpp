@@ -15,15 +15,61 @@
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/detail/tag_to_layout.hpp"
 #include "../../../tla/tensor.hpp"
+#if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_ub_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a5.hpp"
 #include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b_a5.hpp"
+#endif
+#if (__CCE_AICORE__ == 220)
+#include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1_a2.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm_a2.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a_a2.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b_a2.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_l1_to_bt.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_gm_to_ub.hpp"
+#include "../../../attn_infra/gemm/tile_common/copy_ub_to_gm.hpp"
+#endif
 #include "../../../attn_infra/gemm/helper.hpp"
 
 
 namespace NpuArch::Gemm::Tile {
+
+#if (__CCE_AICORE__ == 220)
+template <
+    /// Tag indicating architecture
+    class ArchTag,
+    /// GemmType for A matrix operand
+    class AType,
+    /// GemmType type for B matrix operand
+    class BType,
+    /// GemmType type for C matrix operand
+    class CType,
+    /// GemmType type for Bias operand
+    class BiasType = void
+>
+struct TileCopy {
+    using ElementA = typename AType::Element;
+    using ElementB = typename BType::Element;
+    using ElementAccumulator =
+        typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
+
+    using CopyGmToL1A = Gemm::Tile::CopyGmToL1<ArchTag, AType>;
+    using CopyGmToL1B = Gemm::Tile::CopyGmToL1<ArchTag, BType>;
+    using CopyL1ToL0A = Gemm::Tile::CopyL1ToL0A<
+        ArchTag, typename helper::L1ATypeSelector<AType>::L1AType>;
+    using CopyL1ToL0B = Gemm::Tile::CopyL1ToL0B<
+        ArchTag, typename helper::L1BTypeSelector<BType>::L1BType>;
+    using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType>;
+    using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
+    using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
+        void,
+        Gemm::Tile::CopyGmToL1<ArchTag,
+            typename BiasTypeSelector::GMBiasType,
+            typename BiasTypeSelector::L1BiasType>>;
+};
+#endif
 
 template <
     /// Tag indicating architecture
@@ -117,6 +163,7 @@ struct PackedTileCopyTla {
     using CopyL0CToDst = Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
 };
 
+#if (__CCE_AICORE__ == 310)
 template <
     /// Tag indicating architecture
     class ArchTag,
@@ -149,7 +196,9 @@ struct PackedTileCopyTlaToUB : public PackedTileCopyTla<ArchTag, ElementA_, Layo
     using CopyL0CToDst =
         Gemm::Tile::CopyL0CToUBTla<ArchTag, TensorL0C, TensorC, CopyMode, DEQUANT_GRANULARITY, ReluEnable>;
 };
+#endif
 
+//////////////////////////////
 } // namespace NpuArch::Gemm::Tile
 
 #endif // GEMM_TILE_TILE_COPY_HPP

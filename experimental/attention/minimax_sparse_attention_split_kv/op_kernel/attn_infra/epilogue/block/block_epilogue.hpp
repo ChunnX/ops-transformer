@@ -19,17 +19,6 @@
 #include "../../../attn_infra/epilogue/dispatch_policy.hpp"
 #include "kernel_operator.h"
 
-using namespace AscendC;
-using namespace AscendC::Reg;
-
-#include "../../../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-// Local copy of the library ReduceFinalRes_VF family with the per-row regbase Div
-// embedded (this operator's Phase1 leaves accumOut unnormalized). FP32-only path
-// (<T, Tacc> with Tacc=float; the bf16 O_partial path uses the separate header
-// below, do NOT add bf16 branches here — keeps the verified fp32 binary identical).
-// Must follow the vf_flash_decode.h include above (relies on FLT_ZERO / MicroAPI).
-#include "../../../arch35/vector_api/vf_flash_decode_msa.h"
-
 namespace NpuArch::Epilogue::Block {
 
 template <class DispatchPolicy, class... Args>
@@ -39,9 +28,32 @@ class BlockEpilogue {
 
 } // namespace NpuArch::Epilogue::Block
 
-#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
+#if (__CCE_AICORE__ == 310)
+using namespace AscendC;
+using namespace AscendC::Reg;
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_high_prec.hpp"
 
+#include "../../../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+// Local copy of the library ReduceFinalRes_VF family with the per-row regbase Div
+// embedded (this operator's Phase1 leaves accumOut unnormalized). FP32-only path
+// (<T, Tacc> with Tacc=float; the bf16 O_partial path uses the separate header
+// below, do NOT add bf16 branches here — keeps the verified fp32 binary identical).
+// Must follow the vf_flash_decode.h include above (relies on FLT_ZERO / MicroAPI).
+#include "../../../arch35/vector_api/vf_flash_decode_msa.h"
+
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
+#endif
+
+#if (__CCE_AICORE__ == 220)
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_low_prec.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_low_prec.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_prefill_a2.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_prefill_a2.hpp"
+#endif
+
+#if (__CCE_AICORE__ == 310)
 namespace NpuArch::Epilogue::Block {
 template <class OutDtype, class Tws, class ElementKV>
 class BlockEpilogue<EpilogueRescaleOSplitKvArch35, OutDtype, Tws, ElementKV> {
@@ -520,6 +532,8 @@ private:
     }
 };
 
-} // namespace NpuArch::Epilogue::Block
+}  // namespace NpuArch::Epilogue::Block
 
-#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#endif  // __CCE_AICORE__ == 310
+
+#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
