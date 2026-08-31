@@ -331,14 +331,14 @@ BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeig
             Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, false>(gatedActivationContext, situGluParams);
         }
     } else if (actMode == ActMode::SWIGLU_STEP) {
-        const Activation::SwiGluParams swiGluParams{clampLimit_};
-        Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>(gatedActivationContext, swiGluParams);
+        asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>>(gatedActivationContext,
+                                                                                 clampLimit_);
     } else if (actMode == ActMode::SWIGLU_OAI) {
         const Activation::SwiGluOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
         Activation::RunSwiGLUOAI<DataTypeIn, TopkWeightsPrefetch>(gatedActivationContext, swiGluOaiParams);
     } else {
-        const Activation::SwiGluParams swiGluParams{clampLimit_};
-        Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>(gatedActivationContext, swiGluParams);
+        asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>>(gatedActivationContext,
+                                                                                  clampLimit_);
     }
 }
 
