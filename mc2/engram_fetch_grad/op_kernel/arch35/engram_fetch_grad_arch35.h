@@ -88,7 +88,8 @@ private:
     __aicore__ inline void RunSort(uint32_t numRecv);
     __aicore__ inline void InitFlagsAndDispls();
     __aicore__ inline void ClearWinCounters();
-    __aicore__ inline void CrossRankBarrier();
+    __aicore__ inline void CrossRankBarrierIssue();
+    __aicore__ inline void CrossRankBarrierWait();
 
     __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
     __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
@@ -1116,7 +1117,10 @@ __aicore__ inline void EngramFetchGradArch35::ClearWinCounters()
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
-__aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
+// First half of the cross-rank barrier: issue all barrier flag writes WITHOUT waiting
+// for completion (no drain, no sync). Split from CrossRankBarrierWait so the cross-rank
+// flag flight overlaps with local work (UnsortGrad) instead of blocking.
+__aicore__ inline void EngramFetchGradArch35::CrossRankBarrierIssue()
 {
     if (isSender_) {
         uint32_t dstRank = aivId_ % numRanks_;
@@ -1125,7 +1129,6 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
             uint64_t handle = GetCommHandle(dstRank, 0U);
             GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, barrierFlagOffset_) + rankId_ * STATE_OFFSET;
             WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
-            DrainChecked(handle);
         }
     }
     if (aivId_ == 0) {
@@ -1138,6 +1141,22 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
         flagGM.SetGlobalBuffer((__gm__ int32_t *)localFlagAddr);
         DataCopy(flagGM, flagLocal, STATE_OFFSET / sizeof(int32_t));
         EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
+    }
+}
+
+// Second half of the cross-rank barrier: drain the flag writes issued by
+// CrossRankBarrierIssue (the drain latency was overlapped with UnsortGrad), then wait for
+// every rank's flag. The trailing SyncAll also orders every core's UnsortGrad output
+// before SendGradToPeers reads gradSortedGM_.
+__aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
+{
+    if (isSender_) {
+        uint32_t dstRank = aivId_ % numRanks_;
+        uint32_t senderIdx = aivId_ / numRanks_;
+        if (senderIdx == 0U && dstRank != rankId_) {
+            uint64_t handle = GetCommHandle(dstRank, 0U);
+            DrainChecked(handle);
+        }
     }
     SyncAll<true>();
 
@@ -1158,10 +1177,13 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         ClearWinCounters();
         SyncAll<true>();
 
-        CrossRankBarrier();
-
+        // Barrier split: issue the cross-rank flag writes, then run the local 10MB
+        // UnsortGrad while the flags fly; the wait phase drains + spins, and its trailing
+        // SyncAll doubles as the gradSorted-completion barrier before SendGradToPeers.
+        CrossRankBarrierIssue();
         UnsortGrad();
-        SyncAll<true>();
+        CrossRankBarrierWait();
+
         uint64_t sendStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
         uint64_t sendEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
