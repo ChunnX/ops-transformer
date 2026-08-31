@@ -17,6 +17,36 @@
 #define CANN_OPS_TRANSFORMER_ACLNN_COMMON_H
 
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
+
+/*
+ * Some CANN installs ship acl_base_rt.h separately from torch_npu's bundled
+ * acl_base.h.  If the newer float types are missing, define them here using
+ * the values from CANN's acl_base_rt.h so the DType enum below compiles.
+ */
+#ifndef ACL_HIFLOAT8
+#define ACL_HIFLOAT8 static_cast<aclDataType>(34)
+#endif
+#ifndef ACL_FLOAT8_E5M2
+#define ACL_FLOAT8_E5M2 static_cast<aclDataType>(35)
+#endif
+#ifndef ACL_FLOAT8_E4M3FN
+#define ACL_FLOAT8_E4M3FN static_cast<aclDataType>(36)
+#endif
+#ifndef ACL_FLOAT8_E8M0
+#define ACL_FLOAT8_E8M0 static_cast<aclDataType>(37)
+#endif
+#ifndef ACL_FLOAT6_E3M2
+#define ACL_FLOAT6_E3M2 static_cast<aclDataType>(38)
+#endif
+#ifndef ACL_FLOAT6_E2M3
+#define ACL_FLOAT6_E2M3 static_cast<aclDataType>(39)
+#endif
+#ifndef ACL_FLOAT4_E2M1
+#define ACL_FLOAT4_E2M1 static_cast<aclDataType>(40)
+#endif
+#ifndef ACL_FLOAT4_E1M2
+#define ACL_FLOAT4_E1M2 static_cast<aclDataType>(41)
+#endif
 #include <dlfcn.h>
 #include <vector>
 #include <string>
