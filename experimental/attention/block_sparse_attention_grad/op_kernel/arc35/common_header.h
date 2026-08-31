@@ -67,7 +67,6 @@ struct RunTimeInfo {
     int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
 };
 
-
 inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
 {
     return a > b ? a : b;
@@ -143,7 +142,6 @@ __aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t current_
     }
 }
 
-
 __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t batch_idx, const int64_t n1_idx,
                                     const int64_t q_block_idx, const int64_t kv_block_idx,
                                     __gm__ uint8_t *block_sparse_mask)
@@ -155,7 +153,6 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
     bool is_valid = block_sparse_mask[offset];
     return is_valid;
 }
-
 
 /*
  * 读取 PerBlockSizeMask[b, n, block_idx, axis]。
@@ -185,7 +182,6 @@ __aicore__ inline int32_t ClipLenByActualSize(int32_t start_idx, int32_t len, in
     }
     return len < valid_remain ? len : valid_remain; // min(len, valid_remain)
 }
-
 
 __aicore__ inline int32_t GetBlockLen(int32_t start_idx, int32_t end_idx, int32_t max_len)
 {
