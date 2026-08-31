@@ -709,7 +709,7 @@ int main() {
         printf("    Core Enable             : %u\n", result.fdData[i][LD_V2_CORE_ENABLE_INDEX]);
         printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][LD_V2_BN2_IDX_INDEX]);
         printf("    FD Task M Idx           : %u\n", result.fdData[i][LD_V2_M_IDX_INDEX]);
-        printf("    FD Task Workspace Idx      : %u\n", result.fdData[i][LD_V2_WORKSPACE_IDX_INDEX]);
+        printf("    FD Task Workspace Idx   : %u\n", result.fdData[i][LD_V2_WORKSPACE_IDX_INDEX]);
         printf("    FD Task Workspace Num   : %u\n", result.fdData[i][LD_V2_WORKSPACE_NUM_INDEX]);
         printf("    FD Subtask M Start      : %u\n", result.fdData[i][LD_V2_M_START_INDEX]);
         printf("    FD Subtask M Num        : %u\n", result.fdData[i][LD_V2_M_NUM_INDEX]);
