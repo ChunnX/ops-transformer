@@ -22,6 +22,23 @@
 
 namespace GROUPED_MATMUL {
 
+struct GmmWeightQuantMxTiling {
+    uint32_t groupNum = 0;
+    uint32_t coreNum = 0;
+    uint64_t kSize = 0;
+    uint64_t nSize = 0;
+    uint8_t cubeNumBlocksN = 0;
+    uint32_t mainBlockSize = 0;
+    uint64_t mainBlockCount = 0;
+    uint16_t firstTailBlockSize = 0;
+    uint16_t secondTailBlockSize = 0;
+    uint16_t firstTailBlockCount = 0;
+    uint16_t secondTailBlockCount = 0;
+    uint16_t baseM = 0;
+    uint32_t groupListType = 0;
+    uint32_t hasBias = 0;
+};
+
 template <class XType_, class WeightType_, class ScaleBType_, class BiasType_, class YType_, bool IsSingleMultiSingle_>
 __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale,
@@ -33,8 +50,33 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     using BiasType = BiasType_;
     using YType = YType_;
     constexpr bool IS_SINGLE_MULTI_SINGLE = IsSingleMultiSingle_;
+    using AType = XType;
+    using BType = WeightType;
+    using ScaleAType = ScaleBType;
+    using CType = YType;
+    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithWeightQuantMx;
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = AscendC::Te::ZNLayoutPtn;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using LayoutScaleA = AscendC::Te::ScaleANDLayoutPtn;
+    using LayoutScaleB = AscendC::Te::ScaleBDNLayoutPtn;
 
-    Blaze::Gemm::Kernel::GmmWeightQuantMxTiling gmmTiling{};
+    using ProblemShape = decltype(AscendC::Te::MakeShape(0UL, 0UL, 0UL, 0UL));
+    using BlockScheduler =
+        Blaze::Gemm::Kernel::BlockSchedulerWqgmmNResplit<decltype(AscendC::Te::MakeShape(0UL, 0UL, 0UL))>;
+    using BlockMmad =
+        Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AscendC::Std::tuple<AType, ScaleAType>,
+                                      AscendC::Std::tuple<LayoutA, LayoutScaleA>,
+                                      AscendC::Std::tuple<BType, ScaleBType>,
+                                      AscendC::Std::tuple<LayoutB, LayoutScaleB>, CType, LayoutC, BiasType, LayoutBias>;
+    using BlockEpilogue = void;
+    using BlockPrologue = Blaze::Gemm::Kernel::GroupedWeightPrologueMx<AType, BType, BiasType>;
+    using KernelImpl =
+        Blaze::Gemm::Kernel::GmmWeightQuantMxKernel<ProblemShape, BlockMmad, BlockScheduler, BlockEpilogue,
+                                                    BlockPrologue, IS_SINGLE_MULTI_SINGLE>;
+
+    GmmWeightQuantMxTiling gmmTiling{};
     gmmTiling.groupNum = gmmBaseParams->groupNum;
     gmmTiling.coreNum = gmmBaseParams->coreNum;
     gmmTiling.kSize = gmmBaseParams->kSize;
@@ -49,26 +91,45 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     gmmTiling.baseM = mmTilingData->baseM;
     gmmTiling.groupListType = gmmBaseParams->groupListType;
     gmmTiling.hasBias = gmmBaseParams->hasBias;
-    if constexpr (IS_SINGLE_MULTI_SINGLE) {
-        // SMS: X/Y are packed single tensors; W/ScaleB/Bias remain tensor-list descriptors for per-group lookup.
-        GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
-        GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-        Blaze::Gemm::Kernel::RunGmmWeightQuantMxKernel<WeightType, BiasType, YType, true>(
-            xAddr, weight, perTokenScale, antiquantScale, bias, groupList, yAddr, gmmTiling);
-    } else {
-        // The MX A8W4 host checker rejects MMM, so a non-SMS tiling key is SSS. Resolve each one-element tensor
-        // list once, then advance contiguous group payloads in the kernel.
-        GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
-        GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
-        GM_ADDR scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
-        GM_ADDR biasAddr = bias;
+
+    GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
+    GM_ADDR weightAddr = weight;
+    GM_ADDR scaleBAddr = antiquantScale;
+    GM_ADDR biasAddr = bias;
+    GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
+    // SMS keeps W/ScaleB/Bias as tensor-list descriptors for per-group lookup.
+    if constexpr (!IS_SINGLE_MULTI_SINGLE) {
+        // The host builds this tiling-key bit as MX && singleX && !singleWeight && singleY. Therefore true is
+        // SMS (singleWeight == 0), while a host-valid false key is SSS (singleWeight == 1); MX MMM is rejected by
+        // the host NZ weight-dimension checks. Resolve each one-element list once for the SSS path.
+        weightAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<WeightType>(0, weight));
+        scaleBAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleBType>(0, antiquantScale));
         if (gmmBaseParams->hasBias != 0) {
             biasAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias));
         }
-        GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-        Blaze::Gemm::Kernel::RunGmmWeightQuantMxKernel<WeightType, BiasType, YType, false>(
-            xAddr, weightAddr, perTokenScale, scaleBAddr, biasAddr, groupList, yAddr, gmmTiling);
     }
+
+    typename BlockMmad::Params mmParams{xAddr, perTokenScale, scaleBAddr, biasAddr, yAddr};
+    typename BlockScheduler::Params schedulerParams{gmmTiling.mainBlockCount,
+                                                    gmmTiling.mainBlockSize,
+                                                    gmmTiling.firstTailBlockCount,
+                                                    gmmTiling.firstTailBlockSize,
+                                                    gmmTiling.secondTailBlockCount,
+                                                    gmmTiling.secondTailBlockSize,
+                                                    gmmTiling.coreNum,
+                                                    gmmTiling.cubeNumBlocksN,
+                                                    gmmTiling.baseM,
+                                                    gmmTiling.nSize};
+    typename BlockPrologue::Params prologueParams{reinterpret_cast<__gm__ BType *>(weightAddr)};
+    typename KernelImpl::Params params{{0UL, gmmTiling.kSize, gmmTiling.nSize, gmmTiling.groupNum},
+                                       mmParams,
+                                       schedulerParams,
+                                       prologueParams,
+                                       groupList,
+                                       gmmTiling.groupListType,
+                                       gmmTiling.hasBias};
+    KernelImpl kernelImpl;
+    kernelImpl(params);
 }
 
 } // namespace GROUPED_MATMUL
