@@ -17,9 +17,9 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from ..common import CommContextManager
 
 
-class _FFNToAttentionV2OpBuilder(OpBuilder):
+class _FFNToAttentionOpBuilder(OpBuilder):
     def __init__(self):
-        super(_FFNToAttentionV2OpBuilder, self).__init__(
+        super(_FFNToAttentionOpBuilder, self).__init__(
             "npu_ffn_to_attention", category="mc2"
         )
 
@@ -80,7 +80,7 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
             )
 
 
-_ffn_to_attention_op_builder = _FFNToAttentionV2OpBuilder()
+_ffn_to_attention_op_builder = _FFNToAttentionOpBuilder()
 _ffn_to_attention_op_builder._ensure_initialized()
 
 

@@ -941,8 +941,8 @@
     <td><a href="../../mc2/ffn_to_attention/README.md">ffn_to_attention</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
+    <td>✓</td>
+    <td>✓</td>
     <td>AI Core</td>
     <td>一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。</td>
   </tr>
@@ -951,8 +951,8 @@
     <td><a href="../../mc2/ffn_to_attention_v2/README.md">ffn_to_attention_v2</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。</td>
   </tr>
