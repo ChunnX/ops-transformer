@@ -121,8 +121,7 @@ void FlashAttnTilingImpl::SplitPolicy()
         winLeft = MASK_MODE_INT_MAX;
         winRight = MASK_MODE_INT_MAX;
     }
-    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
@@ -304,8 +303,10 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize =
+        faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize =
+        faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;

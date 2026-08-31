@@ -315,9 +315,6 @@ template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo {};
+struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
 
 #endif // FLASH_ATTN_COMMON_DEF_H_
