@@ -225,6 +225,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --so
 # 通过：末行 [PASS]: 37/37 cases passed
 # 矩阵：30 条 fp16/bf16/int8（BBND/BNBD/TND，含 mixed-batch pad + 整 batch q_len/kv_len=0）+ 3 条 FP8（D=128）+ 4 条 PA key dim0 stride
 # 容差：fp16/bf16/int8 1e-3，FP8 2e-2
+# A2/A3：同上矩阵去掉 FP8，期望 [PASS]: 34/34（skipped 3 FP8）
 ```
 
 torch_extension 见 [msa_index_score.md](./docs/torchapi_msa_index_score.md)。`cann/set_env.sh` 会把 cann 自带 `site-packages` 插到 `PYTHONPATH` 前面，必须把本仓 `torch_extension` 再插回最前。
@@ -238,6 +239,6 @@ torch_extension 见 [msa_index_score.md](./docs/torchapi_msa_index_score.md)。`
 >   一起在 Maxpool 之后施加 `local_mask`。
 > - 完整公式：`score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask`。
 > - **950 当前交付**（`op_kernel/arch35/`）：计算骨架与 A2 相同（Q 驻留 × K pingpong × **8-page S GM** + MODE 0x2 握手）。Cube **原生** FP8（TilingKey 4/5/6，`hifloat8_t` / `fp8_e5m2_t` / `fp8_e4m3fn_t`，无 scale，禁止 Cast→fp16）。L0C→AIV UB（C_to_UB）尚未作为主路径。`arch22/` 冻结。
-> - **950 PA key dim0 stride**：`aicoreConfig950` 的 key 为 `IgnoreContiguous`；tiling 用 `GetInputStride` / `GetRequiredInputStride` 读首轴元素 stride，写入已有 `strideKvBlock`。A2/A3 仍 `AutoContiguous`，不读 stride。TND 不允许非连续。scale 仍按逻辑 page 紧凑布局。
+> - **PA key dim0 stride**（A2/A3 与 950）：key 为 `IgnoreContiguous`；tiling 用 `GetInputStride` / `GetRequiredInputStride` 读首轴元素 stride，写入已有 `strideKvBlock`。TND 不允许非连续。scale 仍按逻辑 page 紧凑布局。
 > - torch 的 `torch_npu.hifloat8.npu()` 当前会打出非法 device id，脚本跳过；kernel / aclnn 已挂 HIFLOAT8。
 > - 测性能须选 Health=OK 且空闲的卡。本机经验：物理 **0 / 5** 与基线墙钟一致；**3 / 6** 同 kernel 墙钟可差约 2×（PipeUtilization 仍接近）。物理 0 若 `SetDevice` 卡住，换 5。
