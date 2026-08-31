@@ -25,7 +25,7 @@ __attribute__((constructor)) static void DisableFpeEarly()
  * 用例矩阵覆盖：Prefill 多 M-tile、prefix 非 128 对齐的边界 block、varlen 多 batch、
  * Decode(q_len=1)、投机解码(q_len>1)、长序列多 S-tile 轮转、block_table 乱序、
  * 无效尾填充、q_len/kv_len=0 的 mixed-batch pad、bf16 / fp16 双 dtype、
- * int8 key 前融合反量化、PA BNBD、TND packed key、950 PA key dim0 非连续。
+ * int8 key 前融合反量化、PA BNBD、TND packed key、A2/A3 与 950 PA key dim0 非连续。
  */
 
 #include <algorithm>
@@ -111,7 +111,7 @@ struct TestCase {
     KeyLayout keyLayout = KeyLayout::BBND;
     // 0=无；1=float8_e4m3fn；2=float8_e5m2。仅 950，query/key 同型。
     int fp8Kind = 0;
-    // PA key dim0 间隔：1=紧凑；>1 时 storage 为 key|gap|key|...，仅 950。
+    // PA key dim0 间隔：1=紧凑；>1 时 storage 为 key|gap|key|...（A2/A3 与 950）。
     int64_t keyDim0Gap = 1;
 };
 
@@ -833,7 +833,7 @@ int main()
         {"L0-tnd-all-q0", 8, 128, 0, {0}, {256}, {1}, false, false, kSparseModeRightDown, KeyLayout::TND},
         {"L0-tnd-all-kv0", 8, 128, 0, {32}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
         {"L0-tnd-all-q0-kv0", 8, 128, 0, {0}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
-        // 950 PA key dim0 非连续：间隔槽下毒，错 stride 会读到 poison。
+        // PA key dim0 非连续（A2/A3 与 950）：间隔槽下毒，错 stride 会读到 poison。
         {"L0-stride-bbnd", 2, 16, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 0, 2},
         {"L1-stride-bbnd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, kSparseModeRightDown, KeyLayout::BBND,
          0, 2},
@@ -853,11 +853,6 @@ int main()
     for (const auto &tc : cases) {
         if (tc.fp8Kind != 0 && !isAscend950) {
             (void)printf("  [%s] SKIP: FP8 is Ascend 950 only\n", tc.name.c_str());
-            ++skipped;
-            continue;
-        }
-        if (tc.keyDim0Gap > 1 && !isAscend950) {
-            (void)printf("  [%s] SKIP: PA key dim0 stride is Ascend 950 only\n", tc.name.c_str());
             ++skipped;
             continue;
         }
