@@ -1,0 +1,93 @@
+# mla_prolog_v5 开发日志
+
+## 任务信息
+
+- 任务：issue-65 快速迁移 mla_prolog_v3 → 独立算子工程 mla_prolog_v5（A2）+ pybind 打通
+- 模式：快速迁移（精简设计流程，3 阶段：需求+方案 → 编码迁移 → 测试验证）
+- 工作分支：agent/issue-65（ops-transformer fork）
+- 工作流：ops-registry-invoke（按用户要求压缩：跳过 spec/设计分段/独立评审管线）
+
+## 用户原始需求
+
+- 算子名字：mla_prolog_v3；算子代码仓：https://gitcode.com/cann/ops-transformer.git
+- 快速将 ops-transformer 仓算子迁移到独立算子工程，命名 mla_prolog_v5
+- 在迁移的独立算子工程打通 pybind 流程，支持自定义 python 接口调用
+- 目标：一个算子编译工程，支持 python 接口测试；要求：快速迁移，减少人工交互，完成基本功能验证
+- 使能方式：Aclnn 直调 + pybind；只迁移原始代码，不做功能增强，只保留 A2 芯片代码
+- 价值：抽取算子代码成为独立自定义算子，方便后续增量开发
+
+## 环境检查记录
+
+| 项 | 值 |
+|---|---|
+| NPU | 910B3（Atlas A2），健康，npu-smi 25.5.0，ASCEND_VISIBLE_DEVICES=6 |
+| CANN | /home/developer/Ascend/cann-9.1.0（ASCEND_TOOLKIT_HOME/ASCEND_HOME_PATH） |
+| Python | 3.11.4 |
+| cmake | 3.20.5 |
+| torch / torch_npu | 2.7.1+cpu / 2.7.1.post4（npu available: True） |
+| 构建框架 | CANN 9.1 ascendc_kernel_cmake（npu_op_package），见 CMAKE_PREFIX_PATH |
+| 测试工具 | TTK（ops-test-kit）位于 ../../ops-test-kit（备用） |
+
+## 开发状态
+
+| 阶段 | 状态 | 完成时间 | 说明 |
+|------|------|----------|------|
+| A. 需求分析+精简方案 | ✅ | 2026-08-29 | REQUIREMENTS.md / DESIGN.md 产出，依赖闭包採查完成 |
+| B. 编码迁移 + pybind 打通 | ✅ | 2026-08-29 | 编译/安装/调用链路全通，详见开发记录 |
+| C. 测试验证（Python 接口 + NPU 精度） | ✅ | 2026-08-29 | 当时按分层验证（后证实分层不必要，见 D/E） |
+| D. 多头输出问题攻坚 | ✅ | 2026-08-31 | 根因确证：测试 harness 权重布局错误，kernel 正确；插桩全移除 |
+| E. 全量精度验证 | ✅ | 2026-08-31 | test.py 全输出全用例 5/5 PASS |
+| 收尾：pre-commit + commit | ✅ | 2026-08-29/31 | 0d3921f92 / 3d423a4c0 / ed2e1f7f4 |
+| G. opbase 前向兼容（9.0.0 基线编译） | ✅ | 2026-08-31 | 继承主仓 opbase 机制，模拟 9.0.0 验证通过 |
+
+## 交付物清单
+
+| 文件 | 状态 |
+|------|------|
+| docs/REQUIREMENTS.md | ✅ |
+| docs/DESIGN.md | ✅ |
+| docs/LOG.md | ✅（本文件） |
+| op_kernel/ op_host/ op_api/ CMakeLists.txt build.sh | ✅ |
+| torch_extension/（csrc + CMake + Python 接口 + libmla_prolog_v5_ext.so） | ✅ |
+| tests/pybind/test.py + golden.py | ✅ |
+| examples/test_aclnn_mla_prolog_v5.cpp + CMakeLists | ✅ |
+| README.md docs/aclnnMlaPrologV5WeightNz.md | ✅ |
+| issues/issue_20260829_mm-split-multihead_01.md | ✅ |
+
+## 开发记录
+
+- 2026-08-29 阶段A：完成源码依赖採查——v3 依赖 v1(mla_prolog) 的 arch22 kernel 头（12 个）与
+  op_host tiling/infershape/tiling_check；v3 op_api 外层调用仓框架生成的 aclnnInner 层，独立工程需手写
+  L0（仓内有 nsa_compress_with_cache 等手写先例）；确定 aclnn 外层取 V4 语义（doRope 参数）；
+  确定构建走 npu_op_package（ascendc-registry-invoke-template 模板）、A2-only（ascend910b）。
+- 2026-08-29 阶段B：vendored 文件机械重命名（V3→V5 / tiling V3_OP_NAME 布局分支改判 V5 / infershape
+  节点名判断改 V5 / TilingPrepareForMlaProlog 定义并入 register）；kernel 裁剪 arch35 分支、def 裁剪 950
+  配置、kernel 编译选项沿用源仓；手写 L0（OP_INPUT/OP_OUTPUT/OP_ATTR 严格对齐 def 注册序）；构建通过
+  （custom_opp_ubuntu_aarch64.run）；torch_extension（vendored aclnn_common.h + csrc 改调 V5 API）编译通过。
+- 2026-08-29 阶段C 排查与修复：① torch 路径 tiling 读到扁平 storage shape → L0 增加 ND 张量 storage shape
+  归一化（view shape 化 + 基础格式统一 ND）；② optional 未传须 nullptr 透传（占位 tensor 会触发 tiling
+  "not null"校验失败）；③ **attr float 错配**（API double 形参直接传 OP_ATTR，被按 def Float(4B) 解释成
+  巨值 → rmsnorm 输出全 0；scale 用例出现 1e24 量级误差）→ 显式转 float（与 opbuild 生成 Inner 一致），
+  修复后 query_norm/kv_cache 全量精确 PASS；④ 910B3 适配：tiling mm3 分块按头边界 (D+Dr) 对齐。
+  当时 tests/pybind/test.py 分层验证 5/5 PASS（rmsnorm 链路数值精确）。
+- 2026-08-31 阶段D/E（多头输出问题攻坚 → 全量验证）：对"多头 query/query_rope head≥1 错误"进行
+  内核级插桩实证（kernel 转储 tiling 参数 / mm3 workspace 区域 / 全核执行拓扑），确认 kernel 与
+  tiling 全部正确，mm3 输出布局严格跟随 weight_uq_qr 列布局 → **真正根因：测试 harness 将
+  weight_uq_qr 构造为分离布局 [Wuq|Wqr]，而算子契约为按头交错 [Qc_h|Qr_h]×N**；同时实证标定
+  rope 输出布局语义（[前半|后半] 分量布局的标准旋转公式）；"未用 slot 被写"系 bf16 舍入误报
+  （-12345→-12352）。修复 golden.py/test.py 后全量 5/5 PASS（全部输出、全部用例）。
+  排查用全部插桩已移除，kernel/tiling vendored 代码还原为源仓原版（零逻辑改动）。详见
+  issues/issue_20260829_mm-split-multihead_01.md 的关闭结论。
+- 2026-08-31 阶段G（接口前向兼容）：用户指出 OP_LOGE_FOR_INVALID_SHAPEDIM 等日志宏为 9.1.0 后
+  新增，9.0.0 基线 toolkit 编译会失败；主仓通过 opbase 解决。採查确认主仓机制为
+  cmake/third_party/opbase.cmake（FetchContent 拉取 cann/opbase @ ec8c387b，include 顺序前置于
+  CANN 包，使新版 log.h 生效）。本工程继承该机制：新增 cmake/third_party/opbase.cmake（同 tag、
+  同查找链 ../../ops-base → third_party/opbase → FetchContent），op_host（npu_op_code_gen
+  COMPILE_OPTIONS + cust_optiling）与 cust_opapi 的 include 列表前置 opbase 路径；opapi 库按上游
+  模式加 -DOP_LOG_LIBOPAPI_ONLY（消除 log.h 与 opdev/op_log.h 宏重定义，EZ 宏不受影响）；
+  log.cpp 编入 tiling 库（提供 ToString 符号，对齐上游 opbase_util_objs）。根 .gitignore 增加
+  operators/mla_prolog_v5/cmake/third_party/ 反忽略（下载缓存 third_party/ 仍忽略）。
+  验证：① 9.0.0 模拟（剥离新宏的 log.h stub）：4 个使用新宏的源文件"无 opbase 编译失败
+  （错误信息与用户报告一致）→ opbase 前置编译通过"；② 9.1.0 实机全量重建零警告、功能回归
+  5/5 PASS；③ 负路径触发 tiling 层 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON，EZ0012 错误码与
+  信息经 opbase log.h 端到端正确上报。
