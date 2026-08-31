@@ -116,6 +116,11 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
  * 必须重新验证该前提。
  *
+ * W4 权重 L2 预取开启档位（fp4 权重 mode：A8W4/A4W4/A4W4_NZ）下，host 侧把 SendMask 可用预算钳至
+ * WEIGHT_L2_PREFETCH_UB_OFFSET（192KB，见 mega_moe_tiling.cpp SetAdaptiveBufferConfigs），
+ * 使本布局高水位恒低于预取 scratch [192K, 208K)；基准批最坏规格合计约 171KB 仍满足。
+ * 修改预取 scratch 偏移（mega_moe_constants.h）时须同步该钳位。
+ *
  * CalcSendMaskBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer，最多 6 个。
  */

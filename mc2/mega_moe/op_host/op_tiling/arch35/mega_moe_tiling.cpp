@@ -1338,7 +1338,21 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
+    // W4 权重 L2 预取开启（fp4 权重变体 mode，与 kernel 侧窗口 0 构造门控同源：仅 A8W4/A4W4/
+    // A4W4_NZ 在 AIV0 上构造游标；mode 已由 SetGroupedMatmulMode 在本函数前确定）时，SendMask 布局
+    // 须为预取 scratch [WEIGHT_L2_PREFETCH_UB_OFFSET, +WEIGHT_L2_PREFETCH_CHUNK_BYTES) 让位：batch
+    // 扩张后布局尾部的 sendGatherOut/mask ring 可越过 192K，与窗口 0 批内预取（MTE2 fire-and-
+    // forget 写 scratch）形成跨队列并发写。Dispatch 布局在 AIV1 独立 UB、unpermute 时序在预取排空
+    // 之后，均无需让位。钳位后基准批（12288 item）最坏规格合计约 171KB 仍低于 192KB，双 buffer
+    // 下限不受影响。
+    uint32_t sendMaskAvailableUbBytes = availableUbBytes;
+    if ((tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) &&
+        sendMaskAvailableUbBytes > WEIGHT_L2_PREFETCH_UB_OFFSET) {
+        sendMaskAvailableUbBytes = WEIGHT_L2_PREFETCH_UB_OFFSET;
+    }
+    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, sendMaskAvailableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
