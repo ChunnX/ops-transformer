@@ -1,4 +1,4 @@
-# ffn_to_attention_v2
+# ffn_to_attention
 
 ## 产品支持情况
 
@@ -25,9 +25,9 @@
 
 - **接口功能**：
 
-  - ffn_to_attention_v2算子将FFN节点上的token数据发送至Attention节点，用于MoE（Mixture of Experts）场景下Attention与FFN分离部署时的反向数据通信。算子根据每个token所属的Attention Worker索引，将FFN计算完成后的token数据路由回目标Attention卡，完成FFN到Attention的数据回传。
-  - 该算子提供了ffn_to_attention_v2与get_buffer_for_ffn_to_attention_v2等接口配套使用。
-  - get_buffer_for_ffn_to_attention_v2：用于封装输入参数并创建通信上下文（context），生成`context`、`ccl_buffer_size`等ffn_to_attention_v2算子运行所需信息，返回buffer对象。
+  - ffn_to_attention算子将FFN节点上的token数据发送至Attention节点，用于MoE（Mixture of Experts）场景下Attention与FFN分离部署时的反向数据通信。算子根据每个token所属的Attention Worker索引，将FFN计算完成后的token数据路由回目标Attention卡，完成FFN到Attention的数据回传。
+  - 该算子提供了ffn_to_attention与get_buffer_for_ffn_to_attention等接口配套使用。
+  - get_buffer_for_ffn_to_attention：用于封装输入参数并创建通信上下文（context），生成`context`、`ccl_buffer_size`等ffn_to_attention算子运行所需信息，返回buffer对象。
 
 - **计算公式**：
 
@@ -65,19 +65,19 @@
 
 ## 函数原型
 
-先用get_buffer_for_ffn_to_attention_v2接口封装输入参数并创建通信上下文（buffer），再调用ffn_to_attention_v2接口进行数据发送。
+先用get_buffer_for_ffn_to_attention接口封装输入参数并创建通信上下文（buffer），再调用ffn_to_attention接口进行数据发送。
 
 ```python
-get_buffer_for_ffn_to_attention_v2(group, world_size, token_info_table_shape, token_data_shape) -> FFNToAttentionV2Buffer
+get_buffer_for_ffn_to_attention(group, world_size, token_info_table_shape, token_data_shape) -> FFNToAttentionBuffer
 ```
 
 ```python
-ffn_to_attention_v2(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offsets, actual_token_num, *, attn_rank_table=None) -> None
+ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offsets, actual_token_num, *, attn_rank_table=None) -> None
 ```
 
 ## 参数说明
 
-### get_buffer_for_ffn_to_attention_v2
+### get_buffer_for_ffn_to_attention
 
 <table style="undefined;table-layout: fixed; width:840px"><colgroup>
 <col style="width: 180px">
@@ -121,9 +121,9 @@ ffn_to_attention_v2(buffer, x, session_ids, micro_batch_ids, token_ids, expert_o
 </tbody>
 </table>
 
-该接口返回<code>FFNToAttentionV2Buffer</code>对象，内部自动计算CCL通信缓冲区大小并创建通信上下文，供<code>ffn_to_attention_v2</code>使用。
+该接口返回<code>FFNToAttentionBuffer</code>对象，内部自动计算CCL通信缓冲区大小并创建通信上下文，供<code>ffn_to_attention</code>使用。
 
-### ffn_to_attention_v2
+### ffn_to_attention
 
 <table style="undefined;table-layout: fixed; width:1400px"><colgroup>
 <col style="width: 120px">
@@ -148,9 +148,9 @@ ffn_to_attention_v2(buffer, x, session_ids, micro_batch_ids, token_ids, expert_o
 <tbody>
     <tr>
         <td>buffer</td>
-        <td>FFNToAttentionV2Buffer</td>
+        <td>FFNToAttentionBuffer</td>
         <td>必选</td>
-        <td>由<a href="#get_buffer_for_ffn_to_attention_v2">get_buffer_for_ffn_to_attention_v2</a>创建的通信buffer，内部封装了<code>context</code>、<code>group</code>、<code>world_size</code>、<code>token_info_table_shape</code>、<code>token_data_shape</code>及<code>ccl_buffer_size</code>。</td>
+        <td>由<a href="#get_buffer_for_ffn_to_attention">get_buffer_for_ffn_to_attention</a>创建的通信buffer，内部封装了<code>context</code>、<code>group</code>、<code>world_size</code>、<code>token_info_table_shape</code>、<code>token_data_shape</code>及<code>ccl_buffer_size</code>。</td>
         <td>int32</td>
         <td>ND</td>
         <td>(contextSize,)</td>
@@ -227,9 +227,9 @@ ffn_to_attention_v2(buffer, x, session_ids, micro_batch_ids, token_ids, expert_o
 
 ## 约束说明
 
-- 调用算子过程中使用的`group`、`world_size`、`token_info_table_shape`、`token_data_shape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。其中`group`、`world_size`、`token_info_table_shape`、`token_data_shape`及`ccl_buffer_size`由`get_buffer_for_ffn_to_attention_v2`创建的buffer封装，调用`ffn_to_attention_v2`时无需单独传入。
+- 调用算子过程中使用的`group`、`world_size`、`token_info_table_shape`、`token_data_shape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。其中`group`、`world_size`、`token_info_table_shape`、`token_data_shape`及`ccl_buffer_size`由`get_buffer_for_ffn_to_attention`创建的buffer封装，调用`ffn_to_attention`时无需单独传入。
 
-- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_ffn_to_attention_v2`内部自动计算，需满足：
+- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_ffn_to_attention`内部自动计算，需满足：
 
 $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
 
@@ -237,7 +237,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
 
-该大小由`get_buffer_for_ffn_to_attention_v2`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
+该大小由`get_buffer_for_ffn_to_attention`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
 
 - 参数说明里shape格式说明：
     - `Y`：表示本卡需要分发的最大token数量。
@@ -252,7 +252,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
     - `worldSize`：通信域大小，取值区间[2, 768]。
 
 - 通信域使用约束：
-    - ffn_to_attention_v2算子的通信域中不允许有其他算子。
+    - ffn_to_attention算子的通信域中不允许有其他算子。
     - 通信域各节点的驱动版本应当相同。
 
 ## 确定性计算
@@ -263,7 +263,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
 
 - 单算子模式调用：
 
-  下面示例展示了ffn_to_attention_v2的完整调用流程：先初始化通信域，再用get_buffer_for_ffn_to_attention_v2创建通信buffer，最后调用ffn_to_attention_v2发送token数据。
+  下面示例展示了ffn_to_attention的完整调用流程：先初始化通信域，再用get_buffer_for_ffn_to_attention创建通信buffer，最后调用ffn_to_attention发送token数据。
 
   ```python
   import os
@@ -273,8 +273,8 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   import torch.multiprocessing as mp
   from torch.multiprocessing import Process
   from cann_ops_transformer.ops import (
-      ffn_to_attention_v2,
-      get_buffer_for_ffn_to_attention_v2,
+      ffn_to_attention,
+      get_buffer_for_ffn_to_attention,
   )
 
   WORLD_SIZE = 8
@@ -304,7 +304,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
       return ep_group
 
 
-  def run_ffn_to_attention_v2(rank):
+  def run_ffn_to_attention(rank):
       set_device(rank)
       ep_group = init_hccl_comm(rank)
 
@@ -312,7 +312,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
       token_data_shape = [microBatchNum, BS, expertNumPerToken, HS]
 
       # 步骤1：创建通信buffer
-      buffer = get_buffer_for_ffn_to_attention_v2(
+      buffer = get_buffer_for_ffn_to_attention(
           ep_group,
           WORLD_SIZE,
           token_info_table_shape,
@@ -337,8 +337,8 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
           actual_token_num = torch.tensor([tokens_per_rank], dtype=torch.int64, device="npu")
           attn_rank_table = torch.arange(ATTENTION_WORKER_NUM, dtype=torch.int32, device="npu")
 
-          # 步骤3：调用ffn_to_attention_v2发送token数据
-          ffn_to_attention_v2(
+          # 步骤3：调用ffn_to_attention发送token数据
+          ffn_to_attention(
               buffer,
               x,
               session_ids,
@@ -353,14 +353,14 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
       buffer.destroy()
       dist.barrier()
       dist.destroy_process_group()
-      print(f"[INFO] rank {rank} ffn_to_attention_v2 finished")
+      print(f"[INFO] rank {rank} ffn_to_attention finished")
 
 
   if __name__ == "__main__":
       mp.set_start_method("forkserver", force=True)
       proc_list = []
       for rank in range(WORLD_SIZE):
-          proc = Process(target=run_ffn_to_attention_v2, args=(rank,))
+          proc = Process(target=run_ffn_to_attention, args=(rank,))
           proc.start()
           proc_list.append(proc)
       for proc in proc_list:
