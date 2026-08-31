@@ -6,15 +6,15 @@
 |:----------------------------|:-----------:|
 
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|      ×     |
-|<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      ×     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas A3 训练系列产品</term>|      √     |
+|<term>Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas A2 推理系列产品</term>|      √     |
 |<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
 |<term> Atlas 推理系列产品</term>                                                 |    ×    |
 |<term> Atlas 训练系列产品</term>                                                 |    ×    |
 
-> **当前版本仅支持 <term>Ascend 950PR/Ascend 950DT</term>（arch35）**，其他平台不支持。
+> <term>Ascend 950PR/Ascend 950DT</term> 使用 arch35 实现，<term>Atlas A2/A3 系列</term> 使用 arch22 实现。
 
 ## 功能说明
 
@@ -90,7 +90,7 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnBlockSparseAttentionGradGetWorkspaceSize(
@@ -395,7 +395,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -474,7 +474,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -492,13 +492,13 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
   - maxBlockNum = max(ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY))，maxQSeqLength/maxKvSeqLength 为各 batch 序列长度最大值（非"TND"时即 shape 的 S 维度）。
   - actualSizeX ∈ [0, blockShapeX]，actualSizeY ∈ [0, blockShapeY]；块内 [actualSize, blockShape) 视为 padding，actualSize=0 表示该块不参与计算。
   - PerBlockSizeMask 仅在 blockSparseMaskOptional 对应块为 1 时生效（与块稀疏 mask 求 AND）。
-  - 仅支持 ascend950 平台。
+  - PerBlockSizeMask 路径仅在 ascend950 平台（arch35 实现）支持。
 
 * 不支持确定性计算场景。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

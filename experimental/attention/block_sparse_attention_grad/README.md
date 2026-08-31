@@ -5,15 +5,15 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|      ×     |
-|<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      ×     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas A3 训练系列产品</term>|      √     |
+|<term>Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas A2 推理系列产品</term>|      √     |
 |<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
 |<term> Atlas 推理系列产品</term>                                                 |    ×    |
 |<term> Atlas 训练系列产品</term>                                                 |    ×    |
 
-> **当前版本仅支持 <term>Ascend 950PR/Ascend 950DT</term>（arch35）**，其他平台不支持。
+> <term>Ascend 950PR/Ascend 950DT</term> 使用 arch35 实现，<term>Atlas A2/A3 系列</term> 使用 arch22 实现。
 
 ## 功能说明
 
@@ -367,7 +367,7 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
   - maxBlockNum = max(ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY))，maxQSeqLength/maxKvSeqLength 为各 batch 序列长度最大值（非"TND"时即 shape 的 S 维度）。
   - actualSizeX ∈ [0, blockShapeX]，actualSizeY ∈ [0, blockShapeY]；块内 [actualSize, blockShape) 视为 padding，actualSize=0 表示该块不参与计算。
   - PerBlockSizeMask 仅在 blockSparseMaskOptional 对应块为 1 时生效（与块稀疏 mask 求 AND）。
-  - 仅支持 ascend950 平台。
+  - PerBlockSizeMask 路径仅在 ascend950 平台（arch35 实现）支持。
 * 不支持确定性计算场景。
 
 
