@@ -1,0 +1,10 @@
+{
+    "Switch": {
+        "GraphFusion": {
+            "ApplyRotaryPosEmbTensorMoveFusionPass": "on",
+            "GroupedMatmulTransFusionPass": "on",
+            "MatmulAllToAllTransposeA5FusionPass": "on"
+        },
+        "UBFusion": {}
+    }
+}

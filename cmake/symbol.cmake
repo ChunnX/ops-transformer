@@ -172,6 +172,10 @@ function(gen_opgraph_symbol)
   install(TARGETS ${OPGRAPH_NAME}
     LIBRARY DESTINATION ${OPGRAPH_LIB_INSTALL_DIR}
   )
+  install(FILES ${PROJECT_SOURCE_DIR}/config/fusion_config.json
+    DESTINATION ${FUSION_PASS_CONFIG_INSTALL_DIR}
+    RENAME ops_transformer_fusion_config.json
+  )
   install(FILES ${ASCEND_GRAPH_CONF_DST}/ops_proto_transformer.h
     DESTINATION ${OPGRAPH_INC_INSTALL_DIR} OPTIONAL
   )
