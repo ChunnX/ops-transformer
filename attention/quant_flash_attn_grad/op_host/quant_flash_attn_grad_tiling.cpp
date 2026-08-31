@@ -73,7 +73,7 @@ static ge::graphStatus ParseAttrs(gert::TilingContext *context, const string &op
     if (*maskMode != WINDOW) {
         OP_CHECK_IF(winLeft != nullptr || winRight != nullptr,
                     OP_LOGE(opName, "if maskMode is not 4, winLeft and winRight can not be provider"),
-                        return ge::GRAPH_FAILED); 
+                       return ge::GRAPH_FAILED); 
     }
     return ge::GRAPH_SUCCESS;
 }
