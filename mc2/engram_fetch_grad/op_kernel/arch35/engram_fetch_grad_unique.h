@@ -457,6 +457,12 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
         uint32_t flushCastOffset = ENTRY_BUF_INT32_SLOTS * Mc2Kernel::ENTRY_BATCH_CAP * sizeof(int32_t);
         uint32_t castHalfBytes = (static_cast<uint32_t>(hiddenDim_) * outDtypeSize + Mc2Kernel::UB_ALIGN - 1U) /
                                  Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
+        // 双缓冲借用区必须完整落在 entryBuf_ 尾部内（Host 侧已按 hiddenDim 上界拒绝超限 shape，此处兜底）
+        uint32_t castTailBytes = flushCastOffset + 2U * castHalfBytes;
+        if (castTailBytes > Mc2Kernel::ENTRY_BUF_BYTES) {
+            RUNTIME_ABORT("FlushAccum cast staging overflow: need %u bytes, entryBuf=%u bytes, hiddenDim=%u",
+                          castTailBytes, Mc2Kernel::ENTRY_BUF_BYTES, static_cast<uint32_t>(hiddenDim_));
+        }
         AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * castHalfBytes];
         uint32_t castCount = static_cast<uint32_t>(hiddenDim_);
 
@@ -602,6 +608,12 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
 
     inclusiveSum = 0;
     uint32_t tileUniqueCnt = 0;
+    bool canDirectCopy = (inputDtype_ == outputDtype_);
+    // flag[i] = isNewUnique[i] && i+1<batchLen && compact[i]!=compact[i+1]；compact 仅在 isNewUnique 时
+    // 递增，故 compact[i]!=compact[i+1] ⟺ isNewUnique[i+1]。延迟一拍在主循环内直接生成最终 flag，
+    // 消除原本逐元素遍历的第二遍循环（PERF-1）
+    bool prevIsNewUnique = false;
+    int32_t prevCompact = 0;
     for (uint32_t i = 0; i < batchLen; i++) {
         int32_t entry = entryUb.GetValue(i);
         bool isNewUnique = isFirstElement || (entry != prevEntry);
@@ -609,22 +621,23 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
         prevEntry = entry;
         if (isNewUnique) {
             inclusiveSum++;
-            UniqueUb().SetValue(tileUniqueCnt, entry - static_cast<int32_t>(rankId_) * numEntriesPerRank_);
+            UniqueUb().SetValue(
+                tileUniqueCnt,
+                static_cast<int32_t>(static_cast<int64_t>(entry) - static_cast<int64_t>(rankId_) * numEntriesPerRank_));
             tileUniqueCnt++;
         }
-        CompactIdxUb().SetValue(i, runningOffset + inclusiveSum - 1);
+        int32_t compactIdx = runningOffset + inclusiveSum - 1;
+        CompactIdxUb().SetValue(i, compactIdx);
         RecvIdxUb().SetValue(i, CompUb().GetValue(i));
         DirectFlagUb().SetValue(i, isNewUnique ? 1 : 0);
-    }
-    bool canDirectCopy = (inputDtype_ == outputDtype_);
-    for (uint32_t i = 0; i < batchLen; i++) {
-        int32_t flag = 0;
-        if (canDirectCopy && DirectFlagUb().GetValue(i) != 0) {
-            if (i + 1U < batchLen && CompactIdxUb().GetValue(i) != CompactIdxUb().GetValue(i + 1U)) {
-                flag = 1;
-            }
+        if (i > 0) {
+            DirectFlagUb().SetValue(i - 1, (canDirectCopy && prevIsNewUnique && prevCompact != compactIdx) ? 1 : 0);
         }
-        DirectFlagUb().SetValue(i, flag);
+        prevIsNewUnique = isNewUnique;
+        prevCompact = compactIdx;
+    }
+    if (batchLen > 0) {
+        DirectFlagUb().SetValue(batchLen - 1, 0);
     }
     return tileUniqueCnt;
 }
@@ -659,6 +672,9 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     if (maxGradPerBatch < 1U) {
         maxGradPerBatch = 1U;
     }
+    // 行宽超过 32KB 半缓冲时禁用 ping/pong 拆分：整缓冲单行、跨 tile 用 evt_0 串行，
+    // 否则 tileIdx=1 写 gradPing[32K] 处的单行会越过 gradBuf_ 污染池内相邻缓冲
+    bool singleRowMode = static_cast<uint32_t>(hiddenBytes_) > Mc2Kernel::GRAD_PING_BYTES;
     if (maxGradPerBatch > gradSubBatch_) {
         maxGradPerBatch = gradSubBatch_;
     }
@@ -701,12 +717,13 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
             subLen = maxGradPerBatch;
         }
         uint32_t bufIdx = tileIdx % 2U;
-        AscendC::LocalTensor<uint8_t> gradRaw = (bufIdx == 0U) ? gradPing : gradPong;
+        AscendC::LocalTensor<uint8_t> gradRaw = (bufIdx == 0U || singleRowMode) ? gradPing : gradPong;
+        bool useEvt0 = singleRowMode || bufIdx == 0U;
 
-        if (tileIdx >= 2U) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(bufIdx == 0U ? evtVMte2_0 : evtVMte2_1);
+        if (tileIdx >= (singleRowMode ? 1U : 2U)) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(useEvt0 ? evtVMte2_0 : evtVMte2_1);
             if (canDirectCopy) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(bufIdx == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(useEvt0 ? evtMte3Mte2_0 : evtMte3Mte2_1);
             }
         }
 
@@ -723,12 +740,12 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
                                  gradParams, gradPad);
         }
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(bufIdx == 0U ? evtMte2V_0 : evtMte2V_1);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
         if (canDirectCopy) {
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(bufIdx == 0U ? evtMte2Mte3_0 : evtMte2Mte3_1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(useEvt0 ? evtMte2Mte3_0 : evtMte2Mte3_1);
         }
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(bufIdx == 0U ? evtMte2V_0 : evtMte2V_1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(useEvt0 ? evtMte2V_0 : evtMte2V_1);
 
         if (needCast) {
             AscendC::LocalTensor<float> castPingF = castBuf_->Get<float>();
@@ -744,7 +761,7 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
         }
 
         if (canDirectCopy) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(bufIdx == 0U ? evtMte2Mte3_0 : evtMte2Mte3_1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(useEvt0 ? evtMte2Mte3_0 : evtMte2Mte3_1);
             for (uint32_t j = 0; j < subLen; j++) {
                 if (DirectFlagUb().GetValue(subStart + j) != 0) {
                     int32_t compactIdx = CompactIdxUb().GetValue(subStart + j);
@@ -754,20 +771,21 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
                     FlushDirect(gradRaw, j, compactIdx, gradUniqueOutGM);
                 }
             }
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(bufIdx == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(useEvt0 ? evtMte3Mte2_0 : evtMte3Mte2_1);
         }
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(bufIdx == 0U ? evtVMte2_0 : evtVMte2_1);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(useEvt0 ? evtVMte2_0 : evtVMte2_1);
         tileIdx++;
     }
 
     if (tileIdx >= 1U) {
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>((tileIdx - 1U) % 2U == 0U ? evtVMte2_0 : evtVMte2_1);
+        uint32_t lastEvt = singleRowMode ? 0U : ((tileIdx - 1U) % 2U);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(lastEvt == 0U ? evtVMte2_0 : evtVMte2_1);
         if (canDirectCopy) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((tileIdx - 1U) % 2U == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(lastEvt == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
         }
     }
-    if (tileIdx >= 2U) {
+    if (!singleRowMode && tileIdx >= 2U) {
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tileIdx % 2U == 0U ? evtVMte2_0 : evtVMte2_1);
         if (canDirectCopy) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(tileIdx % 2U == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
