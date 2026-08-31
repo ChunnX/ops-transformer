@@ -43,6 +43,9 @@ using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 enum RegionTag { HEAD, MAIN, TAIL };
 
+// SyncAll<true> 占用 flagId 14，release 方向取模后落在 [0,13]，避免与 SyncAll 抢 AIV 计数器。
+constexpr uint32_t SYNCALL_FLAG_ID_MAX = 14;
+
 template <typename AType, typename BType, typename CType>
 class QmmMxKernelAgUdma {
 public:
@@ -116,6 +119,8 @@ public:
         uint64_t k{0};
         uint64_t n{0};
         uint64_t scaleKLen{0};
+        uint32_t bufferCount{0};     // win 区复用槽位数（release 门控，0=不复用）
+        uint64_t effBufferCount{0};  // data 复用轮数（0/>=commTiles 归一化为 commTiles）
     };
 
     /**
@@ -159,7 +164,6 @@ private:
 
     // ---- FragmentTensor builders ----
     __aicore__ inline void BuildFragmentTensors(const Params& params);
-    __aicore__ inline void EnsureWinRankBasesReady(const Params& params);
     __aicore__ inline void BuildMainFragment(const Params& params, uint32_t roundIdx);
     __aicore__ inline void BuildTailFragment(const Params& params);
     __aicore__ inline void UpdateMainRoundAddrs(const Params& params, uint32_t roundIdx);
@@ -192,35 +196,27 @@ private:
     FragTensorA headFragA_{};
     FragScaleA headFragScaleA_{};
     FragTensorC headFragC_{};
-    FragTensorA curMainA_{};
-    FragScaleA curMainScaleA_{};
-    FragTensorC curMainC_{};
+    FragTensorC curMainC_{};          // MAIN 仅 C 保留 frag scatter；A/scaleA 去 frag 连续读
     FragTensorA tailFragA_{};
     FragScaleA tailFragScaleA_{};
     FragTensorC tailFragC_{};
 
     // ---- Address bookkeeping ----
     GM_ADDR cFragAddrs_[8]{};
-    GM_ADDR winDataRankBase_[8]{};
-    GM_ADDR winScaleRankBase_[8]{};
 
     static constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
     GM_ADDR headAddrListA_[MAX_FRAG]{};
     GM_ADDR headAddrListScale_[MAX_FRAG]{};
     GM_ADDR headAddrListC_[MAX_FRAG]{};
-    GM_ADDR mainAddrListA_[MAX_FRAG]{};
-    GM_ADDR mainAddrListScale_[MAX_FRAG]{};
     GM_ADDR mainAddrListC_[MAX_FRAG]{};
     GM_ADDR tailAddrListA_[MAX_FRAG]{};
     GM_ADDR tailAddrListScale_[MAX_FRAG]{};
     GM_ADDR tailAddrListC_[MAX_FRAG]{};
 
     uint32_t curMainRoundIdx_{0xFFFFFFFF};
-    bool winBasesReady_{false};
     bool tailBuilt_{false};
-    uint64_t curRoundDataOff_{};
-    uint64_t curRoundScaleOff_{};
     uint64_t curRoundCOff_{};
+    int32_t releasedRoundIdx_{-1};
 
     // ---- Tile strides ----
     uint64_t tileMDataStride_{};
@@ -331,6 +327,20 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
     const int64_t mainRoundRows = static_cast<int64_t>(fp.rankSize - 1) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
 
+    const int64_t tileM = static_cast<int64_t>(fp.tileM);
+    const int64_t rankMinus1 = static_cast<int64_t>(fp.rankSize - 1);
+
+    // MAIN 连续读的普通 GM tensor（remote 紧凑 + buffer 复用）。
+    //   data 复用：M = effBufferCount*(rankSize-1)*tileM；scale 全量：M = commTiles*(rankSize-1)*tileM。
+    const int64_t mainDataM = static_cast<int64_t>(fp.effBufferCount) * rankMinus1 * tileM;
+    const int64_t mainScaleM = static_cast<int64_t>(fp.commTurn) * rankMinus1 * tileM;
+    auto gmA = Te::MakeTensor(
+                Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ AType*>(params.winDataBase)),
+                MakeLayoutA{}(mainDataM, Ki));
+    auto gmScaleA = Te::MakeTensor(
+                Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ AscendC::fp8_e8m0_t*>(params.winScaleBase)),
+                MakeLayoutScaleA{}(mainScaleM, scaleKLen));
+
     // B / scaleB / bias 全局共享 tensor
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_),
                 MakeLayoutB{}(Ki, Ni));
@@ -348,6 +358,9 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
     }
     uint32_t readyTileIdx = 0;
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
+
+    const int32_t commTurnI = static_cast<int32_t>(fp.commTurn);
+    const int32_t bufferCountI = static_cast<int32_t>(fp.bufferCount);
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
@@ -370,6 +383,19 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
             CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
         }
 
+        // win buffer 复用：释放本 block 已消费完的 round（去重、单调不减）。
+        // dependTileIdx 是 flag 编号（=round+1），换算成 round 编号后再释放。
+        {
+            int32_t dependRound = static_cast<int32_t>(ctx.dependTileIdx) - 1;
+            while (bufferCountI > 0 && releasedRoundIdx_ < dependRound - 1) {
+                releasedRoundIdx_++;
+                if (releasedRoundIdx_ < commTurnI - bufferCountI) {
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(
+                        static_cast<uint32_t>(releasedRoundIdx_) % SYNCALL_FLAG_ID_MAX);
+                }
+            }
+        }
+
         // Per-tile L2 cache hint
         SetL2Cache(problemShape, curMtile, curNtile, gmB, gmScaleB);
 
@@ -377,37 +403,55 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
         auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(scaleKLen, curNtile));
         auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, curNtile));
 
-        auto coordA = Te::MakeCoord(ctx.regionMPos, 0L);
         auto coordC = Te::MakeCoord(ctx.regionMPos, nPos);
-        auto shapeA = Te::MakeShape(curMtile, Ki);
-        auto shapeScaleA = Te::MakeShape(curMtile, scaleKLen);
         auto shapeC = Te::MakeShape(curMtile, curNtile);
 
-        // MAIN/TAIL 的 fragment tensor 延迟到首次命中时构建/更新地址。
         if (ctx.region == MAIN) {
+            // C 的 addrList 按 round 延迟更新（必须先更新地址再 Slice，Slice 持有 addrList 指针）。
             if (curMainRoundIdx_ == 0xFFFFFFFF) {
                 BuildMainFragment(params, ctx.roundIdx);
             } else if (curMainRoundIdx_ != ctx.roundIdx) {
                 UpdateMainRoundAddrs(params, ctx.roundIdx);
             }
-        } else if (ctx.region == TAIL && !tailBuilt_) {
-            BuildTailFragment(params);
-            tailBuilt_ = true;
+            auto blockC = ctx.fragC->Slice(coordC, shapeC);
+            // A/scaleA 普通连续读：A 按 slotIdx 回绕，scale 全量不回绕。
+            int64_t slotIdx = static_cast<int64_t>(static_cast<uint64_t>(ctx.roundIdx) % fp.effBufferCount);
+            int64_t actualMPos = slotIdx * rankMinus1 * tileM + ctx.regionMPos;
+            int64_t scaleActualMPos = static_cast<int64_t>(ctx.roundIdx) * rankMinus1 * tileM + ctx.regionMPos;
+            auto blockA = gmA.Slice(Te::MakeCoord(actualMPos, 0L), Te::MakeShape(curMtile, Ki));
+            auto blockScaleA = gmScaleA.Slice(Te::MakeCoord(scaleActualMPos, 0L), Te::MakeShape(curMtile, scaleKLen));
+            mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias,
+                    cFragAddrs_, static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM),
+                    static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
+                    ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
+        } else {
+            // HEAD/TAIL：frag 读（HEAD 单 fragment，TAIL padded 多 fragment）。
+            if (ctx.region == TAIL && !tailBuilt_) {
+                BuildTailFragment(params);
+                tailBuilt_ = true;
+            }
+            auto blockC = ctx.fragC->Slice(coordC, shapeC);
+            auto coordA = Te::MakeCoord(ctx.regionMPos, 0L);
+            auto blockA = ctx.fragA->Slice(coordA, Te::MakeShape(curMtile, Ki));
+            auto blockScaleA = ctx.fragScaleA->Slice(coordA, Te::MakeShape(curMtile, scaleKLen));
+            mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias,
+                    cFragAddrs_, static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM),
+                    static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
+                    ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
         }
-
-        auto blockA = ctx.fragA->Slice(coordA, shapeA);
-        auto blockScaleA = ctx.fragScaleA->Slice(coordA, shapeScaleA);
-        auto blockC = ctx.fragC->Slice(coordC, shapeC);
-        mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias,
-                cFragAddrs_, static_cast<uint64_t>(fp.mPerRank), static_cast<uint64_t>(fp.tileM),
-                static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
-                ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
     }
 
     // 确保所有 dependTileIdx 均已 wait（收尾清理）。
     while (readyTileIdx < fp.commTurn) {
         readyTileIdx++;
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+    }
+    // release 兜底：每个 AIC 核（包括未分到 block 的核）都要把 flag 补齐，
+    // AIV 复用等待最大需要释放 commTurn-bufferCount-1。
+    while (bufferCountI > 0 && releasedRoundIdx_ < commTurnI - bufferCountI - 1) {
+        releasedRoundIdx_++;
+        CrossCoreSetFlag<0x2, PIPE_FIX>(
+            static_cast<uint32_t>(releasedRoundIdx_) % SYNCALL_FLAG_ID_MAX);
     }
 }
 
@@ -453,28 +497,11 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildFragmentTens
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::EnsureWinRankBasesReady(const Params& params)
-{
-    if (winBasesReady_) {
-        return;
-    }
-    const auto& fp = params.fragParams;
-    for (uint32_t r = 0; r < fp.rankSize; ++r) {
-        winDataRankBase_[r] = params.winDataBase + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
-        winScaleRankBase_[r] = params.winScaleBase + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
-    }
-    winBasesReady_ = true;
-}
-
-template <typename AType, typename BType, typename CType>
 __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment(
     const Params& params, uint32_t roundIdx)
 {
-    EnsureWinRankBasesReady(params);
     const auto& fp = params.fragParams;
 
-    curRoundDataOff_ = static_cast<uint64_t>(roundIdx) * tileMDataStride_;
-    curRoundScaleOff_ = static_cast<uint64_t>(roundIdx) * tileMScaleStride_;
     curRoundCOff_ = static_cast<uint64_t>(roundIdx) * tileMCStride_;
 
     uint32_t fragIdx = 0;
@@ -482,15 +509,9 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment
         if (r == fp.rankId) {
             continue;
         }
-        mainAddrListA_[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
-        mainAddrListScale_[fragIdx] = winScaleRankBase_[r] + curRoundScaleOff_;
         mainAddrListC_[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
         fragIdx++;
     }
-    curMainA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
-        MakeFragParam(fp.tileM, fp.tileM, fp.rankSize - 1, fp.k), mainAddrListA_);
-    curMainScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, AscendC::fp8_e8m0_t>(
-        MakeFragParam(fp.tileM, fp.tileM, fp.rankSize - 1, fp.scaleKLen), mainAddrListScale_);
     curMainC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
         MakeFragParam(fp.tileM, fp.tileM, fp.rankSize - 1, fp.n), mainAddrListC_);
     curMainRoundIdx_ = roundIdx;
@@ -499,7 +520,6 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildMainFragment
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment(const Params& params)
 {
-    EnsureWinRankBasesReady(params);
     const auto& fp = params.fragParams;
 
     uint64_t tailRowOff = fp.headRows;
@@ -507,13 +527,20 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::BuildTailFragment
     uint64_t tailScaleOff = tailRowOff * params.scaleBytesPerMRow;
     uint64_t tailCOff = tailRowOff * params.cBytesPerM;
 
+    // remote 紧凑：data 复用（slot = tileCnt % effBufferCount 回绕），scale 全量（slot = tileCnt 不回绕）。
+    uint64_t dataSlotOff = (static_cast<uint64_t>(fp.tileCnt) % fp.effBufferCount) *
+                           (static_cast<uint64_t>(fp.rankSize - 1) * tileMDataStride_);
+    uint64_t scaleSlotOff = static_cast<uint64_t>(fp.tileCnt) *
+                           (static_cast<uint64_t>(fp.rankSize - 1) * tileMScaleStride_);
+
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
         if (r == fp.rankId) {
             tailAddrListA_[r] = params.aGM + tailDataOff;
             tailAddrListScale_[r] = params.aScaleGM + tailScaleOff;
         } else {
-            tailAddrListA_[r] = winDataRankBase_[r] + tailDataOff;
-            tailAddrListScale_[r] = winScaleRankBase_[r] + tailScaleOff;
+            uint32_t remoteIdx = (r > fp.rankId) ? (r - 1) : r;
+            tailAddrListA_[r] = params.winDataBase + dataSlotOff + static_cast<uint64_t>(remoteIdx) * tileMDataStride_;
+            tailAddrListScale_[r] = params.winScaleBase + scaleSlotOff + static_cast<uint64_t>(remoteIdx) * tileMScaleStride_;
         }
         tailAddrListC_[r] = cFragAddrs_[r] + tailCOff;
     }
@@ -531,8 +558,6 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAd
 {
     const auto& fp = params.fragParams;
     uint32_t delta = roundIdx - curMainRoundIdx_;
-    curRoundDataOff_ += static_cast<uint64_t>(delta) * tileMDataStride_;
-    curRoundScaleOff_ += static_cast<uint64_t>(delta) * tileMScaleStride_;
     curRoundCOff_ += static_cast<uint64_t>(delta) * tileMCStride_;
 
     uint32_t fragIdx = 0;
@@ -540,13 +565,9 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::UpdateMainRoundAd
         if (r == fp.rankId) {
             continue;
         }
-        mainAddrListA_[fragIdx] = winDataRankBase_[r] + curRoundDataOff_;
-        mainAddrListScale_[fragIdx] = winScaleRankBase_[r] + curRoundScaleOff_;
         mainAddrListC_[fragIdx] = cFragAddrs_[r] + curRoundCOff_;
         fragIdx++;
     }
-    curMainA_.UpdateAddrList(mainAddrListA_);
-    curMainScaleA_.UpdateAddrList(mainAddrListScale_);
     curMainC_.UpdateAddrList(mainAddrListC_);
     curMainRoundIdx_ = roundIdx;
 }
@@ -572,8 +593,6 @@ QmmMxKernelAgUdma<AType, BType, CType>::ResolveTileCtx(
         ctx.dependTileIdx = ctx.roundIdx + 1;
         ctx.region = MAIN;
         ctx.regionMPos = relPos % mainRoundRows;
-        ctx.fragA = &curMainA_;
-        ctx.fragScaleA = &curMainScaleA_;
         ctx.fragC = &curMainC_;
         ctx.rankCnt = static_cast<uint64_t>(rankSize - 1);
     } else {

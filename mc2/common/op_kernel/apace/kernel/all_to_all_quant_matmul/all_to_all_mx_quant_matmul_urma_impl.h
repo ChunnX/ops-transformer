@@ -239,9 +239,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         // 并跨 device 屏障保证对端 cube 也已释放该槽位
         if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
             AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>((tid - baseParams_.bufferCount) % SYNCALL_FLAG_ID_MAX);
+            AscendC::SyncAll<true>();
             if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
                 teamBarrier_.CrossDevice();
-                teamBarrier_.CrossCore();
             }
         }
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {

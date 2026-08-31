@@ -104,8 +104,9 @@ private:
     uint64_t scaleBytesPerMRow_{};
     uint64_t cBytesPerM_{};
     uint64_t scaleKGroups_{};
-    uint64_t dataRegionBytes_{};
-    uint64_t scaleRegionBytes_{};
+    uint32_t bufferCount_{0};       // win 区复用槽位数（release 门控，0=不复用）
+    uint64_t effBufferCount_{0};    // data 复用轮数（0/>=commTiles 归一化为 commTiles）
+    uint64_t scaleWinOffset_{0};    // scale 段的 winOffset（= data 段 footprint）
 
     const AllGatherMxMatmulUdmaTilingData *tilingData_{};
 };
@@ -132,14 +133,11 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
     rankId_ = udmaCtx_->rankId;
     rankSize_ = udmaCtx_->rankSize;
 
-    // Rank-major 布局：每个 rank 占完整的 M 行。data + scale 两段连续存放。
-    //   Win buffer 内存布局：
-    // ┌──────────────────────────────────────────────────┐
-    // │  rank0 M行 data │ ... │ rankR-1 M行 data │          ← data 段
-    // │  rank0 M行 scale│ ... │ rankR-1 M行 scale│         ← scale 段 (offset = dataRegionBytes_)
-    // └──────────────────────────────────────────────────┘
-    dataRegionBytes_ = static_cast<uint64_t>(rankSize_) * m_ * dataBytesPerMRow_;
-    scaleRegionBytes_ = static_cast<uint64_t>(rankSize_) * m_ * scaleBytesPerMRow_;
+    // Win buffer 布局（remote 紧凑 + buffer 复用）：
+    //   data 段：effBufferCount 个 slot，每 slot 连续放 (rankSize-1) 个 remote tile 段（跳过本卡）。
+    //   scale 段：紧接 data 段之后（scaleWinOffset_），全量 commTiles 个 slot。
+    uint64_t dataTileMaxBytes = static_cast<uint64_t>(tileM_) * k_ * sizeof(AType);
+    scaleWinOffset_ = static_cast<uint64_t>(rankSize_ - 1) * effBufferCount_ * dataTileMaxBytes;
 
     // 静态 tensor 替代 tpipe buffer
     uint32_t ubOffset = 0;
@@ -156,6 +154,7 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
     commTilingData_.splitAxisTailSize = tailM_;  // tail 行数
     commTilingData_.splitAxisTailCnt = tailCnt_;
     commTilingData_.nonSplitAxisSize = k_; // 非切分轴k
+    commTilingData_.bufferCount = tilingData_->commTile.bufferCount; // data 复用
 
     commTilingScale_.splitAxisTileSize = tileM_;
     commTilingScale_.splitAxisTileCnt = tileCnt_;
@@ -163,12 +162,13 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
     commTilingScale_.splitAxisTailCnt = tailCnt_;
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
     commTilingScale_.nonSplitAxisSize = scaleKLen_;
+    commTilingScale_.bufferCount = 0; // scale 全量，不复用
     allGatherData_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_,
                                                aGM_, commBuf.Get(), rankSize_,
                                                static_cast<uint32_t>(GetBlockIdx()));
     allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_,
                          aScaleGM_, commScaleBuf.Get(), rankSize_,
-                         static_cast<uint32_t>(GetBlockIdx()), dataRegionBytes_);
+                         static_cast<uint32_t>(GetBlockIdx()), scaleWinOffset_);
 }
 
 template <typename AType, typename BType, typename CType>
@@ -192,6 +192,13 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::InitBaseP
     dataBytesPerMRow_ = static_cast<uint64_t>(k_) * sizeof(AType);
     scaleBytesPerMRow_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
     cBytesPerM_ = static_cast<uint64_t>(n_) * sizeof(CType);
+
+    // buffer 复用归一化：0 或 >= commTiles 视为不复用（全量）
+    uint64_t commTiles = static_cast<uint64_t>(tileCnt_) + static_cast<uint64_t>(tailCnt_);
+    uint64_t rawBufferCount = td->commTile.bufferCount;
+    bufferCount_ = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
+                   static_cast<uint32_t>(rawBufferCount) : 0;
+    effBufferCount_ = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
 }
 
 template <typename AType, typename BType, typename CType>
@@ -214,7 +221,8 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::MatmulPro
                          tilingData_->mmTile.baseK, tilingData_->mmTile.dbL0c};
     params.fragParams = {tileCnt_, tileM_, tailCnt_, tailM_, paddedTailM_, commTurn_,
                          headRows_, rankId_, rankSize_, m_,
-                         static_cast<uint64_t>(k_), static_cast<uint64_t>(n_), scaleKLen_};
+                         static_cast<uint64_t>(k_), static_cast<uint64_t>(n_), scaleKLen_,
+                         bufferCount_, effBufferCount_};
     params.aGM = aGM_;
     params.aScaleGM = aScaleGM_;
     params.bGM = bGM_;
@@ -237,7 +245,7 @@ __aicore__ inline GM_ADDR AllGatherMxMatmulUdmaImpl<AType, BType, CType>::GetWin
 template <typename AType, typename BType, typename CType>
 __aicore__ inline GM_ADDR AllGatherMxMatmulUdmaImpl<AType, BType, CType>::GetWinScaleRegionBase()
 {
-    return GetWinDataRegionBase() + dataRegionBytes_;
+    return GetWinDataRegionBase() + scaleWinOffset_;
 }
 
 template <typename AType, typename BType, typename CType>
@@ -247,6 +255,15 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGather
     CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
 
     for (uint32_t round = 0; round < commTurn_; ++round) {
+        // win buffer 复用：写 slot round%bufferCount 会覆盖 slot (round-bufferCount)%bufferCount，
+        // 需先等 AIC 消费完并释放 round-bufferCount。
+        if (bufferCount_ > 0 && round >= bufferCount_) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>((round - bufferCount_) % SYNCALL_FLAG_ID_MAX);
+            AscendC::SyncAll<true>();
+            if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
+                teamBarrier_.CrossDevice();
+            }
+        }
         if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
             allGatherScale_.Commit();
             allGatherData_.Commit();
