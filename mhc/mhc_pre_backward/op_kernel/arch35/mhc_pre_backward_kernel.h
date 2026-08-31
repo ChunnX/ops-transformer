@@ -292,9 +292,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
-        pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue0_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue1_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0; // V0V1部分开始分配fp32TBuf_
@@ -635,18 +635,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     LocalTensor<P> hPost = vecInQueue1_.DeQue<P>();
     vecInQueue0_.DeQue<P>(gradHPost);
 
-    // 利用 q0 的第二个缓冲提前搬入 grad_h_res，使 MTE2 搬运与 grad_h_post 向量计算重叠。
-    AscendC::LocalTensor<P> gradHResBuf;
-    vecInQueue0_.AllocTensor<P>(gradHResBuf);
-    dataCopyParams.blockLen = buffers.stepLength * N_ * sizeof(P);
-    DataCopyPad(gradHResBuf, gradHResGm_[runBSStart * N_ * N_], dataCopyParams, dataCopyPadParams);
-    vecInQueue0_.EnQue(gradHResBuf);
-
     VFDoV0ProcessGradHPost((__ubuf__ P *)hPost.GetPhyAddr(), (__ubuf__ P *)gradHPost.GetPhyAddr(),
                            (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr(), buffers.stepLength);
     vecInQueue1_.FreeTensor(hPost);
     vecInQueue0_.FreeTensor(gradHPost);
 
+    // 单缓冲布局必须先释放grad_h_post，再搬入grad_h_res，避免同时占用两个q0槽位。
+    AscendC::LocalTensor<P> gradHResBuf;
+    vecInQueue0_.AllocTensor<P>(gradHResBuf);
+    dataCopyParams.blockLen = buffers.stepLength * N_ * sizeof(P);
+    DataCopyPad(gradHResBuf, gradHResGm_[runBSStart * N_ * N_], dataCopyParams, dataCopyPadParams);
+    vecInQueue0_.EnQue(gradHResBuf);
     vecInQueue0_.DeQue<P>(gradHResBuf);
 
     Muls(buffers.hResBufS1, gradHResBuf, ONE, buffers.stepLength * N_);
