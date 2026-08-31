@@ -17,7 +17,7 @@
  *   Ascend 950（6 组）：0–2 同上（ND），3 hifloat8、4 fp8_e5m2、5 fp8_e4m3fn
  *
  * A2/A3：PageAttention BBND/BNBD key 与 TND packed key；sparse_mode∈{0,3}。
- * Ascend 950：同功能 + query/key FP8 计算（无 scale）。
+ * Ascend 950：同功能 + query/key FP8 计算（无 scale）；PA key 允许 dim0 非连续。
  */
 
 #include <cstdint>
@@ -108,12 +108,13 @@ public:
                        ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+        // 950 PA key 允许 dim0（物理 page）非连续；A2/A3 默认 IR 仍 AutoContiguous。
         aicoreConfig950.Input("key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2,
                        ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         aicoreConfig950.Input("block_table")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
