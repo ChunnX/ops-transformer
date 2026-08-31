@@ -21,11 +21,11 @@
 #   kernel 编译相关，参见 docs/zh/install/compile.md 与 aicpu 开发指南
 #   （docs/zh/develop/aicpu_develop_guide.md）。
 #   -j20 由本脚本强制统一（不得被外部覆盖），并剥离用户透传的
-#   --ops= / --soc= / -j / -jN，防止与固定标志冲突（双标志冲突）。
+#   --ops= / --soc= / -j / -jN / --incremental，防止与固定标志冲突
+#   （双标志冲突）。每次均为全量编译，不支持增量。
 #
 # 用法示例：
-#   bash build_mla.sh                 # 首次全量编译（非 incremental）
-#   bash build_mla.sh --incremental   # 增量编译，复用 build/output 目录
+#   bash build_mla.sh                 # 全量编译（每次全编）
 #   bash build_mla.sh --pkg-type=deb  # 其余参数原样透传给 build.sh
 #
 # 产物：
@@ -79,6 +79,9 @@ for arg in "$@"; do
     case "${arg}" in
         --ops=* | --soc=* | -j | -j[0-9]*)
             echo "[build_mla] ignore overridden arg: ${arg} (forced: --ops=${OPS} --soc=${SOC} -j20)"
+            ;;
+        --incremental)
+            echo "[build_mla] ignore arg: ${arg} (incremental removed, always full build)"
             ;;
         *)
             pass_args+=("${arg}")
