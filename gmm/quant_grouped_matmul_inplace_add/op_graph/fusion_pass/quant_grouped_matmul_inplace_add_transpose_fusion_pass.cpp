@@ -306,8 +306,7 @@ ge::Status QuantGroupedMatmulInplaceAddTransposeFusionPass::Run(ge::GraphPtr &gr
 }
 
 #if GE_COMPILER_VERSION_NUM >= 90100000
-REG_FUSION_PASS(QuantGroupedMatmulInplaceAddTransposeFusionPass)
-    .Stage(ge::fusion::CustomPassStage::kCompatibleInherited);
+REG_FUSION_PASS(QuantGroupedMatmulInplaceAddTransposeFusionPass).Stage(ge::CustomPassStage::kCompatibleInherited);
 #endif
 } // namespace ops
 #endif
