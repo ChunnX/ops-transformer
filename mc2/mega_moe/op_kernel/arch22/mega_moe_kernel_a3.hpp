@@ -55,6 +55,7 @@
 #include "moe_init_routing_quant_v2/mc2_mega_moe_quant_moe_v2_fullload_dynamic_quant.h"
 #include "unpermute/mc2_mega_moe_moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "utils/weight_l2_prefetch.hpp"
 #include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
@@ -434,6 +435,25 @@ private:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
     }
 
+    /*
+     * 窗口 1 预取会话：先把 W2 游标重定位到即将 swiglu/GMM2 消费的专家区间 [firstExpert,
+     * lastExpert) -> burst 发射（<=SESSION_CHUNKS 块，钳制 Drain 过冲）-> 原阻塞等待（MTE2 在
+     * 等待期间并行排空）-> Drain 收口（含窗口 0 残留在飞块）。GMM2 在本段 swiglu 的 V2C flag
+     * 后才消费该区间，预取目标恒在消费前沿之前。CrossCoreWaitFlag 无非阻塞查询变体，无法在
+     * 等待中途逐块补发，故采用有界 burst + 尾部 Drain 的会话模式。
+     */
+    CATLASS_DEVICE
+    void CrossCoreWaitFlagC2VWithPrefetch(uint32_t firstExpert, uint32_t lastExpert)
+    {
+        WeightL2PrefetchRetarget(w1PrefetchCursor_, firstExpert, lastExpert);
+        WeightL2PrefetchBurst(w1PrefetchCursor_, WEIGHT_L2_PREFETCH_SESSION_CHUNKS);
+        AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
+        // Drain 在 OFF 时跳过（还原基线）；W0_ONLY 仍需执行——收口窗口 0 的残留 in-flight 块。
+        if (WEIGHT_L2_PREFETCH_ANY_ENABLED) {
+            WeightL2PrefetchDrain(WEIGHT_L2_PREFETCH_EVENT_ID_WINDOW1);
+        }
+    }
+
     CATLASS_DEVICE
     bool IsRankMasked(int32_t rank)
     {
@@ -736,9 +756,14 @@ private:
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
 
+            // W1 L2 hint 随窗口 0 使能（MEGA_MOE_PREFETCH_GMM1_HINT_MODE，默认 auto）：W1 被预取时
+            // 必须 NORMAL——DISABLE 读写双向 bypass（实测）会使预取完全无效；未被预取时保持基线
+            // 条件 DISABLE（currentM<=单 M-tile 即权重单次读时 bypass，与 d0086d1c5 对齐）。
+#if MEGA_MOE_PREFETCH_GMM1_HINT_DISABLE
             if (currentM <= L1TileShape::M) {
                 gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             }
+#endif
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
             LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
             LayoutB layoutB1 = params.layoutB1;
@@ -884,9 +909,14 @@ private:
                 GetTensorAddr<ElementB>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrB2))));
             gmS2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale *>(
                 GetTensorAddr<int64_t>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrScale2))));
+            // W2 L2 hint 随窗口 1 使能（MEGA_MOE_PREFETCH_GMM2_HINT_MODE，默认 auto）：W2 被预取时
+            // NORMAL（DISABLE 双向 bypass 会使预取无效）；未被预取时保持基线条件 DISABLE
+            // （currentM<=单 M-tile 即权重单次读时 bypass，与 d0086d1c5 对齐）。
+#if MEGA_MOE_PREFETCH_GMM2_HINT_DISABLE
             if (currentM <= L1TileShape::M) {
                 gmB2.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             }
+#endif
             GemmCoord inGroupProblemShape{currentM, n2, k2}; // M N K
 
             LayoutA layoutA = params.layoutA2.GetTileLayout(inGroupProblemShape.GetCoordMK());
@@ -1263,12 +1293,76 @@ private:
         uint32_t dequantSum2 = 0;
         int32_t pingpongIdx = 0;
         icache_preload(8);
+        /*
+         * 权重 L2 预取的每专家字节数（W1=K*N、W2=(N/2)*K 个 element；host 强制 K/N 均 512 对齐，
+         * 除法安全）。int4 两 element 共 1 字节，bf16/fp16 每 element 2 字节。窗口 0 预取 W1、
+         * 窗口 1 预取 W2。
+         */
+        uint64_t w1BytesPerExpert = 0U;
+        uint64_t w2BytesPerExpert = 0U;
+        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            w1BytesPerExpert = static_cast<uint64_t>(params.problemShape.k()) * params.problemShape.n() / 2U;
+            w2BytesPerExpert = static_cast<uint64_t>(params.problemShape.n() / 2) * params.problemShape.k() / 2U;
+        } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+            w1BytesPerExpert = static_cast<uint64_t>(params.problemShape.k()) * params.problemShape.n();
+            w2BytesPerExpert = static_cast<uint64_t>(params.problemShape.n() / 2) * params.problemShape.k();
+        } else {
+            w1BytesPerExpert = static_cast<uint64_t>(params.problemShape.k()) * params.problemShape.n() * 2U;
+            w2BytesPerExpert = static_cast<uint64_t>(params.problemShape.n() / 2) * params.problemShape.k() * 2U;
+        }
+        /*
+         * 窗口 0（W1 预取，策略写死不经 tiling 下发）：dispatch 内层按 dstEpIdx 分摊，
+         * coreIdx>=min(EP,coreNum) 的 AIV 不执行拷贝、停在组尾 SyncAll——仅这些空闲核构造游标，
+         * 每组循环体顶部 Retarget 到当前专家组再 burst（GMM1 组 g 在本组 SyncAll+flag 后即
+         * 消费，按组锁定即时交付）；busy 核零插入（其 MTE2 承载功能拷贝且直接门控 AIC 的
+         * GMM1 启动）。EP>=coreNum 时无空闲核，退化为忙核兜底：全部 AIV 以 (coreIdx, coreNum)
+         * 认领，组尾 SyncAll 前小配额预取下一组专家（发射点见组循环尾）。无独立 Drain：余量由
+         * 窗口 1 首个会话的 Drain 统一收口。
+         */
+        uint32_t idleWorkerBase =
+            static_cast<uint32_t>(params.EP) < coreNum ? static_cast<uint32_t>(params.EP) : coreNum;
+        uint32_t idleWorkerCount = coreNum - idleWorkerBase;
+        if (WEIGHT_L2_PREFETCH_W0_ENABLED && idleWorkerCount > 0U && coreIdx >= idleWorkerBase) {
+            // 预算 = 每组配额 x 组数（每 worker 份额），覆盖按组 Retarget 的全部发射窗口。
+            uint64_t w0Budget = static_cast<uint64_t>(WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_IDLE_AIV) *
+                                WEIGHT_L2_PREFETCH_CHUNK_BYTES * static_cast<uint32_t>(params.expertPerRank) *
+                                idleWorkerCount;
+            WeightL2PrefetchInit(w0PrefetchCursor_, reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                                 w1BytesPerExpert, static_cast<uint32_t>(params.expertPerRank),
+                                 coreIdx - idleWorkerBase, idleWorkerCount, w0Budget,
+                                 resource.ubBuf.template GetBufferByByte<uint8_t>(WEIGHT_L2_PREFETCH_UB_OFFSET));
+        }
+        if (WEIGHT_L2_PREFETCH_W0_ENABLED && idleWorkerCount == 0U &&
+            WEIGHT_L2_PREFETCH_WINDOW0_BUSY_CHUNKS_PER_AIV > 0U) {
+            // 忙核兜底预算 = 每组配额 x 组数（每 worker 份额），与空闲核模式同式。
+            uint64_t w0BusyBudget = static_cast<uint64_t>(WEIGHT_L2_PREFETCH_WINDOW0_BUSY_CHUNKS_PER_AIV) *
+                                    WEIGHT_L2_PREFETCH_CHUNK_BYTES * static_cast<uint32_t>(params.expertPerRank) *
+                                    coreNum;
+            WeightL2PrefetchInit(w0BusyPrefetchCursor_, reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                                 w1BytesPerExpert, static_cast<uint32_t>(params.expertPerRank), coreIdx, coreNum,
+                                 w0BusyBudget,
+                                 resource.ubBuf.template GetBufferByByte<uint8_t>(WEIGHT_L2_PREFETCH_UB_OFFSET));
+        }
         if constexpr (std::is_same_v<ElementB, int8_t>) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
+        // 忙核模式的组 0 冷启动兜底：组循环前补发专家 0 的 W1（组尾只覆盖 g+1，专家 0 无前驱）。
+        // 与组尾发射同配额、同 fire-and-forget 语义；唯一差异是排在组 0 功能拷贝之前入队，组 0
+        // 的 pull 数据就绪被推迟 ~配额x16KB（us 级，与组尾模式的代价对称）。至此忙核模式覆盖
+        // 全部专家，预算 = epr 个发射窗口恰好耗尽。
+        if (w0BusyPrefetchCursor_.active) {
+            WeightL2PrefetchRetarget(w0BusyPrefetchCursor_, 0U, 1U);
+            WeightL2PrefetchBurst(w0BusyPrefetchCursor_, WEIGHT_L2_PREFETCH_WINDOW0_BUSY_CHUNKS_PER_AIV);
+        }
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
+            // 窗口 0 预取：锁定当前专家组——groupIdx=g 只预热专家 g 的 W1，区间走完即停。
+            if (w0PrefetchCursor_.active) {
+                WeightL2PrefetchRetarget(w0PrefetchCursor_, static_cast<uint32_t>(groupIdx),
+                                         static_cast<uint32_t>(groupIdx) + 1U);
+                WeightL2PrefetchBurst(w0PrefetchCursor_, WEIGHT_L2_PREFETCH_WINDOW0_CHUNKS_PER_IDLE_AIV);
+            }
             // ----------------------------------------------------------
             // Each core pulls its `dstEpIdx`'s tokens out of the remote
             // rank's local peer-mem and runs the pre-process step.
@@ -1313,6 +1407,16 @@ private:
                                    UB_MOVE_NUM);
                     }
                 }
+            }
+            // 窗口 0 忙核兜底（仅无空闲核时构造）：组尾、SyncAll 前发射——排在功能拷贝之后入队，
+            // 核停在 SyncAll 时 MTE2 继续排空。目标为下一组专家 g+1（GMM1 消费前沿之前，驻留跨
+            // 一个 dispatch 组），末组无后继时 Retarget 自动钳到空区间、发射 no-op；组 0 由组循环
+            // 前的冷启动补发覆盖。代价：下一组 pull 的功能 MTE2 被程序序推迟 ~配额x16KB（默认
+            // 128KB，~4us 级，远小于组通信窗口）。
+            if (w0BusyPrefetchCursor_.active) {
+                WeightL2PrefetchRetarget(w0BusyPrefetchCursor_, static_cast<uint32_t>(groupIdx) + 1U,
+                                         static_cast<uint32_t>(groupIdx) + 2U);
+                WeightL2PrefetchBurst(w0BusyPrefetchCursor_, WEIGHT_L2_PREFETCH_WINDOW0_BUSY_CHUNKS_PER_AIV);
             }
             AscendC::SyncAll<true>();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
@@ -1380,9 +1484,33 @@ private:
         BlockEpilogue3 blockEpilogue3(resource, epilogueParams3);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
         BlockEpilogue1 blockEpilogue1(resource, n);
+        /*
+         * 窗口 1（W2 预取）：每个会话等的是 GMM1 当前 sync 段的 SYNCFLAGC2V（并非 GMM1 全部
+         * 完成——后续专家的 GMM1 与本侧 swiglu 并行流水），等待期间 AIV 空转、功能 MTE2 已
+         * 排空，是可发 GM->UB 预取的长窗口。目标为 W2——GMM2 在 GMM1 全部完成后才启动、且组
+         * 计算按 swiglu 段的 V2C 门控推进（GMM2 组循环头部），消费时刻恒晚于本会话，预取零
+         * 死字节（代价是早期段 W2 在 L2 的驻留跨过 GMM1 尾部，受 16MB 预算约束）。全部 AIV
+         * 以 (coreIdx, coreNum) 认领，每个会话按即将 swiglu/GMM2 的专家分段 Retarget。
+         */
+        if (WEIGHT_L2_PREFETCH_W1_ENABLED) {
+            WeightL2PrefetchInit(w1PrefetchCursor_, reinterpret_cast<GM_ADDR>(params.ptrB2), params.listLen != 1,
+                                 w2BytesPerExpert, static_cast<uint32_t>(params.expertPerRank), coreIdx, coreNum,
+                                 WEIGHT_L2_PREFETCH_MAX_BUDGET_BYTES,
+                                 resource.ubBuf.template GetBufferByByte<uint8_t>(WEIGHT_L2_PREFETCH_UB_OFFSET));
+        }
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            int32_t sectionStart = 0;
             for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
-                AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
+                // 本会话后的 swiglu 段覆盖 [sectionStart, sectionEnd] 组（段边界与 dequantSum
+                // 同源：IsSyncTask 的组触发 sync），GMM2 在该段 V2C 后消费这些组的 W2——按此
+                // 区间锁定 W2 游标（首会话即只预热 0 号专家起）。
+                int32_t sectionEnd = sectionStart;
+                while (sectionEnd < params.expertPerRank - 1 && !IsSyncTask(sectionEnd, params.expertPerRank)) {
+                    ++sectionEnd;
+                }
+                CrossCoreWaitFlagC2VWithPrefetch(static_cast<uint32_t>(sectionStart),
+                                                 static_cast<uint32_t>(sectionEnd) + 1U);
+                sectionStart = sectionEnd + 1;
                 AscendC::SyncAll<true>();
                 uint32_t curRowNum = dequantSum[syncIdx + 1] - dequantSum[syncIdx];
                 if (curRowNum > 0) {
@@ -1403,7 +1531,12 @@ private:
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
             }
         } else {
-            AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
+            // 会话 1 对应 dequantSum1 段（组 [0, epilogueGranularity)），会话 2 对应余下组。
+            uint32_t granularity = static_cast<uint32_t>(params.epilogueGranularity);
+            if (granularity > static_cast<uint32_t>(params.expertPerRank)) {
+                granularity = static_cast<uint32_t>(params.expertPerRank);
+            }
+            CrossCoreWaitFlagC2VWithPrefetch(0U, granularity);
             AscendC::SyncAll<true>();
             if (dequantSum1 > 0) {
                 uint32_t rowStartThisCore = 0;
@@ -1428,7 +1561,7 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
 
             if ((params.epilogueGranularity < params.expertPerRank && params.epilogueGranularity > 0)) {
-                AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
+                CrossCoreWaitFlagC2VWithPrefetch(granularity, static_cast<uint32_t>(params.expertPerRank));
                 AscendC::SyncAll<true>();
                 if (dequantSum2 > 0) {
                     uint32_t rowStartThisCore = dequantSum1;
@@ -1811,6 +1944,14 @@ private:
     uint32_t coreIdx;
     uint32_t coreNum;
     uint32_t nSyncSwiglu;
+
+    // 权重 L2 预取游标：窗口 0 = W1，dispatch 期间仅 coreIdx>=min(EP,coreNum) 的空闲 AIV 构造，
+    // 每组 Retarget 到当前专家；无空闲核（EP>=coreNum）时改由忙核兜底游标接管（全部 AIV 构造，
+    // 组尾 Retarget 到下一组专家）。窗口 1 = W2，等 GMM1 的 SYNCFLAGC2V 期间全部 AIV 构造，
+    // 每会话 Retarget 到即将 swiglu/GMM2 的专家段。未构造时 active=false，发射自动 no-op。
+    WeightL2PrefetchCursor w0PrefetchCursor_;
+    WeightL2PrefetchCursor w0BusyPrefetchCursor_;
+    WeightL2PrefetchCursor w1PrefetchCursor_;
 
     Params params;
     WorkspaceInfo workspaceInfo;
