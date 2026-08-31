@@ -2,16 +2,30 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|      √     |
-|<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
-|<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
-|<term> Atlas 推理系列产品</term>                                                 |    ×    |
-|<term> Atlas 训练系列产品</term>                                                 |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="A3" id3 -->
+- <term>Atlas A3 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="910b" id4 -->
+- <term>Atlas A2 训练系列产品</term>：支持
+<!-- end id4 -->
+<!-- npu="910b" id5 -->
+- <term>Atlas A2 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="310b" id6 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id6 -->
+<!-- npu="310p" id7 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id7 -->
+<!-- npu="910" id8 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id8 -->
 
 ## 功能说明
 
@@ -19,19 +33,19 @@
 * ​计算公式​：
 
   稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
-  
+
   已知正向计算公式为：
-  
+
   $$
   attentionOut=Softmax(Mask(scale⋅query⋅key_{sparse}^{T},  atten\_mask))⋅value_{sparse}
   $$
-  
+
   为方便表达，以变量$S$和$P$表示计算公式：
-  
+
   $$
   S = Mask(scale⋅query⋅key_{sparse}^{T},atten\_mask)
   $$
-  
+
   $$
   P = SoftMax(S)
   $$
@@ -43,7 +57,7 @@
   $$
   Out = PV
   $$
-  
+
   则反向计算公式为：
 
   $$
@@ -86,12 +100,10 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 
 - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
 不支持"BSND"。
-</ul>
-
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnBlockSparseAttentionGradGetWorkspaceSize(
@@ -129,6 +141,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 ```
 
 ## aclnnBlockSparseAttentionGradGetWorkspaceSize
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1550px">
@@ -396,7 +409,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -434,7 +447,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     </tr>
   </tbody></table>
 
-## aclnnBlockSparseAttentionGrad 
+## aclnnBlockSparseAttentionGrad
 
 * **参数说明：**
 
@@ -475,7 +488,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -485,19 +498,25 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 * HeadDim必须等于128。
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足N1 % N2 == 0。
   - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
+
+  <!-- npu="950" id9 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
+  <!-- end id9 -->
+
 * actualSeqLengthsOptional与actualSeqLengthsKvOptional相关约束：
 
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
+  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
-</ul>
+  <!-- npu="950" id10 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为非"TND"时，会忽略这两个入参。
+
+  <!-- end id10 -->
 
 * 不支持确定性计算场景。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -556,26 +575,26 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
             return -1;
         }
     }
-    
+
     auto size = GetShapeSize(shape) * sizeof(T);
-    
+
     // 检查hostData大小是否匹配
     if (hostData.size() != static_cast<size_t>(GetShapeSize(shape))) {
-        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n", 
+        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n",
                   hostData.size(), GetShapeSize(shape));
         return -1;
     }
-    
+
     // 调用aclrtMalloc申请device侧内存
     *deviceAddr = nullptr;
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    
+
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
               aclrtFree(*deviceAddr); *deviceAddr = nullptr; return ret);
-    
+
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
     if (shape.size() > 1) {
@@ -588,7 +607,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     *tensor = nullptr;
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                                 shape.data(), shape.size(), *deviceAddr);
-    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n"); 
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
               aclrtFree(*deviceAddr); *deviceAddr = nullptr; return -1);
     return 0;
 }
@@ -628,11 +647,11 @@ int main() {
     std::vector<op::fp16_t> qData(qSize, 0.1f);
     std::vector<op::fp16_t> kData(kvSize, 0.1f);
     std::vector<op::fp16_t> vData(kvSize, 0.1f);
-    
+
     // 梯度初始值可以给一个小正数
     std::vector<op::fp16_t> doutData(qSize, 0.01f);
     std::vector<op::fp16_t> outData(qSize, 0.1f);
-    
+
     // LSE给一个合理的正数，比如5.0f，这样exp(S - LSE)就是一个非常安全的负指数，绝对不会溢出
     std::vector<float> lseData(GetShapeSize(lseShape), 5.0f);
     std::vector<uint8_t> maskData(GetShapeSize(maskShape), 1);
@@ -641,7 +660,7 @@ int main() {
     void *qAddr = nullptr, *kAddr = nullptr, *vAddr = nullptr;
     void *doutAddr = nullptr, *outAddr = nullptr;
     void *lseAddr = nullptr, *maskAddr = nullptr;
-    
+
     aclTensor *qTensor = nullptr, *kTensor = nullptr, *vTensor = nullptr;
     aclTensor *doutTensor = nullptr, *outTensor = nullptr;
     aclTensor *lseTensor = nullptr, *maskTensor = nullptr;
@@ -651,7 +670,7 @@ int main() {
     CreateAclTensor(vData, kvShape, &vAddr, aclDataType::ACL_FLOAT16, &vTensor);
     CreateAclTensor(doutData, qShape, &doutAddr, aclDataType::ACL_FLOAT16, &doutTensor);
     CreateAclTensor(outData, qShape, &outAddr, aclDataType::ACL_FLOAT16, &outTensor);
-    
+
     CreateAclTensor(lseData, lseShape, &lseAddr, aclDataType::ACL_FLOAT, &lseTensor);     // 严格使用FP32
     CreateAclTensor(maskData, maskShape, &maskAddr, aclDataType::ACL_UINT8, &maskTensor); // 严格使用UINT8
 
@@ -659,7 +678,7 @@ int main() {
     std::vector<op::fp16_t> dqData(qSize, 0.0f);
     std::vector<op::fp16_t> dkData(kvSize, 0.0f);
     std::vector<op::fp16_t> dvData(kvSize, 0.0f);
-    
+
     void *dqAddr = nullptr, *dkAddr = nullptr, *dvAddr = nullptr;
     aclTensor *dqTensor = nullptr, *dkTensor = nullptr, *dvTensor = nullptr;
 
@@ -670,7 +689,7 @@ int main() {
     // 6. 创建aclIntArray属性参数(BlockShape & ActualSeqLengths)
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
-    
+
     std::vector<int64_t> qSeqLenVec(batch, static_cast<int64_t>(qSeqlen));
     std::vector<int64_t> kvSeqLenVec(batch, static_cast<int64_t>(kvSeqlen));
     aclIntArray *qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
@@ -682,7 +701,7 @@ int main() {
     int64_t maskType = 0;
     double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
     // 强制规定滑动窗口极大值
-    int64_t preTokens = 2147483647; 
+    int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
 
     // 8. 调用第一段接口: GetWorkspaceSize
@@ -691,28 +710,28 @@ int main() {
 
     LOG_PRINT("Calling aclnnBlockSparseAttentionGradGetWorkspaceSize...\n");
     ret = aclnnBlockSparseAttentionGradGetWorkspaceSize(
-        doutTensor, 
-        qTensor, 
-        kTensor, 
-        vTensor, 
-        outTensor, 
-        lseTensor, 
+        doutTensor,
+        qTensor,
+        kTensor,
+        vTensor,
+        outTensor,
+        lseTensor,
         maskTensor,                 // blockSparseMaskOptional
         nullptr,                    // attenMaskOptional必须为空
-        blockShapeArr, 
-        qSeqLenArr, 
-        kvSeqLenArr, 
-        qLayoutBuffer, 
-        kvLayoutBuffer, 
-        static_cast<int64_t>(numKvHeads), 
-        maskType, 
-        scaleValue, 
-        preTokens, 
-        nextTokens, 
-        dqTensor, 
-        dkTensor, 
-        dvTensor, 
-        &workspaceSize, 
+        blockShapeArr,
+        qSeqLenArr,
+        kvSeqLenArr,
+        qLayoutBuffer,
+        kvLayoutBuffer,
+        static_cast<int64_t>(numKvHeads),
+        maskType,
+        scaleValue,
+        preTokens,
+        nextTokens,
+        dqTensor,
+        dkTensor,
+        dvTensor,
+        &workspaceSize,
         &executor
     );
 
@@ -748,7 +767,7 @@ int main() {
     // 13. 释放所有资源
     LOG_PRINT("Cleaning up resources...\n");
     if (workspaceAddr) aclrtFree(workspaceAddr);
-    
+
     aclrtFree(qAddr); aclrtFree(kAddr); aclrtFree(vAddr);
     aclrtFree(doutAddr); aclrtFree(outAddr);
     aclrtFree(lseAddr); aclrtFree(maskAddr);
@@ -758,7 +777,7 @@ int main() {
     aclDestroyTensor(doutTensor); aclDestroyTensor(outTensor);
     aclDestroyTensor(lseTensor); aclDestroyTensor(maskTensor);
     aclDestroyTensor(dqTensor); aclDestroyTensor(dkTensor); aclDestroyTensor(dvTensor);
-    
+
     aclDestroyIntArray(blockShapeArr);
     aclDestroyIntArray(qSeqLenArr);
     aclDestroyIntArray(kvSeqLenArr);

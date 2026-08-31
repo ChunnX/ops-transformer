@@ -19,7 +19,7 @@
 
   - 场景一：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, num_head * k_head_size // last_dim_k, block_size, last_dim_k]/[num_blocks, num_head, k_head_size // last_dim_k, block_size, last_dim_k]
@@ -31,11 +31,11 @@
     last_dim_v = 32 / sizeof(dtypeValue)
     (k_head_size * sizeof(dtypeKey)) % 32 == 0
     (v_head_size * sizeof(dtypeValue)) % 32 == 0
-    ```  
-    
+    ```
+
   - 场景二：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -49,7 +49,7 @@
 
   - 场景三：
 
-    ```
+    ```python
     key:[batch, seq_len, num_head, k_head_size]
     value:[batch, seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -63,7 +63,7 @@
 
   - 场景四：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -77,7 +77,7 @@
 
   - 场景五：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -92,7 +92,7 @@
 
   - 场景六：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -104,7 +104,7 @@
 
   - 场景七：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, num_head, block_size, k_head_size]
@@ -215,14 +215,15 @@
     <tr>
       <td>offsets</td>
       <td>输入</td>
-      <td>key和value在非连续状态下的偏移，数组长度为2。其值应该大于0。</td>
+      <td>key和value在非连续状态下的偏移，数组长度为2。其值应该大于等于0。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
   </tbody></table>
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<br>
-  - key/value数据类型仅支持：FLOAT16、BFLOAT16、INT8；<br>
+- 各产品对key/value/keyCacheRef/valueCacheRef数据类型的支持范围：
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
 
 ## 约束说明
 
@@ -240,7 +241,7 @@
       * 当key和value都是4维时，seqLensOptional是一维，且seqLensOptional的值等于key的第一维为batch（对应场景三）。
       * 当key和value是3维且存在seqLensOptional时，seqLensOptional中所有值的和等于key的第一维为num_blocks（对应场景四、五）。
       * seqLensOptional和compressLensOptional里面的每个元素值必须满足公式：reduceSum(seqLensOptional[i] - compressLensOptional[i]) <= num_blocks * block_size（对应场景三、四、五）。
-      * block_size * k_head_size和block_size * v_head_size必须小于UINT32_MAX（对应场景七）。
+      * block_size *k_head_size和block_size* v_head_size必须小于UINT32_MAX（对应场景七）。
   * 输入属性限制：
       * key、value、keyCacheRef、valueCacheRef的数据类型必须一致。
       * 当cacheModeOptional为“PA_NZ”时key、keyCacheRef和value、valueCacheRef的数据类可以不一致。

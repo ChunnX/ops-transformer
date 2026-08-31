@@ -29,7 +29,8 @@ namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQmmTiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context) : GroupedQmmTiling(context)
+    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context)
+        : GroupedQmmTiling(context)
     {
         Reset();
     }
@@ -82,13 +83,14 @@ private:
     ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
     uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
     void ModifyWeightNzDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
-                                            uint64_t baseScaleABSize);
+                                       uint64_t baseScaleABSize);
     ge::graphStatus CalWeightNzScaleFactors();
     // add for pertoken quant mode
     bool AnalyzeAttrsPertoken();
     bool IsB8(ge::DataType dtype);
     bool CheckDtypePertoken();
     bool AnalyzeInputsPertoken();
+    bool CheckPertokenWeightNzShape(const gert::Shape &wShape, const gert::Shape &wStorageShape) const;
     ge::graphStatus DoOpTilingPertoken();
     int64_t LogPertokenQuantParams();
     bool CheckCoreNum() const override;
@@ -98,7 +100,7 @@ private:
     bool LoadDescsAndDtypes();
     bool CheckWeightNzDtype(const gert::Shape &xShape, const gert::Shape &wShape, ge::Format weightFormat);
     bool ValidateDtypeAndQuantParams(const gert::Shape &xShape, const gert::Shape &wShape,
-                              const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
+                                     const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     GMMSwigluQuantTilingDataParams tilingData_;
     bool isMxWeightNzMultiTensor_ = false;
 

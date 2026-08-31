@@ -19,15 +19,15 @@
 namespace Cgmct {
 namespace Gemm {
 namespace Tile {
-constexpr uint16_t HW_N0 = 16;                  ///< Hardware configuration parameter for N0
-constexpr uint16_t HW_M0 = 16;                  ///< Hardware configuration parameter for M0
-constexpr uint16_t ALIGN_NUM = 16;              ///< Alignment number for data processing
-constexpr uint64_t M_POS_BIT = 48;              ///< Bit position for M index
-constexpr uint64_t K_POS_BIT = 32;              ///< Bit position for K index
-constexpr uint64_t M_STEP_BIT = 16;             ///< Bit step for M index
-constexpr uint8_t INDEX_SHIFT = 2;              ///< Shift value for index manipulation
-constexpr uint8_t K_STEP_MIN_VAL_B32 = 2;       ///< Minimum step value for K index in B32
-constexpr uint8_t PAD_LIST[4] = {0, 0, 0, 0};   ///< Padding list for data alignment
+constexpr uint16_t HW_N0 = 16;                ///< Hardware configuration parameter for N0
+constexpr uint16_t HW_M0 = 16;                ///< Hardware configuration parameter for M0
+constexpr uint16_t ALIGN_NUM = 16;            ///< Alignment number for data processing
+constexpr uint64_t M_POS_BIT = 48;            ///< Bit position for M index
+constexpr uint64_t K_POS_BIT = 32;            ///< Bit position for K index
+constexpr uint64_t M_STEP_BIT = 16;           ///< Bit step for M index
+constexpr uint8_t INDEX_SHIFT = 2;            ///< Shift value for index manipulation
+constexpr uint8_t K_STEP_MIN_VAL_B32 = 2;     ///< Minimum step value for K index in B32
+constexpr uint8_t PAD_LIST[4] = {0, 0, 0, 0}; ///< Padding list for data alignment
 
 } // namespace Tile
 } // namespace Gemm

@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #include "block_sparse_attention_grad.h"
 
 #include "opdev/make_op_executor.h"
@@ -38,14 +37,13 @@ static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray, acl
     return executor->AllocTensor(dtype, Format::FORMAT_ND, Format::FORMAT_ND);
 }
 
-const std::array<const aclTensor *, 3>
-BlockSparseAttentionGrad(const aclTensor *dout, const aclTensor *query, const aclTensor *key, const aclTensor *value,
-                         const aclTensor *attentionOut, const aclTensor *softmaxLse,
-                         const aclTensor *blockSparseMaskOptional, const aclTensor *attenMaskOptional,
-                         const aclIntArray *blockShapeOptional, const aclIntArray *actualSeqLengthsOptional,
-                         const aclIntArray *actualSeqLengthsKvOptional, char *qInputLayout, char *kvInputLayout,
-                         int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t preTokens,
-                         int64_t nextTokens, aclOpExecutor *executor)
+const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
+    const aclTensor *dout, const aclTensor *query, const aclTensor *key, const aclTensor *value,
+    const aclTensor *attentionOut, const aclTensor *softmaxLse, const aclTensor *blockSparseMaskOptional,
+    const aclTensor *attenMaskOptional, const aclIntArray *blockShapeOptional,
+    const aclIntArray *actualSeqLengthsOptional, const aclIntArray *actualSeqLengthsKvOptional, char *qInputLayout,
+    char *kvInputLayout, int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t preTokens,
+    int64_t nextTokens, aclOpExecutor *executor)
 {
     const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
 

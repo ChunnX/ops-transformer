@@ -22,17 +22,6 @@ using std::pair;
 using std::string;
 namespace optiling {
 
-std::string MQSMLADataTypeToSerialString(ge::DataType type)
-{
-    const auto it = DATATYPE_TO_STRING_MAP.find(type);
-    if (it != DATATYPE_TO_STRING_MAP.end()) {
-        return it->second;
-    } else {
-        OP_LOGE("MixedQuantSparseFlashMla ", "datatype %d not support", type);
-        return "UNDEFINED";
-    }
-}
-
 std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
 {
     switch (layout) {
@@ -44,6 +33,17 @@ std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
             return "PA_BBND";
         default:
             return "UNKNOWN";
+    }
+}
+
+std::string MQSMLADataTypeToSerialString(ge::DataType type)
+{
+    const auto it = DATATYPE_TO_STRING_MAP.find(type);
+    if (it != DATATYPE_TO_STRING_MAP.end()) {
+        return it->second;
+    } else {
+        OP_LOGE("MixedQuantSparseFlashMla ", "datatype %d not support", type);
+        return "UNDEFINED";
     }
 }
 
@@ -135,7 +135,8 @@ void MQSMLATilingCheck::Init()
     oriBlockSize_ = qsmlaInfo_.oriBlockSize;
     cmpBlockSize_ = qsmlaInfo_.cmpBlockSize;
 
-    sparseBlockCount_ = qsmlaInfo_.sparseBlockCount;
+    oriSparseBlockCount_ = qsmlaInfo_.oriSparseBlockCount;
+    cmpSparseBlockCount_ = qsmlaInfo_.cmpSparseBlockCount;
     sparseBlockSize_ = qsmlaInfo_.sparseBlockSize;
 
     tileSize_ = qsmlaInfo_.tileSize;
@@ -154,9 +155,17 @@ void MQSMLATilingCheck::Init()
     outputType_ = qsmlaInfo_.outputType;
 
     if (opParamInfo_.cmpKv.tensor == nullptr) {
-        perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
+        if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+            perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
+        } else {
+            perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
+        }
     } else if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
+        if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+            perfMode_ = QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE;
+        } else {
+            perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
+        }
     } else {
         perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }
@@ -218,7 +227,7 @@ ge::graphStatus MQSMLATilingCheck::Process()
     Init();
     if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckConsistency() != ge::GRAPH_SUCCESS ||
         CheckParaExistence() != ge::GRAPH_SUCCESS || CheckKvContiguous() != ge::GRAPH_SUCCESS ||
-        CheckFeature() != ge::GRAPH_SUCCESS) {
+        CheckFeature() != ge::GRAPH_SUCCESS || CheckSoftmaxLse() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

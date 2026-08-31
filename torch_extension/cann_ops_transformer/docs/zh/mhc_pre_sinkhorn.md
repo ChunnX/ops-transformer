@@ -2,20 +2,32 @@
 
 ## 产品支持情况
 
+<!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
 - <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
 - <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：
+- **接口功能**：
 
   基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。
 
-- 计算公式：
+- **计算公式**：
 
   $$
   \begin{aligned}
@@ -94,8 +106,13 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>Tensor</td>
         <td>必选</td>
         <td>MHC层的输入数据。对应公式中x。</td>
-        <td>bfloat16</td>
-        <td>(B, S, N, C)</td>
+        <td>float16、bfloat16</td>
+        <td>
+            <ul>
+                <li>(B, S, N, C)</li>
+                <li>(T, N, C)</li>
+            </ul>
+        </td>
     </tr>
     <tr>
         <td>phi</td>
@@ -182,8 +199,13 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>Tensor</td>
         <td>必选</td>
         <td>输出的h_in，作为Attention/MLP层的输入。对应公式中h<sub>in</sub>。</td>
-        <td>bfloat16</td>
-        <td>(B, S, C)</td>
+        <td>float16、bfloat16</td>
+        <td>
+            <ul>
+                <li>(B, S, C)</li>
+                <li>(T, C)</li>
+            </ul>
+        </td>
     </tr>
     <tr>
         <td>hPost</td>
@@ -191,7 +213,12 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>必选</td>
         <td>输出的MHC的h_post变换矩阵。对应公式中H<sup>post</sup>。</td>
         <td>float32</td>
-        <td>(B, S, N)</td>
+        <td>
+            <ul>
+                <li>(B, S, N)</li>
+                <li>(T, N)</li>
+            </ul>
+        </td>
     </tr>
     <tr>
         <td>hRes</td>
@@ -199,32 +226,53 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>必选</td>
         <td>输出的MHC的h_res变换矩阵（Sinkhorn归一化后的双随机矩阵）。对应公式中H<sup>res</sup>。</td>
         <td>float32</td>
-        <td>(B, S, N*N)</td>
+        <td>
+            <ul>
+                <li>(B, S, N*N)</li>
+                <li>(T, N*N)</li>
+            </ul>
+        </td>
     </tr>
 </tbody>
 </table>
 
+> 说明：4维输入为BSND格式，3维输入为TND格式。其中B表示Batch大小，S表示单Batch序列长度，T表示所有Batch序列长度的累加和，N表示残差流数量，C表示尾轴隐藏维度大小。
+
 ## 约束说明
 
-- 该接口支持训练、推理场景下使用
-- 该接口支持单算子模式调用
+- 该接口支持训练、推理场景下使用。
+- 该接口支持单算子模式和图模式调用。
+- 参数约束：x、phi、alpha、bias不支持空Tensor。
 - 规格约束：
+  - numIters：表示迭代次数，目前仅支持20。
+  - N：目前仅支持4。
+  <!-- npu="A3,910b" id7 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 输入x仅支持4维BSND格式，shape为(B, S, N, C)。
+    - 尾轴C要求128对齐，取值范围为[1, 100000]。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 输入x支持4维BSND格式和3维TND格式，shape分别为(B, S, N, C)和(T, N, C)。
+    - TND格式下，T表示所有Batch序列长度的累加和；对应输出shape按参数说明中的T轴展开。
+    - 尾轴C仅支持4096、7168。
+    - 输入phi的数据范围限定在$\pm \frac{1}{\sqrt{NC}}$范围内，eps限定在1e-6，此范围内具有较好的数值稳定性。
+  <!-- end id8 -->
 
-  | 规格项   | 规格               | 规格说明                               |
-  | :------- | :----------------- | :------------------------------------- |
-  | numIters | 20                 | 迭代次数超出该范围会返回参数无效错误。 |
-  | N        | 4                  | 目前只支持4。                          |
-  | C        | A2/A3：128对齐，[1, 100000]；A5：4096、7168 | 尾轴C的取值与芯片版本相关：<term>Atlas A2/A3</term>需满足128对齐且取值范围为[1, 100000]；<term>Ascend 950PR/Ascend 950DT</term>仅支持4096、7168。 |
+## 确定性/Batch一致性
 
-- 参数约束：
-  - x不支持空Tensor。
-  - phi不支持空Tensor。
-  - alpha不支持空Tensor。
-  - bias不支持空Tensor。
+- 确定性计算：
+    - 默认支持确定性计算。
 
-## 确定性计算
-
-默认支持确定性计算。
+- Batch一致性：
+    <!-- npu="A3,910b" id9 -->
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - 默认不支持Batch一致性。
+    <!-- end id9 -->
+    <!-- npu="950" id10 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - 默认不支持Batch一致性，可通过Pytorch开关（[《TorchNPU自定义API》](https://www.hiascend.com/document/detail/zh/Pytorch/latest/apiref/customapi/docs/zh/custom_APIs/overview.md)中torch_npu.npu.set_deterministic_level）支持。开启Batch一致性后性能可能会有一定程度的劣化。
+    <!-- end id10 -->
 
 ## 调用说明
 
@@ -238,7 +286,7 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
   B = 1
   S = 1024
   N = 4
-  C = 1280
+  C = 4096
 
   x = torch.randn(B, S, N, C, dtype=torch.bfloat16).npu()
   phi = torch.randn(N * N + 2 * N, N * C, dtype=torch.float32).npu()
@@ -249,9 +297,46 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
   numIters = 20
   hcEps = 1e-6
   normEps = 1e-6
-  outFlag = True  # 需要反向时设置为True
 
   hin, hPost, hRes = mhc_pre_sinkhorn(
-    x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, outFlag
+    x, phi, alpha, bias, hcMult, numIters, hcEps, normEps
   )
+  ```
+
+- 图模式调用：
+
+  ```python
+  import torch
+  import torch_npu
+  import torchair
+  from cann_ops_transformer.ops import mhc_pre_sinkhorn
+
+  torch_npu.npu.set_device(0)
+
+  B = 1
+  S = 128
+  N = 4
+  C = 4096
+
+  class MhcPreSinkhornModel(torch.nn.Module):
+      def forward(self, x, phi, alpha, bias):
+          hin, hPost, hRes = mhc_pre_sinkhorn(
+              x, phi, alpha, bias,
+              hc_mult=4,
+              num_iters=20,
+              hc_eps=1e-6,
+              norm_eps=1e-6
+          )
+          return hin, hPost, hRes
+
+  model = MhcPreSinkhornModel().npu()
+  npu_backend = torchair.get_npu_backend()
+  model = torch.compile(model, backend=npu_backend, dynamic=False)
+
+  x = torch.randn(B, S, N, C, dtype=torch.bfloat16, device="npu")
+  phi = torch.randn(N * N + 2 * N, N * C, dtype=torch.float32, device="npu")
+  alpha = torch.randn(3, dtype=torch.float32, device="npu")
+  bias = torch.randn(N * N + 2 * N, dtype=torch.float32, device="npu")
+
+  hin, hPost, hRes = model(x, phi, alpha, bias)
   ```

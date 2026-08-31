@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|     ×      |
-|<term>Atlas 推理系列产品</term>|     ×     |
-|<term>Atlas 训练系列产品</term>|     ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -48,42 +58,42 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedFloydAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttentionGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFusedFloydAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttentionGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFusedFloydAttentionGradGetWorkspaceSize(
-  const aclTensor   *query, 
-  const aclTensor   *key1, 
-  const aclTensor   *value1, 
-  const aclTensor   *key2, 
-  const aclTensor   *value2, 
-  const aclTensor   *dy, 
-  const aclTensor   *attenMaskOptional, 
-  const aclTensor   *softmaxMax, 
-  const aclTensor   *softmaxSum, 
-  const aclTensor   *attentionIn, 
-  double             scaleValue, 
-  const aclTensor   *dqOut, 
-  const aclTensor   *dk1Out, 
-  const aclTensor   *dv1Out, 
-  const aclTensor   *dk2Out, 
-  const aclTensor   *dv2Out, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *query,
+  const aclTensor   *key1,
+  const aclTensor   *value1,
+  const aclTensor   *key2,
+  const aclTensor   *value2,
+  const aclTensor   *dy,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *softmaxMax,
+  const aclTensor   *softmaxSum,
+  const aclTensor   *attentionIn,
+  double             scaleValue,
+  const aclTensor   *dqOut,
+  const aclTensor   *dk1Out,
+  const aclTensor   *dv1Out,
+  const aclTensor   *dk2Out,
+  const aclTensor   *dv2Out,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFusedFloydAttentionGrad(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
 ## aclnnFusedFloydAttentionGradGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
       <col style="width: 146px">
       <col style="width: 135px">
@@ -291,7 +301,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
@@ -328,7 +338,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 ## aclnnFusedFloydAttentionGrad
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
   <col style="width: 184px">
   <col style="width: 134px">
@@ -365,13 +375,13 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
   </table>
 
 - **返回值：**
-  
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 该接口不支持确定性。
-- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配
+- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 关于数据shape的约束，其中：
   - B：取值范围为1\~2K。
   - H：取值范围为1\~256。
@@ -390,7 +400,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -585,7 +595,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnFusedFloydAttentionGrad第一段接口
-  ret = aclnnFusedFloydAttentionGradGetWorkspaceSize(q, k1, v1, k2, v2, dx, attenmask, softmaxMax, softmaxSum, 
+  ret = aclnnFusedFloydAttentionGradGetWorkspaceSize(q, k1, v1, k2, v2, dx, attenmask, softmaxMax, softmaxSum,
         attentionIn, scaleValue, dq, dk1, dv1, dk2, dv2, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedFloydAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

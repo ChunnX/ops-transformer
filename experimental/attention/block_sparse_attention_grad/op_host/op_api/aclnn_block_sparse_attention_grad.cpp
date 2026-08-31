@@ -53,7 +53,6 @@ struct BSAGParams {
     const aclTensor *dvOut = nullptr;
 };
 
-
 static aclnnStatus CheckMandatoryTensors(const aclTensor *dout, const aclTensor *query, const aclTensor *key,
                                          const aclTensor *value, const aclTensor *attentionOut,
                                          const aclTensor *softmaxLse, const aclTensor *blockSparseMaskOptional)
@@ -99,10 +98,10 @@ static aclnnStatus ValidateParams(const BSAGParams &params)
 {
     std::string qLayout(params.qInputLayout);
     std::string kvLayout(params.kvInputLayout);
-    CHECK_RET(CheckMandatoryTensors(params.attentionOutGrad, params.query, params.key, params.value,
-                                    params.attentionOut, params.softmaxLse,
-                                    params.blockSparseMaskOptional) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(
+        CheckMandatoryTensors(params.attentionOutGrad, params.query, params.key, params.value, params.attentionOut,
+                              params.softmaxLse, params.blockSparseMaskOptional) == ACLNN_SUCCESS,
+        ACLNN_ERR_PARAM_NULLPTR);
     // dtype检查
     DataType qDtype = params.query->GetDataType();
     DataType kDtype = params.key->GetDataType();

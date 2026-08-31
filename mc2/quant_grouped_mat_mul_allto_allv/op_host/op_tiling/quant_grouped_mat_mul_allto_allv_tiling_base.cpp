@@ -31,12 +31,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetShapeAttrsInfo()
     auto gmmXTensorDesc = context_->GetInputDesc(GMM_X_INDEX);
     auto gmmWeightTensorDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
     auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((gmmXTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmX"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((gmmXTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmX"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((gmmWeightTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmWeight"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "y"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "y"), return ge::GRAPH_FAILED);
 
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
@@ -47,8 +45,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetShapeAttrsInfo()
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_WITH_INVALID_ATTR(opName_, "group", "empty", "not empty"),
                     return ge::GRAPH_FAILED);
     // 判断group是否超过127
-    const char* nullTerminator = static_cast<const char*>(memchr(group, '\0', MAX_GROUP_BUFFER_SIZE));
-    OP_TILING_CHECK(nullTerminator == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "group", "length > 128", "length <= 127"),
+    const char *nullTerminator = static_cast<const char *>(memchr(group, '\0', MAX_GROUP_BUFFER_SIZE));
+    OP_TILING_CHECK(nullTerminator == nullptr,
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "group", "length > 128", "length <= 127"),
                     return ge::GRAPH_FAILED);
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
@@ -67,9 +66,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetShapeAttrsInfo()
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(
-        platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
+                    return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     return ge::GRAPH_SUCCESS;
@@ -124,11 +122,10 @@ QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::Ti
     if (gmmXQuantMode == QUANT_MX && gmmWeightQuantMode == QUANT_MX) {
         return QUANT_PAIR_MX;
     } else {
-        OP_LOGD(opName,
-                "Quantization mode error, currently gmmXQuantMode=%d, gmmWeightQuantMode=%d.",
-                gmmXQuantMode, gmmWeightQuantMode);
+        OP_LOGD(opName, "Quantization mode error, currently gmmXQuantMode=%d, gmmWeightQuantMode=%d.", gmmXQuantMode,
+                gmmWeightQuantMode);
     }
     OP_LOGD(opName, "Detected QUANT_PAIR_ERROR");
     return QUANT_PAIR_ERROR;
 }
-} // namespace
+} // namespace Mc2Tiling

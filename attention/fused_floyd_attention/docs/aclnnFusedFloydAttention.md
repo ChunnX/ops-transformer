@@ -3,14 +3,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|     ×      |
-|<term>Atlas 推理系列产品</term>|     ×     |
-|<term>Atlas 训练系列产品</term>|     ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -23,36 +33,36 @@
     $$
     weights = Softmax(attenMask + scale*(einsum(query, key1^T) + einsum(query, key2^T)))
     $$
-    
+
     $$
     attention\_out = einsum(weights, value1) + einsum(weights, value2)
     $$
-    
+
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedFloydAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFusedFloydAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttention”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnFusedFloydAttentionGetWorkspaceSize(
-    const aclTensor *query, 
-    const aclTensor *key1, 
-    const aclTensor *value1, 
-    const aclTensor *key2, 
-    const aclTensor *value2, 
-    const aclTensor *attenMaskOptional, 
-    double           scaleValueOptional, 
-    const aclTensor *softmaxMaxOut, 
-    const aclTensor *softmaxSumOut, 
-    const aclTensor *attentionOutOut, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *query,
+    const aclTensor *key1,
+    const aclTensor *value1,
+    const aclTensor *key2,
+    const aclTensor *value2,
+    const aclTensor *attenMaskOptional,
+    double           scaleValueOptional,
+    const aclTensor *softmaxMaxOut,
+    const aclTensor *softmaxSumOut,
+    const aclTensor *attentionOutOut,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnFusedFloydAttention(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -207,7 +217,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -282,7 +292,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明<a name="1"></a>
 
@@ -300,12 +310,12 @@ aclnnStatus aclnnFusedFloydAttention(
 - key2与value2 shape需相同。
 - softmaxMax与softmaxSum shape需相同。
 - D只支持32/64/128。
-- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降，此时建议使用小算子拼接替换实现。
+- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降。同时，K的长度较大时，算子运行可能会超时。以上两种情况建议使用小算子拼接替换实现。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-  
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+
 ```c++
 #include <iostream>
 #include <vector>
@@ -460,38 +470,38 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
-  
+
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
+
   // 调用aclnnFusedFloydAttention第一段接口
   ret = aclnnFusedFloydAttentionGetWorkspaceSize(
       q, k, v, k1, v1, attenMask, scaleValue, softmaxMax, softmaxSum, attentionOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedFloydAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnFusedFloydAttention第二段接口
   ret = aclnnFusedFloydAttention(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedFloydAttention failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(attentionOutShape, &attentionOutDeviceAddr);
   PrintOutResult(softmaxMaxShape, &softmaxMaxDeviceAddr);
   PrintOutResult(softmaxSumShape, &softmaxSumDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -502,7 +512,7 @@ int main() {
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -519,7 +529,7 @@ int main() {
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

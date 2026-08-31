@@ -10,14 +10,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 __input__ = {
-    "kernel": {
-        "grouped_mat_mul_allto_allv": "grouped_mat_mul_allto_allv_inputs"
-    }
+    "kernel": {"grouped_mat_mul_allto_allv": "grouped_mat_mul_allto_allv_inputs"}
 }
 
 from typing import List
-import numpy as np
-from ml_dtypes import bfloat16
 
 
 def grouped_mat_mul_allto_allv_inputs(
@@ -33,11 +29,11 @@ def grouped_mat_mul_allto_allv_inputs(
     recv_counts: List[int] = None,
     trans_gmm_weight: bool = False,
     trans_mm_weight: bool = False,
-    **kwargs
+    **kwargs,
 ):
     """
     Parameter validation and adjustment for GroupedMatMulAlltoAllv operator
-    
+
     Parameters must match _def.cpp exactly:
     - Inputs: gmm_x, gmm_weight, send_counts_tensor, recv_counts_tensor, mm_x, mm_weight
     - Attrs: group, ep_world_size, send_counts, recv_counts, trans_gmm_weight, trans_mm_weight
@@ -46,43 +42,66 @@ def grouped_mat_mul_allto_allv_inputs(
         send_counts = []
     if recv_counts is None:
         recv_counts = []
-    
+
     if gmm_x is None:
         raise Exception("gmm_x is required but got None")
     if gmm_weight is None:
         raise Exception("gmm_weight is required but got None")
-    
+
     if send_counts_tensor is not None and recv_counts_tensor is not None:
         if len(send_counts_tensor.shape) != 1:
-            raise Exception(f"send_counts_tensor should be 1D tensor, got shape {send_counts_tensor.shape}")
+            raise Exception(
+                f"send_counts_tensor should be 1D tensor, got shape {send_counts_tensor.shape}"
+            )
         if len(recv_counts_tensor.shape) != 1:
-            raise Exception(f"recv_counts_tensor should be 1D tensor, got shape {recv_counts_tensor.shape}")
-    
+            raise Exception(
+                f"recv_counts_tensor should be 1D tensor, got shape {recv_counts_tensor.shape}"
+            )
+
     if mm_x is not None and mm_weight is None:
         raise Exception("mm_weight is required when mm_x is provided")
     if mm_weight is not None and mm_x is None:
         raise Exception("mm_x is required when mm_weight is provided")
-    
+
     if len(send_counts) != len(recv_counts):
-        raise Exception(f"send_counts length ({len(send_counts)}) must match recv_counts length ({len(recv_counts)})")
-    
+        raise Exception(
+            f"send_counts length ({len(send_counts)}) must match recv_counts length ({len(recv_counts)})"
+        )
+
     if ep_world_size <= 0:
         raise Exception(f"ep_world_size must be positive, got {ep_world_size}")
-    
+
     total_send = sum(send_counts) if send_counts else 0
     total_recv = sum(recv_counts) if recv_counts else 0
-    
+
     if total_send > gmm_x.shape[0]:
-        raise Exception(f"Total send_counts ({total_send}) exceeds gmm_x first dimension ({gmm_x.shape[0]})")
-    
+        raise Exception(
+            f"Total send_counts ({total_send}) exceeds gmm_x first dimension ({gmm_x.shape[0]})"
+        )
+
     if trans_gmm_weight:
         if len(gmm_weight.shape) != 3:
-            raise Exception(f"gmm_weight should be 3D for trans_gmm_weight=True, got shape {gmm_weight.shape}")
-    
+            raise Exception(
+                f"gmm_weight should be 3D for trans_gmm_weight=True, got shape {gmm_weight.shape}"
+            )
+
     if trans_mm_weight and mm_weight is not None:
         if len(mm_weight.shape) != 2:
-            raise Exception(f"mm_weight should be 2D for trans_mm_weight=True, got shape {mm_weight.shape}")
-    
-    return (gmm_x, gmm_weight, send_counts_tensor, recv_counts_tensor, 
-            mm_x, mm_weight, group, ep_world_size, send_counts, recv_counts, 
-            trans_gmm_weight, trans_mm_weight)
+            raise Exception(
+                f"mm_weight should be 2D for trans_mm_weight=True, got shape {mm_weight.shape}"
+            )
+
+    return (
+        gmm_x,
+        gmm_weight,
+        send_counts_tensor,
+        recv_counts_tensor,
+        mm_x,
+        mm_weight,
+        group,
+        ep_world_size,
+        send_counts,
+        recv_counts,
+        trans_gmm_weight,
+        trans_mm_weight,
+    )

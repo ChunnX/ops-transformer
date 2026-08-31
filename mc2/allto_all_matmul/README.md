@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：完成AlltoAll通信、Permute（保证通信后地址连续）和Matmul计算的融合，**先通信后计算**，支持非量化、K-C量化、K-C动态量化和mx[量化模式](../../docs/zh/context/量化介绍.md)。
+- 算子功能：完成AlltoAll通信、Permute（保证通信后地址连续）和Matmul计算的融合，**先通信后计算**，支持非量化、K-C量化、K-C动态量化和mx[量化模式](../../docs/zh/context/quant_mode_introduction.md)。
 - 计算公式：假设x1输入shape为(BS, H)，mx量化场景下x1Scale输入shape为(BS, ceil(H/64), 2)，rankSize为NPU卡数
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -257,7 +257,8 @@
     </tr>
     </tbody></table>
 
-x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../docs/zh/context/量化介绍.md)关系如下:
+x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../docs/zh/context/quant_mode_introduction.md)关系如下:
+
 * 0: 不量化
 * 1: pertensor
 * 2: perchannel
@@ -276,7 +277,7 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../doc
     - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
 * 空tensor和非连续tensor的支持度根据不同设备型号有不同的限制：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何空tensor；不支持任何非连续tensor。
-    - <term>Atlas A3训练系列产品/Atlas A3推理系列产品、Ascend 950PR/Ascend 950DT</term>：仅支持非量化场景下输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持；仅支持输入x2的转置非连续tensor，其它非连续tensor均不支持。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：仅支持非量化场景下输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持；仅支持输入x2的转置非连续tensor，其它非连续tensor均不支持。
 * 输入x1必须是2维，其shape为(BS, H)，BS必须整除NPU卡数，BS和N的值不得超过2147483647(INT32_MAX)，不支持转置。
 * 输入x2必须是2维，其shape为(H\*rankSize, N)，H*rankSize范围根据芯片型号和场景不同有不同约束，详见[量化aclnn约束说明](./docs/aclnnAlltoAllQuantMatmul.md#约束说明)
   和[非量化aclnn约束说明](./docs/aclnnAlltoAllMatmul.md#约束说明)。当处于mx量化场景时，x2必须转置，其shape为(N, H\*rankSize)，transpose_x2配置为True。

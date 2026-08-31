@@ -389,12 +389,12 @@ ge::graphStatus DenseLISoftmaxLseInfoParser::GetS2Size()
 
 ge::graphStatus DenseLISoftmaxLseInfoParser::CheckSeqLenLimit()
 {
-    if (s1Size_ > MAX_SEQ_LENGTH) {
-        OP_LOGW(opName_, "qSeqLen [%lu] exceeds max supported seqLen [%u].", s1Size_, MAX_SEQ_LENGTH);
-    }
-    if (s2Size_ > MAX_SEQ_LENGTH) {
-        OP_LOGW(opName_, "kvSeqLen [%lu] exceeds max supported seqLen [%u].", s2Size_, MAX_SEQ_LENGTH);
-    }
+    OP_CHECK_IF((s1Size_ > MAX_SEQ_LENGTH),
+                OP_LOGE(opName_, "qSeqLen [%lu] exceeds max supported seqLen [%u].", s1Size_, MAX_SEQ_LENGTH),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((s2Size_ > MAX_SEQ_LENGTH),
+                OP_LOGE(opName_, "kvSeqLen [%lu] exceeds max supported seqLen [%u].", s2Size_, MAX_SEQ_LENGTH),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

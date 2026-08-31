@@ -4,11 +4,15 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
 
 ## 功能说明
 
@@ -83,7 +87,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologV3WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV3WeightNz”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMlaPrologV3WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV3WeightNz”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
@@ -286,7 +290,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>CacheMode="TND": (T,Nkv,Dtile)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
       </tr>
       <tr>
         <td>krCacheRef</td>
@@ -308,7 +312,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>当ckvkrRepoMode=1时: 维度应包含0，支持shape为(0)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
       </tr>
       <tr>
         <td>cacheIndexOptional</td>
@@ -721,13 +725,15 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       </tr>
   </table>
 
+<!-- npu="A3,910b" id4 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - tokenX、weightDq、weightUqQr、weightDkvKr、kvCacheRef、queryOut、queryNormOutOptional不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
   - dequantScaleXOptional、dequantScaleWDqOptional、dequantScaleWUqQrOptional、dequantScaleWDkvKrOptional、dequantScaleQNormOutOptional不支持FLOAT8_E8M0数据类型。
 
+<!-- end id4 -->
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -809,7 +815,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -823,7 +829,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <col style="width: 625px">
         <col style="width: 360px">
         </colgroup>
-  <table>
     <thead>
       <tr>
         <th>字段名</th>
@@ -929,7 +934,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
     - queryOut的shape为(T, N, Hckv)
     - queryRopeOut的shape为(T, N, Dr)
-    - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
+    - int8/mxfp8/fp8/hif8全量化且kvCache pertensor量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
   - 若tokenX的维度不采用BS合轴，即(B, S, He)
       - ropeSin和ropeCos的shape为(B, S, Dr)
       - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
@@ -937,7 +942,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
       - queryOut的shape为(B, S, N, Hckv)
       - queryRopeOut的shape为(B, S, N, Dr)
-      - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
+      - int8/mxfp8/fp8/hif8全量化且kvCache pertensor量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
   - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
       - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
       - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
@@ -949,6 +954,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       - kvCache的维度为(T,Nkv,Dr)
   - 当ckvkrRepoMode=1时
       - krCache的维度应包含0，支持shape为(0)
+
   </details>
 
   <details>
@@ -959,6 +965,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   - pertoken-pergroup量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache pertensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
+
   </details>
 
   <details>
@@ -976,7 +983,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td colspan="2">非量化</td>
       <td>
           weight_quant_mode=0，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：所有入参皆为非量化数据 <br> 
+          入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>
@@ -1588,7 +1595,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 ## 调用示例
 
-<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```Cpp
   #include <iostream>

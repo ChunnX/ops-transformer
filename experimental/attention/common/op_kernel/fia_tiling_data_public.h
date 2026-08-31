@@ -19,7 +19,6 @@
 namespace optiling {
 
 // 数组长度
-// TODO，host和device宏定义不一样，如何通过编译宏隔离？
 // #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
 constexpr uint32_t NPU_AIC_CORE_NUM = 36;
 constexpr uint32_t NPU_AIV_CORE_NUM = 72;

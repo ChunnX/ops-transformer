@@ -17,10 +17,10 @@
 #define SPARSE_FLASH_MLA_GRAD_BLOCK_VEC_H
 
 #include "sparse_flash_mla_grad_common.h"
-#include "vector_api/cast_softmax_grad.h"
-#include "vector_api/pse_atten_mask_muls_simple_softmax.h"
-#include "vector_api/vf_broadcast_sub_mul.h"
-#include "vector_api/vf_cast_transdata_deconflict.h"
+#include "vector_api/cast_softmax_grad_sfmg.h"
+#include "vector_api/pse_atten_mask_muls_simple_softmax_sfmg.h"
+#include "vector_api/vf_broadcast_sub_mul_sfmg.h"
+#include "vector_api/vf_cast_transdata_deconflict_sfmg.h"
 #include "vector_api/vf_cal_dsink.h"
 #include "vector_api/vf_cal_softmax_sink.h"
 namespace SfagBaseApi {
@@ -340,12 +340,13 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
 
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
         int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
-        int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * 4096 * HEAD_DIM_ALIGN * coreNum +
-                                      idx * 4096 * HEAD_DIM_ALIGN +
+        int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * PROCESS_KV_SIZE * HEAD_DIM_ALIGN * coreNum +
+                                      idx * PROCESS_KV_SIZE * HEAD_DIM_ALIGN +
                                       s2SrcOffset * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
-        int64_t currentMm5SrcOffset = runInfo.deterTaskIdMod2 * 4096 * constInfo.commonConstInfo.dSizeV * coreNum +
-                                      idx * 4096 * constInfo.commonConstInfo.dSizeV +
-                                      s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
+        int64_t currentMm5SrcOffset =
+            runInfo.deterTaskIdMod2 * PROCESS_KV_SIZE * constInfo.commonConstInfo.dSizeV * coreNum +
+            idx * PROCESS_KV_SIZE * constInfo.commonConstInfo.dSizeV +
+            s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
         int64_t keyOffsetWithRope = accumS2Len * constInfo.n2Size * constInfo.dTotalSize;
         if (!runInfo.isOriKV) {
             keyOffsetWithRope = accumS3Len * constInfo.n2Size * constInfo.dTotalSize;

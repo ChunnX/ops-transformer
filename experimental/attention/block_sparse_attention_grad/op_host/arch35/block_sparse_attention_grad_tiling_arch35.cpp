@@ -66,10 +66,9 @@ ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vecto
 
 class BlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_) : TilingBaseClass(context_)
-    {
-    }
-
+    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_)
+        : TilingBaseClass(context_)
+    {}
 
 protected:
     bool IsCapable() override
@@ -446,7 +445,6 @@ private:
     int32_t max_kv_seq_len_ = 0;
     int64_t maskType_ = 0;
 };
-
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockSparseAttentionGrad, BlockSparseAttentionGradArch35Tiling,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);

@@ -14,7 +14,8 @@ namespace ops {
 
 class BlockSparseAttentionGrad : public OpDef {
 public:
-    explicit BlockSparseAttentionGrad(const char *name) : OpDef(name)
+    explicit BlockSparseAttentionGrad(const char *name)
+        : OpDef(name)
     {
         this->Input("dout").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Input("query").ParamType(REQUIRED).DataType({ge::DT_FLOAT16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});

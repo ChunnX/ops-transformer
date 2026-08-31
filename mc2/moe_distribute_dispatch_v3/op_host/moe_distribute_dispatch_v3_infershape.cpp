@@ -72,19 +72,6 @@ static constexpr uint32_t VERSION_SIZE = 32;
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
 
-static bool IsPresentTensorShape(const gert::Shape *shape)
-{
-    if (shape == nullptr) {
-        return false;
-    }
-    for (size_t i = 0; i < shape->GetDimNum(); ++i) {
-        if (shape->GetDim(i) == 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
     char versionValVersion[VERSION_SIZE];
@@ -160,7 +147,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
     const gert::Shape *scalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_SCALES_IDX_INDEX);
     const gert::Shape *expertScalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_EXPERT_SCALES_IDX_INDEX);
-    bool hasExpertScales = IsPresentTensorShape(expertScalesShape);
+    bool hasExpertScales = (expertScalesShape != nullptr);
     const gert::Shape *elasticInfoShape = context->GetOptionalInputShape(DISPATCH_INPUT_ELASTIC_INFO_IDX_INDEX);
 
     gert::Shape *expandXShape = context->GetOutputShape(DISPATCH_OUTPUT_EXPAND_X_INDEX);
@@ -327,11 +314,11 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
+        if (*tpWorldSize == DIM_TWO) {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
         } else if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum +
-                globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
+                                                                             (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -359,19 +346,19 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
                                       int64_t yDtype)
 {
     if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_STATIC) {
-        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) && (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
-                    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
-                                              Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(),
-                                              "INT8, HIFLOAT8"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (yDtype != static_cast<int64_t>(ge::DT_INT8)) && (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
+            OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
+                                      Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(), "INT8, HIFLOAT8"),
+            return ge::GRAPH_FAILED);
     } else if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERTOKEN) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
                     OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y",
                                               Ops::Base::ToString(static_cast<ge::DataType>(yDtype)).c_str(),
-                                               "INT8, FLOAT8_E4M3FN, FLOAT8_E5M2"),
-                     return ge::GRAPH_FAILED);
+                                              "INT8, FLOAT8_E4M3FN, FLOAT8_E5M2"),
+                    return ge::GRAPH_FAILED);
     } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) || IsMxQuantMode(*quantMode)) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                         (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
@@ -400,7 +387,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV3(gert::InferDataTypeC
         yDtypePtr = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX);
     }
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
-    OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
+    OP_LOGD(context->GetNodeName(), "quantFlag is %d.", quantFlag);
     ge::DataType expandXDtype = ge::DT_INT8;
     if (!quantFlag && (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_NO_QUANT)) {
         expandXDtype = xDtype;

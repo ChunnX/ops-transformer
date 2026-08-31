@@ -23,24 +23,24 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_weight_nz.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define CHECK_FREE_RET(cond, return_expr) \
-    do {                                  \
-        if (!(cond)) {                    \
-            Finalize(deviceId, stream);   \
-            return_expr;                  \
-        }                                 \
+#define CHECK_FREE_RET(cond, return_expr)                                                                              \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            Finalize(deviceId, stream);                                                                                \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -272,11 +272,10 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
                               aclDataType::ACL_FLOAT8_E8M0, &antiquantScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantScalePtr(antiquantScale,
-                                                                                            aclDestroyTensorList);
+                                                                                             aclDestroyTensorList);
 
     // perTokenScale: FLOAT8_E8M0, 单 tensor
-    std::vector<std::vector<int8_t>> perTokenScaleHostData = {
-        std::vector<int8_t>(m * k / groupSize / 2 * 2)};
+    std::vector<std::vector<int8_t>> perTokenScaleHostData = {std::vector<int8_t>(m * k / groupSize / 2 * 2)};
     for (int64_t j = 0; j < m * k / groupSize / 2 * 2; j++) {
         perTokenScaleHostData[0][j] = static_cast<int8_t>(j % 16 + 120);
     }
@@ -284,7 +283,7 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
                               aclDataType::ACL_FLOAT8_E8M0, &perTokenScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> perTokenScalePtr(perTokenScale,
-                                                                                           aclDestroyTensorList);
+                                                                                            aclDestroyTensorList);
 
     // y: BFLOAT16
     std::vector<std::vector<uint16_t>> yHostData = {std::vector<uint16_t>(m * n, 0)};
@@ -308,8 +307,8 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, perTokenScale, groupedList, activationInput,
         activationQuantScale, activationQuantOffset, splitItem, groupType, groupListType, actType, nullptr, 0, out,
         activationFeatureOut, dynQuantScaleOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -327,8 +326,8 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
     // 获取输出结果
     auto size = GetShapeSize(yShape[0]);
     std::vector<uint16_t> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddrList[0],
-                      size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddrList[0], size * sizeof(resultData[0]),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < std::min<int64_t>(size, 10); j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
@@ -336,24 +335,31 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
 
     // 释放 device 资源
     for (auto addr : xDeviceAddrList) {
-        if (addr) aclrtFree(addr);
+        if (addr)
+            aclrtFree(addr);
     }
     for (auto addr : weightDeviceAddrList) {
-        if (addr) aclrtFree(addr);
+        if (addr)
+            aclrtFree(addr);
     }
     for (auto addr : biasDeviceAddrList) {
-        if (addr) aclrtFree(addr);
+        if (addr)
+            aclrtFree(addr);
     }
     for (auto addr : antiquantScaleDeviceAddrList) {
-        if (addr) aclrtFree(addr);
+        if (addr)
+            aclrtFree(addr);
     }
     for (auto addr : perTokenScaleDeviceAddrList) {
-        if (addr) aclrtFree(addr);
+        if (addr)
+            aclrtFree(addr);
     }
     for (auto addr : yDeviceAddrList) {
-        if (addr) aclrtFree(addr);
+        if (addr)
+            aclrtFree(addr);
     }
-    if (groupListDeviceAddr) aclrtFree(groupListDeviceAddr);
+    if (groupListDeviceAddr)
+        aclrtFree(groupListDeviceAddr);
     return ACL_SUCCESS;
 }
 
@@ -363,7 +369,8 @@ int main()
     aclrtStream stream;
     auto ret = aclnnGroupedMatmulWeightNzMxA8W4MultiTest(deviceId, stream);
     CHECK_FREE_RET(ret == ACL_SUCCESS,
-                   LOG_PRINT("aclnnGroupedMatmulWeightNz MxA8W4 multi test failed. ERROR: %d\n", ret); return ret);
+                   LOG_PRINT("aclnnGroupedMatmulWeightNz MxA8W4 multi test failed. ERROR: %d\n", ret);
+                   return ret);
 
     Finalize(deviceId, stream);
     return 0;

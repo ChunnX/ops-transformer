@@ -178,7 +178,6 @@ public:
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        // TODO，共享buffer初始化放到block层
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
@@ -256,7 +255,7 @@ public:
         constInfo.vScaleStrides.n2Stride = fiaBaseParams.vScaleStrides.n2Stride;
         // if constexpr (HAS_MASK) {
         constInfo.sparseMode =
-            fiaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+            fiaAttenMaskParams.sparseMode;
         constInfo.preTokens = fiaAttenMaskParams.preTokens;
         constInfo.nextTokens = fiaAttenMaskParams.nextTokens;
         constInfo.attenMaskBatch = fiaAttenMaskParams.attenMaskBatch;

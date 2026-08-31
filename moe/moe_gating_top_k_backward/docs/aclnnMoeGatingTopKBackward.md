@@ -4,63 +4,73 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------- | ------|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：完成MoE（Mixture of Experts）门控Top-K选择的反向梯度计算。该算子是aclnnMoeGatingTopK的反向算子，根据前向算子输出的归一化得分（xNorm）、上游梯度（gradY）和专家索引（expertIdx），计算输入得分矩阵的梯度（gradX）。支持sigmoid模式（normType=1）。
 - 计算公式（sigmoid模式，normType=1）：
-  
+
   1. 缩放梯度
-  
-    $$
-    gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
-    $$
-  
+
+      $$
+      gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
+      $$
+
   2. 正向renorm的反向传播
-  
-    $$
-    wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
-    $$
-  
-    $$
-    D_i = \sum_{p} wPrime_{ip} + eps
-    $$
-    
-    $$
-    w_{ip} = \frac{wPrime_{ip}}{D_i}
-    $$
-    
-    $$
-    beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
-    $$
-    
-    $$
-    gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
-    $$
-  
+
+      $$
+      wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
+      $$
+
+      $$
+      D_i = \sum_{p} wPrime_{ip} + eps
+      $$
+
+      $$
+      w_{ip} = \frac{wPrime_{ip}}{D_i}
+      $$
+
+      $$
+      beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
+      $$
+
+      $$
+      gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
+      $$
+
   3. 散射到完整维度
-  
-    $$
-    gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
-    $$
-  
+
+      $$
+      gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
+      $$
+
   4. Sigmoid反向传播
-  
-    $$
-    gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
-    $$
+
+      $$
+      gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
+      $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMoeGatingTopKBackwardGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMoeGatingTopKBackward"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnMoeGatingTopKBackwardGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMoeGatingTopKBackward"接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeGatingTopKBackwardGetWorkspaceSize(
@@ -87,7 +97,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 ## aclnnMoeGatingTopKBackwardGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
    <col style="width: 230px">
   <col style="width: 120px">
@@ -214,10 +224,10 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
   <col style="width: 300px">
   <col style="width: 150px">
@@ -258,7 +268,7 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 ## aclnnMoeGatingTopKBackward
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
    <col style="width: 200px">
    <col style="width: 130px">
@@ -296,16 +306,23 @@ aclnnStatus aclnnMoeGatingTopKBackward(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnMoeGatingTopKBackward默认确定性实现。
 
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - xNorm最后一维的大小（即专家数N）取值范围为[2, 2048]。
+  - gradY最后一维的大小（即K）取值范围为[1, N]。
+
+<!-- end id7 -->
+
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

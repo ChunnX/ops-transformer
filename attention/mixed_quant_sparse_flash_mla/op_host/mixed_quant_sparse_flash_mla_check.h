@@ -42,6 +42,7 @@ const std::string CMP_KV_NAME = "cmp_kv";
 const std::string ORI_SPARSE_INDICES_NAME = "ori_sparse_indices";
 const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
+const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
 const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
@@ -63,6 +64,7 @@ struct MQSMLATilingRequiredParaInfo {
 struct MQSMLATilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
+    const gert::StorageShape *shape;
 };
 
 enum class MQSMLALayout : uint32_t {
@@ -85,7 +87,9 @@ enum class MQSMLAAxis : uint32_t {
 enum class QSMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2
+    CSA_TEMPLATE_MODE = 2,
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
 enum class KvStorageMode : uint32_t {
@@ -144,6 +148,7 @@ constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 
 // Dim Index
+constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
 constexpr uint32_t DIM_IDX_THREE = 3;
@@ -169,6 +174,30 @@ constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
 constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t QSFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
+
+static std::vector<int64_t> ToVector(const gert::Shape &shape)
+{
+    size_t shapeSize = shape.GetDimNum();
+    std::vector<int64_t> shapeVec(shapeSize, 0);
+
+    for (size_t i = 0; i < shapeSize; i++) {
+        shapeVec[i] = shape.GetDim(i);
+    }
+    return shapeVec;
+}
+
+static std::string ToStringRaw(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVector(shape);
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1];
+    }
+    return oss.str();
+}
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
@@ -246,6 +275,7 @@ struct MQSMLAParaInfo {
     MQSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     MQSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     MQSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+    MQSMLATilingRequiredParaInfo softmaxLse = {nullptr, nullptr};
 
     const int64_t *quantMode = nullptr;
     const int64_t *tileSize = nullptr;
@@ -261,6 +291,7 @@ struct MQSMLAParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const int64_t *topkValueMode = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -307,11 +338,13 @@ public:
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
-    int64_t sparseBlockCount = 0;
+    int64_t oriSparseBlockCount = 0;
+    int64_t cmpSparseBlockCount = 0;
     // Mask
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
+    bool batchConsistency = false;
 
     // PageAttention
     uint32_t blockTypeSize = 0;
@@ -331,13 +364,15 @@ public:
     MQSMLALayout qLayout = MQSMLALayout::BSND;
     MQSMLALayout kvLayout = MQSMLALayout::PA_BBND;
     MQSMLALayout outLayout = MQSMLALayout::BSND;
+
+    bool returnSoftmaxLse = false;
 };
 
 class MQSMLAInfoParser {
 public:
-    explicit MQSMLAInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit MQSMLAInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~MQSMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -388,7 +423,7 @@ public:
     bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
     uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
+    static constexpr uint32_t invalidDimValue_ = std::numeric_limits<uint32_t>::min();
 
     // BaseParams
     uint32_t bSize_ = 0;
@@ -402,9 +437,11 @@ public:
     uint32_t qTSize_ = 0;
     uint32_t qkHeadDim_ = 0;
     int64_t sparseBlockSize_ = 0;
-    int64_t sparseBlockCount_ = 0;
+    int64_t oriSparseBlockCount_ = 0;
+    int64_t cmpSparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
+    bool batchConsistency_ = false;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
     uint32_t oriKvStride_ = 0;
@@ -437,12 +474,14 @@ public:
     gert::Shape qShape_{};
     gert::Shape oriKvShape_{};
     gert::Shape cmpKvShape_{};
+    gert::Shape oriSparseIndicesShape_{};
     gert::Shape cmpSparseIndicesShape_{};
 };
 
 class MQSMLATilingCheck {
 public:
-    explicit MQSMLATilingCheck(const MQSMLATilingInfo &qsmlaInfo) : qsmlaInfo_(qsmlaInfo) {};
+    explicit MQSMLATilingCheck(const MQSMLATilingInfo &qsmlaInfo)
+        : qsmlaInfo_(qsmlaInfo) {};
     ~MQSMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
@@ -451,7 +490,7 @@ private:
     bool HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
     uint32_t GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis, const MQSMLALayout &layout) const;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
+    static constexpr uint32_t invalidDimValue_ = std::numeric_limits<uint32_t>::min();
 
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
                               const std::string &name) const;
@@ -507,7 +546,6 @@ private:
     ge::graphStatus CheckSWAExistence();
     ge::graphStatus CheckHCAExistence();
     ge::graphStatus CheckCSAExistence();
-    ge::graphStatus CheckUnrequiredParaExistence() const;
 
     ge::graphStatus CheckKVShapeForBatchContinuous();
     uint32_t GetTypeSize(ge::DataType dtype) const;
@@ -522,6 +560,7 @@ private:
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
+    ge::graphStatus CheckSoftmaxLse() const;
     ge::graphStatus CheckActualSeqLensQ();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();
@@ -566,7 +605,8 @@ private:
     uint32_t qTSize_ = 0;  // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
-    uint32_t sparseBlockCount_ = 0;
+    uint32_t oriSparseBlockCount_ = 0;
+    uint32_t cmpSparseBlockCount_ = 0;
     uint32_t sparseBlockSize_ = 0;
     uint32_t oriKvStride_ = 0;
     uint32_t cmpKvStride_ = 0;

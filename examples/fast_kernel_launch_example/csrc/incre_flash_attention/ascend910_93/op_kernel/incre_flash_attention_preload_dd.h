@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "matmul_intf.h"
+#include "lib/matmul_intf.h"
 #include "matmul/tiling.h"
 #include "ifa_public_define.h"
 

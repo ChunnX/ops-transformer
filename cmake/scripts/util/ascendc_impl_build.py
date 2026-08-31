@@ -206,6 +206,9 @@ def {}({}, kernel_name="{}"{}):
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
         tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "catlass", "include"))
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
     options.append("-I" + tikcpp_path)
     options.append("-I" + os.path.join(tikcpp_path, "..", "..", "include"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw"))
@@ -340,9 +343,12 @@ PYPTO_COMPILE_OP_API = """
 
 # Extra import appended to the wrapper head for pypto ops (kept out of the default head so non-pypto
 # builds / environments without pypto_pro are unaffected).
-PYPTO_IMPORT_HEADER = (
-    "from pypto_pro.runtime.opc.pypto_compile import pypto_compile_op\n"
-)
+PYPTO_IMPORT_HEADER = """
+from unittest.mock import MagicMock as _PyptoMagicMock
+sys.modules["torch"] = _PyptoMagicMock(name="torch")
+sys.modules["torch_npu"] = _PyptoMagicMock(name="torch_npu")
+from pypto_pro.runtime.opc.pypto_compile import pypto_compile_op
+"""
 
 SUP_API = """
 def {}({}{}):
@@ -1007,7 +1013,10 @@ if __name__ == "__main__":
     if args.opsinfo_dir:
         ops_infos.extend(get_ops_info_files(args.opsinfo_dir))
         if not ops_infos:
-            raise OpFileNotExistsError(args.opsinfo_dir)
+            print(
+                f"No aic-*-ops-info.ini found in {args.opsinfo_dir}, skip adapt py generation."
+            )
+            sys.exit(0)
     else:
         ops_infos.append(args.argv[1])
     COMPUTE_UNIT = args.compute_unit

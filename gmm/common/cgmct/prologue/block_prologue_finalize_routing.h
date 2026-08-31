@@ -20,7 +20,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../utils/common_utils.h"
+#include "../utils/cgmct_common_utils.h"
 #include "../utils/device_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tensor_utils.h"
@@ -193,8 +193,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
     constexpr uint32_t vectorRegLen = VECTOR_REG_WIDTH / sizeof(DataTypeOut);
-    uint16_t loopNum =
-        CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
+    uint16_t loopNum = CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;

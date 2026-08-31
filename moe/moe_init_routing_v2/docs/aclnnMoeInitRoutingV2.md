@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     √    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -27,62 +37,62 @@
 - **计算公式**：
 
   1.将输入shape为[numRows, k]或[numRows]的expertIdx展平为一行做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx，其中numRows为token个数，k表示token数据元素对应权重最高的k个专家，当expertIdx为1维时记k为1：
-  
+
   $$
   sortedExpertIdx, sortedRowIdx=keyValueSort(\text{flatten}(expertIdx))
   $$
 
   2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
-  
+
   $$
   expandedRowIdxOut[sortedRowIdx[i]]=i
   $$
-  
+
   3.按照sortedRowIdx将token按专家顺序排列，在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
-  
+
   $$
   expandedXOut[expandedRowIdxOut[i]]=x[i//k]
   $$
-  
+
   4.对sortedExpertIdx的每个专家统计直方图结果，再进行Cumsum，得出expertTokensCountOrCumsumOut：
-  
+
   $$
   expertTokensCountOrCumsumOut[i]=Cumsum(Histogram(sortedExpertIdx))
   $$
-  
+
   5.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensBeforeCapacityOut：
-  
+
   $$
   expertTokensBeforeCapacityOut[i]=Histogram(sortedExpertIdx)
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
-    const aclTensor  *x, 
-    const aclTensor  *expertIdx, 
-    int64_t           activeNum, 
-    int64_t           expertCapacity, 
-    int64_t           expertNum, 
-    int64_t           dropPadMode, 
-    int64_t           expertTokensCountOrCumsumFlag, 
-    bool              expertTokensBeforeCapacityFlag, 
-    const aclTensor  *expandedXOut, 
-    const aclTensor  *expandedRowIdxOut, 
-    const aclTensor  *expertTokensCountOrCumsumOut, 
-    const aclTensor  *expertTokensBeforeCapacityOut, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *x,
+    const aclTensor  *expertIdx,
+    int64_t           activeNum,
+    int64_t           expertCapacity,
+    int64_t           expertNum,
+    int64_t           dropPadMode,
+    int64_t           expertTokensCountOrCumsumFlag,
+    bool              expertTokensBeforeCapacityFlag,
+    const aclTensor  *expandedXOut,
+    const aclTensor  *expandedRowIdxOut,
+    const aclTensor  *expertTokensCountOrCumsumOut,
+    const aclTensor  *expertTokensBeforeCapacityOut,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingV2(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -93,10 +103,10 @@ aclnnStatus aclnnMoeInitRoutingV2(
   <table style="undefined;table-layout: fixed; width: 1562px"><colgroup>
     <col style="width: 265px">
     <col style="width: 120px">
-    <col style="width: 223px">  
-    <col style="width: 391px">  
-    <col style="width: 181px">  
-    <col style="width: 111px"> 
+    <col style="width: 223px">
+    <col style="width: 391px">
+    <col style="width: 181px">
+    <col style="width: 111px">
     <col style="width: 126px">
     <col style="width: 145px">
     </colgroup>
@@ -255,16 +265,23 @@ aclnnStatus aclnnMoeInitRoutingV2(
     </tr>
   </tbody></table>
 
+  <!-- npu="A3,910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term> ：输入expertIdx数据类型支持INT32、INT64，要求是一个2D的shape [numRows, k]或者1D的shape [numRows]，当shape为1D时表示k=1。
+  <!-- end id8 -->
+  <!-- npu="310p" id9 -->
   - |<term>Atlas 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]，dropPadMode仅支持0。输入x的尾轴大小要求可以整除32。
+
+  <!-- end id9 -->
 
 - **返回值：**
 
-  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
+  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn_return_code.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -348,8 +365,8 @@ aclnnStatus aclnnMoeInitRoutingV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
 - 确定性计算：
@@ -357,7 +374,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"

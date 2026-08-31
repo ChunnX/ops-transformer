@@ -23,10 +23,10 @@ using namespace regbaseutil;
 namespace FaVectorApi {
 // no update, originN == 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
-__simd_vf__ void ProcessVec1NoUpdateImpl128VF(
-    __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
-    __ubuf__ T * srcUb, __ubuf__ uint8_t * indexesUb, const uint32_t blockStride, const uint32_t repeatStride,
-    const uint16_t m, const T scale, const T minValue)
+__simd_vf__ void ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T *expSumUb, __ubuf__ T *maxUb,
+                                              __ubuf__ T *maxUbStart, __ubuf__ T *srcUb, __ubuf__ uint8_t *indexesUb,
+                                              const uint32_t blockStride, const uint32_t repeatStride, const uint16_t m,
+                                              const T scale, const T minValue)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_input_x;
     AscendC::MicroAPI::RegTensor<float> vreg_input_x_unroll;
@@ -45,25 +45,24 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
         AscendC::MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < m; ++i) {
-        AlignedScaleStoreMax128<T>(vreg_input_x, vreg_input_x_unroll,
-            vreg_max_tmp, srcUb, i, s2BaseSize, scale, preg_all);
-    
+        AlignedScaleStoreMax128<T>(vreg_input_x, vreg_input_x_unroll, vreg_max_tmp, srcUb, i, s2BaseSize, scale,
+                                   preg_all);
+
         AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
             vreg_input_max, vreg_max_tmp, preg_all);
-        AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
+        AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
+                                                                                        vreg_input_max, ureg_max, 1);
     }
 
-    AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-        ((__ubuf__ T *&)maxUb), ureg_max, 0);
+    AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
+                                                                                        ureg_max, 0);
     AscendC::MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     for (uint16_t i = 0; i < m; ++i) {
         // maxUb is [S1, 1], BRC_B32 is reading one fp32 element and broadcast it to all 64 vreg element
-        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
-            vreg_max_brc, maxUbStart + i);
-        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x, vreg_input_x_unroll, srcUb + i * s2BaseSize);
+        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
+        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_input_x, vreg_input_x_unroll,
+                                                                             srcUb + i * s2BaseSize);
 
         AscendC::MicroAPI::ExpSub(vreg_exp_even, vreg_input_x, vreg_max_brc, preg_all);
         AscendC::MicroAPI::ExpSub(vreg_exp_odd, vreg_input_x_unroll, vreg_max_brc, preg_all);
@@ -74,31 +73,33 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
         CastStoreExp128<T, T2>(vreg_exp_even, vreg_exp_odd, expUb, blockStride, repeatStride, preg_all, preg_all_b16,
                                indexesUb);
     }
-    AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
+    AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb),
+                                                                                        ureg_exp_sum, 0);
 }
 
 // no update, originN == 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
-__aicore__ inline void ProcessVec1NoUpdateImpl128(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
-    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<T>& sharedTmpBuffer, const LocalTensor<uint8_t>& indexesTensor, const uint16_t m,
-    const uint32_t originN, const T scale, const T minValue)
+__aicore__ inline void ProcessVec1NoUpdateImpl128(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
+                                                  const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+                                                  const LocalTensor<T> &inMaxTensor,
+                                                  const LocalTensor<T> &sharedTmpBuffer,
+                                                  const LocalTensor<uint8_t> &indexesTensor, const uint16_t m,
+                                                  const uint32_t originN, const T scale, const T minValue)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
     const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     const uint32_t repeatStride = 1;
-    __ubuf__ T2 * expUb = (__ubuf__ T2*)dstTensor.GetPhyAddr();
-    __ubuf__ T * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ T * maxUbStart = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
-    __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesTensor.GetPhyAddr();
+    __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
+    __ubuf__ T *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ T *maxUbStart = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();
 
-    ProcessVec1NoUpdateImpl128VF<T, T2, s1BaseSize, s2BaseSize>(
-        expUb, expSumUb, maxUb, maxUbStart, srcUb, indexesUb, blockStride, repeatStride, m, scale, minValue);
+    ProcessVec1NoUpdateImpl128VF<T, T2, s1BaseSize, s2BaseSize>(expUb, expSumUb, maxUb, maxUbStart, srcUb, indexesUb,
+                                                                blockStride, repeatStride, m, scale, minValue);
 }
-} // namespace
+} // namespace FaVectorApi
 
 #endif // VF_BASIC_BLOCK_ALIGNED128_NO_UPDATE_SFA_H

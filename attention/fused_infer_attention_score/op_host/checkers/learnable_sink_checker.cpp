@@ -40,7 +40,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
                 learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(),
-                    "The dtype of learnable_sink must be BF16 or FLOAT16 when learnable sink is enabled");
+                    "The dtype of learnable_sink must be BFLOAT16 or FLOAT16 when learnable sink is enabled");
                 return ge::GRAPH_FAILED;
             }
 
@@ -55,7 +55,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
             if (learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(),
-                    "The dtype of learnable_sink must be BF16 when learnable sink is enabled");
+                    "The dtype of learnable_sink must be BFLOAT16 when learnable sink is enabled");
                 return ge::GRAPH_FAILED;
             }
         }

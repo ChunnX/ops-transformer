@@ -102,7 +102,7 @@ struct GroupedMatmulParamsBase {
     bool isSingleWeight = false;
     GMMApiVersion apiVersion = GMMApiVersion::V1;
     int64_t groupType = -1L;
-    aclIntArray *tuningConfigOptional = nullptr;
+    const aclIntArray *tuningConfigOptional = nullptr;
     const T *y = nullptr;
     const aclTensorList *activationFeatureOutOptional = nullptr;
     const aclTensorList *dynQuantScaleOutOptional = nullptr;
@@ -132,11 +132,11 @@ const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLO
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 bool IsTransposeForMxShape(const aclTensor *tensor);
-void CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                            aclOpExecutor *executor);
-void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                                aclOpExecutor *executor);
-void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                 aclOpExecutor *executor);
 std::string dTypeToString(const ge::DataType &dtype);
 } // namespace gmm

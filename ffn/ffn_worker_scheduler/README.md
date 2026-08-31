@@ -1,4 +1,4 @@
-# FfnWorkScheduler
+# FfnWorkerScheduler
 
 ## 产品支持情况
 
@@ -17,7 +17,7 @@
 
     **不建议直接使用，需要与AttentionToFFN，FFNWorkerBatching配合使用。**
 
-    1. 接收AttentionToFFN算子发送的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，FfnArea域(负责管理本算子计算过程中所需的输入及输出缓冲区，其中token_info_buf字段用来存储该算子的输入信息)。
+    1. 接收AttentionToFFN算子发送的数据。该数据以ScheduleContext结构体内存排布方式存储。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，FfnArea域(负责管理本算子计算过程中所需的输入及输出缓冲区，其中token_info_buf字段用来存储该算子的输入信息)。
 
     2. 扫描token_info_buf存储的信息，当通信数据准备就绪时，本算子开始进行数据整理。整理如下图所示，将layer id， session id，micro batch id，expert ids分别写入layer_id_buf，session_id_buf，micro_batch_id_buf，expert_ids_buf的device内存上。
 
@@ -74,7 +74,7 @@
         classDef output fill:#e3f2fd
         classDef micro fill:#e1f5fe
         classDef expert fill:#bbdefd
-        
+
         %% 添加子图背景色样式
         style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
         style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
@@ -86,9 +86,10 @@
 - 计算公式：
 
 1. 初始化，根据入参ScheduleContext中的session_num和sync_group_size计算分组个数。
-  1. 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
-  2. 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
-  
+
+ - 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
+ - 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
+
      $$
      \text{Initialize:} \quad\text{group\_num} = \frac{\text{session\_num}}{\text{sync\_group\_size}}
      $$
@@ -102,9 +103,6 @@ $$
 $$
 
 ## 参数说明
-
-- **参数说明：**
-
   <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
   <col style="width: 146px">
   <col style="width: 135px">
@@ -118,7 +116,7 @@ $$
   <thead>
     <tr>
       <th>参数名</th>
-      <th>输入/输出</th>
+      <th>输入/输出/属性</th>
       <th>描述</th>
       <th>使用说明</th>
       <th>数据类型</th>
@@ -128,8 +126,8 @@ $$
     </tr></thead>
   <tbody>
     <tr>
-      <td>scheduleContextRef</td>
-      <td>输入/输出</td>
+      <td>schedule_context</td>
+      <td>输入</td>
       <td>FFN侧接收的待处理数据，表示ScheduleContext信息，详细结构参见调用示例</td>
       <td>不支持空tensor。</td>
       <td>INT8</td>
@@ -138,41 +136,31 @@ $$
       <td>×</td>
     </tr>
     <tr>
-      <td>syncGroupSize</td>
-      <td>输入</td>
+      <td>schedule_context</td>
+      <td>输出</td>
+      <td>处理后的ScheduleContext信息，shape、dtype和format与输入一致。</td>
+      <td>-</td>
+      <td>INT8</td>
+      <td>ND</td>
+      <td>1维，shape为(1024)</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>sync_group_size</td>
+      <td>属性</td>
       <td>每个同步组处理的session个数。</td>
-      <td>取值范围为(0，session_num]，session_num表示待处理数据的最大会话数，即调用示例中结构体ScheduleContext中CommonArea域的session_num字段。</td>
-      <td>INT32</td>
+      <td>取值范围为(0，session_num]，session_num表示待处理数据的最大会话数。</td>
+      <td>Int</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>executeMode</td>
-      <td>输入</td>
+      <td>execute_mode</td>
+      <td>属性</td>
       <td>执行模式。</td>
       <td>只支持模式0，表示执行完一次退出。</td>
-      <td>INT32</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
+      <td>Int</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

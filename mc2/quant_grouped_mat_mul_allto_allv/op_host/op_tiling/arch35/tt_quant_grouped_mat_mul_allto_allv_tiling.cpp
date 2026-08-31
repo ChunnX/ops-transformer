@@ -32,7 +32,9 @@ namespace Mc2Tiling {
 bool TTQuantGroupedMatmulAllToAllvTiling::IsCapable()
 {
     QuantModePair mode = GetQuantMode(context_, opName_);
-    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR, OP_LOGE_WITH_INVALID_ATTR(opName_, "quantMode", "QUANT_PAIR_ERROR", "valid quant mode"), return false);
+    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR,
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "quantMode", "QUANT_PAIR_ERROR", "valid quant mode"),
+                    return false);
     if (mode == QUANT_PAIR_TT) {
         OP_LOGI(opName_, "TTQuantGroupedMatmulAllToAllvTiling TT mode capable.");
         return true;
@@ -58,13 +60,13 @@ uint64_t TTQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-        localParams_.isMmWeightTrans, commMode);
+                                                  localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-        localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
     return tilingKey;
 }
 
 // 注册tiling类
 REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatMulAlltoAllv, TTQuantGroupedMatmulAllToAllvTiling, 0);
 
-}
+} // namespace Mc2Tiling

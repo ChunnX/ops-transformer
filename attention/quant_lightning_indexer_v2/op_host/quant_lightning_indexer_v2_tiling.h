@@ -37,11 +37,7 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
+enum class DataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -82,12 +78,22 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
+constexpr uint32_t SPARSE_LIMIT_8K = 8192;
 constexpr uint32_t G_SIZE_LIMIT = 64;
 constexpr uint32_t G_SIZE_LIMIT_32_950 = 32;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
+constexpr int32_t QUANT_MODE_FP8 = 1;
+constexpr int32_t QUANT_MODE_INT8 = 2;
+constexpr int32_t QUANT_MODE_MXFP8 = 3;
+constexpr int32_t QUANT_MODE_HIFLOAT8 = 4;
+constexpr int32_t QUANT_MODE_MXFP4 = 5;
+constexpr uint32_t MX_SCALE_SHAPE_ALIGN = 64;
+constexpr uint32_t MX_E8M0_SCALE_PACK_NUM = 2; // MX的E8M0 scale形状最后一维打包数为2
+constexpr uint32_t MXFP4_PACK_NUM = 2;         // 每个uint8承载2个FP4 E2M1逻辑元素
+constexpr uint32_t MX_SCALE_GROUP_SIZE = 32;   // MX量化每32个D维元素对应1个E8M0 scale
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLIV2TilingData)
@@ -269,5 +275,5 @@ private:
     QLIV2TilingData tilingData_;
 };
 
-}  // namespace optiling
-#endif  // QUANT_LIGHTNING_INDEXER_V2_TILING_H
+} // namespace optiling
+#endif // QUANT_LIGHTNING_INDEXER_V2_TILING_H

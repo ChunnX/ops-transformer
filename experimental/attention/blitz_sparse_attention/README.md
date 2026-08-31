@@ -16,13 +16,13 @@ This kernel is based on PromptFlashAttentionV3, extending it with a new argument
 > have shown that a proper fix requires a full kernel rewrite; the sibling
 > `attention/block_sparse_attention` kernel handles this better with its
 > bottom-up CATLASS-based design.
-
 > **TODO 2: batch size > 1 is broken.** Only `batch_size=1` (`B=1`) is currently
 > known to produce correct results. Runs with `B>1` produce incorrect outputs.
 > All tests and benchmarks must be run with `B=1` until the multi-batch issue
 > is diagnosed and fixed.
 
-## Quick test and benchmark in python:
+## Quick test and benchmark in python
+
 build the kernel as a custom experimental package, install it, then install our "torch_bsa" torch interface package
 
 ```shell
@@ -46,6 +46,7 @@ pair in `BLOCK_SHAPES` and labels each row with its active `block_shape`. The
 `frame(L,R,T,B)` column shows the per-shape frame as a compact 4-tuple, or `-`
 when no frame applies (sparsity 0 ⇒ every block kept ⇒ frame irrelevant).
 Trimmed sample on Ascend910B2:
+
 ```shell
 ========================================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
@@ -63,6 +64,7 @@ Trimmed sample on Ascend910B2:
       128x512   3   1 118806 118806  128      (8,1,29,1)      0.90             N/A                N/A           17384.59
 ========================================================================================================================
 ```
+
 Rows are trimmed to a few sparsities per shape; the actual sweep emits one row
 per sparsity for each block_shape. Narrow `BLOCK_SHAPES` at the top of
 `benchmark.py` to benchmark a single granularity.
@@ -73,6 +75,7 @@ finer sabi resolution). See [benchmark/README.md](benchmark/README.md) for the
 full table and a per-sparsity PFA-speedup summary.
 
 To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `torch_npu` conventions:
+
 ```python
 import torch
 import torch_bsa
@@ -120,12 +123,13 @@ The LSE is computed during the same kernel pass as the attention output at no ad
 
 When `softmax_lse_flag=False` the kernel skips the LSE write-out path and returns a zero-element placeholder tensor; the caller does not need to allocate memory for it.
 
-## Example run in C++:
+## Example run in C++
+
 A plain, pure C++, example is provided in examples subdirectory. Run it using:
+
 ```shell
 bash build.sh --experimental --run_example blitz_sparse_attention eager cust --soc=ascend910b --vendor_name=custom
 ```
-
 
 <details>
 <summary>the output should be (click to expand):</summary>
@@ -176,6 +180,7 @@ bash build.sh --experimental --run_example blitz_sparse_attention eager cust --s
 </details>
 
 ## Kernel integration plan
+
 If this block-sparse kernel is of interest, please consider merging it with the official `attention/prompt_flash_attention`. The source is based on `attention/prompt_flash_attention` at git commit `a574b5d71faa7c360934a6c7d1b4aa85e1a49147`.
 
 ## 产品支持情况
@@ -183,7 +188,7 @@ If this block-sparse kernel is of interest, please consider merging it with the 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
 
@@ -270,8 +275,8 @@ If this block-sparse kernel is of interest, please consider merging it with the 
 </tbody>
 </table>
 
-- Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件：数据类型支持FLOAT16、BFLOAT16、INT8。
-- Atlas推理系列加速卡产品：仅支持FLOAT16。
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品：数据类型支持FLOAT16、BFLOAT16、INT8。
+- Atlas 推理系列产品：仅支持FLOAT16。
 
 ## 约束说明
 
@@ -281,7 +286,7 @@ If this block-sparse kernel is of interest, please consider merging it with the 
 
 - query，key，value输入，功能使用限制如下：
 
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件：
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：
 
     - 支持B轴小于等于65536（64k），输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128。
 
@@ -339,17 +344,17 @@ If this block-sparse kernel is of interest, please consider merging it with the 
       </tr>
       </tbody>
       </table>
-      
+
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
-    
-  - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件：在TND场景下query，key，value输入的综合限制：
+
+  - Atlas A2 训练系列产品/Atlas A2 推理系列产品：在TND场景下query，key，value输入的综合限制：
     - T小于等于65536。
     - N等于8/16/32/64/128，且Q_N、K_N、V_N相等。
     - Q_D、K_D等于192，V_D等于128/192。
     - 数据类型仅支持BFLOAT16。
     - sparse模式仅支持sparse=0且不传mask，或sparse=3且传入mask。
     - 当sparse=3时，要求每个batch单独的actualSeqLengths < actualSeqLengthsKv。
-  
+
 - 当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出attentionOut的shape为BSND；其余情况attentionOut的shape需要与入参query的shape保持一致。
 
 ## 调用说明

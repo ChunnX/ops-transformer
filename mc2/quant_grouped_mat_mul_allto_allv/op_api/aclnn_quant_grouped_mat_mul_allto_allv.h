@@ -92,10 +92,10 @@ ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     const aclTensor *commQuantScaleOptional, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode,
-    int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional,
-    int64_t groupSize, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,
-    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, const aclTensor *y,
-    const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional, int64_t groupSize,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    bool transGmmWeight, bool transMmWeight, const aclTensor *y, const aclTensor *mmYOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /**
  * @brief aclnnQuantGroupedMatMulAlltoAllv的第二段接口，用于执行计算。

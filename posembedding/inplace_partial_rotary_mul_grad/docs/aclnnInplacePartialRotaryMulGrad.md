@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -112,7 +122,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnInplacePartialRotaryMulGradGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnInplacePartialRotaryMulGrad"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnInplacePartialRotaryMulGradGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnInplacePartialRotaryMulGrad"接口执行计算。
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(
@@ -203,7 +213,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
     <tr>
       <td>partialSlice</td>
       <td>输入</td>
-      <td>D维度上的切片范围[start, end)，默认{0, 0}表示不做有效计算。start须在[0, D]内，end须在[start, D]内。</td>
+      <td>dyRef最后一维(D维)上的切片范围，为[start, end)，表示对dyRef[..., start:end]执行旋转位置编码梯度计算。</td>
       <td>-</td>
       <td>IntArray</td>
       <td>-</td>
@@ -235,7 +245,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -314,30 +324,29 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 - **该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）**。half（0）、quarter（2）、interleave-half（3）模式暂未实现。
-- 该算子不支持输入空Tensor（任意维度大小不能为0），不支持 slice 长度为零（即 `partial_slice[0] == partial_slice[1]`）的场景。
 
 - 确定性计算：
   - aclnnInplacePartialRotaryMulGrad默认确定性实现。
 
 - 输入张量dyRef支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
-  - 输入张量dyRef的最后一维大小D必须小于等于1024，且D ≤ 1024。
-  - 输入张量cos、sin的最后一维大小必须等于切片长度(end - start)。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
-  - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
-  - quarter模式下，切片长度(end - start)必须能被4整除。
+  - 输入张量dyRef的最后一维大小D必须小于等于1024。
+  - 当切片长度(end - start)大于0时，输入张量cos、sin的最后一维大小必须等于切片长度。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
+  - half、interleave和interleave-half模式下，当切片长度(end - start)大于0时，切片长度必须能被2整除。
+  - quarter模式下，当切片长度(end - start)大于0时，切片长度必须能被4整除。
   - 输入张量cos和sin的数据类型必须相同。
-
+- **空输入支持**：当切片长度为0（`partial_slice`的start等于end，如`[0, 0]`），或dyRef、cos、sin中存在空Tensor（某维大小为0）时，算子执行no-op操作，不做旋转位置编码计算，直接返回。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"

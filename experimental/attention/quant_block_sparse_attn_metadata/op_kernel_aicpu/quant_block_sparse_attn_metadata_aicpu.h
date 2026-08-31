@@ -29,38 +29,53 @@
 namespace aicpu {
 
 static const int64_t NUM_128 = 128L;
+static const uint32_t BLOCK_TOLERANCE_RATIO = 2U;
 
 struct CoreCache {
-    uint64_t blockLimit { 0U };
-    uint64_t block { 0U };
+    uint64_t blockLimit{0U};
+    uint64_t block{0U};
 };
 
 struct AssignContext {
-    uint32_t curCoreIdx { 0U };
-    uint32_t curBIdx { 0U };
-    uint32_t curN1Idx { 0U };
-    uint32_t curBN1Idx { 0U };
-    uint32_t curS1Idx { 0U };
-    uint32_t curS2Idx { 0U };
-    uint64_t unassignedBlock { 0U };
-    uint64_t bN1Block { 0U };
-    CoreCache coreCache {};
-    bool isFinished { false };
+    uint32_t curCoreIdx{0U};
+    uint32_t curBIdx{0U};
+    uint32_t curN1Idx{0U};
+    uint32_t curBN1Idx{0U};
+    uint32_t curS1Idx{0U};
+    uint32_t curS2Idx{0U};
+    uint32_t bn1Limit{0U};
+    uint64_t unassignedBlock{0U};
+    uint64_t bN1Block{0U};
+    CoreCache coreCache{};
+    bool isFinished{false};
 };
 
 struct SplitResult {
-    uint32_t usedCoreNum { 0U };
-    uint64_t maxBlock { 0U };
-    std::vector<uint32_t> bN1End {};
-    std::vector<uint32_t> s1End {};
-    std::vector<uint32_t> s2End {};
-    std::vector<uint32_t> firstFdDataWorkspaceIdx {};
+    uint32_t usedCoreNum{0U};
+    uint64_t maxBlock{0U};
+    std::vector<uint32_t> bN1End{};
+    std::vector<uint32_t> s1End{};
+    std::vector<uint32_t> s2End{};
+    std::vector<uint32_t> firstFdDataWorkspaceIdx{};
 
     explicit SplitResult(uint32_t aicNum)
         : bN1End(aicNum),
           s1End(aicNum),
           s2End(aicNum),
-          firstFdDataWorkspaceIdx(aicNum) {}
+          firstFdDataWorkspaceIdx(aicNum)
+    {}
+};
+
+struct SectionInfo {
+    uint32_t bn1Start{0U};
+    uint32_t bn1End{0U};
+    uint64_t blockNum{0U};
+    uint64_t cost{0U};
+    SplitResult splitResult;
+
+    explicit SectionInfo(uint32_t aicNum)
+        : splitResult(aicNum)
+    {}
 };
 
 class QuantBlockSparseAttnMetadataCpuKernel : public CpuKernel {
@@ -74,15 +89,18 @@ private:
     bool ParamsCheck();
     bool CheckTensorData();
     bool ParamsInit();
-    bool ScheduleSection(SplitResult &splitRes);
-    bool GenMetadata(const SplitResult &splitRes);
+    bool ScheduleSections(std::vector<SectionInfo> &sectionResults);
+    bool GenMetadata(const std::vector<SectionInfo> &sectionResults);
     uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t n1Idx, uint32_t s1Idx) const;
+    void InitBN1BlockInfo();
     uint64_t GetBN1BlockNum(uint32_t bIdx, uint32_t n1Idx) const;
-    uint64_t CalcBlockNum() const;
+    uint32_t CalcValidS1Rows(uint32_t bIdx, uint32_t n1Idx, uint32_t &maxS2BlockNum) const;
+    uint64_t CalcBN1Cost(uint32_t bIdx, uint32_t n1Idx) const;
+    bool CalcSectionBoundaries(std::vector<SectionInfo> &sectionResults) const;
     bool AdvanceToValidRow(AssignContext &assignContext) const;
     void AssignByBatch(AssignContext &assignContext) const;
     void AssignByRow(AssignContext &assignContext) const;
-    void ScheduleFa(uint64_t blockNum, SplitResult &result);
+    void ScheduleFa(uint32_t bn1Start, uint32_t bn1End, uint64_t blockNum, SplitResult &result);
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -105,7 +123,7 @@ private:
     int32_t quantMode_ = 1;
     int32_t maskMode_ = 3;
     std::string layoutQ_ = "TND";
-    std::string layoutKv_ = "PA_BNSD";
+    std::string layoutKv_ = "PA_BNBD";
     std::string layoutSparseIndices_ = "B_N_Qb_Kb";
 
     // platform
@@ -118,6 +136,8 @@ private:
     uint32_t Qbmax_ = 0;
     uint32_t mBaseSize_ = NUM_128;
     uint32_t s2BaseSize_ = NUM_128;
+    std::vector<uint64_t> bN1BlockNum_{};
+    std::vector<uint32_t> bN1LastRowBlockNum_{};
 
 private:
     enum class ParamId : uint32_t {

@@ -56,22 +56,21 @@ PostQuantPerChnlNoOffsetImplVF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ T *srcUb, __ub
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_tail = UpdateMask<float>(maskTail);
     for (uint16_t k = 0; k < dLoops; ++k) {
-        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
-            src1Offset + k * floatRepSize, preg_all);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb, src1Offset + k * floatRepSize, preg_all);
         LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + k * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_all);
         CastToOutputFromMul<T, OUTPUT_T>(vregCastB16, vregCast, vregMul, preg_all);
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
-            dstUb + src0Offset + loopsOffset + k * floatRepSize, vregCast, preg_all);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + loopsOffset + k * floatRepSize, vregCast,
+                                                        preg_all);
     }
     for (uint16_t k = 0; k < dTailLoop; ++k) {
-        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
-            src1Offset + dLoops * floatRepSize, preg_tail);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb, src1Offset + dLoops * floatRepSize,
+                                              preg_tail);
         LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + dLoops * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_tail);
         CastToOutputFromMul<T, OUTPUT_T>(vregCastB16, vregCast, vregMul, preg_tail);
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
-            dstUb + src0Offset + loopsOffset + dLoops * floatRepSize, vregCast, preg_tail);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + loopsOffset + dLoops * floatRepSize,
+                                                        vregCast, preg_tail);
     }
 }
 
@@ -94,28 +93,26 @@ PostQuantPerChnlOffsetImplVF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ T *srcUb, __ubuf
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_tail = UpdateMask<float>(maskTail);
     for (uint16_t k = 0; k < dLoops; ++k) {
-        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
-            src1Offset + k * floatRepSize, preg_all);
-        LoadOffsetParam<T, POSTQUANT_PARAMS_T>(vOffset, vOffsetTmp, offsetUb,
-            src1Offset + k * floatRepSize, preg_all);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb, src1Offset + k * floatRepSize, preg_all);
+        LoadOffsetParam<T, POSTQUANT_PARAMS_T>(vOffset, vOffsetTmp, offsetUb, src1Offset + k * floatRepSize, preg_all);
         LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + k * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_all);
         Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_all);
         CastToOutputFromAdd<T, OUTPUT_T>(vregCastB16, vregCast, vreg_add, preg_all);
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
-            dstUb + src0Offset + loopsOffset + k * floatRepSize, vregCast, preg_all);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + loopsOffset + k * floatRepSize, vregCast,
+                                                        preg_all);
     }
     for (uint16_t k = 0; k < dTailLoop; ++k) {
-        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
-            src1Offset + dLoops * floatRepSize, preg_tail);
-        LoadOffsetParam<T, POSTQUANT_PARAMS_T>(vOffset, vOffsetTmp, offsetUb,
-            src1Offset + dLoops * floatRepSize, preg_tail);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb, src1Offset + dLoops * floatRepSize,
+                                              preg_tail);
+        LoadOffsetParam<T, POSTQUANT_PARAMS_T>(vOffset, vOffsetTmp, offsetUb, src1Offset + dLoops * floatRepSize,
+                                               preg_tail);
         LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + dLoops * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_tail);
         Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_tail);
         CastToOutputFromAdd<T, OUTPUT_T>(vregCastB16, vregCast, vreg_add, preg_tail);
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
-            dstUb + src0Offset + loopsOffset + dLoops * floatRepSize, vregCast, preg_tail);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + loopsOffset + dLoops * floatRepSize,
+                                                        vregCast, preg_tail);
     }
 }
 

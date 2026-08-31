@@ -339,7 +339,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::CalcMultiCoreO
 {
     int64_t actualSum = 0;
     int64_t bS1Index = tilingData->multiCoreParams.bS1Index[constInfo.aicIdx];
-    int64_t bS1EndIndex = constInfo.aicIdx + 1 < optiling::MAX_CORE_NUM ?
+    int64_t bS1EndIndex = constInfo.aicIdx + 1 < constInfo.aicNum ?
                 tilingData->multiCoreParams.bS1Index[constInfo.aicIdx + 1] : tilingData->multiCoreParams.totalSize;
     if constexpr (LAYOUT_T == DLILayout::TND) {
         bStartIdx = FindBIndex(0, bS1Index, actualSum);

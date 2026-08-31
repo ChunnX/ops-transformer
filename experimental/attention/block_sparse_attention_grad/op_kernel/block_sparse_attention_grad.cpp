@@ -21,12 +21,11 @@
  * 这是NPU上执行的入口点，使用extern "C"以避免C++名称修饰，
  * 使用__global__和__aicore__修饰符标识为全局kernel函数
  */
-extern "C" __global__ __aicore__ void
-block_sparse_attention_grad(__gm__ uint8_t *dout, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                            __gm__ uint8_t *out, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *blockSparseMask,
-                            __gm__ uint8_t *attentionMask, __gm__ uint8_t *blockShape, __gm__ uint8_t *actualSeqLengths,
-                            __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *dq, __gm__ uint8_t *dk,
-                            __gm__ uint8_t *dv, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+extern "C" __global__ __aicore__ void block_sparse_attention_grad(
+    __gm__ uint8_t *dout, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *out,
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *blockSparseMask, __gm__ uint8_t *attentionMask,
+    __gm__ uint8_t *blockShape, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
+    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
 

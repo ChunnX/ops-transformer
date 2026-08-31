@@ -29,6 +29,8 @@ using AscendC::LocalTensor;
 
 namespace fa_base_vector {
 
+constexpr float FLOAT_ZERO = 0;
+
 // BLOCK和REPEAT的字节数
 constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 // BLOCK和REPEAT的FP32元素数
@@ -815,7 +817,8 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
             }
             // 由于sparse9 mask只有一部分，不能合并处理
             uint32_t attenMaskSize = curS2EnsPos - treeMaskStart;
-            uint32_t attenMaskSizeAlign = AttentionCommon::Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
+            uint32_t attenMaskSizeAlign =
+                AttentionCommon::Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
             uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, s1StartIdx, treeMaskStart, isPre);
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
@@ -956,8 +959,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
     // 增加sparse = 9的处理
     if constexpr (ENABLE_TREE) {
         // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
-        if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
-            static_cast<int64_t>(info.s2Size - info.s1Size)) {
+        if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) > static_cast<int64_t>(info.s2Size - info.s1Size)) {
             return false;
         } else {
             return true;
@@ -1033,7 +1035,8 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
             } else if (curS2EndPos > treeMaskStart) {
                 // 部分拷贝：只拷贝 [treeMaskStart, curS2EndPos) 区域
                 uint32_t attenMaskSize = curS2EndPos - treeMaskStart;
-                uint32_t attenMaskSizeAlign = AttentionCommon::Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
+                uint32_t attenMaskSizeAlign =
+                    AttentionCommon::Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
                 uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, treeMaskStart, isPre);
                 DataCopyExtParams dataCopyParams;
                 dataCopyParams.blockCount = 1;
@@ -1114,32 +1117,6 @@ struct InvalidRowParams {
     int64_t preTokensPerBatch;
     int64_t nextTokensPerBatch;
 };
-
-template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline constexpr UbInputFormat GeInputUbFormat()
-{
-    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) || (LAYOUT_T == FIA_LAYOUT::BNSD) || (LAYOUT_T == FIA_LAYOUT::TND) ||
-                      (LAYOUT_T == FIA_LAYOUT::NTD) || (LAYOUT_T == FIA_LAYOUT::BSND),
-                  "Get Query GmFormat fail, LAYOUT_T is incorrect");
-    if constexpr (LAYOUT_T == FIA_LAYOUT::BSH || LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSND) {
-        return UbInputFormat::S1G;
-    } else if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD || LAYOUT_T == FIA_LAYOUT::NTD) {
-        return UbInputFormat::GS1;
-    }
-}
-
-template <LayOutTypeEnum LAYOUT>
-__aicore__ inline constexpr UbInputFormat GeInputUbFormat()
-{
-    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
-                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
-                  "Get Query GmFormat fail, LAYOUT_T is incorrect");
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return UbInputFormat::S1G;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
-        return UbInputFormat::GS1;
-    }
-}
 
 template <typename T, UbInputFormat UB_INPUTFORMAT>
 class InvalidRows {

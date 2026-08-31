@@ -78,9 +78,9 @@ struct QuantGmmAlltoAllvParamsInfo {
 
 struct TilingInferredInfo {
     uint64_t gmmResultLen = 0UL; // 存储计算GMM的地址大小
-    uint64_t commLen = 0UL; // 存储通信结果的临时空间，recvCounts
-    uint64_t permuteLen = 0UL; // 重排空间大小, 应该与result一致
-    uint32_t biasLen = 0UL; // 暂不支持bias
+    uint64_t commLen = 0UL;      // 存储通信结果的临时空间，recvCounts
+    uint64_t permuteLen = 0UL;   // 重排空间大小, 应该与result一致
+    uint32_t biasLen = 0UL;      // 暂不支持bias
 };
 
 class QuantGroupedMatmulAllToAllvTilingCommon : public QuantGroupedMatmulAllToAllvTilingBase {
@@ -92,6 +92,7 @@ public:
         TilingBaseClass::Reset(context);
     }
     ~QuantGroupedMatmulAllToAllvTilingCommon() override = default;
+
 protected:
     void Reset();
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -139,5 +140,5 @@ protected:
 };
 
 } // namespace Mc2GroupedMatmul
-}
+} // namespace Mc2Tiling
 #endif

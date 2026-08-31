@@ -16,7 +16,7 @@
 #ifndef COMPRESSOR_BLOCK_CUBE_FULL_LOAD_H
 #define COMPRESSOR_BLOCK_CUBE_FULL_LOAD_H
 
-#include "compressor_comm.h"
+#include "compressor_comm_arch35.h"
 #include "compressor_tools.h"
 
 using namespace AscendC;
@@ -356,6 +356,7 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::ComputeMm1(const RunIn
     for (uint32_t h = 0; h < hSize; h += K_L1_BASE) {
         // h方向错位搬运
         uint32_t hIdx = (h + hIdxStart) % (CeilDivT(hSize, K_L1_BASE) * K_L1_BASE);
+        hIdx = constInfo_.batchConsistency == BATCH_CONSISTENCY ? h : hIdx;
         if (hIdx + K_L1_BASE > hSize) {
             kSize = hSize - hIdx;
         } else {

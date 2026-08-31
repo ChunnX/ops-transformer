@@ -31,10 +31,9 @@
 #include "context_transfer.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
-#include "../../op_kernel/arch22/unquant_matmul_all_reduce_tiling_data.h"
-#include "../../op_kernel/arch22/weight_quant_matmul_all_reduce_tiling_data.h"
-#include "../../op_kernel/arch22/quant_matmul_all_reduce_tiling_data.h"
-#include "../../op_kernel/arch35/matmul_all_reduce_tiling_struct_ar35.h"
+#include "../../op_kernel/unquant_matmul_all_reduce_tiling_data.h"
+#include "../../op_kernel/weight_quant_matmul_all_reduce_tiling_data.h"
+#include "../../op_kernel/quant_matmul_all_reduce_tiling_data.h"
 
 namespace optiling {
 
@@ -122,7 +121,9 @@ enum class ParamValue {
 class MatmulAllReduceTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MatmulAllReduceTilingBase(gert::TilingContext *context)
-        : TilingBaseClass(context), mmrCtxInfo_(mmrCtxInfoSelf_), tilingData_(tilingDataSelf_)
+        : TilingBaseClass(context),
+          mmrCtxInfo_(mmrCtxInfoSelf_),
+          tilingData_(tilingDataSelf_)
     {
         Reset();
         // tilingdata作为类的成员随构造函数实例化，使用引用来统一数据访问接口，同时用实体对象来管理数据的生命周期
@@ -132,13 +133,17 @@ public:
                         OP_LOGE(opName_, "fail to memset tiling data"), return;);
     }
     MatmulAllReduceTilingBase(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo)
-        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)
+        : TilingBaseClass(context),
+          mmrCtxInfo_(*mmrCtxInfo),
+          tilingData_(tilingDataSelf_)
     {
         Reset();
     }
     MatmulAllReduceTilingBase(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                               Mc2Tiling::MatmulAllReduceTilingData *tilingData)
-        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(*tilingData)
+        : TilingBaseClass(context),
+          mmrCtxInfo_(*mmrCtxInfo),
+          tilingData_(*tilingData)
     {
         Reset();
     }
@@ -274,6 +279,9 @@ protected:
     bool isA8W8_{false};
     bool isA16W8_{false};
     bool isA16W4_{false};
+    bool biasOnVec_{
+        false}; // arch35 非量化场景 bias 移至 vec epilogue 累加（仅 arch35 子类 DoOpTiling 设置，其余架构保持 false）
+    uint32_t biasUbCnt_{0U}; // bias epilogue 的 N 方向 UB 切分粒度（CalcUbTiling 计算后暂存，子类写入 extTiling）
     AllReduceScenario scenario_{AllReduceScenario::INVALID};
     MMRCtxInfo mmrCtxInfoSelf_{};
     MMRCtxInfo &mmrCtxInfo_;

@@ -17,7 +17,7 @@
 
 #include "weight_quant_matmul_all_reduce_tiling_950.h"
 #include "common/utils/op_mc2.h"
-#include "mc2/matmul_all_reduce/op_kernel/matmul_all_reduce_apt_tiling_key.h"
+#include "mc2/matmul_all_reduce/op_kernel/arch35/matmul_all_reduce_apt_tiling_key.h"
 #include "all_reduce_fit_balance_tiling.h"
 #include "mc2_comm_utils.h"
 
@@ -206,11 +206,12 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+    uint8_t commMode = GetCommMode();
+    if (commMode == Mc2Comm::COMM_MODE_CCU && k >= WEIGHT_QUANT_A2APATH_CRITICAL_K &&
+        mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     bool isA2ARSAG = isUseA2APath;
-    uint8_t commMode = GetCommMode();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
         MMTYPE_WEIGHT_QUANT_MM, WeightQuantTPLPatams_.transB, WeightQuantTPLPatams_.biasIsExist, isA2ARSAG, commMode,
         SET_NOT_USE_FP_MM_TILING, SET_NOT_USE_QUANT_MM_TILING, WeightQuantTPLPatams_.templateCustom,
@@ -261,7 +262,9 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
     } else {
         bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+        uint8_t commMode = GetCommMode();
+        if (commMode == Mc2Comm::COMM_MODE_CCU && k >= WEIGHT_QUANT_A2APATH_CRITICAL_K &&
+            mc2tiling::Is8P(args_.rankDim, npuArch_)) {
             isUseA2APath = false;
         }
         if (isUseA2APath) {
@@ -462,7 +465,9 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     const char *groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+    uint8_t commMode = GetCommMode();
+    if (commMode == Mc2Comm::COMM_MODE_CCU && k >= WEIGHT_QUANT_A2APATH_CRITICAL_K &&
+        mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     if (isUseA2APath) {
@@ -669,15 +674,14 @@ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
         mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
+        uint8_t commMode = GetCommMode();
         KernelType kernelType;
-        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+        if (commMode == Mc2Comm::COMM_MODE_CCU && k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
             kernelType = KernelType::ALL_REDUCE;
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
         }
-        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
-                                                            kernelType,
-                                                            TopoType::EIGHT_P);
+        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_, kernelType, TopoType::EIGHT_P);
         mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else {
         MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);

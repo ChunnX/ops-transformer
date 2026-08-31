@@ -16,9 +16,9 @@
 #include "../../../../op_host/op_tiling/arch35/tt_quant_grouped_mat_mul_allto_allv_tiling.h"
 #include "../../../../op_host/op_tiling/arch35/mx_quant_grouped_mat_mul_allto_allv_tiling.h"
 
-static std::string GetCsvPath(const char* file)
+static std::string GetCsvPath(const char *file)
 {
-    const char* envPath = std::getenv("CSV_CASE_PATH");
+    const char *envPath = std::getenv("CSV_CASE_PATH");
     if (envPath != nullptr && strlen(envPath) > 0) {
         return std::string(envPath);
     }
@@ -29,7 +29,8 @@ namespace QuantGmmAlltoAllvUT {
 
 static const std::string OP_NAME = "QuantGroupedMatMulAlltoAllv";
 
-struct GroupedMatMulAlltoAllvCompileInfo {} compileInfo;
+struct GroupedMatMulAlltoAllvCompileInfo {
+} compileInfo;
 
 class QuantGmmAlltoAllvTilingTest : public testing::TestWithParam<QuantGmmAlltoAllvTilingUtParam> {
 protected:
@@ -72,7 +73,7 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
     gert::StorageShape mmWeightStorageShape;
     if (param.mmWeightShape.size() >= 2 && param.mmWeightShape[0] > 0) {
         mmWeightStorageShape = {{param.mmWeightShape[0], param.mmWeightShape[1]},
-            {param.mmWeightShape[0], param.mmWeightShape[1]}};
+                                {param.mmWeightShape[0], param.mmWeightShape[1]}};
     } else {
         mmWeightStorageShape = {};
     }
@@ -88,7 +89,7 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
     if (param.gmmXScaleShape.size() > 0 && param.gmmXScaleShape[0] > 0) {
         if (param.gmmXScaleShape.size() == gmmXScaleDimMx) {
             gmmXScaleStorageShape = {{param.gmmXScaleShape[0], param.gmmXScaleShape[1], param.gmmXScaleShape[2]},
-                {param.gmmXScaleShape[0], param.gmmXScaleShape[1], param.gmmXScaleShape[2]}};
+                                     {param.gmmXScaleShape[0], param.gmmXScaleShape[1], param.gmmXScaleShape[2]}};
         } else {
             std::cerr << "[WARN] gmmXScaleShape unexpected dim: " << param.gmmXScaleShape.size()
                       << " in case: " << param.case_name << std::endl;
@@ -102,9 +103,9 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
     if (param.gmmWeightScaleShape.size() > 0 && param.gmmWeightScaleShape[0] > 0) {
         if (param.gmmWeightScaleShape.size() == gmmWeightScaleDimMx) {
             gmmWeightScaleStorageShape = {{param.gmmWeightScaleShape[0], param.gmmWeightScaleShape[1],
-                param.gmmWeightScaleShape[2], param.gmmWeightScaleShape[3]},
-                {param.gmmWeightScaleShape[0], param.gmmWeightScaleShape[1],
-                param.gmmWeightScaleShape[2], param.gmmWeightScaleShape[3]}};
+                                           param.gmmWeightScaleShape[2], param.gmmWeightScaleShape[3]},
+                                          {param.gmmWeightScaleShape[0], param.gmmWeightScaleShape[1],
+                                           param.gmmWeightScaleShape[2], param.gmmWeightScaleShape[3]}};
         } else {
             std::cerr << "[WARN] gmmWeightScaleShape unexpected dim: " << param.gmmWeightScaleShape.size()
                       << " in case: " << param.case_name << std::endl;
@@ -118,7 +119,7 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
     if (param.mmXScaleShape.size() > 0 && param.mmXScaleShape[0] > 0) {
         if (param.mmXScaleShape.size() == mmXScaleDimMx) {
             mmXScaleStorageShape = {{param.mmXScaleShape[0], param.mmXScaleShape[1], param.mmXScaleShape[2]},
-                {param.mmXScaleShape[0], param.mmXScaleShape[1], param.mmXScaleShape[2]}};
+                                    {param.mmXScaleShape[0], param.mmXScaleShape[1], param.mmXScaleShape[2]}};
         } else {
             std::cerr << "[WARN] mmXScaleShape unexpected dim: " << param.mmXScaleShape.size()
                       << " in case: " << param.case_name << std::endl;
@@ -131,9 +132,9 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
     gert::StorageShape mmWeightScaleStorageShape;
     if (param.mmWeightScaleShape.size() > 0 && param.mmWeightScaleShape[0] > 0) {
         if (param.mmWeightScaleShape.size() == mmWeightScaleDimMx) {
-            mmWeightScaleStorageShape = {{param.mmWeightScaleShape[0], param.mmWeightScaleShape[1],
-                param.mmWeightScaleShape[2]}, {param.mmWeightScaleShape[0], param.mmWeightScaleShape[1],
-                param.mmWeightScaleShape[2]}};
+            mmWeightScaleStorageShape = {
+                {param.mmWeightScaleShape[0], param.mmWeightScaleShape[1], param.mmWeightScaleShape[2]},
+                {param.mmWeightScaleShape[0], param.mmWeightScaleShape[1], param.mmWeightScaleShape[2]}};
         } else {
             std::cerr << "[WARN] mmWeightScaleShape unexpected dim: " << param.mmWeightScaleShape.size()
                       << " in case: " << param.case_name << std::endl;
@@ -145,27 +146,26 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
 
     gert::TilingContextPara tilingContextPara(
         OP_NAME,
-        {
-            {{{param.gmmXShape[0], param.gmmXShape[1]}, {param.gmmXShape[0], param.gmmXShape[1]}},
-                param.gmmXDataType, param.gmmXFormat},
-            {{{param.gmmWeightShape[0], param.gmmWeightShape[1], param.gmmWeightShape[2]},
-                {param.gmmWeightShape[0], param.gmmWeightShape[1], param.gmmWeightShape[2]}},
-                param.gmmWeightDataType, param.gmmWeightFormat},
-            {gmmXScaleStorageShape, param.gmmXScaleDataType, param.gmmXScaleFormat},
-            {gmmWeightScaleStorageShape, param.gmmWeightScaleDataType, param.gmmWeightScaleFormat},
-            {{}, ge::DT_INT64, ge::FORMAT_ND},
-            {{}, ge::DT_INT64, ge::FORMAT_ND},
-            {mmXStorageShape, param.mmXDataType, param.mmXFormat},
-            {mmWeightStorageShape, param.mmWeightDataType, param.mmWeightFormat},
-            {mmXScaleStorageShape, param.mmXScaleDataType, param.mmXScaleFormat},
-            {mmWeightScaleStorageShape, param.mmWeightScaleDataType, param.mmWeightScaleFormat},
-            {{}, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {{{param.gmmYShape[0], param.gmmYShape[1]}, {param.gmmYShape[0], param.gmmYShape[1]}},
-                param.gmmYDataType, param.gmmYFormat},
-            {mmYStorageShape, param.mmYDataType, param.mmYFormat}
-        },
+        {{{{param.gmmXShape[0], param.gmmXShape[1]}, {param.gmmXShape[0], param.gmmXShape[1]}},
+          param.gmmXDataType,
+          param.gmmXFormat},
+         {{{param.gmmWeightShape[0], param.gmmWeightShape[1], param.gmmWeightShape[2]},
+           {param.gmmWeightShape[0], param.gmmWeightShape[1], param.gmmWeightShape[2]}},
+          param.gmmWeightDataType,
+          param.gmmWeightFormat},
+         {gmmXScaleStorageShape, param.gmmXScaleDataType, param.gmmXScaleFormat},
+         {gmmWeightScaleStorageShape, param.gmmWeightScaleDataType, param.gmmWeightScaleFormat},
+         {{}, ge::DT_INT64, ge::FORMAT_ND},
+         {{}, ge::DT_INT64, ge::FORMAT_ND},
+         {mmXStorageShape, param.mmXDataType, param.mmXFormat},
+         {mmWeightStorageShape, param.mmWeightDataType, param.mmWeightFormat},
+         {mmXScaleStorageShape, param.mmXScaleDataType, param.mmXScaleFormat},
+         {mmWeightScaleStorageShape, param.mmWeightScaleDataType, param.mmWeightScaleFormat},
+         {{}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{{{param.gmmYShape[0], param.gmmYShape[1]}, {param.gmmYShape[0], param.gmmYShape[1]}},
+          param.gmmYDataType,
+          param.gmmYFormat},
+         {mmYStorageShape, param.mmYDataType, param.mmYFormat}},
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.epWorldSize)},
@@ -184,23 +184,15 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
             {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)},
         },
-        &compileInfo,
-        "Ascend950",
-        coreNum,
-        ubSize,
-        tilingDataSize
-    );
+        &compileInfo, "Ascend950", coreNum, ubSize, tilingDataSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    QuantGmmAlltoAllvTilingUT,
-    QuantGmmAlltoAllvTilingTest,
-    testing::ValuesIn(GetCasesFromCsv<QuantGmmAlltoAllvTilingUtParam>(GetCsvPath(__FILE__))),
-    PrintCaseInfoString<QuantGmmAlltoAllvTilingUtParam>
-);
+INSTANTIATE_TEST_SUITE_P(QuantGmmAlltoAllvTilingUT, QuantGmmAlltoAllvTilingTest,
+                         testing::ValuesIn(GetCasesFromCsv<QuantGmmAlltoAllvTilingUtParam>(GetCsvPath(__FILE__))),
+                         PrintCaseInfoString<QuantGmmAlltoAllvTilingUtParam>);
 
 } // namespace QuantGmmAlltoAllvUT

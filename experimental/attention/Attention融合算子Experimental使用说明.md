@@ -8,7 +8,7 @@
     - gcc >= 9.0.0
     - torch\_npu >=2.7.0
 
-2. 安装torch与torch_npu包
+2. 安装torch与TorchNPU包
 
    根据实际环境，下载对应torch包并安装：`torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl`下载链接为：[官网地址](http://download.pytorch.org/whl/torch)
 
@@ -18,7 +18,7 @@
     pip install torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl
     ```
 
-   根据实际环境，安装对应torch-npu包：`torch_npu-${torch_version}-${python_version}-linux_${arch}.whl`下载链接为：[官网地址](https://gitcode.com/Ascend/pytorch/releases)
+   根据实际环境，安装对应TorchNPU包：`torch_npu-${torch_version}-${python_version}-linux_${arch}.whl`下载链接为：[官网地址](https://gitcode.com/Ascend/pytorch/releases)
 
    安装命令如下：
 
@@ -162,8 +162,19 @@
     <td>算子具体使用方法见<a href="https://gitcode.com/cann/ops-transformer/blob/master/experimental/attention/typhoon_mla/README.md">README文档</a>。</td>
   </tr>
   <tr>
+    <td>fused_gdn_decode</td>
+    <td><a href="./fused_gdn_decode/README.md">文档</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>×</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>该算子融合GDN单token解码中的QKV拆分、Q/K归一化、门控计算、循环状态更新和输出投影。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
+  </tr>
+  <tr>
     <td>stem_indexer</td>
-    <td><a href="./stem_indexer/README.md">文档</a></td>
+    <td><a href="./stem_indexer/docs/StemIndexer.md">文档</a></td>
     <td>√</td>
     <td>√</td>
     <td>√</td>
@@ -200,7 +211,7 @@
     # 如要使用DeepSeek-V4，ascend950环境编译命令示例如下：
     # bash build.sh --pkg --experimental --soc=ascend950 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,kv_quant_sparse_attn_sharedkv,kv_quant_sparse_attn_sharedkv_metadata
     ```
-    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件使用"ascend910b"，Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
+    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas A2 推理系列产品使用"ascend910b"，Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
     - --ops：自定义算子名称，多个自定义算子通过`,`分割。
 
     若提示如下信息，说明编译成功。

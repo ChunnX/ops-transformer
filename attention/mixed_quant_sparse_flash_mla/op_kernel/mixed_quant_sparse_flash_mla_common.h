@@ -16,7 +16,12 @@
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "mixed_quant_sparse_flash_mla_metadata.h"
@@ -32,7 +37,9 @@ enum class QSMLA_LAYOUT {
 enum class QSMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2
+    CSA_TEMPLATE_MODE = 2,
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
 enum class SCALE_CONTIGUOUS_MODE {

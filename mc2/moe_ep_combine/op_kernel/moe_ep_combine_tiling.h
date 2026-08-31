@@ -16,6 +16,8 @@
 #ifndef MOE_EP_COMBINE_TILING_H
 #define MOE_EP_COMBINE_TILING_H
 
+#include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
+
 struct MoeEpCommonTilingData {
     uint32_t epWorldSize;
     uint32_t epRankId;
@@ -32,14 +34,14 @@ struct MoeEpCommonTilingData {
 
 struct MoeEpCombineInfo {
     MoeEpCommonTilingData cfg;
+    MoeEpDumpMetadata dumpMetadata;
     uint32_t hasTopkWeights = 0;
     uint32_t aivNum = 0;
     uint64_t totalWinSizeEp = 0;
     uint64_t totalUbSize = 0;
-    uint64_t localWsSizeDataPerRank = 0; // per-rank local workspace stride (compact, not CCL window size)
-    uint64_t localWsSizeStatusPerRank = 0;
-    uint64_t winStateOffset = 0; // Win State Offset
-    uint64_t winDataOffset = 0;  // Win Data Offset
+    uint64_t sendDataWorkspaceSizePerRank = 0; // N * K * actual perSlotBytes
+    uint64_t combineStateWinOffset = 0;
+    uint64_t combineDataWinOffset = 0;
 };
 
 struct MoeEpCombineTilingData {

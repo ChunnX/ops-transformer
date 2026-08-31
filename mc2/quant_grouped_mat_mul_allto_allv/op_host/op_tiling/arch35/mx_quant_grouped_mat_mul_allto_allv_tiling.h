@@ -40,6 +40,7 @@ public:
         TilingBaseClass::Reset(context);
     }
     ~MxQuantGroupedMatmulAllToAllvTiling() override = default;
+
 protected:
     void Reset();
     bool IsCapable() override;
@@ -63,5 +64,5 @@ private:
 };
 
 } // namespace Mc2GroupedMatmul
-}
+} // namespace Mc2Tiling
 #endif

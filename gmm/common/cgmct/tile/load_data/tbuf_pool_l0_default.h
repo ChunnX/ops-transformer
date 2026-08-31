@@ -51,7 +51,7 @@ public:
      * @brief Allocate an L0 buffer
      * @return Reference to the current TBufPoolL0 instance
      */
-    __aicore__ inline TBufPoolL0& Allocate()
+    __aicore__ inline TBufPoolL0 &Allocate()
     {
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0PingPongFlag_);
         return *this;
@@ -69,12 +69,14 @@ public:
     {
         AscendC::LocalTensor<typename T::LiteType> tempTensor;
         if constexpr (Pos == AscendC::TPosition::A2) {
-            tempTensor = AscendC::LocalTensor<typename T::LiteType>(AscendC::TPosition::A2, 0, L0A_SIZE / sizeof(typename T::LiteType));
+            tempTensor = AscendC::LocalTensor<typename T::LiteType>(AscendC::TPosition::A2, 0,
+                                                                    L0A_SIZE / sizeof(typename T::LiteType));
             if (l0PingPongFlag_ != 0) {
                 tempTensor = tempTensor[L0A_SIZE / DOUBLE_BUFFER_COUNT / sizeof(typename T::LiteType)];
             }
         } else {
-            tempTensor = AscendC::LocalTensor<typename T::LiteType>(AscendC::TPosition::B2, 0, L0B_SIZE / sizeof(typename T::LiteType));
+            tempTensor = AscendC::LocalTensor<typename T::LiteType>(AscendC::TPosition::B2, 0,
+                                                                    L0B_SIZE / sizeof(typename T::LiteType));
             if (l0PingPongFlag_ != 0) {
                 tempTensor = tempTensor[L0B_SIZE / DOUBLE_BUFFER_COUNT / sizeof(typename T::LiteType)];
             }
@@ -99,7 +101,9 @@ public:
     /**
      * @brief Reset the cache
      */
-    __aicore__ inline void ResetCache() {}
+    __aicore__ inline void ResetCache()
+    {
+    }
 
     /**
      * @brief Enqueue a buffer

@@ -17,7 +17,7 @@
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
-#include "base_checker.h"
+#include "base_checker_fused_infer.h"
 namespace optiling {
 using std::map;
 using std::string;
@@ -32,7 +32,7 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
                     OP_LOGE("FusedInferAttentionScore",
-                            "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+                            "%s dtype support list should be specified in DTYPE_SUPPORT_MAP", name.c_str()),
                     return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
@@ -47,8 +47,8 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         if ((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end())) {
-            OP_LOGE_FOR_INVALID_FORMAT("FusedInferAttentionScore", name.c_str(),
-                ToString(format).c_str(), "ND, NCHW, NHWC or NCDHW");
+            OP_LOGE_FOR_INVALID_FORMAT("FusedInferAttentionScore", name.c_str(), ToString(format).c_str(),
+                                       "ND, NCHW, NHWC or NCDHW");
             return ge::GRAPH_FAILED;
         }
     }
@@ -57,10 +57,10 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
 
 // 判断tensor是否连续
 ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
-        const gert::Stride *Strides, int32_t &index) const
+                                                   const gert::Stride *Strides, int32_t &index) const
 {
     // 根据kv kvscale krope算出连续场景的strides，如果存在某一维不相等则表示不连续
-    if (Strides == nullptr || Strides->GetDimNum() == 0){
+    if (Strides == nullptr || Strides->GetDimNum() == 0) {
         return ge::GRAPH_SUCCESS;
     }
     // 维度为1的tensor始终连续
@@ -96,7 +96,7 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type) const
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d is not supported", type);
+        OP_LOGE("FusedInferAttentionScore", "dtype %d is not supported", type);
         return "UNDEFINED";
     }
 }
@@ -107,4 +107,4 @@ template ge::graphStatus BaseChecker::CheckValueSupport(
     const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> &expectValList) const;
 template ge::graphStatus BaseChecker::CheckValueSupport(const int32_t value,
                                                         const std::vector<int32_t> &expectValList) const;
-}
+} // namespace optiling

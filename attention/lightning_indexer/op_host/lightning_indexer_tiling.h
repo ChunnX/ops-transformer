@@ -50,7 +50,7 @@ constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 3;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 4;
 constexpr uint32_t BLOCK_TABLE_INDEX = 5;
-//Outputs Index
+// Outputs Index
 constexpr uint32_t LIGHTNING_INDEXER = 0;
 constexpr uint32_t LIGHTNING_VALUES = 1;
 // Attributes Index
@@ -71,7 +71,9 @@ constexpr uint32_t DIM_NUM_THREE = 3;
 constexpr uint32_t DIM_NUM_FOUR = 4;
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t SPARSE_LIMIT = 2048;
+constexpr uint32_t SPARSE_2K = 2048;
+constexpr uint32_t TOPK_MAX = 8192;
+constexpr uint32_t TOPK_MULTIPLE = 1024;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT = 64;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT_950_64 = 64;
@@ -95,6 +97,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexer, LITilingData)
 
@@ -157,17 +160,21 @@ public:
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
     DataLayout inputKLayout = DataLayout::BnBsND;
+
+    uint32_t keyStride0 = 0;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIInfoParser {
 public:
-    explicit LIInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit LIInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~LIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckTensorShapes() const;
+    ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetActualSeqLenSize(uint32_t &liSize, const gert::Tensor *liTensor,
@@ -201,6 +208,7 @@ public:
     ge::graphStatus GetActualSeqInfo();
     void GenerateInfo(LITilingInfo &liInfo);
     ge::graphStatus ParseAndCheck(LITilingInfo &liInfo);
+    ge::graphStatus CheckKeyContiguous() const;
 
 public:
     gert::TilingContext *context_ = nullptr;
@@ -231,12 +239,15 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType valuesOutType_ = ge::DT_FLOAT16;
+    uint32_t keyStride0_ = 0;
+    uint32_t keyStride1_ = 0;
 };
 
 // ---------------算子Tiling类---------------
 class LightningIndexerTiling {
 public:
-    explicit LightningIndexerTiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(LITilingInfo *tilingInfo);
 
 private:

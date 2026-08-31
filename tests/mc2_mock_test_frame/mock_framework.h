@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * Mock HCCL Server Framework — Generic hcclClient Server-Side Simulator
  *
  * Simulates the CCU server (HCCL Server) on the host CPU side for single-card
@@ -324,10 +334,7 @@ struct RankData {
 // ============================================================
 class MockContextBuilder {
 public:
-    ~MockContextBuilder()
-    {
-        Destroy();
-    }
+    ~MockContextBuilder() { Destroy(); }
 
     bool Build(uint32_t rankNum = 1, uint32_t rankId = 0)
     {
@@ -392,22 +399,10 @@ public:
         devWorkspaceAligned_ = nullptr;
     }
 
-    void *GetContextAddr() const
-    {
-        return devContext_;
-    }
-    void *GetWorkspaceAligned() const
-    {
-        return devWorkspaceAligned_;
-    }
-    void *GetWindowMem() const
-    {
-        return devWindowMem_;
-    }
-    uint32_t GetRankNum() const
-    {
-        return rankNum_;
-    }
+    void *GetContextAddr() const { return devContext_; }
+    void *GetWorkspaceAligned() const { return devWorkspaceAligned_; }
+    void *GetWindowMem() const { return devWindowMem_; }
+    uint32_t GetRankNum() const { return rankNum_; }
 
 private:
     void *devContext_{nullptr};
@@ -435,10 +430,7 @@ private:
 // ============================================================
 class MultiRankMockContext {
 public:
-    ~MultiRankMockContext()
-    {
-        Destroy();
-    }
+    ~MultiRankMockContext() { Destroy(); }
 
     bool Build(uint32_t rankNum)
     {
@@ -526,22 +518,10 @@ public:
         devWindows_.clear();
     }
 
-    void *GetContextAddr(uint32_t rank) const
-    {
-        return devContexts_[rank];
-    }
-    void *GetWindowMem(uint32_t rank) const
-    {
-        return devWindows_[rank];
-    }
-    void *GetWorkspaceAligned(uint32_t rank) const
-    {
-        return devWorkspaceAligned_[rank];
-    }
-    uint32_t GetRankNum() const
-    {
-        return rankNum_;
-    }
+    void *GetContextAddr(uint32_t rank) const { return devContexts_[rank]; }
+    void *GetWindowMem(uint32_t rank) const { return devWindows_[rank]; }
+    void *GetWorkspaceAligned(uint32_t rank) const { return devWorkspaceAligned_[rank]; }
+    uint32_t GetRankNum() const { return rankNum_; }
 
 private:
     uint32_t rankNum_{0};
@@ -565,16 +545,16 @@ public:
      * @param localRankId       the rank ID of the kernel under test
      * @param deviceId          NPU device ID
      */
-    MockHcclServer(void *workspaceAligned, std::vector<RankData> rankInputs, uint32_t localRankId = 0, int deviceId = 0)
-        : wsBase_(workspaceAligned), rankInputs_(std::move(rankInputs)), localRankId_(localRankId),
-          rankNum_(static_cast<uint32_t>(rankInputs_.size())), deviceId_(deviceId)
-    {
-    }
+    explicit MockHcclServer(void *workspaceAligned, std::vector<RankData> rankInputs = {}, uint32_t localRankId = 0,
+                            int deviceId = 0)
+        : wsBase_(workspaceAligned),
+          rankInputs_(std::move(rankInputs)),
+          localRankId_(localRankId),
+          rankNum_(rankInputs_.empty() ? 1u : static_cast<uint32_t>(rankInputs_.size())),
+          deviceId_(deviceId)
+    {}
 
-    ~MockHcclServer()
-    {
-        Stop();
-    }
+    ~MockHcclServer() { Stop(); }
 
     void Start()
     {
@@ -592,14 +572,8 @@ public:
         printf("[MockServer] Stopped. Processed %u messages.\n", msgCount_.load());
     }
 
-    bool IsFinalized() const
-    {
-        return finalized_.load();
-    }
-    uint32_t GetMsgCount() const
-    {
-        return msgCount_.load();
-    }
+    bool IsFinalized() const { return finalized_.load(); }
+    uint32_t GetMsgCount() const { return msgCount_.load(); }
 
     // Block until the kernel signals Finalize, then respond.
     bool WaitForFinalize(uint32_t slot = 0, uint32_t timeoutMs = 5000)

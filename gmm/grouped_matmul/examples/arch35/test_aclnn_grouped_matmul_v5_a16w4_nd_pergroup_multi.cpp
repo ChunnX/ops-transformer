@@ -53,7 +53,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 class DeviceAddrListGuard {
 public:
-    explicit DeviceAddrListGuard(std::vector<void *> &addrs) : addrs_(addrs) {}
+    explicit DeviceAddrListGuard(std::vector<void *> &addrs) : addrs_(addrs)
+    {
+    }
     ~DeviceAddrListGuard()
     {
         for (auto addr : addrs_) {
@@ -64,6 +66,7 @@ public:
     }
     DeviceAddrListGuard(const DeviceAddrListGuard &) = delete;
     DeviceAddrListGuard &operator=(const DeviceAddrListGuard &) = delete;
+
 private:
     std::vector<void *> &addrs_;
 };
@@ -151,7 +154,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     int64_t k = 128L;
     int64_t n = 64L;
     int64_t groupSize = 32L;
-    int64_t g = k / groupSize;  // pergroup数 G_i = 4
+    int64_t g = k / groupSize; // pergroup数 G_i = 4
 
     std::vector<std::vector<int64_t>> xShapes = {{m0, k}, {m1, k}};
     std::vector<std::vector<int64_t>> weightShapes = {{k, n}, {k, n}};
@@ -184,7 +187,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     aclTensorList *dynQuantScaleOut = nullptr;
 
     int64_t splitItem = 0L;
-    int64_t groupType = -1L;  // NO_SPLIT
+    int64_t groupType = -1L; // NO_SPLIT
     int64_t groupListType = 0L;
     int64_t actType = 0L;
 
@@ -245,7 +248,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
                                    aclDataType::ACL_BF16, &antiquantScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantScalePtr(antiquantScale,
-                                                                                            aclDestroyTensorList);
+                                                                                             aclDestroyTensorList);
     DeviceAddrListGuard antiquantScaleDeviceAddrGuard(antiquantScaleDeviceAddrList);
 
     // antiquantOffset: BFLOAT16, pergroup 2D (G_i, N), 多tensor（多多多场景通用通路要求antiquantOffset非空）
@@ -265,8 +268,8 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     DeviceAddrListGuard antiquantOffsetDeviceAddrGuard(antiquantOffsetDeviceAddrList);
 
     // y: BFLOAT16, 多tensor
-    std::vector<std::vector<uint16_t>> yHostDataList = {
-        std::vector<uint16_t>(m0 * n, 0), std::vector<uint16_t>(m1 * n, 0)};
+    std::vector<std::vector<uint16_t>> yHostDataList = {std::vector<uint16_t>(m0 * n, 0),
+                                                        std::vector<uint16_t>(m1 * n, 0)};
     ret = CreateAclTensorListMulti(yHostDataList, yShapes, yDeviceAddrList, aclDataType::ACL_BF16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> outPtr(out, aclDestroyTensorList);
@@ -282,7 +285,9 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, perTokenScale, groupedList, activationInput,
         activationQuantScale, activationQuantOffset, splitItem, groupType, groupListType, actType, nullptr, out,
         activationFeatureOut, dynQuantScaleOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5GetWorkspaceSize failed. ERROR: %d\n[ERROR msg]%s\n", ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5GetWorkspaceSize failed. ERROR: %d\n[ERROR msg]%s\n",
+                                            ret, aclGetRecentErrMsg());
+              return ret);
 
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -303,7 +308,8 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         std::vector<uint16_t> resultData(size, 0);
         ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddrList[i],
                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
+                  return ret);
         for (int64_t j = 0; j < 10 && j < size; j++) {
             LOG_PRINT("result[%zu][%ld] is: %d\n", i, j, resultData[j]);
         }
@@ -317,7 +323,9 @@ int main()
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = aclnnGourpedMatmulTest(deviceId, stream);
-    CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5 A16W4 pergroup multi test failed. ERROR: %d\n", ret); return ret);
+    CHECK_FREE_RET(ret == ACL_SUCCESS,
+                   LOG_PRINT("aclnnGroupedMatmulV5 A16W4 pergroup multi test failed. ERROR: %d\n", ret);
+                   return ret);
 
     Finalize(deviceId, stream);
     return 0;
