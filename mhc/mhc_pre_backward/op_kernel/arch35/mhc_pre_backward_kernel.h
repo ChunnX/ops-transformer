@@ -72,8 +72,7 @@ public:
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                               uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                              uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf,
-                                              uint32_t bsEnd);
+                                              uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkLoadInvRms(uint32_t bsChunkStart, uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
                                                      uint32_t currentChunkSize, uint32_t currentN, uint32_t bsStart);
@@ -1273,7 +1272,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
         }
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
-                           sumBuf, bsEnd);
+                           sumBuf);
+        // 分段边界及最终尾块各发布一次；槽步长由SINGLE_M推导，与C1等待保持一致。
+        uint32_t readyRows = bsChunkEnd - bsStart;
+        if (readyRows % C1_K_EVENT_SIZE == 0 || bsChunkEnd == bsEnd) {
+            uint32_t readyFlag = buffId * C1_EVENTS_PER_BUFFER + (readyRows - 1) / C1_K_EVENT_SIZE;
+            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(readyFlag);
+        }
     }
 }
 
@@ -1281,8 +1286,7 @@ template <class T, class P>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                               uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf,
-                                               uint32_t bsEnd)
+                                               uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf)
 {
     // 2. 加载hInGrad并进行向量计算
     ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart);
@@ -1292,18 +1296,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
 
     // 4. 融合计算xRsGrad并处理xRsGradMm
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
-
-    // C0梯度已消费后才允许复用槽位；C1无需等待后续grad_x_post和grad_x输出。
-    // 仍由MTE3发布，保证本段xRs已写入GM，分段及尾块的通知次数保持不变。
-    uint32_t bsChunkEnd = bsChunkStart + currentChunkSize;
-    uint32_t readyRows = bsChunkEnd - bsStart;
-    if (readyRows % C1_K_EVENT_SIZE == 0 || bsChunkEnd == bsEnd) {
-        uint32_t readyFlag = buffId * C1_EVENTS_PER_BUFFER + (readyRows - 1) / C1_K_EVENT_SIZE;
-        // 显式串起C0读取后的V流水与MTE3通知，不再借用尚未执行的输出队列依赖。
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(readyFlag);
-    }
 
     // 5. 融合处理gradXPost并输出grad_x
     ProcessV2ChunkOutputXGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, chunkNDSize);
