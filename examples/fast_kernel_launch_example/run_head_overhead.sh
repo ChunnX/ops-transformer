@@ -314,28 +314,39 @@ def three_metrics(prof_dir, op, freq):
     # 窗口取 1.5us*freq: 固定 cyc 数在高频核 (AIC 587MHz) 上会跨拍混入上一拍 block,
     # 导致 dp 匹配到上拍 dispatch (实测 gmm 曾因此偏大 1.78us)
     # dp 取簇内各 T0 独立前向匹配的最大 dispatch: 混入的旧拍 block 匹配值更小, max 淹没之
+    # T0/T1/T2 统一 max 口径 (墙钟语义, 与 TaskDur 同口径): TaskDur 由最慢核决定,
+    # 故 T1-stars 应取 max(T1)——所有核都进入计算的时刻; mean 是单核平均视角会偏小
+    # (实测 add mean 0.63 vs max 0.88us; Cube 核启动本身错峰, gmm T0 spread 0.6us)
+    # max 对 D2H 旧拍回读天然稳健: 旧拍时间戳更小, max 自动淹没之
     win = int(1.5 * freq)
     t0max = max(r[0] for r in recs)
     cluster = [r for r in recs if r[0] >= t0max - win and r[2] > 0]
     t2_stars_chk = None
+    t1_stars_max = None
+    t0_stars_max = None
     if len(cluster) >= max(4, len(recs) // 4):
         dps = [match(r[0]) for r in cluster]
         dps = [d for d in dps if 0 < d <= 20000]
         if dps:
             # 各 T0 的前向匹配 dispatch 时刻 = T0 - d0
             dp = max(r[0] - d for r, d in zip(cluster, dps) if 0 < d <= 20000)
+            t0_stars_max = (max(r[0] for r in cluster) - dp) / freq
+            t1_stars_max = (max(r[1] for r in cluster if r[1] > 0) - dp) / freq
             t2_stars_chk = (max(r[2] for r in cluster) - dp) / freq
     return {
         'n': len(t0s),
         'n_t1': len(t1s),
         'n_t2': len(t2s),
         # 差值指标用中位数: 混合回读(拍次错位)产生的离群差值不拉偏均值
-        't0_stars': statistics.mean(t0s) / freq,
         't1_t0': statistics.median(t1t0) / freq if t1t0 else None,
-        't1_stars': statistics.mean(t1s) / freq if t1s else None,
-        't2_stars': statistics.mean(t2s) / freq if t2s else None,
-        't2_stars_chk': t2_stars_chk,  # 末拍簇 max 口径, 与 TaskDur 可直接比较
         't2_t0': statistics.median(t2t0) / freq if t2t0 else None,
+        # 墙钟口径 (末拍簇 max): 与 TaskDur/ffts 校验同口径
+        't0_stars': t0_stars_max if t0_stars_max is not None else (statistics.mean(t0s) / freq if t0s else None),
+        't1_stars': t1_stars_max if t1_stars_max is not None else (statistics.mean(t1s) / freq if t1s else None),
+        't2_stars': t2_stars_chk if t2_stars_chk is not None else (statistics.mean(t2s) / freq if t2s else None),
+        # 单核参考口径 (mean)
+        't0_stars_mean': statistics.mean(t0s) / freq if t0s else None,
+        't1_stars_mean': statistics.mean(t1s) / freq if t1s else None,
     }
 
 def parse_ffts_pmu(prof_dir):
@@ -457,9 +468,9 @@ def fmt(v):
 print()
 print("============================================")
 print("  头开销测试结果 (稳态=跳过前2次)")
-print("  STARS 四指标: T0-stars / T1-T0 / T1-stars / T2-stars + ffts PMU 全链路")
-print("  (T0-stars=调度+硬件启动, T1-T0=软件头, T1-stars=总头开销, T2-stars=kernel末指令)")
-print("  ffts PMU 权威校验: T2+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
+print("  STARS 四指标 (max 口径=墙钟, 与 TaskDur 同语义由最慢核决定):")
+print("  max(T0)-stars=调度+硬件启动  T1-T0=单核软件头(median)  max(T1)-stars=总头开销  max(T2)-stars=kernel末指令")
+print("  ffts PMU 权威校验: max(T2)+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
 print("============================================")
 print()
 
@@ -470,9 +481,9 @@ if os.path.isdir(os.path.join(output_dir, 'add_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
-            chk = m['t2_stars_chk'] if m['t2_stars_chk'] is not None else m['t2_stars']
-            print(f"  {'':12s} T0-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(chk)}us  (n={m['n']} blocks)")
+            print(f"  {'':12s} max(T0)-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
+                  f"max(T1)-stars={fmt(m['t1_stars'])}us  max(T2)-stars={fmt(m['t2_stars'])}us  "
+                  f"[单核mean: T0={fmt(m['t0_stars_mean'])} T1={fmt(m['t1_stars_mean'])}]  (n={m['n']} blocks)")
         fm = ffts_check(os.path.join(output_dir, 'add_full'), freq_add, r['mean'])
         if fm:
             print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
@@ -485,9 +496,9 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
-            chk = m['t2_stars_chk'] if m['t2_stars_chk'] is not None else m['t2_stars']
-            print(f"  {'':12s} T0-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(chk)}us  (n={m['n']} blocks)")
+            print(f"  {'':12s} max(T0)-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
+                  f"max(T1)-stars={fmt(m['t1_stars'])}us  max(T2)-stars={fmt(m['t2_stars'])}us  "
+                  f"[单核mean: T0={fmt(m['t0_stars_mean'])} T1={fmt(m['t1_stars_mean'])}]  (n={m['n']} blocks)")
         fm = ffts_check(os.path.join(output_dir, 'gmm_full'), freq_gmm, r['mean'])
         if fm:
             print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
@@ -502,9 +513,8 @@ with open(summary_path, 'w') as f:
     w.writerow(['算子', '类型', '核数', 'TaskDur稳态mean(us)', 'T0-stars(us)', 'T1-T0(us)', 'T1-stars(us)', 'T2-stars(us)'])
     for op, typ, cores, mean, m in results:
         if m:
-            chk = m['t2_stars_chk'] if m['t2_stars_chk'] is not None else m['t2_stars']
             w.writerow([op, typ, cores, f"{mean:.3f}", fmt(m['t0_stars']),
-                        fmt(m['t1_t0']), fmt(m['t1_stars']), fmt(chk)])
+                        fmt(m['t1_t0']), fmt(m['t1_stars']), fmt(m['t2_stars'])])
         else:
             w.writerow([op, typ, cores, f"{mean:.3f}", "N/A", "N/A", "N/A", "N/A"])
 
