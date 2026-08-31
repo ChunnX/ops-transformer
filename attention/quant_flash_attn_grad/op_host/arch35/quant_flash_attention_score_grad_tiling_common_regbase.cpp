@@ -757,6 +757,50 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
     return CheckShapeValid(context_, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.d);
 }
 
+ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams) 
+ { 
+    auto yInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTN_OUT)); 
+    auto deqScaleQInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_Q)); 
+    auto deqScaleKInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_K)); 
+    auto deqScaleVInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_V)); 
+    auto deqScaleDyInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DOUT)); 
+    auto deqScaleDsInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DS_IDX)); 
+    auto deqScalePInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_P_IDX)); 
+    if (yInput != nullptr) { 
+        auto yInputDtype = yInput->GetDataType(); 
+        bool isYInputNotValid = (fBaseParams.queryType == ge::DT_HIFLOAT8 && yInputDtype != ge::DT_BF16); 
+        OP_CHECK_IF(isYInputNotValid, 
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON( 
+                        "QuantFlashAttentionScoreGrad", "attentionInOptional", 
+                        ge::TypeUtils::DataTypeToSerialString(yInputDtype).c_str(), 
+                        "When the dType of query is HIFLOAT8, the dtype of attentionInOptional must be BFLOAT16"), 
+                    return ge::GRAPH_FAILED); 
+    } 
+    if (deqScaleQInput != nullptr && deqScaleKInput != nullptr && deqScaleVInput != nullptr && 
+        deqScaleDyInput != nullptr && deqScaleDsInput != nullptr && deqScalePInput != nullptr) { 
+        auto deqScaleQDtype = deqScaleQInput->GetDataType(); 
+        auto deqScaleKDtype = deqScaleKInput->GetDataType(); 
+        auto deqScaleVDtype = deqScaleVInput->GetDataType(); 
+        auto deqScaleDyDtype = deqScaleDyInput->GetDataType(); 
+        auto deqScaleDsDtype = deqScaleDsInput->GetDataType(); 
+        auto deqScalePDtype = deqScalePInput->GetDataType(); 
+        std::string dtypesMsg = ge::TypeUtils::DataTypeToSerialString(deqScaleQDtype) + ", " + 
+                                ge::TypeUtils::DataTypeToSerialString(deqScaleKDtype) + ", " + 
+                                ge::TypeUtils::DataTypeToSerialString(deqScaleVDtype) + ", " + 
+                                ge::TypeUtils::DataTypeToSerialString(deqScaleDyDtype) + ", " + 
+                                ge::TypeUtils::DataTypeToSerialString(deqScaleDsDtype) + ", " + 
+                                ge::TypeUtils::DataTypeToSerialString(deqScalePDtype); 
+        OP_CHECK_IF( 
+            deqScaleQDtype != ge::DT_FLOAT || deqScaleKDtype != ge::DT_FLOAT || deqScaleVDtype != ge::DT_FLOAT || 
+                deqScaleDyDtype != ge::DT_FLOAT || deqScaleDsDtype != ge::DT_FLOAT || deqScalePDtype != ge::DT_FLOAT, 
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON( 
+                "QuantFlashAttentionScoreGrad", "dScaleQ, dScaleK, dScaleV, dScaleDy, dsScale, pScale", 
+                dtypesMsg.c_str(), "The dtypes of dScaleQ, dScaleK, dScaleV, dScaleDy, dsScale pScale must be FLOAT32"), 
+            return ge::GRAPH_FAILED); 
+    } 
+    return ge::GRAPH_SUCCESS; 
+}
+
 ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams)
 {
     if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
@@ -813,7 +857,11 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
         }
         if (queryShape->GetStorageShape().GetDim(0) != keyShape->GetStorageShape().GetDim(0) ||
             queryShape->GetStorageShape().GetDim(3) != keyShape->GetStorageShape().GetDim(3)) {
-            OP_LOGE(context_, "ProcessOptionalInput shape is invalid");
+            std::string shapesMsg = "{" + Ops::Base::ToString(keyShape->GetStorageShape()) + ", " +
+                                    Ops::Base::ToString(queryShape->GetStorageShape()) + "}";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                "QuantFlashAttentionScoreGrad", "keyIn, query", shapesMsg.c_str(),
+                "When the dtype of query is HIFLOAT8, b of keyIn and query must be same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -855,6 +903,10 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
     auto quantScaleShapeCheckRet = QuantScaleShapeValidCheck(context_, fBaseParams);
     if (quantScaleShapeCheckRet != ge::GRAPH_SUCCESS) {
         return quantScaleShapeCheckRet;
+    }
+    auto quantScaleDtypeCheckRet = QuantScaleDtypeValidCheck(context_, fBaseParams); 
+    if (quantScaleDtypeCheckRet != ge::GRAPH_SUCCESS) { 
+        return quantScaleDtypeCheckRet; 
     }
     return ge::GRAPH_SUCCESS;
 }
