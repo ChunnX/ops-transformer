@@ -377,7 +377,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>queryStartLoc（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch+1,]。</li><li>queryStartLoc[i]表示第i个序列的起始偏移。</li><li>queryStartLoc[0]必须为0，queryStartLoc[-1]必须为cuSeqLen，相邻两个数据不相等。</li></ul></td>
       <td>INT32</td>
@@ -387,7 +387,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>cacheIndices（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
       <td><ul><li>不支持空tensor，APC开启时不能为None且必须为二维。</li><li>1维shape[batch,]或2维shape[batch, maxNumBlocks], maxNumBlocks范围[1,1024]。</li><li>值需要互不相同（除非等于padSlotId）。</li></ul></td>
       <td>INT32</td>
@@ -397,7 +397,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>initialStateMode（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>初始状态标志，表示各序列是否使用缓存数据。</td>
       <td>不支持此字段。</td>
       <td>INT32</td>
@@ -407,7 +407,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>bias（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>卷积的偏置。</td>
       <td>不支持此字段。</td>
       <td>数据类型与x一致</td>
@@ -417,7 +417,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>numAcceptedTokens（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>公式中的numAcceptedTokens，表示每个batch的随机投机数。</td>
       <td><ul><li>1<=numAcceptedTokens中的值<=seqlen，seqlen表示该batch的序列长度。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
@@ -427,7 +427,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>numComputedTokens（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>公式中的numComputedTokens，当前batch已经处理的token总数，用于判断初始状态。</td>
       <td><ul><li>首token时使用零初始化缓存；Pangu V2模式下不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
@@ -437,7 +437,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>blockIdxFirstScheduledToken（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>当前batch的起始位置对应的block索引。</td>
       <td><ul><li>APC开启时不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
@@ -447,7 +447,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>blockIdxLastScheduledToken（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>当前batch的seqLen-1处对应的block索引。</td>
       <td><ul><li>APC开启时不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
@@ -457,7 +457,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>initialStateIdx（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>初始索引块的索引。</td>
       <td><ul><li>APC开启时不能为空。</li><li>shape为[batch,]。</li></ul></td>
       <td>INT32</td>
@@ -467,7 +467,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>activationMode（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>激活函数类型。</td>
       <td>INT64</td>
       <td>-</td>
@@ -476,7 +476,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>padSlotId（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>用于跳过不需要参与计算的batch。</td>
       <td><ul><li>仅支持不参与计算的变长序列在x的开头或结尾。</li><li>当cacheIndices[i]==padSlotId时跳过该batch。</li></ul></td>
       <td>INT64</td>
@@ -486,7 +486,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>runMode（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>用于判断是prefill场景或decode场景。</td>
       <td>历史遗留接口。</td>
       <td>INT64</td>
@@ -496,7 +496,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>maxQueryLen（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>所有batch中的最大seqLen，仅decode场景（固定batch）支持为-1。</td>
       <td>-</td>
       <td>INT64</td>
@@ -506,7 +506,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>residualConnection（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>是否做残差连接。</td>
       <td><ul><li>取值为0、1：<br>0：不做残差连接；<br>1：输出y和输入x相加后输出。</li></ul></td>
       <td>INT64</td>
@@ -516,7 +516,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>blockSize（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>block块的大小。</td>
       <td><ul><li>取值范围大于等于2，典型值128/256。</li></ul></td>
       <td>INT64</td>
@@ -526,7 +526,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>convMode（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>公式中的convMode，支持Qwen3-Next和Pangu V2两种实现。</td>
       <td><ul><li>取值为0、1：<br>0：Qwen3-Next社区版本实现；<br>1：Pangu V2实现。</li></ul></td>
       <td>INT64</td>
@@ -536,7 +536,7 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     </tr>
     <tr>
       <td>maxDraftTokens（int64_t）</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>最大投机个数。</td>
       <td><ul><li>取值范围[0, 16]。</li></ul></td>
       <td>INT64</td>
@@ -675,8 +675,8 @@ aclnnStatus aclnnInplaceFusedCausalConv1dV2(
     - x支持2维[cuSeqLen, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - convStates必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于参与计算的batch个数（即cacheIndicesOptional不等于padSlotId的batch个数）。
-    - queryStartLoc必须存在。
-    - cacheIndices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
+    - queryStartLocOptional必须存在。
+    - cacheIndicesOptional为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
     - cuSeqLen范围[batch, batch * (maxDraftTokens + 1)]，每个batch的seqLen范围为[1, maxDraftTokens + 1]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
     - maxNumBlocks >= ceiv(maxQueryLen, blockSize)。
     - maxQueryLen范围[1, maxDraftTokens + 1]。
