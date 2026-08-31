@@ -40,8 +40,14 @@ sys_cnt_freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "1000"))
 # === 数据准备 + run 函数 ===
 if op_type == "add":
     # add: fp16, 2 args (核数由 wheel 决定)
-    x = torch.randn(1000, 1000, dtype=torch.float16).npu()
-    y = torch.randn(1000, 1000, dtype=torch.float16).npu()
+    # shape 均分设计: total = 336 x 21845 = lcm(56,48) x elementNumPerTile(fp16, UB 256KB/2/3/2)
+    #   A5 (56 AIV): blockLength=131070=6 整 tile, 56 核均分
+    #   A3 (48 AIV): blockLength=152915=7 整 tile, 48 核均分
+    # 两平台均不触发 kernel 尾块处理分支 (tailTileElementNum=0), 消除尾块分支对
+    # 头开销/块间方差的干扰 (旧 1000x1000: 末核 tail=17810 走尾块分支)
+    _total = 336 * 21845  # 7,339,920
+    x = torch.randn(_total, dtype=torch.float16).npu()
+    y = torch.randn(_total, dtype=torch.float16).npu()
     dummy = x
     def run():
         torch.ops.ascend_ops.add(x, y)

@@ -406,11 +406,13 @@ def ffts_check(prof_dir, freq, taskdur):
     # 核启动延迟: dp 之后最早的 pmu_start
     starts_after = [r["pmu_start"] for r in pmu if r["pmu_start"] > dp]
     launch_delay = (min(starts_after) - dp) / freq if starts_after else None
-    # 硬件尾: kernel T2(末拍最慢 block) -> 最近且不早于它的 pmu_end
-    ends_after_t2 = [e for e in ends if e >= t2_max]
-    hw_tail = (min(ends_after_t2) - t2_max) / freq if ends_after_t2 else None
-    # 校验: dispatch -> pmu_end max (ffts 最后一条记录即末拍最慢核)
-    pmuend_stars = (max(ends) - dp) / freq
+    # 硬件尾: 用全量 pmu_end 最大值 (末拍最慢核结束), 与 T2 末拍最大值做差。
+    # 注意 ffts 是滚动采样 (每拍仅记部分核), 末拍样本可能很少, 不做 per-block 配对
+    # (曾因 min(e>=T2) 配到邻拍样本产生 ~2.2us 假尾); 全局 max 两端口径一致且稳定
+    pmuend_max = max(ends)
+    hw_tail = (pmuend_max - t2_max) / freq
+    # 校验: dispatch -> pmu_end max vs TaskDur (差值 = STARS 完成上报段)
+    pmuend_stars = (pmuend_max - dp) / freq
     return {
         "launch_delay": launch_delay,
         "hw_tail": hw_tail,
