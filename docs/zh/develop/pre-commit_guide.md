@@ -72,7 +72,12 @@ git add . && git commit -m "msg"
 pre-commit run                        # 暂存区
 pre-commit run --all-files            # 所有文件
 pre-commit run clang-format           # 单个hook
-find examples -type f | xargs pre-commit run --files   # 指定目录
+
+# 检查指定文件
+pre-commit run --files src/foo.py src/bar.cpp
+
+# 检查指定目录（pre-commit 不支持目录参数，需用 find 展开成文件列表）
+find examples -type f | xargs pre-commit run --files
 
 # 跳过（紧急情况）
 git commit --no-verify -m "msg"
