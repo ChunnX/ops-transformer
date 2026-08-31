@@ -1064,6 +1064,8 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::PrepareNormalizedKv(
                 normalizedSliceIterator.IteratorSlice();
             }
 
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             uint64_t normalizedOffset =
                 normalizedKvDbOffset_ +
                 static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) *
@@ -1119,6 +1121,8 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::PrepareNormalizedKv(
                 tailCacheSlice.sIdx += tailSlice.validSeqCnt - tailRows;
                 tailCacheSlice.validSeqCnt = tailRows;
                 tailCacheSlice.dealedSeqCnt = 0U;
+                SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 SaveState(tailKv, stateCacheGm_, stateBlockTableGm_,
                           tailCacheSlice, 0U, constInfo_.headDim, 0U);
             }
