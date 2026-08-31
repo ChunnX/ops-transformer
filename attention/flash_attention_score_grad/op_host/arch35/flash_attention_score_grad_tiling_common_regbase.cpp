@@ -1654,9 +1654,12 @@ bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsReg
     return false;
 }
 
-void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams,
-                  const TndBaseInfo &tndBaseInfo)
+void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tndBaseInfo, bool deterministicRequested,
+                  RouteTrace *routeTrace)
 {
+    const bool deterministicBefore = fBaseParams.isDeterministic;
+    const uint32_t layoutBefore = fBaseParams.layoutType;
+    const SplitAxisEnum splitAxisBefore = fBaseParams.splitAxis;
     fBaseParams.isBn2 = (fBaseParams.s1 <= BN2_MAX_S && fBaseParams.s2 <= BN2_MAX_S) &&
                         (fBaseParams.n1 == fBaseParams.n2) && (fBaseParams.d <= BN2_MAX_D) &&
                         (fBaseParams.queryType != ge::DT_FLOAT) &&
@@ -1683,7 +1686,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         fBaseParams.isDeterministic = false;
         if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128) || fBaseParams.dropMaskOuter) {
             fBaseParams.isBn2 = false;
-            fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
+            fBaseParams.isDeterministic = deterministicRequested;
         }
     }
     if (fBaseParams.isBn2MultiBlk) {
@@ -1691,7 +1694,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         if (fBaseParams.dropMaskOuter) {
             fBaseParams.isBn2 = false;
             fBaseParams.isBn2MultiBlk = false;
-            fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
+            fBaseParams.isDeterministic = deterministicRequested;
         }
     }
 
@@ -1716,6 +1719,30 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
     } else {
         fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
     }
+
+    if (routeTrace == nullptr) {
+        return;
+    }
+    if (deterministicBefore != fBaseParams.isDeterministic) {
+        routeTrace->Record(RouteStage::INITIAL_VARIANT, RouteField::EFFECTIVE_DETERMINISTIC,
+                           RouteReason::BN2_DISABLES_DETERMINISTIC, static_cast<int64_t>(deterministicBefore),
+                           static_cast<int64_t>(fBaseParams.isDeterministic));
+    }
+    if (layoutBefore != fBaseParams.layoutType) {
+        routeTrace->Record(RouteStage::INITIAL_VARIANT, RouteField::EXECUTION_LAYOUT,
+                           RouteReason::BN2S2_EXECUTION_LAYOUT, static_cast<int64_t>(layoutBefore),
+                           static_cast<int64_t>(fBaseParams.layoutType));
+    }
+    RouteReason splitReason = RouteReason::INITIAL_BN2GS1S2;
+    if (fBaseParams.isBn2MultiBlk) {
+        splitReason = RouteReason::INITIAL_BN2_MULTI_BLOCK;
+    } else if (fBaseParams.splitAxis == SplitAxisEnum::BN2) {
+        splitReason = RouteReason::INITIAL_BN2;
+    } else if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2) {
+        splitReason = RouteReason::INITIAL_BN2S2;
+    }
+    routeTrace->Record(RouteStage::INITIAL_VARIANT, RouteField::SPLIT_AXIS, splitReason,
+                       static_cast<int64_t>(splitAxisBefore), static_cast<int64_t>(fBaseParams.splitAxis));
 }
 
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams)

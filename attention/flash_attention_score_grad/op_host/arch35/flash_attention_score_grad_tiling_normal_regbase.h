@@ -16,6 +16,8 @@
 #pragma once
 
 #include "flash_attention_score_grad_tiling_common_regbase.h"
+#include "candidate/fag_kernel_capability.h"
+#include "policy/fag_legacy_policy_v1.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
 #include "err/ops_err.h"
@@ -71,6 +73,12 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus InitTilingData();
+    void CaptureProblemFacts();
+    void SetSplitAxisWithTrace(SplitAxisEnum splitAxis, RouteStage stage, RouteReason reason);
+    void DetermineOutputFormat();
+    void SyncLegacySelectionResult();
+    VariantId ResolveSelectedVariant() const;
+    void LogRouteTrace() const;
     void DoSplit();
     void DetermineBlockSchedule();
     ge::graphStatus DoSparse();
@@ -109,6 +117,14 @@ protected:
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch = NpuArch::DAV_RESV;
     TndBaseInfo tndBaseInfo;
+
+private:
+    SourceLayoutId sourceLayout_ = SourceLayoutId::UNKNOWN;
+    bool deterministicRequested_ = false;
+    // Captured once before legacy routing; policy code must treat these facts as immutable.
+    ProblemFacts problemFacts_;
+    mutable RouteTrace routeTrace_;
+    mutable SelectionResult selectionResult_;
 };
 
 } // namespace fag

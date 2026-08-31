@@ -13,6 +13,7 @@
  * \brief
  */
 #include "flash_attention_score_grad_tiling_normal_regbase.h"
+#include <cstring>
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
 #include "err/ops_err.h"
@@ -415,7 +416,8 @@ bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bSh
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 {
-    fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
+    deterministicRequested_ = (context_->GetDeterministic() == 1);
+    fBaseParams.isDeterministic = deterministicRequested_;
     const gert::StorageShape *queryShape = context_->GetInputShape(QUERY_IDX); // [B, N2, G, S1, D]
     const gert::StorageShape *keyShape = context_->GetInputShape(KEY_IDX);     // [B, N2, 1, S2, D]
     const gert::StorageShape *valueShape = context_->GetInputShape(VALUE_IDX); // [B, N2, 1, S2, D_V]
@@ -467,6 +469,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     int64_t kRopeD = 0;
 
     if (strcmp(inputLayout, "SBH") == 0) {
+        sourceLayout_ = SourceLayoutId::SBH;
         OP_LOGD(context_, "inputLayout == SBH queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_S2BN2GD;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_1);
@@ -508,6 +511,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BSH") == 0) {
+        sourceLayout_ = SourceLayoutId::BSH;
         OP_LOGD(context_, "inputLayout == BSH queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
@@ -549,6 +553,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BNSD") == 0) {
+        sourceLayout_ = SourceLayoutId::BNSD;
         OP_LOGD(context_, "inputLayout == BNSD queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BN2GS2D;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
@@ -589,6 +594,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "TND") == 0) {
+        sourceLayout_ = SourceLayoutId::TND;
         OP_LOGD(context_, "inputLayout == TND");
         fBaseParams.layoutType = INPUT_FORMAT_TND;
 
@@ -695,6 +701,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                                                            "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else {
+        sourceLayout_ = SourceLayoutId::BSND;
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
         fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
@@ -812,28 +819,181 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsCapable()
     return false;
 }
 
+void FlashAttentionScoreGradTilingNormalRegbase::CaptureProblemFacts()
+{
+    problemFacts_.sourceLayout = sourceLayout_;
+    problemFacts_.queryType = fBaseParams.queryType;
+    problemFacts_.sparseMode = fBaseParams.sparseMode;
+    problemFacts_.pseOptional = fBaseParams.pseOptional;
+    problemFacts_.attenMaskOptional = fBaseParams.attenMaskOptional;
+    problemFacts_.sinkOptional = fBaseParams.sinkOptional;
+    problemFacts_.outputType = static_cast<uint32_t>(fBaseParams.outDtype);
+    static_assert(sizeof(problemFacts_.keepProbBits) == sizeof(fBaseParams.keepProb), "Unexpected float size");
+    std::memcpy(&problemFacts_.keepProbBits, &fBaseParams.keepProb, sizeof(problemFacts_.keepProbBits));
+    problemFacts_.deterministicRequested = deterministicRequested_;
+    problemFacts_.hasRope = fBaseParams.hasRope;
+    problemFacts_.dropMaskOuter = fBaseParams.dropMaskOuter;
+    problemFacts_.allSequencesSame = fBaseParams.isAllSame;
+    problemFacts_.b = fBaseParams.b;
+    problemFacts_.s1 = fBaseParams.s1;
+    problemFacts_.s2 = fBaseParams.s2;
+    problemFacts_.n1 = fBaseParams.n1;
+    problemFacts_.n2 = fBaseParams.n2;
+    problemFacts_.g = fBaseParams.g;
+    problemFacts_.d = fBaseParams.d;
+    problemFacts_.d1 = fBaseParams.d1;
+    problemFacts_.aicNum = fBaseParams.aicNum;
+    problemFacts_.aivNum = fBaseParams.coreNum;
+    problemFacts_.l2CacheSize = fBaseParams.l2CacheSize;
+    problemFacts_.tailZeroCount = fBaseParams.tailZeroCount;
+    uint64_t sequenceFingerprint = 1469598103934665603ULL;
+    const auto hashSequenceValue = [&sequenceFingerprint](int64_t value) {
+        uint64_t data = static_cast<uint64_t>(value);
+        for (size_t byteIndex = 0; byteIndex < sizeof(data); ++byteIndex) {
+            sequenceFingerprint ^= data & 0xFFULL;
+            sequenceFingerprint *= 1099511628211ULL;
+            data >>= 8U;
+        }
+    };
+    hashSequenceValue(static_cast<int64_t>(fBaseParams.actualSeqQlen.size()));
+    for (const int64_t value : fBaseParams.actualSeqQlen) {
+        hashSequenceValue(value);
+    }
+    hashSequenceValue(static_cast<int64_t>(fBaseParams.actualSeqKvlen.size()));
+    for (const int64_t value : fBaseParams.actualSeqKvlen) {
+        hashSequenceValue(value);
+    }
+    problemFacts_.actualSequenceFingerprint = sequenceFingerprint;
+
+    selectionResult_ = SelectionResult();
+    routeTrace_.Reset(problemFacts_.Fingerprint(), FAG_ARCH35_LEGACY_POLICY_VERSION);
+    routeTrace_.Record(RouteStage::VALIDATED_PROBLEM, RouteField::SOURCE_LAYOUT, RouteReason::INPUT_FACT_CAPTURED,
+                       static_cast<int64_t>(problemFacts_.sourceLayout),
+                       static_cast<int64_t>(problemFacts_.sourceLayout));
+    routeTrace_.Record(RouteStage::VALIDATED_PROBLEM, RouteField::DETERMINISTIC_REQUESTED,
+                       RouteReason::INPUT_FACT_CAPTURED, static_cast<int64_t>(problemFacts_.deterministicRequested),
+                       static_cast<int64_t>(problemFacts_.deterministicRequested));
+    const RouteReason executionLayoutReason =
+        sourceLayout_ == SourceLayoutId::TND && fBaseParams.layoutType != INPUT_FORMAT_TND ?
+            RouteReason::TND_EQUAL_LENGTH_EXECUTION_LAYOUT :
+            RouteReason::INPUT_FACT_CAPTURED;
+    routeTrace_.Record(RouteStage::VALIDATED_PROBLEM, RouteField::EXECUTION_LAYOUT, executionLayoutReason,
+                       static_cast<int64_t>(fBaseParams.layoutType), static_cast<int64_t>(fBaseParams.layoutType));
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::SetSplitAxisWithTrace(SplitAxisEnum splitAxis, RouteStage stage,
+                                                                       RouteReason reason)
+{
+    const SplitAxisEnum before = fBaseParams.splitAxis;
+    fBaseParams.splitAxis = splitAxis;
+    routeTrace_.Record(stage, RouteField::SPLIT_AXIS, reason, static_cast<int64_t>(before),
+                       static_cast<int64_t>(splitAxis));
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::DetermineOutputFormat()
+{
+    NzOutputCapabilityInput capabilityInput;
+    capabilityInput.isBn2Gs1S2 = fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2;
+    capabilityInput.queryTypeSupported =
+        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+          fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT);
+    capabilityInput.isLegacyDeterministic =
+        fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD);
+    capabilityInput.headDim = fBaseParams.d;
+    capabilityInput.minimumHeadDimExclusive = static_cast<uint32_t>(ConstAxisTemplateNum::NUM64);
+    capabilityInput.maximumHeadDimExclusive = static_cast<uint32_t>(ConstAxisTemplateNum::NUM128);
+    capabilityInput.headDimAlignment = FP16_C0_SIZE;
+
+    LegacyOutputFormatPolicyInput policyInput;
+    policyInput.nzKernelSupported = KernelCapabilityVerifier::SupportsNzOutput(capabilityInput);
+    policyInput.enableSwizzle = fBaseParams.enableSwizzle;
+    policyInput.s1 = fBaseParams.s1;
+    policyInput.s2 = fBaseParams.s2;
+    policyInput.minimumSequenceLength = NZ_OUT_MIN_S_SIZE;
+    const OutputFormatDecision decision = LegacyPolicyV1::SelectOutputFormat(policyInput);
+
+    const bool isNzOutBefore = fBaseParams.isNzOut;
+    fBaseParams.isNzOut = decision.plan.format == OutputFormat::NZ;
+    selectionResult_.winningRule = decision.winningRule;
+    RouteReason reason = RouteReason::LEGACY_NZ_POLICY_SELECTED;
+    if (!decision.capabilityAccepted) {
+        reason = RouteReason::LEGACY_NZ_CAPABILITY_REJECTED;
+    } else if (!decision.performanceAccepted) {
+        reason = RouteReason::LEGACY_NZ_POLICY_REJECTED;
+    }
+    routeTrace_.Record(RouteStage::OUTPUT_FORMAT, RouteField::OUTPUT_FORMAT, reason,
+                       static_cast<int64_t>(isNzOutBefore), static_cast<int64_t>(fBaseParams.isNzOut));
+}
+
+VariantId FlashAttentionScoreGradTilingNormalRegbase::ResolveSelectedVariant() const
+{
+    return LegacyPolicyV1::ResolveVariant(fBaseParams.splitAxis == SplitAxisEnum::BN2, fBaseParams.isBn2MultiBlk,
+                                          fBaseParams.splitAxis == SplitAxisEnum::BN2S2);
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::SyncLegacySelectionResult()
+{
+    CandidatePlan &selected = selectionResult_.selected;
+    selected.variantId = ResolveSelectedVariant();
+    selected.split.axis = static_cast<uint32_t>(fBaseParams.splitAxis);
+    selected.split.isMultiBlock = fBaseParams.isBn2MultiBlk;
+    selected.tile.s1Inner = static_cast<uint32_t>(fBaseParams.s1Inner);
+    selected.tile.s2Inner = static_cast<uint32_t>(fBaseParams.s2Inner);
+    selected.tile.dInner = fBaseParams.sfmgdInner;
+    selected.cores.activeCoreCount =
+        static_cast<uint32_t>(std::min(static_cast<uint64_t>(fBaseParams.blockOuter), fBaseParams.aicNum));
+    selected.cores.blockFactor = fBaseParams.blockFactor;
+    selected.cores.maxCoreWork = static_cast<uint64_t>(std::max<int64_t>(0, fBaseParams.maxValidBBLen));
+    selected.cores.isSplitByBlockIndex = fBaseParams.isSplitByBlockIdx;
+    selected.sparse.sparseType = fBaseParams.sparseType;
+    selected.sparse.deterministicSparseType = fBaseParams.deterSparseType;
+    selected.outputFormat.format = fBaseParams.isNzOut ? OutputFormat::NZ : OutputFormat::ND;
+    selected.executionLayout = fBaseParams.layoutType;
+    selected.effectiveDeterministic = fBaseParams.isDeterministic;
+    selected.metrics.activeAic = selected.cores.activeCoreCount;
+    selected.metrics.activeAiv = static_cast<uint32_t>(
+        std::min(static_cast<uint64_t>(fBaseParams.blockOuter) * AICV_RATIO_DEFAULT, fBaseParams.coreNum));
+    selected.metrics.maxCoreWork = selected.cores.maxCoreWork;
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::LogRouteTrace() const
+{
+    OP_LOGI(context_,
+            "FAG route summary: fingerprint=[%lu], policyVersion=[%u], variant=[%u], rule=[%u], key=[%lu], "
+            "decisionCount=[%lu], droppedDecisionCount=[%lu].",
+            routeTrace_.GetInputFingerprint(), routeTrace_.GetPolicyVersion(),
+            static_cast<uint32_t>(routeTrace_.GetSelectedVariant()), selectionResult_.winningRule,
+            routeTrace_.GetFinalTilingKey(), static_cast<uint64_t>(routeTrace_.GetDecisionCount()),
+            static_cast<uint64_t>(routeTrace_.GetDroppedDecisionCount()));
+    for (size_t decisionIndex = 0; decisionIndex < routeTrace_.GetDecisionCount(); ++decisionIndex) {
+        const RouteDecision &decision = routeTrace_.GetDecision(decisionIndex);
+        OP_LOGD(context_, "FAG route trace[%lu]: stage=[%u], field=[%u], reason=[%s], value=[%ld->%ld].",
+                static_cast<uint64_t>(decisionIndex), static_cast<uint32_t>(decision.stage),
+                static_cast<uint32_t>(decision.field), GetRouteReasonName(decision.reason), decision.before,
+                decision.after);
+    }
+}
+
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
 {
-    SetSplitAxis(context_, fBaseParams, tndBaseInfo);
+    CaptureProblemFacts();
+    SetSplitAxis(fBaseParams, tndBaseInfo, deterministicRequested_, &routeTrace_);
     DoSplit();
     auto ret = DoSparse();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
+    routeTrace_.Record(RouteStage::CORE_PARTITION, RouteField::BLOCK_OUTER, RouteReason::CORE_PARTITION_SELECTED, 0,
+                       static_cast<int64_t>(fBaseParams.blockOuter));
 
     // 分核优化，对于超出l2 cache的case优先多个核处理BN下的S1S2
     bool isExceedL2Cache = CheckExceedL2Cache();
     bool isLargeInvalidBlk = CheckIsLargeInvalidBlk(fBaseParams);
     fBaseParams.enableSwizzle = (isExceedL2Cache || isLargeInvalidBlk) && fBaseParams.blockOuter == fBaseParams.aicNum;
+    routeTrace_.Record(RouteStage::SCHEDULE, RouteField::ENABLE_SWIZZLE, RouteReason::L2_OR_INVALID_BLOCK_SWIZZLE, 0,
+                       static_cast<int64_t>(fBaseParams.enableSwizzle));
     // dqkv fixp nz出优化开关
-    fBaseParams.isNzOut =
-        (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
-         fBaseParams.d < static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) && fBaseParams.d % FP16_C0_SIZE != 0 &&
-         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
-           fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT) &&
-         fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
-        fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
+    DetermineOutputFormat();
     // TND场景下，确定性计算+MHA+Dense支持BN2GS1S2/BN2S2模板，非确定性计算支持BN2S2模板。
     // kernel侧确定性swizzle尚未适配GQA，需通过g == 1将GQA筛除。
     // Mode 2 pads every batch's (N2, S2) columns to a full AIC group. Reject schedules whose aggregate
@@ -852,6 +1012,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
+    routeTrace_.Record(RouteStage::SCHEDULE, RouteField::TND_SWIZZLE, RouteReason::TND_SWIZZLE_SELECTED, 0,
+                       static_cast<int64_t>(tndBaseInfo.isTndSwizzle));
     if (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && tndBaseInfo.isTndSwizzle) {
         ConfigureTndDeterBn2S2Swizzle(fBaseParams, tndBaseInfo);
     }
@@ -870,6 +1032,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     DoPostTiling();
     DetermineMode(fBaseParams);
     DetermineBlockSchedule();
+    SyncLegacySelectionResult();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -890,6 +1053,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::DetermineBlockSchedule()
     }
     OP_LOGI(context_, "Determine block schedule, isSplitByBlockIdx=[%d], deterBandScheduleMode=[%u]",
             static_cast<int>(fBaseParams.isSplitByBlockIdx), static_cast<uint32_t>(fBaseParams.deterBandScheduleMode));
+    const uint32_t encodedSchedule = (static_cast<uint32_t>(fBaseParams.deterBandScheduleMode) << 1U) |
+                                     static_cast<uint32_t>(fBaseParams.isSplitByBlockIdx);
+    routeTrace_.Record(RouteStage::SCHEDULE, RouteField::BLOCK_SCHEDULE, RouteReason::BLOCK_SCHEDULE_SELECTED, 0,
+                       static_cast<int64_t>(encodedSchedule));
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoSplit()
@@ -1084,7 +1251,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
     } else {
         // TND S1 S2全等场景下if分支尝试走BN2S2分核优化,如果判断不能走则恢复layoutType赋值
         if (SupportTrans2BS2N2GD(fBaseParams)) {
+            const uint32_t layoutBefore = fBaseParams.layoutType;
             fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
+            routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EXECUTION_LAYOUT,
+                               RouteReason::TND_EQUAL_LENGTH_EXECUTION_LAYOUT, static_cast<int64_t>(layoutBefore),
+                               static_cast<int64_t>(fBaseParams.layoutType));
             fBaseParams.sparseType = GetSparseType(); // 确保sparseType正确
         }
     }
@@ -1097,15 +1268,24 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
         if ((fBaseParams.isInvalidCol || fBaseParams.isInvalidRow)) {
             fBaseParams.isBn2 = false;
             fBaseParams.isBn2MultiBlk = false;
-            fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
-            fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+            const bool deterministicBefore = fBaseParams.isDeterministic;
+            fBaseParams.isDeterministic = deterministicRequested_;
+            routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EFFECTIVE_DETERMINISTIC,
+                               RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK, static_cast<int64_t>(deterministicBefore),
+                               static_cast<int64_t>(fBaseParams.isDeterministic));
+            SetSplitAxisWithTrace(SplitAxisEnum::BN2GS1S2, RouteStage::SPARSE_PLANNING,
+                                  RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK);
             earlyReturn = false;
         }
         if (earlyReturn) {
             return res;
         }
     }
-    fBaseParams.splitAxis = fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2;
+    const RouteReason splitReason = fBaseParams.splitAxis == SplitAxisEnum::BN2S2 ?
+                                        RouteReason::BN2S2_INSUFFICIENT_CORES :
+                                        RouteReason::LEGACY_SPARSE_NORMALIZATION;
+    SetSplitAxisWithTrace(fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2, RouteStage::SPARSE_PLANNING,
+                          splitReason);
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
         GetSparseUnpadBlockInfo();
     } else if (fBaseParams.isSparse) {
@@ -1841,6 +2021,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
 
     workspaceSize += WORKSPACE_BUFFER;
     workspaces[0] = workspaceSize;
+    selectionResult_.selected.workspace.workspaceBytes = workspaceSize;
+    selectionResult_.selected.metrics.workspaceBytes = workspaceSize;
+    routeTrace_.Record(RouteStage::WORKSPACE, RouteField::WORKSPACE_BYTES, RouteReason::WORKSPACE_PLANNED, 0,
+                       static_cast<int64_t>(workspaceSize));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1899,6 +2083,9 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
         static_cast<uint8_t>(fBaseParams.outDtype), static_cast<uint8_t>(fBaseParams.isNzOut),
         static_cast<uint8_t>(tndBaseInfo.isTndSwizzle), static_cast<uint8_t>(isRegbasePlatformValue));
 
+    selectionResult_.selected.tilingKey = tilingKey;
+    routeTrace_.Finalize(selectionResult_.selected.variantId, tilingKey);
+    LogRouteTrace();
     OP_LOGI(context_, "FAGTiling S1s2Bn2gs1s2 DoTiling success, tiling is %lu.", tilingKey);
     return tilingKey;
 }
@@ -1929,6 +2116,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::PostTiling()
                         fBaseParams.aicNum, fBaseParams.coreNum),
                 return ge::GRAPH_FAILED);
     context_->SetBlockDim(numBlocks);
+    selectionResult_.selected.blockDim = static_cast<uint32_t>(numBlocks);
+    routeTrace_.Record(RouteStage::ENCODER, RouteField::BLOCK_DIM, RouteReason::BLOCK_DIM_SELECTED, 0,
+                       static_cast<int64_t>(numBlocks));
 
     // 使用SyncAll，需要设置为batch mode模式，所有核同时启动，否则在多流方式下执行可能会卡死
     if (fBaseParams.splitAxis != SplitAxisEnum::BN2 || !fBaseParams.isBn2MultiBlk ||
