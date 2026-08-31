@@ -1094,6 +1094,73 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
     }
 }
 
+// 三条 WAVE 路径的唯一非量化 GMM2/Combine 入口。调用方只提供当前 WAVE 的首尾位置；本函数统一将
+// 连续 WAVE 范围展开为逐专家 slice，并保持跨 WAVE 的专家状态、分核游标和 AIC/AIV1 tile 序号连续。
+template <typename GenericElementA, typename Gmm2ElementA, typename WeightType, typename QuantScaleType,
+          bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
+          bool IsGmm1Interleaved = false>
+__aicore__ inline void RunWaveGmm2PairwiseCombineStage(
+    const MoeStageCommonConfig &common, const GmmExecutionConfig &gmmConfig,
+    const BlockWorkspaceContext &countWorkspace, const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+    const ExpertWeightTensorListAddrs &weights, ExpertTokenPosition &position,
+    const ExpertTokenPosition &waveEndPosition, ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+    GmmRuntimeState &runtimeState, int32_t &tileReadySequence)
+{
+    uint32_t gmm2TilesPerMGroup =
+        Ops::Base::CeilDiv(common.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
+    while ((position.expertIdx != waveEndPosition.expertIdx ||
+            position.tokenIndexInExpert != waveEndPosition.tokenIndexInExpert) &&
+           position.expertIdx < common.moeExpertPerRank) {
+        if (position.tokenIndexInExpert == 0U) {
+            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
+                params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace, common.moeExpertPerRank,
+                position.expertIdx);
+            UpdateExpertLoopState(state, position.expertIdx, expertTokenCount);
+        }
+
+        uint64_t expertRowCount = Get<M_VALUE>(state.problemShape);
+        if (expertRowCount == 0U || position.tokenIndexInExpert >= expertRowCount) {
+            ++position.expertIdx;
+            position.tokenIndexInExpert = 0U;
+            continue;
+        }
+
+        uint32_t sliceEndIndexInExpert = static_cast<uint32_t>(expertRowCount);
+        if (position.expertIdx == waveEndPosition.expertIdx) {
+            sliceEndIndexInExpert = waveEndPosition.tokenIndexInExpert;
+        }
+        uint32_t sliceTokenCount = sliceEndIndexInExpert - position.tokenIndexInExpert;
+        uint32_t problemTileCount =
+            GetMGroupCountForRows(sliceTokenCount, Gmm1TileM) * gmm2TilesPerMGroup;
+        bool skipProblem = HandleWaveProblemWithoutWork(problemTileCount, gmmConfig.blockJob,
+                                                        runtimeState.startBlockIdx);
+        if (!skipProblem) {
+            UpdateMoeExpertGmm2GlobalBuffer<WeightType, Gmm2ElementA, QuantScaleType, true, false>(
+                gmmConfig, syncLayout, params.workspaceInfo, weights, gmmAddrInfo, state,
+                position.tokenIndexInExpert);
+            gmmAddrInfo.gmmToEpilogueFlag =
+                reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagGmmToEpiloguePtr) +
+                static_cast<uint64_t>(gmmConfig.blockJob.jobIndex) * INT_CACHELINE;
+
+            ProblemShape sliceProblemShape = state.problemShape;
+            Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+            bool isWholeExpert =
+                position.tokenIndexInExpert == 0U && static_cast<uint64_t>(sliceEndIndexInExpert) == expertRowCount;
+            RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, Gmm2ElementA, WeightType, QuantScaleType, EnableA8W4,
+                          EnableA4W4, Gmm1TileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, true, false, true>(
+                gmmConfig, gmmAddrInfo, sliceProblemShape, runtimeState, nullptr, isWholeExpert,
+                position.tokenIndexInExpert, &params, &tileReadySequence);
+        }
+
+        position.tokenIndexInExpert = sliceEndIndexInExpert;
+        position.globalTokenIndex += sliceTokenCount;
+        if (position.tokenIndexInExpert >= expertRowCount) {
+            ++position.expertIdx;
+            position.tokenIndexInExpert = 0U;
+        }
+    }
+}
+
 constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;
 constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES = MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
                                                         MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
