@@ -17,6 +17,17 @@
 #include "kernel_operator.h"
 #endif
 
+// 确定性失败兜底：用于不可恢复的容量/一致性校验（Kernel 侧无返回值路径的最后手段）
+#ifndef RUNTIME_ABORT
+#define RUNTIME_ABORT(fmt, ...) \
+    do { \
+        ascendc_assert(false, fmt, ##__VA_ARGS__); \
+        while (true) { \
+            (void)AscendC::GetSystemCycle(); \
+        } \
+    } while (0)
+#endif
+
 namespace Mc2Kernel {
 constexpr uint32_t MAX_QP_SIZE = 1024U;
 constexpr uint32_t UB_ALIGN = 32U;
@@ -38,7 +49,6 @@ constexpr uint32_t ENTRY_BATCH_CAP = 1024U;
 constexpr uint32_t GRAD_SUB_BATCH = 8U;
 constexpr uint32_t SENDCOUNT_STRIDE_RATIO = 8U;
 
-constexpr uint32_t DMA_BLOCK_MAX_BYTES = 65535U;
 constexpr uint32_t GRAD_PING_BYTES = 32U * 1024U;
 constexpr uint32_t ENTRY_BUF_BYTES = 64U * 1024U;
 constexpr uint32_t GRAD_BUF_BYTES = 64U * 1024U;

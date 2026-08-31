@@ -278,6 +278,13 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                                               "must be multiple of SEND_COUNTS_ALIGN_FACTOR(8)"),
                     return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsDim0 / SEND_COUNTS_ALIGN_FACTOR);
+    // 上界校验：Mirrors utils.h MAX_QP_SIZE，同时保证 Kernel 侧 displs 批量写
+    // blockLen(numRanks*32) 不超过 uint16 上限 65535、UB 常驻区可控
+    constexpr int64_t MAX_RANK_SIZE = 1024;
+    OP_TILING_CHECK(rankSize > MAX_RANK_SIZE,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rankSize", std::to_string(rankSize).c_str(),
+                                              (std::string("<= ") + std::to_string(MAX_RANK_SIZE)).c_str()),
+                    return ge::GRAPH_FAILED);
 
     // recvCounts: 1D (W,)
     const gert::StorageShape *recvCountsShape = context->GetInputShape(IN_RECV_COUNTS);
@@ -508,15 +515,15 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     int64_t availUbSize = static_cast<int64_t>(ubSize) - SIMT_DCACHE_SIZE;
     OP_TILING_CHECK(availUbSize <= 0,
-                    OP_LOGE(nodeName, "availUbSize(%ld) <= 0, ubSize=%lu, SIMT_DCACHE_SIZE=%ld", availUbSize, ubSize,
+                    OP_LOGE(nodeName, "availUbSize(%lld) <= 0, ubSize=%llu, SIMT_DCACHE_SIZE=%lld", availUbSize, ubSize,
                             SIMT_DCACHE_SIZE),
                     return ge::GRAPH_FAILED);
     auto ret = context->SetLocalMemorySize(static_cast<size_t>(availUbSize));
     OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "SetLocalMemorySize failed, availUbSize=%ld", availUbSize),
+                    OP_LOGE(nodeName, "SetLocalMemorySize failed, availUbSize=%lld", availUbSize),
                     return ge::GRAPH_FAILED);
     tilingData.ubSize = static_cast<uint64_t>(availUbSize);
-    OP_LOGD(nodeName, "SetLocalMemorySize: ubSize=%lu, availUbSize=%ld, SIMT_DCACHE_SIZE=%ld", ubSize, availUbSize,
+    OP_LOGD(nodeName, "SetLocalMemorySize: ubSize=%llu, availUbSize=%lld, SIMT_DCACHE_SIZE=%lld", ubSize, availUbSize,
             SIMT_DCACHE_SIZE);
 
     return ge::GRAPH_SUCCESS;
@@ -528,6 +535,18 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
 
+    // 与 Kernel 侧 Buffer 布局对齐的常量（修改时必须同步 engram_fetch_grad_arch35.h / utils.h）
+    constexpr uint32_t STATE_BYTES = 32U;                 // 镜像 utils.h STATE_OFFSET
+    constexpr uint32_t ENTRY_BATCH_BYTES = 4U * 1024U;    // ENTRY_BATCH_CAP(1024)*sizeof(int32_t)
+    constexpr uint32_t HCOMM_INIT_BYTES = 512U;           // 镜像 utils.h HCOMM_INIT_SIZE
+    constexpr uint32_t IDX_BUF_BYTES = 4U * 1024U;        // 镜像 utils.h IDX_BUF_BYTES
+    constexpr uint32_t COMM_BUF_BYTES = 2U * 64U * 1024U; // entryBuf + gradBuf
+    constexpr uint32_t GRAD_PING_BYTES = 32U * 1024U;
+    constexpr uint32_t GRAD_BUF_BYTES = 2U * GRAD_PING_BYTES;
+    constexpr uint32_t ACCUM_BUF_COPIES = 2U;            // 镜像 Kernel AccumBufBytes 双缓冲 *2U
+    constexpr int64_t ENTRY_BUF_BYTES = 64 * 1024;       // 镜像 utils.h ENTRY_BUF_BYTES
+    constexpr int64_t FLUSH_CAST_HEAD_BYTES = 20 * 1024; // FlushAccum 借用 entryBuf_ 尾部前的头部占用
+
     tilingData.numTokens = numTokens;
     tilingData.rankSize = rankSize;
     tilingData.totalRecv = totalRecv;
@@ -535,6 +554,12 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
 
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK);
     tilingData.numEntriesPerRank = static_cast<int32_t>(*numEntriesPerRankPtr);
+    // entry id 空间为 int32（rankId*numEntriesPerRank + 局部序号），乘积不得越界（SEC-2.1）
+    OP_TILING_CHECK(tilingData.numEntriesPerRank < 0 ||
+                        (rankSize > 0 && static_cast<int64_t>(rankSize) * tilingData.numEntriesPerRank > INT32_MAX),
+                    OP_LOGE(nodeName, "numEntriesPerRank(%d) * rankSize(%u) exceeds INT32_MAX",
+                            tilingData.numEntriesPerRank, rankSize),
+                    return ge::GRAPH_FAILED);
 
     // hiddenBytes 按输入 dtype（gradFetched）算，作为 a2a 交换 stride
     auto gradFetchedDesc = context->GetInputDesc(IN_GRAD_FETCHED);
@@ -545,32 +570,72 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
                             tilingData.hiddenDim, bytesPerElem),
                     return ge::GRAPH_FAILED);
     tilingData.hiddenBytes = tilingData.hiddenDim * bytesPerElem;
+    // 单行 grad 必须可放入整缓冲 gradBuf_（64KB），同时消除 uint32 截断风险（SEC-2.3/topk-7/SEC-1.1）
+    OP_TILING_CHECK(
+        tilingData.hiddenBytes > static_cast<int64_t>(GRAD_BUF_BYTES),
+        OP_LOGE(nodeName, "hiddenBytes=%ld exceeds grad buffer capacity %u", tilingData.hiddenBytes, GRAD_BUF_BYTES),
+        return ge::GRAPH_FAILED);
     tilingData.inputDtype = static_cast<int32_t>(inputDtype);
 
     auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
     tilingData.outputDtype = static_cast<int32_t>(gradUniqueDesc->GetDataType());
+    // 半精度输出时 FlushAccum 借用 entryBuf_ 尾部（20KB 偏移后）作 flush cast 双缓冲，
+    // 需 20KB + 2*Align32(hiddenDim*2) 不越界（SEC-4.2③/TIL-3①；Kernel 侧另有 RUNTIME_ABORT 兜底）
+    if (tilingData.outputDtype != static_cast<int32_t>(ge::DT_FLOAT)) {
+        int64_t flushCastNeed = FLUSH_CAST_HEAD_BYTES + 2 * AlignTo(static_cast<int64_t>(hiddenDim) * 2, UB_ALIGN);
+        OP_TILING_CHECK(flushCastNeed > ENTRY_BUF_BYTES,
+                        OP_LOGE(nodeName,
+                                "hiddenDim=%ld too large for half-precision output: flush cast staging "
+                                "needs %ld bytes, entryBuf capacity %ld",
+                                hiddenDim, flushCastNeed, ENTRY_BUF_BYTES),
+                        return ge::GRAPH_FAILED);
+    }
 
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
     tilingData.commBufferSize = *commBufferSizePtr;
 
-    // 动态计算 gradSubBatch
-    constexpr uint32_t PERMANENT_UB_BYTES = 9U * 1024U;   // hcommBuf + statusBuf + tempBuf + indicesBuf
-    constexpr uint32_t COMM_BUF_BYTES = 2U * 64U * 1024U; // entryBuf + gradBuf
-    constexpr uint32_t GRAD_PING_BYTES = 32U * 1024U;
-    uint32_t permanentUb = PERMANENT_UB_BYTES;
-    uint32_t commBufSize = COMM_BUF_BYTES;
+    // 动态计算 gradSubBatch：常驻区与 Kernel 侧 InitBuffer 布局一一对应（精确推导而非固定 9KB），
+    // accum 预留双缓冲 2 行与 Kernel AccumBufBytes 对齐（TIL-2/SIMT-UB-01 修复）
+    uint32_t statusBytes = static_cast<uint32_t>(AlignTo(static_cast<int64_t>(rankSize) * STATE_BYTES, UB_ALIGN));
+    uint32_t tempBytes = statusBytes;
+    if (tempBytes < ENTRY_BATCH_BYTES) {
+        tempBytes = ENTRY_BATCH_BYTES;
+    }
+    // displs 批量构造区：sdispl+rdispl 两段各 rankSize*32B
+    uint32_t displsBatchBytes = 2U * rankSize * STATE_BYTES;
+    if (tempBytes < displsBatchBytes) {
+        tempBytes = displsBatchBytes;
+    }
+    uint32_t coreArrayBytes =
+        static_cast<uint32_t>(AlignTo(static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t) * 2U, UB_ALIGN));
+    if (tempBytes < coreArrayBytes) {
+        tempBytes = coreArrayBytes;
+    }
+    uint32_t indicesBytes = (IDX_BUF_BYTES > statusBytes) ? IDX_BUF_BYTES : statusBytes;
+    // countsBuf 暂存区：recvCounts + sendCounts（偏移 rankSize*32B + 长度 rankSize*32B）
+    uint32_t stagingBytes = 2U * rankSize * STATE_BYTES;
+    if (indicesBytes < stagingBytes) {
+        indicesBytes = stagingBytes;
+    }
+    uint64_t permanentUb = HCOMM_INIT_BYTES + statusBytes + tempBytes + indicesBytes;
+    OP_TILING_CHECK(permanentUb >= static_cast<uint64_t>(tilingData.ubSize),
+                    OP_LOGE(nodeName, "permanent UB (%llu) exceeds availUbSize (%llu)", permanentUb, tilingData.ubSize),
+                    return ge::GRAPH_FAILED);
     uint32_t maxByPong = GRAD_PING_BYTES / static_cast<uint32_t>(tilingData.hiddenBytes);
     if (maxByPong < 1U) {
         maxByPong = 1U;
     }
-    uint32_t accumNeed = static_cast<uint32_t>(
-        AlignTo(static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(UB_ALIGN)));
+    uint32_t accumNeed =
+        ACCUM_BUF_COPIES * static_cast<uint32_t>(AlignTo(static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float),
+                                                         static_cast<int64_t>(UB_ALIGN)));
     bool needCast = (tilingData.inputDtype != static_cast<int32_t>(ge::DT_FLOAT));
-    uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - permanentUb;
+    uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - static_cast<uint32_t>(permanentUb);
     uint32_t availableForCast =
-        (availableForPool > commBufSize + accumNeed) ? (availableForPool - commBufSize - accumNeed) : 0U;
+        (availableForPool > COMM_BUF_BYTES + accumNeed) ? (availableForPool - COMM_BUF_BYTES - accumNeed) : 0U;
     uint32_t maxByCast =
-        needCast ? (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * sizeof(float) * 2U)) : maxByPong;
+        needCast ?
+            (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * sizeof(float) * ACCUM_BUF_COPIES)) :
+            maxByPong;
     uint32_t gradSubBatch = maxByPong;
     if (maxByCast < gradSubBatch) {
         gradSubBatch = maxByCast;
@@ -582,12 +647,14 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
         gradSubBatch = 64U;
     }
     tilingData.gradSubBatch = gradSubBatch;
-    OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%ld, hiddenDim=%ld, maxByPong=%u, maxByCast=%u, available=%u)",
+    OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%lld, hiddenDim=%lld, maxByPong=%u, maxByCast=%u, available=%u)",
             gradSubBatch, tilingData.hiddenBytes, tilingData.hiddenDim, maxByPong, maxByCast, availableForCast);
+    OP_LOGD(nodeName, "permanentUb=%llu (status=%u, temp=%u, indices=%u)", permanentUb, statusBytes, tempBytes,
+            indicesBytes);
 
     OP_LOGD(nodeName,
-            "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
-            "ubSize=%lu, rankSize=%u, totalRecv=%ld, commBufferSize=%ld",
+            "SetTilingData: numTokens=%lld, hiddenDim=%lld, numEntriesPerRank=%d, hiddenBytes=%lld, "
+            "ubSize=%llu, rankSize=%u, totalRecv=%lld, commBufferSize=%lld",
             tilingData.numTokens, tilingData.hiddenDim, tilingData.numEntriesPerRank, tilingData.hiddenBytes,
             tilingData.ubSize, tilingData.rankSize, tilingData.totalRecv, tilingData.commBufferSize);
     return ge::GRAPH_SUCCESS;
@@ -649,21 +716,28 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     if (sortTileCountByCore > sortTileCount) {
         sortTileCount = sortTileCountByCore;
     }
+    // 镜像 Kernel 侧 engram_fetch_grad_sort.h 常量（CG-4.2）：HISTOGRAM_BINS/SIMT_SLOT_ALIGN/
+    // MAX_SINGLE_CORE_ELEMENTS。当前以注释耦合，Tiling UT 中应增加与 Kernel 常量相等的断言
+    constexpr int64_t SORT_HISTOGRAM_BINS = 256; // 镜像 sort.h HISTOGRAM_BINS
+    constexpr int64_t SIMT_SLOT_ALIGN = 32;      // 镜像 sort.h SIMT_SLOT_ALIGN
+    constexpr int64_t SIMT_TILE_ELEMENTS = 8192; // 镜像 sort.h MAX_SINGLE_CORE_ELEMENTS
+
     int64_t wsSortTempVal = sortTempSize;
     int64_t wsSortTempIdx = sortTempSize;
     int64_t wsSortCompanion = sortTempSize;
-    int64_t wsSortHist = sortTileCount * 256 * sizeof(int32_t);
-    int64_t wsSortPrefix = 256 * sizeof(int32_t);
-    int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * 256 * sizeof(int32_t);
-    int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
+    int64_t wsSortHist = sortTileCount * SORT_HISTOGRAM_BINS * sizeof(int32_t);
+    int64_t wsSortPrefix = SORT_HISTOGRAM_BINS * sizeof(int32_t);
+    int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * SORT_HISTOGRAM_BINS * sizeof(int32_t);
+    int64_t wsSortOffsets = sortTileCount * SORT_HISTOGRAM_BINS * sizeof(int32_t);
     // SIMT gather staging: mirrors EngramFetchGradSort::SimtStagingPerCore — per-core GM
     // slot area x2 (values + indices), each tileElements*4B + 256*28B group pads + 32B
     // guard, 32B aligned. tileElements must match the device's MAX_SINGLE_CORE_ELEMENTS:
     // the single-core path spills a full array (2*count int32) to core 0's staging, so the
     // per-core area can no longer be shrunk by the dynTile reduction.
-    int64_t simtTileElements = 8192;
+    int64_t simtTileElements = SIMT_TILE_ELEMENTS;
     int64_t simtStagingOneArea = (simtTileElements * static_cast<int64_t>(sizeof(int32_t)) +
-                                  256 * (32 - static_cast<int64_t>(sizeof(int32_t))) + 32 + UB_ALIGN - 1) /
+                                  SORT_HISTOGRAM_BINS * (SIMT_SLOT_ALIGN - static_cast<int64_t>(sizeof(int32_t))) +
+                                  SIMT_SLOT_ALIGN + UB_ALIGN - 1) /
                                  UB_ALIGN * UB_ALIGN;
     int64_t wsSortSimtStaging = static_cast<int64_t>(tilingData.aivNum) * simtStagingOneArea * 2;
     int64_t wsSortTotal = wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums +

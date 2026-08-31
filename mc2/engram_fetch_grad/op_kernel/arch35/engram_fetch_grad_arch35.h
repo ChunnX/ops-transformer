@@ -58,14 +58,6 @@ constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 1000U;
 constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
 constexpr uint32_t COMM_RETRY_COUNT = 3U;
 
-#define RUNTIME_ABORT(fmt, ...) \
-    do { \
-        ascendc_assert(false, fmt, ##__VA_ARGS__); \
-        while (true) { \
-            (void)AscendC::GetSystemCycle(); \
-        } \
-    } while (0)
-
 class EngramFetchGradArch35 {
 public:
     __aicore__ inline EngramFetchGradArch35() = default;
@@ -152,7 +144,6 @@ private:
     uint32_t sendersPerRank_{1};
     uint32_t pendingHandleCount_{0};
     uint64_t pendingHandles_[Mc2Kernel::MAX_PENDING_HANDLES]{0};
-    uint32_t pendingDstRanks_[Mc2Kernel::MAX_PENDING_HANDLES]{0};
     bool isSender_{false};
     bool isReceiver_{false};
     bool isFlagCore_{false};
@@ -422,6 +413,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
+    // commContext 为设备侧外部数据，与 Host 侧 tiling 的 rankSize（sendCounts.dim0/8）互为独立来源，
+    // 必须一致性校验，否则 workspace 的 displs 区按 Host rankSize 规划而 Kernel 按 numRanks_ 写入会越界
+    if (numRanks_ == 0U || numRanks_ > Mc2Kernel::MAX_QP_SIZE || numRanks_ != tilingData->rankSize) {
+        RUNTIME_ABORT("invalid rankSize: commContext=%u, tiling=%u", numRanks_, tilingData->rankSize);
+    }
     channelsPerRank_ = ctxPtr_->channelsPerRank;
     if (channelsPerRank_ == 0) {
         channelsPerRank_ = 1;
@@ -437,7 +433,12 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     ubSize_ = tilingData->ubSize;
     gradSubBatch_ = tilingData->gradSubBatch;
     if (gradSubBatch_ == 0U) {
-        gradSubBatch_ = Mc2Kernel::GRAD_SUB_BATCH;
+        // 旧 tiling 兼容回落：回落值必须同时受半缓冲容量约束，否则 subLen*hiddenBytes 越过 32KB 半缓冲
+        uint32_t rowsPerPing = 1U;
+        if (hiddenBytes_ > 0 && hiddenBytes_ <= static_cast<int64_t>(Mc2Kernel::GRAD_PING_BYTES)) {
+            rowsPerPing = Mc2Kernel::GRAD_PING_BYTES / static_cast<uint32_t>(hiddenBytes_);
+        }
+        gradSubBatch_ = (rowsPerPing < Mc2Kernel::GRAD_SUB_BATCH) ? rowsPerPing : Mc2Kernel::GRAD_SUB_BATCH;
     }
 
     winSize_ = tilingData->commBufferSize;
@@ -537,10 +538,21 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (tempBufSize < coreArrayBytes) {
         tempBufSize = coreArrayBytes;
     }
+    // displs 批量构造区：sdisplUb+rdisplUb 两段各 numRanks_*UB_ALIGN 字节（tempBuf_ 容量必须覆盖）
+    uint32_t displsBatchBytes = 2U * numRanks_ * UB_ALIGN;
+    if (tempBufSize < displsBatchBytes) {
+        tempBufSize = displsBatchBytes;
+    }
     tpipe_->InitBuffer(tempBuf_, tempBufSize);
     uint32_t indicesBufSize = Mc2Kernel::IDX_BUF_BYTES;
     if (indicesBufSize < statusBufSize) {
         indicesBufSize = statusBufSize;
+    }
+    // countsBuf 暂存区：recvCounts 占 numRanks_*4B，sendCounts 暂存位于偏移 numRanks_*UB_ALIGN、
+    // 长度 numRanks_*UB_ALIGN，尾部合计 2*numRanks_*UB_ALIGN 字节
+    uint32_t stagingBytes = 2U * numRanks_ * UB_ALIGN;
+    if (indicesBufSize < stagingBytes) {
+        indicesBufSize = stagingBytes;
     }
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
@@ -553,6 +565,12 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t poolSize = sortUbSize;
     if (uniqueBufSize > poolSize) {
         poolSize = uniqueBufSize;
+    }
+    // UB 池预算自检：池 + 常驻四缓冲必须落在 SetLocalMemorySize 授权范围内，超限确定性失败
+    uint64_t permanentUsed = Mc2Kernel::HCOMM_INIT_SIZE + statusBufSize + tempBufSize + indicesBufSize;
+    uint64_t budgetLeft = (ubSize_ > permanentUsed) ? (ubSize_ - permanentUsed) : 0U;
+    if (static_cast<uint64_t>(poolSize) > budgetLeft) {
+        RUNTIME_ABORT("UB pool overflow: pool=%u, permanent=%llu, ubSize=%llu", poolSize, permanentUsed, ubSize_);
     }
     tpipe_->InitBufPool(sortPool_, poolSize);
     sortPool_.InitBuffer(entryBuf_, Mc2Kernel::ENTRY_BUF_BYTES);
@@ -763,7 +781,6 @@ __aicore__ inline void EngramFetchGradArch35::FinishExchangeGrad()
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
 
     DrainAndSendFlags();
-    RecvGradFromPeers();
 
     SyncAll<true>();
 }
@@ -879,8 +896,12 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
         totalSent += chunkLen;
     }
 
+    // 单核 remote handle 数随 numRanks_/numSendCores_ 配置增长，必须守卫固定数组边界
+    if (pendingHandleCount_ >= Mc2Kernel::MAX_PENDING_HANDLES) {
+        RUNTIME_ABORT("pendingHandles overflow: count=%u, max=%u, rankId=%u, dstRank=%u", pendingHandleCount_,
+                      Mc2Kernel::MAX_PENDING_HANDLES, rankId_, dstRank);
+    }
     pendingHandles_[pendingHandleCount_] = handle;
-    pendingDstRanks_[pendingHandleCount_] = dstRank;
     pendingHandleCount_++;
 }
 
@@ -1045,8 +1066,9 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
 
 __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
 {
-    int32_t offset = static_cast<int32_t>(rankId_) * static_cast<int32_t>(numEntriesPerRank_);
-    sorter_.SetValueOffset(offset);
+    // 乘积上限由 Host 侧 rankSize*numEntriesPerRank <= INT32_MAX 校验保证，int64 中间量双保险
+    int64_t offset = static_cast<int64_t>(rankId_) * static_cast<int64_t>(numEntriesPerRank_);
+    sorter_.SetValueOffset(static_cast<int32_t>(offset));
     sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
     sorter_.Process(numRecv, *tpipe_);
 }
@@ -1219,9 +1241,15 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
         SendGradToPeers();
 
-        // PR10464 flow: the grad recv (FinishExchangeGrad) runs AFTER the entry-only
-        // phases (initCompanion/sort/count/zero), overlapping the cross-rank data flight
-        // with local compute; scatterCast is the only consumer of recvGradGM_.
+        // RecvGradFromPeers 必须先于 entry 阶段的 SyncAll 执行：其内部的 tokenRead 计数器推进是
+        // 发送核流控自旋（SendGradRemote）唯一的解锁来源；若延后到 sort 之后的 FinishExchangeGrad，
+        // 发送核会因无法到达 SyncAll 而与接收核形成跨 rank 进度依赖环（超窗口场景死锁）。
+        RecvGradFromPeers();
+
+        // PR10464 flow: receivers pull grad right after senders finish issuing, so the
+        // flow-control tokenRead advance never depends on a full-core barrier; the
+        // entry-only phases (initCompanion/sort/count/zero) then run on the received
+        // entries, and scatterCast is the only consumer of recvGradGM_.
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);

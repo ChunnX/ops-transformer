@@ -13,10 +13,8 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
-#include "adv_api/math/cumsum.h"
 #include "simt_api/asc_simt.h"
 
-constexpr AscendC::CumSumConfig kScanCfg{true, false, false, AscendC::CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
 constexpr uint32_t SIMT_THREAD_NUM = 1024;
 constexpr bool kUseSimtScatter = true;
 constexpr uint32_t SIMT_SLOT_ALIGN = 32U;
@@ -60,7 +58,6 @@ enum : uint32_t {
     VECTOR_LEN_INT32 = 64,
     VECTOR_LEN_INT16 = 128,
     VECTOR_LEN_INT8 = 256,
-    SCAN_CUMSUM_TMP_BYTES = 32U * 1024U,
 };
 
 constexpr uint32_t UB_BLOCK_BYTES = Ops::Base::GetUbBlockSize();
@@ -322,6 +319,46 @@ __aicore__ inline void ComputeTileHistogram(__local_mem__ uint32_t *valueUb, uin
     }
 }
 
+// 仅键提取的向量化版本（ComputeTileHistogram 的键段复用）：多批分支的 radix 键生成不再逐元素标量循环
+__aicore__ inline void ComputeTileKeys(__local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
+                                       int32_t valueOffset, __local_mem__ uint8_t *keyUb)
+{
+    uint32_t shiftBits = byteRound * BITS_PER_BYTE;
+    __VEC_SCOPE__
+    {
+        using namespace AscendC::Reg;
+        RegTensor<uint32_t> input0, input1, input2, input3;
+        RegTensor<uint32_t> offsetReg;
+        MaskReg mask32 = CreateMask<uint32_t>();
+        Duplicate(offsetReg, static_cast<uint32_t>(valueOffset), mask32);
+        // UpdateMask 为 POST_UPDATE 语义（按引用递减），trip 数必须由原始 count 预计算
+        uint32_t remainCount = elementCount;
+        const uint16_t keyRepeat = static_cast<uint16_t>(CeilDiv(elementCount, VECTOR_LEN_INT8));
+        for (uint16_t i = 0; i < keyRepeat; i++) {
+            MaskReg elemMask = UpdateMask<uint8_t>(remainCount);
+            DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input0, valueUb, VECTOR_LEN_INT32);
+            DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input1, valueUb, VECTOR_LEN_INT32);
+            DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input2, valueUb, VECTOR_LEN_INT32);
+            DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input3, valueUb, VECTOR_LEN_INT32);
+            Sub(input0, input0, offsetReg, mask32);
+            Sub(input1, input1, offsetReg, mask32);
+            Sub(input2, input2, offsetReg, mask32);
+            Sub(input3, input3, offsetReg, mask32);
+            RegTensor<uint32_t> s0, s1, s2, s3;
+            ShiftRights<uint32_t, int16_t>(s0, input0, shiftBits, mask32);
+            ShiftRights<uint32_t, int16_t>(s1, input1, shiftBits, mask32);
+            ShiftRights<uint32_t, int16_t>(s2, input2, shiftBits, mask32);
+            ShiftRights<uint32_t, int16_t>(s3, input3, shiftBits, mask32);
+            RegTensor<uint16_t> d0, d1, d2, d3;
+            DeInterleave(d0, d1, (RegTensor<uint16_t> &)s0, (RegTensor<uint16_t> &)s1);
+            DeInterleave(d2, d3, (RegTensor<uint16_t> &)s2, (RegTensor<uint16_t> &)s3);
+            RegTensor<uint8_t> b0, b1;
+            DeInterleave(b0, b1, (RegTensor<uint8_t> &)d0, (RegTensor<uint8_t> &)d2);
+            DataCopy<uint8_t, PostLiteral::POST_MODE_UPDATE>(keyUb, b0, VECTOR_LEN_INT8, elemMask);
+        }
+    }
+}
+
 __aicore__ inline uint64_t EngramFetchGradSort::GetWorkspaceSize(uint32_t totalElements, uint32_t numCores)
 {
     uint32_t tileElements = DEFAULT_TILE_SIZE;
@@ -537,23 +574,9 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
 
     AscendC::PipeBarrier<PIPE_V>();
 
-    AscendC::LocalTensor<float> scanSrcF = sortWorkspace_.GetWithOffset<float>(HISTOGRAM_BINS, 0U);
-    AscendC::LocalTensor<float> scanInclF =
-        sortWorkspace_.GetWithOffset<float>(HISTOGRAM_BINS, HISTOGRAM_BINS * sizeof(float));
-    AscendC::LocalTensor<int32_t> scanIncl =
-        sortWorkspace_.GetWithOffset<int32_t>(HISTOGRAM_BINS, 2U * HISTOGRAM_BINS * sizeof(float));
-    AscendC::LocalTensor<uint8_t> scanTmp =
-        sortWorkspace_.GetWithOffset<uint8_t>(SCAN_CUMSUM_TMP_BYTES, 3U * HISTOGRAM_BINS * sizeof(float));
-    AscendC::Cast<float, int32_t>(scanSrcF, totalBuf, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
-    AscendC::PipeBarrier<PIPE_V>();
-    AscendC::CumSumInfo scanInfo{1U, HISTOGRAM_BINS};
-    AscendC::CumSum<float, kScanCfg>(scanInclF, scanInclF, scanSrcF, scanTmp, scanInfo);
-    AscendC::PipeBarrier<PIPE_V>();
-    AscendC::Cast<int32_t, float>(scanIncl, scanInclF, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
-    AscendC::PipeBarrier<PIPE_V>();
-    // exclusive[j] = inclusive[j] - total[j]
-    AscendC::Sub<int32_t>(totalBuf, scanIncl, totalBuf, HISTOGRAM_BINS);
-    AscendC::PipeBarrier<PIPE_V>();
+    // 说明：跨核互斥前缀已在上方 __VEC_SCOPE__ 中以 uint32 精确完成（prefixUb=前核部分和、
+    // totalBuf=全核合计）；totalBuf 的全量前缀扫描对本函数输出（tileOffsetsGm）无任何消费，
+    // 且 float 路径在 totalRecv > 2^24 时产生舍入误差，故整段删除（原 float CumSum 死代码）。
 
     for (uint32_t t = coreStart; t < coreEnd; t++) {
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
@@ -751,14 +774,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                 // tile on THIS core (V-pipe masked store); reuse it directly (V->V order).
                 AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
             } else {
-                uint32_t shiftBits = byteRound * BITS_PER_BYTE;
-                for (uint32_t i = 0; i < tileLen; i++) {
-                    uint32_t v = static_cast<uint32_t>(valueLocal.GetValue(i));
-                    uint32_t local = v - static_cast<uint32_t>(valueOffset_);
-                    keyLocal.SetValue(i, static_cast<uint8_t>((local >> shiftBits) & 0xFFU));
-                }
-                AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
-                AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+                ComputeTileKeys((__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, byteRound, valueOffset_,
+                                (__local_mem__ uint8_t *)keyLocal.GetPhyAddr());
                 AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
             }
 
