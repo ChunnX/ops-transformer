@@ -34,13 +34,8 @@
 #include "../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #endif
 #include "adv_api/activation/softmax.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h")
-#include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
-#else
-#include "../common/arch35/flash_attention_score_tiling_regbase_arch35.h"
-#endif
 #include "arch35/flash_mla_with_kvcache_type.h"
-using namespace optiling; // tiling_regbase 提供；kernel 头 static_assert 需在解析期可见 optiling 域（与 FA 入口同款）
+using namespace optiling;
 #include "arch35/flash_mla_with_kvcache_kernel.h"
 
 using namespace AscendC;
