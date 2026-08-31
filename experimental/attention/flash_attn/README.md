@@ -170,8 +170,8 @@ cann_ops_transformer.flash_attn(
 | q                  | Tensor   | 必选      | 公式中的q                                                                 | bfloat16/float16 | ND       |                      |
 | k                  | Tensor   | 必选      | 公式中的k                                                                 | bfloat16/float16 | ND       |                      |
 | v                  | Tensor   | 必选      | 公式中的v                                                                 | bfloat16/float16 | ND       |                      |
-| rel_h              | Tensor   | 可选      | 行方向（图像高）相对位置偏置，末维大小为H，KV位置索引按 j // W 映射到该维；不传时不叠加位置偏置 | bfloat16/float16 | ND       |                      |
-| rel_w              | Tensor   | 可选      | 列方向（图像宽）相对位置偏置，末维大小为W，KV位置索引按 j % W 映射到该维；不传时不叠加位置偏置 | bfloat16/float16 | ND       |                      |
+| rel_h              | Tensor   | 可选      | 行方向（图像高）相对位置偏置，末维大小为H（0 < H ≤ 64），KV位置索引按 j // W 映射到该维；不传时不叠加位置偏置 | bfloat16/float16 | ND       |                      |
+| rel_w              | Tensor   | 可选      | 列方向（图像宽）相对位置偏置，末维大小为W（0 < W ≤ 64），KV位置索引按 j % W 映射到该维；不传时不叠加位置偏置 | bfloat16/float16 | ND       |                      |
 | cu_seqlens_q       | Tensor   | 可选      | 累积序列长度，用于处理变长序列，第一个元素必须为0                         | int32            | ND       | (B+1,)               |
 | cu_seqlens_kv      | Tensor   | 可选      | 累积序列长度，用于处理变长序列，第一个元素必须为0                         | int32            | ND       | (B+1,)               |
 | seqused_q          | Tensor   | 可选      | 指定每batch中实际使用的序列长度，截断冗余运算                             | int32            | ND       | (B,)                 |
@@ -209,7 +209,7 @@ cann_ops_transformer.flash_attn(
 
 - 仅支持D=64（DV=64），不支持其他head_dim。
 - 仅支持无掩码的全计算模式（等效mask_mode=0），不支持传入attn_mask掩码矩阵及win_left/win_right窗口参数。
-- rel_h与rel_w为可选参数：不传时执行标准self-attention；传入时必须同时传入，且满足KV_S = H × W。
+- rel_h与rel_w为可选参数：不传时执行标准self-attention；传入时必须同时传入，末维大小需满足0 < H ≤ 64、0 < W ≤ 64，且KV_S = H × W。
 - 当前版本不支持Paged Attention（block_table）及sinks。
 - 参数rel_h、rel_w、cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - flash_attn_metadata和flash_attn的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
@@ -315,7 +315,7 @@ cann_ops_transformer.flash_attn(
                 <li>D仅支持64</li>
                 <li>q与k/v的D维度必须相等</li>
                 <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
-                <li>传入rel_h/rel_w时，KV_S = H × W（H为rel_h末维大小，W为rel_w末维大小）</li>
+                <li>传入rel_h/rel_w时，KV_S = H × W（H为rel_h末维大小，W为rel_w末维大小），且H ≤ 64、W ≤ 64</li>
             </ul>
         </td>
     </tr>
@@ -464,7 +464,7 @@ cann_ops_transformer.flash_attn(
                     <li>BNSD -> (B, Q_N, Q_S, H)</li>
                     <li>BSND -> (B, Q_S, Q_N, H)</li>
                     <li>TND -> (Q_T, Q_N, H)</li>
-                    <li>H > 0</li>
+                    <li>0 < H ≤ 64</li>
                 </ul>
             </td>
             <td rowspan="2">
@@ -490,7 +490,7 @@ cann_ops_transformer.flash_attn(
                     <li>BNSD -> (B, Q_N, Q_S, W)</li>
                     <li>BSND -> (B, Q_S, Q_N, W)</li>
                     <li>TND -> (Q_T, Q_N, W)</li>
-                    <li>W > 0</li>
+                    <li>0 < W ≤ 64</li>
                 </ul>
             </td>
         </tr>

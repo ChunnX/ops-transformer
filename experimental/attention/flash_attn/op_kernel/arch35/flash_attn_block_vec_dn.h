@@ -76,8 +76,6 @@ public:
     static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
-    static constexpr uint32_t UB_IN_REL_H_EVENT0 = 6;
-    static constexpr uint32_t UB_IN_REL_H_EVENT1 = 7;
 
     // L1
     static constexpr uint32_t L1_P_BUFCNT = 3U;
@@ -115,11 +113,10 @@ public:
     LocalTensor<uint8_t> ubLseOutBuffers_;
     uint32_t lseOutUbBufId_ = 0;
 
-    static constexpr uint32_t UB_REL_BUFCNT = 1U; // UB 不够用啊 (；´д｀)ゞ
+    static constexpr uint32_t UB_REL_BUFCNT = 2U; // rel 转置结果双缓冲，临时拷贝区借用 ubVec1ResBuffers_ 槽位
     static constexpr uint32_t UB_REL_BUF_BYTES = 8192U; // TODO: 根据实际分配
     LocalTensor<INPUT_T> relHBuffers_;
     LocalTensor<INPUT_T> relWBuffers_;
-    LocalTensor<INPUT_T> relTempBuf_;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
     const ConstInfoX &constInfo_;
@@ -217,16 +214,14 @@ public:
         addrUb += UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES;
 
         relHBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_BUFCNT * UB_REL_BUF_BYTES)
-                           .template ReinterpretCast<INPUT_T>(); // REL buf  2 * 4k
+                           .template ReinterpretCast<INPUT_T>(); // REL buf, 2 * 8K = 16K
         addrUb += UB_REL_BUFCNT * UB_REL_BUF_BYTES;
 
         relWBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_BUFCNT * UB_REL_BUF_BYTES)
-                           .template ReinterpretCast<INPUT_T>(); // REL buf  2 * 4k
+                           .template ReinterpretCast<INPUT_T>(); // REL buf, 2 * 8K = 16K
         addrUb += UB_REL_BUFCNT * UB_REL_BUF_BYTES;
 
-        relTempBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_BUFCNT * 2 * UB_REL_BUF_BYTES)
-                          .template ReinterpretCast<INPUT_T>();
-        addrUb += UB_REL_BUFCNT * 2 * UB_REL_BUF_BYTES;
+        // rel_h/rel_w 的 GM→UB 临时拷贝区借用 ubVec1ResBuffers_ 槽位(relTempBuf_ 已省去)
 
         ubLseOutBuffers_ = LocalTensor<uint8_t>(
             TPosition::VECIN, addrUb,
@@ -405,15 +400,18 @@ public:
         LocalTensor<T> expUb =
             softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
 
-        // const uint32_t relBufId = runInfo.loop & (DB - 1);
-        const uint32_t relBufId = 0;
+        const uint32_t relBufId = runInfo.loop & (DB - 1);
         if constexpr (HAS_REL) {
             relHUb = relHBuffers_[relBufId * (UB_REL_BUF_BYTES / sizeof(INPUT_T))];
             relWUb = relWBuffers_[relBufId * (UB_REL_BUF_BYTES / sizeof(INPUT_T))];
-            AttnRelCopyIn(relHUb, relWUb, runInfo);
+            AttnRelCopyIn(runInfo, vec1ResUbBufId_);
         }
 
         Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+
+        if constexpr (HAS_REL) {
+            AttnRelTranspose(relHUb, relWUb, runInfo, vec1ResUbBufId_);
+        }
 
         float descaleQK = 1.0;
 
@@ -601,30 +599,35 @@ public:
         }
     }
 
-    __aicore__ inline void AttnRelCopyIn(LocalTensor<INPUT_T> &relHUb, LocalTensor<INPUT_T> &relWUb,
-                                         const RunInfoX &runInfo)
+    __aicore__ inline void AttnRelCopyIn(const RunInfoX &runInfo, uint32_t vec1ResUbBufId)
     {
-        // 拷贝REL进入Ub
-        // const uint32_t bufIdx = runInfo.loop & (DB - 1);
-        const uint32_t bufIdx = 0;
-        const uint32_t mte2ToVId = UB_IN_REL_H_EVENT0 + bufIdx;
-        LocalTensor<INPUT_T> relHTempTensor = relTempBuf_[bufIdx * 2 * (UB_REL_BUF_BYTES / sizeof(INPUT_T))];
-        LocalTensor<INPUT_T> relWTempTensor =
-            relTempBuf_[bufIdx * 2 * (UB_REL_BUF_BYTES / sizeof(INPUT_T)) + (UB_REL_BUF_BYTES / sizeof(INPUT_T))];
-        RelCopyIn(relHTempTensor, relWTempTensor, relHGm_, relWGm_, runInfo, mte2ToVId);
+        // 拷贝REL进入Ub, 借用 ubVec1ResBuffers_ 
+        // MTE2 写 rel 临时数据 → V 转置读取+写 stage1 → MTE3 拷出 stage1 → (下下轮) MTE2 再写
+        LocalTensor<INPUT_T> relHTempTensor =
+            ubVec1ResBuffers_[vec1ResUbBufId * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+        LocalTensor<INPUT_T> relWTempTensor = relHTempTensor[UB_REL_BUF_BYTES / sizeof(INPUT_T)];
 
+        Mutex::Lock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+        RelCopyIn(relHTempTensor, relWTempTensor, relHGm_, relWGm_, runInfo);
+        Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId);
+    }
+
+    __aicore__ inline void AttnRelTranspose(LocalTensor<INPUT_T> &relHUb, LocalTensor<INPUT_T> &relWUb,
+                                            const RunInfoX &runInfo, uint32_t vec1ResUbBufId)
+    {
+        LocalTensor<INPUT_T> relHTempTensor =
+            ubVec1ResBuffers_[vec1ResUbBufId * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+        LocalTensor<INPUT_T> relWTempTensor = relHTempTensor[UB_REL_BUF_BYTES / sizeof(INPUT_T)];
         // 进行转置，使用 kernel 访问的实际 stride (actMSizeAlign32 >> 1) 作为行间距，
         // 确保 LoadAlign(rel_h + row * m) 读到的行布局与转置输出一致
-        Mutex::Lock<PIPE_V>(mte2ToVId);
         uint32_t mStride = runInfo.actMSizeAlign32 >> 1;
         Transpose(relHUb, relHTempTensor, runInfo.actVecMSize, constInfo_.relHSize, mStride);
         Transpose(relWUb, relWTempTensor, runInfo.actVecMSize, constInfo_.relWSize, mStride);
-        Mutex::Unlock<PIPE_V>(mte2ToVId);
     }
 
     __aicore__ inline void RelCopyIn(LocalTensor<INPUT_T> &relHUb, LocalTensor<INPUT_T> &relWUb,
                                      GlobalTensor<INPUT_T> &relHGm, GlobalTensor<INPUT_T> &relWGm,
-                                     const RunInfoX &runInfo, uint32_t mte2ToVEventId)
+                                     const RunInfoX &runInfo)
     {
         uint32_t n1Size = constInfo_.n2Size * constInfo_.gSize;
         uint32_t absGS1Idx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
@@ -640,7 +643,6 @@ public:
         }
         uint32_t n1Idx = runInfo.n2Idx * constInfo_.gSize + gIdx;
 
-        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
             uint32_t prefixS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
             int64_t relHOffset = prefixS1 * n1Size * constInfo_.relHSize + s1Idx * n1Size * constInfo_.relHSize +
@@ -684,7 +686,6 @@ public:
                 curN1Idx += 1;
             }
         }
-        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
     }
 };
 
