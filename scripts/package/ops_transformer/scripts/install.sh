@@ -479,6 +479,28 @@ mkdir_install_path() {
   fi
 }
 
+merge_fusion_pass_config() {
+  local frag_path="${CURR_PATH}/../../../../${OPP_PLATFORM_DIR}/built-in/fusion_pass/config/ops_transformer_fusion_config.json"
+  local target_path="${TARGET_VERSION_DIR}/opp/built-in/fusion_pass/config/fusion_config.json"
+  if [ ! -f "${frag_path}" ]; then
+    return
+  fi
+  local target_mode=""
+  if [ -f "${target_path}" ]; then
+    target_mode=$(stat -c "%a" "${target_path}" 2>/dev/null)
+    chmod u+w "${target_path}" 2>/dev/null
+  fi
+  python3 "${CURR_PATH}/merge_fusion_config.py" "${frag_path}" "${target_path}"
+  if [ "$?" != 0 ]; then
+    logandprint "[ERROR]: merge fusion pass config failed, fragment: ${frag_path}, target: ${target_path}"
+    comm_log_operation "Install" "${IN_INSTALL_TYPE}" "OpsTransformer" "1" "${CMD_LIST}"
+    return
+  fi
+  if [ -n "${target_mode}" ]; then
+    chmod "${target_mode}" "${target_path}" 2>/dev/null
+  fi
+}
+
 install_package() {
   if [ "${IS_INSTALL}" = "n" ] && [ "${IS_UPGRADE}" = "n" ]; then
     return
@@ -520,6 +542,7 @@ install_package() {
   if [ "$?" != 0 ]; then
     comm_log_operation "Install" "${IN_INSTALL_TYPE}" "OpsTransformer" "$?" "${CMD_LIST}"
   fi
+  merge_fusion_pass_config
   if [ $(id -u) -eq 0 ]; then
     chown -R "root":"root" "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}/script" 2>/dev/null
     chown "root":"root" "${TARGET_SHARED_INFO_DIR}/${OPP_PLATFORM_DIR}" 2>/dev/null

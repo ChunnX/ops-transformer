@@ -17,6 +17,11 @@
         install_path="opp/built-in/op_graph/lib/linux/$(ARCH)">
         <file value="libopgraph_transformer.so" install_mod="550"/>
     </file_info>
+    <file_info value="opstransformer_fusion_pass_config" copy_type="delivery" src_path=""
+        dst_path="opp/built-in/fusion_pass/config/"
+        install_path="opp/built-in/fusion_pass/config/">
+        <file value="ops_transformer_fusion_config.json" install_mod="550"/>
+    </file_info>
     <file_info copy_type="delivery" src_path=""
         dst_path="opp/built-in/op_impl/ai_core/tbe"
         install_path="opp/built-in/op_impl/ai_core/tbe" install_type="all">
