@@ -156,3 +156,8 @@ $$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}
     - FFNToAttentionV2算子的通信域中不允许有其他算子。
 
 
+## 调用说明
+
+| 调用方式  | 样例代码                                  | 说明                                                     |
+| :--------: | :----------------------------------------: | :-------------------------------------------------------: |
+| PyTorch接口调用 | - | 通过[ffn_to_attention](../../torch_extension/cann_ops_transformer/docs/zh/ffn_to_attention.md)PyTorch接口方式调用ffn_to_attention算子。 |
