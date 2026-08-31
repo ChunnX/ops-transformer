@@ -820,19 +820,23 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 if (hasPreparedWave) {
                     waveEndPosition = preparedWaveEndPosition;
                 } else {
-                    waveEndPosition = MegaMoeImpl::DispatchWaveAndGetEndPosition<
-                        ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                    uint32_t dispatchWaveMGroupCount = 0U;
+                    MegaMoeImpl::DispatchWaveAndAdvance<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                                        TopkWeightsPrefetch>(
                         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
                         syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
-                        mGroupsPerWave_);
+                        mGroupsPerWave_, dispatchWaveMGroupCount);
+                    waveEndPosition = dispatchPosition;
                 }
                 // 保持一 wave lookahead：首轮准备 W0/W1，稳态在 Combine Wn 前准备 W(n+1)。
                 if (waveEndPosition.expertIdx < moeExpertPerRank_) {
-                    preparedWaveEndPosition = MegaMoeImpl::DispatchWaveAndGetEndPosition<
-                        ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                    uint32_t dispatchWaveMGroupCount = 0U;
+                    MegaMoeImpl::DispatchWaveAndAdvance<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                                        TopkWeightsPrefetch>(
                         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
                         syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
-                        mGroupsPerWave_);
+                        mGroupsPerWave_, dispatchWaveMGroupCount);
+                    preparedWaveEndPosition = dispatchPosition;
                     hasPreparedWave = true;
                 } else {
                     hasPreparedWave = false;
