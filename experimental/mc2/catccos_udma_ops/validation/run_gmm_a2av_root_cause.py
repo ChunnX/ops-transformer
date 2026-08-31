@@ -51,6 +51,7 @@ DIAGNOSTIC_MODES = (
     "full_barrier",
     "full_barrier_mte3",
     "producer_barrier",
+    "full_barrier_official_block",
     "baseline",
 )
 
@@ -79,11 +80,20 @@ MODE_DESCRIPTIONS = {
         "stage_recycle_sync": "SHMEM all-PE barrier replacing recycle SyncAll",
         "udma_wqe_path": "official-style PIPE_MTE3 with UB WQE scratch",
     },
+    "full_barrier_official_block": {
+        "label": "E",
+        "producer_sync": "SHMEM all-PE barrier replacing producer SyncAll",
+        "stage_recycle_sync": "SHMEM all-PE barrier replacing recycle SyncAll",
+        "udma_wqe_path": (
+            "official CatCCOS BlockRemoteCopy: per-call TPipe/TBuf, "
+            "UDMA GET and internal void quiet"
+        ),
+    },
 }
 
 
 def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None):
-    """Classify the A/B/C/D matrix, including a baseline timeout."""
+    """Classify the A/B/C/D/E matrix, including a baseline timeout."""
     by_mode = {item["mode"]: item for item in mode_results}
     cq_modes = [
         item["mode"] for item in mode_results
@@ -146,6 +156,7 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
     producer = passed("producer_barrier")
     full = passed("full_barrier")
     mte3 = passed("full_barrier_mte3")
+    official_block = passed("full_barrier_official_block")
     if producer:
         return {
             "classification": "producer_staging_visibility_or_ready_order",
@@ -175,6 +186,18 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
             "next_action": (
                 "Use the official-style PIPE_MTE3 WQE publication path or fix "
                 "the PIPE_S path before tuning the synchronization protocol."
+            ),
+        }
+    if official_block:
+        return {
+            "classification": "custom_udma_get_or_deferred_quiet_path",
+            "conclusive": True,
+            "evidence_modes": ["full_barrier_official_block"],
+            "next_action": (
+                "The official CatCCOS BlockRemoteCopy passed while both "
+                "custom block-loop paths failed. Compare custom 2D WQE "
+                "submission/deferred CQ drain with the official per-call "
+                "TPipe/TBuf plus void quiet implementation."
             ),
         }
     return {

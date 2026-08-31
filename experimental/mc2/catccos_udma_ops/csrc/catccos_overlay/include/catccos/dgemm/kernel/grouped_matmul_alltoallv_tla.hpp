@@ -35,6 +35,7 @@ enum GroupedMatmulAllToAllVDiagnosticMode : uint32_t {
     GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER = 2,
     GMM_A2AV_DIAGNOSTIC_FULL_BARRIER = 3,
     GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 = 4,
+    GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK = 5,
 };
 
 template <
@@ -45,7 +46,8 @@ template <
     class BlockCommScheduler_,
     uint32_t WORKSPACE_STAGES_,
     uint64_t SYMMETRIC_DATA_BYTES_ = 1000UL * 1024 * 1024,
-    bool TARGET_ORDER_STAGING_ = false
+    bool TARGET_ORDER_STAGING_ = false,
+    bool OFFICIAL_UDMA_BLOCK_ = false
 >
 class GroupedMatmulAllToAllVTla {
 public:
@@ -76,6 +78,7 @@ public:
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     static constexpr uint64_t SYMMETRIC_DATA_BYTES = SYMMETRIC_DATA_BYTES_;
     static constexpr bool TARGET_ORDER_STAGING = TARGET_ORDER_STAGING_;
+    static constexpr bool OFFICIAL_UDMA_BLOCK = OFFICIAL_UDMA_BLOCK_;
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
@@ -555,6 +558,8 @@ private:
         StoreDiagnosticWord(
             params, base + 11,
             UsesRecycleBarrier(params.diagnosticMode) ? 1 : 0);
+        StoreDiagnosticWord(
+            params, base + 13, OFFICIAL_UDMA_BLOCK ? 1 : 0);
     }
 
     CATLASS_DEVICE
@@ -798,11 +803,24 @@ private:
                 auto gmBlockDst = gmC[layoutC.GetOffset(outputOffset)];
                 auto layoutBlockDst = layoutC.GetTileLayout(actualShape);
 
-                blockRemoteCopy.InitBlockLoop();
-                blockRemoteCopy(
-                    gmBlockSrc, layoutBlockSrc, gmBlockDst, layoutBlockDst,
-                    actualShape, srcRankIdx);
-                quietStatus = blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                if constexpr (OFFICIAL_UDMA_BLOCK) {
+                    // CatCCOS' official UDMA TileRemoteCopy owns WQE scratch,
+                    // submission and quiet inside this single call. It uses
+                    // the public void quiet API, so no CQ status is exposed.
+                    blockRemoteCopy(
+                        gmBlockSrc, layoutBlockSrc,
+                        gmBlockDst, layoutBlockDst,
+                        actualShape, srcRankIdx);
+                    quietStatus = 0;
+                } else {
+                    blockRemoteCopy.InitBlockLoop();
+                    blockRemoteCopy(
+                        gmBlockSrc, layoutBlockSrc,
+                        gmBlockDst, layoutBlockDst,
+                        actualShape, srcRankIdx);
+                    quietStatus =
+                        blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                }
 
                 if (quietStatus == 0) {
                     aclshmem_fence();

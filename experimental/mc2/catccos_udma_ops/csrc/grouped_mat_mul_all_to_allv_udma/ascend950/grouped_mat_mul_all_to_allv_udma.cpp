@@ -234,7 +234,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
     TORCH_CHECK(
         diagnosticMode <=
-            Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3,
+            Catccos::DGemm::Kernel::
+                GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK,
         "invalid grouped-matmul AllToAllV diagnostic mode");
 
     at::Tensor diagnostic;
@@ -408,11 +409,23 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
     const bool useMte3Udma = diagnosticMode ==
         Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3;
-    if (tiling.kernelVariant == KernelVariant::kM0_256 && useMte3Udma) {
+    const bool useOfficialBlock = diagnosticMode ==
+        Catccos::DGemm::Kernel::
+            GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK;
+    if (tiling.kernelVariant == KernelVariant::kM0_256 &&
+        useOfficialBlock) {
+        launchWithConfig(
+            TypeTag<
+                GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig>{});
+    } else if (tiling.kernelVariant == KernelVariant::kM0_256 &&
+               useMte3Udma) {
         launchWithConfig(
             TypeTag<GroupedMatMulAllToAllVUdmaM0_256Mte3Config>{});
     } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>{});
+    } else if (useOfficialBlock) {
+        launchWithConfig(
+            TypeTag<GroupedMatMulAllToAllVUdmaOfficialBlockConfig>{});
     } else if (useMte3Udma) {
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaMte3Config>{});
     } else {
@@ -460,8 +473,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaDiagnosticNpu(
     int64_t epSize, int64_t expertNum, const at::Tensor &output,
     const at::Tensor &diagnostic, int64_t diagnosticMode)
 {
-    TORCH_CHECK(diagnosticMode >= 1 && diagnosticMode <= 4,
-                "diagnostic_mode must be in [1, 4]");
+    TORCH_CHECK(diagnosticMode >= 1 && diagnosticMode <= 5,
+                "diagnostic_mode must be in [1, 5]");
     return GroupedMatMulAllToAllVUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
         epSize, expertNum, output, diagnostic,
@@ -505,8 +518,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaDiagnosticMeta(
     int64_t epSize, int64_t expertNum, const at::Tensor &output,
     const at::Tensor &diagnostic, int64_t diagnosticMode)
 {
-    TORCH_CHECK(diagnosticMode >= 1 && diagnosticMode <= 4,
-                "diagnostic_mode must be in [1, 4]");
+    TORCH_CHECK(diagnosticMode >= 1 && diagnosticMode <= 5,
+                "diagnostic_mode must be in [1, 5]");
     TORCH_CHECK(diagnostic.dim() == 1,
                 "diagnostic must be one-dimensional");
     return GroupedMatMulAllToAllVUdmaOutMeta(

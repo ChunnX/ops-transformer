@@ -65,6 +65,7 @@ DIAGNOSTIC_MODE_IDS = {
     "producer_barrier": 2,
     "full_barrier": 3,
     "full_barrier_mte3": 4,
+    "full_barrier_official_block": 5,
 }
 
 
@@ -160,6 +161,7 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
             "producer_barrier": bool(values[10]),
             "recycle_barrier": bool(values[11]),
             "stage_released": bool(values[12]),
+            "official_block_remote_copy": bool(values[13]),
         })
     cq_failures = [
         {

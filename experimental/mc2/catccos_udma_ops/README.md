@@ -345,7 +345,7 @@ total, finite and sampled element counts plus `quantiles_approximate`. Mean and
 maximum remain exact full-tensor reductions.
 
 For the balanced GroupedMatMul-AllToAllV synchronization failure, run the
-single-process-lifetime A/B/C/D matrix. It generates each Rank's input and CPU
+single-process-lifetime A/B/C/D/E matrix. It generates each Rank's input and CPU
 Golden once, then reuses the same resident tensors for every mode and launch:
 
 ```bash
@@ -362,8 +362,10 @@ bash scripts/run_gmm_a2av_root_cause.sh \
 environment variable before `scripts/build_wheel.sh`; the validation-only raw
 operator is compiled out of ordinary delivery Wheels. The matrix compares
 the original local-`SyncAll` protocol, producer-only SHMEM barrier, paired
-producer/recycle barriers, and paired barriers with official-style PIPE_MTE3
-WQE publication. Barrier modes require `route: balanced` because every Rank
+producer/recycle barriers, paired barriers with official-style PIPE_MTE3 WQE
+publication, and paired barriers using the unmodified CatCCOS official
+`BlockRemoteCopy` call (per-call `TPipe/TBuf`, UDMA GET and internal void
+`quiet`). Barrier modes require `route: balanced` because every Rank
 must execute identical communication-loop counts. The safer modes run first
 and the original baseline runs last.
 
@@ -374,8 +376,9 @@ stream synchronization Host writes these records to
 `rank_<N>/modes/<mode>/launch_<I>/diagnostic.json`. Device printf is not used,
 so the experiment does not reserve the AscendC printf buffer. `summary.json`
 classifies producer visibility, premature stage reuse, PIPE_S topology
-sensitivity, or CQ/transport failure. Input and Golden reuse identities are
-recorded in `reuse_manifest.json`.
+sensitivity, a custom UDMA GET/deferred-quiet difference from the official
+block, or CQ/transport failure. Input and Golden reuse identities are recorded
+in `reuse_manifest.json`.
 
 Performance is collected from exported `msprof` `op_summary` rows, following
 the official [`--task-time` collection definition](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/Profiling/atlasprofiling_16_0011.html),

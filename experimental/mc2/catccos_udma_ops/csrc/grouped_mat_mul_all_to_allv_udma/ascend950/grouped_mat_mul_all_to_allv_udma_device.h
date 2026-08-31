@@ -34,9 +34,43 @@
 
 namespace OpsTransformer::CatccosUdma {
 
+// The target-order kernel gets its dynamic block/tile shape from the local-MTE
+// block Params.  CatCCOS' official UDMA CommBlock does not expose a Params
+// alias because its TileRemoteCopy builds and completes the WQE internally.
+// This adapter supplies only that host/device construction ABI; the actual
+// block operator, UDMA GET and quiet remain the official CatCCOS code path.
+template <class OfficialBlock_, class Params_>
+class OfficialUdmaBlockAdapter : public OfficialBlock_ {
+public:
+    using Base = OfficialBlock_;
+    using Params = Params_;
+    using ElementSrc = typename Base::ElementSrc;
+    using LayoutSrc = typename Base::LayoutSrc;
+    using ElementDst = typename Base::ElementDst;
+    using LayoutDst = typename Base::LayoutDst;
+
+    template <class ResourceArch>
+    CATLASS_DEVICE
+    OfficialUdmaBlockAdapter(
+        Catlass::Arch::Resource<ResourceArch> &resource,
+        Params const &params)
+        : Base(resource, params)
+    {
+    }
+};
+
+// Our overlay CommBlock supports deferred checked quiet for the custom tiles.
+// The official TileRemoteCopy instead performs quiet inside operator(); expose
+// that existing contract to the overlay without changing the official body.
+template <class OfficialTile_>
+class OfficialUdmaTileAdapter : public OfficialTile_ {
+public:
+    static constexpr bool DEFER_QUIET = false;
+};
+
 template <class ElementA, class LayoutA, class ElementB, class LayoutB,
           class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0,
-          bool UseMte3Udma = false>
+          bool UseMte3Udma = false, bool UseOfficialUdmaBlock = false>
 struct GroupedMatMulAllToAllVUdmaConfig {
     using ArchTag = Catlass::Arch::Ascend950;
     static constexpr uint32_t kM0 = M0;
@@ -79,12 +113,25 @@ struct GroupedMatMulAllToAllVUdmaConfig {
         LocalDispatch, CType, CType, void, TileLocalCopy, TileScheduler>;
     using BlockRemoteComm = Catccos::Comm::Block::CommBlock<
         RemoteDispatch, CType, CType, TileRemoteCopy>;
-    using BlockComm = Catccos::Comm::Block::CommBlockMteUdma<BlockLocalComm, BlockRemoteComm>;
+    using HybridBlockComm =
+        Catccos::Comm::Block::CommBlockMteUdma<BlockLocalComm, BlockRemoteComm>;
+    using OfficialTile = OfficialUdmaTileAdapter<
+        Catccos::Comm::Tile::TileRemoteCopy<
+            ArchTag, kIsDynamic, CType, CType, void,
+            Catccos::detail::CopyDirect::Get,
+            Catccos::detail::CopyTransport::Udma>>;
+    using OfficialBlockBase = Catccos::Comm::Block::CommBlock<
+        RemoteDispatch, CType, CType, OfficialTile>;
+    using OfficialBlockComm = OfficialUdmaBlockAdapter<
+        OfficialBlockBase, typename BlockLocalComm::Params>;
+    using BlockComm = std::conditional_t<
+        UseOfficialUdmaBlock, OfficialBlockComm, HybridBlockComm>;
 
     using ProblemShape = Catccos::DGemm::AllToAllVAllGatherProblemShape;
     using Kernel = Catccos::DGemm::Kernel::GroupedMatmulAllToAllVTla<
         ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler,
-        BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes, true>;
+        BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes, true,
+        UseOfficialUdmaBlock>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 
@@ -113,6 +160,23 @@ using GroupedMatMulAllToAllVUdmaM0_256Mte3Config = GroupedMatMulAllToAllVUdmaCon
     bfloat16_t, Catlass::layout::RowMajor,
     bfloat16_t, Catlass::layout::RowMajor,
     256, 128, 256, true>;
+
+// Validation-only variants using CatCCOS' official UDMA block call. The
+// official TileRemoteCopy creates its own TPipe/TBuf WQE scratch, submits one
+// UDMA GET and performs its void quiet inside operator().
+using GroupedMatMulAllToAllVUdmaOfficialBlockConfig =
+    GroupedMatMulAllToAllVUdmaConfig<
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        128, 256, 256, false, true>;
+
+using GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig =
+    GroupedMatMulAllToAllVUdmaConfig<
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        256, 128, 256, false, true>;
 
 } // namespace OpsTransformer::CatccosUdma
 

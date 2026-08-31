@@ -29,6 +29,7 @@ def test_safe_modes_run_before_the_original_baseline():
         "full_barrier",
         "full_barrier_mte3",
         "producer_barrier",
+        "full_barrier_official_block",
         "baseline",
     )
 
@@ -57,6 +58,16 @@ def test_mte3_only_pass_isolates_pipe_s_publication():
     decision = classify_results(_results(full_barrier_mte3=True))
     assert decision["classification"] == (
         "pipe_s_wqe_publication_topology_sensitivity"
+    )
+    assert decision["conclusive"]
+
+
+def test_official_block_only_pass_isolates_custom_udma_get_path():
+    decision = classify_results(_results(
+        full_barrier_official_block=True
+    ))
+    assert decision["classification"] == (
+        "custom_udma_get_or_deferred_quiet_path"
     )
     assert decision["conclusive"]
 
@@ -174,7 +185,7 @@ def test_runner_uses_one_persistent_torchrun_and_one_optional_build():
     assert 'build_environment["CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE"] = "1"' in runner
 
 
-def test_kernel_exposes_the_four_disjoint_runtime_modes():
+def test_kernel_exposes_the_five_disjoint_runtime_modes():
     kernel = (
         PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" /
         "catccos" / "dgemm" / "kernel" /
@@ -184,6 +195,10 @@ def test_kernel_exposes_the_four_disjoint_runtime_modes():
     assert "GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER = 2" in kernel
     assert "GMM_A2AV_DIAGNOSTIC_FULL_BARRIER = 3" in kernel
     assert "GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 = 4" in kernel
+    assert (
+        "GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK = 5"
+        in kernel
+    )
     assert "UsesProducerBarrier(params.diagnosticMode)" in kernel
     assert "UsesRecycleBarrier(params.diagnosticMode)" in kernel
     assert "AscendC::SyncAll<true>()" in kernel
@@ -210,10 +225,38 @@ def test_host_registers_private_diagnostic_op_and_mte3_variants():
     assert "kDiagnosticTensorWords = 131072" in host
     assert "GroupedMatMulAllToAllVUdmaMte3Config" in host
     assert "GroupedMatMulAllToAllVUdmaM0_256Mte3Config" in host
+    assert "GroupedMatMulAllToAllVUdmaOfficialBlockConfig" in host
+    assert (
+        "GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig"
+        in host
+    )
     assert "TileRemoteCopyUdma2DWithScratch" in device
     scratch = tile[tile.index("class TileRemoteCopyUdma2DWithScratch"):]
     assert "static constexpr bool DEFER_QUIET = true" in scratch
     assert "uint32_t FinalizeWithStatus" in scratch
+
+
+def test_official_block_mode_calls_the_official_tile_once():
+    device = (
+        PROJECT_ROOT / "csrc" / "grouped_mat_mul_all_to_allv_udma" /
+        "ascend950" / "grouped_mat_mul_all_to_allv_udma_device.h"
+    ).read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" /
+        "catccos" / "dgemm" / "kernel" /
+        "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    assert "OfficialUdmaTileAdapter" in device
+    assert "CopyTransport::Udma" in device
+    assert "UseOfficialUdmaBlock" in device
+    branch_start = kernel.index("if constexpr (OFFICIAL_UDMA_BLOCK)")
+    branch_end = kernel.index("if (quietStatus == 0)", branch_start)
+    official_branch = kernel[branch_start:branch_end]
+    assert "blockRemoteCopy(" in official_branch
+    assert "InitBlockLoop" not in official_branch.split("} else {")[0]
+    assert "FinalizeBlockLoopWithStatus" not in official_branch.split(
+        "} else {"
+    )[0]
 
 
 def test_root_cause_kernels_are_compiled_out_of_delivery_wheels():
