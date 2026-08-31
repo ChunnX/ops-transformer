@@ -19,31 +19,31 @@
 namespace AscendC
 {
 #ifndef __CCE_KT_TEST__
-using namespace MicroAPI;
+using namespace Reg;
 template<bool IS_HIFP8 = false>
-constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp8Zero = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitFp322Fp8Zero = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     IS_HIFP8 ? AscendC::RoundMode::CAST_ROUND : AscendC::RoundMode::CAST_RINT,
 };
 template<bool IS_HIFP8 = false>
-constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp8Two = {
-    AscendC::MicroAPI::RegLayout::TWO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitFp322Fp8Two = {
+    AscendC::Reg::RegLayout::TWO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     IS_HIFP8 ? AscendC::RoundMode::CAST_ROUND : AscendC::RoundMode::CAST_RINT,
 };
-constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Odd = {
-    AscendC::MicroAPI::RegLayout::ONE,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitFp322Fp16Odd = {
+    AscendC::Reg::RegLayout::ONE,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
-constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitFp322Fp16Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 /* **************************************************************************************************
@@ -83,7 +83,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                 // [m,n] -> [n1,m1,16,16] -> [n1,m1*16,16] -> [n1,m1*16+1,16]
 
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
                     Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
@@ -91,7 +91,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven,
                         (RegTensor<uint16_t> &)vregCastOdd, pregFullExe);
                     // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
                 }
             }
@@ -112,7 +112,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
 
                 // 处理左边的32*128
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
                     Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
@@ -120,12 +120,12 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven,
                         (RegTensor<uint16_t> &)vregCastOdd, pregFullExe);
                     // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
                 }
                 // 处理右边的32*128
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalIntTail), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
                     Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
@@ -133,7 +133,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven,
                         (RegTensor<uint16_t> &)vregCastOdd, pregFullExe);
                     // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalIntTail), vregCastRes, blockStride, repeatStride, pregFullExe);
                 }
             }
@@ -152,7 +152,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                 // [m,n] -> [n1,m1,16,16] -> [n1,m1*16,16] -> [n1,m1*16+1,16]
 
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
                     Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
@@ -160,7 +160,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven,
                         (RegTensor<uint16_t> &)vregCastOdd, pregFullExe);
                     // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
                 }
             }
@@ -181,7 +181,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
 
                 // 处理左边的32*128
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
                     Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
@@ -189,12 +189,12 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven,
                         (RegTensor<uint16_t> &)vregCastOdd, pregFullExe);
                     // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
                 }
                 // 处理右边的32*128
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalIntTail), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
                     Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
@@ -202,7 +202,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven,
                         (RegTensor<uint16_t> &)vregCastOdd, pregFullExe);
                     // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalIntTail), vregCastRes, blockStride, repeatStride, pregFullExe);
                 }
             }
@@ -216,12 +216,12 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
             MaskReg pregFullExe = CreateMask<T, MaskPattern::ALL>();
             // [m,n] -> [n1,m1,16,16] -> [n1,m1*16,16] -> [n1,m1*16+1,16]
             for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                DataCopy<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), 64);
-                DataCopy<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalInt), 64);
+                DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), 64);
+                DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalInt), 64);
                 // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
-                DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                DataCopy<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     ((__ubuf__ T *&)dstLocalInt), vregSrc, blockStride, repeatStride, pregFullExe);
-                DataCopy<T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                DataCopy<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     ((__ubuf__ T *&)dstLocalIntTail), vregSrcTail, blockStride, repeatStride, pregFullExe);
             }
         }
@@ -242,17 +242,17 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                 MaskReg preg_all_b8 = CreateMask<T1, MaskPattern::ALL>();
 
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp8Zero<IsSameType<T1, hifloat8_t>::value>>(vregCastEven, vregSrcEven, preg_all);
                     Cast<T1, T, castTraitFp322Fp8Two<IsSameType<T1, hifloat8_t>::value>>(vregCastOdd, vregSrcOdd, preg_all);
                     Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven,
                         (RegTensor<uint8_t> &)vregCastOdd, preg_all_b8);
-                    DataCopy<uint8_t, MicroAPI::LoadDist::DIST_NORM>(
+                    DataCopy<uint8_t, Reg::LoadDist::DIST_NORM>(
                         (RegTensor<uint8_t> &)vregIndexes, ((__ubuf__ uint8_t *&)selrIndexesInt));
                     Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes,
                         (RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregIndexes);
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, preg_all_b8);
                 }
             }
@@ -274,31 +274,31 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                 MaskReg preg_all_b8 = CreateMask<T1, MaskPattern::ALL>();
 
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp8Zero<IsSameType<T1, hifloat8_t>::value>>(vregCastEven, vregSrcEven, preg_all);
                     Cast<T1, T, castTraitFp322Fp8Two<IsSameType<T1, hifloat8_t>::value>>(vregCastOdd, vregSrcOdd, preg_all);
                     Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven,
                         (RegTensor<uint8_t> &)vregCastOdd, preg_all_b8);
-                    DataCopy<uint8_t, MicroAPI::LoadDist::DIST_NORM>(
+                    DataCopy<uint8_t, Reg::LoadDist::DIST_NORM>(
                         (RegTensor<uint8_t> &)vregIndexes, ((__ubuf__ uint8_t *&)selrIndexesInt));
                     Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes,
                         (RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregIndexes);
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, preg_all_b8);
                 }
                 for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-                    DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
                         vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalIntTail), fullExeSize);
                     Cast<T1, T, castTraitFp322Fp8Zero<IsSameType<T1, hifloat8_t>::value>>(vregCastEven, vregSrcEven, preg_all);
                     Cast<T1, T, castTraitFp322Fp8Two<IsSameType<T1, hifloat8_t>::value>>(vregCastOdd, vregSrcOdd, preg_all);
                     Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven,
                         (RegTensor<uint8_t> &)vregCastOdd, preg_all_b8);
-                    DataCopy<uint8_t, MicroAPI::LoadDist::DIST_NORM>(
+                    DataCopy<uint8_t, Reg::LoadDist::DIST_NORM>(
                         (RegTensor<uint8_t> &)vregIndexes, ((__ubuf__ uint8_t *&)selrIndexesIntTail));
                     Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes,
                         (RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregIndexes);
-                    DataCopy<T1, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         ((__ubuf__ T1 *&)dstLocalIntTail), vregCastRes, blockStride, repeatStride, preg_all_b8);
                 }
             }
