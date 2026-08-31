@@ -308,6 +308,7 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
     uint32_t deal1MoreBlockCoreNum = totalBlockNum % coreNum;
     uint32_t lastGS1RemainBlockCnt = 0;
     uint32_t coreIdx = 0;
+    uint32_t consumedBlocks = 0;  // blocks already handed to cores 0..coreIdx-1
     uint32_t coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore;
     coreNum = minBlockPerCore == 0 ? deal1MoreBlockCoreNum : coreNum;
     if (curCoreIdx < coreNum) {
@@ -366,13 +367,18 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                     if (constInfo.isLDOpen) {
                         uint32_t segMid = ldSplitCap - 1;  // head segment: [0, ldSplitCap)
                         if (s2Idx == 0) {
-                            s2EndCalc = Min(s2EndCalc, segMid);
+                            // last core takes everything to grid end (no split at its start row)
+                            if (coreIdx != coreNum - 1) {
+                                s2EndCalc = Min(s2EndCalc, segMid);
+                            }
                         } else {
                             // tail core takes everything to row end
                             s2EndCalc = s2Loop - 1;
                         }
                     }
                     info.s2End = s2EndCalc;
+                    // blocks actually taken by this allocation (clamp may end it early)
+                    consumedBlocks += lastGS1RemainBlockCnt + (info.s2End - s2Idx + 1);
 
 
                     if (coreIdx == curCoreIdx) {
@@ -394,7 +400,10 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                     lastGS1RemainBlockCnt = 0;
                     coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ?
                         minBlockPerCore + 1 : minBlockPerCore;
-                    if (coreIdx == coreNum - 1) { coreDealBlockCnt = totalBlockNum + 1; }
+                    // last core quota = exactly the remaining blocks, so its end branch
+                    // fires at the final grid block (totalBlockNum+1 made it unreachable:
+                    // last core stayed zero-init and tail tasks were never processed)
+                    if (coreIdx == coreNum - 1) { coreDealBlockCnt = totalBlockNum - consumedBlocks; }
                 } else {
                     lastGS1RemainBlockCnt += s2RemainBaseNum;
                     break;
