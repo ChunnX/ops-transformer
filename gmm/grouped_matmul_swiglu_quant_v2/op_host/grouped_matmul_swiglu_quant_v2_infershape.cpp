@@ -51,7 +51,7 @@ std::string ListToString(const Args &...args)
 }
 constexpr int64_t DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE = -1;
 
-static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
+static std::set<std::string> GmmDavidSupportSoc = {"Ascend950", "Ascend350"};
 static const std::unordered_set<ge::DataType> DavidSupportedInputDtypes = {
     ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_FLOAT8_E4M3FN,
     ge::DataType::DT_FLOAT4_E2M1, ge::DataType::DT_FLOAT4_E1M2,
