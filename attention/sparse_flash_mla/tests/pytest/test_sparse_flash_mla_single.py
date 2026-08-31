@@ -13,7 +13,6 @@
 import result_compare_method
 import utils
 import torch_npu
-from sparse_flash_mla_paramset import ENABLED_PARAMS
 import sparse_flash_mla_golden
 import os
 import pytest
@@ -24,6 +23,11 @@ from batch_consistency.pytest_support import (
     consistency_fulfill_percent,
     run_configured_consistency,
 )
+
+if os.environ.get("SMLA_BATCH_CONSISTENCY", "auto") == "on":
+    from batch_consistancy_paramset import ENABLED_PARAMS
+else:
+    from sparse_flash_mla_paramset import ENABLED_PARAMS
 
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
 pt_save_path = os.environ.get("SMLA_PT_SAVE_PATH", "data")

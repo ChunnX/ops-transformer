@@ -12,7 +12,6 @@
 
 import itertools
 import torch
-from quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 import result_compare_method
 import check_valid_param
 import quant_sparse_flash_mla_golden
@@ -24,6 +23,11 @@ import logging
 import os
 import sys
 import torch_npu
+
+if os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto") == "on":
+    from batch_consistancy_paramset import ENABLED_PARAMS
+else:
+    from quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 
 SMLA_PYTEST_PATH = Path(__file__).resolve().parents[3] / "sparse_flash_mla/tests/pytest"
 if str(SMLA_PYTEST_PATH) not in sys.path:
