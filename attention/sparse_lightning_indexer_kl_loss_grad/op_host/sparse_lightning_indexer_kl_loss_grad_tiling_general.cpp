@@ -422,11 +422,10 @@ uint64_t SparseLightningIndexerKLLossGradTilingBase::GetTilingKey() const
         (keyLayout != nullptr && keyLayout[0] == 'T') ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
     bool hasSequsedQ = context_->GetOptionalInputTensor(SEQUSED_QUERY_INPUT_INDEX) != nullptr;
     bool hasSequsedK = context_->GetOptionalInputTensor(SEQUSED_KEY_INPUT_INDEX) != nullptr;
-    return GET_TPL_TILING_KEY(static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize),
-                              static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
-                              static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
-                              static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic),
-                              static_cast<uint8_t>(privateScatter));
+    return GET_TPL_TILING_KEY(
+        static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize), static_cast<uint8_t>(qLayout),
+        static_cast<uint8_t>(kLayout), static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
+        static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic), static_cast<uint8_t>(privateScatter));
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
@@ -440,9 +439,9 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
 
-    int64_t scatterElems =
-        (tilingKeyLayout == LayoutType::LAYOUT_TND) ? accumS2 : static_cast<int64_t>(bSize) * s2Size;
-    int64_t scatterAddOutSize = scatterElems * static_cast<int64_t>(dSizeQueryIndex) * static_cast<int64_t>(sizeof(float));
+    int64_t scatterElems = (tilingKeyLayout == LayoutType::LAYOUT_TND) ? accumS2 : static_cast<int64_t>(bSize) * s2Size;
+    int64_t scatterAddOutSize =
+        scatterElems * static_cast<int64_t>(dSizeQueryIndex) * static_cast<int64_t>(sizeof(float));
 
     int64_t coreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t singleCoreTotalSize =
@@ -455,8 +454,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     if (deterministic) {
         totalS1 = CalcTotalSize();
         const int64_t batchSize = static_cast<int64_t>(bSize);
-        privateScatter =
-            IsPrivateScatter(scatterElems, totalS1, batchSize, static_cast<int64_t>(kSize));
+        privateScatter = IsPrivateScatter(scatterElems, totalS1, batchSize, static_cast<int64_t>(kSize));
         scatterBankNum = privateScatter ? coreNum : static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
     }
 

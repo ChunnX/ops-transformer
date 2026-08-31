@@ -199,8 +199,7 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
             __gm__ MM3_OUT_T *basePtr = (__gm__ MM3_OUT_T *)bmm3ResGm.GetPhyAddr();
             GlobalTensor<MM3_OUT_T> bank0Gm;
             bank0Gm.SetGlobalBuffer(basePtr);
-            DataCopy(copyInUb, bank0Gm[t2Idx * constInfo.dSizeQueryIndex],
-                     t2ProcessSize * constInfo.dSizeQueryIndex);
+            DataCopy(copyInUb, bank0Gm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
             copyInPongUb = scatterAddPongUb[pingPongIdx * (UB_ROW_SIZE * constInfo.dSizeQueryIndex)];
             for (int32_t bank = 1; bank < scatterBankNum; ++bank) {
                 if (bank > 1) {
