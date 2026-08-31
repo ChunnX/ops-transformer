@@ -100,7 +100,7 @@ attention:
     ut_cov_exclude:
       - attention/bsa_select_block_mask
     test:
-      examples: False
+
       ut: False
     options:
       - bsa_select_block_mask
@@ -130,7 +130,7 @@ attention:
     ut_cov_exclude:
       - attention/compressor_grad
     test:
-      examples: False
+
       ut: False
     options:
       - compressor_grad
@@ -145,7 +145,7 @@ attention:
     ut_cov_exclude:
       - attention/fused_causal_conv1d
     test:
-      examples: False
+
       ut: False
     options:
       - fused_causal_conv1d
@@ -160,7 +160,7 @@ attention:
     ut_cov_exclude:
       - attention/indexer_quant_cache
     test:
-      examples: False
+
       ut: False
     options:
       - indexer_quant_cache
@@ -175,7 +175,7 @@ attention:
     ut_cov_exclude:
       - attention/inplace_fused_causal_conv1d
     test:
-      examples: False
+
       ut: False
     options:
       - inplace_fused_causal_conv1d
@@ -190,7 +190,7 @@ attention:
     ut_cov_exclude:
       - attention/kv_compress_epilog
     test:
-      examples: False
+
       ut: False
     options:
       - kv_compress_epilog
@@ -205,7 +205,7 @@ attention:
     ut_cov_exclude:
       - attention/sparse_flash_attention_grad
     test:
-      examples: False
+
       ut: False
     options:
       - sparse_flash_attention_grad
@@ -220,7 +220,7 @@ attention:
     ut_cov_exclude:
       - attention/sparse_flash_mla
     test:
-      examples: False
+
       ut: False
     options:
       - sparse_flash_mla
@@ -235,7 +235,7 @@ attention:
     ut_cov_exclude:
       - attention/stem_oam_prep_paged_kv
     test:
-      examples: False
+
       ut: False
     options:
       - stem_oam_prep_paged_kv
@@ -722,7 +722,7 @@ gmm:
     ut_cov_exclude:
       - gmm/grouped_matmul_activation_quant
     test:
-      examples: False
+
       ut: False
     options:
       - grouped_matmul_activation_quant
@@ -806,7 +806,7 @@ ffn:
     ut_cov_exclude:
       - ffn/ffn_worker_batching
     test:
-      examples: False
+
       ut: False
     options:
       - ffn_worker_batching
@@ -1363,7 +1363,7 @@ posembedding:
     ut_cov_exclude:
       - posembedding/inplace_partial_rotary_mul
     test:
-      examples: False
+
       ut: False
     options:
       - inplace_partial_rotary_mul
@@ -2164,7 +2164,7 @@ mhc:
       - mhc/mhc_pre_sinkhorn/examples
       - mhc/mhc_pre_sinkhorn/tests
     test:
-      examples: False
+      examples: True
       ut: False
 
   mhc_pre_sinkhorn_backward:
@@ -2205,7 +2205,7 @@ mamba:
     ut_cov_exclude:
       - mamba/causal_conv1d
     test:
-      examples: False
+
       ut: False
     options:
       - causal_conv1d
