@@ -947,6 +947,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
     uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_));
     uint32_t buffId = 0;
+    // 启动前为两块L1缓冲各投放一个写许可，后续由C1每消费一片归还一个许可。
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_FREE_0);
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_FREE_1);
+    if (currentNDBlock > ND_BLOCK_SIZE / 2) {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+            CROSS_CORE_WAIT_FLAG_C1_FREE_0 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+            CROSS_CORE_WAIT_FLAG_C1_FREE_1 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
+    }
     // 预执行第一个C0
     ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
 
@@ -1011,20 +1020,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t buffIdx)
 {
     uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
-    uint32_t chunkCount = CeilDiv(currentBSBlock, chunkSize);
-    // 此时预取的下一次C0已经结束，才允许V2覆盖L1，避免两条流水争用同一片L1。
-    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_FREE_0);
-    if (currentNDBlock > ND_BLOCK_SIZE / 2) {
-        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
-            CROSS_CORE_WAIT_FLAG_C1_FREE_0 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
-    }
-    if (chunkCount > 1) {
-        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_FREE_1);
-        if (currentNDBlock > ND_BLOCK_SIZE / 2) {
-            AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
-                CROSS_CORE_WAIT_FLAG_C1_FREE_1 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
-        }
-    }
 
     for (uint32_t chunkIdx = 0, kOffset = 0; kOffset < currentBSBlock; ++chunkIdx, kOffset += chunkSize) {
         uint32_t currentChunkSize = Min(chunkSize, currentBSBlock - kOffset);
@@ -1042,14 +1037,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
         mm1.SetTensorB(xRsL1_[l1BuffId * C1_L1_CHUNK_ELEMENTS], false);
         mm1.Iterate(kOffset != 0);
 
-        // 仅在该缓冲还会复用时归还许可，避免下一轮残留未消费的同步事件。
-        if (chunkIdx + DOUBLE_BUFFER < chunkCount) {
-            uint32_t freeFlag = l1BuffId == 0 ? CROSS_CORE_WAIT_FLAG_C1_FREE_0 : CROSS_CORE_WAIT_FLAG_C1_FREE_1;
-            AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(freeFlag);
-            if (currentNDBlock > ND_BLOCK_SIZE / 2) {
-                AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
-                    freeFlag + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
-            }
+        // 每消费一片立即归还同一缓冲，保证free/ready事件数量在整条流水中严格配对。
+        uint32_t freeFlag = l1BuffId == 0 ? CROSS_CORE_WAIT_FLAG_C1_FREE_0 : CROSS_CORE_WAIT_FLAG_C1_FREE_1;
+        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(freeFlag);
+        if (currentNDBlock > ND_BLOCK_SIZE / 2) {
+            AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+                freeFlag + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
         }
     }
 
