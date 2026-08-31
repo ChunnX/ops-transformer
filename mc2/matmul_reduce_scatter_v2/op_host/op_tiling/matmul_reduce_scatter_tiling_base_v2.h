@@ -98,6 +98,7 @@ protected:
                         const ::TCubeTiling &tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
     ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
+    void BuildWorkspaceLayout();
 
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;

@@ -607,14 +607,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
                                             static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_WORKSPACE), {}};
         offset += matmulWorkspaceSize;
     }
-    // Before adding DFX padding/runtime, the segmented data region must be
-    // byte-for-byte identical to the native workspace allocation.
-    const uint64_t nativeWorkspaceSize =
-        myWorkSpaceSize_ + resultSize * static_cast<uint64_t>(isA2APath_ ? 3U : 1U);
-    OP_TILING_CHECK(offset != nativeWorkspaceSize,
-                    OP_LOGE(opName_, "quant workspace mismatch: segmented=%lu, native=%lu",
-                            offset, nativeWorkspaceSize),
-                    return ge::GRAPH_FAILED);
     const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
     const uint64_t padding = (alignment - (offset - libApiWorkSpaceSize_) % alignment) % alignment;
     if (padding != 0U) {
@@ -714,17 +706,13 @@ void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTi
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
     quantBmmMatmulReducescatterTilingData_->workspaceLayout = workspaceLayout_;
-    quantBmmMatmulReducescatterTilingData_->debugMode |= Mc2Tiling::MMRS_QUANT_TILING_FLAG;
+    quantBmmMatmulReducescatterTilingData_->quantMode = 1;
     quantBmmMatmulReducescatterTilingData_->tilingKey = GetTilingKey();
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
             sizeof(QuantBatchMatmulV3ReduceScatterTilingData), rawTilingDataPtr->GetCapacity());
-    OP_TILING_CHECK(rawTilingDataPtr->GetCapacity() < sizeof(QuantBatchMatmulV3ReduceScatterTilingData),
-                    OP_LOGE(opName_, "tiling capacity[%zu] is smaller than data size[%zu]",
-                            rawTilingDataPtr->GetCapacity(), sizeof(QuantBatchMatmulV3ReduceScatterTilingData)),
-                    return ge::GRAPH_FAILED);
     rawTilingDataPtr->SetDataSize(sizeof(QuantBatchMatmulV3ReduceScatterTilingData));
 
     OP_TILING_CHECK(

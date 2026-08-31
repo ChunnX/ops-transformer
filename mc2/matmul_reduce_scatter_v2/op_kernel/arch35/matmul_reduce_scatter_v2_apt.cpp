@@ -46,8 +46,7 @@ using namespace MatmulReduceScatterV2Impl;
 #define INVOKE_QUANT_BATCHMM_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                                                \
     do {                                                                                                               \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);                                 \
-        if ((tilingData.debugMode & ~Mc2Tiling::MMRS_QUANT_TILING_FLAG) !=                                            \
-            static_cast<uint32_t>(MC2_DEBUG_ONLY_AICPU)) {                                                            \
+        if (tilingData.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                      \
             using mmClass = MatMulASWKernel<DTYPE_X1, DTYPE_X2, float, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND,            \
                                             CubeFormat::ND, CubeFormat::ND, __VA_ARGS__>;                              \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, float, mmClass, false, __VA_ARGS__, TPL_COMM_MODE> op;          \
@@ -59,8 +58,7 @@ using namespace MatmulReduceScatterV2Impl;
 #define INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                                \
     do {                                                                                                               \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);                                 \
-        if ((tilingData.debugMode & ~Mc2Tiling::MMRS_QUANT_TILING_FLAG) !=                                            \
-            static_cast<uint32_t>(MC2_DEBUG_ONLY_AICPU)) {                                                            \
+        if (tilingData.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                      \
             using mmClass = MatMulASWKernel<DTYPE_X1, DTYPE_X2, fp8_e8m0_t, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND,       \
                                             CubeFormat::ND, CubeFormat::ND, __VA_ARGS__>;                              \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, fp8_e8m0_t, mmClass, false, __VA_ARGS__, TPL_COMM_MODE> op;     \
@@ -72,8 +70,7 @@ using namespace MatmulReduceScatterV2Impl;
 #define INVOKE_QUANT_BATCHMM_PERBLOCK_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                                       \
     do {                                                                                                               \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);                                 \
-        if ((tilingData.debugMode & ~Mc2Tiling::MMRS_QUANT_TILING_FLAG) !=                                            \
-            static_cast<uint32_t>(MC2_DEBUG_ONLY_AICPU)) {                                                            \
+        if (tilingData.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                      \
             using mmClass = Mc2QuantBatchMatmulV3::MatMulPerBlockASWNonContiguous<                                     \
                 DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, __VA_ARGS__>; \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, float, mmClass, true, __VA_ARGS__, TPL_COMM_MODE> op;           \

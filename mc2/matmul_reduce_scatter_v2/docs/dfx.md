@@ -68,7 +68,7 @@ host 侧仅在 `IsMxfp8DfxScene()` 为真时调用
 ## 本次导出链路修正
 
 1. MMRS 回调明确包含 common/utils 的 host dump 头文件；入口打印 SoC 和两种 tiling 的实际 sizeof。
-2. 从原有 `debugMode` 的最高位读取量化布局标记，再单独读取 WorkspaceLayoutInfo；DFX 字段追加在原生计算 tiling 之后，不改变 Matmul 字段偏移。
+2. 单独读取 quantMode/WorkspaceLayoutInfo，按实际 sizeof 读取对应 tiling，不再固定读取 2048B。
 3. 完整 tiling 拷贝或落盘失败，不跳过已经独立读取的 workspace 段表。
 4. workspace 第一轮仅导出 RUNTIME_INFO，第二轮才导出矩阵/临时缓冲区；某个段失败继续其他段。
 5. 导出前创建缺少的 dump 目录，包括 deviceId 子目录。
@@ -130,7 +130,7 @@ WS_SEG_MM_WORKSPACE 不是 SDK 枚举，定义来自项目 common/op_kernel/mc2_
 | callback skipped | 查看 SoC 和异常参数，本适配针对 Ascend950 |
 | No exception dump path | 检查 dump 配置、动态库和路径服务 |
 | workspaceGM=0 或 args 越界 | 核对 args_info、参数 ABI、host/kernel 版本，不猜测地址 |
-| Cannot read mode flag / workspace layout | 查看 D2H 返回值、tiling 地址、offsetof/sizeof |
+| Cannot read quantMode / workspace layout | 查看 D2H 返回值、tiling 地址、offsetof/sizeof |
 | wsLayout invalid / No RUNTIME_INFO segment | 检查 GetWorkspaceSize/PostTiling 是否使用本次代码 |
 | Cannot create / Failed to open | 检查完整路径、权限及磁盘状态 |
 | D2H dump failed | 核对 srcAddr=workspaceGM+userOffset，以及故障后设备内存是否可读 |
@@ -145,11 +145,13 @@ WS_SEG_MM_WORKSPACE 不是 SDK 枚举，定义来自项目 common/op_kernel/mc2_
 
 继续使用已有 parse_matmul_reduce_scatter_v2_tiling.py 检查实际导出文件，不新增测试。
 脚本解析已有文件，不参与异常回调或文件生成。
-ops-transformer_dfx 中的脚本已按当前 ABI 同步：args[0] 是隐式 HCCL context，
-workspace/tiling 分别是 args[9]/args[10]，并可识别 MM_WORKSPACE(type13)、
-RUNTIME_INFO(type12) 和无扩展名的段文件。
+ops-transformer_dfx 中的旧脚本可识别 type12 运行记录和无扩展名的段文件，
+但其 args 名称表未计入隐式 HCCL context，会把 workspace/tiling 错标为 args[8]/args[9]；
+也未定义 MM_WORKSPACE(type13) 和 COMM_UNINITIALIZED(255) 的名称。
+这不导致文件缺失。核对地址和新字段时使用 ops-transformer 内已同步 ABI 的版本；
+不改动 ops-transformer_dfx。
 
-在 ops-transformer_dfx 源码根目录执行：
+在 ops-transformer 源码根目录执行：
 
     python mc2/tools/dump_analysis/parse_matmul_reduce_scatter_v2_tiling.py args_info_file --args
     python mc2/tools/dump_analysis/parse_matmul_reduce_scatter_v2_tiling.py tiling_data_file --ws-layout
@@ -173,12 +175,35 @@ x1、x1Scale 是只读输入参数，不是 workspace 中间结果，不进入 W
 | `workspace_segN_type13_` | MXFP8 Matmul workspace，仅实际长度非零时 | Matmul 输出/接收区之后 |
 | `workspace_segN_type12_` | 64KB 运行记录 | 所有数据缓冲区及对齐填充之后 |
 
-非量化和量化 tiling 大小分别为 1400B、1648B；workspaceLayout 偏移分别为 1184、1432。
+非量化和量化 tiling 大小分别保持 1408B、1656B；workspaceLayout 偏移分别为 1200、1448。
 必须同时重新构建安装 host/kernel，不能只替换 kernel。
 
-## Kernel 打印策略
+## Kernel 少量数据打印
 
-MMRS MXFP8 kernel 中不保留 `PRINTF`、`DumpTensor` 或人工异常触发。
-这些调试语句会改变性能和时序，不适合用于精度/性能回归。
-数据核对使用异常回调生成的 `workspace_seg*` 文件与测试脚本的参考结果；
-kernel 侧只写入独立 type12 段中的进度与通信计数。
+不增加打印类或打印函数，只在两个 MXFP8 kernel 的已有同步点直接调用 `PRINTF`：
+
+- 直接 RS：全部 ReduceScatter Wait 完成后，由 rank0/AIC0 打印 MM_RESULT。
+- A2A：通信与 ReduceSum 流水完成后，由 rank0/AIV0 打印 MM_RESULT 和 RECV_BUF。
+- 每个缓冲区固定打印第 0、1 行的第 0～3 列，一行对应一条日志。
+- direct 共 2 条；A2A 共 4 条，不在 tile 循环内重复打印。
+- 读取每一行前刷新对应 cache line，不新增核间同步；ONLY_CUBE 模式不打印。
+
+日志格式如下：
+
+    [MMRS_DFX] workspace_seg1 row=0 cols[0:3]=[v0, v1, v2, v3]
+    [MMRS_DFX] workspace_seg2 row=0 cols[0:3]=[v0, v1, v2, v3]
+
+例如现有 BF16 seg1 的默认点 `[0,0]`，在 `param_seg.py` 所在目录运行：
+
+```bash
+python3 param_seg.py 0/workspace_seg1_type8_MatmulReduceScatterV2.61.19.20260828084601038 --dtype bf16 --rows 1 --cols 12288 --row 0 --col 0
+```
+
+`--rows 1` 仅作前缀预览，完整矩阵仍为 8192×12288。脚本仍读取整个文件，但只解码 rows*cols 个元素。
+若选第 R 行，预览至少指定 `--rows R+1` 的实际数值；`--row R --col C` 再筛选输出。
+Linux 的 `param_seg.py` 需同步 BF16 `<H`（2 字节）修正。
+
+编译时设置 `ASCENDC_DUMP=0` 会关闭这些直接打印，但不会关闭异常 workspace 分段导出。
+性能回归前应关闭打印并重新编译。
+打印有缓冲，不保证设备严重异常时还能输出；没有实机文件对比，不能据此认定数据一致。
+SDK 输出行为参考 [printf 文档](https://www.hiascend.com/document/detail/zh/canncommercial/900/API/ascendcopapi/atlasascendc_api_07_0193.html)。

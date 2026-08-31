@@ -241,14 +241,59 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
 
-    // DFX workspace segmentation is enabled only by the MXFP8 quantized
-    // subclass. Keep the native allocation for FP16/BF16 paths.
-    workspaceLayout_ = {};
-    const uint64_t workspaceSize = libApiWorkSpaceSize_ + mmResultLen_ + (isA2APath_ ? mmResultLen_ : 0U);
-    workspaces[0] = workspaceSize;
+    BuildWorkspaceLayout();
+    workspaces[0] = workspaceLayout_.totalSize;
     OP_LOGD(opName_, "workspaces[0] size %ld.", workspaces[0]);
 
     return ge::GRAPH_SUCCESS;
+}
+
+void MatmulReduceScatterTilingBase::BuildWorkspaceLayout()
+{
+    static_assert(Mc2Tiling::MAX_WORKSPACE_SEGMENTS >= 5U, "MMRS workspace layout capacity is insufficient");
+    workspaceLayout_ = {};
+    uint64_t offset = 0;
+    uint32_t idx = 0;
+
+    // Full-workspace prefix managed by the framework. Kernel workspaceGM already skips this segment.
+    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    offset += libApiWorkSpaceSize_;
+
+    // Direct RS: gmToFloat_ = workspaceGM. A2A: sendBuf_ = workspaceGM.
+    workspaceLayout_.segments[idx++] = {offset, mmResultLen_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
+    offset += mmResultLen_;
+
+    if (isA2APath_) {
+        // A2A only: recvBuf_ = sendBuf_ + cfg.cToFloatLen.
+        workspaceLayout_.segments[idx++] = {offset, mmResultLen_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
+        offset += mmResultLen_;
+    }
+
+    // Keep each RuntimeInfoPerCore slot aligned relative to kernel workspaceGM.
+    const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - (offset - libApiWorkSpaceSize_) % alignment) % alignment;
+    if (padding != 0U) {
+        workspaceLayout_.segments[idx++] = {offset, padding,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
+        offset += padding;
+    }
+    // Runtime Info 段 (64KB)
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+
+    for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
+        const auto &seg = workspaceLayout_.segments[i];
+        const uint64_t userOffset = seg.type == Mc2Tiling::WS_SEG_LIB_API ? 0U : seg.offset - libApiWorkSpaceSize_;
+        OP_LOGI(opName_, "MMRS workspace seg[%u]: type=%u, offset=%lu, userOffset=%lu, size=%lu",
+                i, seg.type, seg.offset, userOffset, seg.size);
+    }
 }
 
 uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const

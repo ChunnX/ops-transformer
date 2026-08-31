@@ -193,14 +193,10 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
     matmulReduceScatterV2TilingData_->workspaceLayout = workspaceLayout_;
-    matmulReduceScatterV2TilingData_->debugMode &= ~Mc2Tiling::MMRS_QUANT_TILING_FLAG;
+    matmulReduceScatterV2TilingData_->quantMode = 0;
     matmulReduceScatterV2TilingData_->tilingKey = GetTilingKey();
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
             sizeof(MatmulReduceScatterV2TilingData), rawTilingDataPtr->GetCapacity());
-    OP_TILING_CHECK(rawTilingDataPtr->GetCapacity() < sizeof(MatmulReduceScatterV2TilingData),
-                    OP_LOGE(opName_, "tiling capacity[%zu] is smaller than data size[%zu]",
-                            rawTilingDataPtr->GetCapacity(), sizeof(MatmulReduceScatterV2TilingData)),
-                    return ge::GRAPH_FAILED);
     rawTilingDataPtr->SetDataSize(sizeof(MatmulReduceScatterV2TilingData));
 
     OP_TILING_CHECK(sizeof(MatmulReduceScatterV2TilingData) % sizeof(uint64_t) != 0,

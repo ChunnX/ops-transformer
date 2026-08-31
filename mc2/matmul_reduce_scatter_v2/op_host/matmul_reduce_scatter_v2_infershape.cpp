@@ -43,18 +43,13 @@ static ge::graphStatus InferShapeMatmulReduceScatterV2(gert::InferShapeContext *
 static ge::graphStatus InferDataTypeMatmulReduceScatterV2(gert::InferDataTypeContext *context)
 {
     // 如果是bf16/fp16 输入和输出保持一致，如果是fp8 则使用y_dtype
-    const auto x1Dtype = context->GetInputDataType(0);
-    ge::DataType outputDtype = ge::DataType::DT_UNDEFINED;
-    if ((x1Dtype == ge::DataType::DT_FLOAT16) || (x1Dtype == ge::DataType::DT_BF16)) {
-        outputDtype = x1Dtype;
+    auto d_type = ge::DataType::DT_FLOAT;
+    if ((d_type == ge::DataType::DT_FLOAT16) || (d_type == ge::DataType::DT_BF16)) {
+        d_type = context->GetInputDataType(0);
     } else {
-        auto attrs = context->GetAttrs();
-        OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-        const int64_t *yDtype = attrs->GetAttrPointer<int64_t>(Y_DTYPE);
-        OPS_CHECK_NULL_WITH_CONTEXT(context, yDtype);
-        outputDtype = static_cast<ge::DataType>(*yDtype);
+        d_type = static_cast<ge::DataType>(*context->GetAttrs()->GetAttrPointer<int64_t>(Y_DTYPE));
     }
-    context->SetOutputDataType(0, outputDtype);
+    context->SetOutputDataType(0, d_type);
     return GRAPH_SUCCESS;
 }
 

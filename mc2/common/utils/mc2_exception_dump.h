@@ -956,8 +956,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                               uint32_t wsLayoutOffsetNonQuant = 0U,
                               uint32_t wsLayoutOffsetQuant = 0U,
                               uint32_t tilingSizeNonQuant = 2048U,
-                              uint32_t tilingSizeQuant = 2048U,
-                              uint32_t quantModeMask = std::numeric_limits<uint32_t>::max())
+                              uint32_t tilingSizeQuant = 2048U)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -1042,12 +1041,12 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                     quantModeOffset, ret);
             return;
         }
-        if ((quantMode & quantModeMask) != 0U) {
+        if (quantMode != 0) {
             wsLayoutOffset = wsLayoutOffsetQuant;
             tilingDumpSize = tilingSizeQuant;
         }
-        OP_LOGE(OP_NAME, "Quant mode detect: value=0x%x, mask=0x%x, wsLayoutOffset=%u, tilingSize=%u.",
-                quantMode, quantModeMask, wsLayoutOffset, tilingDumpSize);
+        OP_LOGE(OP_NAME, "Quant mode detect: quantMode=%u, wsLayoutOffset=%u, tilingSize=%u.",
+                quantMode, wsLayoutOffset, tilingDumpSize);
     }
 
     // Read the segment table independently. A failed full tiling copy/file must not suppress workspace.

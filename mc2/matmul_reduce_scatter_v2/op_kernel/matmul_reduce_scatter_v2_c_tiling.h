@@ -25,10 +25,6 @@ namespace Mc2Tiling {
 
 constexpr uint32_t MAX_EXPERT_SIZE = 256U; // 最大通信域专家的数量
 constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
-// Use a flag in the existing debugMode word to distinguish the quant tiling
-// layout in exception callbacks. Keeping the original compute fields in place
-// avoids shifting the host/kernel ABI used by Matmul.
-constexpr uint32_t MMRS_QUANT_TILING_FLAG = 1U << 31;
 
 struct MatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
@@ -36,10 +32,11 @@ struct MatmulReduceScatterV2TilingData {
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
+    uint32_t quantMode;          // 0=非量化, 1=量化
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
-    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
     uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct QuantBatchMatmulV3ReduceScatterTilingData {
@@ -48,10 +45,11 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
+    uint32_t quantMode;          // 0=非量化, 1=量化
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
-    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
     uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 } // namespace Mc2Tiling
 #endif
