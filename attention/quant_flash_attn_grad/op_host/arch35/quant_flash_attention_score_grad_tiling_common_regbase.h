@@ -359,6 +359,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     bool isS1S2Same = false;
     bool coreDivide = false;
     int64_t deterMaxRound = 0;
+    int64_t metadataLen = 4096;
 
     bool isBn2 = false;
     bool hasSink = false;

@@ -696,6 +696,10 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
 
     fBaseParams.scaleValue =
         *(context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::SCALE_VALUE)));
+    auto metadataShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::METADATA));
+    if (metadataShape != nullptr && metadataShape->GetStorageShape().GetDimNum() == ATTEN_MASK_DIM_LENGTH_2) {
+        fBaseParams.metadataLen = metadataShape->GetStorageShape().GetDim(1);
+    }
     fBaseParams.keepProb = 1;
     fBaseParams.dropoutIsDivisibleBy8 = 1.0;
     auto hasSequsedQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_Q));
@@ -780,10 +784,10 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
                                   ", " + std::to_string(dyShapeDim) + ", " + std::to_string(keyShapeDim) +
                                   ", " + std::to_string(valueShapeDim) + "}";
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                                    "query, keyIn, value, dy, attentionIn",
-                                                    dimMsg.c_str(),
-                                                    "The shape dim of query, keyIn, value, dy, attentionIn "
-                                                    "must be 4");
+                                                     "query, keyIn, value, dy, attentionIn",
+                                                     dimMsg.c_str(),
+                                                     "The shape dim of query, keyIn, value, dy, attentionIn "
+                                                     "must be 4");
             return ge::GRAPH_FAILED;
         }
         for (uint32_t dimIdx = 0; dimIdx < queryShapeDim; dimIdx++) {
