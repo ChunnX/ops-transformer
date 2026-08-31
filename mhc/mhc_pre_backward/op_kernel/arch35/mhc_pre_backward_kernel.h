@@ -79,8 +79,6 @@ public:
     __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                        uint32_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
-    __aicore__ inline void PrefetchV2ChunkX(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
-                                           uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
                                                           uint32_t currentChunkSize, uint32_t buffId,
                                                           LocalTensor<P> &sumBuf);
@@ -1350,9 +1348,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_
     vecInQueue0_.EnQue(gradHInInBuf_);
     vecInQueue0_.DeQue<T>(gradHInInBuf_);
 
-    // hIn输入已就绪，再用空闲q1预取x，与下面的hIn向量计算重叠。
-    PrefetchV2ChunkX(offsetND, copySizeND, bsChunkStart, currentChunkSize);
-
     __ubuf__ T *gradHInInBufAddr = (__ubuf__ T *)gradHInInBuf_.GetPhyAddr();
     __ubuf__ P *hPreUbAddr = (__ubuf__ P *)hPreUb_.GetPhyAddr();
     __ubuf__ P *xGradVec3BufAddr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
@@ -1361,10 +1356,12 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_
     vecInQueue0_.FreeTensor(gradHInInBuf_);
 }
 
-// 提前搬入本chunk的x，消费点仍在原来的xRs计算入口。
+// 子函数3: 加载x和gamma，计算xRs
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkX(uint32_t offsetND, uint32_t copySizeND,
-                                                                   uint32_t bsChunkStart, uint32_t currentChunkSize)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
+                                                                               uint32_t bsStart, uint32_t bsChunkStart,
+                                                                               uint32_t currentChunkSize,
+                                                                               uint32_t buffId)
 {
     DataCopyExtParams xCopyParams;
     DataCopyPadExtParams<T> xCopyPadParams;
@@ -1377,15 +1374,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkX(uint32_t off
     // 先提升为64位再乘，避免大T乘ND超过2^32个元素时地址回绕。
     DataCopyPad(bf16InputBuf_, xGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], xCopyParams, xCopyPadParams);
     vecInQueue1_.EnQue(bf16InputBuf_);
-}
-
-// 子函数3: 消费预取的x和gamma，计算xRs
-template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
-                                                                               uint32_t bsStart, uint32_t bsChunkStart,
-                                                                               uint32_t currentChunkSize,
-                                                                               uint32_t buffId)
-{
     bf16InputBuf_ = vecInQueue1_.DeQue<T>();
 
     // 计算xRs和gamma
