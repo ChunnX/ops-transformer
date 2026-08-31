@@ -96,7 +96,7 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
                                                                     c10::optional<torch::Tensor>>(
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, groupList, perTokenScale, tilingData,
         ascendcPlatform->GetCoreNumAic(), ubSizePlatFrom);
-    uint32_t blockDim = tilingData.gmmBaseParams.get_coreNum();
+    uint32_t blockDim = 24; tilingData.gmmBaseParams.coreNum = 24;
     auto x_ptr = get_first_tensor_address<at::TensorList>(matchedCombo.x, x, false);
     auto weight_ptr = get_first_tensor_address<at::TensorList>(matchedCombo.weight, weight, false);
     auto y_ptr = get_first_tensor_address<at::TensorList>(matchedCombo.output, y, false);
@@ -117,11 +117,11 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
         auto ret = aclrtMalloc(&workspace_ptr, workspaceSize, ACL_MEM_MALLOC_NORMAL_ONLY);
         TORCH_CHECK(ret == ACL_SUCCESS, "allocate workspace failed. ERROR: %d\n", ret);
     }
-    // 持久 cycle buffer 懒初始化（一次分配固定地址，capture 时固化进 kernel 参数）
-    if (!g_gmm_cycle_tensor.defined()) {
-        auto cycle_options = torch::TensorOptions().dtype(torch::kInt64).device(x[0].device());
-        g_gmm_cycle_tensor = torch::zeros({64 * 3}, cycle_options);  // 最多 64 blocks × 3 slots (T0/T1/T2)
-    }
+    // 持久 cycle buffer 懒初始化必须已在 RunOpApi 外部完成:
+    // torch::zeros 走 NPU dispatch 会再次进入 OpCommand::RunOpApiV2,
+    // 其互斥锁不可重入, 在 acl_thread 内调用会死锁 (A3/CANN 8.5.T107 实测)。
+    // 初始化已上移至 grouped_matmul_npu 构造 acl_call 之前 (64 blocks × 3 slots: T0/T1/T2)。
+    TORCH_CHECK(g_gmm_cycle_tensor.defined(), "gmm cycle buffer not initialized");
     ++g_gmm_cycle_launch_count;
     auto cycle_ptr = (GM_ADDR)g_gmm_cycle_tensor.data_ptr();
     groupedmatmul_kernel<<<blockDim, nullptr, stream>>>(
@@ -204,6 +204,14 @@ torch::Tensor grouped_matmul_npu(
     );
 
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
+
+    // 持久 cycle buffer 懒初始化（一次分配固定地址，capture 时固化进 kernel 参数）
+    // 必须在 RunOpApi/acl_call 外部执行: torch::zeros 走 NPU dispatch 会再次进入
+    // OpCommand::RunOpApiV2, 其互斥锁不可重入, 在 acl_thread 内调用会死锁
+    if (!g_gmm_cycle_tensor.defined() || g_gmm_cycle_tensor.device() != x[0].device()) {
+        auto cycle_options = torch::TensorOptions().dtype(torch::kInt64).device(x[0].device());
+        g_gmm_cycle_tensor = torch::zeros({64 * 3}, cycle_options);  // 最多 64 blocks × 3 slots (T0/T1/T2)
+    }
 
     // 实体化 ArrayRef 参数, 避免 acl_thread 异步执行时悬垂引用:
     // pybind 传入的 TensorList/IntArrayRef 底层指向临时数组, 本函数返回后即析构,
