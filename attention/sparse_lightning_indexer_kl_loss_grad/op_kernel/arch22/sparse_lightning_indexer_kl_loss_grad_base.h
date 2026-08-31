@@ -48,7 +48,7 @@ public:
 
     static constexpr bool hasRope = SLIT::hasRope;
     static constexpr bool deterministic = SLIT::deterministic;
-    static constexpr bool privateDkScatter = SLIT::privateDkScatter;
+    static constexpr bool privateScatter = SLIT::privateScatter;
     static constexpr bool hasSequsedQ = SLIT::hasSequsedQ;
     static constexpr bool hasSequsedK = SLIT::hasSequsedK;
     static constexpr uint32_t topKSize = static_cast<uint32_t>(SLIT::topKRange);
@@ -154,7 +154,7 @@ private:
     GlobalTensor<T> scatterAddRes;
     using scatterAddGmType = typename std::conditional<deterministic, GlobalTensor<T>, int8_t>::type;
     scatterAddGmType scatterAddResBanks[SLI_DETER_SCATTER_BANK_NUM];
-    using privateScatterGmType = typename std::conditional<privateDkScatter, GlobalTensor<T>, int8_t>::type;
+    using privateScatterGmType = typename std::conditional<privateScatter, GlobalTensor<T>, int8_t>::type;
     privateScatterGmType scatterAddBase;
     GlobalTensor<MM3_OUT_T> bmm3Res;
     GlobalTensor<T> reluGm;
@@ -338,7 +338,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
     bmm3Res.SetGlobalBuffer((__gm__ MM3_OUT_T *)(workspace + totalOffset));
     totalOffset += bmm3Offset * GetBlockNum() * 2;
 
-    if constexpr (deterministic && privateDkScatter) {
+    if constexpr (deterministic && privateScatter) {
         __gm__ uint8_t *scatterBasePtr = workspace + totalOffset;
         int32_t scatterBankNum = static_cast<int32_t>(GetBlockNum());
         if (scatterBankNum <= 0) {
@@ -394,7 +394,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
             AscendC::InitOutput(softmaxOutGm[t2StartQ * constInfo.n2Size * topKSize],
                                 constInfo.n2Size * topKSize * (t2EndQ - t2StartQ), static_cast<T>(0));
         }
-        if constexpr (deterministic && privateDkScatter) {
+        if constexpr (deterministic && privateScatter) {
             int32_t scatterBankNum = static_cast<int32_t>(GetBlockNum());
             if (scatterBankNum <= 0) {
                 scatterBankNum = 1;
@@ -1002,8 +1002,8 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
             if ASCEND_IS_AIV {
                 runInfoNeg2.taskId = taskId - 2;
                 runInfoNeg2.taskIdMod2 = runInfoNeg2.taskId & 1;
-                if constexpr (privateDkScatter) {
-                    vectorService.ProcessPrivateDkVector2(runInfoNeg2);
+                if constexpr (privateScatter) {
+                    vectorService.ProcessPrivateScatterVector2(runInfoNeg2);
                 } else {
                     vectorService.ProcessDeterVector2(runInfoNeg2);
                 }
@@ -1025,8 +1025,8 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
             SLIKLLossGradRunInfo runInfo;
             runInfo.taskId = taskId - extraLoopTimes;
             runInfo.taskIdMod2 = runInfo.taskId & 1;
-            if constexpr (privateDkScatter) {
-                vectorService.ProcessPrivateDkVector2(runInfo);
+            if constexpr (privateScatter) {
+                vectorService.ProcessPrivateScatterVector2(runInfo);
             } else {
                 vectorService.ProcessDeterVector2(runInfo);
             }
@@ -1041,7 +1041,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::DeterProcess(
 
     if ASCEND_IS_AIV {
         vector2Service.InitParams(constInfo, tilingData);
-        if constexpr (privateDkScatter) {
+        if constexpr (privateScatter) {
             vector2Service.InitVector2GM(scatterAddBase, topKIndexGm, dKeyIndexGm, actualSeqLengthsQueryGm,
                                          actualSeqLengthsKeyGm, scatterAddResBanks);
         } else {

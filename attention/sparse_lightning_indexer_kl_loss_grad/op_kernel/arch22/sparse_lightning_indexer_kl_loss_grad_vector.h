@@ -53,7 +53,7 @@ public:
     static constexpr bool hasSequsedK = SLIT::hasSequsedK;
     static constexpr UBAllocPolicy<isTopkLess2k> ubAllocPolicy;
     static constexpr bool deterministic = SLIT::deterministic;
-    static constexpr bool privateDkScatter = SLIT::privateDkScatter;
+    static constexpr bool privateScatter = SLIT::privateScatter;
 
     using scatterAddGmType = typename std::conditional<deterministic, GlobalTensor<T>, int8_t>::type;
 
@@ -91,7 +91,7 @@ public:
                                          GlobalTensor<T> &scatterAddRes,
                                          scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM]);
     __aicore__ inline void ProcessDeterVector2(SLIKLLossGradRunInfo &runInfo);
-    __aicore__ inline void ProcessPrivateDkVector2(SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline void ProcessPrivateScatterVector2(SLIKLLossGradRunInfo &runInfo);
     __aicore__ inline void SetCachedValidTotalSize(int64_t validTotalSize);
 
 private:
@@ -1342,7 +1342,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessPrivateDkVector2(SLIKLLossGradRunInfo &runInfo)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessPrivateScatterVector2(SLIKLLossGradRunInfo &runInfo)
 {
     CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C2_TO_V2_SA_FLAG[runInfo.taskIdMod2]);
     if (!runInfo.isValid) {

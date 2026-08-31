@@ -243,7 +243,7 @@ protected:
         cmpRatio = 0;
         hasSoftmaxInput = 0;
         deterministic = false;
-        privateDkScatter = false;
+        privateScatter = false;
 
         opName = nullptr;
         inputLayout = nullptr;
@@ -313,7 +313,7 @@ protected:
 
     platform_ascendc::SocVersion socVersion;
     bool deterministic;
-    bool privateDkScatter = false;
+    bool privateScatter = false;
     bool hasRope = false;
 
     const char *opName;

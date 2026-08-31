@@ -43,7 +43,7 @@ public:
     static constexpr SLILayout LAYOUT_T = SLIT::inputQLayout;
     static constexpr SLILayout KV_LAYOUT_T = SLIT::inputKLayout;
     static constexpr bool deterministic = SLIT::deterministic;
-    static constexpr bool privateDkScatter = SLIT::privateDkScatter;
+    static constexpr bool privateScatter = SLIT::privateScatter;
 
     using scatterAddGmType = typename std::conditional<deterministic, GlobalTensor<MM3_OUT_T>, int8_t>::type;
 
@@ -190,7 +190,7 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SCATTER_BUF_FLAG + pingPongIdx);
         copyInUb = mm3ResUb[pingPongIdx * (UB_ROW_SIZE * constInfo.dSizeQueryIndex)];
-        if constexpr (privateDkScatter) {
+        if constexpr (privateScatter) {
             int32_t scatterBankNum = static_cast<int32_t>(GetBlockNum());
             if (scatterBankNum <= 0) {
                 scatterBankNum = 1;
