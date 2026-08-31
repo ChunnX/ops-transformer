@@ -167,38 +167,39 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            // 静态绝对偏移布局：VECIN 0..95K 顺序排布（6K×5 + 16K×4 + 1K，表 1 注 4）；
-            // FD 窗口内与 bmm2 CV 区 [0..128K] 时间复用，安全依赖 c2v2 反向旗标门控 + FD 前置 SyncAll()。
-            // 不得镜像 FA 的 mm1/mm2 共享布局（其 BASE=0 时仍达 112K，超出 MLA 95K 预算）。
+            // 对齐 flash_attn_block_vec_flashdecode.h:175-228：跳过 bmm1/bmm2 CV 区后
+            // 放置 FD 业务区，空间上避免跨 section 时 AIC 的 FA 写 mm2Res 与 FD 使用冲突。
+            constexpr uint32_t BASE = mBaseSize * (dVBaseSize + s2BaseSize) * sizeof(T);
             constexpr uint32_t STRIDE_6K = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144
-            fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, 0U, STRIDE_6K).template ReinterpretCast<T>();
-            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            fdMaxBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, 2U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            fdMaxBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, 3U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            fdLseExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, 4U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            // InQue, DB：fdMm2ResBuf1_/fdMm2ResBuf2_
-            constexpr uint32_t LSE_SUM_MAX_BYTES = 5U * STRIDE_6K; // 30K
+            fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, BASE, STRIDE_6K).template ReinterpretCast<T>();
+            fdSumBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, BASE + STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
+            fdMaxBuf1_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, BASE + 2U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
+            fdMaxBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, BASE + 3U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
+            fdLseExpBuf_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, BASE + 4U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
+            constexpr uint32_t LSE_SUM_MAX_BYTES = BASE + 5U * STRIDE_6K;
             fdMm2ResBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES, BUFFER_SIZE_BYTE_16K)
                                 .template ReinterpretCast<T>();
-            fdMm2ResBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + BUFFER_SIZE_BYTE_16K,
-                                                 BUFFER_SIZE_BYTE_16K)
-                                .template ReinterpretCast<T>();
-            // TmpBuf
+            fdMm2ResBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+                    .template ReinterpretCast<T>();
             fdReduceBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + 2U * BUFFER_SIZE_BYTE_16K,
                                                 BUFFER_SIZE_BYTE_16K)
                                .template ReinterpretCast<T>();
-            // OutQue, SYNC_FDOUTPUT_BUF_FLAG
+            // fdOutputBuf_ 只需 8K：dealRowCount(8) × dSizeV_Align_(512) × sizeof(OUTPUT_T=2B)
             fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + 3U * BUFFER_SIZE_BYTE_16K,
-                                                BUFFER_SIZE_BYTE_16K)
+                                                BUFFER_SIZE_BYTE_8K)
                                .template ReinterpretCast<OUTPUT_T>();
-
-            constexpr uint32_t LSE_SUM_MAX_MM2_BYTES = LSE_SUM_MAX_BYTES + 4U * BUFFER_SIZE_BYTE_16K; // 94K
+            constexpr uint32_t LSE_SUM_MAX_MM2_BYTES =
+                LSE_SUM_MAX_BYTES + 3U * BUFFER_SIZE_BYTE_16K + BUFFER_SIZE_BYTE_8K;
             fdLseMaxUbBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES, BUFFER_SIZE_BYTE_256B)
                                   .template ReinterpretCast<T>();
             fdLseMaxUbBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES + BUFFER_SIZE_BYTE_256B,
                                                    BUFFER_SIZE_BYTE_256B)
                                   .template ReinterpretCast<T>();
-            // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
             fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES + 2U * BUFFER_SIZE_BYTE_256B,
                                                BUFFER_SIZE_BYTE_256B)
                               .template ReinterpretCast<T>();
@@ -211,7 +212,8 @@ protected:
     {
         outGmTensor.gmTensor.SetGlobalBuffer((__gm__ OUTPUT_T *)gm);
         if constexpr (GmLayoutParams<OUT_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
-            outGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, seqLensTool_.qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim,
+                                              seqLensTool_.qActSeqLensParser);
         } else {
             outGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, seqLensTool_.qActSeqLensParser);
         }

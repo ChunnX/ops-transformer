@@ -352,7 +352,6 @@ public:
     __aicore__ inline void IterateBmm1(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         uint32_t mm1ResUbBufId = runInfo.loop % UB_MM1_RES_BUFCNT;
-        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
         uint32_t c1v1CrossCoreSyncIdx = CROSSCORE_BMM1_0 + mm1ResUbBufId;
         LocalTensor<MM_T> mm1ResUbTensor =
             ubMm1ResBuffers_[mm1ResUbBufId * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
@@ -361,6 +360,15 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
 
+        IterateBmm1L0Split(mm1ResUbTensor, runInfo);
+
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+    }
+
+    __aicore__ inline void IterateBmm1L0Split(LocalTensor<MM_T> &mm1ResUbTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_.template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
@@ -396,9 +404,6 @@ public:
         if (unlikely(runInfo.isLastS2Loop)) {
             Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0); // S1G 内最后一个 S2 循环后释放 Q
         }
-
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
     }
 
     template <typename DST_TENSOR_T>
@@ -431,6 +436,16 @@ public:
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+
+        IterateBmm2L0Split(mm2ResUbTensor, runInfo);
+
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+    }
+
+    __aicore__ inline void IterateBmm2L0Split(LocalTensor<MM_T> &mm2ResUbTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
@@ -453,9 +468,6 @@ public:
         }
         // 本槽 MTE1 消费（MatmulN）完成 → 释放槽，下一轮 bmm1 可覆写（= 旧 SetFlag<MTE1_MTE2>）
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvpL1BufId);
-
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
     }
 }; // FlashMlaWithKvcacheNoQuantMlaBlockCube
 
