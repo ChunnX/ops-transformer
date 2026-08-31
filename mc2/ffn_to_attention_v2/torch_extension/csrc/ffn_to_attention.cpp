@@ -20,11 +20,11 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 
 /**
- * @brief Wrapper for ffn_to_attention_v2. The op has no host-visible output tensors;
+ * @brief Wrapper for ffn_to_attention. The op has no host-visible output tensors;
  *        data is sent to peer ranks via the HCCL window. We therefore return an empty
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
-void NpuFFNToAttentionV2(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds,
+void NpuFFNToAttention(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds,
                          const at::Tensor &microBatchIds, const at::Tensor &tokenIds, const at::Tensor &expertOffsets,
                          const at::Tensor &actualTokenNum, const c10::optional<at::Tensor> &attnRankTable,
                          std::string group, int64_t worldSize, const std::vector<int64_t> &tokenInfoTableShape,
@@ -73,7 +73,7 @@ int64_t CeilAlign(int64_t val, int64_t align)
 }
 } // namespace
 
-int64_t GetFFNToAttentionV2CclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
+int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
                                          const std::vector<int64_t> &tokenDataShape)
 {
     TORCH_CHECK(tokenInfoTableShape.size() == 3, "token_info_table_shape should have 3 elements, but got ",
@@ -94,8 +94,8 @@ int64_t GetFFNToAttentionV2CclBufferSize(const std::vector<int64_t> &tokenInfoTa
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_ffn_to_attention_v2", &NpuFFNToAttentionV2, "npu_ffn_to_attention_v2");
-    m.def("get_ffn_to_attention_v2_ccl_buffer_size", &GetFFNToAttentionV2CclBufferSize,
-          "get_ffn_to_attention_v2_ccl_buffer_size");
+    m.def("npu_ffn_to_attention", &NpuFFNToAttention, "npu_ffn_to_attention");
+    m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionCclBufferSize,
+          "get_ffn_to_attention_ccl_buffer_size");
 }
 } // namespace op_api
