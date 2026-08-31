@@ -36,12 +36,13 @@ import ctypes; lib=ctypes.CDLL('libascendcl.so'); lib.aclInit(None); lib.aclrtSe
 fn=lib.aclrtGetSocName; fn.restype=ctypes.c_char_p; print(fn().decode())
 " 2>/dev/null)
     fi
+    # A3 = Ascend 910C = 910_93 (dav-2201); A2 = 910B 系列
     case "$CHIP_NAME" in
         Ascend950*)    SOC_VERSION="ascend950" ;;
+        Ascend910C* | Ascend910_93*) SOC_VERSION="ascend910_93" ;;
+        Ascend910B*)   SOC_VERSION="ascend910b" ;;
         Ascend910)     SOC_VERSION="ascend910_93" ;;
-        Ascend910_93*) SOC_VERSION="ascend910_93" ;;
-        Ascend910B1)   SOC_VERSION="ascend910b" ;;
-        *) echo "[ERROR] 无法识别芯片: $CHIP_NAME，请手动设置 NPU_SOC_VERSION (如 ascend950)"; exit 1 ;;
+        *) echo "[ERROR] 无法识别芯片: $CHIP_NAME，请手动设置 NPU_SOC_VERSION (如 ascend950/ascend910_93)"; exit 1 ;;
     esac
 fi
 
@@ -99,15 +100,22 @@ if [ -f "$INI_FILE" ]; then
     CUBE_CORES=$(grep -i "cube_core_cnt" "$INI_FILE" 2>/dev/null | cut -d= -f2 | tr -d ' ')
     VECTOR_CORES=$(grep -i "vector_core_cnt" "$INI_FILE" 2>/dev/null | cut -d= -f2 | tr -d ' ')
 fi
-# 按平台给默认值: A3(aiv48/aic24), A5(aiv56/aic28)
-if [ "$SOC_VERSION" = "ascend910_93" ]; then
-    CUBE_CORES="${CUBE_CORES:-24}"
-    VECTOR_CORES="${VECTOR_CORES:-48}"
-else
+# 按平台给默认值: A5(aiv56/aic28), A3/910C 与 A2/910B(aiv48/aic24)
+if [ "$SOC_VERSION" = "ascend950" ]; then
     CUBE_CORES="${CUBE_CORES:-28}"
     VECTOR_CORES="${VECTOR_CORES:-56}"
+else
+    CUBE_CORES="${CUBE_CORES:-24}"
+    VECTOR_CORES="${VECTOR_CORES:-48}"
 fi
-echo "[CHECK] 设备: ${SOC_NAME:-?}  Cube 核数: ${CUBE_CORES}  Vector 核数: ${VECTOR_CORES}"
+# SYS_CNT 频率 (cycle→us 换算, scan_replay.py 读取): A5=283MHz; A3/910C、A2/910B 按 200MHz (上板可标定)
+if [ "$SOC_VERSION" = "ascend950" ]; then
+    SYS_CNT_FREQ_MHZ=283.0
+else
+    SYS_CNT_FREQ_MHZ=200.0
+fi
+export SYS_CNT_FREQ_MHZ
+echo "[CHECK] 设备: ${SOC_NAME:-?}  Cube 核数: ${CUBE_CORES}  Vector 核数: ${VECTOR_CORES}  SYS_CNT=${SYS_CNT_FREQ_MHZ}MHz"
 echo ""
 
 mkdir -p "$OUTPUT_DIR"
@@ -227,9 +235,10 @@ output_dir = sys.argv[1]
 soc_version = sys.argv[2]
 parse_stars_py = sys.argv[3]
 if soc_version == "ascend950":
-    add_cores, gmm_cores, freq = 56, 28, 283.0
+    add_cores, gmm_cores = 56, 28
 else:
-    add_cores, gmm_cores, freq = 48, 24, 200.0  # A3 SYS_CNT 频率按实际标定
+    add_cores, gmm_cores = 48, 24  # A3/910C 与 A2/910B 同为 48 AIV / 24 AIC
+freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283"))  # 与采集侧同源: A5=283, A3/910C=200
 
 def parse_stars_dispatches(prof_dir):
     """解析 PROF 目录下的 stars_soc.data, 返回排序的 dispatch sys_cnt 列表"""

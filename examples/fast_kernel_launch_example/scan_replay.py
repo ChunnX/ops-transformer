@@ -31,6 +31,8 @@ os.environ["TASK_QUEUE_ENABLE"] = "1"
 
 op_type = os.environ.get("OP_TYPE", "add")
 op_iters = int(os.environ.get("OP_ITERS", "101"))
+# SYS_CNT 频率 (cycle→us 换算): A5=283MHz, A3/910C 与 A2/910B=200MHz, 由 run_head_overhead.sh 按芯片注入
+sys_cnt_freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283"))
 
 # === 数据准备 + run 函数 ===
 if op_type == "add":
@@ -120,7 +122,7 @@ try:
     if n > 0:
         prologues = [bb - a for _, (a, bb) in valid]
         print(f"last replay T1-T0: mean={statistics.mean(prologues):.0f} cyc "
-              f"({statistics.mean(prologues)/283.0:.3f} us) min={min(prologues)} max={max(prologues)} n={n}")
+              f"({statistics.mean(prologues)/sys_cnt_freq:.3f} us) min={min(prologues)} max={max(prologues)} n={n}")
     else:
         print("[WARN] cycle buffer 为空（kernel 未执行或打点未生效）")
 except Exception as e:
