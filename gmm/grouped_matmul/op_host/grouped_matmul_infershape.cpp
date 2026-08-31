@@ -657,6 +657,95 @@ static ge::graphStatus CheckGroupedMatmulQuant(gert::InferShapeContext *context,
                 return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
+
+static ge::graphStatus CheckGroupedMatmulA4W4(gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                                              const GMMParamsInfo &paramsInfo)
+{
+    constexpr size_t A4W4_SCALE_PER_CHANNEL_DIM = 2UL;
+    constexpr size_t A4W4_SCALE_PER_GROUP_DIM = 3UL;
+    constexpr int64_t A4W4_N_ALIGN = 8L;
+    constexpr int64_t A4W4_GROUP_SIZE_ALIGN = 2L;
+
+    OP_CHECK_IF(
+        gmmAttrs.groupType != GMM_SPLIT_M,
+        OP_LOGE(context->GetNodeName(), "A4W4 only supports groupType 0 (split-M), but got %ld.", gmmAttrs.groupType),
+        return GRAPH_FAILED);
+    OP_CHECK_IF(paramsInfo.numX != 1UL || paramsInfo.numWeight != 1UL || paramsInfo.numY != 1UL,
+                OP_LOGE(context->GetNodeName(),
+                        "A4W4 only supports single x, single weight and single y, but got x/weight/y sizes "
+                        "%zu/%zu/%zu.",
+                        paramsInfo.numX, paramsInfo.numWeight, paramsInfo.numY),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(gmmAttrs.transposeX, OP_LOGE(context->GetNodeName(), "A4W4 does not support transposed x."),
+                return GRAPH_FAILED);
+
+    const auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
+    OP_CHECK_IF(
+        *groupListTypePtr != 0L && *groupListTypePtr != 1L && *groupListTypePtr != GROUP_LIST_SPARSE,
+        OP_LOGE(context->GetNodeName(), "A4W4 only supports groupListType 0, 1 or 2, but got %ld.", *groupListTypePtr),
+        return GRAPH_FAILED);
+
+    OP_CHECK_IF(!IsTensorListNullOrEmpty(context, GMM_INDEX_IN_BIAS),
+                OP_LOGE(context->GetNodeName(), "bias must be nullptr in A4W4."), return GRAPH_FAILED);
+    OP_CHECK_IF(!IsTensorListNullOrEmpty(context, GMM_INDEX_IN_OFFSET),
+                OP_LOGE(context->GetNodeName(), "offset must be nullptr in A4W4."), return GRAPH_FAILED);
+    OP_CHECK_IF(IsTensorListNullOrEmpty(context, GMM_INDEX_IN_SCALE),
+                OP_LOGE(context->GetNodeName(), "scale must not be nullptr in A4W4."), return GRAPH_FAILED);
+    OP_CHECK_IF(context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 1) != nullptr,
+                OP_LOGE(context->GetNodeName(), "A4W4 with single weight only supports one scale tensor."),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(IsGmmAntiQuantEmpty(context) != GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "antiquant inputs must be empty in A4W4."), return GRAPH_FAILED);
+
+    const auto xShape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
+    const auto weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
+    const auto scaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, scaleShape);
+    OP_CHECK_IF(xShape->GetDimNum() < 2UL || weightShape->GetDimNum() < 3UL,
+                OP_LOGE(context->GetNodeName(), "A4W4 expects x rank >= 2 and weight rank >= 3."), return GRAPH_FAILED);
+
+    const size_t scaleDimNum = scaleShape->GetDimNum();
+    OP_CHECK_IF(scaleDimNum != A4W4_SCALE_PER_CHANNEL_DIM && scaleDimNum != A4W4_SCALE_PER_GROUP_DIM,
+                OP_LOGE(context->GetNodeName(),
+                        "A4W4 scale rank must be 2 (per-channel) or 3 (per-group), but got %zu.", scaleDimNum),
+                return GRAPH_FAILED);
+    const auto weightAxis = GetWeightAxisInfo(context, weightShape->GetDimNum(), gmmAttrs.transposeWeight);
+    const int64_t e = weightShape->GetDim(0);
+    const int64_t n = weightShape->GetDim(weightAxis.n);
+    const int64_t scaleN = scaleShape->GetDim(scaleDimNum - 1UL);
+    OP_CHECK_IF(scaleShape->GetDim(0) != e || scaleN != n,
+                OP_LOGE(context->GetNodeName(),
+                        "A4W4 scale shape must match weight E/N, but got scale E/N %ld/%ld and weight E/N %ld/%ld.",
+                        scaleShape->GetDim(0), scaleN, e, n),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(n % A4W4_N_ALIGN != 0,
+                OP_LOGE(context->GetNodeName(), "A4W4 N must be aligned to %ld, but got %ld.", A4W4_N_ALIGN, n),
+                return GRAPH_FAILED);
+    if (scaleDimNum == A4W4_SCALE_PER_GROUP_DIM) {
+        const int64_t k = xShape->GetDim(xShape->GetDimNum() - 1UL);
+        const int64_t groupNum = scaleShape->GetDim(1);
+        OP_CHECK_IF(groupNum <= 0 || k % groupNum != 0,
+                    OP_LOGE(context->GetNodeName(),
+                            "A4W4 per-group scale requires K divisible by G, but got K/G %ld/%ld.", k, groupNum),
+                    return GRAPH_FAILED);
+        OP_CHECK_IF((k / groupNum) % A4W4_GROUP_SIZE_ALIGN != 0,
+                    OP_LOGE(context->GetNodeName(), "A4W4 per-group size K/G must be aligned to %ld, but got %ld.",
+                            A4W4_GROUP_SIZE_ALIGN, k / groupNum),
+                    return GRAPH_FAILED);
+    }
+
+    if (context->GetOptionalInputShape(GMM_INDEX_IN_PERTOKEN_SCALE) != nullptr) {
+        OP_CHECK_IF(CheckPerTokenScale(context, paramsInfo) != GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "Invalid perTokenScale in A4W4."), return GRAPH_FAILED);
+    }
+    return GRAPH_SUCCESS;
+}
+
 static bool isA8W4AsymmetricQuant(const gert::InferShapeContext *context)
 {
     auto offsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_OFFSET, 0);
@@ -834,6 +923,9 @@ static ge::graphStatus CheckQuantParams(gert::InferShapeContext *context, const 
             return GRAPH_SUCCESS;
         }
         return CheckA8W4AsymQuantParams(context, paramsInfo);
+    }
+    if (xDtype == DataType::DT_INT4 && weightDtype == DataType::DT_INT4) {
+        return CheckGroupedMatmulA4W4(context, gmmAttrs, paramsInfo);
     }
     if ((xDtype == DataType::DT_BF16 || xDtype == DataType::DT_FLOAT16 || xDtype == DataType::DT_FLOAT) &&
         xDtype == weightDtype) {
@@ -1815,6 +1907,9 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext *conte
                     OP_LOGE(context->GetNodeName(), "only bias float16 is supported on Ascend310P platforms."),
                     return GRAPH_FAILED);
     }
+    if (xDtype == DataType::DT_INT4 && weightDtype == DataType::DT_INT4) {
+        return GRAPH_SUCCESS;
+    }
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
         return GRAPH_SUCCESS;
     }
@@ -1850,11 +1945,26 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext *conte
 static graphStatus CheckQuantParamsDtype(const gert::InferDataTypeContext *context, const int64_t outputDtype,
                                          const DataType yDtype)
 {
+    auto x0Dtype = context->GetDynamicInputDataType(GMM_INDEX_IN_X, 0);
+    auto weight0Dtype = context->GetDynamicInputDataType(GMM_INDEX_IN_WEIGHT, 0);
     size_t i = 0;
     auto scale0Dtype = context->GetDynamicInputDataType(GMM_INDEX_IN_SCALE, 0);
     OP_CHECK_IF(scale0Dtype == ge::DT_UNDEFINED, OP_LOGE(context->GetNodeName(), "scale is undefined!"),
                 return GRAPH_FAILED);
     auto perTokenScale0Dtype = context->GetDynamicInputDataType(GMM_INDEX_IN_PERTOKEN_SCALE, 0);
+    if (x0Dtype == DataType::DT_INT4 && weight0Dtype == DataType::DT_INT4) {
+        OP_CHECK_IF(
+            scale0Dtype != DataType::DT_UINT64,
+            OP_LOGE(context->GetNodeName(), "A4W4 only supports scale with dtype uint64, but scale[%zu] has dtype %s!",
+                    i, TypeUtils::DataTypeToAscendString(scale0Dtype).GetString()),
+            return GRAPH_FAILED);
+        OP_CHECK_IF(perTokenScale0Dtype != ge::DT_UNDEFINED && perTokenScale0Dtype != DataType::DT_FLOAT,
+                    OP_LOGE(context->GetNodeName(),
+                            "A4W4 only supports perTokenScale with dtype float32, but perTokenScale[%zu] has dtype %s!",
+                            i, TypeUtils::DataTypeToAscendString(perTokenScale0Dtype).GetString()),
+                    return GRAPH_FAILED);
+        return GRAPH_SUCCESS;
+    }
     bool isPerTokenQuant = perTokenScale0Dtype != ge::DT_UNDEFINED;
     if (isPerTokenQuant) {
         bool isOutputBF16 = scale0Dtype == DataType::DT_BF16 && outputDtype == 1;
@@ -1941,9 +2051,19 @@ static graphStatus InferDataType4GroupedMatmul(gert::InferDataTypeContext *conte
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     bool isQuantCase = x0Dtype == ge::DT_INT8 && weight0Dtype == ge::DT_INT8;
     bool isA8W4 = x0Dtype == ge::DT_INT8 && weight0Dtype == ge::DT_INT4;
+    bool isA4W4 = x0Dtype == ge::DT_INT4 && weight0Dtype == ge::DT_INT4;
     const int64_t *outputDtype = attrs->GetInt(GMM_INDEX_ATTR_OUTPUT_DTYPE);
     DataType yDtype = x0Dtype;
-    if (isQuantCase && outputDtype != nullptr) {
+    if (isA4W4) {
+        OP_CHECK_NULL_WITH_CONTEXT(context, outputDtype);
+        OP_CHECK_IF(*outputDtype != 0L && *outputDtype != 1L,
+                    OP_LOGE(context->GetNodeName(),
+                            "A4W4 output dtype only supports float16(0) or bfloat16(1), but got %ld.", *outputDtype),
+                    return GRAPH_FAILED);
+        yDtype = GMM_OUTPUT_DTYPE_MAP.at(*outputDtype);
+        OP_CHECK_IF(CheckQuantParamsDtype(context, *outputDtype, yDtype) != GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "Check A4W4 quant params data type failed!"), return GRAPH_FAILED);
+    } else if (isQuantCase && outputDtype != nullptr) {
         auto it = GMM_OUTPUT_DTYPE_MAP.find(*outputDtype);
         OP_CHECK_IF(it == GMM_OUTPUT_DTYPE_MAP.end(),
                     OP_LOGE(context->GetNodeName(), "value of attr dtype only supports -1/0/1/2, but now is %ld.",
