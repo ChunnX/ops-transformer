@@ -74,9 +74,8 @@ git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-on
 配置后即可使用（详见[补查历史提交](#补查历史提交-no-verify-跳过后)）：
 
 ```bash
-git pc HEAD~2 HEAD           # 检查最近2笔提交
-git pc HEAD~1                # 检查最近1笔提交（末尾HEAD可省略）
-git pc origin/master...HEAD  # 检查PR全部提交
+git pc HEAD~2 HEAD   # 检查最近2笔提交
+git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
 ```
 
 ## 使用方法
@@ -143,17 +142,13 @@ pre-commit run --files $(git diff --name-only HEAD~2 HEAD)
 
 # 检查某个提交
 pre-commit run --files $(git diff --name-only <commit>^ <commit>)
-
-# 检查 PR 全部提交
-pre-commit run --files $(git diff --name-only origin/master...HEAD)
 ```
 
 推荐使用已配置的 `git pc` 别名（见安装步骤第 4 步）：
 
 ```bash
-git pc HEAD~2 HEAD           # 检查最近2笔提交
-git pc HEAD~1                # 检查最近1笔提交（末尾HEAD可省略）
-git pc origin/master...HEAD  # 检查PR全部提交
+git pc HEAD~2 HEAD   # 检查最近2笔提交
+git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
 ```
 
 > **注意**: `git pc` 检查的是文件的当前磁盘内容。部分钩子（clang-format、ruff-format 等）会自动修复文件，修复后需重新 `git add` 并追加提交。
