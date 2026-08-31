@@ -28,7 +28,7 @@ pip3 install pre-commit
 cd /path/to/ops-transformer
 pre-commit install        # 取消：pre-commit uninstall
 
-# 3. 配置 git pc 别名（对指定范围提交运行检查，全局一次）
+# 3. 配置 git pc 别名（对指定范围提交运行检查，每个环境执行一次）
 git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
 ```
 
@@ -36,7 +36,7 @@ git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-on
 
 ```bash
 git pc HEAD~2 HEAD   # 检查最近2笔提交
-git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
+git pc HEAD~1        # 检查最近1笔提交（末尾 HEAD 可省略）
 ```
 
 ### （可选）全局生效，新 clone 的仓库自动继承
@@ -85,12 +85,12 @@ git commit --no-verify -m "msg"
 
 ## 五、失败排查
 
-搜索输出中的 `Failed` 定位失败项，查看该 hook 下方输出处理，或粘贴给 AI 获取建议。
+搜索输出中的 `Failed` 定位失败项，查看该 hook 下方输出处理，或粘贴给 AI 获取修复建议。
 
 | 报错 | 原因 | 处理方式 |
 |------|------|---------|
 | `clang-format ...Failed` | 代码已被自动格式化 | 重新 `git add` 后再次 commit |
-| OAT Compliance Check Failed | 缺版权声明等 | 搜索 `OAT Scan Result Summary` 定位文件；版权声明需参照仓内文件头手动补齐 |
+| OAT Compliance Check Failed | 缺版权声明等 | 搜索 `OAT Scan Result Summary` 定位文件；版权声明无法自动订正，需参照仓内文件头手动补齐 |
 
 ## 六、补查历史提交（--no-verify 跳过后）
 
