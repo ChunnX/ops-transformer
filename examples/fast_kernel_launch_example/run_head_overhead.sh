@@ -320,18 +320,23 @@ def three_metrics(prof_dir, op, freq):
             return -1
         return ts - disp[i]
 
+    # 匹配窗口按频率缩放: A5 1GHz 下 50cyc=0.05us/20000cyc=20us;
+    # 固定 cyc 阈值在 A3 50MHz (1cyc=20ns) 下会把 T0-stars(<1us) 全部过滤掉
+    d_lo = max(2, int(0.05 * freq))
+    d_hi = int(20 * freq)
+
     def one_shot(recs):
         """单拍指标计算 (返回 dict 或 None)。recs 为该拍全部 block 的 (T0,T1,T2)"""
         t0s, t1t0, t1s, t2s, t2t0 = [], [], [], [], []
         for a, b, b2 in recs:
             d0 = match(a)
-            if 50 <= d0 <= 20000:
+            if d_lo <= d0 <= d_hi:
                 t0s.append(d0)
             d1 = match(b)
-            if 50 <= d1 <= 20000:
+            if d_lo <= d1 <= d_hi:
                 t1s.append(d1)
             d2 = match(b2)
-            if 50 <= d2 <= 20000:
+            if d_lo <= d2 <= d_hi:
                 t2s.append(d2)
             if a < b <= b2:  # 同拍单调: 跨 slot 差值才可信
                 t1t0.append(b - a)
@@ -356,10 +361,10 @@ def three_metrics(prof_dir, op, freq):
         t0_stars_max = None
         if len(cluster) >= max(4, len(recs) // 4):
             dps = [match(r[0]) for r in cluster]
-            dps = [d for d in dps if 0 < d <= 20000]
+            dps = [d for d in dps if 0 < d <= d_hi]
             if dps:
                 # 各 T0 的前向匹配 dispatch 时刻 = T0 - d0
-                dp = max(r[0] - d for r, d in zip(cluster, dps) if 0 < d <= 20000)
+                dp = max(r[0] - d for r, d in zip(cluster, dps) if 0 < d <= d_hi)
                 t0_stars_max = (max(r[0] for r in cluster) - dp) / freq
                 t1_stars_max = (max(r[1] for r in cluster if r[1] > 0) - dp) / freq
                 t2_stars_chk = (max(r[2] for r in cluster) - dp) / freq
@@ -547,7 +552,9 @@ if os.path.isdir(os.path.join(output_dir, 'add_full')):
             print_metrics(m)
         fm = ffts_check(os.path.join(output_dir, 'add_full'), freq_add, r['mean'])
         if fm:
-            print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
+            # launch_delay 可能为 None (A3 50MHz 分辨率 20ns, dispatch->核启动差可能为 0)
+            _ld = f"{fm['launch_delay']:.3f}" if fm['launch_delay'] is not None else "N/A"
+            print(f"  {'':12s} [ffts PMU] dispatch->核启动={_ld}us  "
                   f"T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
         results.append(('add', 'Vector', add_cores, r['mean'], m))
     print()
@@ -560,7 +567,8 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
             print_metrics(m)
         fm = ffts_check(os.path.join(output_dir, 'gmm_full'), freq_gmm, r['mean'])
         if fm:
-            print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
+            _ld = f"{fm['launch_delay']:.3f}" if fm['launch_delay'] is not None else "N/A"
+            print(f"  {'':12s} [ffts PMU] dispatch->核启动={_ld}us  "
                   f"T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
         results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean'], m))
     print()
