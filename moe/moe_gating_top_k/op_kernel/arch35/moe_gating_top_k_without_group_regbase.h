@@ -189,29 +189,140 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
     }
 
     if (normType_ == 1) {
-        LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
-        Sigmoid(xNormTensor, xRow, calcNormTmpTensor, expertCountAlign_);
+        __ubuf__ float *xRowAddr = (__ubuf__ float *)xRow.GetPhyAddr();
+        __ubuf__ float *xNormAddr = (__ubuf__ float *)xNormTensor.GetPhyAddr();
+        uint32_t expertCountU32 = static_cast<uint32_t>(expertCountAlign_);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(expertCountU32, VL_FLOAT_SIZE));
+
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregIn;
+            RegTensor<float> vregNorm;
+            RegTensor<float> vregOne;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = MicroAPI::UpdateMask<float>(expertCountU32);
+                ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregIn, preg0, i * VL_FLOAT_SIZE);
+                MicroAPI::Muls(vreg1, vregIn, static_cast<float>(-1), preg0);
+                MicroAPI::Exp(vreg2, vreg1, preg0);
+                MicroAPI::Adds(vreg3, vreg2, static_cast<float>(1), preg0);
+                MicroAPI::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vreg3, preg0);
+                MicroAPI::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregNorm, preg0);
+            }
+        }
         PipeBarrier<PIPE_V>();
     } else if (normType_ == 0) {
-        SoftMaxShapeInfo softmaxShapeInfo;
-        softmaxShapeInfo.srcM = 1;
-        softmaxShapeInfo.srcK = static_cast<uint32_t>(expertCountAlign_);
-        softmaxShapeInfo.oriSrcM = 1;
-        softmaxShapeInfo.oriSrcK = static_cast<uint32_t>(expertCountAlign_);
-        SoftMax<float, true, false>(xNormTensor, xRow, tilingData_->softmaxTilingData, softmaxShapeInfo);
-        PipeBarrier<PIPE_V>();
+        uint32_t size = static_cast<uint32_t>(expertCountAlign_);
+        __local_mem__ float *xRowAddr = (__local_mem__ float *)xRow.GetPhyAddr();
+        __local_mem__ float *xNormAddr = (__local_mem__ float *)xNormTensor.GetPhyAddr();
+        __local_mem__ float *xNormWithBiasAddr = (__local_mem__ float *)xNormWithBiasTensor.GetPhyAddr();
+        __local_mem__ float *biasAddr = (__local_mem__ float *)biasTensor.GetPhyAddr();
+
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregX;
+            RegTensor<float> vregMax;
+            RegTensor<float> vregMaxBcast;
+            RegTensor<float> vregExp;
+            RegTensor<float> vregSum;
+            RegTensor<float> vregSumBcast;
+            RegTensor<float> vregResult;
+            MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(size);
+
+            MicroAPI::DataCopy(vregX, xRowAddr);
+            MicroAPI::ReduceMax(vregMax, vregX, preg0);
+            MicroAPI::Duplicate(vregMaxBcast, vregMax, preg0);
+            MicroAPI::Sub(vregExp, vregX, vregMaxBcast, preg0);
+            MicroAPI::Exp(vregExp, vregExp, preg0);
+            MicroAPI::ReduceSum(vregSum, vregExp, preg0);
+            MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+            MicroAPI::Div(vregResult, vregExp, vregSumBcast, preg0);
+            MicroAPI::DataCopy(xNormAddr, vregResult, preg0);
+        }
+        if (hasBias_) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregResult;
+                RegTensor<float> vregBias;
+                RegTensor<float> vregBiasResult;
+                MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(size);
+                MicroAPI::DataCopy(vregResult, xNormAddr);
+                MicroAPI::DataCopy(vregBias, biasAddr);
+                MicroAPI::Add(vregBiasResult, vregResult, vregBias, preg0);
+                MicroAPI::DataCopy(xNormWithBiasAddr, vregBiasResult, preg0);
+            }
+        } else {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregResult;
+                MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(size);
+                MicroAPI::DataCopy(vregResult, xNormAddr);
+                MicroAPI::DataCopy(xNormWithBiasAddr, vregResult, preg0);
+            }
+        }
+        if (duplicateNum > 0) {
+            __VEC_SCOPE__
+            {
+                RegTensor<float> vregPad;
+                MicroAPI::UnalignReg u0;
+                MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
+                uint32_t padCount = static_cast<uint32_t>(expertCountAlign_ - expertCount_);
+                auto padAddr = xNormWithBiasAddr + expertCount_;
+                MicroAPI::DataCopyUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(padAddr, vregPad, u0,
+                                                                                          padCount);
+                MicroAPI::DataCopyUnAlignPost(padAddr, u0, 0);
+            }
+        }
     } else {
-        Exp(xNormTensor, xRow, expertCountAlign_);
-        PipeBarrier<PIPE_V>();
-        Adds(xNormTensor, xNormTensor, static_cast<float>(1), expertCountAlign_);
-        PipeBarrier<PIPE_V>();
-        Ln(xNormTensor, xNormTensor, expertCountAlign_);
-        PipeBarrier<PIPE_V>();
-        Sqrt(xNormTensor, xNormTensor, expertCountAlign_);
+        __ubuf__ float *xRowAddr = (__ubuf__ float *)xRow.GetPhyAddr();
+        __ubuf__ float *xNormAddr = (__ubuf__ float *)xNormTensor.GetPhyAddr();
+        uint32_t expertCountU32 = static_cast<uint32_t>(expertCountAlign_);
+        uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(expertCountU32, VL_FLOAT_SIZE));
+
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregIn;
+            RegTensor<float> vregNorm;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = MicroAPI::UpdateMask<float>(expertCountU32);
+                ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregIn, preg0, i * VL_FLOAT_SIZE);
+                MicroAPI::Exp(vreg1, vregIn, preg0);
+                MicroAPI::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
+                MicroAPI::Ln(vreg3, vreg2, preg0);
+                MicroAPI::Sqrt(vregNorm, vreg3, preg0);
+                MicroAPI::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregNorm, preg0);
+            }
+        }
         PipeBarrier<PIPE_V>();
     }
 
-    ApplyBiasAndPad(xNormWithBiasTensor, xNormTensor, biasTensor, duplicateNum, duplicateIndex);
+    if (normType_ != 0) {
+        if (hasBias_) {
+            Add(xNormWithBiasTensor, xNormTensor, biasTensor, expertCountAlign_);
+        } else {
+            DataCopy(xNormWithBiasTensor, xNormTensor, expertCountAlign_);
+        }
+        PipeBarrier<PIPE_V>();
+
+        if (duplicateNum > 0) {
+            uint64_t mask0 = UINT64_MAX;
+            mask0 = mask0 << duplicateNum;
+            mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
+            uint64_t mask[2] = {mask0, 0};
+            Duplicate(xNormWithBiasTensor.ReinterpretCast<int32_t>()[duplicateIndex], MIN_FP32, mask, 1, 1, 1);
+            PipeBarrier<PIPE_V>();
+        }
+    }
 }
 
 template <typename T>
