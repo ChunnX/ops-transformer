@@ -8,6 +8,7 @@ import gc
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -273,6 +274,11 @@ def _tensor_metadata(tensor):
 def _report_brief(report):
     return {
         "path": report["path"],
+        "launch_index": report.get("launch_index"),
+        "global_launch_index": report.get("global_launch_index"),
+        "cross_rank_aligned": report.get("cross_rank_aligned", False),
+        "allocation_mode": report.get("allocation_mode"),
+        "output_role": report.get("output_role"),
         "passed": report["passed"],
         "matched_ratio": report["matched_ratio"],
         "max_abs_error": report["max_abs_error"],
@@ -291,7 +297,7 @@ def _failure_scope(reports):
     first_export = by_path.get("all_to_allv_export")
     auto_outputs = [
         report for path, report in by_path.items()
-        if path.startswith("auto_repeat_") or path == "synchronized_control"
+        if path.startswith("auto_repeat_")
     ]
     out_outputs = [
         report for path, report in by_path.items()
@@ -314,11 +320,14 @@ def _failure_scope(reports):
     elif failed_exports:
         likely_scope = "alltoallv_transfer_export_or_stage_materialization"
     elif failed_auto:
-        synchronized = by_path.get("synchronized_control")
+        failed_reports = [by_path[path] for path in failed_auto]
         likely_scope = (
-            "cross_rank_launch_skew_or_cross_invocation_state"
-            if synchronized is not None and synchronized["passed"]
-            else "cross_invocation_stage_readiness_or_workspace_reuse"
+            "cross_invocation_stage_readiness_or_workspace_reuse"
+            if all(
+                report.get("cross_rank_aligned", False)
+                for report in failed_reports
+            )
+            else "cross_rank_launch_skew_or_cross_invocation_state"
         )
     elif failed_out:
         likely_scope = "caller_provided_out_path"
@@ -342,6 +351,23 @@ def _run_case(
     case, rank, world_size, device, output_root, memory_options,
     mssanitizer_options, diagnostic_options,
 ):
+    case_started = time.perf_counter()
+    timing_events = []
+
+    def add_timing(phase, started, *, path=None, launch_index=None, **details):
+        event = {
+            "phase": phase,
+            "elapsed_seconds": time.perf_counter() - started,
+        }
+        if path is not None:
+            event["path"] = path
+        if launch_index is not None:
+            event["launch_index"] = launch_index
+        event.update(details)
+        timing_events.append(event)
+        return event
+
+    input_preparation_started = time.perf_counter()
     shape = case["shape"]
     m, n, k = shape["m"], shape["n"], shape["k"]
     expert_num = case["expert_num"]
@@ -357,6 +383,8 @@ def _run_case(
     memory_enabled = memory_options["enabled"]
     mssanitizer_enabled = mssanitizer_options["enabled"]
     automatic_only = diagnostic_options["automatic_only"]
+    synchronize_launches = not automatic_only
+    check_reusable_out = diagnostic_options["check_reusable_out"]
     max_failure_dumps_per_role = diagnostic_options[
         "max_failure_dumps_per_role"
     ]
@@ -454,6 +482,8 @@ def _run_case(
     segments_override = None
     additional_reports = []
     launch_records = []
+    launch_timings = {}
+    launch_snapshot_metadata = {}
     failure_dump_counts = {
         "operator_output": 0,
         "all_to_allv_export": 0,
@@ -475,10 +505,62 @@ def _run_case(
                 global_table, max_elements=diagnostic_fingerprint_elements
             ),
         }
+    add_timing("input_preparation", input_preparation_started)
+
+    def execute_launch(path, launch_callable):
+        """Run one globally identified launch and freeze its outputs."""
+        launch_index = len(launch_records)
+        barrier_seconds = 0.0
+        if synchronize_launches:
+            started = time.perf_counter()
+            dist.barrier()
+            barrier_seconds = time.perf_counter() - started
+            timing_events.append({
+                "phase": "pre_launch_barrier",
+                "path": path,
+                "launch_index": launch_index,
+                "elapsed_seconds": barrier_seconds,
+            })
+
+        started = time.perf_counter()
+        result = launch_callable()
+        torch_npu.npu.synchronize()
+        operator_seconds = time.perf_counter() - started
+        timing_events.append({
+            "phase": "operator_launch",
+            "path": path,
+            "launch_index": launch_index,
+            "elapsed_seconds": operator_seconds,
+        })
+
+        outputs = result if isinstance(result, tuple) else (result,)
+        started = time.perf_counter()
+        snapshots = tuple(output.detach().clone() for output in outputs)
+        # A completed immutable snapshot is the boundary between global launch
+        # N and N+1.  No rank can enter the next aligned launch before this
+        # rank reaches its next pre-launch Gloo barrier.
+        torch_npu.npu.synchronize()
+        snapshot_seconds = time.perf_counter() - started
+        timing_events.append({
+            "phase": "output_snapshot",
+            "path": path,
+            "launch_index": launch_index,
+            "elapsed_seconds": snapshot_seconds,
+        })
+        launch_timings[path] = {
+            "pre_launch_barrier_seconds": barrier_seconds,
+            "operator_seconds": operator_seconds,
+            "snapshot_seconds": snapshot_seconds,
+        }
+        launch_snapshot_metadata[path] = [
+            _tensor_metadata(snapshot) for snapshot in snapshots
+        ]
+        snapshot_result = snapshots if isinstance(result, tuple) else snapshots[0]
+        return result, snapshot_result
 
     def record_launch(
         path, output, *, allocation_mode, export_output=None,
-        synchronized_control=False, output_prefill=None,
+        output_prefill=None,
     ):
         launch_records.append({
             "launch_index": len(launch_records),
@@ -488,7 +570,10 @@ def _run_case(
             "caller_provided_all_to_allv_out": (
                 allocation_mode == "caller_provided" and export_output is not None
             ),
-            "synchronized_control": synchronized_control,
+            "cross_rank_aligned": synchronize_launches,
+            "global_launch_index": (
+                len(launch_records) if synchronize_launches else None
+            ),
             "sync_diagnostic_mode": sync_completion_mode_from_env(),
             "output_prefill": output_prefill,
             "output": _tensor_metadata(output),
@@ -496,6 +581,8 @@ def _run_case(
                 _tensor_metadata(export_output)
                 if export_output is not None else None
             ),
+            "timings": launch_timings.get(path, {}),
+            "report_snapshots": launch_snapshot_metadata.get(path, []),
         })
 
     def reserve_failure_dump(output_role, report):
@@ -519,9 +606,11 @@ def _run_case(
         }
         return True
     if case["operator"] == "grouped_mat_mul_all_to_allv":
+        started = time.perf_counter()
         expected = _grouped_mat_mul_all_to_allv_golden(
             x, weight, route_matrix, rank, world_size, expert_num
         )
+        add_timing("golden_generation", started, operator=case["operator"])
         valid_rows = expected.shape[0]
         segments_override = _grouped_mat_mul_all_to_allv_segments(
             route_matrix, rank, world_size, expert_num
@@ -529,29 +618,60 @@ def _run_case(
         if memory_enabled:
             _prepare_memory_safety_launch([])
             memory_report["launches"].append({"path": "ordinary", "workspace_poisoned": True})
-        ordinary = udma.grouped_mat_mul_all_to_allv(
-            x, weight, launch_local_table, launch_global_table,
-            ep_size=world_size, expert_num=expert_num,
+        ordinary, ordinary_snapshot = execute_launch(
+            "ordinary",
+            lambda: udma.grouped_mat_mul_all_to_allv(
+                x, weight, launch_local_table, launch_global_table,
+                ep_size=world_size, expert_num=expert_num,
+            ),
         )
-        torch_npu.npu.synchronize()
         record_launch("ordinary", ordinary, allocation_mode="automatic")
-        candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
+        candidates.append((
+            "ordinary", ordinary_snapshot,
+            _padding_stats(ordinary_snapshot, valid_rows),
+        ))
         del ordinary
         gc.collect()
 
         if not mssanitizer_enabled:
+            for repeat in range(case["accuracy"]["auto_repeats"]):
+                path = "auto_repeat_{}".format(repeat)
+                if memory_enabled:
+                    _prepare_memory_safety_launch([])
+                    memory_report["launches"].append({
+                        "path": path, "workspace_poisoned": True,
+                    })
+                auto_actual, auto_snapshot = execute_launch(
+                    path,
+                    lambda: udma.grouped_mat_mul_all_to_allv(
+                        x, weight, local_table, global_table,
+                        ep_size=world_size, expert_num=expert_num,
+                    ),
+                )
+                record_launch(path, auto_actual, allocation_mode="automatic")
+                candidates.append((
+                    path, auto_snapshot,
+                    _padding_stats(auto_snapshot, valid_rows),
+                ))
+                del auto_actual
+
+            caller_repeats = (
+                case["accuracy"]["repeats"] if check_reusable_out else 0
+            )
             reusable_guard = None
-            if memory_enabled:
-                reusable_guard = _guarded_tensor(
-                    expected.shape, torch.bfloat16, device, "gmm_a2av_out",
-                    memory_options, output=True,
-                )
-                reusable_out = reusable_guard.tensor
-            else:
-                reusable_out = torch.empty(
-                    expected.shape, dtype=torch.bfloat16, device=device
-                )
-            for repeat in range(case["accuracy"]["repeats"]):
+            reusable_out = None
+            if caller_repeats:
+                if memory_enabled:
+                    reusable_guard = _guarded_tensor(
+                        expected.shape, torch.bfloat16, device, "gmm_a2av_out",
+                        memory_options, output=True,
+                    )
+                    reusable_out = reusable_guard.tensor
+                else:
+                    reusable_out = torch.empty(
+                        expected.shape, dtype=torch.bfloat16, device=device
+                    )
+            for repeat in range(caller_repeats):
                 path = "out_repeat_{}".format(repeat)
                 if memory_enabled:
                     _prepare_memory_safety_launch([reusable_guard])
@@ -560,23 +680,26 @@ def _run_case(
                     })
                 else:
                     reusable_out.fill_(float("nan"))
-                out_actual = udma.grouped_mat_mul_all_to_allv(
-                    x, weight, local_table, global_table,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                out_actual, out_snapshot = execute_launch(
+                    path,
+                    lambda: udma.grouped_mat_mul_all_to_allv(
+                        x, weight, local_table, global_table,
+                        ep_size=world_size, expert_num=expert_num,
+                        out=reusable_out,
+                    ),
                 )
-                torch_npu.npu.synchronize()
                 record_launch(
                     path, out_actual, allocation_mode="caller_provided",
                     output_prefill="nan",
                 )
                 candidates.append((
-                    path, out_actual.clone(),
-                    _padding_stats(out_actual, valid_rows),
+                    path, out_snapshot,
+                    _padding_stats(out_snapshot, valid_rows),
                 ))
                 if memory_enabled:
                     candidate_guards[path] = [reusable_guard.check()]
 
-            if memory_enabled:
+            if memory_enabled and caller_repeats:
                 local_host = local_table.cpu().tolist()
                 global_host = global_table.cpu().tolist()
                 _prepare_memory_safety_launch([reusable_guard])
@@ -584,43 +707,63 @@ def _run_case(
                     "path": "host_route", "workspace_poisoned": True,
                     "route_path": "host_list_with_h2d",
                 })
-                out_actual = udma.grouped_mat_mul_all_to_allv(
-                    x, weight, local_host, global_host,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                out_actual, out_snapshot = execute_launch(
+                    "host_route",
+                    lambda: udma.grouped_mat_mul_all_to_allv(
+                        x, weight, local_host, global_host,
+                        ep_size=world_size, expert_num=expert_num,
+                        out=reusable_out,
+                    ),
                 )
-                torch_npu.npu.synchronize()
                 record_launch(
                     "host_route", out_actual,
                     allocation_mode="caller_provided",
                     output_prefill="nan",
                 )
                 candidates.append((
-                    "host_route", out_actual.clone(),
-                    _padding_stats(out_actual, valid_rows),
+                    "host_route", out_snapshot,
+                    _padding_stats(out_snapshot, valid_rows),
                 ))
                 candidate_guards["host_route"] = [reusable_guard.check()]
-            del out_actual, reusable_out
+            if caller_repeats:
+                del out_actual, reusable_out
             gc.collect()
     else:
+        started = time.perf_counter()
         expected = _golden(x, weight, route_matrix, rank, world_size, expert_num)
         expected_all_to_allv = _all_to_allv_golden(
             x, route_matrix, rank, world_size, expert_num
         )
+        add_timing("golden_generation", started, operator=case["operator"])
         valid_rows = received_rows
         if valid_rows != expected.shape[0]:
             raise RuntimeError("golden rows do not match the global route table")
         export_enabled = case["output_all_to_allv"]
 
         def add_export_report(export_tensor, path, launch_index):
+            started = time.perf_counter()
             report = analyze_accuracy(
                 export_tensor, expected_all_to_allv,
                 global_table=global_table_2d.cpu().tolist(),
                 topk=case["accuracy"]["topk"],
                 heatmap_bins=case["accuracy"]["heatmap_bins"],
             )
+            add_timing(
+                "accuracy_analysis", started, path=path,
+                launch_index=launch_index, output_role="all_to_allv_export",
+            )
             report.update(
                 case_id=case["id"], rank=rank, path=path,
                 launch_index=launch_index,
+                global_launch_index=(
+                    launch_records[launch_index]["global_launch_index"]
+                ),
+                cross_rank_aligned=(
+                    launch_records[launch_index]["cross_rank_aligned"]
+                ),
+                allocation_mode=(
+                    launch_records[launch_index]["allocation_mode"]
+                ),
                 output_role="all_to_allv_export",
                 valid_rows=expected_all_to_allv.shape[0],
                 padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
@@ -656,35 +799,42 @@ def _run_case(
                 "path": "export_output" if export_enabled else "ordinary",
                 "workspace_poisoned": True,
             })
-        if export_enabled:
-            ordinary, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
-                x, weight, launch_local_table, launch_global_table,
-                ep_size=world_size, expert_num=expert_num,
-                received_rows=received_rows,
-                output_all_to_allv=True,
-            )
-            torch_npu.npu.synchronize()
-        else:
-            ordinary = udma.all_to_allv_grouped_mat_mul(
-                x, weight, launch_local_table, launch_global_table,
-                ep_size=world_size, expert_num=expert_num,
-                received_rows=received_rows,
-            )
-            torch_npu.npu.synchronize()
-            exported_all_to_allv = None
         ordinary_path = "export_output" if export_enabled else "ordinary"
+        if export_enabled:
+            ordinary_result, ordinary_snapshot_result = execute_launch(
+                ordinary_path,
+                lambda: udma.all_to_allv_grouped_mat_mul(
+                    x, weight, launch_local_table, launch_global_table,
+                    ep_size=world_size, expert_num=expert_num,
+                    received_rows=received_rows,
+                    output_all_to_allv=True,
+                ),
+            )
+            ordinary, exported_all_to_allv = ordinary_result
+            ordinary_snapshot, exported_snapshot = ordinary_snapshot_result
+        else:
+            ordinary, ordinary_snapshot = execute_launch(
+                ordinary_path,
+                lambda: udma.all_to_allv_grouped_mat_mul(
+                    x, weight, launch_local_table, launch_global_table,
+                    ep_size=world_size, expert_num=expert_num,
+                    received_rows=received_rows,
+                ),
+            )
+            exported_all_to_allv = None
+            exported_snapshot = None
         record_launch(
             ordinary_path, ordinary, allocation_mode="automatic",
             export_output=exported_all_to_allv,
         )
         if export_enabled:
             add_export_report(
-                exported_all_to_allv, "all_to_allv_export",
+                exported_snapshot, "all_to_allv_export",
                 launch_records[-1]["launch_index"],
             )
         candidates.append((
             ordinary_path,
-            ordinary.clone(), _padding_stats(ordinary, valid_rows),
+            ordinary_snapshot, _padding_stats(ordinary_snapshot, valid_rows),
         ))
 
         if not mssanitizer_enabled:
@@ -698,79 +848,40 @@ def _run_case(
                         "path": path, "workspace_poisoned": True,
                     })
                 if export_enabled:
-                    auto_actual, auto_export = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_table, global_table,
-                        ep_size=world_size, expert_num=expert_num,
-                        received_rows=received_rows,
-                        output_all_to_allv=True,
+                    auto_result, auto_snapshot_result = execute_launch(
+                        path,
+                        lambda: udma.all_to_allv_grouped_mat_mul(
+                            x, weight, local_table, global_table,
+                            ep_size=world_size, expert_num=expert_num,
+                            received_rows=received_rows,
+                            output_all_to_allv=True,
+                        ),
                     )
+                    auto_actual, auto_export = auto_result
+                    auto_snapshot, auto_export_snapshot = auto_snapshot_result
                 else:
-                    auto_actual = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_table, global_table,
-                        ep_size=world_size, expert_num=expert_num,
-                        received_rows=received_rows,
+                    auto_actual, auto_snapshot = execute_launch(
+                        path,
+                        lambda: udma.all_to_allv_grouped_mat_mul(
+                            x, weight, local_table, global_table,
+                            ep_size=world_size, expert_num=expert_num,
+                            received_rows=received_rows,
+                        ),
                     )
                     auto_export = None
-                torch_npu.npu.synchronize()
+                    auto_export_snapshot = None
                 record_launch(
                     path, auto_actual, allocation_mode="automatic",
                     export_output=auto_export,
                 )
                 candidates.append((
-                    path, auto_actual,
-                    _padding_stats(auto_actual, valid_rows),
+                    path, auto_snapshot,
+                    _padding_stats(auto_snapshot, valid_rows),
                 ))
                 if export_enabled:
                     add_export_report(
-                        auto_export,
+                        auto_export_snapshot,
                         "all_to_allv_export_{}".format(path),
-                        launch_records[-1]["launch_index"],
-                    )
-
-            # A Gloo control-plane barrier changes only cross-rank launch skew.
-            # Its result distinguishes an inter-rank invocation race from a
-            # local AIC/AIV stage lifecycle problem.
-            if (
-                case["accuracy"]["synchronized_control"]
-                and not automatic_only
-            ):
-                path = "synchronized_control"
-                dist.barrier()
-                if memory_enabled:
-                    _prepare_memory_safety_launch([])
-                    memory_report["launches"].append({
-                        "path": path, "workspace_poisoned": True,
-                        "pre_launch_gloo_barrier": True,
-                    })
-                if export_enabled:
-                    control_actual, control_export = (
-                        udma.all_to_allv_grouped_mat_mul(
-                            x, weight, local_table, global_table,
-                            ep_size=world_size, expert_num=expert_num,
-                            received_rows=received_rows,
-                            output_all_to_allv=True,
-                        )
-                    )
-                else:
-                    control_actual = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_table, global_table,
-                        ep_size=world_size, expert_num=expert_num,
-                        received_rows=received_rows,
-                    )
-                    control_export = None
-                torch_npu.npu.synchronize()
-                record_launch(
-                    path, control_actual, allocation_mode="automatic",
-                    export_output=control_export, synchronized_control=True,
-                )
-                candidates.append((
-                    path, control_actual,
-                    _padding_stats(control_actual, valid_rows),
-                ))
-                if export_enabled:
-                    add_export_report(
-                        control_export,
-                        "all_to_allv_export_synchronized_control",
                         launch_records[-1]["launch_index"],
                     )
 
@@ -778,7 +889,11 @@ def _run_case(
             reusable_export_guard = None
             reusable_out = None
             reusable_all_to_allv_out = None
-            if not automatic_only:
+            caller_repeats = (
+                case["accuracy"]["repeats"]
+                if check_reusable_out and not automatic_only else 0
+            )
+            if caller_repeats:
                 if memory_enabled:
                     reusable_guard = _guarded_tensor(
                         ordinary.shape, torch.bfloat16, device, "a2av_gmm_out",
@@ -797,9 +912,6 @@ def _run_case(
                         torch.empty_like(expected_all_to_allv)
                         if export_enabled else None
                     )
-            caller_repeats = (
-                0 if automatic_only else case["accuracy"]["repeats"]
-            )
             for repeat in range(caller_repeats):
                 path = "out_repeat_{}".format(repeat)
                 if memory_enabled:
@@ -815,39 +927,48 @@ def _run_case(
                     if reusable_all_to_allv_out is not None:
                         reusable_all_to_allv_out.fill_(float("nan"))
                 if export_enabled:
-                    out_actual, export_actual = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_table, global_table,
-                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                        received_rows=received_rows,
-                        output_all_to_allv=True,
-                        all_to_allv_out=reusable_all_to_allv_out,
+                    out_result, out_snapshot_result = execute_launch(
+                        path,
+                        lambda: udma.all_to_allv_grouped_mat_mul(
+                            x, weight, local_table, global_table,
+                            ep_size=world_size, expert_num=expert_num,
+                            out=reusable_out, received_rows=received_rows,
+                            output_all_to_allv=True,
+                            all_to_allv_out=reusable_all_to_allv_out,
+                        ),
                     )
+                    out_actual, export_actual = out_result
+                    out_snapshot, export_snapshot = out_snapshot_result
                 else:
-                    out_actual = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_table, global_table,
-                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                        received_rows=received_rows,
+                    out_actual, out_snapshot = execute_launch(
+                        path,
+                        lambda: udma.all_to_allv_grouped_mat_mul(
+                            x, weight, local_table, global_table,
+                            ep_size=world_size, expert_num=expert_num,
+                            out=reusable_out, received_rows=received_rows,
+                        ),
                     )
-                torch_npu.npu.synchronize()
+                    export_actual = None
+                    export_snapshot = None
                 record_launch(
                     path, out_actual, allocation_mode="caller_provided",
                     export_output=export_actual if export_enabled else None,
                     output_prefill="nan",
                 )
                 candidates.append((
-                    path, out_actual.clone(),
-                    _padding_stats(out_actual, valid_rows),
+                    path, out_snapshot,
+                    _padding_stats(out_snapshot, valid_rows),
                 ))
                 if memory_enabled:
                     candidate_guards[path] = [guard.check() for guard in launch_guards]
                 if export_enabled:
                     add_export_report(
-                        export_actual,
+                        export_snapshot,
                         "all_to_allv_export_out_repeat_{}".format(repeat),
                         launch_records[-1]["launch_index"],
                     )
 
-            if memory_enabled:
+            if memory_enabled and caller_repeats:
                 local_host = local_table.cpu().tolist()
                 global_host = global_table.cpu().tolist()
                 launch_guards = [reusable_guard]
@@ -859,19 +980,29 @@ def _run_case(
                     "route_path": "host_list_with_h2d_and_route_metadata",
                 })
                 if export_enabled:
-                    out_actual, export_actual = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_host, global_host,
-                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                        received_rows=received_rows, output_all_to_allv=True,
-                        all_to_allv_out=reusable_all_to_allv_out,
+                    out_result, out_snapshot_result = execute_launch(
+                        "host_route",
+                        lambda: udma.all_to_allv_grouped_mat_mul(
+                            x, weight, local_host, global_host,
+                            ep_size=world_size, expert_num=expert_num,
+                            out=reusable_out, received_rows=received_rows,
+                            output_all_to_allv=True,
+                            all_to_allv_out=reusable_all_to_allv_out,
+                        ),
                     )
+                    out_actual, export_actual = out_result
+                    out_snapshot, export_snapshot = out_snapshot_result
                 else:
-                    out_actual = udma.all_to_allv_grouped_mat_mul(
-                        x, weight, local_host, global_host,
-                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                        received_rows=received_rows,
+                    out_actual, out_snapshot = execute_launch(
+                        "host_route",
+                        lambda: udma.all_to_allv_grouped_mat_mul(
+                            x, weight, local_host, global_host,
+                            ep_size=world_size, expert_num=expert_num,
+                            out=reusable_out, received_rows=received_rows,
+                        ),
                     )
-                torch_npu.npu.synchronize()
+                    export_actual = None
+                    export_snapshot = None
                 record_launch(
                     "host_route", out_actual,
                     allocation_mode="caller_provided",
@@ -879,18 +1010,19 @@ def _run_case(
                     output_prefill="nan",
                 )
                 candidates.append((
-                    "host_route", out_actual.clone(),
-                    _padding_stats(out_actual, valid_rows),
+                    "host_route", out_snapshot,
+                    _padding_stats(out_snapshot, valid_rows),
                 ))
                 candidate_guards["host_route"] = [
                     guard.check() for guard in launch_guards
                 ]
                 if export_enabled:
                     add_export_report(
-                        export_actual, "all_to_allv_export_host_route",
+                        export_snapshot, "all_to_allv_export_host_route",
                         launch_records[-1]["launch_index"],
                     )
 
+    input_diagnostics_started = time.perf_counter()
     input_diagnostics = {
         "skipped": mssanitizer_enabled,
         "skip_reason": (
@@ -980,6 +1112,7 @@ def _run_case(
             value["passed"]
             for value in memory_report["candidate_nonfinite"].values()
         )
+    add_timing("input_and_memory_diagnostics", input_diagnostics_started)
 
     case_root = output_root / case["id"] / "rank_{}".format(rank)
 
@@ -1015,8 +1148,14 @@ def _run_case(
     reports = []
     for name, report, dump in additional_reports:
         add_memory_result(report, name)
+        started = time.perf_counter()
         write_accuracy_artifacts(
             case_root / name, report, dump_payload=dump
+        )
+        add_timing(
+            "artifact_write", started, path=name,
+            launch_index=report.get("launch_index"),
+            output_role="all_to_allv_export",
         )
         reports.append(report)
     for name, actual, padding in candidates:
@@ -1028,9 +1167,18 @@ def _run_case(
             analyze_arguments["global_table"] = global_table_2d.cpu().tolist()
         else:
             analyze_arguments["segments_override"] = segments_override
+        started = time.perf_counter()
         report = analyze_accuracy(actual, expected, **analyze_arguments)
         launch_record = next(
             (item for item in launch_records if item["path"] == name), None
+        )
+        add_timing(
+            "accuracy_analysis", started, path=name,
+            launch_index=(
+                launch_record["launch_index"]
+                if launch_record is not None else None
+            ),
+            output_role="operator_output",
         )
         report.update(
             case_id=case["id"], rank=rank, path=name,
@@ -1041,6 +1189,14 @@ def _run_case(
             allocation_mode=(
                 launch_record["allocation_mode"]
                 if launch_record is not None else None
+            ),
+            global_launch_index=(
+                launch_record["global_launch_index"]
+                if launch_record is not None else None
+            ),
+            cross_rank_aligned=(
+                launch_record["cross_rank_aligned"]
+                if launch_record is not None else False
             ),
             output_role="operator_output",
             valid_rows=valid_rows, padding=padding,
@@ -1059,7 +1215,13 @@ def _run_case(
                 "expected": expected,
                 "actual": actual,
             }
+        started = time.perf_counter()
         write_accuracy_artifacts(case_root / name, report, dump_payload=dump)
+        add_timing(
+            "artifact_write", started, path=name,
+            launch_index=report.get("launch_index"),
+            output_role="operator_output",
+        )
         reports.append(report)
 
     any_accuracy_failure = any(not report["passed"] for report in reports)
@@ -1106,6 +1268,25 @@ def _run_case(
     diagnosis = _failure_scope(reports)
     if not input_diagnostics["passed"]:
         diagnosis["likely_scope"] = "input_or_route_tensor_mutation"
+    timing_events.append({
+        "phase": "case_total",
+        "elapsed_seconds": time.perf_counter() - case_started,
+    })
+    timing_totals = {}
+    for event in timing_events:
+        phase = event["phase"]
+        timing_totals[phase] = timing_totals.get(phase, 0.0) + float(
+            event["elapsed_seconds"]
+        )
+    timing_report = {
+        "case_id": case["id"],
+        "rank": rank,
+        "cross_rank_launch_alignment": synchronize_launches,
+        "check_reusable_out": check_reusable_out,
+        "totals_seconds": timing_totals,
+        "events": timing_events,
+    }
+    write_json(case_root / "timings.json", timing_report)
     summary = {
         "case_id": case["id"],
         "rank": rank,
@@ -1119,6 +1300,13 @@ def _run_case(
         "diagnostic_artifacts": {
             "launches": "launch_diagnostics.json",
             "inputs": "input_diagnostics.json",
+            "timings": "timings.json",
+        },
+        "cross_rank_launch_alignment": synchronize_launches,
+        "check_reusable_out": check_reusable_out,
+        "timings": {
+            "path": "timings.json",
+            "totals_seconds": timing_totals,
         },
         "memory_safety": (
             {
@@ -1150,6 +1338,22 @@ def _run_case(
             diagnosis["failed_auto_outputs"],
             diagnosis["failed_caller_out_outputs"],
             diagnosis["failed_repeat_exports"],
+        ),
+        flush=True,
+    )
+    print(
+        "[accuracy-timing] case={} rank={} input={:.3f}s golden={:.3f}s "
+        "barrier={:.3f}s operator={:.3f}s snapshot={:.3f}s "
+        "analysis={:.3f}s artifacts={:.3f}s total={:.3f}s".format(
+            case["id"], rank,
+            timing_totals.get("input_preparation", 0.0),
+            timing_totals.get("golden_generation", 0.0),
+            timing_totals.get("pre_launch_barrier", 0.0),
+            timing_totals.get("operator_launch", 0.0),
+            timing_totals.get("output_snapshot", 0.0),
+            timing_totals.get("accuracy_analysis", 0.0),
+            timing_totals.get("artifact_write", 0.0),
+            timing_totals.get("case_total", 0.0),
         ),
         flush=True,
     )
@@ -1199,6 +1403,7 @@ def main():
     parser.add_argument("--guard-bytes", type=int, default=16 << 20)
     parser.add_argument("--fingerprint-elements", type=int, default=1 << 20)
     parser.add_argument("--automatic-only", action="store_true")
+    parser.add_argument("--check-reusable-out", action="store_true")
     parser.add_argument("--max-failure-dumps-per-role", type=int, default=-1)
     args = parser.parse_args()
     if args.memory_safety and args.mssanitizer:
@@ -1206,6 +1411,14 @@ def main():
     if args.automatic_only and (args.memory_safety or args.mssanitizer):
         raise ValueError(
             "--automatic-only cannot be combined with memory-safety or mssanitizer"
+        )
+    if args.automatic_only and args.check_reusable_out:
+        raise ValueError(
+            "--automatic-only and --check-reusable-out are mutually exclusive"
+        )
+    if args.mssanitizer and args.check_reusable_out:
+        raise ValueError(
+            "--mssanitizer keeps one automatic launch and cannot check reusable out"
         )
     if args.max_failure_dumps_per_role < -1:
         raise ValueError("--max-failure-dumps-per-role must be -1 or non-negative")
@@ -1222,6 +1435,7 @@ def main():
     }
     diagnostic_options = {
         "automatic_only": args.automatic_only,
+        "check_reusable_out": args.check_reusable_out or args.memory_safety,
         "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
     }
     cases = read_resolved_cases(args.resolved_cases)

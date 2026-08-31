@@ -177,14 +177,11 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
     accuracy["repeats"] = _require_positive_int(
         case_id, "accuracy.repeats", accuracy.get("repeats", 2)
     )
-    # Keep consecutive invocation state and caller-provided output storage as
-    # independent test dimensions. One automatically allocated repeat catches
-    # cross-launch kernel state before the reusable-out path is exercised.
+    # The ordinary launch plus one automatically allocated repeat gives two
+    # independent operator invocations by default. Reusable caller-provided
+    # storage is an opt-in validation dimension selected by the launcher.
     accuracy["auto_repeats"] = _require_nonnegative_int(
         case_id, "accuracy.auto_repeats", accuracy.get("auto_repeats", 1)
-    )
-    accuracy["synchronized_control"] = bool(
-        accuracy.get("synchronized_control", True)
     )
     accuracy["topk"] = _require_positive_int(case_id, "accuracy.topk", accuracy.get("topk", 20))
     accuracy["heatmap_bins"] = _require_positive_int(

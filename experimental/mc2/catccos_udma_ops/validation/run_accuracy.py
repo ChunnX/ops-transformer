@@ -47,6 +47,7 @@ DEFAULT_CASES = HERE / "cases" / "alltoallv_grouped_mat_mul.yaml"
 
 
 def main():
+    launcher_started = time.perf_counter()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", default=str(DEFAULT_CASES))
     parser.add_argument("--case-id", action="append", default=[])
@@ -94,8 +95,15 @@ def main():
     parser.add_argument(
         "--automatic-only", action="store_true",
         help=(
-            "run only automatically allocated consecutive launches; skip the "
-            "Gloo control and caller-provided out paths"
+            "run only automatically allocated consecutive launches without "
+            "cross-rank pre-launch barriers; intended only for sync diagnosis"
+        ),
+    )
+    parser.add_argument(
+        "--check-reusable-out", action="store_true",
+        help=(
+            "also validate caller-provided out tensors; enabled implicitly by "
+            "--memory-safety and disabled by default for ordinary accuracy"
         ),
     )
     parser.add_argument(
@@ -117,6 +125,15 @@ def main():
         raise ValueError(
             "--automatic-only cannot be combined with memory-safety or mssanitizer"
         )
+    if args.automatic_only and args.check_reusable_out:
+        raise ValueError(
+            "--automatic-only and --check-reusable-out are mutually exclusive"
+        )
+    if args.mssanitizer and args.check_reusable_out:
+        raise ValueError(
+            "--mssanitizer keeps one automatic launch and cannot check reusable out"
+        )
+    check_reusable_out = args.check_reusable_out or args.memory_safety
     if args.automatic_only and any(
         case["operator"] != "all_to_allv_grouped_mat_mul"
         or not case["output_all_to_allv"]
@@ -164,6 +181,7 @@ def main():
 
     failed_launches = []
     runtime_log_results = []
+    launcher_timing_groups = []
     for group_index, (world_size, group_cases) in enumerate(sorted(grouped.items())):
         resolved = output_root / "resolved_ep{}.json".format(world_size)
         write_resolved_cases(resolved, group_cases)
@@ -184,6 +202,8 @@ def main():
         ]
         if args.automatic_only:
             command.append("--automatic-only")
+        if check_reusable_out:
+            command.append("--check-reusable-out")
         command.extend([
             "--max-failure-dumps-per-role",
             str(args.max_failure_dumps_per_role),
@@ -222,6 +242,8 @@ def main():
             "udma_heap_size": environment.get("UDMA_HEAP_SIZE", "default"),
             "sync_diagnostic_mode": sync_completion_mode_from_env(),
             "automatic_only": args.automatic_only,
+            "cross_rank_launch_alignment": not args.automatic_only,
+            "check_reusable_out": check_reusable_out,
             "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
             "console_log": launch_log.name,
             "runtime_log_manifest": (
@@ -229,7 +251,13 @@ def main():
             ),
         })
         print("+ " + " ".join(command), flush=True)
+        group_timing = {"world_size": world_size}
+        phase_started = time.perf_counter()
         log_snapshot = snapshot_runtime_logs(log_roots) if log_roots else None
+        group_timing["runtime_log_snapshot_seconds"] = (
+            time.perf_counter() - phase_started
+        )
+        phase_started = time.perf_counter()
         with launch_log.open("w", encoding="utf-8", errors="replace") as log_stream:
             process = subprocess.Popen(
                 command,
@@ -248,11 +276,20 @@ def main():
                 log_stream.write(line)
                 log_stream.flush()
             returncode = process.wait()
+        group_timing["torchrun_seconds"] = time.perf_counter() - phase_started
         if log_snapshot is not None:
+            phase_started = time.perf_counter()
             if args.runtime_log_settle_seconds:
                 time.sleep(args.runtime_log_settle_seconds)
+            group_timing["runtime_log_settle_seconds"] = (
+                time.perf_counter() - phase_started
+            )
+            phase_started = time.perf_counter()
             collected = collect_runtime_logs(
                 log_snapshot, log_roots, runtime_log_output
+            )
+            group_timing["runtime_log_collection_seconds"] = (
+                time.perf_counter() - phase_started
             )
             collected["world_size"] = world_size
             runtime_log_results.append(collected)
@@ -267,6 +304,15 @@ def main():
                 ),
                 flush=True,
             )
+        else:
+            group_timing["runtime_log_settle_seconds"] = 0.0
+            group_timing["runtime_log_collection_seconds"] = 0.0
+        group_timing["returncode"] = returncode
+        launcher_timing_groups.append(group_timing)
+        write_json(
+            output_root / "launch_ep{}_timings.json".format(world_size),
+            group_timing,
+        )
         if returncode:
             failed_launches.extend(case["id"] for case in group_cases)
             if args.fail_fast:
@@ -281,7 +327,13 @@ def main():
                 for report in rank["reports"]:
                     rows.append({
                         "case_id": case["id"], "rank": rank["rank"],
-                        "path": report["path"], "passed": report["passed"],
+                        "path": report["path"],
+                        "launch_index": report.get("launch_index"),
+                        "global_launch_index": report.get("global_launch_index"),
+                        "cross_rank_aligned": report.get("cross_rank_aligned"),
+                        "allocation_mode": report.get("allocation_mode"),
+                        "output_role": report.get("output_role"),
+                        "passed": report["passed"],
                         "matched_ratio": report["matched_ratio"],
                         "max_abs_error": report["max_abs_error"],
                         "actual_nonfinite": report.get("actual_nonfinite", 0),
@@ -292,18 +344,27 @@ def main():
     write_csv(
         output_root / "summary.csv", rows,
         [
-            "case_id", "rank", "path", "passed", "matched_ratio",
+            "case_id", "rank", "path", "launch_index",
+            "global_launch_index", "cross_rank_aligned",
+            "allocation_mode", "output_role", "passed", "matched_ratio",
             "max_abs_error", "actual_nonfinite", "memory_safety_passed",
         ],
     )
     overall = not failed_launches and rows and all(bool(row.get("passed")) for row in rows)
+    launcher_elapsed = time.perf_counter() - launcher_started
     write_json(output_root / "summary.json", {
         "passed": bool(overall), "failed_launches": failed_launches,
         "case_count": len(cases), "results": rows,
         "sync_diagnostic_mode": sync_completion_mode_from_env(),
         "automatic_only": args.automatic_only,
+        "cross_rank_launch_alignment": not args.automatic_only,
+        "check_reusable_out": check_reusable_out,
         "auto_repeats_override": args.auto_repeats,
         "runtime_logs": runtime_log_results,
+        "timings": {
+            "elapsed_seconds": launcher_elapsed,
+            "groups": launcher_timing_groups,
+        },
     })
     print("accuracy results: {}".format(output_root), flush=True)
     return 0 if overall else 1

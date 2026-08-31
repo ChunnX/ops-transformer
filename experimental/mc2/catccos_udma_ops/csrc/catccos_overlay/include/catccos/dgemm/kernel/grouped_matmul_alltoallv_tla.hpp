@@ -318,10 +318,16 @@ public:
         }
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
 
+        // All ranks must have left the previous kernel launch before any rank
+        // clears the reused synchronization counters.  Otherwise a fast rank
+        // can reset state that a slow rank still consumes, or republish the
+        // same commIdx value and trigger a cross-launch ABA match.
+        aclshmemx_barrier_all_vec();
         if (isSyncCore) {
             aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
             aclshmemx_signal_op(syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
         }
+        // Publish the cleared state before this launch starts producing data.
         aclshmemx_barrier_all_vec();
 
         auto commLoops = scheduler.GetCommLoops();
@@ -516,10 +522,16 @@ private:
         }
         auto syncCommFinish = reinterpret_cast<__gm__ int32_t *>(params.syncCommFinish);
 
+        // All ranks must have left the previous kernel launch before any rank
+        // clears the reused synchronization counters.  Otherwise a fast rank
+        // can reset state that a slow rank still consumes, or republish the
+        // same commIdx value and trigger a cross-launch ABA match.
+        aclshmemx_barrier_all_vec();
         if (isSyncCore) {
             aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
             aclshmemx_signal_op(syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
         }
+        // Publish the cleared state before this launch starts producing data.
         aclshmemx_barrier_all_vec();
 
         uint32_t receiveAccum = 0;

@@ -24,7 +24,7 @@ def test_default_manifest_resolves_and_selects_modes():
     assert len(select_cases(cases, mode="performance")) == 4
     assert all(case["output_all_to_allv"] for case in cases)
     assert all(case["accuracy"]["auto_repeats"] == 1 for case in cases)
-    assert all(case["accuracy"]["synchronized_control"] for case in cases)
+    assert all("synchronized_control" not in case["accuracy"] for case in cases)
     assert select_cases(cases, mode="accuracy", include_tags=["normal"])[0]["id"].endswith("normal")
     model_cases = {case["id"]: case for case in cases if case["id"].startswith("model_case_")}
     assert model_cases["model_case_1"]["shape"] == {"m": 131072, "n": 1024, "k": 2048}

@@ -265,16 +265,28 @@ The validation control plane uses CPU Gloo, keeping HCCL off the device path so
 it cannot contend with ACLSHMEM for UDMA/HDC resources or pollute device-side
 profiling. The independent Golden gathers each source rank's packed input as an
 FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
-and performs CPU FP32 matmul followed by BF16 conversion. Both automatic-output
-and reusable-output calls use the same ordinary input tensor and are checked.
-For AllToAllV-GroupedMatMul, accuracy cases additionally default to one
-consecutive automatic-output repeat and one Gloo-barrier-controlled launch.
-These isolate cross-invocation stage state, cross-Rank launch skew, and the
-caller-provided output overload as separate failure scopes. Set
-`accuracy.auto_repeats: 0` or `accuracy.synchronized_control: false` only when a
-smaller smoke test is required. Caller-provided output tensors are filled with
-NaN before every accuracy launch, so an unwritten output region cannot be
-silently accepted because it happened to contain zero or an earlier result.
+and performs CPU FP32 matmul followed by BF16 conversion.
+
+Ordinary accuracy defaults to two automatically allocated calls: `ordinary`
+plus `auto_repeat_0`. Before each call every Rank enters the same Gloo barrier;
+after the operator completes, each returned tensor is cloned to an immutable
+NPU snapshot. Consequently no Rank can begin call N+1 until every Rank has
+finished and preserved call N, and every per-call report describes that exact
+global invocation. Unaligned consecutive launches are intentionally confined
+to `scripts/run_sync_diagnosis.sh`, which passes `--automatic-only` to diagnose
+cross-Rank launch skew and cross-invocation synchronization.
+
+Reusable caller-provided outputs are not exercised by ordinary accuracy. Add
+`--check-reusable-out` when that overload is required; `--memory-safety`
+enables it automatically. Only those reusable outputs are prefilled with NaN
+to detect unwritten regions. Full free-HBM NaN poisoning, guard allocations and
+mutation checks are likewise exclusive to `--memory-safety`, so they do not
+inflate an ordinary accuracy run:
+
+```bash
+bash scripts/run_accuracy.sh --case-id model_case_1
+bash scripts/run_accuracy.sh --case-id model_case_1 --check-reusable-out
+```
 
 The SHMEM heap contains only the fixed communication workspace and
 synchronization state. Inputs and outputs of both public operators use ordinary
@@ -306,7 +318,11 @@ machine-readable `summary.json` and `summary.csv`. The launcher also tees the
 complete combined torchrun stdout/stderr into `torchrun_ep<N>.log` and records
 its exact command, ports and heap selection in `launch_ep<N>.json`, so a copied
 accuracy directory retains failures that occur before a Rank can write its
-report.
+report. Each Rank writes `timings.json`, splitting input preparation, Golden
+generation, pre-launch barriers, operator launches, output snapshots, accuracy
+analysis and artifact writes. The batch root writes
+`launch_ep<N>_timings.json` for torchrun and runtime-log collection, making a
+slow run attributable without enabling a profiler.
 
 Pass/fail counts and maximum error always use every meaningful output element.
 For tensors larger than 1,048,576 elements, diagnostic median/p90/p99 values use
