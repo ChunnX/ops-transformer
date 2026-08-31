@@ -155,7 +155,7 @@ public:
         task.mStart = (taskIdx - taskBase_) * MSA_ROW_TILE_M;
         task.mActual = MsaMinU32(MSA_ROW_TILE_M, curRows_ - task.mStart);
         // Cube L0A fractal 为 MSA_M_ALIGN 行。整请求不足对齐宽度时保持原样（L0 已覆盖）；
-        // 否则把末尾短 tile 向前重叠到 MSA_M_ALIGN 行，避免 mActual∈(0,16) 的 int8 路径出错。
+        // 否则把末尾短 tile 向前重叠到 MSA_M_ALIGN 行，避免 mActual ∈ (0,16) 的 int8 路径出错。
         if (task.mActual > 0U && task.mActual < MSA_M_ALIGN && task.mStart >= MSA_M_ALIGN) {
             task.mStart -= (MSA_M_ALIGN - task.mActual);
             task.mActual = MSA_M_ALIGN;

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file msa_index_score_epilogue.h
+ * \file msa_seg_row_max_epilogue.h
  * \brief AIV 侧 Epilogue：可选反量化列乘 -> atten_mask -> 分段 RowMax -> local_mask -> 写回。
  *
  * 数值路径：
@@ -18,8 +18,8 @@
  * local_mask 由 start_loc（query 所在逻辑 block）+ init/local_blocks 生成强制 +∞。
  */
 
-#ifndef MSA_INDEX_SCORE_EPILOGUE_H
-#define MSA_INDEX_SCORE_EPILOGUE_H
+#ifndef MSA_SEG_ROW_MAX_EPILOGUE_H
+#define MSA_SEG_ROW_MAX_EPILOGUE_H
 
 #include "kernel_operator.h"
 
@@ -59,13 +59,12 @@ public:
     // 非量化：WholeReduceMax 的 fp16 输出（每 pass MSA_REDUCE_ROWS 个 half）。
     static constexpr uint32_t UB_OFF_RED16 = UB_OFF_DEQ + UB_SIZE_DEQ;
     static constexpr uint32_t UB_SIZE_RED16 = MSA_REDUCE_ROWS * sizeof(half);
-    // score 暂存：本 subcore 的行 × 一次 flush 覆盖的 block 数。逐 pass 只写 32B 到 GM
-    // 会把 MTE3 压到 ~9GB/s；改为在 UB 内按行累积、整行（≥1KB）一次写回。
+    // score 暂存：本 subcore 的行 × 一次 flush 覆盖的 block 数。
+    // 在 UB 内按行累积、整行（≥1KB）一次写回。
     static constexpr uint32_t UB_OFF_STAGE =
         ((UB_OFF_RED16 + UB_SIZE_RED16 + MSA_UB_ALIGN_BYTES - 1U) / MSA_UB_ALIGN_BYTES) * MSA_UB_ALIGN_BYTES;
     static constexpr uint32_t UB_SIZE_STAGE = MSA_STAGE_ROWS * MSA_STAGE_BLOCKS * sizeof(float);
     // 非量化：S16（fp16 载入缓冲）复用量化路径的 fp32 S 区（64KB = 两级 32KB 乒乓）。
-    // v0.7 PipeUtilization：aiv_mte2_wait_ratio≈0.84、aiv_mte2_ratio≈0.33、aiv_vec_ratio≈0.57，
     // 说明 GM→UB 与归约串行；两级缓冲让下一 pass 的 MTE2 叠在当前 pass 的 V 上。
     static constexpr uint32_t UB_OFF_S16 = UB_OFF_S;
     static constexpr uint32_t UB_SIZE_S16 = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * sizeof(half);
@@ -668,4 +667,4 @@ private:
 
 } // namespace MsaIndexScoreNs
 
-#endif // MSA_INDEX_SCORE_EPILOGUE_H
+#endif // MSA_SEG_ROW_MAX_EPILOGUE_H
