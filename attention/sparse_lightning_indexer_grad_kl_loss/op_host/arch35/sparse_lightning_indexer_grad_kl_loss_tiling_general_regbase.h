@@ -149,6 +149,7 @@ protected:
     platform_ascendc::SocVersion socVersion;
     bool deterministic;
     bool hasRope = false;
+    bool hasSink = false;
 
     const char *opName;
     const char *inputLayout;

@@ -28,6 +28,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
+#include "mc2_exception_dump.h"
 #include "../mega_moe_tiling_host.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
@@ -218,6 +219,8 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
+    int64_t exceptionDumpRegionSize = tilingData->topoType == TOPO_TYPE_MTE ? EXCEPTION_DUMP_REGION_SIZE : 0;
+    OP_LOGD(nodeName, "exceptionDumpRegionSize: {%ld}\n", exceptionDumpRegionSize);
     // 各区尺寸取自 kernel 侧同一份布局公式（common/mega_moe_peermem.h）。
     int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
     int64_t maskRecvSize = CalcMaskRecvSize(maskAlignSize, static_cast<int64_t>(tilingData->moeExpertPerRank),
@@ -237,7 +240,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize);
+            exceptionDumpRegionSize + PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -504,6 +507,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                                         *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1,
                                         GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT};
     int64_t leastCclBufferSize = CalcPeermemLeastSize(peermemSizeParams);
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    if (*topoTypePtr == TOPO_TYPE_MTE) {
+        leastCclBufferSize += EXCEPTION_DUMP_REGION_SIZE;
+    }
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
@@ -939,11 +946,10 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
-    bool isA8W4 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4;
-    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE && (isA8W8 || isA8W4);
+    bool useMteA8W8Wave =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupSyncCounters =
         tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
@@ -1827,7 +1833,7 @@ static ge::graphStatus TilingCheckMegaMoe(const gert::TilingContext *context, Me
                                           const char *nodeName)
 {
     OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) == ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
@@ -2023,4 +2029,35 @@ static ge::graphStatus TilingParseForMegaMoe(gert::TilingParseContext *context)
 }
 
 IMPL_OP_OPTILING(MegaMoe).Tiling(MegaMoeTilingFunc).TilingParse<MegaMoeCompileInfo>(TilingParseForMegaMoe);
+
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+inline void MegaMoeExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    Mc2Exception::Mc2ExceptionImpl(args, userdata, "MegaMoe");
+}
+
+__attribute__((constructor)) void RegisterMegaMoeExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGW("MegaMoe", "Get runtime version failed when register exception func.");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGW("MegaMoe", "Get metadef version failed when register exception func.");
+        return;
+    }
+
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGW("MegaMoe",
+                "The runtime(%d) or metadata(%d) version is lower than the version(%d) supporting exception func.",
+                runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
+        return;
+    }
+
+    IMPL_OP(MegaMoe).ExceptionDumpParseFunc(MegaMoeExceptionImplWrapper);
+}
+#endif
 } // namespace optiling

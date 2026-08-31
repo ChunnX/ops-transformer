@@ -28,10 +28,10 @@
 #include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
-#include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
+#include "../../../common/quantize_functions.h"
 #else
 #include "../../../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "../../../../common/op_kernel/quantize_functions.h"
 #endif
 
 namespace MegaMoeImpl {
@@ -191,9 +191,9 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
     offset += ubTensorSize * sizeof(T);
 
     uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t mxScaleNum = Align2(nScale);
+    uint32_t mxScaleNum = Ops::Base::CeilAlign(nScale, 2U);
     uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
-    uint32_t floatTempSize = Align32(mxScaleNum) + mxScaleNum / 2;
+    uint32_t floatTempSize = Ops::Base::CeilAlign(mxScaleNum, static_cast<uint32_t>(ALIGN_32)) + mxScaleNum / 2;
     LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
 
     GlobalTensor<T> gmm2OutGm;
@@ -238,13 +238,6 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 
 constexpr uint32_t META_INFO_TENSOR_ADDR = 200U * 1024U;
 constexpr int32_t MAX_AICORE_NUM = 36;
-
-struct Gmm2RuntimeState {
-    uint32_t &startBlockIdx;
-    int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
-    uint16_t &pingpongIdx;
-};
 
 struct QuantCombineBufferConfig {
     int64_t combineUbElementCount;
@@ -389,7 +382,7 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
     SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
 
-// 原型：MegaMoeWave::ProcessCombineGm。发送一个逻辑 AIV 任务负责的已就绪 token 范围。
+// 使用行级流水发送当前逻辑 AIV 任务负责的已就绪 token 区间。
 template <uint8_t CombineMode>
 __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
                                              const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
@@ -982,7 +975,7 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, 
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const Params &params,
                                      const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-                                     Gmm2RuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
+                                     GmmRuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
                                      bool allowWeightL2Bypass = false)
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
@@ -1002,44 +995,6 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
             problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
             allowWeightL2Bypass);
     }
-}
-
-template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
-          typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved, bool IsWaveFlagGrained>
-__aicore__ inline void RunMoeExpertGmm2Stage(const GmmExecutionConfig &gmmConfig, const Params &params,
-                                             const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-                                             Gmm2RuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
-                                             bool allowWeightL2Bypass = false)
-{
-    RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4,
-                  Gmm1TileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
-        gmmConfig, params, gmmAddrInfo, problemShape, runtimeState, persistentBlockMmadContext, allowWeightL2Bypass);
-}
-
-template <typename GenericElementA, typename A8W4ElementA, typename WeightType, typename QuantScaleType,
-          bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved,
-          bool IsWaveFlagGrained>
-__aicore__ inline bool RunSharedExpertGmm2Stage(const MoeStageCommonConfig &commonConfig,
-                                                const GmmExecutionConfig &gmmConfig, const Params &params,
-                                                const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
-                                                Gmm2RuntimeState &runtimeState, uint32_t sharedExpertIdx,
-                                                void *persistentBlockMmadContext = nullptr,
-                                                bool allowWeightL2Bypass = false)
-{
-    if (commonConfig.tokenNum == 0U) {
-        return false;
-    }
-    ProblemShape problemShape;
-    Get<M_VALUE>(problemShape) = commonConfig.tokenNum;
-    Get<N_VALUE>(problemShape) = commonConfig.gmm1OutputDim;
-    Get<K_VALUE>(problemShape) = commonConfig.tokenHiddenDim;
-    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, WeightType, QuantScaleType, Gmm1TileM, EnableA8W4 || EnableA4W4>(
-        commonConfig, gmmConfig, params.workspaceInfo, weights, gmmAddrInfo, sharedExpertIdx);
-    RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4,
-                  Gmm1TileM, TopkWeightsPrefetch, true, IsGmm1Interleaved, IsWaveFlagGrained>(
-        gmmConfig, params, gmmAddrInfo, problemShape, runtimeState, persistentBlockMmadContext, allowWeightL2Bypass);
-    return true;
 }
 
 // 调度当前 MoE 专家指定 token 范围的量化 Combine。

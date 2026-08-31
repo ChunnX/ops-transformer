@@ -370,6 +370,7 @@ function help_info() {
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
     echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb/all), Default: run"
+    echo "    --torch_extension           Build torch_extension whl only, support --ops for single op packaging"
     echo "    --torch_extension_only       Build torch_extension whl package only"
     echo "    --experimental build experimental version"
     echo "    --opkernel_aicpu build aicpu kernel"
@@ -609,18 +610,23 @@ function build_example()
         echo "Currently $ASCEND_SOC_UNITS is not supported, please input a valid soc."
         return 1
     fi
+    # 非 experimental 模式下排除 experimental 目录,避免 built-in 算子修改误触发 experimental 算子的 example
+    local exclude_experimental=()
+    if [[ "$ENABLE_EXPERIMENTAL" != "TRUE" ]]; then
+        exclude_experimental=(-not -path "*/experimental/*")
+    fi
     # Obtain the example file corresponding to the input soc unit.
     if [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
         # 1. ascend950/ascend950 example is independent of other soc units.
-        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp"))
+        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp" "${exclude_experimental[@]}"))
         if [[ -z "$files" ]]; then
             # 2. Example is shared with other soc units, or the current operator only supports ascend950/ascend950.
-            files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+            files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp" "${exclude_experimental[@]}"))
         fi
     else
         # Except for ascend950/ascend950, the examples of other soc units are temporarily shared.
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
-        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp" "${exclude_experimental[@]}"))
     fi
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
@@ -798,6 +804,10 @@ function collect_rpm_deb_package() {
 }
 
 function build_package(){
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
+        return 0
+    fi
     if [[ "${PACKAGE_TYPE}" == "all" ]]; then
         local saved_pkg_type="${PACKAGE_TYPE}"
         local option=""
@@ -827,6 +837,10 @@ function build_host(){
 }
 
 function build_kernel(){
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
+        return 0
+    fi
     build ops_transformer_kernel
 }
 
@@ -842,6 +856,19 @@ function build_torch_extension_whl() {
             log "[WARNING] Python build module not found, skipping whl build"
             cd "${original_dir}"
             return 0
+        fi
+
+        if [[ -n "${ascend_op_name}" ]]; then
+            export TORCH_EXTENSION_OPS="${ascend_op_name}"
+            if [[ -n "${vendor_name}" ]]; then
+                export TORCH_EXTENSION_VENDOR="${vendor_name}"
+            else
+                export TORCH_EXTENSION_VENDOR="custom"
+            fi
+            log "[INFO] Building torch_extension whl with ops: ${ascend_op_name}, vendor: ${TORCH_EXTENSION_VENDOR}"
+        else
+            unset TORCH_EXTENSION_OPS
+            unset TORCH_EXTENSION_VENDOR
         fi
 
         python3 -m build --wheel -n 2>&1 || {
@@ -1235,7 +1262,7 @@ set_example_opt() {
 # 所有支持的长选项（不含值），用于参数合法性校验
 SUPPORTED_LONG_OPTS=(
   "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
-  "experimental" "noexec" "torch_extension_only" "oom" "make_clean"
+  "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
   "mssanitizer" "dump_cce"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
@@ -1893,6 +1920,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --noexec)
         ENABLE_UT_EXEC=FALSE
+        shift
+        ;;
+    --torch_extension)
+        ENABLE_TORCH_EXTENSION_ONLY=TRUE
         shift
         ;;
     --torch_extension_only)
