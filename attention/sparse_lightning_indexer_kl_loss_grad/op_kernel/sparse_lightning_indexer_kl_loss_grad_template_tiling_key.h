@@ -52,7 +52,7 @@ ASCENDC_TPL_ARGS_DECL(SparseLightningIndexerKLLossGrad, // 算子OpType
                       ASCENDC_TPL_UINT_DECL(SPARSE_MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, MQA_SPARSE_NO_MASK,
                                             MQA_SPARSE),
                       ASCENDC_TPL_BOOL_DECL(HAS_SEQUSED_Q, 0, 1), ASCENDC_TPL_BOOL_DECL(HAS_SEQUSED_K, 0, 1),
-                      ASCENDC_TPL_BOOL_DECL(DETERMINISTIC, 0, 1), ASCENDC_TPL_BOOL_DECL(PRIVATE_SCATTER, 0, 1), );
+                      ASCENDC_TPL_BOOL_DECL(DETERMINISTIC, 0, 1), ASCENDC_TPL_BOOL_DECL(PRIVATE_SCATTER, 0, 1));
 
 // 支持的模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
