@@ -197,8 +197,8 @@ public:
 
         // k_cache 576 宽单张量（nope 512 + rope 64 合并）——key 与 value 同源（k==v）：
         // bmm2 的 V 段 = L1 上 nope 区（512 宽，mm1 后仍留在 L1），无独立 value GM 张量/读取
-        InitKVBuffer(constInfo.bSize, constInfo.s2Size, seqLensTool_.actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                     constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, kCacheGm, kCache,
+        // 仅 PA 实例化（host 强制 PA 路由），非 PA 分支已删
+        InitKVBuffer(constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, kCacheGm, kCache,
                      constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
     }
 
@@ -216,9 +216,7 @@ public:
         }
     }
 
-    __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize,
-                                        GlobalTensor<uint32_t> actualSeqLengthsGm, uint32_t actualLenDims,
-                                        uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
+    __aicore__ inline void InitKVBuffer(uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
                                         FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm, uint32_t bnStride,
                                         uint32_t n2Stride)
     {
@@ -232,10 +230,6 @@ public:
             uint32_t d1 = headDim / d0;
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
                                              constInfo.maxBlockNumPerBatch, bnStride, n2Stride);
-        } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims);
-        } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-            kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLengthsGm, actualLenDims);
         }
     }
 
