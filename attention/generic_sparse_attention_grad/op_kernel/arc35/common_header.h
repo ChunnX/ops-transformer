@@ -52,16 +52,6 @@ static constexpr uint32_t FLAG_V2_C45 = 3;
 static constexpr uint32_t CROSS_CORE_SYNC_MODE = 4;
 static constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 16;
 
-__aicore__ inline uint32_t GsagC1Flag(uint32_t pingPongIdx)
-{
-    return pingPongIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG;
-}
-
-__aicore__ inline uint32_t GsagC2Flag(uint32_t pingPongIdx)
-{
-    return pingPongIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG;
-}
-
 struct ConstInfo {
     int32_t q_head_num { 0 };
     int32_t kv_head_num { 0 };

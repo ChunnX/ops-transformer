@@ -97,26 +97,6 @@ private:
         return true;
     }
 
-    __aicore__ inline void SetGsagC1(uint32_t pingPongIdx)
-    {
-        CrossCoreSetFlag<2, PIPE_FIX>(GsagC1Flag(pingPongIdx));
-    }
-
-    __aicore__ inline void SetGsagC2(uint32_t pingPongIdx)
-    {
-        CrossCoreSetFlag<2, PIPE_FIX>(GsagC2Flag(pingPongIdx));
-    }
-
-    __aicore__ inline void WaitGsagC1(uint32_t pingPongIdx)
-    {
-        CrossCoreWaitFlag<2, PIPE_V>(GsagC1Flag(pingPongIdx));
-    }
-
-    __aicore__ inline void WaitGsagC2(uint32_t pingPongIdx)
-    {
-        CrossCoreWaitFlag<2, PIPE_V>(GsagC2Flag(pingPongIdx));
-    }
-
     /** SFAG ProcessPreload: Gather(curr) on AIV — Q/dO L1 for Cube MM12. */
     __aicore__ inline void ProcessPreloadVec(VecOp<GSAG_TYPE> &vecOp, uint32_t currIdx, uint32_t loopTaskId)
     {
@@ -154,11 +134,11 @@ private:
         LocalTensor<INPUT_TYPE> dsL1Last = lastIdx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
 
         vecOp.SendVecSftPreProcess(last, lastIdx);
-        WaitGsagC1(lastIdx);
+        CrossCoreWaitFlag<2, PIPE_V>(lastIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG);
         PipeBarrier<PIPE_ALL>();
         vecOp.SendVecSoftmax(pL1Last, mm1Last, last);
         CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
-        WaitGsagC2(lastIdx);
+        CrossCoreWaitFlag<2, PIPE_V>(lastIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG);
         vecOp.SendVecSoftmaxGrad(dsL1Last, mm1Last, mm2Last, last);
         CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
     }
@@ -199,9 +179,9 @@ private:
             }
         }
         cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, curr, currIdx);
-        SetGsagC1(currIdx);
+        CrossCoreSetFlag<2, PIPE_FIX>(currIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG);
         cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, curr, currIdx);
-        SetGsagC2(currIdx);
+        CrossCoreSetFlag<2, PIPE_FIX>(currIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG);
         (void)query;
         (void)key;
         (void)value;
