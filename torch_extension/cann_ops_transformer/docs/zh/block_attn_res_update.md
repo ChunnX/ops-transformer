@@ -137,7 +137,7 @@ cann_ops_transformer.block_attn_res_update(
 
 ## 确定性计算
 
-当前接口不提供单独的确定性开关，确定性能力继承底层`aclnnBlockAttnResUpdate`实现。
+默认支持确定性计算
 
 ## 调用说明
 
@@ -148,29 +148,15 @@ cann_ops_transformer.block_attn_res_update(
   import torch_npu
   import cann_ops_transformer
 
-  T = 8
-  D = 4096
+  T = 32
+  D = 7168
 
-  partial_block = torch.randn(
-      (T, D), dtype=torch.float32, device="npu:0"
-  )
-  partial_block_ptr = partial_block.data_ptr()
-  delta = torch.randn(
-      (T, D), dtype=torch.bfloat16, device="npu:0"
-  )
-  expected_partial_block = partial_block + delta.float()
-  pseudo_query = torch.randn(
-      (D,), dtype=torch.float32, device="npu:0"
-  )
-  numerator = torch.randn(
-      (T, D), dtype=torch.float32, device="npu:0"
-  )
-  logit_max = torch.randn(
-      (T,), dtype=torch.float32, device="npu:0"
-  )
-  exp_sum = torch.rand(
-      (T,), dtype=torch.float32, device="npu:0"
-  )
+  partial_block = torch.randn((T, D), dtype=torch.float32).npu()
+  delta = torch.randn((T, D), dtype=torch.bfloat16).npu()
+  pseudo_query = torch.randn((D,), dtype=torch.float32).npu()
+  numerator = torch.randn((T, D), dtype=torch.float32).npu()
+  logit_max = torch.randn((T,), dtype=torch.float32).npu()
+  exp_sum = torch.rand((T,), dtype=torch.float32).npu()
   h = cann_ops_transformer.block_attn_res_update(
       partial_block,
       delta,
@@ -179,16 +165,62 @@ cann_ops_transformer.block_attn_res_update(
       logit_max,
       exp_sum,
   )
+  ```
 
-  assert h.is_contiguous()
-  assert partial_block.is_contiguous()
-  assert partial_block.data_ptr() == partial_block_ptr
-  torch.testing.assert_close(partial_block, expected_partial_block)
+- aclgraph模式调用：
 
-  print("h shape:", tuple(h.shape))
-  print("h dtype:", h.dtype)
-  print("h[:2, :8]:", h[:2, :8].cpu())
-  print("updated partial_block shape:", tuple(partial_block.shape))
-  print("updated partial_block dtype:", partial_block.dtype)
-  print("updated partial_block[:2, :8]:", partial_block[:2, :8].cpu())
+  ```python
+  import torch
+  import torch_npu
+  import cann_ops_transformer
+
+
+  class OneOp(torch.nn.Module):
+      def forward(
+          self,
+          partial_block,
+          delta,
+          pseudo_query,
+          numerator,
+          logit_max,
+          exp_sum,
+      ):
+          return cann_ops_transformer.block_attn_res_update(
+              partial_block,
+              delta,
+              pseudo_query,
+              numerator,
+              logit_max,
+              exp_sum,
+              eps=1e-6,
+          )
+
+
+  compiled_op = torch.compile(
+      OneOp(),
+      backend="npugraph_ex",
+      fullgraph=True,
+      dynamic=False,
+      options={
+          "static_kernel_compile": True,
+          "disable_static_kernel_compile_cache": False,
+      },
+  )
+
+  T = 8
+  D = 7168
+  partial_block = torch.randn((T, D), dtype=torch.float32).npu()
+  delta = torch.randn((T, D), dtype=torch.bfloat16).npu()
+  pseudo_query = torch.randn((D,), dtype=torch.float32).npu()
+  numerator = torch.randn((T, D), dtype=torch.float32).npu()
+  logit_max = torch.randn((T,), dtype=torch.float32).npu()
+  exp_sum = torch.rand((T,), dtype=torch.float32).npu()
+  h = compiled_op(
+      partial_block,
+      delta,
+      pseudo_query,
+      numerator,
+      logit_max,
+      exp_sum,
+  )
   ```
