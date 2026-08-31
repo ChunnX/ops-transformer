@@ -26,6 +26,12 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL; // 异常dump区
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
+
+HOST_DEVICE bool IsW4GmmMode(uint8_t gmmMode)
+{
+    return gmmMode == GMM_MODE_A8W4_NZ || gmmMode == GMM_MODE_A4W4_ND || gmmMode == GMM_MODE_A4W4_NZ;
+}
+
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
@@ -132,8 +138,8 @@ struct WorkspaceInfo {
 
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
-        if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->moeGmmMode == GMM_MODE_A4W4_ND ||
-            tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
+        bool hasSharedW4Gmm = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
+        if (IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
@@ -257,7 +263,8 @@ struct WorkspaceInfo {
             sharedExpertGmm1OutPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
-            // sharedExpertInputData：GMM1 输入数据 [bs × h]。
+            // sharedExpertInputData：GMM1 输入数据 [bs × h]。按 FP8 的 1 byte/元素预留；
+            // shared 使用 FP4 时实际只占其中一半，保留统一上界避免 workspace 布局依赖量化类型。
             sharedExpertInputDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
             // sharedExpertInputScale：GMM1 输入 scale [bs × CeilDiv(h, 32) × 2]。
@@ -268,6 +275,7 @@ struct WorkspaceInfo {
                                                       MXFP_MULTI_BASE_SIZE,
                                                   ALIGN_512);
             // sharedExpertActivationData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
+            // A4W4 的 GMM2 固定使用 A8W4，因此其 SwiGLU 输出也在这里提升并保存为 FP8。
             sharedExpertActivationDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / ACTIVATION_N_HALF,

@@ -56,6 +56,16 @@ struct QuantProcessScratch {
     LocalTensor<uint16_t> mxTempTensor;
 };
 
+struct InterleavedQuantOutput {
+    GlobalTensor<uint8_t> dataAndScale;
+};
+
+template <typename ActivationType, typename QuantScaleType>
+struct SeparatedQuantOutput {
+    GlobalTensor<ActivationType> data;
+    GlobalTensor<QuantScaleType> scale;
+};
+
 template <typename TopkWeightsType, typename ActivationType, bool TopkWeightsPrefetch>
 __aicore__ inline void LoadTopkWeightsToUb(const Params &params, const QuantProcessConfig &config,
                                            QuantProcessScratch<ActivationType> &scratch,
@@ -91,11 +101,37 @@ __aicore__ inline void LoadTopkWeightsToUb(const Params &params, const QuantProc
     }
 }
 
+template <typename QuantOutType, typename ActivationType>
+__aicore__ inline void StoreQuantizedToken(InterleavedQuantOutput &output,
+                                           const LocalTensor<ActivationType> &xOutTensor,
+                                           const QuantProcessConfig &config, uint32_t tokenIndex, uint32_t)
+{
+    auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
+    DataCopyPad(output.dataAndScale[static_cast<uint64_t>(tokenIndex) * config.quantTokenScaleAlignBytes],
+                xOutBytesTensor, {1U, config.quantTokenScaleAlignBytes, 0U, 0U, 0U});
+}
+
+template <typename QuantOutType, typename ActivationType, typename QuantScaleType>
+__aicore__ inline void StoreQuantizedToken(SeparatedQuantOutput<ActivationType, QuantScaleType> &output,
+                                           const LocalTensor<ActivationType> &xOutTensor,
+                                           const QuantProcessConfig &config, uint32_t tokenIndex, uint32_t hiddenDim)
+{
+    uint32_t dataElementCount = hiddenDim / PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE;
+    uint32_t scaleElementCount =
+        Ops::Base::CeilDiv(hiddenDim, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    LocalTensor<QuantScaleType> scaleTensor =
+        xOutTensor[config.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
+    DataCopyPad(output.data[static_cast<uint64_t>(tokenIndex) * dataElementCount], xOutTensor,
+                {1U, static_cast<uint32_t>(dataElementCount * sizeof(ActivationType)), 0U, 0U, 0U});
+    DataCopyPad(output.scale[static_cast<uint64_t>(tokenIndex) * scaleElementCount], scaleTensor,
+                {1U, static_cast<uint32_t>(scaleElementCount * sizeof(QuantScaleType)), 0U, 0U, 0U});
+}
+
 // 原型：MegaMoe::QuantProcessInRank。量化一个逻辑 AIV 任务负责的本卡 token。
 template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
-          bool TopkWeightsPrefetch>
+          bool TopkWeightsPrefetch, typename QuantOutput>
 __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                           const Params &params, const QuantProcessConfig &config,
+                                           const Params &params, const QuantProcessConfig &config, QuantOutput &output,
                                            QuantProcessScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
@@ -107,14 +143,10 @@ __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeSt
     }
     uint32_t hiddenDim = common.tokenHiddenDim;
     GlobalTensor<bfloat16_t> srcGlobalTensor;
-    GlobalTensor<uint8_t> dstGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.aGmAddr) +
                                     static_cast<uint64_t>(tokenRange.start) * hiddenDim);
-    dstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.peermemInfo.quantTokenScalePtr) +
-                                    static_cast<uint64_t>(tokenRange.start) * config.quantTokenScaleAlignBytes);
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
-    DataCopyExtParams xCopyOutParams = {1U, config.quantTokenScaleAlignBytes, 0U, 0U, 0U};
     __ubuf__ uint16_t *maxExpAddr = reinterpret_cast<__ubuf__ uint16_t *>(scratch.mxTempTensor.GetPhyAddr());
     __ubuf__ uint16_t *halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t *>(
         scratch.mxTempTensor[Ops::Base::CeilAlign(config.quantScaleNumAlignPerToken, static_cast<uint32_t>(ALIGN_32))]
@@ -153,9 +185,7 @@ __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeSt
         }
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);
-        auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-        DataCopyPad(dstGlobalTensor[static_cast<uint64_t>(index) * config.quantTokenScaleAlignBytes], xOutBytesTensor,
-                    xCopyOutParams);
+        StoreQuantizedToken<QuantOutType>(output, xOutTensor, config, tokenRange.start + index, hiddenDim);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);

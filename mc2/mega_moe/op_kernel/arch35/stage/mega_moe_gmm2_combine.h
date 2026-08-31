@@ -968,29 +968,6 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
     }
 }
 
-// 供普通模板、Wave 模板和共享专家的 GMM2 阶段复用。
-// 使用调用方传入的 block 任务执行 GMM2，并保持所选同步约定不变。
-template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
-          typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, bool IsWeightNz, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch, bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
-__aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const Params &params,
-                                     const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
-                                     GmmRuntimeState &runtimeState, void *persistentBlockMmadContext = nullptr,
-                                     bool allowWeightL2Bypass = false)
-{
-    if constexpr (EnableA8W4 || EnableA4W4) {
-        RunGmm2A8W4<CombineMode, A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
-                    TopkWeightsPrefetch, IsShared>(params, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-                                                   runtimeState.gmTileSequence, gmmConfig.blockJob,
-                                                   static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
-    } else {
-        RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType,
-                       IsWeightNz, false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved,
-                       IsWaveFlagGrained>(problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
-                                          persistentBlockMmadContext, allowWeightL2Bypass);
-    }
-}
-
 // 调度当前 MoE 专家指定 token 范围的量化 Combine。
 template <uint8_t CombineMode>
 __aicore__ inline void ScheduleQuantizedMoeExpertCombine(

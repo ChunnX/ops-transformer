@@ -993,8 +993,8 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
         workspace.dispatchRevDataPtr + globalTokenStartIndex * k / ActivationElementsPerByte * sizeof(ActivationType);
     gmmAddrInfo.aScaleGlobal = workspace.dispatchRevScalePtr + globalTokenStartIndex * scaleK * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal =
-        GetExpertWeightAddr<ActivationType>(weights.weight1, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
-                                            static_cast<uint64_t>(state.expertIdx) * n * k / weightElementsPerByte);
+        GetExpertWeightAddr<WeightType>(weights.weight1, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
+                                        static_cast<uint64_t>(state.expertIdx) * n * k / weightElementsPerByte);
     gmmAddrInfo.bScaleGlobal =
         GetExpertWeightAddr<QuantScaleType>(weights.weightScales1, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
                                             static_cast<uint64_t>(state.expertIdx) * n * scaleK);
@@ -1030,26 +1030,9 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     }
 }
 
-template <typename QuantOutType, typename ActivationOutType, typename QuantScaleType, uint32_t Gmm1TileM,
-          uint32_t EpilogueTileM, bool TopkWeightsPrefetch, bool IsWeightNz, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, bool IsShared = false, typename BlockEpilogue>
-__aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
-                                                    BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
-                                                    const ProblemShape &problemShape, uint32_t globalTokenStartIndex,
-                                                    GmmRuntimeState &runtimeState, uint32_t expertIdx,
-                                                    void *persistentBlockMmadContext = nullptr,
-                                                    bool allowWeightL2Bypass = false)
-{
-    RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
-                   IsWeightNz, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved,
-                   IsWaveFlagGrained>(epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-                                      runtimeState.vecSetSyncCom, gmmConfig.blockJob, globalTokenStartIndex, expertIdx,
-                                      runtimeState.pingpongIdx, persistentBlockMmadContext, allowWeightL2Bypass);
-}
-
 // 原型：MegaMoe::UpdateSharedGlobalBuffer<GMM1>。构造一个共享专家的 GMM1 和 SwiGLU GM 视图。
-template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          bool EnableA8W4, typename BlockEpilogue>
+template <typename WeightType, typename ActivationOutType, typename QuantScaleType, bool EnableA8W4,
+          typename BlockEpilogue>
 __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonConfig &commonConfig,
                                                           const GmmExecutionConfig &gmmConfig,
                                                           const WorkspaceInfo &workspace,
@@ -1072,8 +1055,8 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
     if constexpr (EnableA8W4) {
         gmmAddrInfo.gmm1OutGlobal = workspace.sharedExpertGmm1OutPtr + expertIdx * m * n * sizeof(bfloat16_t);
     }
-    gmmAddrInfo.bGlobal = GetExpertWeightAddr<ActivationType>(weights.weight1, gmmConfig.isPerExpertWeightTensor,
-                                                              sharedExpertIdx, expertIdx * n * k / weightElemsPerByte);
+    gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(weights.weight1, gmmConfig.isPerExpertWeightTensor,
+                                                          sharedExpertIdx, expertIdx * n * k / weightElemsPerByte);
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
         weights.weightScales1, gmmConfig.isPerExpertWeightTensor, sharedExpertIdx, expertIdx * n * scaleK);
     gmmAddrInfo.activationToGmm2Flag = nullptr;
@@ -1096,32 +1079,6 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
             0L,
             0L};
         epilogueOp.UpdateGlobalAddr(vecBaseOffset);
-    }
-}
-
-// 原型：MegaMoe::GroupMatmulWithActivationQuant<true>。执行一个共享专家的 GMM1/SwiGLU 阶段。
-template <typename QuantOutType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          bool EnableA8W4, bool IsWeightNz, uint32_t Gmm1TileM, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, typename BlockEpilogue>
-__aicore__ inline void RunSharedExpertGmm1ActivationStage(const MoeStageCommonConfig &commonConfig,
-                                                          const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
-                                                          BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
-                                                          const ProblemShape &problemShape,
-                                                          GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx,
-                                                          void *persistentBlockMmadContext = nullptr,
-                                                          bool allowWeightL2Bypass = false)
-{
-    uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig.tokenNum;
-    if constexpr (EnableA8W4) {
-        RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM, L1_TILE_M_256,
-                    false, true, IsWaveFlagGrained>(epilogueOp, gmmParams, problemShape, gmmAddrInfo,
-                                                    runtimeState.startBlockIdx, runtimeState.gmTileSequence,
-                                                    gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx);
-    } else {
-        RunGmm1GenericByWeightFormat<QuantOutType, ActivationOutType, QuantScaleType, Gmm1TileM, L1_TILE_M_256, false,
-                                     IsWeightNz, IsGmm1Interleaved, IsWaveFlagGrained, true>(
-            gmmConfig, gmmParams, epilogueOp, gmmAddrInfo, problemShape, expertBeforeCnt, runtimeState, sharedExpertIdx,
-            persistentBlockMmadContext, allowWeightL2Bypass);
     }
 }
 

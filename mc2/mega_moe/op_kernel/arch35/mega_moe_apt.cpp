@@ -68,37 +68,34 @@ static constexpr bool WEIGHT1_INTERLEAVED = MEGA_MOE_WEIGHT1_INTERLEAVED != 0;
 #ifdef ENABLE_TENSOR_API
 namespace MegaMoeImpl {
 
-template <typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t MoeWeight1Format,
-          int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t QuantMode,
-          int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+template <typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType,
+          int32_t MoeWeight1Format, int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format,
+          int32_t SharedWeight2Format, int32_t MoeQuantMode, int32_t SharedQuantMode, int32_t CombineQuantMode,
+          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
 class MegaMoeMteWave
-    : public MegaMoeA8W8Wave<XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, MoeWeight1Format,
-                             MoeWeight2Format, SharedWeight1Format, SharedWeight2Format, CombineQuantMode,
-                             TopkWeightsPrefetch, IsGmm1Interleaved> {
-    static_assert((QuantMode == EXPERT_QUANT_OUT_DTYPE_E5M2 && Std::IsSame<Weight1Type, fp8_e5m2_t>::value) ||
-                      (QuantMode == EXPERT_QUANT_OUT_DTYPE_E4M3FN && Std::IsSame<Weight1Type, fp8_e4m3fn_t>::value),
-                  "A8W8 requires matching FP8 activation and weight types");
-};
+    : public MegaMoeA8W8Wave<XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType,
+                             SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved> {};
 
 template <typename XType, typename OutputType, typename TopkWeightsType, int32_t MoeWeight1Format,
-          int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+          int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format, int32_t SharedWeight2Format,
+          int32_t SharedQuantMode, int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
 class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, MoeWeight1Format, MoeWeight2Format,
-                     SharedWeight1Format, SharedWeight2Format, EXPERT_QUANT_OUT_DTYPE_E4M3FN, CombineQuantMode,
-                     TopkWeightsPrefetch, IsGmm1Interleaved>
+                     SharedWeightType, SharedWeight1Format, SharedWeight2Format, EXPERT_QUANT_OUT_DTYPE_E4M3FN,
+                     SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved>
     : public MegaMoeA8W4Wave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, EXPERT_QUANT_OUT_DTYPE_E4M3FN,
-                             MoeWeight1Format, MoeWeight2Format, SharedWeight1Format, SharedWeight2Format,
-                             CombineQuantMode, TopkWeightsPrefetch> {};
+                             SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch> {};
 
 template <typename XType, typename OutputType, typename TopkWeightsType, int32_t MoeWeight1Format,
-          int32_t MoeWeight2Format, int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+          int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format, int32_t SharedWeight2Format,
+          int32_t SharedQuantMode, int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
 class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, MoeWeight1Format, MoeWeight2Format,
-                     SharedWeight1Format, SharedWeight2Format, EXPERT_QUANT_OUT_DTYPE_E2M1, CombineQuantMode,
-                     TopkWeightsPrefetch, IsGmm1Interleaved>
+                     SharedWeightType, SharedWeight1Format, SharedWeight2Format, EXPERT_QUANT_OUT_DTYPE_E2M1,
+                     SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved>
     : public MegaMoeA4W4Wave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, EXPERT_QUANT_OUT_DTYPE_E2M1,
-                             MoeWeight1Format, MoeWeight2Format, SharedWeight1Format, SharedWeight2Format,
-                             CombineQuantMode, TopkWeightsPrefetch> {};
+                             SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch> {};
 
 } // namespace MegaMoeImpl
 #endif
@@ -124,9 +121,9 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
             MegaMoeImpl::MegaMoeMteWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, MoeWeightType, FORMAT_WEIGHT1,
-                                        FORMAT_WEIGHT2, FORMAT_SHARED_WEIGHT1, FORMAT_SHARED_WEIGHT2,
-                                        DispatchQuantOutType, CombineQuantOutType, TopkWeightsPrefetch,
-                                        WEIGHT1_INTERLEAVED>
+                                        FORMAT_WEIGHT2, SharedWeightType, FORMAT_SHARED_WEIGHT1, FORMAT_SHARED_WEIGHT2,
+                                        DispatchQuantOutType, SharedQuantOutType, CombineQuantOutType,
+                                        TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,

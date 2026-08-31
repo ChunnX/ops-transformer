@@ -507,7 +507,7 @@ __aicore__ inline void DispatchExpertTokensByRows(const TokenDispatchConfig &con
 }
 
 // 计算一个专家的接收 token 数，并发布就绪 flag。
-template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
+template <typename ActivationType, bool ReloadCumsumFromGm, bool TopkWeightsPrefetch>
 __aicore__ inline void ComputeExpertTokenCountAndNotify(
     const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockWorkspaceContext &countWorkspace,
     const Params &params, TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId, uint32_t &sendCnt)
@@ -523,7 +523,7 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
     DataCopyPadExtParams<int32_t> countPad{true, 0U, 0U, 0U};
     DataCopyPad(scratch.sendCntTensor, countSrcGlobal, countCopyParams, countPad);
 
-    if constexpr (EnableA8W4) {
+    if constexpr (ReloadCumsumFromGm) {
         if (localExpertId != 0) {
             DataCopyPad(scratch.cumsumInfoTensor, scratch.cumsumInfoGlobalTensor,
                         {1U, static_cast<uint32_t>(common.worldSize * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
@@ -548,7 +548,7 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
     uint64_t countOffset =
         localExpertId * INT32_PER_256B * countWorkspace.blockNum + INT32_PER_256B * countWorkspace.blockIdx;
     DataCopy<int32_t>(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenCntTensor, INT32_PER_256B);
-    if constexpr (EnableA8W4) {
+    if constexpr (ReloadCumsumFromGm) {
         DataCopyPad(scratch.cumsumInfoGlobalTensor, scratch.cumsumInfoTensor,
                     {1U, static_cast<uint32_t>(common.worldSize * (localExpertId + 1) * sizeof(int32_t)), 0U, 0U, 0U});
     }
@@ -563,7 +563,7 @@ __aicore__ inline void ComputeExpertTokenCountAndNotify(
 
 /*
  * 导出逐专家接收 token 数到算子输出的公有出口（两种数据源形态同名重载）：
- * 本重载由 UB cumsum 尾项差分得出（A8W4 先从 GM 重载 cumsum；普通与 a8w4 编排使用）。
+ * 本重载由 UB cumsum 尾项差分得出（W4 Wave 路径先从 GM 重载 cumsum）。
  */
 template <typename ActivationType, bool ReloadCumsumFromGm>
 __aicore__ inline void ExportExpertTokenCounts(const MoeStageCommonConfig &common,

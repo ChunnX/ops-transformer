@@ -19,7 +19,7 @@ namespace MegaMoeImpl {
 using namespace AscendC;
 
 template <typename ActivationType>
-struct SharedExpertPrepareScratch {
+struct SharedInputSplitScratch {
     LocalTensor<ActivationType> copyBuffer0;
     LocalTensor<ActivationType> copyBuffer1;
 };
@@ -27,9 +27,9 @@ struct SharedExpertPrepareScratch {
 // 拆分一个逻辑 AIV 任务上的共享专家 token data 和 scale。
 // 通信记录布局直接复用 token quant 的 QuantProcessConfig，不再维护单独的拷贝。
 template <typename ActivationType, typename QuantScaleType, uint32_t ActivationElementsPerByte>
-__aicore__ inline void PrepareSharedExpertInput(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                                const Params &params, const QuantProcessConfig &config,
-                                                SharedExpertPrepareScratch<ActivationType> &scratch)
+__aicore__ inline void SplitMoeQuantForSharedInput(const AivJobContext &job, const MoeStageCommonConfig &common,
+                                                   const Params &params, const QuantProcessConfig &config,
+                                                   SharedInputSplitScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;

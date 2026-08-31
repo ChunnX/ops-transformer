@@ -39,11 +39,10 @@ struct ExpertLoopState {
     uint32_t expertIdx = 0U;
 };
 
-// GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
-struct GmmRuntimeState {
+// GMM1 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
+struct Gmm1RuntimeState {
     uint32_t &startBlockIdx;
     int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
     uint16_t &pingpongIdx;
 };
 
@@ -128,6 +127,67 @@ struct BlockWorkspaceContext {
 template <typename T>
 struct PackedElementTraits {
     static constexpr uint32_t ELEMENTS_PER_BYTE = Std::IsSame<T, fp4x2_e2m1_t>::value ? 2U : 1U;
+};
+
+template <int32_t QuantMode>
+struct QuantTypeTraits {
+    using Type = fp8_e4m3fn_t;
+};
+
+template <>
+struct QuantTypeTraits<E5M2_QUANT> {
+    using Type = fp8_e5m2_t;
+};
+
+template <>
+struct QuantTypeTraits<E2M1_QUANT> {
+    using Type = fp4x2_e2m1_t;
+};
+
+enum class AxWMode : uint8_t {
+    A8W8,
+    A8W4,
+    A4W4,
+};
+
+template <typename WeightType, typename QuantOutType>
+constexpr AxWMode ResolveAxWMode()
+{
+    constexpr bool isA8W8 =
+        (Std::IsSame<WeightType, fp8_e5m2_t>::value && Std::IsSame<QuantOutType, fp8_e5m2_t>::value) ||
+        (Std::IsSame<WeightType, fp8_e4m3fn_t>::value && Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value);
+    constexpr bool isA8W4 =
+        Std::IsSame<WeightType, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value;
+    constexpr bool isA4W4 =
+        Std::IsSame<WeightType, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
+    static_assert(isA8W8 || isA8W4 || isA4W4, "unsupported activation and weight dtype combination");
+
+    if constexpr (isA8W8) {
+        return AxWMode::A8W8;
+    }
+    if constexpr (isA8W4) {
+        return AxWMode::A8W4;
+    }
+    return AxWMode::A4W4;
+}
+
+template <typename WeightType, int32_t QuantMode>
+struct QuantConfig {
+    using QuantOutType = typename QuantTypeTraits<QuantMode>::Type;
+    // QuantOutType 表达量化算法和 GMM 的逻辑 dtype；QuantStorageType 用于 UB/GM 中量化结果的物理承载。
+    // FP4 以两个元素打包为一个字节，基础搬运链路按原始字节处理，因此使用 uint8_t 作为存储类型。
+    using QuantStorageType =
+        typename std::conditional<Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value, uint8_t, QuantOutType>::type;
+    using QuantScaleType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
+
+    static constexpr AxWMode AXW_MODE = ResolveAxWMode<WeightType, QuantOutType>();
+
+    using ActivationQuantOutType =
+        typename std::conditional<AXW_MODE == AxWMode::A4W4, fp8_e4m3fn_t, QuantOutType>::type;
+
+    static constexpr uint32_t A_ELEMS_PER_BYTE = PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE;
+    static constexpr uint32_t B_ELEMS_PER_BYTE = PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE;
+    static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<ActivationQuantOutType>::ELEMENTS_PER_BYTE;
 };
 
 struct AivJobContext {
