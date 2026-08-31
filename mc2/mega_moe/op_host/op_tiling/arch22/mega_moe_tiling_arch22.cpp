@@ -841,6 +841,12 @@ static ge::graphStatus CheckWeight1Input(gert::TilingContext *context, int64_t h
                             K_OP_NAME, tensorName.c_str(), Ops::Base::ToString(wTensorI->GetStorageShape()).c_str(),
                             ("dim0 must equal hidden_size (" + std::to_string(hiddenSize) + ")").c_str()),
                         return GRAPH_FAILED);
+        int64_t w1IDim1 = wTensorI->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK(w1IDim1 != N,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            K_OP_NAME, tensorName.c_str(), Ops::Base::ToString(wTensorI->GetStorageShape()).c_str(),
+                            ("dim1 must equal N (" + std::to_string(N) + ")").c_str()),
+                        return GRAPH_FAILED);
     }
 
     outN = N;
