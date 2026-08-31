@@ -22,7 +22,7 @@ namespace ops {
 class __attribute__((visibility("default"))) QuantGroupedMatmulInplaceAddTransposeFusionPass
     : public ge::fusion::FusionBasePass {
 protected:
-    ge::Status Run(ge::GraphPtr& graph, ge::CustomPassContext& passContext) override;
+    ge::Status Run(ge::GraphPtr &graph, ge::CustomPassContext &passContext) override;
 };
 } // namespace ops
 #endif
