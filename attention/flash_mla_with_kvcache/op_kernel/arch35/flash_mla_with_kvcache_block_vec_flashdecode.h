@@ -48,9 +48,9 @@ public:
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
     static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
-    static constexpr LayOutTypeEnum LAYOUT_T = FA_T::qLayout;
-    static constexpr LayOutTypeEnum LAYOUT_KV = FA_T::kvLayout;
-    static constexpr LayOutTypeEnum LAYOUT_OUT = FA_T::attnOutLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT_T = FA_T::qLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT_KV = FA_T::kvLayout;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
     // =================================类型定义区=================================
@@ -112,7 +112,8 @@ protected:
     SeqLensToolType &seqLensTool_;
 
     static constexpr GmFormat OUT_FORMAT = GetQueryGmFormat<LAYOUT_OUT>();
-    using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, (LAYOUT_OUT == LayOutTypeEnum::LAYOUT_TND)>;
+    using FaGmTensorOut =
+        FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, (LAYOUT_OUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND)>;
     FaGmTensorOut outGmTensor_;
     CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
 
@@ -430,17 +431,17 @@ public:
                 LocalTensor<T> maxLseUb = fdLseUbBuf_;
                 Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
-                if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_TND) {
+                if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
                     uint32_t prefixBS1 = seqLensTool_.qActSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size;
                     DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
                                                                     actualGSplitSize, prefixBS1, constInfo_);
-                } else if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_BSH) {
+                } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     DataCopySoftmaxLseBSNDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
                                                                  actualGSplitSize, constInfo_);
-                } else if constexpr (LAYOUT_T == LayOutTypeEnum::LAYOUT_BNSD) {
+                } else if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = seqLensTool_.qActSeqLensParser.GetActualSeqLength(taskInfo_.bIdx);

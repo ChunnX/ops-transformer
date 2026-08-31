@@ -27,12 +27,14 @@
 #include "../../../common/op_kernel/memcopy/parser.h"
 #include "../../../common/op_kernel/memcopy/gm_layout.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#include "flash_mla_with_kvcache_public_define_arch35.h"
 #else
 #include "../../common/arch35/util_regbase.h"
 #include "../../common/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../common/memcopy/parser.h"
 #include "../../common/memcopy/gm_layout.h"
 #include "../../common/memcopy/fa_ub_tensor.h"
+#include "flash_mla_with_kvcache_public_define_arch35.h"
 #endif
 
 namespace FlashAttnKernel {
@@ -42,33 +44,33 @@ namespace FlashAttnKernel {
 // 上游已删除上述共享头并改为"每算子族本地携带"惯例——参考 flash_attn_type.h:33/49/101、
 // fused_infer_attention_score arch35 memory_copy_arch35_fused_infer.h:28/38/134）
 // ---------------------------------------------------------------------------
-template <LayOutTypeEnum LAYOUT>
+template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+    if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
         return GmFormat::BSNGD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+    } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::SBH) {
         return GmFormat::SBNGD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+    } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
         return GmFormat::BNGSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+    } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
         return GmFormat::TNGD;
     } else {
         return GmFormat::NGTD;
     }
 }
 
-template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType = 0, bool isPa = false>
+template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT, uint8_t KvLayoutType = 0, bool isPa = false>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
     if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
-        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+        if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
             return GmFormat::BSND;
-        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+        } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::SBH) {
             return GmFormat::SBND;
-        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+        } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
             return GmFormat::BNSD;
-        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+        } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             return GmFormat::TND;
         } else {
             return GmFormat::NTD;
@@ -82,45 +84,46 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT>
 __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode()
 {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND || LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
         return ActualSeqLensMode::ACCUM;
     } else {
         return ActualSeqLensMode::BY_BATCH;
     }
 }
 
-template <LayOutTypeEnum LAYOUT, const bool PAGE_ATTENTION>
+template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT, const bool PAGE_ATTENTION>
 __aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode()
 {
     if constexpr (PAGE_ATTENTION) {
         return ActualSeqLensMode::BY_BATCH;
     }
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND || LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
         return ActualSeqLensMode::ACCUM;
     } else {
         return ActualSeqLensMode::BY_BATCH;
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT>
 __aicore__ inline constexpr UbFormat GetOutUbFormat()
 {
-    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
-                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
+    static_assert((LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) || (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) ||
+                      (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) || (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD),
                   "Get OutAttention UB GmFormat fail, LAYOUT is incorrect");
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH || LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
         return UbFormat::S1G;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+    } else if constexpr (LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD ||
+                         LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
         return UbFormat::GS1;
     }
 }
 
 // Cube block 参数聚合（8 参：INPUT_T、T、layout、s1、s2、d、dv、KvLayoutType）。
 // PAGE_ATTENTION 派生规则与 block 内 (KvLayoutType > 0) 一致（四件套 KV_FORMAT 同源）。
-template <typename INPUT_T, typename T, LayOutTypeEnum LAYOUT = LayOutTypeEnum::None,
+template <typename INPUT_T, typename T, FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
@@ -128,7 +131,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum LAYOUT = LayOutTypeEnum::
 struct FATypeCube {
     using inputType = INPUT_T;
     using mmType = T;
-    static constexpr LayOutTypeEnum qLayout = LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = LAYOUT;
     static constexpr S1TemplateType mBaseSize = s1TemplateType;
     static constexpr S2TemplateType s2BaseSize = s2TemplateType;
     static constexpr DTemplateType dBaseSize = dTemplateType;
@@ -140,8 +143,10 @@ struct FATypeCube {
 // Vec block 参数聚合（11 参：INPUT_T、T、OUTPUT_T、layout、outLayout、s1、s2、d、dv、
 // hasMask、KvLayoutType）。flashDecode 成员恒 true（FD 能力恒实例化，对齐 flash_attn 的
 // FAType——FA 亦无 FLASH_DECODE 参数；FD 是否执行由运行时 metadata mLen>0 决定）。
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum LAYOUT = LayOutTypeEnum::None,
-          LayOutTypeEnum OUT_LAYOUT = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+template <typename INPUT_T, typename T, typename OUTPUT_T,
+          FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
+          FLASH_MLA_WITH_KVCACHE_LAYOUT OUT_LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, bool HAS_MASK = false, uint8_t KvLayoutType = 0>
@@ -149,8 +154,8 @@ struct FATypeVec {
     using inputType = INPUT_T;
     using mmType = T;
     using outputType = OUTPUT_T;
-    static constexpr LayOutTypeEnum qLayout = LAYOUT;
-    static constexpr LayOutTypeEnum attnOutLayout = OUT_LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT attnOutLayout = OUT_LAYOUT;
     static constexpr S1TemplateType mBaseSize = s1TemplateType;
     static constexpr S2TemplateType s2BaseSize = s2TemplateType;
     static constexpr DTemplateType dBaseSize = dTemplateType;
@@ -163,8 +168,10 @@ struct FATypeVec {
 
 // FD (flashdecode) block 参数聚合（11 参，无 flashDecode：FD 由 metadata mLen>0 运行时使能，
 // FD 能力恒实例化、无编译期开关）。
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum LAYOUT = LayOutTypeEnum::None,
-          LayOutTypeEnum OUT_LAYOUT = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+template <typename INPUT_T, typename T, typename OUTPUT_T,
+          FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
+          FLASH_MLA_WITH_KVCACHE_LAYOUT OUT_LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, bool HAS_MASK = false, uint8_t KvLayoutType = 0>
@@ -172,8 +179,8 @@ struct FATypeFd {
     using inputType = INPUT_T;
     using mmType = T;
     using outputType = OUTPUT_T;
-    static constexpr LayOutTypeEnum qLayout = LAYOUT;
-    static constexpr LayOutTypeEnum attnOutLayout = OUT_LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = LAYOUT;
+    static constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT attnOutLayout = OUT_LAYOUT;
     static constexpr S1TemplateType mBaseSize = s1TemplateType;
     static constexpr S2TemplateType s2BaseSize = s2TemplateType;
     static constexpr DTemplateType dBaseSize = dTemplateType;

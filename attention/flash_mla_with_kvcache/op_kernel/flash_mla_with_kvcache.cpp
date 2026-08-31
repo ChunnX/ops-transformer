@@ -48,17 +48,17 @@ using namespace AscendC;
 // ============ 入口 layout 推导（flash_attn.cpp 同款：if-constexpr 直接映射，无表查找）============
 // InOutLayoutType → q 布局（MLA 不支持输出转置，out 布局恒等于 q，无需 GetOutLayout）
 template <uint8_t inOutLayoutType>
-__aicore__ inline constexpr LayOutTypeEnum GetQueryLayoutMla()
+__aicore__ inline constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT GetQueryLayoutMla()
 {
     static_assert((inOutLayoutType == InOutLayoutType_BSND) || (inOutLayoutType == InOutLayoutType_BNSD) ||
                       (inOutLayoutType == InOutLayoutType_TND),
                   "GetQueryLayoutMla fail, inOutLayoutType is incorrect");
     if constexpr (inOutLayoutType == InOutLayoutType_BSND) {
-        return LayOutTypeEnum::LAYOUT_BSH;
+        return FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH;
     } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD) {
-        return LayOutTypeEnum::LAYOUT_BNSD;
+        return FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD;
     } else { // InOutLayoutType_TND
-        return LayOutTypeEnum::LAYOUT_TND;
+        return FLASH_MLA_WITH_KVCACHE_LAYOUT::TND;
     }
 }
 
@@ -105,8 +105,8 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
 
     fa_base_matmul::idCounterNum = 0;
     // —— 编译期解析 tiling key（flash_attn.cpp 同款：ConfigValue[config] 查模板块大小）——
-    constexpr LayOutTypeEnum qLayout = GetQueryLayoutMla<inOutLayoutType>();
-    constexpr LayOutTypeEnum outLayout = qLayout; // MLA 不支持输出转置
+    constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = GetQueryLayoutMla<inOutLayoutType>();
+    constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = qLayout; // MLA 不支持输出转置
     constexpr GmFormat kvGmFormat = GetKvLayoutMla<inOutLayoutType, KvLayoutType>();
     constexpr bool pageAttention = IsPageAttentionMla<KvLayoutType>();
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
