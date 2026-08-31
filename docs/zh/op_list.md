@@ -68,6 +68,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_attn_res_update/README.md">block_attn_res_update</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>BlockAttnRes第二阶段更新算子，用于更新partial block并计算在线Softmax状态对应的注意力输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -105,6 +115,16 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>dense_lightning_indexer_softmax_lse_v2算子的前置算子，用于计算dense_lightning_indexer_softmax_lse_v2的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/flash_attn/README.md">flash_attn</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>基于FlashAttention算法实现self-attention（自注意力）的计算，训练推理归一化，仅支持非量化场景。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -175,6 +195,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention/README.md">generic_block_sparse_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>通过sparseBlockIdx/sparseBlockCount指定稀疏块模式的注意力正向计算。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -528,6 +558,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/recurrent_kda/README.md">recurrent_kda</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成KDA（Kimi Delta Attention）的递归前向计算，面向decode和MTP短序列场景。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/ring_attention_update/README.md">ring_attention_update</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -561,7 +601,7 @@
     <td><a href="../../attention/sparse_flash_attention_grad/README.md">sparse_flash_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✗</td>
+    <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，计算sparse_flash_attention注意力的反向输出。</td>
@@ -1488,10 +1528,20 @@
   </tr>
   <tr>
     <td>posembedding</td>
-    <td><a href="../../posembedding/dequant_rope_quant_kvcache/README.md">dequant_rope_quant_kvcache</a></td>
+    <td><a href="../../posembedding/apply_rotary_pos_emb_grad/README.md">apply_rotary_pos_emb_grad</a></td>
+    <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✗</td>
+    <td>AI Core</td>
+    <td>执行双路旋转位置编码ApplyRotaryPosEmb的反向计算，同时计算query和key的rope反向梯度，融合为一次kernel调用。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/dequant_rope_quant_kvcache/README.md">dequant_rope_quant_kvcache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
     <td>对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。</td>

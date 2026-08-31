@@ -380,11 +380,18 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
     } else {
         TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2,
-                this->constInfo.bSize, this->constInfo.n2Size, k, j, r, this->tilingData->deterParam.deterPrefixStep,
-                coordinateInfo);
+            if (this->tilingData->deterParam.tndLineDeter != 0) {
+                CalTNDCausalLineIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
+                    this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
+                    this->tilingData->deterParam.deterPrefixStep, this->constInfo.sparseMode, coordinateInfo);
+            } else {
+                CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
+                    this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2,
+                    this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
+                    this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            }
         } else {
             CalTNDGQACausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
@@ -440,8 +447,7 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
                 this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum, this->constInfo.bSize, this->constInfo.n2Size,
                 this->constInfo.commonConstInfo.gSize, j,
-                static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO), r, this->deltaCnt,
-                coordinateInfo);
+                static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO), r, coordinateInfo);
         } else {
             int64_t b = this->constInfo.bSize;
             CalTNDDenseIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN, BaseClass::DETER_SPARSE_TYPE,
@@ -551,10 +557,17 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
         coordinateInfo.p = this->constInfo.s1Token;
         coordinateInfo.q = this->constInfo.s2Token;
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDBandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
-                this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            if (this->tilingData->deterParam.tndLineDeter != 0) {
+                CalTNDBandLineIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
+                    this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
+                    this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            } else {
+                CalTNDBandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
+                    this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
+                    this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            }
         } else {
             CalTNDGQABandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,

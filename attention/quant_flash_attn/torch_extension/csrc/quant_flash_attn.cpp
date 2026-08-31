@@ -20,8 +20,10 @@ namespace op_api {
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 const int64_t QUANT_MODE_MXFP4 = 5;
+const int64_t QUANT_MODE_HIF8 = 0;
 const int64_t FLOAT4_E2M1 = 296;
 const int64_t FLOAT8_E8M0 = 293;
+const int64_t HIFLOAT8 = 34;
 
 inline int64_t GetQkvDtypeRatio(int64_t quant_mode)
 {
@@ -42,6 +44,8 @@ TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
             wrapper.dtype = ACL_FLOAT4_E2M1;
         } else if (real_dtype == FLOAT8_E8M0) {
             wrapper.dtype = ACL_FLOAT8_E8M0;
+        } else if (real_dtype == HIFLOAT8) {
+            wrapper.dtype = ACL_HIFLOAT8;
         }
     } else {
         wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
@@ -55,11 +59,11 @@ at::Tensor quant_flash_attn_metadata(
     const c10::optional<at::Tensor> &v_descale, int64_t batch_size, int64_t max_seqlen_q, int64_t max_seqlen_kv,
     int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, int64_t quant_mode, int64_t mask_mode,
     int64_t win_left, int64_t win_right, std::string layout_q, std::string layout_q_descale, std::string layout_kv,
-    std::string layout_out, const at::Tensor &output)
+    std::string layout_out, bool is_grad_enabled, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnQuantFlashAttnMetadata, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, v_descale, batch_size,
               max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, quant_mode, mask_mode, win_left,
-              win_right, layout_q, layout_q_descale, layout_kv, layout_out, output);
+              win_right, layout_q, layout_q_descale, layout_kv, layout_out, is_grad_enabled, output);
     return output;
 }
 
@@ -142,6 +146,14 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_attn(
                   attn_mask, metadata, quant_mode, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q,
                   max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse,
                   attentionOutput, softmaxLse);
+    } else if (quant_mode == QUANT_MODE_HIF8) {
+        TensorWrapper q_wrapper = make_wrapper(q, HIFLOAT8);
+        TensorWrapper k_wrapper = make_wrapper(k, HIFLOAT8);
+        TensorWrapper v_wrapper = make_wrapper(v, HIFLOAT8);
+        ACLNN_CMD(aclnnQuantFlashAttn, q_wrapper, k_wrapper, v_wrapper, q_descale, k_descale, v_descale, block_table,
+                  p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode,
+                  softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
+                  layout_q_descale_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
     } else {
         ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale, block_table, p_scale, cu_seqlens_q,
                   cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode, softmax_scale,
