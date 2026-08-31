@@ -38,17 +38,17 @@ struct ConstInfo {
     int32_t head_dim{0};
     int32_t q_block_num{0};
     int32_t kv_block_num{0};
-    int32_t max_block_num{0};   // PerBlockSizeMask 最后一维的 block 数量 max(q_block_num, kv_block_num)
+    int32_t max_block_num{0};            // PerBlockSizeMask 最后一维的 block 数量 max(q_block_num, kv_block_num)
     bool has_per_block_size_mask{false}; // 是否启用 PerBlockSizeMask（maskType=1）
 };
 
 struct RunTimeInfo {
     int32_t taskId{0};
-    int32_t bIdx{0};       // 当前计算的batch的idx
-    int32_t n1Idx{0};      // 当前计算的q_head的idx
-    int32_t n2Idx{0};      // 当前计算的kv_head的idx
-    int32_t s1Idx{0};      // 当前计算的q_seq的起始idx
-    int32_t s2Idx{0};      // 当前计算的kv_seq的起始idx
+    int32_t bIdx{0};  // 当前计算的batch的idx
+    int32_t n1Idx{0}; // 当前计算的q_head的idx
+    int32_t n2Idx{0}; // 当前计算的kv_head的idx
+    int32_t s1Idx{0}; // 当前计算的q_seq的起始idx
+    int32_t s2Idx{0}; // 当前计算的kv_seq的起始idx
     int32_t last_q_seq_sum{0};
     int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
@@ -57,10 +57,10 @@ struct RunTimeInfo {
     int32_t need_copy_kv{0};     // 是否需要copy kv
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};      // 当前计算的q_seq的长度
-    int64_t s2Len{0};      // 当前计算的kv_seq的长度
-    int64_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
-    int64_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
+    int64_t s1Len{0};         // 当前计算的q_seq的长度
+    int64_t s2Len{0};         // 当前计算的kv_seq的长度
+    int64_t s1LenAlign{0};    // 当前计算的q_seq的16对齐的长度
+    int64_t s2LenAlign{0};    // 当前计算的kv_seq的16对齐的长度
     int64_t queryGmOffset{0}; // query gm offset
     int64_t keyGmOffset{0};   // key gm offset
     int64_t lseGmOffset{0};   // lse gm offset
@@ -150,8 +150,8 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
 
 {
     int64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
-                      n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
-                      kv_block_idx * const_info.q_block_num + q_block_idx;
+                     n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
+                     kv_block_idx * const_info.q_block_num + q_block_idx;
     bool is_valid = block_sparse_mask[offset];
     return is_valid;
 }
@@ -162,14 +162,12 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
  * mask 布局: [B, N, maxBlockNum, 2], dtype INT32。
  * axis=0 -> Q 方向 actualSizeX (≤ block_x), axis=1 -> KV 方向 actualSizeY (≤ block_y)。
  */
-__aicore__ inline int32_t GetPerBlockSizeMaskValue(const ConstInfo &const_info,
-                                                   __gm__ int32_t *per_block_size_mask,
+__aicore__ inline int32_t GetPerBlockSizeMaskValue(const ConstInfo &const_info, __gm__ int32_t *per_block_size_mask,
                                                    const int64_t batch_idx, const int64_t n1_idx,
                                                    const int64_t block_idx, const int32_t axis)
 {
     int64_t offset = batch_idx * (const_info.q_head_num * const_info.max_block_num * 2) +
-                     n1_idx * (const_info.max_block_num * 2) +
-                     block_idx * 2 + axis;
+                     n1_idx * (const_info.max_block_num * 2) + block_idx * 2 + axis;
     return per_block_size_mask[offset];
 }
 
@@ -180,12 +178,12 @@ __aicore__ inline int32_t GetPerBlockSizeMaskValue(const ConstInfo &const_info,
  */
 __aicore__ inline int32_t ClipLenByActualSize(int32_t start_idx, int32_t len, int32_t block_size, int32_t actual_size)
 {
-    int32_t local_idx = start_idx % block_size;      // 在当前 mask block 内的局部坐标
-    int32_t valid_remain = actual_size - local_idx;  // 距 actualSize 边界的剩余有效长度
+    int32_t local_idx = start_idx % block_size;     // 在当前 mask block 内的局部坐标
+    int32_t valid_remain = actual_size - local_idx; // 距 actualSize 边界的剩余有效长度
     if (valid_remain <= 0) {
-        return 0;                                    // 起点已在 padding 区，整块无效
+        return 0; // 起点已在 padding 区，整块无效
     }
-    return len < valid_remain ? len : valid_remain;  // min(len, valid_remain)
+    return len < valid_remain ? len : valid_remain; // min(len, valid_remain)
 }
 
 
