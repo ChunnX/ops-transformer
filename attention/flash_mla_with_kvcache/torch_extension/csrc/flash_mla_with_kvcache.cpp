@@ -27,26 +27,22 @@ const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 
-// MLA geometry (m0070 / R1): AIC 36 + AIV 72 cores, 16 words per core, kv head num == 1.
-// Metadata buffer worst-case capacity (plan B2/D16): ((36 + 72) * batch_size * 1 + 1) * 16 int32 words,
-// aligned to 4096 (flash_attn.py same alignment, Oracle caveat 8). kv==1 is a hard MLA bound: the formula
-// MUST NOT be multiplied by num_heads_kv > 1 (asserted, not scaled).
-constexpr int64_t MLA_AIC_CORE_NUM = 36;
-constexpr int64_t MLA_AIV_CORE_NUM = 72;
+// MLA geometry (m0070 / R1): 每核 16 word，kv head num == 1。
+// Metadata buffer worst-case capacity (plan B2/D16): ((aic + aiv) * batch_size * 1 + 1) * 16 int32 words,
+// aligned to 4096 (flash_attn.py same alignment, Oracle caveat 8)。aic/aiv 核数由 python 侧
+// 从硬件获取（torch.npu.get_device_limit）透传，不写死常量。
 constexpr int64_t MLA_META_WORDS_PER_CORE = 16;
 constexpr int64_t MLA_METADATA_ALIGN_BYTES = 4096;
-static_assert(MLA_AIC_CORE_NUM == 36 && MLA_AIV_CORE_NUM == 72 && MLA_META_WORDS_PER_CORE == 16,
-              "MLA metadata buffer constants must match the flash_mla_with_kvcache_metadata AICPU producer layout.");
 
-int64_t CalculateMlaMetadataSizeWords(int64_t batchSize)
+int64_t CalculateMlaMetadataSizeWords(int64_t batchSize, int64_t aicCoreNum, int64_t aivCoreNum)
 {
-    // kv==1 upper bound: ((36 + 72) * batch * 1 + 1) * 16 (int32 words)
-    return ((MLA_AIC_CORE_NUM + MLA_AIV_CORE_NUM) * batchSize * DIM_ONE + DIM_ONE) * MLA_META_WORDS_PER_CORE;
+    // kv==1 upper bound: ((aic + aiv) * batch * 1 + 1) * 16 (int32 words)
+    return ((aicCoreNum + aivCoreNum) * batchSize * DIM_ONE + DIM_ONE) * MLA_META_WORDS_PER_CORE;
 }
 
-int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize)
+int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize, int64_t aicCoreNum, int64_t aivCoreNum)
 {
-    int64_t bytes = CalculateMlaMetadataSizeWords(batchSize) * static_cast<int64_t>(sizeof(int32_t));
+    int64_t bytes = CalculateMlaMetadataSizeWords(batchSize, aicCoreNum, aivCoreNum) * static_cast<int64_t>(sizeof(int32_t));
     return ((bytes + MLA_METADATA_ALIGN_BYTES - 1) / MLA_METADATA_ALIGN_BYTES) * MLA_METADATA_ALIGN_BYTES;
 }
 
@@ -54,7 +50,7 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
                                        const c10::optional<at::Tensor> &sequsedQ, int64_t maxSeqlenQ,
                                        int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
                                        int64_t headDimV, int64_t maskMode, std::string layoutQ,
-                                       const at::Tensor &output)
+                                       int64_t aicCoreNum, int64_t aivCoreNum, const at::Tensor &output)
 {
     // Device inference from the seq-lens tensors (sparse_flash_mla precedent): cacheSeqlens 必传, cu/seq 可选.
     at::Device outputDevice = at::Device(std::string("npu"));
@@ -67,11 +63,12 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
     // Explicit capacity check (B2/D16): batchSize is derived from the required cacheSeqlens length
     // (batch = cacheSeqlens.size(0), same source as the Python side), so the kv==1 worst-case bound is computable.
     int64_t batchSize = cacheSeqlens.size(0);
-    int64_t requiredBytes = CalculateMlaMetadataSizeBytes(batchSize);
+    int64_t requiredBytes = CalculateMlaMetadataSizeBytes(batchSize, aicCoreNum, aivCoreNum);
     TORCH_CHECK(static_cast<int64_t>(output.nbytes()) >= requiredBytes,
                 "The metadata tensor is too small: ", output.nbytes(), " bytes, required at least ", requiredBytes,
-                " bytes for batch_size=", batchSize, " (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 int32 words, "
-                                                     "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
+                " bytes for batch_size=", batchSize, " (capacity = ((aic ", aicCoreNum, " + aiv ", aivCoreNum,
+                ") * batch_size * 1 + 1) * 16 int32 words, "
+                "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);
@@ -93,7 +90,7 @@ FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::op
                     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &attnMask,
                     const c10::optional<at::Tensor> &metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
                     int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                    int64_t returnSoftmaxLse)
+                    int64_t returnSoftmaxLse, int64_t aicCoreNum, int64_t aivCoreNum)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -148,9 +145,9 @@ FlashMlaWithKvcache(const at::Tensor &q, const at::Tensor &kCache, const c10::op
         // Guard against an undersized metadata buffer supplied by the user (B2): any batch size derived from
         // this tensor can only shrink the requirement, so checking raw word count keeps the check conservative.
         int64_t words = metadata.value().numel();
-        TORCH_CHECK(words >= MLA_AIC_CORE_NUM + MLA_AIV_CORE_NUM,
+        TORCH_CHECK(words >= aicCoreNum + aivCoreNum,
                     "The metadata tensor is too small: ", words, " words, expected the buffer produced by "
-                                                                 "flash_mla_with_kvcache_metadata (capacity = ((36 + 72) * batch_size * 1 + 1) * 16 words, kv head num == 1).");
+                                                                 "flash_mla_with_kvcache_metadata (capacity = ((aic + aiv) * batch_size * 1 + 1) * 16 words, kv head num == 1).");
     }
 
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());

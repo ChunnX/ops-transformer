@@ -39,6 +39,9 @@ uint32_t FlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     success = BalanceSchedule(splitRes);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Schedule load balance failed!");
 
+    success = CheckMetadataCapacity(splitRes.sectionNum);
+    KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Metadata buffer capacity insufficient!");
+
     success = GenMetadata(splitRes);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Generate balance result failed!");
 
@@ -83,14 +86,49 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
 
 bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
 {
-    KERNEL_CHECK_FALSE(CheckActualQuerySeq(), false, "Check query sequence failed");
+    KERNEL_CHECK_FALSE(CheckAttrs(), false, "Check attrs failed");
     KERNEL_CHECK_FALSE(CheckActualKvSeq(), false, "Check kv sequence failed");
     // batch size 由必传的 cacheSeqlens 长度推导（每 batch 一项），batch_size attr 已移除
-    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false, "cacheSeqlens must be provided to derive batch_size");
+    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false,
+                       "cacheSeqlens must be provided to derive batch_size");
+    KERNEL_CHECK_FALSE(CheckActualQuerySeq(static_cast<int64_t>(actualSeqlenKv_.size())), false,
+                       "Check query sequence failed");
     return true;
 }
 
-bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualQuerySeq()
+bool FlashMlaWithKvcacheMetadataCpuKernel::CheckAttrs()
+{
+    KERNEL_CHECK_FALSE(numHeadsQ_ > 0, false, "numHeadsQ must be greater than 0, but got %d", numHeadsQ_);
+    KERNEL_CHECK_FALSE(numHeadsKv_ == MLA_KV_HEADS, false,
+                       "MLA kv head num must be %ld, but got %d", MLA_KV_HEADS, numHeadsKv_);
+    KERNEL_CHECK_FALSE(headDimQk_ == MLA_HEAD_DIM_QK, false,
+                       "MLA headDimQk (nope 512 + rope 64) must be %ld, but got %d", MLA_HEAD_DIM_QK, headDimQk_);
+    KERNEL_CHECK_FALSE(headDimV_ == MLA_HEAD_DIM_V, false,
+                       "MLA headDimV (value/output width) must be %ld, but got %d", MLA_HEAD_DIM_V, headDimV_);
+    KERNEL_CHECK_FALSE((maskMode_ == 0 || maskMode_ == 3), false,
+                       "maskMode only supports 0(NO_MASK), 3(RIGHT_DOWN), but got %d", maskMode_);
+    KERNEL_CHECK_FALSE((layoutQ_ == "TND" || layoutQ_ == "BNSD" || layoutQ_ == "BSND"), false,
+                       "layoutQ only supports TND, BNSD, BSND, but got %s", layoutQ_.c_str());
+    // 核数由 host 平台信息（硬件）透传，仅做基本合法性检查；buffer 是否够用由
+    // CheckMetadataCapacity 在实际 sectionNum 出来后把关
+    KERNEL_CHECK_FALSE(aicCoreNum_ > 0, false, "aicCoreNum must be positive, but got %d", aicCoreNum_);
+    KERNEL_CHECK_FALSE(aivCoreNum_ > 0, false, "aivCoreNum must be positive, but got %d", aivCoreNum_);
+    return true;
+}
+
+bool FlashMlaWithKvcacheMetadataCpuKernel::CheckMetadataCapacity(uint32_t sectionNum)
+{
+    // 布局：[16-word HEAD][sectionNum * aicCoreNum * 16 FA][sectionNum * aivCoreNum * 16 FD]，
+    // 核数为 host 平台信息透传的硬件值
+    int64_t needWords = (1 + static_cast<int64_t>(sectionNum) * (aicCoreNum_ + aivCoreNum_)) *
+                        static_cast<int64_t>(HEAD_METADATA_STRIDE);
+    KERNEL_CHECK_FALSE(metadata_->NumElements() >= needWords, false,
+                       "metadata buffer too small: %ld words, but sectionNum %u needs %ld words",
+                       metadata_->NumElements(), sectionNum, needWords);
+    return true;
+}
+
+bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualQuerySeq(int64_t batchSize)
 {
     isActualSeqlenQAccum_ = false;
     actualSeqlenQ_.clear();
@@ -99,6 +137,28 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::CheckActualQuerySeq()
 
     cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_);
     sequsedQ = GetTensorDataAsInt64(sequsedQ_);
+
+    // batch 一致性：cuSeqlensQ 为 (batch+1,)，sequsedQ 为 (batch,)
+    if (!cuSeqlensQ.empty() && static_cast<int64_t>(cuSeqlensQ.size()) != batchSize + 1) {
+        KERNEL_LOG_ERROR("cuSeqlensQ shape must be (batchSize+1,)=(%ld,), but got %zu", batchSize + 1,
+                         cuSeqlensQ.size());
+        return false;
+    }
+    if (!sequsedQ.empty() && static_cast<int64_t>(sequsedQ.size()) != batchSize) {
+        KERNEL_LOG_ERROR("sequsedQ shape must be (batchSize,)=(%ld,), but got %zu", batchSize, sequsedQ.size());
+        return false;
+    }
+
+    // layout 存在性规则：TND 必传 cuSeqlensQ，非 TND 禁传；非 TND 时 maxSeqlenQ 与 sequsedQ 至少提供一个
+    if (layoutQ_ == "TND") {
+        if (cuSeqlensQ.empty()) {
+            KERNEL_LOG_ERROR("When layoutQ is TND, cuSeqlensQ should be provided, but got empty");
+            return false;
+        }
+    } else if (!cuSeqlensQ.empty()) {
+        KERNEL_LOG_ERROR("When layoutQ is not TND, cuSeqlensQ should not be provided, but got non-empty");
+        return false;
+    }
 
     for (size_t i = 0; i < sequsedQ.size(); ++i) {
         if (sequsedQ[i] < 0) {
@@ -203,6 +263,8 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitBaseInfo()
     // 为 value/输出宽。调度（AdjustSinnerAndSouter）用 head_dim_qk；head_dim_v 由主算子
     // head_dim_v attr 独立约束（rebase 后新版 SectionStreamK 的 s2vCost 切分模型独立读取
     // GetHeadDimQk()/GetHeadDimV()，故同时写入，避免退化为默认 64）。
+    baseInfo.headDimQk = static_cast<uint32_t>(headDimQk_);
+    baseInfo.headDimV = static_cast<uint32_t>(headDimV_);
     load_balance::SparseMode maskMode = load_balance::SparseMode::BUTT;
     if (maskMode_ != 0) {
         maskMode = static_cast<load_balance::SparseMode>(maskMode_);
@@ -230,7 +292,8 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(load_balance::Section
 
 bool FlashMlaWithKvcacheMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult &splitRes)
 {
-    detail::FaMetadata faMetadata(metadata_->GetData(), splitRes.sectionNum);
+    detail::FaMetadata faMetadata(metadata_->GetData(), splitRes.sectionNum, static_cast<uint32_t>(aicCoreNum_),
+                                  static_cast<uint32_t>(aivCoreNum_));
     faMetadata.Clear(); // set to all 0
 
     faMetadata.SetHeadMetadata(HEAD_SECTION_NUM_INDEX, splitRes.sectionNum);
@@ -245,6 +308,10 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::GenMetadata(load_balance::SectionStre
     // per D18 and re-run.
     faMetadata.SetHeadMetadata(HEAD_M_BASE_SIZE_INDEX, HEAD_M_BASE_SIZE_MLA);
     faMetadata.SetHeadMetadata(HEAD_S2_BASE_SIZE_INDEX, HEAD_S2_BASE_SIZE_MLA);
+    faMetadata.SetHeadMetadata(HEAD_AIC_NUM_INDEX, static_cast<FA_METADATA_T>(aicCoreNum_));
+    faMetadata.SetHeadMetadata(HEAD_AIV_NUM_INDEX, static_cast<FA_METADATA_T>(aivCoreNum_));
+    faMetadata.SetHeadMetadata(HEAD_OUTPUT_LAYOUT_INDEX,
+                               static_cast<FA_METADATA_T>(load_balance::OutputLayout::BN2_S1G));
     if (std::any_of(splitRes.sectionFdResult.begin(), splitRes.sectionFdResult.end(),
                     [](load_balance::SectionStreamKFdResult result) { return result.usedVecNum > 0U; })) {
         faMetadata.SetHeadMetadata(HEAD_IS_FD_INDEX, 1U);

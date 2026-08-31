@@ -59,10 +59,14 @@ public:
     // ---- CV buffers：已静态化至各 block（cube/vec InitBuffers 内表 1 布局），kernel 不再持有 buffer manager ----
 
     // 多 section AICPU metadata（flash_attn 布局）：
-    // 字节布局 = [16-word header][sectionNum*36*16 (FA)][sectionNum*72*16 (FD)]，FA/FD 区分别绑定 GM tensor。
+    // 字节布局 = [16-word header][sectionNum*aic*16 (FA)][sectionNum*aiv*16 (FD)]，FA/FD 区分别绑定 GM tensor。
+    // 每 section 的 aic/aiv 核数从 header 保留位自描述读取（producer 写硬件实际值，如 950PR 为 28/56），
+    // 不再使用编译期常量，避免与 producer 布局错位。
     AscendC::GlobalTensor<uint32_t> faMetaDataGm_;
     AscendC::GlobalTensor<uint32_t> fdMetaDataGm_;
     uint32_t sectionNum_ = 0U;
+    uint32_t metaAicCoreNum_ = 0U;
+    uint32_t metaAivCoreNum_ = 0U;
     FlashMlaWithKvcacheFdParamsX fdParams_ = {};
     // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：（producer
     // 旧名：flash_mla_metadata，历史原因保留） AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 /
@@ -110,15 +114,18 @@ public:
     {
         this->tilingData_ = tiling;
 
-        // metadata（GM 输入）：section 数在 16-word header 第 0 个 uint32
+        // metadata（GM 输入）：section 数在 16-word header 第 0 个 uint32；header 第 4/5 个 uint32
+        // 为 producer 自描述写入的 FA/FD 区每 section 核数（硬件实际值）
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
+        metaAicCoreNum_ = ((__gm__ uint32_t *)metadata)[FLASH_MLA_METADATA_AIC_NUM_INDEX];
+        metaAivCoreNum_ = ((__gm__ uint32_t *)metadata)[FLASH_MLA_METADATA_AIV_NUM_INDEX];
         // FA 区从 header 后开始（与 flash_attn 同构，参见 flash_attn_kernel_nd.h metadata 消费段）
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
-                                      FA_AIC_CORE_NUM * FLASH_ATTN_METADATA_SIZE * sectionNum_);
+                                      metaAicCoreNum_ * FLASH_ATTN_METADATA_SIZE * sectionNum_);
         fdMetaDataGm_.SetGlobalBuffer(
             (__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * FA_FD_METADATA_SIZE * sectionNum_);
+                                FLASH_ATTN_METADATA_SIZE * metaAicCoreNum_ * sectionNum_ * sizeof(uint32_t)),
+            metaAivCoreNum_ * FA_FD_METADATA_SIZE * sectionNum_);
 
         InitConstInfo();
 
@@ -214,12 +221,12 @@ public:
     // 0 基、16 字段/核、无 CORE_ENABLE（flash_attn_kernel_nd.h:206-214 镜像）
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+        return FLASH_ATTN_METADATA_SIZE * metaAicCoreNum_ * sectionIdx + 16U * coreIdx + metaIdx;
     }
 
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
+        return FA_FD_METADATA_SIZE * metaAivCoreNum_ * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     // 单 section FA 任务区间读取（重映射：FIA 8 字段 CORE_ENABLE 布局 -> AICPU 16 字段 0 基布局，

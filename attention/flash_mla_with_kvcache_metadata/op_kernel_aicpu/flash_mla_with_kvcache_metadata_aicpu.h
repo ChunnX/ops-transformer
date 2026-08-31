@@ -39,8 +39,11 @@ private:
     bool GenMetadata(load_balance::SectionStreamKResult &splitRes);
 
     bool ParamsCheck();
-    bool CheckActualQuerySeq();
+    bool CheckAttrs();
+    // kv 先于 query 检查：batch 由必传的 cacheSeqlens 推导，query 侧校验依赖 batch
     bool CheckActualKvSeq();
+    bool CheckActualQuerySeq(int64_t batchSize);
+    bool CheckMetadataCapacity(uint32_t sectionNum);
 
     bool ParamsInit();
     void InitDeviceInfo();
@@ -76,12 +79,16 @@ private:
     std::vector<int64_t> actualSeqlenKv_{};
 
     // SplitParams
-    uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 64;   // 64: default value
     uint32_t s2BaseSize_ = 128; // 128: default value
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;
+
+    // MLA 硬约束（与 host 侧 flash_mla_with_kvcache_metadata_check.h 同源，kernel 侧兜底）
+    static constexpr int64_t MLA_KV_HEADS = 1;
+    static constexpr int64_t MLA_HEAD_DIM_QK = 576;
+    static constexpr int64_t MLA_HEAD_DIM_V = 512;
 
 private:
     enum class ParamId : uint32_t {
