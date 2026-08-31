@@ -36,13 +36,13 @@ struct TensorWithDesc {
 
 class TestPass : public ops::QuantGroupedMatmulInplaceAddTransposeFusionPass {
 public:
-    ge::Status RunForTest(GraphPtr& graph, ge::CustomPassContext& context)
+    ge::Status RunForTest(GraphPtr &graph, ge::CustomPassContext &context)
     {
         return Run(graph, context);
     }
 };
 
-TensorDesc MakeDesc(const std::vector<int64_t>& shape, DataType dtype)
+TensorDesc MakeDesc(const std::vector<int64_t> &shape, DataType dtype)
 {
     TensorDesc desc(Shape(shape), ge::FORMAT_ND, dtype);
     desc.SetOriginShape(Shape(shape));
@@ -50,15 +50,15 @@ TensorDesc MakeDesc(const std::vector<int64_t>& shape, DataType dtype)
     return desc;
 }
 
-void Link(Graph* graph, TensorWithDesc& input, GNode& destination, int32_t inputIndex)
+void Link(Graph *graph, TensorWithDesc &input, GNode &destination, int32_t inputIndex)
 {
     ge::es::AddEdgeAndUpdatePeerDesc(*graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(),
-        destination, inputIndex);
+                                     destination, inputIndex);
     destination.UpdateInputDesc(inputIndex, input.desc);
 }
 
-void AddUnary(Graph* graph, ge::es::EsGraphBuilder& builder, TensorWithDesc& input, const char* type,
-    const char* name, const std::vector<int64_t>& outputShape, const std::vector<int64_t>& perm = {})
+void AddUnary(Graph *graph, ge::es::EsGraphBuilder &builder, TensorWithDesc &input, const char *type, const char *name,
+              const std::vector<int64_t> &outputShape, const std::vector<int64_t> &perm = {})
 {
     auto outputDesc = MakeDesc(outputShape, input.desc.GetDataType());
     auto nodeBuilder = ge::es::CompliantNodeBuilder(graph);
@@ -83,9 +83,9 @@ void AddUnary(Graph* graph, ge::es::EsGraphBuilder& builder, TensorWithDesc& inp
 GraphPtr BuildGraph(bool mxMode, bool transposeScale, bool reshapeX, bool validReshape)
 {
     ge::es::EsGraphBuilder builder("qgmmInplaceAddTransposePass");
-    auto* graph = builder.GetCGraphBuilder()->GetGraph();
+    auto *graph = builder.GetCGraphBuilder()->GetGraph();
     int64_t inputIndex = 0;
-    auto createInput = [&](const char* name, const std::vector<int64_t>& shape, DataType dtype) {
+    auto createInput = [&](const char *name, const std::vector<int64_t> &shape, DataType dtype) {
         auto desc = MakeDesc(shape, dtype);
         auto tensor = builder.CreateInput(inputIndex++, name, dtype, ge::FORMAT_ND, shape);
         tensor.GetProducer()->UpdateOutputDesc(0, desc);
@@ -100,8 +100,8 @@ GraphPtr BuildGraph(bool mxMode, bool transposeScale, bool reshapeX, bool validR
     auto scale1 = createInput("scale1", {4, 64, 2}, mxMode ? ge::DT_FLOAT8_E8M0 : ge::DT_FLOAT);
 
     if (reshapeX) {
-        AddUnary(graph, builder, x1, kReshapeType, "reshapeX1", validReshape ?
-            std::vector<int64_t>{32, 64} : std::vector<int64_t>{16, 128});
+        AddUnary(graph, builder, x1, kReshapeType, "reshapeX1",
+                 validReshape ? std::vector<int64_t>{32, 64} : std::vector<int64_t>{16, 128});
     } else {
         AddUnary(graph, builder, x1, kTransposeDType, "transposeX1", {32, 64}, {1, 0});
     }
@@ -110,21 +110,21 @@ GraphPtr BuildGraph(bool mxMode, bool transposeScale, bool reshapeX, bool validR
     }
 
     auto target = ge::es::CompliantNodeBuilder(graph)
-        .OpType(kTargetType)
-        .Name("quantGroupedMatmulInplaceAdd")
-        .IrDefInputs({
-            {"x1", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
-            {"x2", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
-            {"scale2", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
-            {"group_list", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
-            {"y", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
-            {"scale1", ge::es::CompliantNodeBuilder::kEsIrInputOptional, ""},
-        })
-        .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
-        .InstanceOutputDataType("y", ge::DT_FLOAT)
-        .InstanceOutputShape("y", {64, 48})
-        .InstanceOutputFormat("y", ge::FORMAT_ND)
-        .Build();
+                      .OpType(kTargetType)
+                      .Name("quantGroupedMatmulInplaceAdd")
+                      .IrDefInputs({
+                          {"x1", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                          {"x2", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                          {"scale2", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                          {"group_list", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                          {"y", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                          {"scale1", ge::es::CompliantNodeBuilder::kEsIrInputOptional, ""},
+                      })
+                      .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
+                      .InstanceOutputDataType("y", ge::DT_FLOAT)
+                      .InstanceOutputShape("y", {64, 48})
+                      .InstanceOutputFormat("y", ge::FORMAT_ND)
+                      .Build();
     Link(graph, x1, target, 0);
     Link(graph, x2, target, 1);
     Link(graph, scale2, target, 2);
@@ -136,7 +136,7 @@ GraphPtr BuildGraph(bool mxMode, bool transposeScale, bool reshapeX, bool validR
     return builder.BuildAndReset({output});
 }
 
-int CountType(const GraphPtr& graph, const char* expected)
+int CountType(const GraphPtr &graph, const char *expected)
 {
     int count = 0;
     for (auto node : graph->GetAllNodes()) {
@@ -148,7 +148,7 @@ int CountType(const GraphPtr& graph, const char* expected)
     return count;
 }
 
-ge::Status RunPass(GraphPtr& graph)
+ge::Status RunPass(GraphPtr &graph)
 {
     ge::CustomPassContext context;
     TestPass pass;
