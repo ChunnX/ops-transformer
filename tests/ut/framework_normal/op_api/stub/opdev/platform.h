@@ -105,7 +105,8 @@ class PlatformInfo {
 public:
     PlatformInfo() {};
 
-    PlatformInfo(int32_t deviceId) : deviceId_(deviceId) {};
+    PlatformInfo(int32_t deviceId)
+        : deviceId_(deviceId) {};
 
     SocVersion GetSocVersion() const;
 
