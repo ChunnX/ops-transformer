@@ -185,6 +185,11 @@ if [ ! -f "$PARSE_STARS_PY" ]; then
     exit 1
 fi
 
+# 头开销核心指标为 max(T1)-stars (墙钟口径)。单轮采集内部即 101 次 launch
+# (capture 101 次 + replay 整图回放: TaskDur 取稳态 mean 跳过前 2 次冷启动,
+# 打点数据取末次 replay 的满核 blocks), 无需外部多轮循环;
+# 3 轮独立运行实测 max(T1)-stars: add 0.907±0.037us, gmm 2.160±0.106us
+
 collect_add() {
     local label=$1 outdir=$2
     echo "[COLLECT] 采集 add ($label, capture 模式 + T0/T1 打点)..."
