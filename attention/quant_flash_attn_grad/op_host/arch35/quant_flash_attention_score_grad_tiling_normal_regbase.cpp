@@ -33,12 +33,12 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
 
     const char *inputLayoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
     const char *inputLayoutKV = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_KV));
-    if (inputLayoutQ != inputLayoutKV) {
-        OP_LOGE(context_, "inputLayoutQ and inputLayoutKV must be same.");
-        return ge::GRAPH_FAILED;
-    }
     if (inputLayoutQ == nullptr && inputLayoutKV == nullptr) {
         inputLayoutQ = "BSND";
+    } else if (inputLayoutQ == nullptr || inputLayoutKV == nullptr ||
+        strcmp(inputLayoutQ, inputLayoutKV) != 0) {
+        OP_LOGE(context_, "inputLayoutQ and inputLayoutKV must be same.");
+        return ge::GRAPH_FAILED;
     }
     int64_t headNum = 0;
     if (strcmp(inputLayoutQ, "BSND") == 0) {
