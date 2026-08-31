@@ -208,14 +208,9 @@ ge::graphStatus FiaTilingShape::CheckHasAxis(const FiaAxis &axis, const std::str
         return ge::GRAPH_SUCCESS;
     }
 
-<<<<<<< HEAD
     std::string reasonStr = "[" + funcName + "] " + AxisToSerialString(axis) + " cannot be empty when layout of " +
                             name_ + " is " + LayoutToSerialString(layout_);
     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, name_.c_str(), reasonStr.c_str());
-=======
-    OP_LOGE(opName_, "[%s] %s's layout is %s, %s does not exist.", funcName.c_str(), name_.c_str(),
-            LayoutToSerialString(layout_).c_str(), AxisToSerialString(axis).c_str());
->>>>>>> ce40d4148a66da1bae30ef29eedf2e67d74fd27c
     return ge::GRAPH_FAILED;
 }
 
