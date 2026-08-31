@@ -74,7 +74,7 @@ int64_t CeilAlign(int64_t val, int64_t align)
 } // namespace
 
 int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
-                                         const std::vector<int64_t> &tokenDataShape)
+                                       const std::vector<int64_t> &tokenDataShape)
 {
     TORCH_CHECK(tokenInfoTableShape.size() == 3, "token_info_table_shape should have 3 elements, but got ",
                 tokenInfoTableShape.size());
