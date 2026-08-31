@@ -14,19 +14,9 @@
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
-#ifndef MEGA_MOE_A8W8_DISPATCH_GROUP_READY
-#define MEGA_MOE_A8W8_DISPATCH_GROUP_READY 0
-#endif
-#if MEGA_MOE_A8W8_DISPATCH_GROUP_READY != 0 && MEGA_MOE_A8W8_DISPATCH_GROUP_READY != 1
-#error "MEGA_MOE_A8W8_DISPATCH_GROUP_READY must be 0 or 1"
-#endif
-
 namespace MegaMoeImpl {
 
 using namespace AscendC;
-
-// Compact A8W8 Dispatch ready 发布策略：0=本核专家段完成后发布，1=每个 256-token group 完成后发布。
-constexpr bool A8W8_DISPATCH_GROUP_READY = MEGA_MOE_A8W8_DISPATCH_GROUP_READY != 0;
 
 // Token Dispatch 的阶段私有配置。任务分工(BlockJobContext)与 count 槽位(BlockWorkspaceContext)
 // 与 GMM 阶段共用编排层的同一份实例，不在此重复持有。
@@ -360,14 +350,13 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
     return searchBegin - expertRankBegin;
 }
 
-// Compact 粗粒度路径：本核的单专家连续段完成后，一次发布所覆盖的全部 group。
+// Wave 专用路径：本核只扫描与连续专家行区间相交的 source rank；整个连续段完成后统一发布 ready。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchWaveExpertRowsDeferred(const TokenDispatchConfig &context,
-                                                      const MoeStageCommonConfig &common,
-                                                      const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-                                                      GM_ADDR *winRankAddr,
-                                                      TokenDispatchScratch<ActivationType> &scratch,
-                                                      uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
+__aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context,
+                                              const MoeStageCommonConfig &common,
+                                              const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                              GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
+                                              uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
 {
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     uint32_t coreGlobalRowBegin = coreRange.expertGlobalRowBegin + coreRange.localExpertRowBegin;
@@ -404,87 +393,9 @@ __aicore__ inline void DispatchWaveExpertRowsDeferred(const TokenDispatchConfig 
                          static_cast<int32_t>(coreRange.localExpertRowBegin) + dispatchedRowCount);
 }
 
-// Compact A8W8 细粒度实验路径：仍按整个 wave 均衡分核，但在 expert-local 256-row 边界处分段；
-// 当前 group 的搬运与 ring drain 完成后立即发布，使 GMM1 可在本核继续搬下一个 group 时启动。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchWaveExpertRowsByGroup(const TokenDispatchConfig &context,
-                                                     const MoeStageCommonConfig &common,
-                                                     const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-                                                     GM_ADDR *winRankAddr,
-                                                     TokenDispatchScratch<ActivationType> &scratch,
-                                                     uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
-{
-    constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
-    uint32_t coreGlobalRowBegin = coreRange.expertGlobalRowBegin + coreRange.localExpertRowBegin;
-    uint32_t coreGlobalRowEnd = coreRange.expertGlobalRowBegin + coreRange.localExpertRowEnd;
-    uint32_t sourceRankIdx = FindDispatchSourceRank(common, scratch, localExpertId, coreGlobalRowBegin);
-
-    for (uint32_t segmentGlobalRowBegin = coreGlobalRowBegin; segmentGlobalRowBegin < coreGlobalRowEnd;) {
-        uint32_t segmentExpertRowBegin = segmentGlobalRowBegin - coreRange.expertGlobalRowBegin;
-        uint32_t nextTileExpertRowBegin = (segmentExpertRowBegin / static_cast<uint32_t>(gmm1TileRowCount) + 1U) *
-                                          static_cast<uint32_t>(gmm1TileRowCount);
-        uint32_t segmentGlobalRowEnd = coreRange.expertGlobalRowBegin + nextTileExpertRowBegin;
-        if (segmentGlobalRowEnd > coreGlobalRowEnd) {
-            segmentGlobalRowEnd = coreGlobalRowEnd;
-        }
-        int32_t segmentDispatchedRowCount = 0;
-
-        while (sourceRankIdx < common.worldSize) {
-            uint32_t prefixIndex = localExpertId * common.worldSize + sourceRankIdx;
-            uint32_t rankGlobalRowEnd = static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(prefixIndex));
-            uint32_t rankGlobalRowBegin =
-                prefixIndex == 0U ? 0U : static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue(prefixIndex - 1U));
-            if (rankGlobalRowBegin >= segmentGlobalRowEnd) {
-                break;
-            }
-
-            uint32_t overlapGlobalRowBegin =
-                segmentGlobalRowBegin > rankGlobalRowBegin ? segmentGlobalRowBegin : rankGlobalRowBegin;
-            uint32_t overlapGlobalRowEnd =
-                segmentGlobalRowEnd < rankGlobalRowEnd ? segmentGlobalRowEnd : rankGlobalRowEnd;
-            if (overlapGlobalRowBegin < overlapGlobalRowEnd) {
-                segmentDispatchedRowCount +=
-                    DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                        context, common, params, winRankAddr, scratch, localExpertId,
-                        static_cast<int32_t>(coreRange.expertGlobalRowBegin), sourceRankIdx,
-                        static_cast<int32_t>(rankGlobalRowBegin - coreRange.expertGlobalRowBegin),
-                        static_cast<int32_t>(overlapGlobalRowBegin - rankGlobalRowBegin),
-                        static_cast<int32_t>(overlapGlobalRowEnd - rankGlobalRowBegin));
-            }
-            if (rankGlobalRowEnd > segmentGlobalRowEnd) {
-                break;
-            }
-            ++sourceRankIdx;
-        }
-
-        PublishGmm1TileReady(syncLayout, params, localExpertId, gmm1TileRowCount,
-                             static_cast<int32_t>(segmentExpertRowBegin),
-                             static_cast<int32_t>(segmentExpertRowBegin) + segmentDispatchedRowCount);
-        segmentGlobalRowBegin = segmentGlobalRowEnd;
-    }
-}
-
-// Wave 专用路径：本核只扫描与连续专家行区间相交的 source rank，未分到行的核直接返回。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool PublishGroupReady = false>
-__aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
-                                              const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-                                              GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
-                                              uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
-{
-    if constexpr (PublishGroupReady) {
-        DispatchWaveExpertRowsByGroup<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
-            context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
-    } else {
-        DispatchWaveExpertRowsDeferred<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
-            context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
-    }
-}
-
 // 对整个 GMM wave 的全局连续 row 一次分核，再按专家/source-rank 边界拆段。
 // 轮转首 owner 由 waveGlobalRowBegin 决定，热点专家跨 wave 时余数不会固定落到低编号核。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool PublishGroupReady = false>
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void RunWaveDispatchStage(const TokenDispatchConfig &context,
                                             const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
                                             const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
@@ -525,8 +436,7 @@ __aicore__ inline void RunWaveDispatchStage(const TokenDispatchConfig &context,
             WaveDispatchCoreRange expertRange{static_cast<uint64_t>(expertGlobalRowEnd - expertGlobalRowBegin),
                                               expertGlobalRowBegin, overlapGlobalRowBegin - expertGlobalRowBegin,
                                               overlapGlobalRowEnd - expertGlobalRowBegin};
-            DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,
-                                   PublishGroupReady>(
+            DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
                 context, common, syncLayout, params, winRankAddr, scratch, expertIdx, expertRange);
         }
     }
