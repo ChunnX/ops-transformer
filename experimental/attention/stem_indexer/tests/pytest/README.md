@@ -113,7 +113,7 @@ batch模式流程与QLI保持一致：
 ```text
 1. 读取csv/stem_indexer_generalized_cases.csv。
 2. 生成每条case的.pt文件，保存输入和CPU golden。
-3. pytest逐个读取.pt文件，运行时动态构造metadata并调用NPU算子。
+3. pytest按case_id取CSV与pt目录的交集，逐个读取匹配的.pt文件，运行时动态构造metadata并调用NPU算子。
 4. 与.pt中保存的golden比对。
 5. 生成result.csv记录批量执行结果。
 ```

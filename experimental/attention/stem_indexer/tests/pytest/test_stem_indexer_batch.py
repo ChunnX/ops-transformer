@@ -20,11 +20,13 @@ pytest.importorskip("torch_npu")
 
 from batch import stem_indexer_pt_loadprocess
 import result_compare_method
+from stem_indexer_batch_filter import filter_testcase_files_by_csv
 
 
 TEST_INPUT_PATH = os.environ.get("STEM_INDEXER_PT_DIR", "./pt_path")
 PT_DIR = TEST_INPUT_PATH
 RESULT_PATH = Path(os.environ.get("STEM_INDEXER_RESULT_PATH", "result.csv"))
+CSV_TESTCASE_PATH = os.environ.get("STEM_INDEXER_CSV_PATH", "").strip()
 MAX_RESULT_DETAIL_LEN = 2048
 RESULT_COLUMNS = ["case_id", "testcase_name", "expected_result", "result", "detail"]
 
@@ -44,6 +46,10 @@ _FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
 _FILTER_IDS = set(x.strip() for x in _FILTER_IDS_RAW.split(",") if x.strip())
 
 
+def load_case(filepath):
+    return stem_indexer_pt_loadprocess.torch_load_cpu(filepath)["case"]
+
+
 def collect_testcase_files(pt_dir):
     if not os.path.isdir(pt_dir):
         print(f"StemIndexer pt directory does not exist: {pt_dir}")
@@ -53,11 +59,20 @@ def collect_testcase_files(pt_dir):
         for pt_file in sorted(os.listdir(pt_dir))
         if pt_file.endswith(".pt")
     ]
+    if CSV_TESTCASE_PATH:
+        filtered = filter_testcase_files_by_csv(
+            testcase_files, CSV_TESTCASE_PATH, load_case
+        )
+        print(
+            f"Filter by STEM_INDEXER_CSV_PATH={CSV_TESTCASE_PATH}: "
+            f"{len(filtered)}/{len(testcase_files)} matched."
+        )
+        testcase_files = filtered
     if _FILTER_IDS:
         filtered = []
         for fp in testcase_files:
             try:
-                case = stem_indexer_pt_loadprocess.torch_load_cpu(fp)["case"]
+                case = load_case(fp)
             except Exception:
                 continue
             if case.get("case_id", "") in _FILTER_IDS:
@@ -105,10 +120,6 @@ def format_error_detail(err):
     if len(detail) > MAX_RESULT_DETAIL_LEN:
         return detail[:MAX_RESULT_DETAIL_LEN] + "...[truncated]"
     return detail
-
-
-def load_case(filepath):
-    return stem_indexer_pt_loadprocess.torch_load_cpu(filepath)["case"]
 
 
 @pytest.mark.ci

@@ -49,7 +49,7 @@ run_batch() {
 
     # 第一步：生成pt文件（不再按BatchSize分轮次）
     echo "生成pt文件..."
-    python3 $STEM_INDEXER_PT_SAVE_SCRIPT $PATH1 $PATH2
+    python3 "$STEM_INDEXER_PT_SAVE_SCRIPT" "$PATH1" "$PATH2"
     if [ $? -ne 0 ]; then
         echo "pt_save.py 执行失败，退出"
         exit 1
@@ -58,6 +58,7 @@ run_batch() {
     # 第二步：执行pytest
     echo "执行pytest [${mode_label}]..."
     STEM_INDEXER_PT_DIR="$PATH2" \
+    STEM_INDEXER_CSV_PATH="$PATH1" \
     STEM_INDEXER_RESULT_PATH="result.csv" \
     STEM_INDEXER_MODE="$exec_mode" \
     python3 -m pytest -rA -s $TEST_STEM_INDEXER_BATCH_SCRIPT -v -m ${pytest_mark} \
