@@ -46,8 +46,10 @@ if op_type == "add":
 
 elif op_type == "gemm":
     # grouped_matmul: bf16 (Cube 核, 核数由 wheel 决定)
-    # 小矩阵避开计算开销，聚焦头开销
-    E, M, K, N, PERGROUP = 4, 16, 16, 16, 16
+    # M=448 = 28(A5 Cube 满核) x 16(baseM): MN 切分满核调度 28 核;
+    # A3 (24 Cube 核) 下 448 行同样切满 24 核, 无需平台分支
+    # (K=16/N=16 保持小计算量, 聚焦头开销)
+    E, M, K, N, PERGROUP = 1, 448, 16, 16, 448
     x_cpu = torch.rand(M, K, dtype=torch.bfloat16)
     weight_cpu = torch.rand(K, N, dtype=torch.bfloat16)
     x = [x_cpu.npu()]
