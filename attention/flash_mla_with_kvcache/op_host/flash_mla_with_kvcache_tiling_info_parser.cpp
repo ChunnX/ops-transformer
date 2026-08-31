@@ -488,7 +488,8 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     layoutOut_ = itOut->second;
 
     // 路由约束（与 op_host/checkers/common_checker.cpp 的新布局矩阵对齐）：
-    //   q ∈ {TND, BNSD, BSND}；kv 仅分页布局 {PA_NZ, PA_BBND, PA_BNBD}（连续 KV 不放行）；out 必须等于 q。
+    //   q ∈ {TND, BNSD, BSND}；kv 仅分页布局 {PA_NZ, PA_BBND, PA_BNBD}（连续 KV 不放行）；
+    //   out 必须等于 q，或 TND→NTD 输出转置。
     if (layoutQ_ != FlashMlaWithKvcacheLayout::TND && layoutQ_ != FlashMlaWithKvcacheLayout::BNSD &&
         layoutQ_ != FlashMlaWithKvcacheLayout::BSND) {
         std::string reason = "The value of layout_q must be TND/BNSD/BSND";
@@ -502,8 +503,10 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (layoutOut_ != layoutQ_) {
-        std::string reason = "The value of layout_out must be TND/BNSD/BSND (layout_out must equal layout_q)";
+    const bool tndToNtd = (layoutQ_ == FlashMlaWithKvcacheLayout::TND && layoutOut_ == FlashMlaWithKvcacheLayout::NTD);
+    if (layoutOut_ != layoutQ_ && !tndToNtd) {
+        std::string reason =
+            "The value of layout_out must equal layout_q, or be NTD when layout_q is TND (TND→NTD transpose)";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }

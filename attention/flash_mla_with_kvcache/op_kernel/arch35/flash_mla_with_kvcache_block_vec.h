@@ -632,7 +632,8 @@ public:
 
     __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
-        if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
+        // layout 由 tiling key 编译期推导（outLayout = FA_T::attnOutLayout），不从 tiling data 获取
+        if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -641,7 +642,7 @@ public:
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
+        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -650,7 +651,7 @@ public:
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
+        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -658,7 +659,7 @@ public:
                                               seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
+        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
@@ -666,7 +667,7 @@ public:
                                               seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
+        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;

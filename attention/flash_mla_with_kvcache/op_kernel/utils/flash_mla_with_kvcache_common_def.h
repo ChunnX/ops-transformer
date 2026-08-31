@@ -22,10 +22,11 @@
 #define ASCENDC_TPL_3_BW 3
 
 // q/out 布局索引（InOutLayoutType，key 位 7-0；数值对齐 flash_attn：0=BSND 1=BNSD 2=TND）
-// MLA 不支持输出转置（无 BNSD_BSND），out 布局恒等于 q 布局
+// 3 留作 flash_attn 的 BNSD_BSND（MLA 未使用）。4=TND_NTD（q=TND, out=NTD 转置）。
 #define InOutLayoutType_BSND 0
 #define InOutLayoutType_BNSD 1
 #define InOutLayoutType_TND 2
+#define InOutLayoutType_TND_NTD 4
 
 // kv 存储格式（KvLayoutType，key 位 15-8；数值对齐 flash_attn）
 #define KvLayoutType_NO_PA 0
