@@ -44,7 +44,9 @@ TEST_F(KvQuantSparseFlashAttentionV2Proto, KvQuantSparseFlashAttentionV2_infersh
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -57,9 +59,11 @@ TEST_F(KvQuantSparseFlashAttentionV2Proto, KvQuantSparseFlashAttentionV2_infersh
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}});
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 64, 8, 512}};
+    // kvHeadNum = key.dim[2] = 1, g = query.dim[2] / kvHeadNum = 8
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 64, 8, 512}, {2, 1, 64, 8}, {2, 1, 64, 8}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -78,7 +82,9 @@ TEST_F(KvQuantSparseFlashAttentionV2Proto, KvQuantSparseFlashAttentionV2_infersh
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -91,9 +97,11 @@ TEST_F(KvQuantSparseFlashAttentionV2Proto, KvQuantSparseFlashAttentionV2_infersh
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}});
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {{96, 16, 512}};
+    // return_softmax_lse=false时softmax_max/softmax_sum输出shape为{0}
+    std::vector<std::vector<int64_t>> expectOutputShape = {{96, 16, 512}, {0}, {0}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
