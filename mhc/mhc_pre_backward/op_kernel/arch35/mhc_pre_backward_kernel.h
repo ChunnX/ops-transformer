@@ -1008,20 +1008,21 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    // 设置矩阵形状
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
-    mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
-    mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
-    // h_mix_grad^T @ x_rs
-    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
-    mm1.SetTensorB(workSpaceGm_[offsetXs], false);                                 // [BS, NDBlock]
-    // 计算
-    bool enAtomic = (offsetBS != 0);
-    mm1.IterateAll(gradPhiGm_[offsetND], enAtomic); // 非连续写
-    mm1.End();
+    // 每段只读取已由两个V核共同写好的xRs，尾段按实际K长度计算。
+    for (uint32_t kOffset = 0; kOffset < currentBSBlock; kOffset += C1_K_EVENT_SIZE) {
+        uint32_t readyFlag = buffIdx * C1_EVENTS_PER_BUFFER + kOffset / C1_K_EVENT_SIZE;
+        AscendC::CrossCoreWaitFlag(readyFlag);
+        uint32_t currentK = Min(C1_K_EVENT_SIZE, currentBSBlock - kOffset);
+        mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_);
+        mm1.SetSingleShape(fusionSize_, currentNDBlock, currentK);
+        mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS + kOffset)], true);
+        mm1.SetTensorB(workSpaceGm_[offsetXs + kOffset * ND_BLOCK_SIZE], false);
+        mm1.IterateAll(gradPhiGm_[offsetND], offsetBS != 0 || kOffset != 0);
+        mm1.End();
+    }
 }
 
 template <class T, class P>
@@ -1055,8 +1056,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             // 执行当前的V2
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId);
             buffId++;
-            // 通知C1计算
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1);
         }
         if (withGamma_) {
             vecOutQueueSmall_.EnQue(sumBuf);
@@ -1274,6 +1273,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         }
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
                            sumBuf);
+        // 分段边界及最终尾块各发布一次；槽步长由SINGLE_M推导，与C1等待保持一致。
+        uint32_t readyRows = bsChunkEnd - bsStart;
+        if (readyRows % C1_K_EVENT_SIZE == 0 || bsChunkEnd == bsEnd) {
+            uint32_t readyFlag = buffId * C1_EVENTS_PER_BUFFER + (readyRows - 1) / C1_K_EVENT_SIZE;
+            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(readyFlag);
+        }
     }
 }
 
