@@ -1,8 +1,10 @@
 # Pre-commit 配置指导书
 
-## 概述
+## 一、概述
 
-pre-commit是一个Git Hooks框架，用于在`git commit`时自动运行代码检查和格式化工具。本项目已配置以下检查：
+pre-commit 是一个 Git Hooks 框架，用于在 `git commit` 时自动运行代码检查和格式化工具，将代码规范问题拦截在提交前，避免远程 CI（`codecheck_precommit` 门禁）往返成本。
+
+本项目已配置以下检查：
 
 | Hook | 功能 | 说明 |
 |------|------|------|
@@ -12,7 +14,7 @@ pre-commit是一个Git Hooks框架，用于在`git commit`时自动运行代码�
 | **codespell** | 拼写检查 | 检测常见拼写错误（CANN/ascend 等术语已加入白名单） |
 | **OAT Check** | 开源合规检查 | 检测许可证头、禁止二进制/归档文件提交（基于 oat-py，Python 实现） |
 
-## 环境要求
+## 二、环境要求
 
 - **Git**: 2.0+
 - **Python**: 3.9+ (pre-commit 4.0+ 依赖；OAT 检查需 3.7+，已被 3.9+ 覆盖)
@@ -24,11 +26,11 @@ pre-commit是一个Git Hooks框架，用于在`git commit`时自动运行代码�
 >
 > 唯一需要手动安装的是 **clang-format**，仅当本地手动运行 `scripts/format_cpp.sh` 时用到（建议装 18.x 以与 pre-commit 拉取的 v18.1.8 保持一致）。
 
-## 安装步骤
+## 三、安装配置
 
-注：若需要使用pre-commit提供的代码检查功能，需要按照如下步骤进行安装配置；若无需pre-commit提供的代码检查功能，可不安装。
+注：若需要使用 pre-commit 提供的代码检查功能，需按照如下步骤进行安装配置；若无需，可不安装。
 
-### 1. 安装pre-commit
+### 1. 安装 pre-commit
 
 ```bash
 # 方式一: 使用pip
@@ -38,19 +40,7 @@ pip3 install pre-commit
 sudo apt install pre-commit
 ```
 
-### 2. （可选）安装本地 clang-format
-
-仅当需要脱离 pre-commit 手动批量格式化（`bash scripts/format_cpp.sh`）时安装。日常 `git commit` 触发的 pre-commit 不依赖此工具。
-
-```bash
-# Ubuntu/Debian
-sudo apt install clang-format
-
-# macOS
-brew install clang-format
-```
-
-### 3. 安装Git Hooks
+### 2. 安装 Git Hooks
 
 ```bash
 cd /path/to/ops-transformer
@@ -69,7 +59,7 @@ pre-commit installed at .git/hooks/pre-commit
 pre-commit uninstall
 ```
 
-### 4. 配置 git pc 别名
+### 3. 配置 git pc 别名
 
 配置 `git pc` 别名，用于对指定范围的提交变更文件运行 pre-commit 检查（每个环境执行一次，全局生效）：
 
@@ -77,11 +67,23 @@ pre-commit uninstall
 git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
 ```
 
-配置后即可使用（详见[补查历史提交](#补查历史提交-no-verify-跳过后)）：
+配置后即可使用（详见[补查历史提交](#6-补查历史提交---no-verify-跳过后)）：
 
 ```bash
 git pc HEAD~2 HEAD   # 检查最近2笔提交
 git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
+```
+
+### 4. （可选）安装本地 clang-format
+
+仅当需要脱离 pre-commit 手动批量格式化（`bash scripts/format_cpp.sh`）时安装。日常 `git commit` 触发的 pre-commit 不依赖此工具。
+
+```bash
+# Ubuntu/Debian
+sudo apt install clang-format
+
+# macOS
+brew install clang-format
 ```
 
 ### 5. （可选）全局生效，新 clone 的仓库自动继承
@@ -119,11 +121,11 @@ git config --global --unset init.templatedir
 rm -rf ~/.git-templates
 ```
 
-## 使用方法
+## 四、日常使用
 
-### 自动检查（推荐）
+### 1. 自动检查（推荐）
 
-每次执行`git commit`时，pre-commit会自动运行检查：
+每次执行 `git commit` 时，pre-commit 会自动运行检查：
 
 ```bash
 git add .
@@ -147,7 +149,7 @@ codespell.................................................................Passed
 OAT Compliance Check.....................................................Passed
 ```
 
-### 手动运行检查
+### 2. 手动运行检查
 
 ```bash
 # 运行所有检查
@@ -165,15 +167,17 @@ pre-commit run --all-files
 find examples -type f | xargs pre-commit run --files
 ```
 
-### 跳过检查（紧急情况）
+### 3. 跳过检查（紧急情况）
 
 ```bash
 git commit --no-verify -m "emergency fix"
 ```
 
-> **注意**: 仅在紧急情况下使用，正常开发流程应保证检查通过。
+> **注意**: 仅在紧急情况下使用，正常开发流程应保证检查通过。跳过后请参考[补查历史提交](#6-补查历史提交---no-verify-跳过后)补跑检查。
 
-### 日志排查
+## 五、失败排查
+
+### 1. 定位失败项
 
 在 pre-commit 输出中搜索 `Failed`，可快速定位失败的检查项：
 
@@ -183,16 +187,16 @@ fix end of files.........................................................Passed
 clang-format.............................................................Failed
 ```
 
-找到 `.................................................Failed` 行后，查看该 hook 下方的输出人工处理，或将报错内容直接粘贴给 AI 助手获取修复建议。
+找到 `Failed` 行后，查看该 hook 下方的输出人工处理，或将报错内容直接粘贴给 AI 助手获取修复建议。
 
-**常见报错及处理：**
+### 2. 常见报错及处理
 
 | 报错 | 原因 | 处理方式 |
 |------|------|---------|
 | `clang-format ......................Failed` | 代码已被自动格式化 | 重新 `git add` 后再次 `git commit` 即可 |
 | OAT Compliance Check Failed | 缺版权声明等合规问题 | 搜索 `OAT Scan Result Summary` 定位问题文件；版权声明目前无法自动订正，需参照仓内其他文件头部手动补齐 |
 
-### 补查历史提交（--no-verify 跳过后）
+## 六、补查历史提交（--no-verify 跳过后）
 
 若使用 `--no-verify` 跳过了检查，可对指定范围内的提交变更文件补跑检查（等价于 CI `codecheck_precommit` 门禁对 PR 变更文件列表执行 `xargs pre-commit run --files` 的行为）：
 
@@ -204,7 +208,7 @@ pre-commit run --files $(git diff --name-only HEAD~2 HEAD)
 pre-commit run --files $(git diff --name-only <commit>^ <commit>)
 ```
 
-推荐使用已配置的 `git pc` 别名（见安装步骤第 4 步）：
+推荐使用已配置的 `git pc` 别名（见[安装配置第 3 步](#3-配置-git-pc-别名)）：
 
 ```bash
 git pc HEAD~2 HEAD   # 检查最近2笔提交
@@ -213,7 +217,7 @@ git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
 
 > **注意**: `git pc` 检查的是文件的当前磁盘内容。部分钩子（clang-format、ruff-format 等）会自动修复文件，修复后需重新 `git add` 并追加提交。
 
-## 检查项说明
+## 七、检查项说明
 
 ### 1. pre-commit-hooks 基础规范
 
@@ -259,20 +263,20 @@ OAT (Open Source Audit Tool) 检查开源合规性，基于 Python 版 `oat-py` 
 | 二进制文件检查 | 禁止提交二进制文件 |
 | 归档文件检查 | 禁止提交zip/tar等归档文件 |
 
-OAT检查脚本首次运行时会自动：
+OAT 检查脚本首次运行时会自动：
 
 1. 检测 Python 3.7+ 环境
 2. 通过 `pip install oat-py>=1.0.1` 安装 OAT 工具（带文件锁，防止并发 pip 冲突）
 
-## 常见问题
+## 八、常见问题
 
-### Q1: 首次提交时OAT检查很慢
+### Q1: 首次提交时 OAT 检查很慢
 
 **原因**: 首次运行需要通过 `pip install oat-py>=1.0.1` 安装 OAT 工具。
 
 **解决**: 这是正常现象，后续提交会使用已安装的 oat-py，速度会很快。
 
-### 手动全量格式化 C/C++ 代码
+### Q2: 手动全量格式化 C/C++ 代码
 
 仓库提供 `scripts/format_cpp.sh`，可脱离 pre-commit 对任意目录全量格式化，常用于批量整理历史代码或本地预览格式化效果：
 
