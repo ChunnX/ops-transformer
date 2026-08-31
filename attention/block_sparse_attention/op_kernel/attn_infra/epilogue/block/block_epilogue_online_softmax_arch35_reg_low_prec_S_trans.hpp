@@ -298,11 +298,15 @@ private:
 
         RegTensor<half> sVreg0;
         RegTensor<half> sVreg1;
+        RegTensor<half> packedVreg0;
+        RegTensor<half> packedVreg1;
+        RegTensor<half> interleaveTmpVreg;
 
         RegTensor<half> pVreg0;
         RegTensor<half> pVreg1;
 
         RegTensor<half> hmVreg;
+        RegTensor<half> hmPackedVreg;
 
         RegTensor<half> sumVreg0;
         RegTensor<half> sumVreg1;
@@ -311,13 +315,61 @@ private:
         Duplicate(sumVreg1, 0);
 
         MaskReg maskReg16TailN = UpdateMask<half>(tailN);
+        MaskReg maskReg16PackedTailN = UpdateMask<half>(tailN * 2);
         MaskReg maskReg16VL64 = CreateMask<half, MaskPattern::VL64>();
 
         __ubuf__ half *pUb0 = pUb;
         __ubuf__ half *pUb1 = pUb + (mRound * 8); // *pUb1 = pUb0 + (mRound / 2 * ELE_NUM_PER_DATABLOCK)
 
         LoadAlign(hmVreg, lmUb);
-        for (uint16_t i = 0; i < mFirstTile; i++) {
+        Interleave(hmPackedVreg, interleaveTmpVreg, hmVreg, hmVreg);
+
+        uint16_t pairedLoopEnd = static_cast<uint16_t>(mFirstTile & ~1U);
+        for (uint16_t i = 0; i < pairedLoopEnd; i += 2) {
+            LoadAlign(sVreg0, sUb + i * s2BaseSize);
+            LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
+            Interleave(packedVreg0, interleaveTmpVreg, sVreg0, sVreg1);
+
+            LoadAlign(sVreg0, sUb + (i + 1) * s2BaseSize);
+            LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + (i + 1) * s2BaseSize);
+            Interleave(packedVreg1, interleaveTmpVreg, sVreg0, sVreg1);
+
+            Muls(packedVreg0, packedVreg0, scaleValue, maskReg16PackedTailN);
+            Muls(packedVreg1, packedVreg1, scaleValue, maskReg16PackedTailN);
+
+            Sub(packedVreg0, packedVreg0, hmPackedVreg, maskReg16PackedTailN);
+            Sub(packedVreg1, packedVreg1, hmPackedVreg, maskReg16PackedTailN);
+
+            Exp(packedVreg0, packedVreg0, maskReg16PackedTailN);
+            Exp(packedVreg1, packedVreg1, maskReg16PackedTailN);
+
+            DeInterleave(pVreg0, pVreg1, packedVreg0, packedVreg0);
+            StoreAlign<half, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb0, pVreg0, mRound + 1, 1, maskReg16VL64);
+            StoreAlign<half, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb1, pVreg1, mRound + 1, 1, maskReg16VL64);
+
+            if constexpr (mTileNum >= MAlignedTileNum::Zero) {
+                Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
+            }
+            if constexpr (mTileNum >= MAlignedTileNum::One) {
+                Add(sumVreg1, sumVreg1, pVreg1, maskReg16TailN);
+            }
+
+            DeInterleave(pVreg0, pVreg1, packedVreg1, packedVreg1);
+            StoreAlign<half, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb0, pVreg0, mRound + 1, 1, maskReg16VL64);
+            StoreAlign<half, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb1, pVreg1, mRound + 1, 1, maskReg16VL64);
+
+            if constexpr (mTileNum >= MAlignedTileNum::Zero) {
+                Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
+            }
+            if constexpr (mTileNum >= MAlignedTileNum::One) {
+                Add(sumVreg1, sumVreg1, pVreg1, maskReg16TailN);
+            }
+        }
+        for (uint16_t i = pairedLoopEnd; i < mFirstTile; i++) {
             LoadAlign(sVreg0, sUb + i * s2BaseSize);
             LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
 
