@@ -377,8 +377,14 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                         }
                     }
                     info.s2End = s2EndCalc;
-                    // blocks actually taken by this allocation (clamp may end it early)
-                    consumedBlocks += lastGS1RemainBlockCnt + (info.s2End - s2Idx + 1);
+                    // blocks actually taken by this allocation. LD: quota-tracked blocks
+                    // (clamp may end the head early). non-LD: one block per (gS1) task --
+                    // s2End here is the full-row s2 range, NOT a quota marker.
+                    if (constInfo.isLDOpen) {
+                        consumedBlocks += lastGS1RemainBlockCnt + (info.s2End - s2Idx + 1);
+                    } else {
+                        consumedBlocks += lastGS1RemainBlockCnt + 1;
+                    }
 
 
                     if (coreIdx == curCoreIdx) {
