@@ -660,12 +660,10 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
     // SIMT gather staging: mirrors EngramFetchGradSort::SimtStagingPerCore — per-core GM
     // slot area x2 (values + indices), each tileElements*4B + 256*28B group pads + 32B
-    // guard, 32B aligned.
-    int64_t simtTileElements = 4096;
-    int64_t simtDynTile = (maxSortCount + tilingData.aivNum - 1) / tilingData.aivNum;
-    if (simtDynTile > 0 && simtDynTile < simtTileElements) {
-        simtTileElements = simtDynTile;
-    }
+    // guard, 32B aligned. tileElements must match the device's MAX_SINGLE_CORE_ELEMENTS:
+    // the single-core path spills a full array (2*count int32) to core 0's staging, so the
+    // per-core area can no longer be shrunk by the dynTile reduction.
+    int64_t simtTileElements = 8192;
     int64_t simtStagingOneArea = (simtTileElements * static_cast<int64_t>(sizeof(int32_t)) +
                                   256 * (32 - static_cast<int64_t>(sizeof(int32_t))) + 32 + UB_ALIGN - 1) /
                                  UB_ALIGN * UB_ALIGN;
