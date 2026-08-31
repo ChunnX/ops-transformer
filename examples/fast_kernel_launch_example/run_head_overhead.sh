@@ -11,10 +11,11 @@
 #   用 msprof capture 模式采集 101 次循环的头开销数据，最后汇总输出。
 #
 # 可选环境变量:
-#   NPU_SOC_VERSION  编译目标 SoC (默认: ascend910_93)
+#   NPU_SOC_VERSION  编译目标 SoC (默认: 自动检测)
 #   OUTPUT_DIR       采集数据输出目录 (默认: ./head_overhead_results)
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
+#   REPLAY_SHOTS     replay 多拍次数 (默认: 5, 传给 scan_replay.py; 各拍独立计算指标取 median)
 # ----------------------------------------------------------------------------
 set -e
 
@@ -264,6 +265,7 @@ def parse_stars_dispatches(prof_dir):
         return []
 
 BLOCK_RE = re.compile(r"ReplayLast Block (\d+): T0=(\d+) T1=(\d+) T2=(\d+)")
+SHOT_RE = re.compile(r"Shot(\d+) Block (\d+): T0=(\d+) T1=(\d+) T2=(\d+)")
 
 def parse_cycle_blocks(stderr_log):
     """解析 scan_replay.py dump 的每 block T0/T1/T2 明细"""
@@ -276,15 +278,36 @@ def parse_cycle_blocks(stderr_log):
             recs.append((int(m.group(2)), int(m.group(3)), int(m.group(4))))
     return recs
 
+def parse_cycle_shots(stderr_log):
+    """解析 scan_replay.py 多拍 dump: {shot_id: [(T0, T1, T2), ...]}
+    多拍时每拍是独立完整 replay 的末次 launch 快照, 各拍独立算指标后取 median"""
+    shots = {}
+    if not os.path.exists(stderr_log):
+        return shots
+    for line in open(stderr_log, errors="ignore"):
+        m = SHOT_RE.search(line)
+        if m:
+            shots.setdefault(int(m.group(1)), []).append(
+                (int(m.group(3)), int(m.group(4)), int(m.group(5))))
+    return shots
+
 def three_metrics(prof_dir, op, freq):
     """T0-stars / T1-T0 / T1-stars / T2-stars 四指标 (kernel 打点 + STARS 联合)
+    多拍模式: scan_replay.py 每拍独立 dump (Shot<r>), 各拍独立计算全部指标后
+    对每指标取 median——单拍快照受 icache 冷热/核启动错峰/HBM 干扰 (~10-18% 波动),
+    median 滤除离群拍 (预期轮间波动 <3%)。无 Shot 数据时回退单拍 (ReplayLast)。
     每个时间戳独立最近邻匹配 dispatch（免疫 D2H 回读拍次错位）:
     T0/T1/T2 即使回读为不同拍的值, 各自匹配同拍 dispatch 后单值指标自洽。
     跨 slot 差值(T1-T0/T2-T0)仅同拍可信, 单调软校验兜底。"""
     stderr_log = f"{prof_dir}.stderr.log"
-    recs = parse_cycle_blocks(stderr_log)
-    if not recs:
-        return None
+    shots = parse_cycle_shots(stderr_log)
+    if shots:  # 多拍: {shot_id: recs}
+        shot_list = [shots[k] for k in sorted(shots)]
+    else:      # 单拍兼容 (旧版 scan_replay.py 只 dump ReplayLast)
+        recs = parse_cycle_blocks(stderr_log)
+        if not recs:
+            return None
+        shot_list = [recs]
     disp = parse_stars_dispatches(prof_dir)
     if not disp:
         return None
@@ -297,62 +320,85 @@ def three_metrics(prof_dir, op, freq):
             return -1
         return ts - disp[i]
 
-    t0s, t1t0, t1s, t2s, t2t0 = [], [], [], [], []
-    for a, b, b2 in recs:
-        d0 = match(a)
-        if 50 <= d0 <= 20000:
-            t0s.append(d0)
-        d1 = match(b)
-        if 50 <= d1 <= 20000:
-            t1s.append(d1)
-        d2 = match(b2)
-        if 50 <= d2 <= 20000:
-            t2s.append(d2)
-        if a < b <= b2:  # 同拍单调: 跨 slot 差值才可信
-            t1t0.append(b - a)
-            t2t0.append(b2 - a)
-    if not t0s:
+    def one_shot(recs):
+        """单拍指标计算 (返回 dict 或 None)。recs 为该拍全部 block 的 (T0,T1,T2)"""
+        t0s, t1t0, t1s, t2s, t2t0 = [], [], [], [], []
+        for a, b, b2 in recs:
+            d0 = match(a)
+            if 50 <= d0 <= 20000:
+                t0s.append(d0)
+            d1 = match(b)
+            if 50 <= d1 <= 20000:
+                t1s.append(d1)
+            d2 = match(b2)
+            if 50 <= d2 <= 20000:
+                t2s.append(d2)
+            if a < b <= b2:  # 同拍单调: 跨 slot 差值才可信
+                t1t0.append(b - a)
+                t2t0.append(b2 - a)
+        if not t0s:
+            return None
+        # T2 校验口径 (TaskDur 同口径): TaskDuration 由最慢完成 block 决定,
+        # mean(所有 block 平均) 天然偏小; 末拍簇 (T0 聚类) 内取 max(T2),
+        # 与簇 dispatch 之差才可与 TaskDur 比较 (实测 add: +0.145us 吻合)
+        # 窗口取 1.5us*freq: 固定 cyc 数在高频核 (AIC 587MHz) 上会跨拍混入上一拍 block,
+        # 导致 dp 匹配到上拍 dispatch (实测 gmm 曾因此偏大 1.78us)
+        # dp 取簇内各 T0 独立前向匹配的最大 dispatch: 混入的旧拍 block 匹配值更小, max 淹没之
+        # T0/T1/T2 统一 max 口径 (墙钟语义, 与 TaskDur 同口径): TaskDur 由最慢核决定,
+        # 故 T1-stars 应取 max(T1)——所有核都进入计算的时刻; mean 是单核平均视角会偏小
+        # (实测 add mean 0.63 vs max 0.88us; Cube 核启动本身错峰, gmm T0 spread 0.6us)
+        # max 对 D2H 旧拍回读天然稳健: 旧拍时间戳更小, max 自动淹没之
+        win = int(1.5 * freq)
+        t0max = max(r[0] for r in recs)
+        cluster = [r for r in recs if r[0] >= t0max - win and r[2] > 0]
+        t2_stars_chk = None
+        t1_stars_max = None
+        t0_stars_max = None
+        if len(cluster) >= max(4, len(recs) // 4):
+            dps = [match(r[0]) for r in cluster]
+            dps = [d for d in dps if 0 < d <= 20000]
+            if dps:
+                # 各 T0 的前向匹配 dispatch 时刻 = T0 - d0
+                dp = max(r[0] - d for r, d in zip(cluster, dps) if 0 < d <= 20000)
+                t0_stars_max = (max(r[0] for r in cluster) - dp) / freq
+                t1_stars_max = (max(r[1] for r in cluster if r[1] > 0) - dp) / freq
+                t2_stars_chk = (max(r[2] for r in cluster) - dp) / freq
+        return {
+            'n': len(t0s),
+            'n_t1': len(t1s),
+            'n_t2': len(t2s),
+            # 差值指标用中位数: 混合回读(拍次错位)产生的离群差值不拉偏均值
+            't1_t0': statistics.median(t1t0) / freq if t1t0 else None,
+            't2_t0': statistics.median(t2t0) / freq if t2t0 else None,
+            # 墙钟口径 (末拍簇 max): 与 TaskDur/ffts 校验同口径
+            't0_stars': t0_stars_max if t0_stars_max is not None else (statistics.mean(t0s) / freq if t0s else None),
+            't1_stars': t1_stars_max if t1_stars_max is not None else (statistics.mean(t1s) / freq if t1s else None),
+            't2_stars': t2_stars_chk if t2_stars_chk is not None else (statistics.mean(t2s) / freq if t2s else None),
+            # 单核参考口径 (mean)
+            't0_stars_mean': statistics.mean(t0s) / freq if t0s else None,
+            't1_stars_mean': statistics.mean(t1s) / freq if t1s else None,
+        }
+
+    per_shot = [m for m in (one_shot(recs) for recs in shot_list) if m]
+    if not per_shot:
         return None
-    # T2 校验口径 (TaskDur 同口径): TaskDuration 由最慢完成 block 决定,
-    # mean(所有 block 平均) 天然偏小; 末拍簇 (T0 聚类) 内取 max(T2),
-    # 与簇 dispatch 之差才可与 TaskDur 比较 (实测 add: +0.145us 吻合)
-    # 窗口取 1.5us*freq: 固定 cyc 数在高频核 (AIC 587MHz) 上会跨拍混入上一拍 block,
-    # 导致 dp 匹配到上拍 dispatch (实测 gmm 曾因此偏大 1.78us)
-    # dp 取簇内各 T0 独立前向匹配的最大 dispatch: 混入的旧拍 block 匹配值更小, max 淹没之
-    # T0/T1/T2 统一 max 口径 (墙钟语义, 与 TaskDur 同口径): TaskDur 由最慢核决定,
-    # 故 T1-stars 应取 max(T1)——所有核都进入计算的时刻; mean 是单核平均视角会偏小
-    # (实测 add mean 0.63 vs max 0.88us; Cube 核启动本身错峰, gmm T0 spread 0.6us)
-    # max 对 D2H 旧拍回读天然稳健: 旧拍时间戳更小, max 自动淹没之
-    win = int(1.5 * freq)
-    t0max = max(r[0] for r in recs)
-    cluster = [r for r in recs if r[0] >= t0max - win and r[2] > 0]
-    t2_stars_chk = None
-    t1_stars_max = None
-    t0_stars_max = None
-    if len(cluster) >= max(4, len(recs) // 4):
-        dps = [match(r[0]) for r in cluster]
-        dps = [d for d in dps if 0 < d <= 20000]
-        if dps:
-            # 各 T0 的前向匹配 dispatch 时刻 = T0 - d0
-            dp = max(r[0] - d for r, d in zip(cluster, dps) if 0 < d <= 20000)
-            t0_stars_max = (max(r[0] for r in cluster) - dp) / freq
-            t1_stars_max = (max(r[1] for r in cluster if r[1] > 0) - dp) / freq
-            t2_stars_chk = (max(r[2] for r in cluster) - dp) / freq
-    return {
-        'n': len(t0s),
-        'n_t1': len(t1s),
-        'n_t2': len(t2s),
-        # 差值指标用中位数: 混合回读(拍次错位)产生的离群差值不拉偏均值
-        't1_t0': statistics.median(t1t0) / freq if t1t0 else None,
-        't2_t0': statistics.median(t2t0) / freq if t2t0 else None,
-        # 墙钟口径 (末拍簇 max): 与 TaskDur/ffts 校验同口径
-        't0_stars': t0_stars_max if t0_stars_max is not None else (statistics.mean(t0s) / freq if t0s else None),
-        't1_stars': t1_stars_max if t1_stars_max is not None else (statistics.mean(t1s) / freq if t1s else None),
-        't2_stars': t2_stars_chk if t2_stars_chk is not None else (statistics.mean(t2s) / freq if t2s else None),
-        # 单核参考口径 (mean)
-        't0_stars_mean': statistics.mean(t0s) / freq if t0s else None,
-        't1_stars_mean': statistics.mean(t1s) / freq if t1s else None,
-    }
+    if len(per_shot) == 1:
+        out = dict(per_shot[0])
+        out['shots'] = 1
+        return out
+    # 多拍: 各指标独立取 median
+    keys = ['t0_stars', 't1_t0', 't1_stars', 't2_stars', 't2_t0',
+            't0_stars_mean', 't1_stars_mean']
+    out = {'shots': len(per_shot)}
+    for k in keys:
+        vals = [m[k] for m in per_shot if m.get(k) is not None]
+        out[k] = statistics.median(vals) if vals else None
+    out['n'] = per_shot[-1]['n']
+    out['n_t1'] = per_shot[-1]['n_t1']
+    out['n_t2'] = per_shot[-1]['n_t2']
+    # 各拍 t1_stars 逐拍值 (stdout 观测拍间波动)
+    out['t1_stars_per_shot'] = [round(m['t1_stars'], 3) for m in per_shot if m.get('t1_stars') is not None]
+    return out
 
 def parse_ffts_pmu(prof_dir):
     """解析 ffts_profile.data (STARS 每核 PMU, david 脚本 prof_pmu_david_analyze.py 的结构):
@@ -478,8 +524,18 @@ print("  头开销测试结果 (稳态=跳过前2次)")
 print("  STARS 四指标 (max 口径=墙钟, 与 TaskDur 同语义由最慢核决定):")
 print("  max(T0)-stars=调度+硬件启动  T1-T0=单核软件头(median)  max(T1)-stars=总头开销  max(T2)-stars=kernel末指令")
 print("  ffts PMU 权威校验: max(T2)+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
+print("  多拍模式: REPLAY_SHOTS 拍独立计算取 median (滤除单拍随机波动)")
 print("============================================")
 print()
+
+def print_metrics(m):
+    shots_str = f"  shots={m.get('shots', 1)}"
+    per = m.get('t1_stars_per_shot')
+    if per and len(per) > 1:
+        shots_str += f" (逐拍 max(T1)-stars: {'/'.join(f'{v:.3f}' for v in per)})"
+    print(f"  {'':12s} max(T0)-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
+          f"max(T1)-stars={fmt(m['t1_stars'])}us  max(T2)-stars={fmt(m['t2_stars'])}us  "
+          f"[单核mean: T0={fmt(m['t0_stars_mean'])} T1={fmt(m['t1_stars_mean'])}]  (n={m['n']} blocks){shots_str}")
 
 results = []
 if os.path.isdir(os.path.join(output_dir, 'add_full')):
@@ -488,9 +544,7 @@ if os.path.isdir(os.path.join(output_dir, 'add_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
-            print(f"  {'':12s} max(T0)-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-                  f"max(T1)-stars={fmt(m['t1_stars'])}us  max(T2)-stars={fmt(m['t2_stars'])}us  "
-                  f"[单核mean: T0={fmt(m['t0_stars_mean'])} T1={fmt(m['t1_stars_mean'])}]  (n={m['n']} blocks)")
+            print_metrics(m)
         fm = ffts_check(os.path.join(output_dir, 'add_full'), freq_add, r['mean'])
         if fm:
             print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "
@@ -503,9 +557,7 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
-            print(f"  {'':12s} max(T0)-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-                  f"max(T1)-stars={fmt(m['t1_stars'])}us  max(T2)-stars={fmt(m['t2_stars'])}us  "
-                  f"[单核mean: T0={fmt(m['t0_stars_mean'])} T1={fmt(m['t1_stars_mean'])}]  (n={m['n']} blocks)")
+            print_metrics(m)
         fm = ffts_check(os.path.join(output_dir, 'gmm_full'), freq_gmm, r['mean'])
         if fm:
             print(f"  {'':12s} [ffts PMU] dispatch->核启动={fm['launch_delay']:.3f}us  "

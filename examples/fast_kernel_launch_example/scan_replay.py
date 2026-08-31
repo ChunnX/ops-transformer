@@ -4,6 +4,10 @@
 # 环境变量控制:
 #   OP_TYPE=add|gemm   选择算子（默认 add）
 #   OP_ITERS=101       capture 迭代次数（默认 101）
+#   REPLAY_SHOTS=5     多拍回放次数（默认 5）：连续 replay 多次、每拍回读一次 buffer，
+#                      每拍独立计算头开销指标后由汇总段取 median，滤除单拍随机波动
+#                      （icache 冷热/核启动错峰/HBM 干扰）。每拍内部仍是完整 101 连发
+#                      back-to-back 执行，不破坏执行流；拍间 host 回读耗时毫秒级可忽略
 #
 # 核数说明: 核数由安装的 wheel 决定（run_head_overhead.sh 通过 sed 改源码 + rebuild）
 #   本脚本不控制核数，只负责 capture + cycle 数据导出
@@ -14,11 +18,12 @@
 #   打点数据由算子侧写入持久 GM cycle buffer（capture 模式地址固化），replay 后由本脚本导出
 #
 # 导出格式（stderr，供后处理与 STARS 最近邻匹配）:
-#   ReplayLast Block <bid>: T0=<abs> T1=<abs> T2=<abs> T1-T0=<diff> T2-T0=<diff>
+#   Shot<r> Block <bid>: T0=<abs> T1=<abs> T2=<abs> T1-T0=<diff> T2-T0=<diff>   (第 r 拍, r 从 1 起)
+#   兼容旧格式 ReplayLast Block ...（同拍语义, 旧后处理可继续解析首拍）
 #
 # 注意:
 #   - capture 模式 TASK_QUEUE_ENABLE 必须为 1（=2 与 NPUGraph capture 冲突）
-#   - capture 阶段 kernel 只录不跑（cycle buffer 不写），replay 后 buffer 为最后一次 replay 的数据
+#   - capture 阶段 kernel 只录不跑（cycle buffer 不写），每拍 replay 后 buffer 为该拍最后一次 launch 的数据
 import os
 import sys
 import time
@@ -31,6 +36,7 @@ os.environ["TASK_QUEUE_ENABLE"] = "1"
 
 op_type = os.environ.get("OP_TYPE", "add")
 op_iters = int(os.environ.get("OP_ITERS", "101"))
+replay_shots = int(os.environ.get("REPLAY_SHOTS", "5"))
 # SYS_CNT 频率 (cycle→us 换算): A5 实测 1000 MHz (时钟速率直测: 两次 replay 间隔 host 1s,
 # 计数差 1e9; AIV 与 AIC 比值 1.000, SoC 全局计数器核类型无关)。
 # 历史 283/587MHz 均为误标定 (依赖跨域匹配的间接推断), 已废弃。
@@ -91,14 +97,10 @@ with torch.npu.graph(g):
 
 # gemm sync segfault 已修复 (grouped_matmul.cpp 悬垂引用修复), 统一走完整 replay 路径
 torch.npu.synchronize()
-print(f"replay once ({op_type}, {op_iters} iters)...")
-t0 = time.time()
-g.replay()
-torch.npu.synchronize()
-elapsed = time.time() - t0
-print(f"replay done in {elapsed*1000:.2f} ms")
 
-# === 导出最后一次 replay 的 T0/T1/T2 cycle 数据 ===
+# === 多拍回放: 每拍 replay(整图 101 连发 back-to-back) + 回读 cycle buffer ===
+# 单拍快照受 icache 冷热/核启动错峰/HBM 干扰影响, 轮间波动 ~10-18%;
+# 多拍独立样本 + 汇总段取 median 滤除离群拍 (预期波动 <3%)
 # 注: 偶发个别 block 的 GM 标量值在单次 D2H 回读中滞后/为 0（D2H 可见性问题）：
 #   - 0 值: 该 slot 本拍未写（55/56 现象）
 #   - 旧值: 读到前几拍 kernel 写入的值（T2 写在 kernel 末尾最易滞后）
@@ -136,17 +138,43 @@ def read_cycle_merged(max_tries=12):
         merged[b][j] = v
     return {b: tuple(v) for b, v in merged.items()}
 
-try:
+# warmup 一拍不计入样本（首拍含环境初始化, icache 冷）
+print(f"warmup replay ({op_type}, {op_iters} iters)...")
+g.replay()
+torch.npu.synchronize()
+
+shot_data = []   # 每拍: {block: (T0, T1, T2)}
+t_all = time.time()
+for shot in range(1, replay_shots + 1):
+    t0 = time.time()
+    g.replay()
+    torch.npu.synchronize()
+    elapsed = time.time() - t0
     merged = read_cycle_merged()
-    valid = sorted(merged.items())
-    n = len(valid)
-    print(f"valid blocks: {n}/64 (merged re-read)")
-    for b, (a, bb, c) in valid:
-        print(f"ReplayLast Block {b}: T0={a} T1={bb} T2={c} T1-T0={bb-a} T2-T0={c-a}", file=sys.stderr, flush=True)
-    if n > 0:
+    shot_data.append(merged)
+    print(f"shot {shot}/{replay_shots}: replay {elapsed*1000:.2f} ms, valid blocks {len(merged)}/64")
+print(f"total {replay_shots} shots in {(time.time()-t_all)*1000:.1f} ms")
+
+# === 导出各拍 T0/T1/T2 cycle 数据 (Shot<r> 前缀) ===
+try:
+    n_last = len(shot_data[-1]) if shot_data else 0
+    print(f"valid blocks: {n_last}/64 (merged re-read, last shot)")
+    shot_durs = []
+    for idx, merged in enumerate(shot_data, start=1):
+        valid = sorted(merged.items())
+        if not valid:
+            continue
+        for b, (a, bb, c) in valid:
+            print(f"Shot{idx} Block {b}: T0={a} T1={bb} T2={c} T1-T0={bb-a} T2-T0={c-a}", file=sys.stderr, flush=True)
+        # 兼容旧后处理: 末拍同时输出 ReplayLast 前缀
+        if idx == len(shot_data):
+            for b, (a, bb, c) in valid:
+                print(f"ReplayLast Block {b}: T0={a} T1={bb} T2={c} T1-T0={bb-a} T2-T0={c-a}", file=sys.stderr, flush=True)
         kernel_durs = [c - a for _, (a, bb, c) in valid]
-        print(f"last replay T2-T0(kernel exec): mean={statistics.mean(kernel_durs):.0f} cyc "
-              f"({statistics.mean(kernel_durs)/sys_cnt_freq:.3f} us) min={min(kernel_durs)} max={max(kernel_durs)} n={n}")
+        shot_durs.extend(kernel_durs)
+    if shot_durs:
+        print(f"shots T2-T0(kernel exec): mean={statistics.mean(shot_durs):.0f} cyc "
+              f"({statistics.mean(shot_durs)/sys_cnt_freq:.3f} us) min={min(shot_durs)} max={max(shot_durs)} n={len(shot_durs)}")
     else:
         print("[WARN] cycle buffer 为空（kernel 未执行或打点未生效）")
 except Exception as e:
