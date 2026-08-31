@@ -52,7 +52,39 @@ brew install clang-format
 
 ### 3. 安装Git Hooks
 
-#### 方式一：全局生效（推荐，新 clone 的仓库自动继承）
+```bash
+cd /path/to/ops-transformer
+pre-commit install
+```
+
+安装成功后会显示：
+
+```bash
+pre-commit installed at .git/hooks/pre-commit
+```
+
+取消安装：
+
+```bash
+pre-commit uninstall
+```
+
+### 4. 配置 git pc 别名
+
+配置 `git pc` 别名，用于对指定范围的提交变更文件运行 pre-commit 检查（每个环境执行一次，全局生效）：
+
+```bash
+git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
+```
+
+配置后即可使用（详见[补查历史提交](#补查历史提交-no-verify-跳过后)）：
+
+```bash
+git pc HEAD~2 HEAD   # 检查最近2笔提交
+git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
+```
+
+### 5. （可选）全局生效，新 clone 的仓库自动继承
 
 通过 git 模板目录（`init.templatedir`）注册全局 hook，之后所有新 clone / `git init` 的仓库自动带上 pre-commit hook，无需逐仓安装：
 
@@ -80,45 +112,11 @@ ls -la .git/hooks/pre-commit             # 应存在且可执行
 
 > 说明：hook 只是启动器，实际检查仍读取**当前仓库根目录的 `.pre-commit-config.yaml`**。未配置该文件的仓库（如个人项目）在 `git commit` 时会因找不到配置而跳过，互不影响。
 
-#### 方式二：仅本项目生效
-
-适合新手试用，只对当前仓库生效：
+取消全局配置：
 
 ```bash
-cd /path/to/ops-transformer
-pre-commit install
-```
-
-安装成功后会显示：
-
-```bash
-pre-commit installed at .git/hooks/pre-commit
-```
-
-#### 取消安装
-
-```bash
-# 本项目取消（方式二安装的）
-pre-commit uninstall
-
-# 全局取消（方式一安装的）
 git config --global --unset init.templatedir
 rm -rf ~/.git-templates
-```
-
-### 4. 配置 git pc 别名
-
-配置 `git pc` 别名，用于对指定范围的提交变更文件运行 pre-commit 检查（每个环境执行一次，全局生效）：
-
-```bash
-git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
-```
-
-配置后即可使用（详见[补查历史提交](#补查历史提交-no-verify-跳过后)）：
-
-```bash
-git pc HEAD~2 HEAD   # 检查最近2笔提交
-git pc HEAD~1        # 检查最近1笔提交（末尾HEAD可省略）
 ```
 
 ## 使用方法
