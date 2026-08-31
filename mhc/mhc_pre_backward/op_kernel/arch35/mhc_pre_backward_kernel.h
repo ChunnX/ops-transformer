@@ -1379,7 +1379,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     LocalTensor<P> gammaUb;
     if (withGamma_ && bsChunkStart == bsStart) {
         // 与参考实现一致，首次gamma通过q0搬入；VF消费并缓存后立即释放。
-        gammaUb = vecInQueue0_.AllocTensor<P>();
+        vecInQueue0_.AllocTensor<P>(gammaUb);
         DataCopyParams gammaCopyParams;
         gammaCopyParams.blockCount = 1;
         gammaCopyParams.blockLen = copySizeND * sizeof(P);
@@ -1389,7 +1389,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
         gammaPadParams.isPad = false;
         DataCopyPad(gammaUb, gammaGm_[offsetND], gammaCopyParams, gammaPadParams);
         vecInQueue0_.EnQue(gammaUb);
-        gammaUb = vecInQueue0_.DeQue<P>();
+        vecInQueue0_.DeQue<P>(gammaUb);
     }
 
     // 计算xRs和gamma
