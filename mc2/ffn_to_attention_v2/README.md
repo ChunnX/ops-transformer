@@ -157,9 +157,4 @@ $$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}
     - FFNToAttentionV2算子的通信域中不允许有其他算子。
 
 
-## 调用说明
-
-| 调用方式  | 样例代码                                  | 说明                                                     |
-| :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| aclnn接口 | [test_aclnn_ffn_to_attention_v2.cpp](./examples/test_aclnn_ffn_to_attention_v2.cpp) | 通过[aclnnFFNToAttentionV2](./docs/aclnnFFNToAttentionV2.md)接口方式调用FFNToAttentionV2算子。 |
 
