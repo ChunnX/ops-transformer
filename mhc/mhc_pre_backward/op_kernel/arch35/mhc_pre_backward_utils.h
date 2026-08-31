@@ -95,10 +95,11 @@ constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
 constexpr uint32_t CROSS_CORE_C1_FLAG_INDEX = 0x4;
 constexpr uint32_t CROSS_CORE_SUBBLOCK_FLAG_OFFSET = 0x10;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_READY_0 = 0x8;
+// mode4仅使用8~11四个基础事件槽：双缓冲free占8/9，ready占10/11。
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_FREE_0 = 0x8;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_FREE_1 = 0x9;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_READY_0 = 0xA;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_READY_1 = 0xB;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_FREE_0 = 0xA;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_FREE_1 = 0xC;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 
 constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
