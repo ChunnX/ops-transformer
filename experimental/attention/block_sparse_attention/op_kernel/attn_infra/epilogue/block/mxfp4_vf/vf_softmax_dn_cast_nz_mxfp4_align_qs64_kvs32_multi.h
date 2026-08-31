@@ -374,5 +374,42 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF(const LocalT
         KvsBaseAlign32, KvsBaseAlign64, effY1, effY2, actKvsTile);
 }
 
+// ============================================================================
+// 单 chunk 下发（qs=64，与 qs128 版本对称）。chunkY: 0=chunk0, 1=chunk1。
+// 调度层保证: 该 chunk 有效行==0 时走 SoftmaxAllInvalidCallVF，不进本函数。
+// ============================================================================
+template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
+          uint16_t QsBase = 128>
+__simd_vf__ inline void softmax_align_qs64_kvs32_multi_chunk_only_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
+                                                  __ubuf__ T *local_group_max, __ubuf__ T *global_max,
+                                                  __ubuf__ uint8_t *indexes_ub, const T NEG_LOG2_CX,
+                                                  const uint16_t chunkY, const uint16_t effY,
+                                                  const uint16_t rows)
+{
+    softmax_align_qs64_kvs32_multi_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
+        p_dest, s, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, true, rows);
+}
+
+template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
+          uint16_t QsBase = 128>
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32MultiChunkCallVF(const LocalTensor<T2> &dstTensor,
+                                                  const LocalTensor<T> &srcTensor,
+                                                  const LocalTensor<T> &localGroupMax,
+                                                  const LocalTensor<T> &globalMax,
+                                                  const LocalTensor<uint8_t> &indexesBuf,
+                                                  const T NEG_LOG2_CX,
+                                                  const uint16_t chunkY, const uint16_t effY,
+                                                  const uint16_t rows)
+{
+    __ubuf__ T2 *p_dest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
+    __ubuf__ T *s_ub = (__ubuf__ T*) srcTensor.GetPhyAddr();
+    __ubuf__ T *local_group_max = (__ubuf__ T*)localGroupMax.GetPhyAddr();
+    __ubuf__ T *global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
+    __ubuf__ uint8_t * indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
+
+    softmax_align_qs64_kvs32_multi_chunk_only_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
+        p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, rows);
+}
+
 }
 #endif  // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_H_
