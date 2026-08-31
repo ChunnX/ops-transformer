@@ -57,6 +57,18 @@ __aicore__ inline void KeyPoolLayerNorm(const LocalTensor<float> &data, const Lo
     PipeBarrier<PIPE_V>();
 }
 
+// Keep the legacy cache-transform helper source-compatible with the in-place
+// implementation. The helper is retained on the master branch but is not used
+// by the current pooling path.
+__aicore__ inline void KeyPoolLayerNorm(const LocalTensor<float> &out, const LocalTensor<float> &in,
+                                       const LocalTensor<float> &mean, const LocalTensor<float> &gamma,
+                                       const LocalTensor<float> &beta, float eps, uint32_t count)
+{
+    DataCopy(out, in, count);
+    PipeBarrier<PIPE_V>();
+    KeyPoolLayerNorm(out, in, out, mean, gamma, beta, eps, count);
+}
+
 // Normalize complete current K rows before they enter the pooling path. The
 // caller provides a scratch tensor with room for input/output and three
 // vectors: mean, gamma, and beta.
