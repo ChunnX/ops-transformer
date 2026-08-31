@@ -197,8 +197,20 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams(uint64_t roundIdx)
                 singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(K0_INT8));
             }
         }
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit) {
+            singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(BMM_BLOCK_NUM));
+        }
         uint64_t mSplitIdx = (blockIdx_ % params_.totalTailTile) % tilingData_->adaptiveSlidingWin.mTailTile;
         uint64_t nSplitIdx = (blockIdx_ % params_.totalTailTile) / tilingData_->adaptiveSlidingWin.mTailTile;
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit && GetBlockIdx() == 0) {
+            printf("DBG alignNTailSplit: mIdx=%u nIdx=%u mSplit=%u nSplit=%u totalTail=%u "
+                   "mTailTile=%u nTailTile=%u\n",
+                   params_.mIndex, params_.nIndex,
+                   (uint32_t)singleCoreMSplit, (uint32_t)singleCoreNSplit,
+                   (uint32_t)params_.totalTailTile,
+                   tilingData_->adaptiveSlidingWin.mTailTile,
+                   tilingData_->adaptiveSlidingWin.nTailTile);
+        }
         params_.mSplitAddrOffset = mSplitIdx * singleCoreMSplit;
         params_.nSplitAddrOffset = nSplitIdx * singleCoreNSplit;
         if (params_.mSplitAddrOffset >= params_.singleCoreM || params_.nSplitAddrOffset >= params_.singleCoreN) {
@@ -245,7 +257,16 @@ __aicore__ inline void Mc2QuantBmmAswBlock::UpdateBlockParams4AL1FullLoad(uint64
                 singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(K0_INT8));
             }
         }
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit) {
+            singleCoreNSplit = DequantBmm::Align(singleCoreNSplit, static_cast<uint64_t>(BMM_BLOCK_NUM));
+        }
         uint64_t mSplitIdx = blockIdx_ % params_.mCnt;
+        if (tilingData_->adaptiveSlidingWin.alignNTailSplit && GetBlockIdx() == 0) {
+            printf("DBG alignNTailSplit(AL1): mIdx=%u nIdx=%u nSplit=%u nTailTile=%u\n",
+                   params_.mIndex, params_.nIndex,
+                   (uint32_t)singleCoreNSplit,
+                   tilingData_->adaptiveSlidingWin.nTailTile);
+        }
         uint64_t nSplitIdx = blockIdx_ / params_.mCnt % tilingData_->adaptiveSlidingWin.nTailTile;
         params_.mSplitAddrOffset = mSplitIdx * singleCoreMSplit;
         params_.nSplitAddrOffset = nSplitIdx * singleCoreNSplit;

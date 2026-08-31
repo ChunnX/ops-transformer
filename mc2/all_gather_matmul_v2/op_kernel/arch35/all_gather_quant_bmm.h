@@ -332,7 +332,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     // 计算本片的块
     // 未用到的AIC核不需要参与计算
     if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
-        QuantMatmulLocalCompute();
+        QuantMatmulLocalCompute(); 
     }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
@@ -344,6 +344,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
             hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
         }
     }
+    // 已注释：MXFP4量化中matmul gather块计算
     QuantMatmulGatherCompute();
 }
 
