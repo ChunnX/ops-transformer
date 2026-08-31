@@ -20,7 +20,7 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 
 /**
- * @brief Wrapper for ffn_to_attention_v2. The op has no host-visible output tensors;
+ * @brief Wrapper for ffn_to_attention. The op has no host-visible output tensors;
  *        data is sent to peer ranks via the HCCL window. We therefore return an empty
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
@@ -94,8 +94,8 @@ int64_t GetFFNToAttentionV2CclBufferSize(const std::vector<int64_t> &tokenInfoTa
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_ffn_to_attention_v2", &NpuFFNToAttentionV2, "npu_ffn_to_attention_v2");
-    m.def("get_ffn_to_attention_v2_ccl_buffer_size", &GetFFNToAttentionV2CclBufferSize,
-          "get_ffn_to_attention_v2_ccl_buffer_size");
+    m.def("npu_ffn_to_attention", &NpuFFNToAttentionV2, "npu_ffn_to_attention");
+    m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionV2CclBufferSize,
+          "get_ffn_to_attention_ccl_buffer_size");
 }
 } // namespace op_api
