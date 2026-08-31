@@ -60,6 +60,7 @@ enum : uint32_t {
     VECTOR_LEN_INT32 = 64,
     VECTOR_LEN_INT16 = 128,
     VECTOR_LEN_INT8 = 256,
+    SCAN_CUMSUM_TMP_BYTES = 32U * 1024U,
 };
 
 constexpr uint32_t UB_BLOCK_BYTES = Ops::Base::GetUbBlockSize();
@@ -104,6 +105,15 @@ __aicore__ inline uint32_t SimtPadAreaBytes(uint32_t tileAlignBytes)
     return (tileAlignBytes + SIMT_STAGING_PAD_BYTES + SIMT_SLOT_ALIGN - 1U) / SIMT_SLOT_ALIGN * SIMT_SLOT_ALIGN;
 }
 
+// RADIX_SORT shared-tmp layout (ArrangeCommonTmpBuffer): 512B buckets + 7B per element,
+// element count aligned to SORT_COUNT_ALIGN.
+__aicore__ inline uint32_t SortTmpBytes(uint32_t count)
+{
+    uint32_t alignedCount =
+        (count + Mc2Kernel::SORT_COUNT_ALIGN - 1U) / Mc2Kernel::SORT_COUNT_ALIGN * Mc2Kernel::SORT_COUNT_ALIGN;
+    return Mc2Kernel::SORT_TMP_BUCKET_BYTES + Mc2Kernel::SORT_TMP_BYTES_PER_ELEM * alignedCount;
+}
+
 template <AscendC::HardEvent evt>
 __aicore__ inline void WaitPipe(AscendC::TPipe &pipe)
 {
@@ -137,16 +147,23 @@ public:
 
     __aicore__ inline void ProcessSingleCore(uint32_t actualCount, AscendC::TPipe &pipe);
 
-    uint64_t sortCopyTempCycle_{0};
-    uint64_t sortRoundHistCycle_[4]{0};
-    uint64_t sortRoundPrefixCycle_[4]{0};
-    uint64_t sortRoundScatterCycle_[4]{0};
-    uint64_t sortHistMte2Cycle_[4]{0};
-    uint64_t sortHistComputeCycle_[4]{0};
-    uint64_t sortHistMte3Cycle_[4]{0};
-    uint64_t sortScatterMte2Cycle_[4]{0};
-    uint64_t sortScatterKeyCycle_[4]{0};
-    uint64_t sortScatterWriteCycle_[4]{0};
+    __aicore__ inline static uint32_t WorkspaceBytes(uint32_t numCores);
+
+    __aicore__ inline static uint32_t SmallBufsBytes();
+
+    // sortWorkspace_ phase-layout views (distributed path, tileElements_ based).
+    __aicore__ inline AscendC::LocalTensor<int32_t> ValsUb()
+    {
+        return sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
+    }
+    __aicore__ inline AscendC::LocalTensor<int32_t> IdxsUb()
+    {
+        return sortWorkspace_.GetWithOffset<int32_t>(tileElements_, tileAlignBytes_);
+    }
+    __aicore__ inline AscendC::LocalTensor<uint32_t> SortIdxUb()
+    {
+        return sortWorkspace_.GetWithOffset<uint32_t>(tileElements_, 2U * tileAlignBytes_);
+    }
 
 private:
     __aicore__ inline void ComputePrefixAndOffsets(uint32_t tc, AscendC::GlobalTensor<int32_t> &prefixGm,
@@ -327,8 +344,14 @@ __aicore__ inline uint64_t EngramFetchGradSort::GetWorkspaceSize(uint32_t totalE
 
 __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements, uint32_t numCores)
 {
-    uint32_t tileElements = DEFAULT_TILE_SIZE;
-    uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(tileElements * sizeof(int32_t)));
+    (void)totalElements;
+    return WorkspaceBytes(numCores) + SmallBufsBytes();
+}
+
+// UB workspace carve shared by the distributed phases and the single-core path.
+__aicore__ inline uint32_t EngramFetchGradSort::WorkspaceBytes(uint32_t numCores)
+{
+    uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(DEFAULT_TILE_SIZE * sizeof(int32_t)));
     uint32_t phaseHistSize = 2U * tileAlignBytes;
     uint32_t phasePrefixSize = numCores * HISTOGRAM_BINS * sizeof(int32_t) + tileAlignBytes;
     uint32_t phaseScatterSize =
@@ -340,20 +363,19 @@ __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements
     if (phaseScatterSize > sortWorkspaceSize) {
         sortWorkspaceSize = phaseScatterSize;
     }
-    // Single-core path: the whole array (up to MAX_SINGLE_CORE_ELEMENTS) stays resident in
-    // UB for every byte round. Needs 3 aligned int32 areas (vals/idxs/sortIndices) plus the
-    // RADIX_SORT tmp (512B buckets + 7B/element); exclusive scratch aliases sortTemp.
+    // Single-core path: whole array (<= MAX_SINGLE_CORE_ELEMENTS) resident in UB for every
+    // byte round — 3 aligned int32 areas (vals/idxs/sortIndices) + RADIX_SORT tmp; exclusive
+    // scratch aliases sortTemp.
     uint32_t scAlignBytes = static_cast<uint32_t>(AlignUpU32(MAX_SINGLE_CORE_ELEMENTS * sizeof(int32_t)));
-    uint32_t scTmpCount = (MAX_SINGLE_CORE_ELEMENTS + 31U) / 32U * 32U;
-    uint32_t scWorkspace = 3U * scAlignBytes + 512U + 7U * scTmpCount;
-    if (scWorkspace > sortWorkspaceSize) {
-        sortWorkspaceSize = scWorkspace;
-    }
-    uint32_t scCount = MAX_SINGLE_CORE_ELEMENTS;
-    uint32_t smallBufs = scCount + HISTOGRAM_BINS * sizeof(int32_t) + HISTOGRAM_BINS * sizeof(uint16_t) +
-                         HISTOGRAM_BINS * sizeof(int32_t) + scCount + HISTOGRAM_BINS * sizeof(int32_t) +
-                         HISTOGRAM_BINS * sizeof(int32_t);
-    return sortWorkspaceSize + smallBufs;
+    uint32_t scWorkspace = 3U * scAlignBytes + SortTmpBytes(MAX_SINGLE_CORE_ELEMENTS);
+    return (scWorkspace > sortWorkspaceSize) ? scWorkspace : sortWorkspaceSize;
+}
+
+__aicore__ inline uint32_t EngramFetchGradSort::SmallBufsBytes()
+{
+    return MAX_SINGLE_CORE_ELEMENTS + HISTOGRAM_BINS * sizeof(int32_t) + HISTOGRAM_BINS * sizeof(uint16_t) +
+           HISTOGRAM_BINS * sizeof(int32_t) + MAX_SINGLE_CORE_ELEMENTS + HISTOGRAM_BINS * sizeof(int32_t) +
+           HISTOGRAM_BINS * sizeof(int32_t);
 }
 
 __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_t numCores, GM_ADDR valueGm,
@@ -395,28 +417,8 @@ __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_
     simtStagingGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
     offset += static_cast<uint64_t>(numCores) * simtStagingPerCore_;
 
-    uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t)));
-    tileAlignBytes_ = tileAlignBytes;
-    uint32_t phaseHistSize = 2U * tileAlignBytes;
-    uint32_t phasePrefixSize = static_cast<uint32_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) + tileAlignBytes;
-    uint32_t phaseScatterSize =
-        3U * tileAlignBytes + 2U * HISTOGRAM_BINS * sizeof(uint32_t) + 2U * SimtPadAreaBytes(tileAlignBytes);
-    uint32_t sortWorkspaceSize = phaseHistSize;
-    if (phasePrefixSize > sortWorkspaceSize) {
-        sortWorkspaceSize = phasePrefixSize;
-    }
-    if (phaseScatterSize > sortWorkspaceSize) {
-        sortWorkspaceSize = phaseScatterSize;
-    }
-    // Single-core path: whole array (<= MAX_SINGLE_CORE_ELEMENTS) resident in UB for every
-    // byte round — 3 aligned int32 areas (vals/idxs/sortIndices) + RADIX_SORT tmp; exclusive
-    // scratch aliases sortTemp.
-    uint32_t scAlignBytes = static_cast<uint32_t>(AlignUpU32(MAX_SINGLE_CORE_ELEMENTS * sizeof(int32_t)));
-    uint32_t scTmpCount = (MAX_SINGLE_CORE_ELEMENTS + 31U) / 32U * 32U;
-    uint32_t scWorkspace = 3U * scAlignBytes + 512U + 7U * scTmpCount;
-    if (scWorkspace > sortWorkspaceSize) {
-        sortWorkspaceSize = scWorkspace;
-    }
+    tileAlignBytes_ = static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t)));
+    uint32_t sortWorkspaceSize = WorkspaceBytes(numCores);
     pool.InitBuffer(sortWorkspace_, sortWorkspaceSize);
     pool.InitBuffer(keyBuffer_, MAX_SINGLE_CORE_ELEMENTS);
     pool.InitBuffer(histogramBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
@@ -541,7 +543,7 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
     AscendC::LocalTensor<int32_t> scanIncl =
         sortWorkspace_.GetWithOffset<int32_t>(HISTOGRAM_BINS, 2U * HISTOGRAM_BINS * sizeof(float));
     AscendC::LocalTensor<uint8_t> scanTmp =
-        sortWorkspace_.GetWithOffset<uint8_t>(32U * 1024U, 3U * HISTOGRAM_BINS * sizeof(float));
+        sortWorkspace_.GetWithOffset<uint8_t>(SCAN_CUMSUM_TMP_BYTES, 3U * HISTOGRAM_BINS * sizeof(float));
     AscendC::Cast<float, int32_t>(scanSrcF, totalBuf, AscendC::RoundMode::CAST_RINT, HISTOGRAM_BINS);
     AscendC::PipeBarrier<PIPE_V>();
     AscendC::CumSumInfo scanInfo{1U, HISTOGRAM_BINS};
@@ -625,13 +627,12 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
         uint32_t coreId = AscendC::GetBlockIdx();
-        // uint64_t t2 = 0;
         if (coreId < batchCores) {
             uint32_t tileId = firstTile + coreId;
             uint32_t offset = tileId * tileElements_;
             uint32_t tileLen = MinU32(elementCount_ - offset, tileElements_);
 
-            AscendC::LocalTensor<int32_t> valueLocal = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
+            AscendC::LocalTensor<int32_t> valueLocal = ValsUb();
             AscendC::LocalTensor<uint16_t> histLocal = histogramBuffer_.Get<uint16_t>();
             AscendC::LocalTensor<uint16_t> cumsumLocal = cumulativeBuffer_.Get<uint16_t>();
             AscendC::LocalTensor<uint32_t> exclusiveLocal =
@@ -640,12 +641,9 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
 
             uint32_t valBytes = tileLen * sizeof(int32_t);
             AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
-            // uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
             AscendC::DataCopyPad(valueLocal, (*srcValueGm)[offset], valParam, valPad);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-            // uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-            // mte2Total += t1 - t0;
 
             AscendC::Duplicate(exclusiveLocal, (uint32_t)0, HISTOGRAM_BINS);
 
@@ -663,15 +661,11 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-            // t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-            // computeTotal += t2 - t1;
 
             AscendC::DataCopyParams histOutParam{1U, static_cast<uint16_t>(HISTOGRAM_BINS * sizeof(int32_t)), 0U, 0U};
             AscendC::DataCopyPad(histGm[tileId * HISTOGRAM_BINS], histWide, histOutParam);
         }
         WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
-        // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        // mte3Total += t3 - t2;
     }
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
@@ -680,9 +674,6 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
     WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
     // Cross-round barrier is taken by the prefix phase's leading SyncAll (it also orders
     // these hist/coreSums MTE3 writes before any consumer's MTE2 reads).
-    // sortHistMte2Cycle_[byteRound] += mte2Total;
-    // sortHistComputeCycle_[byteRound] += computeTotal;
-    // sortHistMte3Cycle_[byteRound] += mte3Total;
 }
 
 __aicore__ inline void EngramFetchGradSort::ProcessScatter(
@@ -701,22 +692,16 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     event_t evtVMte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE2));
     event_t evtMte2Mte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_MTE3));
 
-    // uint64_t mte2Total = 0;
-    // uint64_t keyTotal = 0;
-    // uint64_t writeTotal = 0;
-
     for (uint32_t batch = 0; batch < batchCount; batch++) {
         uint32_t firstTile = batch * coreCount_;
         uint32_t batchCores = MinU32(tileCount_ - firstTile, coreCount_);
         uint32_t coreId = AscendC::GetBlockIdx();
 
-        AscendC::LocalTensor<int32_t> valueLocal = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
-        AscendC::LocalTensor<int32_t> indexLocal =
-            sortWorkspace_.GetWithOffset<int32_t>(tileElements_, tileAlignBytes_);
+        AscendC::LocalTensor<int32_t> valueLocal = ValsUb();
+        AscendC::LocalTensor<int32_t> indexLocal = IdxsUb();
         AscendC::LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
         AscendC::LocalTensor<uint8_t> sortedKey = sortedKeyBuffer_.Get<uint8_t>();
-        AscendC::LocalTensor<uint32_t> sortIndices =
-            sortWorkspace_.GetWithOffset<uint32_t>(tileElements_, 2U * tileAlignBytes_);
+        AscendC::LocalTensor<uint32_t> sortIndices = SortIdxUb();
         AscendC::LocalTensor<int32_t> prefixLocal = prefixBuffer_.Get<int32_t>();
         AscendC::LocalTensor<int32_t> offsetLocal = histogramBuffer_.Get<int32_t>();
 
@@ -938,9 +923,6 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     // round's hist MTE2 reads (batch-local stores use disjoint tile ranges, so the
     // barrier is only needed once per round, not per batch).
     AscendC::SyncAll<true>();
-    // sortScatterMte2Cycle_[byteRound] += mte2Total;
-    // sortScatterKeyCycle_[byteRound] += keyTotal;
-    // sortScatterWriteCycle_[byteRound] += writeTotal;
 }
 
 __aicore__ inline void EngramFetchGradSort::CopyTempToOutput(AscendC::GlobalTensor<int32_t> &tempValueGm,
@@ -994,21 +976,12 @@ __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
 {
     uint32_t batchCount = CeilDiv(tileCount_, coreCount_);
     AscendC::GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(byteRound, valueGm, tempValueGm, outputValueGm);
-
-    // uint64_t h0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     ProcessHist(byteRound, batchCount, srcValueGm, histGm, pipe);
-    // uint64_t h1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ComputePrefixAndOffsets(tileCount_, prefixGm, tileOffsetsGm, histGm, pipe);
-    // uint64_t p1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ProcessScatter(byteRound, batchCount, srcValueGm, indexGm, outputValueGm, outputIndexGm, tempValueGm, tempIndexGm,
                    histGm, prefixGm, tileOffsetsGm, pipe);
-    // uint64_t s1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
-    // sortRoundHistCycle_[byteRound] += h1 - h0;
-    // sortRoundPrefixCycle_[byteRound] += p1 - h1;
-    // sortRoundScatterCycle_[byteRound] += s1 - p1;
 }
 
 __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, AscendC::TPipe &pipe)
@@ -1056,10 +1029,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessSingleCore(uint32_t actualCou
         AscendC::LocalTensor<int32_t> idxs = sortWorkspace_.GetWithOffset<int32_t>(actualCount, scAlignBytes);
         AscendC::LocalTensor<uint32_t> sortIndices =
             sortWorkspace_.GetWithOffset<uint32_t>(actualCount, 2U * scAlignBytes);
-        // RADIX_SORT tmp layout (ArrangeCommonTmpBuffer): 512B buckets + 7B/element.
-        uint32_t tmpCount = (actualCount + 31U) / 32U * 32U;
         AscendC::LocalTensor<uint8_t> sortTempBig =
-            sortWorkspace_.GetWithOffset<uint8_t>(512U + 7U * tmpCount, 3U * scAlignBytes);
+            sortWorkspace_.GetWithOffset<uint8_t>(SortTmpBytes(actualCount), 3U * scAlignBytes);
         // exclusiveUb scratch for ComputeTileHistogram; lives at sortTemp's base because the
         // histogram runs strictly before Sort consumes sortTemp.
         AscendC::LocalTensor<int32_t> exclusiveLocal =

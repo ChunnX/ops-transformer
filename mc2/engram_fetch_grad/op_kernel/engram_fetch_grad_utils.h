@@ -38,6 +38,17 @@ constexpr uint32_t ENTRY_BATCH_CAP = 1024U;
 constexpr uint32_t GRAD_SUB_BATCH = 8U;
 constexpr uint32_t SENDCOUNT_STRIDE_RATIO = 8U;
 
+constexpr uint32_t DMA_BLOCK_MAX_BYTES = 65535U;
+constexpr uint32_t GRAD_PING_BYTES = 32U * 1024U;
+constexpr uint32_t ENTRY_BUF_BYTES = 64U * 1024U;
+constexpr uint32_t GRAD_BUF_BYTES = 64U * 1024U;
+constexpr uint32_t IDX_BUF_BYTES = 4U * 1024U;
+constexpr uint32_t COMM_BUF_BYTES = 2U * TILE_BYTES;
+constexpr uint32_t MAX_PENDING_HANDLES = 8U;
+constexpr uint32_t SORT_TMP_BUCKET_BYTES = 512U;
+constexpr uint32_t SORT_TMP_BYTES_PER_ELEM = 7U;
+constexpr uint32_t SORT_COUNT_ALIGN = 32U;
+
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;

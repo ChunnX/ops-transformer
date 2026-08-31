@@ -554,20 +554,18 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     tilingData.commBufferSize = *commBufferSizePtr;
 
     // 动态计算 gradSubBatch
-    uint32_t permanentUb = 9U * 1024U;       // hcommBuf + statusBuf + tempBuf + indicesBuf
-    uint32_t commBufSize = 2U * 64U * 1024U; // entryBuf + gradBuf
-    uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(tilingData.hiddenBytes);
+    constexpr uint32_t PERMANENT_UB_BYTES = 9U * 1024U;   // hcommBuf + statusBuf + tempBuf + indicesBuf
+    constexpr uint32_t COMM_BUF_BYTES = 2U * 64U * 1024U; // entryBuf + gradBuf
+    constexpr uint32_t GRAD_PING_BYTES = 32U * 1024U;
+    uint32_t permanentUb = PERMANENT_UB_BYTES;
+    uint32_t commBufSize = COMM_BUF_BYTES;
+    uint32_t maxByPong = GRAD_PING_BYTES / static_cast<uint32_t>(tilingData.hiddenBytes);
     if (maxByPong < 1U) {
         maxByPong = 1U;
     }
     uint32_t accumNeed = static_cast<uint32_t>(
         AlignTo(static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(UB_ALIGN)));
     bool needCast = (tilingData.inputDtype != static_cast<int32_t>(ge::DT_FLOAT));
-    uint32_t castFp32Need =
-        needCast ?
-            static_cast<uint32_t>(AlignTo(static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * sizeof(float) * 2,
-                                          static_cast<int64_t>(UB_ALIGN))) :
-            0U;
     uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - permanentUb;
     uint32_t availableForCast =
         (availableForPool > commBufSize + accumNeed) ? (availableForPool - commBufSize - accumNeed) : 0U;
