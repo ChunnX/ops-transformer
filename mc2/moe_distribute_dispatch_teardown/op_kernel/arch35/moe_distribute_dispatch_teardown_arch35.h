@@ -269,6 +269,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     tempTotalWinSize_ = tilingData->moeDistributeDispatchTeardownInfo.totalWinSize;
     windowGM_ = GetWindAddrByRankId(epRankId_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
+    // 状态区是别卡通过 URMA 写进来的，本核靠轮询判完成。若走 L2 缓存，读到的可能永远是本核第一次
+    // 搬入时缓存下来的旧值，while 循环永不退出 -> aivec timeout/trap
     windowInstatusFp32Tensor_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_); // 7k*2 + 32 + 6
@@ -459,6 +461,12 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::GetCu
                                                                                      uint32_t totalCount)
 {
     outLocal = gatherMaskOutBuf_.Get<int32_t>();
+    // 0 核前面没有核，前缀和为 0。必须在搬运前返回：totalCount 为 0 时下面的 DataCopyParams
+    // repeat 为 0、GatherMask/Sum 的 count 也为 0，都是非法描述符
+    if (totalCount == 0) {
+        outLocal.SetValue(0, 0);
+        return;
+    }
     // 获取workspace中每个核的recvcnt
     GM_ADDR wAddr = (__gm__ uint8_t *)(recvCntWorkspaceGM_) + WORKSPACE_ELEMENT_OFFSET * aivId_;
     GlobalTensor<int32_t> sumTensor;
@@ -483,12 +491,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::GetCu
     LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> tmpFp32 = sumContinueTensor.ReinterpretCast<float>();
-
-    // 0核前面所有核recv cnt总和是0
-    if (totalCount == 0) {
-        outLocal.SetValue(0, 0);
-        return;
-    }
     SumParams sumParams{1, innerSumParams, totalCount};
     Sum(recvCntSumOutTensor, tmpFp32, sumParams);
     SyncFunc<AscendC::HardEvent::V_S>();

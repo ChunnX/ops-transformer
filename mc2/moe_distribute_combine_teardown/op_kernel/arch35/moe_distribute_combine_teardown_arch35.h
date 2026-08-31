@@ -265,6 +265,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     LocalTensor<float> statusSumOutTensor = statusSumOutBuf_.Get<float>();
     GlobalTensor<float> epStatusSpaceGlobal;
     epStatusSpaceGlobal.SetGlobalBuffer((__gm__ float *)epStatusSpaceGM_);
+    // 状态区由别卡 URMA 写入，轮询若命中 L2 会一直读到本核第一次搬入时的 0，while 永不退出
     epStatusSpaceGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
     // GatherMask 每轮只写前 sendRankNum_ 个元素，Sum 却读满对齐后的整块。
