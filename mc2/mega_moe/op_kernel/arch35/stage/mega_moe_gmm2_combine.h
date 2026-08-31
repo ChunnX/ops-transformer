@@ -1200,7 +1200,7 @@ __aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
 }
 
 template <uint8_t CombineMode, bool UseAllAivCores = false>
-__aicore__ inline void RunGlobalWaveCombineStage(
+__aicore__ inline void RunWaveCombineStage(
     const MoeStageCommonConfig &common, const AivJobContext &job, const BlockWorkspaceContext &countWorkspace,
     const MoeSyncWorkspaceLayout &syncLayout, const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
     const Params &params, uint32_t waveFirstExpertIdx, uint32_t waveFirstTokenIndexInExpert,
@@ -1249,11 +1249,10 @@ __aicore__ inline void RunGlobalWaveCombineStage(
 }
 
 template <uint8_t CombineMode, bool UseAllAivCores = false>
-__aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &common, const AivJobContext &job,
-                                                 const WaveCombineBufferConfig &bufferConfig,
-                                                 WaveCombineScratch &scratch, const Params &params,
-                                                 const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                 uint32_t expertIdx, uint32_t &rowSequence)
+__aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, const AivJobContext &job,
+                                           const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
+                                           const Params &params, const GMMAddrInfo &gmmAddrInfo,
+                                           const ExpertLoopState &state, uint32_t expertIdx, uint32_t &rowSequence)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(
