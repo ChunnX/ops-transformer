@@ -32,13 +32,7 @@ constexpr bool A8W8_DISPATCH_GROUP_READY = MEGA_MOE_A8W8_DISPATCH_GROUP_READY !=
 // 与 GMM 阶段共用编排层的同一份实例，不在此重复持有。
 struct TokenDispatchConfig {
     uint64_t maxOutputSize;
-    // 全卡一致的单卡 token 数上界, 决定远端 mask 的扫描宽度(上界*topK);
-    // common.tokenNum 保持本卡真实 bs, 两者在可变 bs 下不可混用。
-    uint64_t numMaxTokensPerRank;
     MegaMoeDispatchBufferConfig bufferConfig;
-    uint32_t maskAlignSize;
-    // 与 SendMaskConfig 同源的槽位尺寸（mask 位区 + 32B count 区），装配时算一次。
-    uint32_t maskSlotSize;
     uint64_t routeIndexAlignSize;
     uint64_t quantWinOffset;
     uint32_t quantTokenAlignBytes;
@@ -50,9 +44,6 @@ template <typename ActivationType>
 struct TokenDispatchScratch {
     GlobalTensor<int32_t> expertRevNumsGlobalTensor;
     GlobalTensor<int32_t> cumsumInfoGlobalTensor;
-    LocalTensor<int32_t> topkIndexTensor;
-    LocalTensor<uint8_t> maskBatchTensor;
-    LocalTensor<uint32_t> maskBatchU32Tensor;
     LocalTensor<int32_t> validTopkIndexTensor;
     LocalTensor<int32_t> cumsumInfoTensor;
     // Contiguous runtime-sized ring. A slot view is built from this UB base on demand.
@@ -133,18 +124,12 @@ __aicore__ inline WaveDispatchCoreRange PlanWaveExpertDispatch(const TokenDispat
 
 // 由 tiling/peermem/quant 配置装配 Token Dispatch 阶段配置（普通与 wave 编排模板共用）。
 __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &params,
-                                                                const QuantProcessConfig &quantProcessConfig,
-                                                                uint32_t maskAlignSize,
-                                                                bool useCompactRouteIndex = false)
+                                                                const QuantProcessConfig &quantProcessConfig)
 {
     uint64_t quantWinOffset =
         static_cast<uint64_t>(params.peermemInfo.quantTokenScalePtr - params.peermemInfo.rankSyncInWorldPtr);
     return {.maxOutputSize = params.tilingData->maxOutputSize,
-            .numMaxTokensPerRank = params.tilingData->numMaxTokensPerRank,
-            .bufferConfig = useCompactRouteIndex ? params.tilingData->compactDispatchBufferConfig :
-                                                   params.tilingData->dispatchBufferConfig,
-            .maskAlignSize = maskAlignSize,
-            .maskSlotSize = maskAlignSize + static_cast<uint32_t>(ALIGN_32),
+            .bufferConfig = params.tilingData->compactDispatchBufferConfig,
             .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
             .quantWinOffset = quantWinOffset,
             .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
@@ -317,11 +302,8 @@ __aicore__ inline void PublishGmm1TileReady(const MoeSyncWorkspaceLayout &syncLa
     }
 }
 
-/**
- * Dispatch 第 3 层：扫描单个 source rank 的 route mask，搬运选中的 token
- * 和 metadata，并发布 GMM1 tile ready count。
- */
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch, bool UseCompactRouteIndex = false>
+// Dispatch 第 3 层：按单个 source rank 的 compact route-index ordinal 区间搬运 token 和 metadata。
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
                                              const Params &params, GM_ADDR *winRankAddr,
                                              TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
@@ -332,74 +314,27 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context,
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t matchedRouteCount = 0;
     int32_t dispatchedRowCount = 0;
-    if constexpr (UseCompactRouteIndex) {
-        GlobalTensor<int32_t> remoteRouteIndexGlobal;
-        while (matchedRouteCount < segmentMatchOrdinalEnd - segmentMatchOrdinalBegin) {
-            int32_t remainingRouteCount = segmentMatchOrdinalEnd - segmentMatchOrdinalBegin - matchedRouteCount;
-            int32_t batchDispatchRowCount = remainingRouteCount < bufferConfig.routeItemsPerBatch ?
-                                                remainingRouteCount :
-                                                bufferConfig.routeItemsPerBatch;
-            int32_t routeOrdinal = segmentMatchOrdinalBegin + matchedRouteCount;
-            uint64_t slotOffset =
-                (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
-            remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-                params.peermemInfo.maskRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
-            DataCopyExtParams routeCopyParams{1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(int32_t)), 0U,
-                                              0U, 0U};
-            DataCopyPadExtParams<int32_t> routeCopyPad{false, 0U, 0U, 0U};
-            DataCopyPad(scratch.validTopkIndexTensor, remoteRouteIndexGlobal, routeCopyParams, routeCopyPad);
-            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
-            int32_t dispatchDstRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + routeOrdinal;
-            CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx, 0, batchDispatchRowCount);
-            matchedRouteCount += batchDispatchRowCount;
-            dispatchedRowCount += batchDispatchRowCount;
-        }
-    } else {
-        GlobalTensor<uint8_t> remoteRankMaskGlobal;
-        for (int32_t batchIdx = 0;
-             batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < segmentMatchOrdinalEnd; ++batchIdx) {
-            int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
-            bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
-            int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
-            int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
-            if (isLastBatch) {
-                uint64_t sendTotalNum = context.numMaxTokensPerRank * common.topK;
-                validRouteCount = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
-                if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
-                    maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
-                }
-            }
-
-            remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
-                params.peermemInfo.maskRecvPtr +
-                (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.maskSlotSize +
-                static_cast<uint64_t>(batchRouteBegin / 8)));
-            DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
-            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-            CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
-            uint64_t batchMatchedRouteCount = 0;
-            GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor, true,
-                       static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
-            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-
-            int32_t batchMatchOrdinalBegin = matchedRouteCount;
-            int32_t batchMatchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
-            int32_t dispatchMatchOrdinalBegin =
-                batchMatchOrdinalBegin > segmentMatchOrdinalBegin ? batchMatchOrdinalBegin : segmentMatchOrdinalBegin;
-            int32_t dispatchMatchOrdinalEnd =
-                batchMatchOrdinalEnd < segmentMatchOrdinalEnd ? batchMatchOrdinalEnd : segmentMatchOrdinalEnd;
-            if (dispatchMatchOrdinalEnd > dispatchMatchOrdinalBegin) {
-                int32_t batchLocalMatchBegin = dispatchMatchOrdinalBegin - batchMatchOrdinalBegin;
-                int32_t batchDispatchRowCount = dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin;
-                int32_t dispatchDstRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + dispatchMatchOrdinalBegin;
-                CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                    context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin,
-                    batchDispatchRowCount);
-                dispatchedRowCount += batchDispatchRowCount;
-            }
-            matchedRouteCount = batchMatchOrdinalEnd;
-        }
+    GlobalTensor<int32_t> remoteRouteIndexGlobal;
+    while (matchedRouteCount < segmentMatchOrdinalEnd - segmentMatchOrdinalBegin) {
+        int32_t remainingRouteCount = segmentMatchOrdinalEnd - segmentMatchOrdinalBegin - matchedRouteCount;
+        int32_t batchDispatchRowCount = remainingRouteCount < bufferConfig.routeItemsPerBatch ?
+                                            remainingRouteCount :
+                                            bufferConfig.routeItemsPerBatch;
+        int32_t routeOrdinal = segmentMatchOrdinalBegin + matchedRouteCount;
+        uint64_t slotOffset =
+            (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
+        remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            params.peermemInfo.maskRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
+        DataCopyExtParams routeCopyParams{1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(int32_t)), 0U, 0U,
+                                          0U};
+        DataCopyPadExtParams<int32_t> routeCopyPad{false, 0U, 0U, 0U};
+        DataCopyPad(scratch.validTopkIndexTensor, remoteRouteIndexGlobal, routeCopyParams, routeCopyPad);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
+        int32_t dispatchDstRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + routeOrdinal;
+        CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx, 0, batchDispatchRowCount);
+        matchedRouteCount += batchDispatchRowCount;
+        dispatchedRowCount += batchDispatchRowCount;
     }
 
     return dispatchedRowCount;
@@ -425,10 +360,8 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
     return searchBegin - expertRankBegin;
 }
 
-// Compact A8W8 粗粒度实验路径：本核的单专家连续段完成后，一次发布所覆盖的全部 group。
-// 非 compact 路径保留 PR10302/A8W4 的 source-rank 段发布，避免切 group 后从头重复扫描 mask。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool UseCompactRouteIndex>
+// Compact 粗粒度路径：本核的单专家连续段完成后，一次发布所覆盖的全部 group。
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchWaveExpertRowsDeferred(const TokenDispatchConfig &context,
                                                       const MoeStageCommonConfig &common,
                                                       const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
@@ -456,27 +389,19 @@ __aicore__ inline void DispatchWaveExpertRowsDeferred(const TokenDispatchConfig 
         uint32_t overlapGlobalRowEnd = coreGlobalRowEnd < rankGlobalRowEnd ? coreGlobalRowEnd : rankGlobalRowEnd;
         if (overlapGlobalRowBegin < overlapGlobalRowEnd) {
             int32_t rankDispatchedRowCount =
-                DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch, UseCompactRouteIndex>(
+                DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
                     context, common, params, winRankAddr, scratch, localExpertId,
                     static_cast<int32_t>(coreRange.expertGlobalRowBegin), sourceRankIdx,
                     static_cast<int32_t>(rankGlobalRowBegin - coreRange.expertGlobalRowBegin),
                     static_cast<int32_t>(overlapGlobalRowBegin - rankGlobalRowBegin),
                     static_cast<int32_t>(overlapGlobalRowEnd - rankGlobalRowBegin));
             dispatchedRowCount += rankDispatchedRowCount;
-            if constexpr (!UseCompactRouteIndex) {
-                int32_t segmentExpertRowBegin =
-                    static_cast<int32_t>(overlapGlobalRowBegin - coreRange.expertGlobalRowBegin);
-                PublishGmm1TileReady(syncLayout, params, localExpertId, gmm1TileRowCount, segmentExpertRowBegin,
-                                     segmentExpertRowBegin + rankDispatchedRowCount);
-            }
         }
         ++sourceRankIdx;
     }
-    if constexpr (UseCompactRouteIndex) {
-        PublishGmm1TileReady(syncLayout, params, localExpertId, gmm1TileRowCount,
-                             static_cast<int32_t>(coreRange.localExpertRowBegin),
-                             static_cast<int32_t>(coreRange.localExpertRowBegin) + dispatchedRowCount);
-    }
+    PublishGmm1TileReady(syncLayout, params, localExpertId, gmm1TileRowCount,
+                         static_cast<int32_t>(coreRange.localExpertRowBegin),
+                         static_cast<int32_t>(coreRange.localExpertRowBegin) + dispatchedRowCount);
 }
 
 // Compact A8W8 细粒度实验路径：仍按整个 wave 均衡分核，但在 expert-local 256-row 边界处分段；
@@ -519,7 +444,7 @@ __aicore__ inline void DispatchWaveExpertRowsByGroup(const TokenDispatchConfig &
                 segmentGlobalRowEnd < rankGlobalRowEnd ? segmentGlobalRowEnd : rankGlobalRowEnd;
             if (overlapGlobalRowBegin < overlapGlobalRowEnd) {
                 segmentDispatchedRowCount +=
-                    DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch, true>(
+                    DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
                         context, common, params, winRankAddr, scratch, localExpertId,
                         static_cast<int32_t>(coreRange.expertGlobalRowBegin), sourceRankIdx,
                         static_cast<int32_t>(rankGlobalRowBegin - coreRange.expertGlobalRowBegin),
@@ -541,28 +466,25 @@ __aicore__ inline void DispatchWaveExpertRowsByGroup(const TokenDispatchConfig &
 
 // Wave 专用路径：本核只扫描与连续专家行区间相交的 source rank，未分到行的核直接返回。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool UseCompactRouteIndex = false, bool PublishGroupReady = false>
+          bool PublishGroupReady = false>
 __aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
                                               const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
                                               GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
                                               uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
 {
-    static_assert(!PublishGroupReady || UseCompactRouteIndex,
-                  "256-token group publication requires compact route indices");
     if constexpr (PublishGroupReady) {
         DispatchWaveExpertRowsByGroup<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
             context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
     } else {
-        DispatchWaveExpertRowsDeferred<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,
-                                       UseCompactRouteIndex>(context, common, syncLayout, params, winRankAddr, scratch,
-                                                             localExpertId, coreRange);
+        DispatchWaveExpertRowsDeferred<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+            context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
     }
 }
 
 // 对整个 GMM wave 的全局连续 row 一次分核，再按专家/source-rank 边界拆段。
 // 轮转首 owner 由 waveGlobalRowBegin 决定，热点专家跨 wave 时余数不会固定落到低编号核。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool UseCompactRouteIndex = false, bool PublishGroupReady = false>
+          bool PublishGroupReady = false>
 __aicore__ inline void RunWaveDispatchStage(const TokenDispatchConfig &context,
                                             const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
                                             const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
@@ -604,15 +526,14 @@ __aicore__ inline void RunWaveDispatchStage(const TokenDispatchConfig &context,
                                               expertGlobalRowBegin, overlapGlobalRowBegin - expertGlobalRowBegin,
                                               overlapGlobalRowEnd - expertGlobalRowBegin};
             DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,
-                                   UseCompactRouteIndex, PublishGroupReady>(
+                                   PublishGroupReady>(
                 context, common, syncLayout, params, winRankAddr, scratch, expertIdx, expertRange);
         }
     }
 }
 
 // 非 layered 路径统一入口：使用独立 count 表规划跨专家滚动分核，并发送当前专家的有效行。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool UseCompactRouteIndex = false>
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline uint32_t RunWaveDispatchStage(
     const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
     const MoeSyncWorkspaceLayout &syncLayout, const Params &params, GM_ADDR *winRankAddr,
@@ -626,8 +547,7 @@ __aicore__ inline uint32_t RunWaveDispatchStage(
     }
     WaveDispatchCoreRange coreRange = PlanWaveExpertDispatch(context, common, blockJob, scratch, localExpertId);
     if (coreRange.localExpertRowBegin < coreRange.localExpertRowEnd) {
-        DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,
-                               UseCompactRouteIndex>(
+        DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
             context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
     }
     return static_cast<uint32_t>(coreRange.expertRowCount);
