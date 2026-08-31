@@ -281,7 +281,7 @@ private:
         __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
         uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg;
         RegTensor<ElementInput> maxTmpVreg;
@@ -308,7 +308,7 @@ private:
         __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
         uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg0;
         RegTensor<ElementInput> srcVreg1;
@@ -338,7 +338,7 @@ private:
     __simd_vf__ inline void UpdateMax(
         __ubuf__ ElementInput *nowMaxUb, __ubuf__ float *lastMaxUb, uint16_t mLoops, uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
             SatMode::SAT,
@@ -413,7 +413,7 @@ private:
         __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> expVreg;
         RegTensor<ElementInput> expSumVreg;
         RegTensor<ElementInput> maxVreg;
@@ -443,7 +443,7 @@ private:
         __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> expVreg0;
         RegTensor<ElementInput> expVreg1;
         RegTensor<ElementInput> expSumVreg;
@@ -494,7 +494,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
         __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         RegTensor<ElementInput> expVreg;
         RegTensor<ElementInput> expSumVreg;
@@ -578,7 +578,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
         __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         RegTensor<ElementInput> expVreg0;
         RegTensor<ElementInput> expVreg1;
@@ -687,7 +687,7 @@ private:
         __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
         uint16_t mLoops, uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         constexpr static CastTrait castTrait = {
             RegLayout::ZERO,
@@ -734,7 +734,7 @@ private:
         __ubuf__ float *maxUb, __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
         uint16_t mLoops, uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         constexpr static CastTrait castTrait = {
             RegLayout::ZERO,
