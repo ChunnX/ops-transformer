@@ -71,6 +71,7 @@ private:
     __aicore__ inline void UpdateMultiMoeTokenNumsOut();
     __aicore__ inline void QuantInit();
     __aicore__ inline void CopyScalesToOut(uint32_t currentTokenIndex, LocalTensor<ExpandXOutType> &quantTok);
+    __aicore__ inline void ProcessTokenTile(LocalTensor<ExpandXOutType> &tileUb, uint32_t beginIdx, uint32_t n);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum, bool isFront = true);
     __aicore__ inline void FillTriple(LocalTensor<ExpandXOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k);
@@ -120,7 +121,7 @@ private:
     TBuf<> sumContinueBuf_;
     TBuf<> scalarBuf_; // 辅助gather tensor定义
     TBuf<> waitStatusBuf_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 非量化使用，量化场景接收也可使用
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> xQueue_; // 非量化使用，量化场景接收也可使用
 
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
@@ -173,6 +174,7 @@ private:
     uint32_t remainderRankNum_{0};
     uint32_t startStatusIndex_{0};
     uint32_t scaleOutBytes_{0};
+    uint32_t tokenTileNum_{1};
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
 
     DataCopyExtParams floatDataCopyParams_;
@@ -269,8 +271,18 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     tempTotalWinSize_ = tilingData->moeDistributeDispatchTeardownInfo.totalWinSize;
     windowGM_ = GetWindAddrByRankId(epRankId_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
+    windowInstatusFp32Tensor_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_); // 7k*2 + 32 + 6
+    tokenTileNum_ = 1;
+    if (hOutAlignUbSize_ > 0) {
+        tokenTileNum_ = 32768U / hOutAlignUbSize_;
+        if (tokenTileNum_ < 1U) {
+            tokenTileNum_ = 1U;
+        } else if (tokenTileNum_ > 8U) {
+            tokenTileNum_ = 8U;
+        }
+    }
+    tpipe_->InitBuffer(xQueue_, BUFFER_NUM, tokenTileNum_ * hOutAlignUbSize_);
     expertIdsCnt_ = axisBS_ * axisK_;
 
     tpipe_->InitBuffer(gatherMaskOutBuf_, recvWinBlockNum_ * sizeof(float)); // 1024 * 4B
@@ -320,6 +332,21 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::CopyS
             scaleLT = quantTok[Align128<uint32_t>(axisH_)].template ReinterpretCast<uint8_t>();
         }
         DataCopyPad(dynamicScalesOutGMTensor_[currentTokenIndex * scaleOutBytes_], scaleLT, scaleOutParams);
+    }
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::ProcessTokenTile(
+    LocalTensor<ExpandXOutType> &tileUb, uint32_t beginIdx, uint32_t n)
+{
+    const uint32_t elemsPerToken = hOutAlignUbSize_ / sizeof(ExpandXOutType);
+    for (uint32_t j = 0; j < n; ++j) {
+        LocalTensor<ExpandXOutType> oneTok = tileUb[j * elemsPerToken];
+        CopyScalesToOut(beginIdx + j, oneTok);
+        GlobalTensor<ExpandXOutType> expandXOutGlobal;
+        expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_, axisH_);
+        expandXOutGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+        DataCopyPad(expandXOutGlobal, oneTok, expandXCopyParams_);
     }
 }
 
@@ -405,18 +432,34 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
     uint32_t mask = 1; // gatherMask + sum 相关参数
     float compareTarget = sumTarget_ * recStatusNumPerCore_;
+    float expectFlag = compareTarget * 2; // setup 写的 flag 是 float 2.0
+    float minTarget = expectFlag - static_cast<float>(0.5);
+    float maxTarget = expectFlag + static_cast<float>(0.5);
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1,
                                static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
+    auto statusIndex = startStatusIndex_ * stateOffset_ / sizeof(float);
     SyncFunc<AscendC::HardEvent::S_V>();
-    // 乘 2 是因为 dispatch_setup 每块写的 flag 为 float 2.0，而 sumTarget_ 按 1.0 计
-    while (sumOfFlag != compareTarget * 2) {
-        DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
-                 intriParams);
+    if (recStatusNumPerCore_ == 1) {
+        // 单 flag：标量读 32B 槽，避免 ReduceSum 空转
+        while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                windowInstatusFp32Tensor_[statusIndex]);
+            sumOfFlag = windowInstatusFp32Tensor_.GetValue(statusIndex);
+        }
+        DataCopyParams oneBlock{1, 1, 0, 0};
+        DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[statusIndex], oneBlock);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = statusSumOutTensor.GetValue(0);
+    } else {
+        while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                windowInstatusFp32Tensor_[statusIndex]);
+            DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[statusIndex], intriParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
+            SyncFunc<AscendC::HardEvent::V_S>();
+            sumOfFlag = statusSumOutTensor.GetValue(0);
+        }
     }
     // 清状态
     SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -498,8 +541,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
     GetCumSum(outCountLocal, aivId_);
     uint32_t beginIdx = outCountLocal.GetValue(0); // outcount表示当前专家之前的所有专家接收的token数目总和
     statusTensor_ = waitStatusBuf_.Get<int32_t>();
-    DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
-                                                          *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = index - startExpertId_;
@@ -513,25 +554,39 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         }
         GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
         GlobalTensor<ExpandXOutType> tokGlobal;
-        GlobalTensor<ExpandXOutType> expandXOutGlobal;
-        tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
-        DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
-        LocalTensor<int32_t> xTmpTensorInt;
-        for (uint32_t j = 0; j < count; j++) {
-            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
-            // 将数据从Window拷贝到UB
+        tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+        DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
+                                                              *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
+        const uint32_t srcGap = (hAlignWinSize_ > hOutSizeAlign_) ? (hAlignWinSize_ - hOutSizeAlign_) : 0U;
+        uint32_t pos = 0;
+        uint32_t n = (count < tokenTileNum_) ? count : tokenTileNum_;
+        if (count > 0 && n > 0) {
+            DataCopyExtParams packParams{static_cast<uint16_t>(n), static_cast<uint32_t>(hOutSizeAlign_), srcGap, 0U,
+                                         0U};
             xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
-            DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            DataCopyPad(xTmpTensor_, tokGlobal[0], packParams, copyPadExtParams);
             xQueue_.EnQue(xTmpTensor_);
-            xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
-            xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();
-            CopyScalesToOut(beginIdx + j, xTmpTensor_);
-            expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
-                                             axisH_);
-            DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-            xQueue_.FreeTensor(xTmpTensor_);
+            pos = n;
+            while (true) {
+                xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+                const uint32_t curN = n;
+                const uint32_t curPos = pos - n;
+                if (pos < count) {
+                    n = ((count - pos) < tokenTileNum_) ? (count - pos) : tokenTileNum_;
+                    DataCopyExtParams nextParams{static_cast<uint16_t>(n), static_cast<uint32_t>(hOutSizeAlign_),
+                                                 srcGap, 0U, 0U};
+                    LocalTensor<ExpandXOutType> nextTok = xQueue_.AllocTensor<ExpandXOutType>();
+                    DataCopyPad(nextTok, tokGlobal[pos * hAlignWinCnt_], nextParams, copyPadExtParams);
+                    xQueue_.EnQue(nextTok);
+                    pos += n;
+                }
+                ProcessTokenTile(xTmpTensor_, beginIdx + curPos, curN);
+                xQueue_.FreeTensor(xTmpTensor_);
+                if (curPos + curN >= count) {
+                    break;
+                }
+            }
         }
         beginIdx += count;
     }

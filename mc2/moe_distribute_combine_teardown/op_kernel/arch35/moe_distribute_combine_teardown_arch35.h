@@ -265,6 +265,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     LocalTensor<float> statusSumOutTensor = statusSumOutBuf_.Get<float>();
     GlobalTensor<float> epStatusSpaceGlobal;
     epStatusSpaceGlobal.SetGlobalBuffer((__gm__ float *)epStatusSpaceGM_);
+    epStatusSpaceGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
     // GatherMask 每轮只写前 sendRankNum_ 个元素，Sum 却读满对齐后的整块。
     // 先清零，保证 sumOfFlag 只反映真实收到的 flag，不受 UB 残留影响。
@@ -292,24 +293,29 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
                             static_cast<uint32_t>(sizeof(float)),
                         sendRankNum_};
 
-    // 循环，累加本卡状态区状态
     auto index = static_cast<uint64_t>(startRankId_) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
-    while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
-        // URMA 写入 GM 后需 DCCI，否则可能一直读到 cache 中的 0 导致死等
-        // for (uint32_t rankIdx = 0U; rankIdx < sendRankNum_; ++rankIdx) {
-        //     const uint64_t slotIndex =
-        //         index + static_cast<uint64_t>(rankIdx) * stateOffset_ / static_cast<uint64_t>(sizeof(float));
-        //     DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-        //         epStatusSpaceGlobal[slotIndex]);
-        // }
-        DataCopy(statusTensor, epStatusSpaceGlobal[index], intriParams);
+    if (sendRankNum_ == 1) {
+        while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                epStatusSpaceGlobal[index]);
+            sumOfFlag = epStatusSpaceGlobal.GetValue(index);
+        }
+        DataCopyParams oneBlock{1, 1, 0, 0};
+        DataCopy(statusTensor, epStatusSpaceGlobal[index], oneBlock);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
-        GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, 1,
-                   {1, static_cast<uint16_t>(sendRankNum_), 1, 0}, rsvdCnt);
-        PipeBarrier<PIPE_V>();
-        Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
-        AscendC::SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = statusSumOutTensor.GetValue(0);
+    } else {
+        while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
+            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                epStatusSpaceGlobal[index]);
+            DataCopy(statusTensor, epStatusSpaceGlobal[index], intriParams);
+            AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
+            GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, 1,
+                       {1, static_cast<uint16_t>(sendRankNum_), 1, 0}, rsvdCnt);
+            PipeBarrier<PIPE_V>();
+            Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
+            AscendC::SyncFunc<AscendC::HardEvent::V_S>();
+            sumOfFlag = statusSumOutTensor.GetValue(0);
+        }
     }
 
     Duplicate<float>(statusTensor, 0, sendRankNum_ * UB_ALIGN / sizeof(float));
@@ -378,8 +384,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
                             axisHExpandXTypeSize_ * static_cast<uint64_t>(indexCount); // 当前token的值对应的win区地址
 
             rowTmpGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)wAddr);
-            rowTmpGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-            DataCacheCleanAndInvalid<ExpandXType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rowTmpGlobal_);
+            rowTmpGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
             tmpUb = moeSumQueue_.AllocTensor<ExpandXType>();
             DataCopyPad(tmpUb, rowTmpGlobal_, copyParams, padParams);
             moeSumQueue_.EnQue(tmpUb);
@@ -421,8 +426,10 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Proces
         FlipDataState();
         SyncAll<true>();
 
-        CopyIn();
-        LocalWindowCopy(); // 拷出数据
+        if (beginIndex_ < endIndex_) {
+            CopyIn();
+            LocalWindowCopy(); // 拷出数据
+        }
     }
 }
 
