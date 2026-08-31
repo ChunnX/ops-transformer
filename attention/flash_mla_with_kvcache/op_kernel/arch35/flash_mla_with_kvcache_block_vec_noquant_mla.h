@@ -62,14 +62,6 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace AttentionCommon;
 
-// 静态布局成员偏移/大小推断（镜像 flash_attn_common_def.h:241-242；本算子自洽，避免跨算子宏依赖）
-#ifndef MLA_OFFSET_OF_MEMBER
-#define MLA_OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
-#endif
-#ifndef MLA_SIZE_OF_MEMBER
-#define MLA_SIZE_OF_MEMBER(TYPE, MEMBER) (sizeof(((TYPE *)0)->MEMBER))
-#endif
-
 namespace FlashAttnKernel {
 template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockVec {
@@ -407,11 +399,11 @@ public:
         // ResetSoftmaxBuffer 置 0/-inf，消除 isFirstS2Loop 分支（对齐 flash_attn 5520571a4）
         if (likely(runInfo.actSingleLoopS2Size == 128)) {
             ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE, HAS_DROP,
-                          false, false>(
-                stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
-                constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
-                descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
+                          false, false>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
+                                        attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize,
+                                        runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                                        constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
+                                        descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size <= 64) {
             ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten, PSE_MODE,
                           HAS_DROP, false, false>(
@@ -427,10 +419,10 @@ public:
         } else {
             if constexpr (s2BaseSize == 256) {
                 ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                              PSE_MODE, HAS_DROP>(
-                    stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
-                    constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
+                              PSE_MODE, HAS_DROP>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
+                                                  attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, expUb,
+                                                  runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
+                                                  posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
             }
         }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
@@ -754,33 +746,33 @@ public:
             uint8_t tmpBuf[UB_TMP_BUF_BYTES];                               // 0.5K，softmax 中间结果缓存
         };
         static_assert(sizeof(UbLayout) <= 248 * 1024, "UB buffer too large");
-        ubMm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, mm2ResBuffers),
-                                                MLA_SIZE_OF_MEMBER(UbLayout, mm2ResBuffers));
-        ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, mm1ResBuffers),
-                                                MLA_SIZE_OF_MEMBER(UbLayout, mm1ResBuffers));
-        ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, vec2Res),
-                                          MLA_SIZE_OF_MEMBER(UbLayout, vec2Res));
-        ubVec1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, vec1Res),
-                                                 MLA_SIZE_OF_MEMBER(UbLayout, vec1Res));
-        ubMaskBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, maskBuffers),
-                                              MLA_SIZE_OF_MEMBER(UbLayout, maskBuffers));
-        softmaxSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, softmaxSumBuf),
-                                              MLA_SIZE_OF_MEMBER(UbLayout, softmaxSumBuf))
+        ubMm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mm2ResBuffers),
+                                                SIZE_OF_MEMBER(UbLayout, mm2ResBuffers));
+        ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mm1ResBuffers),
+                                                SIZE_OF_MEMBER(UbLayout, mm1ResBuffers));
+        ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec2Res),
+                                          SIZE_OF_MEMBER(UbLayout, vec2Res));
+        ubVec1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec1Res),
+                                                 SIZE_OF_MEMBER(UbLayout, vec1Res));
+        ubMaskBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, maskBuffers),
+                                              SIZE_OF_MEMBER(UbLayout, maskBuffers));
+        softmaxSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxSumBuf),
+                                              SIZE_OF_MEMBER(UbLayout, softmaxSumBuf))
                              .template ReinterpretCast<float>();
-        softmaxMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, softmaxMaxBuf),
-                                              MLA_SIZE_OF_MEMBER(UbLayout, softmaxMaxBuf))
+        softmaxMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxMaxBuf),
+                                              SIZE_OF_MEMBER(UbLayout, softmaxMaxBuf))
                              .template ReinterpretCast<float>();
-        softmaxExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, softmaxExpBuf),
-                                              MLA_SIZE_OF_MEMBER(UbLayout, softmaxExpBuf))
+        softmaxExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, softmaxExpBuf),
+                                              SIZE_OF_MEMBER(UbLayout, softmaxExpBuf))
                              .template ReinterpretCast<float>();
-        ubLseOutBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, lseOutBuf),
-                                            MLA_SIZE_OF_MEMBER(UbLayout, lseOutBuf));
-        ubSumBrdcstBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, sumBrdcstBuf),
-                                               MLA_SIZE_OF_MEMBER(UbLayout, sumBrdcstBuf));
-        ubMaxBrdcstBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, maxBrdcstBuf),
-                                               MLA_SIZE_OF_MEMBER(UbLayout, maxBrdcstBuf));
-        vec1ApiTmpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, tmpBuf),
-                                              MLA_SIZE_OF_MEMBER(UbLayout, tmpBuf));
+        ubLseOutBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, lseOutBuf),
+                                            SIZE_OF_MEMBER(UbLayout, lseOutBuf));
+        ubSumBrdcstBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, sumBrdcstBuf),
+                                               SIZE_OF_MEMBER(UbLayout, sumBrdcstBuf));
+        ubMaxBrdcstBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, maxBrdcstBuf),
+                                               SIZE_OF_MEMBER(UbLayout, maxBrdcstBuf));
+        vec1ApiTmpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, tmpBuf),
+                                              SIZE_OF_MEMBER(UbLayout, tmpBuf));
     }
 
     __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
