@@ -633,6 +633,11 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeGlobalOff
         cumulativeSum += totalForExpert;
     }
 
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        expertTokensLocal.SetValue(actualExpertNum_ * EXPERT_ID_VALUE_NUM, static_cast<int64_t>(0));
+        expertTokensLocal.SetValue(actualExpertNum_ * EXPERT_ID_VALUE_NUM + 1, static_cast<int64_t>(0));
+    }
+
     // KEY_VALUE 模式实际写出元素数 = 非零专家数 * 2；上限为 actualExpertNum*2。
     if (blockIdx_ == 0 && expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
         expertCountElements_ = keyValueOffset * EXPERT_ID_VALUE_NUM;
@@ -648,8 +653,11 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::WriteExpertToken
     LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     // COUNT/CUMSUM: expertCountElements_==actualExpertNum_；KEY_VALUE: 非零专家数*2
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
-                                 static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
+    uint32_t expertCount = (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) ?
+                            expertCountElements_ + EXPERT_ID_VALUE_NUM :
+                            expertCountElements_;
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertCount * sizeof(int64_t)), 0, 0,
+                                    0};
     DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 }
 
