@@ -121,10 +121,9 @@ public:
             }
             AscendC::PipeBarrier<PIPE_V>();
             if (actMSizeThisCore != 0) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_O_TRANS_FLAG);
                 AscendC::LocalTensor<ElementOTmp> outTensorFp32Ub =
-                    oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 空间复用P, bf16 vf写出是强解释fp32
+                    oTransUBTensor.template ReinterpretCast<ElementOTmp>(); // 独立 18KB，bf16 缓冲强解释成 fp32
                 Mxfp8VF::processOut<MXFP8::QS_BASE_SIZE, ElementO>(outTensorFp32Ub, oUBTensor, globalRowSumUBTensor);
                 AscendC::PipeBarrier<PIPE_V>();
 #if BSA_MXFP8_DUMP
@@ -145,8 +144,7 @@ public:
                 AscendC::DataCopy(oUBTensorB16, oTransUBTensorB16, actMSizeThisCore * embedColumnCnt);
                 AscendC::PipeBarrier<PIPE_V>();
 
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_O_TRANS_FLAG);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_ATTN_BUF_FLAG);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_ATTN_BUF_FLAG);
 
@@ -170,7 +168,7 @@ private:
     AscendC::LocalTensor<ElementOTmp> oTmpUBTensor;                         // mm2Res(PV)
     AscendC::LocalTensor<ElementSum> localRowSumUBTensor;                   // LocalRowSum
     AscendC::LocalTensor<ElementSum> globalRowSumUBTensor;                  // GlobalRowSum
-    AscendC::LocalTensor<ElementO> oTransUBTensor;                          // attnTrans(空间复用P)
+    AscendC::LocalTensor<ElementO> oTransUBTensor;                          // attnTrans（独立 18KB，不复用 P）
     AscendC::LocalTensor<ElementOTmp> oUBTensor;                            // attentionOut
     AscendC::LocalTensor<ElementDm> dmUBTensor[MXFP8::UB_UPDATE_SCALE_CNT]; // updateScale
     CopyUbToGmO copyUbToGmO;

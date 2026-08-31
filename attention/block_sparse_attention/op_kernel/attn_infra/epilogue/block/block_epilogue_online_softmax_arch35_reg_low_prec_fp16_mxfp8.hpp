@@ -391,12 +391,12 @@ public:
 
 private:
     // UB tensors（FIXPIPE<->V 及常驻 buffer）
-    AscendC::LocalTensor<ElementInput> sUBTensor[MXFP8::UB_S_BUF_CNT];                       // mm1Res(S)
-    AscendC::LocalTensor<float> oTmpUBTensor;                                                // mm2Res(PV)
-    AscendC::LocalTensor<float> localRowSumUBTensor;                                         // LocalRowSum
-    AscendC::LocalTensor<float> globalRowSumUBTensor;                                        // GlobalRowSum
-    AscendC::LocalTensor<ElementDisguiseP> pUBTensor[MXFP8::UB_P_BUF_CNT];                   // vec1Res(P)
-    AscendC::LocalTensor<bfloat16_t> oTransUBTensor;                                         // attnTrans(空间复用P)
+    AscendC::LocalTensor<ElementInput> sUBTensor[MXFP8::UB_S_BUF_CNT];     // mm1Res(S)
+    AscendC::LocalTensor<float> oTmpUBTensor;                              // mm2Res(PV)
+    AscendC::LocalTensor<float> localRowSumUBTensor;                       // LocalRowSum
+    AscendC::LocalTensor<float> globalRowSumUBTensor;                      // GlobalRowSum
+    AscendC::LocalTensor<ElementDisguiseP> pUBTensor[MXFP8::UB_P_BUF_CNT]; // vec1Res(P)
+    AscendC::LocalTensor<bfloat16_t> oTransUBTensor;                       // attnTrans（独立 18KB，不复用 P）
     AscendC::LocalTensor<ElementPScale> pscaleUBTensor[MXFP8::UB_P_SCALE_CNT];               // pScale(复用P)
     AscendC::LocalTensor<bfloat16_t> oUBTensor;                                              // attentionOut
     AscendC::LocalTensor<ElementMax> peerGlobalMaxUBTensor[MXFP8::UB_PEER_GLOBAL_MAX_CNT];   // peerGlobalMax
