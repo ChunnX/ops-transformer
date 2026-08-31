@@ -618,11 +618,10 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
     // Validate ccl_buffer_size when provided (V2 path)
     if (config.attrCclBufferSizeIndex != UINT32_MAX) {
         auto attrsPtr = context->GetAttrs();
-        OP_TILING_CHECK(attrsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(attrsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
         auto cclBufferSizePtr = attrsPtr->GetAttrPointer<int64_t>(config.attrCclBufferSizeIndex);
-        OP_TILING_CHECK(cclBufferSizePtr == nullptr,
-                        OP_LOGE_WITH_INVALID_INPUT(nodeName, "ccl_buffer_size"), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "ccl_buffer_size"),
+                        return ge::GRAPH_FAILED);
         OP_TILING_CHECK(*cclBufferSizePtr <= 0,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "ccl_buffer_size",
                                                   std::to_string(*cclBufferSizePtr).c_str(), "greater than 0"),
