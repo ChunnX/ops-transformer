@@ -26,13 +26,13 @@ const int DIM_THREE = 3;
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
 void NpuAttentionToFfn(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionId,
-                         const at::Tensor &microBatchId, const at::Tensor &layerId, const at::Tensor &expertIds,
-                         const at::Tensor &expertRankTable, const c10::optional<at::Tensor> &scalesOptional,
-                         const c10::optional<at::Tensor> &activeMaskOptional, std::string group, int64_t worldSize,
-                         const std::vector<int64_t> &ffnTokenInfoTableShape,
-                         const std::vector<int64_t> &ffnTokenDataShape,
-                         const std::vector<int64_t> &attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode,
-                         int64_t syncFlag, int64_t ffnStartRankId, int64_t cclBufferSize)
+                       const at::Tensor &microBatchId, const at::Tensor &layerId, const at::Tensor &expertIds,
+                       const at::Tensor &expertRankTable, const c10::optional<at::Tensor> &scalesOptional,
+                       const c10::optional<at::Tensor> &activeMaskOptional, std::string group, int64_t worldSize,
+                       const std::vector<int64_t> &ffnTokenInfoTableShape,
+                       const std::vector<int64_t> &ffnTokenDataShape,
+                       const std::vector<int64_t> &attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode,
+                       int64_t syncFlag, int64_t ffnStartRankId, int64_t cclBufferSize)
 {
     TORCH_CHECK((x.dim() == DIM_THREE), "The x should be 3D, current dim is: ", x.dim());
     TORCH_CHECK((sessionId.dim() == DIM_ONE) && (microBatchId.dim() == DIM_ONE) && (layerId.dim() == DIM_ONE),
