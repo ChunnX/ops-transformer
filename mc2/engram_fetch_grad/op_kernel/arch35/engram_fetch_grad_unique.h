@@ -23,7 +23,6 @@ __aicore__ inline void SyncFunc(AscendC::TPipe &pipe)
     AscendC::SetFlag<event>(eventID);
     AscendC::WaitFlag<event>(eventID);
 }
-constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
 
 static __aicore__ inline uint32_t GetDtypeSize(int32_t dtype)
 {
@@ -248,7 +247,7 @@ __aicore__ inline void EngramFetchGradUnique::ZeroGradUnique(uint32_t numRecv, G
     if (start < end) {
         AscendC::LocalTensor<float> zeroBuf = gradBuf_->Get<float>();
         uint32_t tileFloats = Mc2Kernel::TILE_BYTES / sizeof(float);
-        constexpr uint32_t maxBlockFloats = MAX_BLOCK_BYTES / sizeof(float);
+        constexpr uint32_t maxBlockFloats = Mc2Kernel::MAX_BLOCK_BYTES / sizeof(float);
         if (tileFloats > maxBlockFloats) {
             tileFloats = maxBlockFloats;
         }
@@ -434,12 +433,13 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
         AscendC::GlobalTensor<float> dstGM;
         dstGM.SetGlobalBuffer((__gm__ float *)(gradUniqueOutGM + gmByteOffset));
         uint32_t totalBytes = static_cast<uint32_t>(hiddenDim_) * sizeof(float);
-        uint32_t numBlocks = (totalBytes + MAX_BLOCK_BYTES - 1U) / MAX_BLOCK_BYTES;
+        uint32_t numBlocks = (totalBytes + Mc2Kernel::MAX_BLOCK_BYTES - 1U) / Mc2Kernel::MAX_BLOCK_BYTES;
         for (uint32_t b = 0; b < numBlocks; b++) {
-            uint32_t byteOffset = b * MAX_BLOCK_BYTES;
+            uint32_t byteOffset = b * Mc2Kernel::MAX_BLOCK_BYTES;
             uint32_t elemOffset = byteOffset / sizeof(float);
             uint32_t remaining = totalBytes - byteOffset;
-            uint16_t blkBytes = static_cast<uint16_t>(remaining > MAX_BLOCK_BYTES ? MAX_BLOCK_BYTES : remaining);
+            uint16_t blkBytes =
+                static_cast<uint16_t>(remaining > Mc2Kernel::MAX_BLOCK_BYTES ? Mc2Kernel::MAX_BLOCK_BYTES : remaining);
             AscendC::DataCopyParams params{1U, blkBytes, 0U, 0U};
             AscendC::DataCopyPad(dstGM[elemOffset], accum[elemOffset], params);
         }
@@ -453,8 +453,7 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
         // Use the unused tail of entryBuf_ (pingInt32 only occupies the first
         // 5*ENTRY_BATCH_CAP*4 bytes), as the pre-merge baseline did.
         AscendC::LocalTensor<uint8_t> entryRaw = entryBuf_->Get<uint8_t>();
-        constexpr uint32_t ENTRY_BUF_INT32_SLOTS = 5U;
-        uint32_t flushCastOffset = ENTRY_BUF_INT32_SLOTS * Mc2Kernel::ENTRY_BATCH_CAP * sizeof(int32_t);
+        uint32_t flushCastOffset = Mc2Kernel::FLUSH_CAST_HEAD_BYTES;
         uint32_t castHalfBytes = (static_cast<uint32_t>(hiddenDim_) * outDtypeSize + Mc2Kernel::UB_ALIGN - 1U) /
                                  Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
         // 双缓冲借用区必须完整落在 entryBuf_ 尾部内（Host 侧已按 hiddenDim 上界拒绝超限 shape，此处兜底）
@@ -481,13 +480,14 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
             AscendC::GlobalTensor<bfloat16_t> dstGM;
             dstGM.SetGlobalBuffer((__gm__ bfloat16_t *)(gradUniqueOutGM + gmByteOffset));
             uint32_t totalBytes = static_cast<uint32_t>(hiddenDim_) * sizeof(bfloat16_t);
-            uint32_t numBlocks = (totalBytes + MAX_BLOCK_BYTES - 1U) / MAX_BLOCK_BYTES;
+            uint32_t numBlocks = (totalBytes + Mc2Kernel::MAX_BLOCK_BYTES - 1U) / Mc2Kernel::MAX_BLOCK_BYTES;
             AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
             for (uint32_t b = 0; b < numBlocks; b++) {
-                uint32_t byteOffset = b * MAX_BLOCK_BYTES;
+                uint32_t byteOffset = b * Mc2Kernel::MAX_BLOCK_BYTES;
                 uint32_t elemOffset = byteOffset / sizeof(bfloat16_t);
                 uint32_t remaining = totalBytes - byteOffset;
-                uint16_t blkBytes = static_cast<uint16_t>(remaining > MAX_BLOCK_BYTES ? MAX_BLOCK_BYTES : remaining);
+                uint16_t blkBytes = static_cast<uint16_t>(
+                    remaining > Mc2Kernel::MAX_BLOCK_BYTES ? Mc2Kernel::MAX_BLOCK_BYTES : remaining);
                 AscendC::DataCopyParams params{1U, blkBytes, 0U, 0U};
                 AscendC::DataCopyPad(dstGM[elemOffset], outT[elemOffset], params);
             }
@@ -495,13 +495,14 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
             AscendC::GlobalTensor<half> dstGM;
             dstGM.SetGlobalBuffer((__gm__ half *)(gradUniqueOutGM + gmByteOffset));
             uint32_t totalBytes = static_cast<uint32_t>(hiddenDim_) * sizeof(half);
-            uint32_t numBlocks = (totalBytes + MAX_BLOCK_BYTES - 1U) / MAX_BLOCK_BYTES;
+            uint32_t numBlocks = (totalBytes + Mc2Kernel::MAX_BLOCK_BYTES - 1U) / Mc2Kernel::MAX_BLOCK_BYTES;
             AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
             for (uint32_t b = 0; b < numBlocks; b++) {
-                uint32_t byteOffset = b * MAX_BLOCK_BYTES;
+                uint32_t byteOffset = b * Mc2Kernel::MAX_BLOCK_BYTES;
                 uint32_t elemOffset = byteOffset / sizeof(half);
                 uint32_t remaining = totalBytes - byteOffset;
-                uint16_t blkBytes = static_cast<uint16_t>(remaining > MAX_BLOCK_BYTES ? MAX_BLOCK_BYTES : remaining);
+                uint16_t blkBytes = static_cast<uint16_t>(
+                    remaining > Mc2Kernel::MAX_BLOCK_BYTES ? Mc2Kernel::MAX_BLOCK_BYTES : remaining);
                 AscendC::DataCopyParams params{1U, blkBytes, 0U, 0U};
                 AscendC::DataCopyPad(dstGM[elemOffset], outT[elemOffset], params);
             }
@@ -522,11 +523,12 @@ __aicore__ inline void EngramFetchGradUnique::FlushDirect(AscendC::LocalTensor<u
     dstGM.SetGlobalBuffer((__gm__ uint8_t *)(gradUniqueOutGM + gmByteOffset));
     uint32_t srcOffset = elemIdx * static_cast<uint32_t>(hiddenBytes_);
     uint32_t totalBytes = static_cast<uint32_t>(hiddenBytes_);
-    uint32_t numBlocks = (totalBytes + MAX_BLOCK_BYTES - 1U) / MAX_BLOCK_BYTES;
+    uint32_t numBlocks = (totalBytes + Mc2Kernel::MAX_BLOCK_BYTES - 1U) / Mc2Kernel::MAX_BLOCK_BYTES;
     for (uint32_t b = 0; b < numBlocks; b++) {
-        uint32_t byteOffset = b * MAX_BLOCK_BYTES;
+        uint32_t byteOffset = b * Mc2Kernel::MAX_BLOCK_BYTES;
         uint32_t remaining = totalBytes - byteOffset;
-        uint16_t blkBytes = static_cast<uint16_t>(remaining > MAX_BLOCK_BYTES ? MAX_BLOCK_BYTES : remaining);
+        uint16_t blkBytes =
+            static_cast<uint16_t>(remaining > Mc2Kernel::MAX_BLOCK_BYTES ? Mc2Kernel::MAX_BLOCK_BYTES : remaining);
         AscendC::DataCopyParams params{1U, blkBytes, 0U, 0U};
         AscendC::DataCopyPad(dstGM[byteOffset], gradRaw[srcOffset + byteOffset], params);
     }
