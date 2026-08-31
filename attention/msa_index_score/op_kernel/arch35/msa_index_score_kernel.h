@@ -10,8 +10,8 @@
 
 /*!
  * \file msa_index_score_kernel.h
- * \brief MsaIndexScore Atlas A5（950）：计算路径照搬 A2 核函数：AIC 做 paged QKᵀ，AIV 做（可选反量化）+ mask + 分段 RowMax。
- *        Ascend 950 第一阶段：计算/握手照搬 A2，ArchTag=AtlasA5。
+ * \brief MsaIndexScore Ascend 950：计算路径照搬 A2 核函数：AIC 做 paged QKᵀ，AIV 做（可选反量化）+ mask + 分段 RowMax。
+ *        第一阶段：计算/握手照搬 A2，ArchTag=AtlasA5。
  *
  * 非量化：query/key 同为 bf16|fp16|fp8，score 侧不乘 scale。
  * int8 量化：key 为 int8；AIV 将 page DataCopy+Cast 到 fp 暂存后通知 AIC 做 Mmad；
@@ -42,7 +42,7 @@
 #include "msa_block_mmad.h"
 #endif
 #include "../arch22/msa_index_score_task.h"
-#include "msa_index_score_epilogue.h"
+#include "msa_seg_row_max_epilogue.h"
 
 namespace MsaIndexScoreNs {
 
@@ -66,8 +66,7 @@ public:
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_310R6_CUBE__)
     // int8 的 K 源是每 stile 复用的 per-core scratch，保持 2 级 L1B 流水（3 级实测竞态崩溃）；
     // 同样出于该 scratch 的时序保守性，unit flag 只在非量化路径开启。
-    using BlockMmad =
-        MsaBlockMmad<QType, KType, SType, IS_QUANT ? MSA_L1B_STAGES_INT8 : MSA_L1B_STAGES_FP16, false>;
+    using BlockMmad = MsaBlockMmad<QType, KType, SType, IS_QUANT ? MSA_L1B_STAGES_INT8 : MSA_L1B_STAGES_FP16, false>;
 #endif
 
     static constexpr uint32_t REVERSE_DEPTH = MSA_WORKSPACE_STAGES - 1;
@@ -79,8 +78,8 @@ public:
     // 下一页 gather 会把尚未 Flush 的 score 清掉（TND/int8 多 page：1e29→0、fill 变 0）。
     static constexpr uint32_t UB_OFF_CAST_I8 =
         USE_C2UB ? (((MsaSegRowMaxEpilogue<IS_QUANT_V>::UB_TOTAL + MSA_UB_ALIGN_BYTES - 1U) / MSA_UB_ALIGN_BYTES) *
-                    MSA_UB_ALIGN_BYTES)
-                 : 0;
+                    MSA_UB_ALIGN_BYTES) :
+                   0;
     static constexpr uint32_t UB_SIZE_CAST_I8 = MSA_BLOCK_SIZE * MSA_K_TILE * sizeof(int8_t);
     static constexpr uint32_t UB_OFF_CAST_FP = UB_OFF_CAST_I8 + UB_SIZE_CAST_I8;
     static constexpr uint32_t UB_SIZE_CAST_FP = MSA_BLOCK_SIZE * MSA_K_TILE * sizeof(half);
@@ -185,20 +184,17 @@ private:
                 const uint32_t ping = pageSeq % MSA_A5_S_STAGES;
                 if (KeyBlockNeedsScratch(task, blk)) {
                     AscendC::CrossCoreWaitFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_K);
-                    AscendC::CrossCoreWaitFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_K +
-                                                                           MSA_A5_AIV_FLAG_OFFSET);
+                    AscendC::CrossCoreWaitFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_K + MSA_A5_AIV_FLAG_OFFSET);
                     // 与 GM 路径一致：等 AIV MTE3 写完 scratch 再 MTE2 进 L1，否则 int8/TND 读到 0。
                     AscendC::PipeBarrier<PIPE_ALL>();
                 }
                 AscendC::CrossCoreWaitFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_VC + ping);
-                AscendC::CrossCoreWaitFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_VC + ping +
-                                                                       MSA_A5_AIV_FLAG_OFFSET);
+                AscendC::CrossCoreWaitFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_VC + ping + MSA_A5_AIV_FLAG_OFFSET);
                 auto ubS = resource.ubBuf.template GetBufferByByte<float>(ping * MSA_A5_S_PING_BYTES);
                 ComputePageToUb(blockMmad, task, blk, ubS, coreKScratch, needLoadQ);
                 needLoadQ = false;
                 AscendC::CrossCoreSetFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_CV + ping);
-                AscendC::CrossCoreSetFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_CV + ping +
-                                                                      MSA_A5_AIV_FLAG_OFFSET);
+                AscendC::CrossCoreSetFlag<MSA_A5_SYNC_MODE4, PIPE_FIX>(MSA_A5_FLAG_CV + ping + MSA_A5_AIV_FLAG_OFFSET);
                 ++pageSeq;
             }
         }

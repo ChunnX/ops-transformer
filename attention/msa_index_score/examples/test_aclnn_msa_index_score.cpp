@@ -1,13 +1,3 @@
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#include <fenv.h>
-__attribute__((constructor)) static void DisableFpeEarly()
-{
-#if defined(__linux__)
-    (void)fedisableexcept(FE_ALL_EXCEPT);
-#endif
-}
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -77,6 +67,16 @@ constexpr int64_t kBlockTableMulK = 3;
 constexpr int64_t kTraceExtraTok = 2;
 constexpr int64_t kPrevDimOffset = 2; // 从末维向前推 stride 时的偏移
 constexpr size_t kLayoutKeyBufSize = 8;
+constexpr int kFp8E4M3ExpBits = 4;
+constexpr int kFp8E4M3MantissaBits = 3;
+constexpr int kFp8E4M3ExpBias = (1 << (kFp8E4M3ExpBits - 1)) - 1;
+constexpr float kFp8E4M3MantissaScale = static_cast<float>(1 << kFp8E4M3MantissaBits);
+constexpr int kFp8E5M2ExpBits = 5;
+constexpr int kFp8E5M2MantissaBits = 2;
+constexpr int kFp8E5M2ExpBias = (1 << (kFp8E5M2ExpBits - 1)) - 1;
+constexpr float kFp8E5M2MantissaScale = static_cast<float>(1 << kFp8E5M2MantissaBits);
+constexpr int kFp8MinNormalExp = 1; // IEEE 次正规数 ldexp 指数为 1-bias
+constexpr int kFp8CodeCount = static_cast<int>(std::numeric_limits<uint8_t>::max()) + 1;
 
 enum class KeyLayout {
     BBND = 0,
@@ -121,9 +121,15 @@ constexpr int64_t kInitBlocks = 0;
 constexpr int64_t kLocalBlocks = 1;
 constexpr int64_t kAttenMaskSize = 2048;
 
-int64_t CeilDivI64(int64_t a, int64_t b) { return (a + b - 1) / b; }
+int64_t CeilDivI64(int64_t a, int64_t b)
+{
+    return (a + b - 1) / b;
+}
 
-int64_t RoundUpI64(int64_t a, int64_t b) { return CeilDivI64(a, b) * b; }
+int64_t RoundUpI64(int64_t a, int64_t b)
+{
+    return CeilDivI64(a, b) * b;
+}
 
 // 简单可复现的伪随机源，取值落在 [-1, 1)。
 float PseudoRandom(uint32_t seed)
@@ -168,9 +174,10 @@ float Fp8E4M3fnToFloat(uint8_t x)
     }
     const float sign = (s != 0U) ? -1.0F : 1.0F;
     if (e == 0U) {
-        return sign * std::ldexp(static_cast<float>(m) / 8.0F, 1 - 7);
+        return sign * std::ldexp(static_cast<float>(m) / kFp8E4M3MantissaScale, kFp8MinNormalExp - kFp8E4M3ExpBias);
     }
-    return sign * std::ldexp(1.0F + static_cast<float>(m) / 8.0F, static_cast<int>(e) - 7);
+    return sign *
+           std::ldexp(1.0F + static_cast<float>(m) / kFp8E4M3MantissaScale, static_cast<int>(e) - kFp8E4M3ExpBias);
 }
 
 // IEEE-like E5M2：bias=15，exp=31 为 Inf/NaN。
@@ -184,16 +191,17 @@ float Fp8E5M2ToFloat(uint8_t x)
         return (m == 0U) ? (sign * std::numeric_limits<float>::infinity()) : std::numeric_limits<float>::quiet_NaN();
     }
     if (e == 0U) {
-        return sign * std::ldexp(static_cast<float>(m) / 4.0F, 1 - 15);
+        return sign * std::ldexp(static_cast<float>(m) / kFp8E5M2MantissaScale, kFp8MinNormalExp - kFp8E5M2ExpBias);
     }
-    return sign * std::ldexp(1.0F + static_cast<float>(m) / 4.0F, static_cast<int>(e) - 15);
+    return sign *
+           std::ldexp(1.0F + static_cast<float>(m) / kFp8E5M2MantissaScale, static_cast<int>(e) - kFp8E5M2ExpBias);
 }
 
 uint8_t FloatToFp8Nearest(float v, bool e5m2)
 {
     uint8_t best = 0;
     float bestDiff = std::numeric_limits<float>::infinity();
-    for (int i = 0; i < 256; ++i) {
+    for (int i = 0; i < kFp8CodeCount; ++i) {
         const uint8_t b = static_cast<uint8_t>(i);
         const float d = e5m2 ? Fp8E5M2ToFloat(b) : Fp8E4M3fnToFloat(b);
         if (!std::isfinite(d)) {
@@ -209,7 +217,8 @@ uint8_t FloatToFp8Nearest(float v, bool e5m2)
 }
 
 template <typename T>
-std::vector<T> ScatterPaKeyDim0(const std::vector<T> &packed, int64_t numPages, int64_t pageElems, int64_t gap, T poison)
+std::vector<T> ScatterPaKeyDim0(const std::vector<T> &packed, int64_t numPages, int64_t pageElems, int64_t gap,
+                                T poison)
 {
     std::vector<T> wide(static_cast<size_t>(numPages * gap * pageElems), poison);
     for (int64_t p = 0; p < numPages; ++p) {
@@ -268,7 +277,8 @@ public:
         } else {
             strides.assign(shape.size(), 1);
             for (int64_t i = static_cast<int64_t>(shape.size()) - kPrevDimOffset; i >= 0; i--) {
-                strides[static_cast<size_t>(i)] = shape[static_cast<size_t>(i + 1)] * strides[static_cast<size_t>(i + 1)];
+                strides[static_cast<size_t>(i)] =
+                    shape[static_cast<size_t>(i + 1)] * strides[static_cast<size_t>(i + 1)];
             }
         }
         aclTensor *t = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
@@ -814,17 +824,7 @@ int main()
         {"L1-pad-kv0", 8, 128, 8, {32, 32}, {0, 256}, {0, 1}, false, false},
         {"L1-pad-q0-kv0", 8, 128, 8, {0, 32}, {0, 256}, {0, 1}, false, false},
         {"L1-pad-mid-q0", 8, 128, 8, {16, 0, 16}, {200, 0, 200}, {1, 0, 1}, false, false},
-        {"L1-tnd-pad-q0-kv0",
-         8,
-         128,
-         0,
-         {0, 32},
-         {0, 256},
-         {0, 1},
-         false,
-         false,
-         kSparseModeRightDown,
-         KeyLayout::TND},
+        {"L1-tnd-pad-q0-kv0", 8, 128, 0, {0, 32}, {0, 256}, {0, 1}, false, false, kSparseModeRightDown, KeyLayout::TND},
         // 整 batch 空序列：host 跳过计算（A2/A3 与 950）。
         {"L0-all-q0", 8, 128, 8, {0}, {256}, {1}, false, false},
         {"L0-all-kv0", 8, 128, 8, {32}, {0}, {0}, false, false},
@@ -835,11 +835,44 @@ int main()
         {"L0-tnd-all-q0-kv0", 8, 128, 0, {0}, {0}, {0}, false, false, kSparseModeRightDown, KeyLayout::TND},
         // PA key dim0 非连续（A2/A3 与 950）：间隔槽下毒，错 stride 会读到 poison。
         {"L0-stride-bbnd", 2, 16, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 0, 2},
-        {"L1-stride-bbnd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, kSparseModeRightDown, KeyLayout::BBND,
-         0, 2},
-        {"L1-stride-bnbd", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, false, kSparseModeRightDown, KeyLayout::BNBD,
-         0, 2},
-        {"L1-stride-int8", 8, 128, 8, {32, 17}, {300, 130}, {2, 0}, false, true, kSparseModeRightDown, KeyLayout::BBND, 0,
+        {"L1-stride-bbnd",
+         8,
+         128,
+         8,
+         {32, 17},
+         {300, 130},
+         {2, 0},
+         false,
+         false,
+         kSparseModeRightDown,
+         KeyLayout::BBND,
+         0,
+         2},
+        {"L1-stride-bnbd",
+         8,
+         128,
+         8,
+         {32, 17},
+         {300, 130},
+         {2, 0},
+         false,
+         false,
+         kSparseModeRightDown,
+         KeyLayout::BNBD,
+         0,
+         2},
+        {"L1-stride-int8",
+         8,
+         128,
+         8,
+         {32, 17},
+         {300, 130},
+         {2, 0},
+         false,
+         true,
+         kSparseModeRightDown,
+         KeyLayout::BBND,
+         0,
          2},
     };
 

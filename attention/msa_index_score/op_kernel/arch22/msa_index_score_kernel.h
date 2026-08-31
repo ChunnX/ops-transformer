@@ -11,7 +11,6 @@
 /*!
  * \file msa_index_score_kernel.h
  * \brief MsaIndexScore Atlas A2/A3 核函数：AIC 做 paged QKᵀ，AIV 做（可选反量化）+ mask + 分段 RowMax。
- *        不支持 Ascend 950 / FP8。
  *
  * 非量化：query/key 同为 bf16|fp16，score 侧不乘 scale。
  * int8 量化：key 为 int8；AIV 将 page DataCopy+Cast 到 fp 暂存后通知 AIC 做 Mmad；
@@ -36,7 +35,7 @@
 #include "../msa_index_score_common.h"
 #include "msa_block_mmad.h"
 #include "msa_index_score_task.h"
-#include "msa_index_score_epilogue.h"
+#include "msa_seg_row_max_epilogue.h"
 
 namespace MsaIndexScoreNs {
 
