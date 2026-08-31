@@ -332,7 +332,7 @@ void FlashMlaWithKvcacheTilingImpl::GenTilingKey()
 }
 
 // FIA MLA workspace 公式，逐字移植（accumOutSize/logSumExpSize 与 FD 槽位
-// mBaseSize=64/dSizeV=512 保持一致，见 flash_mla_with_kvcache_block_vec_flashdecode_mla.h taskOffset 注释）
+// mBaseSize=64/dSizeV=512 保持一致，见 flash_mla_with_kvcache_block_vec_flashdecode.h taskOffset 注释）
 void FlashMlaWithKvcacheTilingImpl::CalcWorkspaceSize()
 {
     constexpr uint64_t mSize = 64;

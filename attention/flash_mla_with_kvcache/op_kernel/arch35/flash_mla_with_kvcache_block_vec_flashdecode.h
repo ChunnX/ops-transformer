@@ -12,8 +12,8 @@
  * \file flash_attn_block_vec_flashdecode.h
  * \brief
  */
-#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_MLA_H
-#define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_MLA_H
+#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_H
+#define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_H
 
 #include "../utils/attenmask_gs1.h"
 

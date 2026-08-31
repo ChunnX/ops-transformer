@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file flash_mla_with_kvcache_block_vec_mla.h
+ * \file flash_mla_with_kvcache_block_vec.h
  * \brief arch35 flash_mla_with_kvcache MLA vector（由 fia_block_vec_noquant_mla.h 复制改名）；
  *        静态 tensor UbLayout + Mutex/cross-core 显式同步 + FA 协同清零
  *        （镜像 flash_attn_block_vec_nd.h；FD 阶段 buffer 复用见表 1 注 4/注 5）
  */
-#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_MLA_H_
-#define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_MLA_H_
+#ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_
+#define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -876,4 +876,4 @@ public:
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_MLA_H_
+#endif // FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_

@@ -9,19 +9,19 @@
  */
 
 /*!
- * \file flash_mla_with_kvcache_kernel_mla.h
+ * \file flash_mla_with_kvcache_kernel.h
  * \brief arch35 flash_mla_with_kvcache MLA kernel（由 fia_kernel_noquant_mla.h 复制改名；
  *        metadata 消费改为 flash_attn AICPU 多 section 布局，与 flash_attn 同构）
  */
 
-#ifndef FLASH_MLA_WITH_KVCACHE_KERNEL_MLA_H_
-#define FLASH_MLA_WITH_KVCACHE_KERNEL_MLA_H_
+#ifndef FLASH_MLA_WITH_KVCACHE_KERNEL_H_
+#define FLASH_MLA_WITH_KVCACHE_KERNEL_H_
 
 #include "flash_mla_with_kvcache_public_define_arch35.h"
-#include "flash_mla_with_kvcache_block_cube_mla.h"
-#include "flash_mla_with_kvcache_block_vec_mla.h"
+#include "flash_mla_with_kvcache_block_cube.h"
+#include "flash_mla_with_kvcache_block_vec.h"
 #include "memory_copy_arch35.h"
-#include "flash_mla_with_kvcache_block_vec_flashdecode_mla.h"
+#include "flash_mla_with_kvcache_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -677,4 +677,4 @@ public:
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_MLA_WITH_KVCACHE_KERNEL_MLA_H_
+#endif // FLASH_MLA_WITH_KVCACHE_KERNEL_H_
