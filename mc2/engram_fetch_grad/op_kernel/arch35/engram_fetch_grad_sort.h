@@ -16,38 +16,13 @@
 #include "adv_api/math/cumsum.h"
 #include "simt_api/asc_simt.h"
 
-// Exclusive-scan config for the prefix phase: last-axis inclusive LINEBYLINE, no
-// last-row output (exclusive is derived by subtracting the original totals).
 constexpr AscendC::CumSumConfig kScanCfg{true, false, false, AscendC::CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
-
 constexpr uint32_t SIMT_THREAD_NUM = 1024;
-
-// Scatter data path A/B (board-decided):
-//  true  = SIMT parallel gather into a per-core GM staging buffer (slot layout) + MTE2
-//          read-back to the UB slot buffer + per-group MTE3 GM stores. SIMT keeps the
-//          gather parallelism; every GM write goes through the ordered MTE3 path.
-//  false = scalar S-pipe gather + the same MTE3 stores (fallback).
-// BOARD RESULT: with the SIMT kernel storing directly to UB, the device raised error 340
-// ("The address for VEC to access UB is not aligned") on every build since the SIMT hybrid
-// was introduced, across three unrelated rewrites of the scan code — the only free
-// variable was the SIMT UB store itself. PR10464's original SIMT kernel (and every
-// built-in CANN SIMT kernel: radix CopyOutGm, im2col, matrix_diag) only ever READS UB and
-// WRITES GM, which is why those never faulted. The staging therefore lives in GM.
 constexpr bool kUseSimtScatter = true;
-
-// 32B MTE3-source alignment for the per-group slot layout + worst-case per-group pad
-// (alignUp8(len)-len <= 7 elements = 28B, up to 256 groups) + one guard slot.
 constexpr uint32_t SIMT_SLOT_ALIGN = 32U;
 constexpr uint32_t SIMT_SLOT_ALIGN_ELEMS = SIMT_SLOT_ALIGN / sizeof(int32_t);
 constexpr uint32_t SIMT_STAGING_PAD_BYTES = 256U * (SIMT_SLOT_ALIGN - sizeof(int32_t)) + SIMT_SLOT_ALIGN;
 
-// SIMT parallel gather: scatter BOTH source arrays (values and indices) by the sorted
-// order in ONE launch into the 32B-aligned group slots of a PER-CORE GM STAGING buffer —
-// values at [0, slotArea), indices at [slotArea, 2*slotArea). SIMT threads must not store
-// to UB on this device (error 340 above); UB reads and GM stores at any offset are fine
-// (PR10464's original SIMT scatter + built-in kernels rely on exactly that). The staging
-// is read back to the UB slot buffers via MTE2 and the final GM output is written by the
-// ordered per-group MTE3 path afterwards.
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
 __aicore__ inline void GatherGroupsSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
                                         __ubuf__ uint32_t *binStart, __ubuf__ uint32_t *slotOff,
@@ -63,10 +38,6 @@ __aicore__ inline void GatherGroupsSimt(uint32_t tileLen, __ubuf__ uint8_t *sort
     }
 }
 
-// Single-core fast-path reorder: copy both arrays in sorted order to a CONTIGUOUS GM
-// staging area (values at [0,count), indices at [count,2*count)). Same access discipline
-// as GatherGroupsSimt: SIMT reads UB at any granularity and stores GM; UB stores from
-// SIMT threads are forbidden (error 340).
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
 __aicore__ inline void GatherContigSimt(uint32_t count, __ubuf__ uint32_t *sortedIndex, __ubuf__ int32_t *valSrc,
                                         __ubuf__ int32_t *idxSrc, __gm__ int32_t *valDst, __gm__ int32_t *idxDst)
@@ -83,6 +54,7 @@ namespace EngramFetchGradSort {
 enum : uint32_t {
     HISTOGRAM_BINS = 256,
     DEFAULT_TILE_SIZE = 4096,
+    MAX_SINGLE_CORE_ELEMENTS = 8192,
     BITS_PER_BYTE = 8,
     BYTES_PER_INT32 = 4,
     VECTOR_LEN_INT32 = 64,
@@ -119,9 +91,6 @@ __aicore__ inline uint32_t AlignUpU32(uint32_t bytes)
     return (bytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
 }
 
-// Per-core GM staging bytes for the SIMT gather: TWO slot areas (values + indices),
-// each tileLen*4B data + per-group 32B alignment pads + guard, aligned to 32B. The host
-// tiling mirrors this formula exactly (engram_fetch_grad_tiling.cpp SetWorkSpace).
 __aicore__ inline uint32_t SimtStagingPerCore(uint32_t tileElements)
 {
     uint32_t oneArea = (tileElements * sizeof(int32_t) + SIMT_STAGING_PAD_BYTES + SIMT_SLOT_ALIGN - 1U) /
@@ -249,8 +218,6 @@ private:
     uint32_t simtStagingPerCore_{0};
 };
 
-// ==== implementations ====
-
 __aicore__ inline void ComputeTileHistogram(__local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
                                             int32_t valueOffset, __local_mem__ uint16_t *histogramUb,
                                             __local_mem__ uint16_t *cumulativeUb, __local_mem__ uint8_t *keyUb,
@@ -352,7 +319,7 @@ __aicore__ inline uint64_t EngramFetchGradSort::GetWorkspaceSize(uint32_t totalE
         (sortTileCountByCore > sortTileCountByDefault) ? sortTileCountByCore : sortTileCountByDefault;
     uint64_t sortTempBytes = static_cast<uint64_t>(totalElements) * sizeof(int32_t);
     uint64_t sortTempSize = (sortTempBytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
-    uint64_t simtStagingBytes = static_cast<uint64_t>(numCores) * SimtStagingPerCore(tileElements);
+    uint64_t simtStagingBytes = static_cast<uint64_t>(numCores) * SimtStagingPerCore(MAX_SINGLE_CORE_ELEMENTS);
     return 2 * sortTempSize + 2 * static_cast<uint64_t>(sortTileCount) * HISTOGRAM_BINS * sizeof(int32_t) +
            HISTOGRAM_BINS * sizeof(int32_t) + static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) +
            simtStagingBytes;
@@ -373,8 +340,18 @@ __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements
     if (phaseScatterSize > sortWorkspaceSize) {
         sortWorkspaceSize = phaseScatterSize;
     }
-    uint32_t smallBufs = tileElements + HISTOGRAM_BINS * sizeof(int32_t) + HISTOGRAM_BINS * sizeof(uint16_t) +
-                         HISTOGRAM_BINS * sizeof(int32_t) + tileElements + HISTOGRAM_BINS * sizeof(int32_t) +
+    // Single-core path: the whole array (up to MAX_SINGLE_CORE_ELEMENTS) stays resident in
+    // UB for every byte round. Needs 3 aligned int32 areas (vals/idxs/sortIndices) plus the
+    // RADIX_SORT tmp (512B buckets + 7B/element); exclusive scratch aliases sortTemp.
+    uint32_t scAlignBytes = static_cast<uint32_t>(AlignUpU32(MAX_SINGLE_CORE_ELEMENTS * sizeof(int32_t)));
+    uint32_t scTmpCount = (MAX_SINGLE_CORE_ELEMENTS + 31U) / 32U * 32U;
+    uint32_t scWorkspace = 3U * scAlignBytes + 512U + 7U * scTmpCount;
+    if (scWorkspace > sortWorkspaceSize) {
+        sortWorkspaceSize = scWorkspace;
+    }
+    uint32_t scCount = MAX_SINGLE_CORE_ELEMENTS;
+    uint32_t smallBufs = scCount + HISTOGRAM_BINS * sizeof(int32_t) + HISTOGRAM_BINS * sizeof(uint16_t) +
+                         HISTOGRAM_BINS * sizeof(int32_t) + scCount + HISTOGRAM_BINS * sizeof(int32_t) +
                          HISTOGRAM_BINS * sizeof(int32_t);
     return sortWorkspaceSize + smallBufs;
 }
@@ -412,13 +389,9 @@ __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_
     offset += histSize;
 
     // Per-core GM staging for the SIMT gather (workspace math mirrors GetWorkspaceSize,
-    // whose tileElements uses the dynTile reduction that Process() re-derives at runtime).
-    uint32_t wsTileElements = DEFAULT_TILE_SIZE;
-    uint32_t wsDynTile = CeilDiv(elementCount_, numCores);
-    if (wsDynTile > 0U && wsDynTile < wsTileElements) {
-        wsTileElements = wsDynTile;
-    }
-    simtStagingPerCore_ = SimtStagingPerCore(wsTileElements);
+    // whose simtStagingBytes uses MAX_SINGLE_CORE_ELEMENTS). Sized for the single-core path:
+    // core 0 spills a full array (2*count int32, count <= MAX_SINGLE_CORE_ELEMENTS) there.
+    simtStagingPerCore_ = SimtStagingPerCore(MAX_SINGLE_CORE_ELEMENTS);
     simtStagingGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
     offset += static_cast<uint64_t>(numCores) * simtStagingPerCore_;
 
@@ -435,12 +408,21 @@ __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_
     if (phaseScatterSize > sortWorkspaceSize) {
         sortWorkspaceSize = phaseScatterSize;
     }
+    // Single-core path: whole array (<= MAX_SINGLE_CORE_ELEMENTS) resident in UB for every
+    // byte round — 3 aligned int32 areas (vals/idxs/sortIndices) + RADIX_SORT tmp; exclusive
+    // scratch aliases sortTemp.
+    uint32_t scAlignBytes = static_cast<uint32_t>(AlignUpU32(MAX_SINGLE_CORE_ELEMENTS * sizeof(int32_t)));
+    uint32_t scTmpCount = (MAX_SINGLE_CORE_ELEMENTS + 31U) / 32U * 32U;
+    uint32_t scWorkspace = 3U * scAlignBytes + 512U + 7U * scTmpCount;
+    if (scWorkspace > sortWorkspaceSize) {
+        sortWorkspaceSize = scWorkspace;
+    }
     pool.InitBuffer(sortWorkspace_, sortWorkspaceSize);
-    pool.InitBuffer(keyBuffer_, tileElements_);
+    pool.InitBuffer(keyBuffer_, MAX_SINGLE_CORE_ELEMENTS);
     pool.InitBuffer(histogramBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
     pool.InitBuffer(cumulativeBuffer_, HISTOGRAM_BINS * sizeof(uint16_t));
     pool.InitBuffer(prefixBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
-    pool.InitBuffer(sortedKeyBuffer_, tileElements_);
+    pool.InitBuffer(sortedKeyBuffer_, MAX_SINGLE_CORE_ELEMENTS);
     pool.InitBuffer(histWideBuffer_, HISTOGRAM_BINS * sizeof(int32_t));
     pool.InitBuffer(prefixQueue_, 1, HISTOGRAM_BINS * sizeof(int32_t));
 }
@@ -553,13 +535,6 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
 
     AscendC::PipeBarrier<PIPE_V>();
 
-    // Exclusive scan over the 256 per-bin totals via CumSum with an explicit 32KB tmp
-    // carved from sortWorkspace_ ([0,48KB) is free during the prefix phase): fixes the
-    // original stack-tmp (32KB needed, device-side unchecked) and dst==src aliasing, and
-    // avoids hand-rolled scan UB alignment issues entirely. Buffers are distinct.
-    // NOTE: the abandoned Hillis-Steele scratch (scanA/scanB) must NOT be touched here —
-    // its scanB base (+2044B) was not 32B aligned and its Duplicate() triggered error 340
-    // on every core of every round.
     AscendC::LocalTensor<float> scanSrcF = sortWorkspace_.GetWithOffset<float>(HISTOGRAM_BINS, 0U);
     AscendC::LocalTensor<float> scanInclF =
         sortWorkspace_.GetWithOffset<float>(HISTOGRAM_BINS, HISTOGRAM_BINS * sizeof(float));
@@ -811,14 +786,6 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
 
-            // Scatter: per-key-group MTE3 stores (the ordered path — SIMT V-pipe GM stores
-            // were not reliably visible to other cores' MTE2 reads across SyncAll). Each
-            // group is staged in its own 32B-aligned slot (DataCopyPad's MTE3 source must
-            // be 32B aligned); worst-case pad: tileLen*4 + 256 bins*28B <= 23.5KB. The
-            // SIMT path gathers BOTH arrays in ONE launch into a per-core GM staging area
-            // (SIMT UB stores fault with error 340 on this device), reads both back with
-            // TWO MTE2 copies, and issues ONE merged MTE3 pass; the scalar S-pipe gather
-            // is the fallback.
             constexpr uint32_t kSlotAlign = SIMT_SLOT_ALIGN;
             constexpr uint32_t kSlotAlignElems = SIMT_SLOT_ALIGN_ELEMS;
             AscendC::LocalTensor<uint32_t> binStartUbT =
@@ -1050,7 +1017,7 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     // Small inputs: one core sorts the whole array with every byte round resident in UB —
     // no cross-core barriers, no global hist/prefix, no GM temp round trips (the 6 SyncAll
     // + per-round fixed latencies dominate the distributed path at tileLen=64).
-    if (actualCount <= DEFAULT_TILE_SIZE) {
+    if (actualCount <= MAX_SINGLE_CORE_ELEMENTS) {
         ProcessSingleCore(actualCount, pipe);
         return;
     }
@@ -1070,11 +1037,6 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     }
 }
 
-// One core sorts the whole array (actualCount <= DEFAULT_TILE_SIZE): for each byte round,
-// V-pipe keys (ComputeTileHistogram) -> Sort<uint8_t> -> SIMT reorder of both arrays to the
-// per-core GM staging -> MTE2 read-back (data stays in UB between rounds). The final round
-// is written to the sort GM outputs via the ordered MTE3 path. All primitives are the ones
-// already proven on board; the only cross-core sync is the trailing barrier.
 __aicore__ inline void EngramFetchGradSort::ProcessSingleCore(uint32_t actualCount, AscendC::TPipe &pipe)
 {
     if (AscendC::GetBlockIdx() == 0) {
@@ -1083,20 +1045,20 @@ __aicore__ inline void EngramFetchGradSort::ProcessSingleCore(uint32_t actualCou
         event_t evtMte2Mte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_MTE3));
         event_t evtVS = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
         event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
-
         AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
-        AscendC::LocalTensor<int32_t> vals = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
-        AscendC::LocalTensor<int32_t> idxs = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, tileAlignBytes_);
+        uint32_t scAlignBytes = static_cast<uint32_t>(AlignUpU32(actualCount * sizeof(int32_t)));
+        AscendC::LocalTensor<int32_t> vals = sortWorkspace_.GetWithOffset<int32_t>(actualCount, 0);
+        AscendC::LocalTensor<int32_t> idxs = sortWorkspace_.GetWithOffset<int32_t>(actualCount, scAlignBytes);
         AscendC::LocalTensor<uint32_t> sortIndices =
-            sortWorkspace_.GetWithOffset<uint32_t>(tileElements_, 2U * tileAlignBytes_);
+            sortWorkspace_.GetWithOffset<uint32_t>(actualCount, 2U * scAlignBytes);
         // RADIX_SORT tmp layout (ArrangeCommonTmpBuffer): 512B buckets + 7B/element.
         uint32_t tmpCount = (actualCount + 31U) / 32U * 32U;
         AscendC::LocalTensor<uint8_t> sortTempBig =
-            sortWorkspace_.GetWithOffset<uint8_t>(512U + 7U * tmpCount, 3U * tileAlignBytes_);
+            sortWorkspace_.GetWithOffset<uint8_t>(512U + 7U * tmpCount, 3U * scAlignBytes);
         // exclusiveUb scratch for ComputeTileHistogram; lives at sortTemp's base because the
         // histogram runs strictly before Sort consumes sortTemp.
         AscendC::LocalTensor<int32_t> exclusiveLocal =
-            sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 3U * tileAlignBytes_);
+            sortWorkspace_.GetWithOffset<int32_t>(actualCount, 3U * scAlignBytes);
         AscendC::LocalTensor<uint8_t> keyLocal = keyBuffer_.Get<uint8_t>();
         AscendC::LocalTensor<uint8_t> sortedKey = sortedKeyBuffer_.Get<uint8_t>();
         AscendC::LocalTensor<uint16_t> histLocal = histogramBuffer_.Get<uint16_t>();
