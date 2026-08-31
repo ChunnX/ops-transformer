@@ -97,12 +97,11 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
-    __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-                                                   uint32_t sliceTokenCount,
-                                                   WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
-                                                   bool useAllAivCores);
+    __aicore__ inline void RunQuantGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+                                                        uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+                                                        uint32_t sliceTokenCount,
+                                                        WaveCombineBufferConfig &combineBufferConfig,
+                                                        uint32_t &combineRowSequence, bool useAllAivCores);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -526,14 +525,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-// W4 公共 GMM2/Combine：两条 W4 路径只在 GMM1 实现上有差异，GMM2 及其同步协议完全一致。
+// W4 量化 GMM2/Combine：非量化路径统一由 RunWaveGmm2PairwiseCombineStage 处理。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunQuantGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &pairwiseTileSequence, bool useAllAivCores)
+    bool useAllAivCores)
 {
-    constexpr bool usePairwiseTileCombine = CombineQuantMode == COMBINE_NO_QUANT;
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
@@ -541,20 +539,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
-        if constexpr (usePairwiseTileCombine) {
-            gmmAddrInfo.gmmToEpilogueFlag =
-                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
-        }
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true, usePairwiseTileCombine>(
+                    TopkWeightsPrefetch, false, false, true, false>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
-    }
-    if constexpr (usePairwiseTileCombine) {
-        return;
+            tokenStartIndexInExpert, &params_, nullptr);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
