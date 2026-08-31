@@ -578,8 +578,8 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::DynamicQuantProcess(const uint32_t dataOffset)
+__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::DynamicQuantProcess(
+    const uint32_t dataOffset)
 {
     if constexpr (std::is_same<ExpandXType, half>::value) {
         Cast(sumHalfLocal_, sumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
@@ -682,9 +682,8 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::ServerInAdd(const uint32_t targetRankId,
-                                                                         const uint32_t offsetIndexStart)
+__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::ServerInAdd(
+    const uint32_t targetRankId, const uint32_t offsetIndexStart)
 {
     uint32_t targetIpcRank = offsetReduceLocal_.GetValue(offsetIndex_) / (globalBs_ * axisK_);
     uint32_t targetIpcOffset =
@@ -999,8 +998,8 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::DynamicQuantSumToServer(uint32_t copyNum, uint32_t bsIndex)
+__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::DynamicQuantSumToServer(
+    uint32_t copyNum, uint32_t bsIndex)
 {
     if constexpr (std::is_same<ExpandXType, half>::value) { // fp16
 

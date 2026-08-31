@@ -29,7 +29,7 @@
 #endif
 
 namespace Mc2Kernel {
-#define TemplateMC2TypeV2LayeredClass                                                                                  \
+#define TemplateMC2TypeV2LayeredClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeV2LayeredFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -712,8 +712,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateZeroInnerCnt(uint32_t curServerId)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateZeroInnerCnt(
+    uint32_t curServerId)
 {
     uint32_t copyTokenNum = aivNum_ < globalBs_ ? aivNum_ : globalBs_;
     LocalTensor<int16_t> zeroTemp = tBuf_.GetWithOffset<int16_t>(copyTokenNum * sizeof(int16_t), 0);
@@ -727,8 +727,8 @@ MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateZeroInnerCnt
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateInnerReduceInfo(uint32_t serverIdx)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateInnerReduceInfo(
+    uint32_t serverIdx)
 {
     // 最后serverNum个Core加入本函数
     uint32_t curServerId = serverIdx;
@@ -860,9 +860,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::TransInnerToEpRecvCountsOutGM(uint32_t realBS,
-                                                                                            uint32_t curServerId)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::TransInnerToEpRecvCountsOutGM(
+    uint32_t realBS, uint32_t curServerId)
 {
     GlobalTensor<int16_t> combineInnerCntGMTensor;
     combineInnerCntGMTensor.SetGlobalBuffer(
@@ -1066,9 +1065,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::MergeTokenStructInBatches(uint32_t startTokenId,
-                                                                                        uint32_t sendTokenNum)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::MergeTokenStructInBatches(
+    uint32_t startTokenId, uint32_t sendTokenNum)
 {
     // 计算单个token在ub中占用buffer大小，量化情况下还包含量化所需workspace
     uint32_t singleTokenUBSize = tokenStructLen_;
@@ -1214,8 +1212,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void
-MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(uint32_t dstServerId)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::SendDataToServer(
+    uint32_t dstServerId)
 {
     uint32_t dstRankId = rankId_ % SERVER_RANK_SIZE + dstServerId * SERVER_RANK_SIZE;
     uint64_t dstServerMask = (1UL << dstServerId);

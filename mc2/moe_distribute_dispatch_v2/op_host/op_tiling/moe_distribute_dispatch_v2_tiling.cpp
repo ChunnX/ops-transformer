@@ -1006,16 +1006,15 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
                     return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 *globalBsPtr = %ld, bs = %ld, epWorldSize = %u\n", *globalBsPtr, xDim0,
             epWorldSize);
-    OP_TILING_CHECK(
-        (*globalBsPtr != 0) && ((*globalBsPtr < xDim0 * static_cast<int64_t>(epWorldSize)) ||
-                                ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
-        OP_LOGE(nodeName,
-                "globalBS is invalid, only "
-                "support 0 or maxBs(maxBs is the configured bs capacity per rank) * epWorldSize, but got "
-                "globalBS=%ld, "
-                "bs=%ld, epWorldSize=%u.",
-                *globalBsPtr, xDim0, epWorldSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*globalBsPtr != 0) && ((*globalBsPtr < xDim0 * static_cast<int64_t>(epWorldSize)) ||
+                                            ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
+                    OP_LOGE(nodeName,
+                            "globalBS is invalid, only "
+                            "support 0 or maxBs(maxBs is the configured bs capacity per rank) * epWorldSize, but got "
+                            "globalBS=%ld, "
+                            "bs=%ld, epWorldSize=%u.",
+                            *globalBsPtr, xDim0, epWorldSize),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((*globalBsPtr > (xDim0 * static_cast<int64_t>(epWorldSize))) && isActiveMask),
                     OP_LOGE(nodeName,
                             "Different bs on different rank cannot work when isActiveMask=true, globalBS=%ld, "
