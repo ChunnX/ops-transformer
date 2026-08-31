@@ -34,6 +34,12 @@ import ascend_ops
 
 os.environ["TASK_QUEUE_ENABLE"] = "1"
 
+# 可选设备号 (A3 环境默认 device 0, 若其 profiling 通道故障可换卡)
+_dev = int(os.environ.get("DEVICE_ID", "0"))
+if _dev != 0:
+    torch.npu.set_device(_dev)
+    print(f"using device {_dev}")
+
 op_type = os.environ.get("OP_TYPE", "add")
 op_iters = int(os.environ.get("OP_ITERS", "101"))
 replay_shots = int(os.environ.get("REPLAY_SHOTS", "5"))
