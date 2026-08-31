@@ -1251,6 +1251,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     bsCopyParams.blockLen = currentBsSize * N_ * sizeof(P);
     DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams);
 
+    // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
+    ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
+
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
     // ==========================================================
@@ -1270,9 +1273,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
                                                uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
                                                uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf)
 {
-    // 1. 加载inv_rms和inv_rms_grad
-    ProcessV2ChunkLoadInvRms(bsChunkStart, currentChunkSize);
-
     // 2. 加载hInGrad并进行向量计算
     ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart);
 
@@ -1425,7 +1425,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     __ubuf__ P *xRsFp32Addr = (__ubuf__ P *)xRsFp32Buf_.GetPhyAddr();
-    __ubuf__ P *invRmsAddr = (__ubuf__ P *)invRmsUb_.GetPhyAddr();
+    __ubuf__ P *invRmsAddr = (__ubuf__ P *)invRmsUb_.GetPhyAddr() + (bsChunkStart - bsStart);
     if (withGamma_) {
         __ubuf__ P *gammaInAddr = (__ubuf__ P *)gammaIn_.GetPhyAddr();
         if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
