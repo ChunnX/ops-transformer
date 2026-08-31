@@ -253,7 +253,7 @@ struct WaveCombineScratch {
 };
 
 constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
-constexpr uint32_t WAVE_COMBINE_W4_STEADY_ROW_BUFFER_COUNT = 2U;
+constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 2U;
 constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
 // [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.

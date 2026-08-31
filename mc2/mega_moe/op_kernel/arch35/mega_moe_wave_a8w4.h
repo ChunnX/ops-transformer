@@ -171,8 +171,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     DispatchBuffInit();
     PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
     WaveCombineBufferConfig combineBufferConfig =
-        InitWaveCombineBuffers<CombineQuantMode, false, WAVE_COMBINE_W4_STEADY_ROW_BUFFER_COUNT>(commonConfig_,
-                                                                                                 waveCombineScratch_);
+        InitWaveCombineBuffers<CombineQuantMode, false, WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT>(commonConfig_,
+                                                                                              waveCombineScratch_);
     uint32_t combineRowSequence = 0U;
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
