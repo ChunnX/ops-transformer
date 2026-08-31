@@ -48,12 +48,20 @@ const std::vector<TypeCombo> &getSupportedCombos()
 }
 } // namespace
 
+// 持久 cycle buffer（固定 GM 地址，capture 时地址固化进 kernel 参数，replay 模式必需）
+static torch::Tensor g_gmm_cycle_tensor;  // [64*2] int64, NPU device
+static int64_t g_gmm_cycle_launch_count = 0;
+
 // Register the operator's schema
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("grouped_matmul(Tensor[] x, Tensor[] weight, Tensor[]? bias, Tensor[]? scale, Tensor[]? offset, Tensor[]? "
           "antiquantScale, Tensor[]? antiquantOffset, Tensor? groupList, Tensor[]? perTokenScale, int splitItem, int "
           "groupType, int groupListType, int actType,int[]? tuningConfigOptional) -> Tensor");
+    // gemm 头开销打点读取接口（与 add 的 read_cycle 分开命名，避免 schema 冲突）
+    m.def("gmm_read_cycle(Tensor dummy) -> Tensor");
+    m.def("gmm_read_cycle_launch_count(Tensor dummy) -> int");
+    m.def("gmm_reset_cycle(Tensor dummy) -> ()");
 }
 
 __global__ __aicore__ void groupedmatmul_kernel(__gm__ uint8_t *x, __gm__ uint8_t *weight, __gm__ uint8_t *bias,
@@ -61,11 +69,13 @@ __global__ __aicore__ void groupedmatmul_kernel(__gm__ uint8_t *x, __gm__ uint8_
                                                 __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
                                                 __gm__ uint8_t *groupList, __gm__ uint8_t *perTokenScale,
                                                 __gm__ uint8_t *y, __gm__ uint8_t *workspace,
-                                                GroupedMatmulTilingData tilingData)
+                                                GroupedMatmulTilingData tilingData, GM_ADDR cycleData)
 {
+    // T0: kernel 第一行
+    int64_t T0 = AscendC::GetSystemCycle();
     GroupedMatmulKernelImpl<GMM_TPL_BF16, GMM_TPL_BF16, GMM_TPL_BF16, 0, 0, 1, 0, 0, 0, 0, 0>(
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, groupList, perTokenScale, y, workspace,
-        &tilingData);
+        &tilingData, T0, cycleData);
 }
 
 void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStream stream, const at::TensorList &x,
@@ -107,17 +117,46 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
         auto ret = aclrtMalloc(&workspace_ptr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         TORCH_CHECK(ret == ACL_SUCCESS, "allocate workspace failed. ERROR: %d\n", ret);
     }
+    // 持久 cycle buffer 懒初始化（一次分配固定地址，capture 时固化进 kernel 参数）
+    if (!g_gmm_cycle_tensor.defined()) {
+        auto cycle_options = torch::TensorOptions().dtype(torch::kInt64).device(x[0].device());
+        g_gmm_cycle_tensor = torch::zeros({64 * 2}, cycle_options);  // 最多 64 blocks
+    }
+    ++g_gmm_cycle_launch_count;
+    auto cycle_ptr = (GM_ADDR)g_gmm_cycle_tensor.data_ptr();
     groupedmatmul_kernel<<<blockDim, nullptr, stream>>>(
         (__gm__ uint8_t *)x_ptr, (__gm__ uint8_t *)weight_ptr, (__gm__ uint8_t *)bias_ptr, (__gm__ uint8_t *)scale_ptr,
         (__gm__ uint8_t *)offset_ptr, (__gm__ uint8_t *)antiquantScale_ptr, (__gm__ uint8_t *)antiquantOffset_ptr,
         (__gm__ uint8_t *)groupList_ptr, (__gm__ uint8_t *)perTokenScale_ptr, (__gm__ uint8_t *)y_ptr,
-        (__gm__ uint8_t *)workspace_ptr, tilingData);
+        (__gm__ uint8_t *)workspace_ptr, tilingData, cycle_ptr);
 
     // Free workspace memory
     if (workspaceSize > 0 && workspace_ptr != nullptr) {
         aclrtFree(workspace_ptr);
         workspace_ptr = nullptr;
     }
+}
+
+// Getter: 读取 gemm 持久 cycle buffer（capture/replay 外部调用）
+// 返回 [64, 2] int64 CPU tensor，仅 t0>0 的行有效
+torch::Tensor gmm_read_cycle(const torch::Tensor &dummy)
+{
+    TORCH_CHECK(g_gmm_cycle_tensor.defined(), "gmm cycle buffer not initialized, call grouped_matmul first");
+    return g_gmm_cycle_tensor.to(torch::kCPU).clone();
+}
+
+// Getter: 累计 launch 次数
+int64_t gmm_read_cycle_launch_count(const torch::Tensor &dummy)
+{
+    return g_gmm_cycle_launch_count;
+}
+
+// Reset: 清零 cycle buffer 并归零计数
+void gmm_reset_cycle(const torch::Tensor &dummy)
+{
+    TORCH_CHECK(g_gmm_cycle_tensor.defined(), "gmm cycle buffer not initialized, call grouped_matmul first");
+    g_gmm_cycle_tensor.zero_();
+    g_gmm_cycle_launch_count = 0;
 }
 
 
@@ -166,18 +205,36 @@ torch::Tensor grouped_matmul_npu(
 
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
 
-    auto acl_call = [=, &matched_combo]() -> int {
-        vector<int64_t> tuning_config_vec;
-        vector<int64_t> *tuning_config_ptr = nullptr;
+    // 实体化 ArrayRef 参数, 避免 acl_thread 异步执行时悬垂引用:
+    // pybind 传入的 TensorList/IntArrayRef 底层指向临时数组, 本函数返回后即析构,
+    // 而 acl_call 由 acl_thread 异步消费, 队列积压时会访问已释放内存 (SIGSEGV)
+    std::vector<at::Tensor> x_vec(x.begin(), x.end());
+    std::vector<at::Tensor> weight_vec(weight.begin(), weight.end());
+    std::vector<at::Tensor> bias_vec, scale_vec, offset_vec, aq_scale_vec, aq_offset_vec, pts_vec;
+    if (bias.has_value()) { bias_vec.assign(bias->begin(), bias->end()); }
+    if (scale.has_value()) { scale_vec.assign(scale->begin(), scale->end()); }
+    if (offset.has_value()) { offset_vec.assign(offset->begin(), offset->end()); }
+    if (antiquantScale.has_value()) { aq_scale_vec.assign(antiquantScale->begin(), antiquantScale->end()); }
+    if (antiquantOffset.has_value()) { aq_offset_vec.assign(antiquantOffset->begin(), antiquantOffset->end()); }
+    if (perTokenScale.has_value()) { pts_vec.assign(perTokenScale->begin(), perTokenScale->end()); }
+    std::vector<int64_t> tuning_vec;
+    if (tuningConfigOptional.has_value()) {
+        tuning_vec.assign(tuningConfigOptional->begin(), tuningConfigOptional->end());
+    }
 
-        if (tuningConfigOptional.has_value()) {
-            tuning_config_vec =
-                vector<int64_t>(tuningConfigOptional.value().begin(), tuningConfigOptional.value().end());
-            tuning_config_ptr = &tuning_config_vec;
-        }
-        groupedmatmul_api(matched_combo, matched_index, stream, x, weight, bias, scale, offset, antiquantScale,
-                          antiquantOffset, groupList, perTokenScale, y, splitItem, groupType, groupListType, actType,
-                          tuning_config_ptr);
+    auto acl_call = [=, &matched_combo]() -> int {
+        c10::optional<at::TensorList> bias_arg, scale_arg, offset_arg, aq_scale_arg, aq_offset_arg, pts_arg;
+        if (bias.has_value()) { bias_arg = at::TensorList(bias_vec); }
+        if (scale.has_value()) { scale_arg = at::TensorList(scale_vec); }
+        if (offset.has_value()) { offset_arg = at::TensorList(offset_vec); }
+        if (antiquantScale.has_value()) { aq_scale_arg = at::TensorList(aq_scale_vec); }
+        if (antiquantOffset.has_value()) { aq_offset_arg = at::TensorList(aq_offset_vec); }
+        if (perTokenScale.has_value()) { pts_arg = at::TensorList(pts_vec); }
+        const vector<int64_t> *tuning_config_ptr = tuningConfigOptional.has_value() ? &tuning_vec : nullptr;
+
+        groupedmatmul_api(matched_combo, matched_index, stream, x_vec, weight_vec, bias_arg, scale_arg, offset_arg,
+                          aq_scale_arg, aq_offset_arg, groupList, pts_arg, y, splitItem, groupType, groupListType,
+                          actType, tuning_config_ptr);
         return 0;
     };
     at_npu::native::OpCommand::RunOpApi("GroupedMatmul", acl_call);
@@ -188,6 +245,9 @@ torch::Tensor grouped_matmul_npu(
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("grouped_matmul", grouped_matmul_npu);
+    m.impl("gmm_read_cycle", &gmm_read_cycle);
+    m.impl("gmm_read_cycle_launch_count", &gmm_read_cycle_launch_count);
+    m.impl("gmm_reset_cycle", &gmm_reset_cycle);
 }
 
 } // namespace GroupedMatmul

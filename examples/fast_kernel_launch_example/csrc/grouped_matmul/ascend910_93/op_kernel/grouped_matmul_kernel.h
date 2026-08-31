@@ -53,6 +53,13 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         processClass<decltype(computeOp)> op(computeOp);                                                               \
         op.Init(&tilingData->gmmBaseParams, &tilingData->mmTilingData, (int32_t *)&tilingData->gmmArray.mList[0],      \
                 groupList);                                                                                            \
+        /* T1: Init 完成、第一个 MTE2 搬运（op.Process 内 DataCopy）之前 */                                              \
+        if (cycleData != nullptr) {                                                                                    \
+            int64_t T1 = AscendC::GetSystemCycle();                                                                    \
+            __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 2;                       \
+            cycleBuf[0] = T0;                                                                                          \
+            cycleBuf[1] = T1;                                                                                          \
+        }                                                                                                              \
         op.Process();                                                                                                  \
         return;                                                                                                        \
     } while (0)
@@ -62,7 +69,7 @@ template <int D_T_A, int D_T_B, int D_T_Y, int TRANS_A, int TRANS_B, int GROUP_L
 __aicore__ inline void GroupedMatmulKernelImpl(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                                GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
                                                GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
-                                               GroupedMatmulTilingData *tilingData)
+                                               GroupedMatmulTilingData *tilingData, int64_t T0, GM_ADDR cycleData)
 {
     TPipe tPipe;
     GM_ADDR user1 = GetUserWorkspace(workspace);
