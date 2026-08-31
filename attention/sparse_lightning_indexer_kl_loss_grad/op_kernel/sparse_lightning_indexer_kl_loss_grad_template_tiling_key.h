@@ -55,8 +55,7 @@ ASCENDC_TPL_ARGS_DECL(SparseLightningIndexerKLLossGrad, // 算子OpType
                       ASCENDC_TPL_BOOL_DECL(DETERMINISTIC, 0, 1),
                       ASCENDC_TPL_BOOL_DECL(PRIVATE_SCATTER, 0, 1), );
 
-// 支持的模板参数组合：禁止 (DETERMINISTIC=0, PRIVATE_SCATTER=1)
-// 多组 ARGS_SEL 必须写在同一个 ASCENDC_TPL_SEL 内，多次 TPL_SEL 只会保留一组。
+// 支持的模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
 #define SLIKG_TPL_COMMON_SEL \
     ASCENDC_TPL_BOOL_SEL(HASROPE, 0, 1), \
