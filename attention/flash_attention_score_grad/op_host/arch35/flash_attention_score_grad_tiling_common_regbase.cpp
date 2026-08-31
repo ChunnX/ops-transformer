@@ -1656,6 +1656,16 @@ bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsReg
     return false;
 }
 
+void ApplySelectedVariantPlan(FuzzyBaseInfoParamsRegbase &fBaseParams, const CandidatePlan &selectedPlan)
+{
+    const VariantId selectedVariant = selectedPlan.variantId;
+    fBaseParams.isBn2 = selectedVariant == VariantId::BN2 || selectedVariant == VariantId::BN2_MULTI_BLOCK;
+    fBaseParams.isBn2MultiBlk = selectedVariant == VariantId::BN2_MULTI_BLOCK;
+    fBaseParams.isDeterministic = selectedPlan.effectiveDeterministic;
+    fBaseParams.layoutType = selectedPlan.executionLayout;
+    fBaseParams.splitAxis = static_cast<SplitAxisEnum>(selectedPlan.split.axis);
+}
+
 void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tndBaseInfo, bool deterministicRequested,
                   RouteTrace *routeTrace, SelectionResult *selectionResult)
 {
@@ -1707,11 +1717,7 @@ void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tn
     const InitialVariantCandidateSet candidates = InitialVariantCandidatePlanner::Build(input, limits);
     const SelectionResult selected = LegacyPolicyV1::SelectInitialVariant(candidates);
     const VariantId selectedVariant = selected.selected.variantId;
-    fBaseParams.isBn2 = selectedVariant == VariantId::BN2 || selectedVariant == VariantId::BN2_MULTI_BLOCK;
-    fBaseParams.isBn2MultiBlk = selectedVariant == VariantId::BN2_MULTI_BLOCK;
-    fBaseParams.isDeterministic = selected.selected.effectiveDeterministic;
-    fBaseParams.layoutType = selected.selected.executionLayout;
-    fBaseParams.splitAxis = static_cast<SplitAxisEnum>(selected.selected.split.axis);
+    ApplySelectedVariantPlan(fBaseParams, selected.selected);
     if (selectionResult != nullptr) {
         *selectionResult = selected;
     }

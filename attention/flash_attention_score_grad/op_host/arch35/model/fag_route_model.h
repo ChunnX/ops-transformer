@@ -21,6 +21,7 @@ using PolicyVersion = uint32_t;
 constexpr PolicyVersion FAG_ARCH35_LEGACY_POLICY_VERSION = 1U;
 constexpr size_t FAG_ROUTE_TRACE_CAPACITY = 32U;
 constexpr size_t FAG_INITIAL_VARIANT_CANDIDATE_CAPACITY = 4U;
+constexpr size_t FAG_CANDIDATE_REJECTION_CAPACITY = 8U;
 
 using RuleId = uint32_t;
 constexpr RuleId FAG_RULE_LEGACY_DEFAULT = 1000U;
@@ -68,6 +69,15 @@ enum class CandidateField : uint8_t {
     ROPE = 12,
     DETERMINISTIC = 13,
     DROPOUT = 14,
+    CORE_PARTITION = 15,
+    ACTIVE_CORE_COUNT = 16,
+    INVALID_BASIC_BLOCK = 17,
+};
+
+enum class CandidateRejectStage : uint8_t {
+    COARSE_CAPABILITY = 0,
+    CORE_PARTITION = 1,
+    SPARSE_PLANNING = 2,
 };
 
 enum class CandidateRejectReason : uint16_t {
@@ -85,6 +95,9 @@ enum class CandidateRejectReason : uint16_t {
     VALUE_HEAD_DIM_MISMATCH = 1010,
     SPARSE_OR_DETERMINISTIC_UNSUPPORTED = 1011,
     DROPOUT_HEAD_DIM_UNSUPPORTED = 1012,
+    CORE_PARTITION_UNAVAILABLE = 1013,
+    INSUFFICIENT_CORE_UTILIZATION = 1014,
+    INVALID_BASIC_BLOCK = 1015,
 };
 
 enum class RouteStage : uint8_t {
@@ -334,6 +347,7 @@ struct CandidatePlan {
 
 struct CandidateRejected {
     VariantId variantId = VariantId::UNKNOWN;
+    CandidateRejectStage stage = CandidateRejectStage::COARSE_CAPABILITY;
     CandidateRejectReason reason = CandidateRejectReason::NONE;
     CandidateField field = CandidateField::NONE;
     int64_t actual = 0;
@@ -350,6 +364,35 @@ struct SelectionResult {
     CandidatePlan selected;
     PolicyVersion policyVersion = FAG_ARCH35_LEGACY_POLICY_VERSION;
     RuleId winningRule = FAG_RULE_LEGACY_DEFAULT;
+
+    void RecordRejection(const CandidateRejected &rejected)
+    {
+        if (rejectionCount_ < rejections_.size()) {
+            rejections_[rejectionCount_++] = rejected;
+        } else {
+            ++droppedRejectionCount_;
+        }
+    }
+
+    size_t GetRejectionCount() const
+    {
+        return rejectionCount_;
+    }
+
+    const CandidateRejected &GetRejection(size_t index) const
+    {
+        return rejections_[index];
+    }
+
+    size_t GetDroppedRejectionCount() const
+    {
+        return droppedRejectionCount_;
+    }
+
+private:
+    std::array<CandidateRejected, FAG_CANDIDATE_REJECTION_CAPACITY> rejections_;
+    size_t rejectionCount_ = 0;
+    size_t droppedRejectionCount_ = 0;
 };
 
 struct RouteDecision {

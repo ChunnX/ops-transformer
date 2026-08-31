@@ -50,17 +50,32 @@ public:
 
     static SelectionResult SelectInitialVariant(const InitialVariantCandidateSet &candidates)
     {
-        static constexpr VariantId LEGACY_PRIORITY[FAG_INITIAL_VARIANT_CANDIDATE_CAPACITY] = {
+        const VariantId legacyPriority[FAG_INITIAL_VARIANT_CANDIDATE_CAPACITY] = {
             VariantId::BN2_MULTI_BLOCK, VariantId::BN2, VariantId::BN2S2, VariantId::BN2GS1S2};
         SelectionResult result;
-        for (const VariantId variantId : LEGACY_PRIORITY) {
+        for (const VariantId variantId : legacyPriority) {
             const CandidateOutcome *outcome = candidates.Find(variantId);
-            if (outcome != nullptr && outcome->accepted) {
+            if (outcome == nullptr) {
+                continue;
+            }
+            if (!outcome->accepted) {
+                result.RecordRejection(outcome->rejected);
+            } else if (result.selected.variantId == VariantId::UNKNOWN) {
                 result.selected = outcome->plan;
                 result.winningRule = GetVariantRule(variantId);
-                return result;
             }
         }
+        return result;
+    }
+
+    static SelectionResult SelectFallbackAfterRejection(const SelectionResult &current,
+                                                        const CandidateRejected &rejected,
+                                                        const CandidatePlan &fallback)
+    {
+        SelectionResult result = current;
+        result.RecordRejection(rejected);
+        result.selected = fallback;
+        result.winningRule = GetVariantRule(fallback.variantId);
         return result;
     }
 

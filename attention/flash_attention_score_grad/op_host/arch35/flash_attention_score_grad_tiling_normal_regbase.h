@@ -17,6 +17,7 @@
 
 #include "flash_attention_score_grad_tiling_common_regbase.h"
 #include "candidate/fag_kernel_capability.h"
+#include "candidate/fag_planned_candidate_verifier.h"
 #include "policy/fag_legacy_policy_v1.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
@@ -76,6 +77,7 @@ protected:
     void CaptureProblemFacts();
     void SetSplitAxisWithTrace(SplitAxisEnum splitAxis, RouteStage stage, RouteReason reason);
     void DetermineOutputFormat();
+    void SelectFallbackAfterCandidateRejection(const CandidateRejected &rejected, RouteReason reason);
     void SyncLegacySelectionResult();
     VariantId ResolveSelectedVariant() const;
     void LogRouteTrace() const;

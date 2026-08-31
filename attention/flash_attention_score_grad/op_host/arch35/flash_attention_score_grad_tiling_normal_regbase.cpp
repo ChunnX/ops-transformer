@@ -924,6 +924,35 @@ void FlashAttentionScoreGradTilingNormalRegbase::DetermineOutputFormat()
                        static_cast<int64_t>(isNzOutBefore), static_cast<int64_t>(fBaseParams.isNzOut));
 }
 
+void FlashAttentionScoreGradTilingNormalRegbase::SelectFallbackAfterCandidateRejection(
+    const CandidateRejected &rejected, RouteReason reason)
+{
+    CandidatePlan fallback;
+    fallback.variantId = VariantId::BN2GS1S2;
+    fallback.split.axis = static_cast<uint32_t>(SplitAxisEnum::BN2GS1S2);
+    fallback.executionLayout = fBaseParams.layoutType;
+    fallback.effectiveDeterministic = deterministicRequested_;
+
+    const bool deterministicBefore = fBaseParams.isDeterministic;
+    const SplitAxisEnum splitAxisBefore = fBaseParams.splitAxis;
+    selectionResult_ = LegacyPolicyV1::SelectFallbackAfterRejection(selectionResult_, rejected, fallback);
+    ApplySelectedVariantPlan(fBaseParams, selectionResult_.selected);
+
+    if (rejected.variantId == VariantId::BN2_MULTI_BLOCK) {
+        routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EFFECTIVE_DETERMINISTIC, reason,
+                           static_cast<int64_t>(deterministicBefore),
+                           static_cast<int64_t>(fBaseParams.isDeterministic));
+    }
+    routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::SPLIT_AXIS, reason,
+                       static_cast<int64_t>(splitAxisBefore), static_cast<int64_t>(fBaseParams.splitAxis));
+    OP_LOGI(context_,
+            "Reject FAG candidate: variant=[%u], stage=[%u], reason=[%u], field=[%u], actual=[%ld], expected=[%ld]; "
+            "fallback=[%u].",
+            static_cast<uint32_t>(rejected.variantId), static_cast<uint32_t>(rejected.stage),
+            static_cast<uint32_t>(rejected.reason), static_cast<uint32_t>(rejected.field), rejected.actual,
+            rejected.expected, static_cast<uint32_t>(fallback.variantId));
+}
+
 VariantId FlashAttentionScoreGradTilingNormalRegbase::ResolveSelectedVariant() const
 {
     return LegacyPolicyV1::ResolveVariant(fBaseParams.splitAxis == SplitAxisEnum::BN2, fBaseParams.isBn2MultiBlk,
@@ -960,17 +989,28 @@ void FlashAttentionScoreGradTilingNormalRegbase::LogRouteTrace() const
 {
     OP_LOGI(context_,
             "FAG route summary: fingerprint=[%lu], policyVersion=[%u], variant=[%u], rule=[%u], key=[%lu], "
-            "decisionCount=[%lu], droppedDecisionCount=[%lu].",
+            "decisionCount=[%lu], droppedDecisionCount=[%lu], rejectionCount=[%lu], droppedRejectionCount=[%lu].",
             routeTrace_.GetInputFingerprint(), routeTrace_.GetPolicyVersion(),
             static_cast<uint32_t>(routeTrace_.GetSelectedVariant()), selectionResult_.winningRule,
             routeTrace_.GetFinalTilingKey(), static_cast<uint64_t>(routeTrace_.GetDecisionCount()),
-            static_cast<uint64_t>(routeTrace_.GetDroppedDecisionCount()));
+            static_cast<uint64_t>(routeTrace_.GetDroppedDecisionCount()),
+            static_cast<uint64_t>(selectionResult_.GetRejectionCount()),
+            static_cast<uint64_t>(selectionResult_.GetDroppedRejectionCount()));
     for (size_t decisionIndex = 0; decisionIndex < routeTrace_.GetDecisionCount(); ++decisionIndex) {
         const RouteDecision &decision = routeTrace_.GetDecision(decisionIndex);
         OP_LOGD(context_, "FAG route trace[%lu]: stage=[%u], field=[%u], reason=[%s], value=[%ld->%ld].",
                 static_cast<uint64_t>(decisionIndex), static_cast<uint32_t>(decision.stage),
                 static_cast<uint32_t>(decision.field), GetRouteReasonName(decision.reason), decision.before,
                 decision.after);
+    }
+    for (size_t rejectionIndex = 0; rejectionIndex < selectionResult_.GetRejectionCount(); ++rejectionIndex) {
+        const CandidateRejected &rejected = selectionResult_.GetRejection(rejectionIndex);
+        OP_LOGD(context_,
+                "FAG candidate rejection[%lu]: variant=[%u], stage=[%u], reason=[%u], field=[%u], "
+                "actual=[%ld], expected=[%ld].",
+                static_cast<uint64_t>(rejectionIndex), static_cast<uint32_t>(rejected.variantId),
+                static_cast<uint32_t>(rejected.stage), static_cast<uint32_t>(rejected.reason),
+                static_cast<uint32_t>(rejected.field), rejected.actual, rejected.expected);
     }
 }
 
@@ -1246,46 +1286,62 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoSparse()
     fBaseParams.sparseType = GetSparseType(); // 非确定性计算下获取sparseType
     fBaseParams.deterSparseType = GetDeterSparseTilingKey();
     CalcleDeterParam();
-    if (DoBn2s2Sparse() && fBaseParams.blockOuter >= fBaseParams.aicNum) {
-        return ge::GRAPH_SUCCESS;
-    } else {
-        // TND S1 S2全等场景下if分支尝试走BN2S2分核优化,如果判断不能走则恢复layoutType赋值
-        if (SupportTrans2BS2N2GD(fBaseParams)) {
-            const uint32_t layoutBefore = fBaseParams.layoutType;
-            fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
-            routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EXECUTION_LAYOUT,
-                               RouteReason::TND_EQUAL_LENGTH_EXECUTION_LAYOUT, static_cast<int64_t>(layoutBefore),
-                               static_cast<int64_t>(fBaseParams.layoutType));
-            fBaseParams.sparseType = GetSparseType(); // 确保sparseType正确
+    bool skipLegacySparseNormalization = false;
+    const bool bn2s2CorePartitionAvailable = DoBn2s2Sparse();
+    CandidateOutcome bn2s2Verification;
+    if (selectionResult_.selected.variantId == VariantId::BN2S2) {
+        PlannedCandidateVerificationInput verificationInput;
+        verificationInput.corePartitionAvailable = bn2s2CorePartitionAvailable;
+        verificationInput.activeCoreCount = static_cast<uint32_t>(fBaseParams.blockOuter);
+        verificationInput.availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+        verificationInput.blockFactor = fBaseParams.blockFactor;
+        verificationInput.maxCoreWork = static_cast<uint64_t>(std::max<int64_t>(0, fBaseParams.maxValidBBLen));
+        bn2s2Verification = PlannedCandidateVerifier::Verify(selectionResult_.selected, verificationInput);
+        if (bn2s2Verification.accepted) {
+            selectionResult_.selected = bn2s2Verification.plan;
+            return ge::GRAPH_SUCCESS;
         }
     }
+
+    // TND S1 S2全等场景下if分支尝试走BN2S2分核优化,如果判断不能走则恢复layoutType赋值
+    if (SupportTrans2BS2N2GD(fBaseParams)) {
+        const uint32_t layoutBefore = fBaseParams.layoutType;
+        fBaseParams.layoutType = INPUT_FORMAT_BS2N2GD;
+        routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EXECUTION_LAYOUT,
+                           RouteReason::TND_EQUAL_LENGTH_EXECUTION_LAYOUT, static_cast<int64_t>(layoutBefore),
+                           static_cast<int64_t>(fBaseParams.layoutType));
+        fBaseParams.sparseType = GetSparseType(); // 确保sparseType正确
+    }
+    if (selectionResult_.selected.variantId == VariantId::BN2S2) {
+        SelectFallbackAfterCandidateRejection(bn2s2Verification.rejected, RouteReason::BN2S2_INSUFFICIENT_CORES);
+        // The BN2S2 rejection is the legacy normalization decision itself; do not record it twice below.
+        skipLegacySparseNormalization = true;
+    }
     if (fBaseParams.splitAxis == SplitAxisEnum::BN2 && fBaseParams.isBn2MultiBlk) {
-        bool earlyReturn = true;
-        bool res = DoBn2MultiBlkSparse();
+        const bool result = DoBn2MultiBlkSparse();
         // 当BN2多基本块场景，上方函数判断遇到无效行、列后，需要走S1S2模板，性能达到最优
         OP_LOGD("DoBn2MultiBlkSparse", "fBaseParams.isInvalidCol %d, fBaseParams.isInvalidRow %d",
                 fBaseParams.isInvalidCol, fBaseParams.isInvalidRow);
-        if ((fBaseParams.isInvalidCol || fBaseParams.isInvalidRow)) {
-            fBaseParams.isBn2 = false;
-            fBaseParams.isBn2MultiBlk = false;
-            const bool deterministicBefore = fBaseParams.isDeterministic;
-            fBaseParams.isDeterministic = deterministicRequested_;
-            routeTrace_.Record(RouteStage::SPARSE_PLANNING, RouteField::EFFECTIVE_DETERMINISTIC,
-                               RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK, static_cast<int64_t>(deterministicBefore),
-                               static_cast<int64_t>(fBaseParams.isDeterministic));
-            SetSplitAxisWithTrace(SplitAxisEnum::BN2GS1S2, RouteStage::SPARSE_PLANNING,
-                                  RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK);
-            earlyReturn = false;
+        PlannedCandidateVerificationInput verificationInput;
+        verificationInput.corePartitionAvailable = !result;
+        verificationInput.hasInvalidRow = fBaseParams.isInvalidRow;
+        verificationInput.hasInvalidColumn = fBaseParams.isInvalidCol;
+        verificationInput.activeCoreCount = static_cast<uint32_t>(fBaseParams.blockOuter);
+        verificationInput.availableCoreCount = static_cast<uint32_t>(fBaseParams.aicNum);
+        verificationInput.blockFactor = fBaseParams.blockFactor;
+        verificationInput.maxCoreWork = static_cast<uint64_t>(std::max<int64_t>(0, fBaseParams.maxValidBBLen));
+        const CandidateOutcome verification =
+            PlannedCandidateVerifier::Verify(selectionResult_.selected, verificationInput);
+        if (verification.accepted) {
+            selectionResult_.selected = verification.plan;
+            return result;
         }
-        if (earlyReturn) {
-            return res;
-        }
+        SelectFallbackAfterCandidateRejection(verification.rejected, RouteReason::BN2_MULTI_BLOCK_INVALID_BLOCK);
     }
-    const RouteReason splitReason = fBaseParams.splitAxis == SplitAxisEnum::BN2S2 ?
-                                        RouteReason::BN2S2_INSUFFICIENT_CORES :
-                                        RouteReason::LEGACY_SPARSE_NORMALIZATION;
-    SetSplitAxisWithTrace(fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2, RouteStage::SPARSE_PLANNING,
-                          splitReason);
+    if (!skipLegacySparseNormalization) {
+        SetSplitAxisWithTrace(fBaseParams.isBn2 ? SplitAxisEnum::BN2 : SplitAxisEnum::BN2GS1S2,
+                              RouteStage::SPARSE_PLANNING, RouteReason::LEGACY_SPARSE_NORMALIZATION);
+    }
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
         GetSparseUnpadBlockInfo();
     } else if (fBaseParams.isSparse) {

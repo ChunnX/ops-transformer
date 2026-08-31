@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "../../../../op_host/arch35/candidate/fag_kernel_capability.h"
+#include "../../../../op_host/arch35/candidate/fag_planned_candidate_verifier.h"
 #include "../../../../op_host/arch35/model/fag_route_model.h"
 #include "../../../../op_host/arch35/policy/fag_legacy_policy_v1.h"
 
@@ -62,6 +63,32 @@ struct LegacyInitialVariantDecision {
     uint32_t executionLayout = 0;
     bool effectiveDeterministic = false;
 };
+
+struct LegacyPostPlanningDecision {
+    VariantId variantId = VariantId::UNKNOWN;
+    bool effectiveDeterministic = false;
+};
+
+LegacyPostPlanningDecision SelectWithFrozenLegacyPostPlanning(VariantId initialVariant, bool corePartitionAvailable,
+                                                              uint32_t activeCoreCount, uint32_t availableCoreCount,
+                                                              bool hasInvalidRow, bool hasInvalidColumn,
+                                                              bool deterministicRequested)
+{
+    LegacyPostPlanningDecision decision;
+    decision.variantId = initialVariant;
+    decision.effectiveDeterministic = initialVariant == VariantId::BN2 || initialVariant == VariantId::BN2_MULTI_BLOCK ?
+                                          false :
+                                          deterministicRequested;
+    const bool rejectBn2S2 =
+        initialVariant == VariantId::BN2S2 && (!corePartitionAvailable || activeCoreCount < availableCoreCount);
+    const bool rejectBn2MultiBlock =
+        initialVariant == VariantId::BN2_MULTI_BLOCK && (hasInvalidRow || hasInvalidColumn);
+    if (rejectBn2S2 || rejectBn2MultiBlock) {
+        decision.variantId = VariantId::BN2GS1S2;
+        decision.effectiveDeterministic = deterministicRequested;
+    }
+    return decision;
+}
 
 LegacyInitialVariantDecision SelectWithFrozenLegacyExpression(const InitialVariantCandidateInput &input,
                                                               const InitialVariantLimits &limits)
@@ -165,6 +192,8 @@ TEST(FagRouteModel, TraceProtocolIdsAreExplicitAndStable)
     EXPECT_EQ(801U, static_cast<uint32_t>(RouteReason::FINAL_KEY_ENCODED));
     EXPECT_EQ(1001U, FAG_RULE_LEGACY_NZ_LARGE_SEQUENCE);
     EXPECT_EQ(1004U, static_cast<uint32_t>(CandidateRejectReason::SEQUENCE_CONTAINS_ZERO));
+    EXPECT_EQ(1013U, static_cast<uint32_t>(CandidateRejectReason::CORE_PARTITION_UNAVAILABLE));
+    EXPECT_EQ(1015U, static_cast<uint32_t>(CandidateRejectReason::INVALID_BASIC_BLOCK));
     EXPECT_EQ(1100U, FAG_RULE_LEGACY_INITIAL_BN2_MULTI_BLOCK);
     EXPECT_EQ(1103U, FAG_RULE_LEGACY_INITIAL_BN2GS1S2);
 }
@@ -224,6 +253,139 @@ TEST(FagInitialVariantCandidates, ReturnsStableRejectReasonWithoutFallbackMutati
     EXPECT_TRUE(input.dropMaskOuter);
 }
 
+TEST(FagPlannedCandidateVerifier, RejectsBn2S2WhenCorePartitionIsUnavailable)
+{
+    CandidatePlan candidate;
+    candidate.variantId = VariantId::BN2S2;
+    PlannedCandidateVerificationInput input;
+    const CandidateOutcome outcome = PlannedCandidateVerifier::Verify(candidate, input);
+
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectStage::CORE_PARTITION),
+              static_cast<uint32_t>(outcome.rejected.stage));
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::CORE_PARTITION_UNAVAILABLE),
+              static_cast<uint32_t>(outcome.rejected.reason));
+    EXPECT_EQ(static_cast<uint32_t>(CandidateField::CORE_PARTITION), static_cast<uint32_t>(outcome.rejected.field));
+}
+
+TEST(FagPlannedCandidateVerifier, VerifiesBn2S2CoreUtilizationWithoutMutatingInputPlan)
+{
+    CandidatePlan candidate;
+    candidate.variantId = VariantId::BN2S2;
+    candidate.cores.activeCoreCount = 7;
+    PlannedCandidateVerificationInput input;
+    input.corePartitionAvailable = true;
+    input.activeCoreCount = 31;
+    input.availableCoreCount = 32;
+    input.blockFactor = 64;
+    input.maxCoreWork = 63;
+
+    CandidateOutcome outcome = PlannedCandidateVerifier::Verify(candidate, input);
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::INSUFFICIENT_CORE_UTILIZATION),
+              static_cast<uint32_t>(outcome.rejected.reason));
+    EXPECT_EQ(31, outcome.rejected.actual);
+    EXPECT_EQ(32, outcome.rejected.expected);
+    EXPECT_EQ(7U, candidate.cores.activeCoreCount);
+
+    input.activeCoreCount = input.availableCoreCount;
+    outcome = PlannedCandidateVerifier::Verify(candidate, input);
+    ASSERT_TRUE(outcome.accepted);
+    EXPECT_EQ(32U, outcome.plan.cores.activeCoreCount);
+    EXPECT_EQ(64, outcome.plan.cores.blockFactor);
+    EXPECT_EQ(63U, outcome.plan.cores.maxCoreWork);
+    EXPECT_EQ(7U, candidate.cores.activeCoreCount);
+}
+
+TEST(FagPlannedCandidateVerifier, RejectsBn2MultiBlockWithStableInvalidBlockMask)
+{
+    CandidatePlan candidate;
+    candidate.variantId = VariantId::BN2_MULTI_BLOCK;
+    PlannedCandidateVerificationInput input;
+    input.corePartitionAvailable = true;
+    input.hasInvalidRow = true;
+    input.hasInvalidColumn = true;
+
+    const CandidateOutcome outcome = PlannedCandidateVerifier::Verify(candidate, input);
+    EXPECT_FALSE(outcome.accepted);
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectStage::SPARSE_PLANNING),
+              static_cast<uint32_t>(outcome.rejected.stage));
+    EXPECT_EQ(static_cast<uint32_t>(CandidateRejectReason::INVALID_BASIC_BLOCK),
+              static_cast<uint32_t>(outcome.rejected.reason));
+    EXPECT_EQ(3, outcome.rejected.actual);
+    EXPECT_EQ(0, outcome.rejected.expected);
+}
+
+TEST(FagLegacyPolicyV1, FallbackSelectionPreservesCandidateRejectionHistory)
+{
+    SelectionResult current;
+    current.selected.variantId = VariantId::BN2S2;
+    CandidateRejected initialRejected;
+    initialRejected.variantId = VariantId::BN2;
+    initialRejected.reason = CandidateRejectReason::HEAD_DIM_UNSUPPORTED;
+    current.RecordRejection(initialRejected);
+
+    CandidateRejected plannedRejected;
+    plannedRejected.variantId = VariantId::BN2S2;
+    plannedRejected.stage = CandidateRejectStage::CORE_PARTITION;
+    plannedRejected.reason = CandidateRejectReason::INSUFFICIENT_CORE_UTILIZATION;
+    CandidatePlan fallback;
+    fallback.variantId = VariantId::BN2GS1S2;
+
+    const SelectionResult selected = LegacyPolicyV1::SelectFallbackAfterRejection(current, plannedRejected, fallback);
+    EXPECT_EQ(static_cast<uint32_t>(VariantId::BN2GS1S2), static_cast<uint32_t>(selected.selected.variantId));
+    EXPECT_EQ(FAG_RULE_LEGACY_INITIAL_BN2GS1S2, selected.winningRule);
+    ASSERT_EQ(2U, selected.GetRejectionCount());
+    EXPECT_EQ(static_cast<uint32_t>(VariantId::BN2), static_cast<uint32_t>(selected.GetRejection(0).variantId));
+    EXPECT_EQ(static_cast<uint32_t>(VariantId::BN2S2), static_cast<uint32_t>(selected.GetRejection(1).variantId));
+}
+
+TEST(FagLegacyPolicyV1, PlannedCandidateVerificationMatchesFrozenLegacyFallback)
+{
+    const VariantId variants[] = {VariantId::BN2_MULTI_BLOCK, VariantId::BN2, VariantId::BN2S2, VariantId::BN2GS1S2};
+    size_t variantMismatchCount = 0;
+    size_t deterministicMismatchCount = 0;
+    for (const VariantId variantId : variants) {
+        for (uint32_t mask = 0; mask < 32; ++mask) {
+            const bool corePartitionAvailable = (mask & 1U) != 0;
+            const uint32_t activeCoreCount = (mask & 2U) == 0 ? 31U : 32U;
+            const bool hasInvalidRow = (mask & 4U) != 0;
+            const bool hasInvalidColumn = (mask & 8U) != 0;
+            const bool deterministicRequested = (mask & 16U) != 0;
+            const LegacyPostPlanningDecision expected =
+                SelectWithFrozenLegacyPostPlanning(variantId, corePartitionAvailable, activeCoreCount, 32U,
+                                                   hasInvalidRow, hasInvalidColumn, deterministicRequested);
+
+            CandidatePlan initial;
+            initial.variantId = variantId;
+            initial.effectiveDeterministic =
+                variantId == VariantId::BN2 || variantId == VariantId::BN2_MULTI_BLOCK ? false : deterministicRequested;
+            PlannedCandidateVerificationInput input;
+            input.corePartitionAvailable = corePartitionAvailable;
+            input.activeCoreCount = activeCoreCount;
+            input.availableCoreCount = 32U;
+            input.hasInvalidRow = hasInvalidRow;
+            input.hasInvalidColumn = hasInvalidColumn;
+            const CandidateOutcome verified = PlannedCandidateVerifier::Verify(initial, input);
+
+            SelectionResult actual;
+            actual.selected = initial;
+            if (!verified.accepted) {
+                CandidatePlan fallback;
+                fallback.variantId = VariantId::BN2GS1S2;
+                fallback.effectiveDeterministic = deterministicRequested;
+                actual = LegacyPolicyV1::SelectFallbackAfterRejection(actual, verified.rejected, fallback);
+            } else {
+                actual.selected = verified.plan;
+            }
+            variantMismatchCount += expected.variantId != actual.selected.variantId;
+            deterministicMismatchCount += expected.effectiveDeterministic != actual.selected.effectiveDeterministic;
+        }
+    }
+    EXPECT_EQ(0U, variantMismatchCount);
+    EXPECT_EQ(0U, deterministicMismatchCount);
+}
+
 TEST(FagLegacyPolicyV1, InitialVariantSelectionDoesNotDependOnCandidateRegistrationOrder)
 {
     const InitialVariantLimits limits = MakeInitialVariantLimits();
@@ -250,6 +412,14 @@ TEST(FagLegacyPolicyV1, InitialVariantSelectionDoesNotDependOnCandidateRegistrat
     EXPECT_EQ(static_cast<uint32_t>(forwardResult.selected.variantId),
               static_cast<uint32_t>(reverseResult.selected.variantId));
     EXPECT_EQ(forwardResult.winningRule, reverseResult.winningRule);
+    ASSERT_EQ(forwardResult.GetRejectionCount(), reverseResult.GetRejectionCount());
+    ASSERT_EQ(2U, forwardResult.GetRejectionCount());
+    for (size_t index = 0; index < forwardResult.GetRejectionCount(); ++index) {
+        EXPECT_EQ(static_cast<uint32_t>(forwardResult.GetRejection(index).variantId),
+                  static_cast<uint32_t>(reverseResult.GetRejection(index).variantId));
+        EXPECT_EQ(static_cast<uint32_t>(forwardResult.GetRejection(index).reason),
+                  static_cast<uint32_t>(reverseResult.GetRejection(index).reason));
+    }
 }
 
 TEST(FagLegacyPolicyV1, InitialCandidatePlannerMatchesFrozenLegacyRoute)
@@ -314,6 +484,23 @@ TEST(FagRouteModel, RouteTracePreservesDecisionOrderAndReportsOverflow)
     EXPECT_EQ(3U, trace.GetDroppedDecisionCount());
     EXPECT_EQ(0, trace.GetDecision(0).before);
     EXPECT_EQ(static_cast<int64_t>(FAG_ROUTE_TRACE_CAPACITY), trace.GetDecision(FAG_ROUTE_TRACE_CAPACITY - 1U).after);
+}
+
+TEST(FagRouteModel, SelectionResultReportsRejectedCandidateOverflow)
+{
+    SelectionResult result;
+    CandidateRejected rejected;
+    rejected.variantId = VariantId::BN2;
+    for (size_t index = 0; index < FAG_CANDIDATE_REJECTION_CAPACITY + 2U; ++index) {
+        rejected.actual = static_cast<int64_t>(index);
+        result.RecordRejection(rejected);
+    }
+
+    EXPECT_EQ(FAG_CANDIDATE_REJECTION_CAPACITY, result.GetRejectionCount());
+    EXPECT_EQ(2U, result.GetDroppedRejectionCount());
+    EXPECT_EQ(0, result.GetRejection(0).actual);
+    EXPECT_EQ(static_cast<int64_t>(FAG_CANDIDATE_REJECTION_CAPACITY - 1U),
+              result.GetRejection(FAG_CANDIDATE_REJECTION_CAPACITY - 1U).actual);
 }
 
 TEST(FagRouteModel, RouteTraceFinalizesSelectedVariantAndKey)

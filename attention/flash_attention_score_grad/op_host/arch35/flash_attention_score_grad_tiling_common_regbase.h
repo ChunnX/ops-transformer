@@ -623,6 +623,7 @@ ge::graphStatus ProcessPseInfo(const gert::TilingContext *context_, FuzzyBaseInf
                                const char *inputLayout);
 void SetPseLayout(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SetSparseParams(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
+void ApplySelectedVariantPlan(FuzzyBaseInfoParamsRegbase &fBaseParams, const CandidatePlan &selectedPlan);
 void SetSplitAxis(FuzzyBaseInfoParamsRegbase &fBaseParams, const TndBaseInfo &tndBaseInfo, bool deterministicRequested,
                   RouteTrace *routeTrace = nullptr, SelectionResult *selectionResult = nullptr);
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams);
