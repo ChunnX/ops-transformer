@@ -588,13 +588,14 @@ if __name__ == "__main__":
     # 1. 解析参数, 构建 card_dirs 列表
     if len(sys.argv) < 4:
         logging.error(
-            "用法: python %s <dump_data_path> <file_num> <is_multi>", sys.argv[0]
+            "用法: python %s <dump_data_path> <file_num> <is_multi> [card_names]", sys.argv[0]
         )
         sys.exit(1)
 
     target_dir = os.path.realpath(sys.argv[1])
     file_num = int(sys.argv[2])
     is_multi = int(sys.argv[3])
+    card_names = sys.argv[4].split(",") if len(sys.argv) > 4 else []
     if not os.path.isdir(target_dir):
         logging.error("路径不存在: %s", target_dir)
         sys.exit(1)
@@ -607,7 +608,10 @@ if __name__ == "__main__":
     )
 
     if is_multi == 1:
-        card_dirs = [os.path.join(target_dir, str(i)) for i in range(file_num)]
+        if card_names:
+            card_dirs = [os.path.join(target_dir, name) for name in card_names]
+        else:
+            card_dirs = [os.path.join(target_dir, str(i)) for i in range(file_num)]
     else:
         card_dirs = [target_dir]
 
