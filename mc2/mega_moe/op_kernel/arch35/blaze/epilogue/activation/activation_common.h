@@ -32,13 +32,13 @@ constexpr uint32_t VECTOR_LENGTH_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float
 
 // 输入统一转换为 FP32，供各激活的寄存器计算流程使用。
 constexpr AscendC::MicroAPI::CastTrait CAST_INPUT_TO_FP32 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
 
 // 当前激活结果统一写入 BF16 UB；量化流程在激活之后独立执行。
 constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 
 /*
  * 激活直接调用接口所需的高层数据。
@@ -109,16 +109,15 @@ __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivati
     plan.outputRowStrideElements = args.outputRowStrideElements;
     plan.fullVectorLoopCountPerRow = args.validColumnCount / VECTOR_LENGTH_FP32;
     plan.tailElementCountPerRow = args.validColumnCount % VECTOR_LENGTH_FP32;
-    plan.outputPaddingElementCountPerRow = args.outputRowStrideElements > args.validColumnCount
-                                               ? args.outputRowStrideElements - args.validColumnCount
-                                               : 0U;
+    plan.outputPaddingElementCountPerRow = args.outputRowStrideElements > args.validColumnCount ?
+                                               args.outputRowStrideElements - args.validColumnCount :
+                                               0U;
     if (plan.tailElementCountPerRow > 0U) {
         plan.tailColumnOffsetElements = plan.fullVectorLoopCountPerRow * VECTOR_LENGTH_FP32;
         plan.tailComputeMaskElementCount = plan.tailElementCountPerRow;
         plan.needTailVectorCompute = 1U;
 
-        const uint32_t tailAndPaddingElementCount =
-            plan.tailElementCountPerRow + plan.outputPaddingElementCountPerRow;
+        const uint32_t tailAndPaddingElementCount = plan.tailElementCountPerRow + plan.outputPaddingElementCountPerRow;
         if (tailAndPaddingElementCount <= VECTOR_LENGTH_FP32) {
             plan.tailStoreMaskElementCount = tailAndPaddingElementCount;
         } else {
