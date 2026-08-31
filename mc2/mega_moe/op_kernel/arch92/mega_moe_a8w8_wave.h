@@ -384,8 +384,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
 
     int32_t gmTileSequence = 0;
     if (sharedExpertNum_ > 0U) {
-        // FIXME: CANN 9.1.0 CopyL0C2UB parameter mismatch, skip for now.
-        // ProcessSharedExpertGmm1(gmTileSequence);
+        ProcessSharedExpertGmm1(gmTileSequence);
     }
 
     CrossRankSyncInWorldSize();
