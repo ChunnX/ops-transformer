@@ -1518,9 +1518,7 @@ def _cast_mxfp8_p_to_e4m3(value):
     backend difference after preserving the normal E4M3 rounding result.
     """
     result = value.to(FP8_DTYPE).to(torch.float32)
-    overflow = torch.isfinite(value) & (
-        torch.abs(value) > E4M3_RINT_NAN_THRESHOLD
-    )
+    overflow = torch.isfinite(value) & (torch.abs(value) > E4M3_RINT_NAN_THRESHOLD)
     return result.masked_fill(overflow, float("nan"))
 
 
