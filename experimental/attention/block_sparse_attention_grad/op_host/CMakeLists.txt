@@ -42,4 +42,3 @@ if(NOT BUILD_OPS_RTY_KERNEL)
         ./arch35/block_sparse_attention_grad_tiling_arch35.cpp
     )
 endif()
-

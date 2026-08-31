@@ -22,19 +22,19 @@
 * ​计算公式​：
 
   稀疏块大小：$blockShapeX×blockShapeY$，BlockSparseMask指定稀疏模式。
-  
+
   已知正向计算公式为：
-  
+
   $$
   attentionOut=Softmax(Mask(scale⋅query⋅key_{sparse}^{T},  atten\_mask))⋅value_{sparse}
   $$
-  
+
   为方便表达，以变量$S$和$P$表示计算公式：
-  
+
   $$
   S = Mask(scale⋅query⋅key_{sparse}^{T},atten\_mask)
   $$
-  
+
   $$
   P = SoftMax(S)
   $$
@@ -46,7 +46,7 @@
   $$
   Out = PV
   $$
-  
+
   则反向计算公式为：
 
   $$
@@ -86,12 +86,11 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 
 * qInputLayout: "TND" "BNSD" "BSND"
 * kvInputLayout: "TND" "BNSD" "BSND"
-</ul>
 
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnBlockSparseAttentionGradGetWorkspaceSize(
@@ -396,7 +395,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -434,7 +433,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     </tr>
   </tbody></table>
 
-## aclnnBlockSparseAttentionGrad 
+## aclnnBlockSparseAttentionGrad
 
 * **参数说明：**
 
@@ -475,7 +474,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
 * **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -494,13 +493,12 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
   - actualSizeX ∈ [0, blockShapeX]，actualSizeY ∈ [0, blockShapeY]；块内 [actualSize, blockShape) 视为 padding，actualSize=0 表示该块不参与计算。
   - PerBlockSizeMask 仅在 blockSparseMaskOptional 对应块为 1 时生效（与块稀疏 mask 求 AND）。
   - 仅支持 ascend950 平台。
-</ul>
 
 * 不支持确定性计算场景。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp
 #include <iostream>
@@ -559,26 +557,26 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
             return -1;
         }
     }
-    
+
     auto size = GetShapeSize(shape) * sizeof(T);
-    
+
     // 检查hostData大小是否匹配
     if (hostData.size() != static_cast<size_t>(GetShapeSize(shape))) {
-        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n", 
+        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n",
                   hostData.size(), GetShapeSize(shape));
         return -1;
     }
-    
+
     // 调用aclrtMalloc申请device侧内存
     *deviceAddr = nullptr;
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    
+
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
               aclrtFree(*deviceAddr); *deviceAddr = nullptr; return ret);
-    
+
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
     if (shape.size() > 1) {
@@ -591,7 +589,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     *tensor = nullptr;
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                                 shape.data(), shape.size(), *deviceAddr);
-    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n"); 
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
               aclrtFree(*deviceAddr); *deviceAddr = nullptr; return -1);
     return 0;
 }
@@ -631,11 +629,11 @@ int main() {
     std::vector<op::fp16_t> qData(qSize, 0.1f);
     std::vector<op::fp16_t> kData(kvSize, 0.1f);
     std::vector<op::fp16_t> vData(kvSize, 0.1f);
-    
+
     // 梯度初始值可以给一个小正数
     std::vector<op::fp16_t> doutData(qSize, 0.01f);
     std::vector<op::fp16_t> outData(qSize, 0.1f);
-    
+
     // LSE给一个合理的正数，比如5.0f，这样exp(S - LSE)就是一个非常安全的负指数，绝对不会溢出
     std::vector<float> lseData(GetShapeSize(lseShape), 5.0f);
     std::vector<uint8_t> maskData(GetShapeSize(maskShape), 1);
@@ -644,7 +642,7 @@ int main() {
     void *qAddr = nullptr, *kAddr = nullptr, *vAddr = nullptr;
     void *doutAddr = nullptr, *outAddr = nullptr;
     void *lseAddr = nullptr, *maskAddr = nullptr;
-    
+
     aclTensor *qTensor = nullptr, *kTensor = nullptr, *vTensor = nullptr;
     aclTensor *doutTensor = nullptr, *outTensor = nullptr;
     aclTensor *lseTensor = nullptr, *maskTensor = nullptr;
@@ -654,7 +652,7 @@ int main() {
     CreateAclTensor(vData, kvShape, &vAddr, aclDataType::ACL_FLOAT16, &vTensor);
     CreateAclTensor(doutData, qShape, &doutAddr, aclDataType::ACL_FLOAT16, &doutTensor);
     CreateAclTensor(outData, qShape, &outAddr, aclDataType::ACL_FLOAT16, &outTensor);
-    
+
     CreateAclTensor(lseData, lseShape, &lseAddr, aclDataType::ACL_FLOAT, &lseTensor);     // 严格使用FP32
     CreateAclTensor(maskData, maskShape, &maskAddr, aclDataType::ACL_UINT8, &maskTensor); // 严格使用UINT8
 
@@ -662,7 +660,7 @@ int main() {
     std::vector<op::fp16_t> dqData(qSize, 0.0f);
     std::vector<op::fp16_t> dkData(kvSize, 0.0f);
     std::vector<op::fp16_t> dvData(kvSize, 0.0f);
-    
+
     void *dqAddr = nullptr, *dkAddr = nullptr, *dvAddr = nullptr;
     aclTensor *dqTensor = nullptr, *dkTensor = nullptr, *dvTensor = nullptr;
 
@@ -673,7 +671,7 @@ int main() {
     // 6. 创建aclIntArray属性参数(BlockShape & ActualSeqLengths)
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
-    
+
     std::vector<int64_t> qSeqLenVec(batch, static_cast<int64_t>(qSeqlen));
     std::vector<int64_t> kvSeqLenVec(batch, static_cast<int64_t>(kvSeqlen));
     aclIntArray *qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
@@ -685,7 +683,7 @@ int main() {
     int64_t maskType = 0;
     double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
     // 强制规定滑动窗口极大值
-    int64_t preTokens = 2147483647; 
+    int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
 
     // 8. 调用第一段接口: GetWorkspaceSize
@@ -694,28 +692,28 @@ int main() {
 
     LOG_PRINT("Calling aclnnBlockSparseAttentionGradGetWorkspaceSize...\n");
     ret = aclnnBlockSparseAttentionGradGetWorkspaceSize(
-        doutTensor, 
-        qTensor, 
-        kTensor, 
-        vTensor, 
-        outTensor, 
-        lseTensor, 
+        doutTensor,
+        qTensor,
+        kTensor,
+        vTensor,
+        outTensor,
+        lseTensor,
         maskTensor,                 // blockSparseMaskOptional
         nullptr,                    // attenMaskOptional必须为空
-        blockShapeArr, 
-        qSeqLenArr, 
-        kvSeqLenArr, 
-        qLayoutBuffer, 
-        kvLayoutBuffer, 
-        static_cast<int64_t>(numKvHeads), 
-        maskType, 
-        scaleValue, 
-        preTokens, 
-        nextTokens, 
-        dqTensor, 
-        dkTensor, 
-        dvTensor, 
-        &workspaceSize, 
+        blockShapeArr,
+        qSeqLenArr,
+        kvSeqLenArr,
+        qLayoutBuffer,
+        kvLayoutBuffer,
+        static_cast<int64_t>(numKvHeads),
+        maskType,
+        scaleValue,
+        preTokens,
+        nextTokens,
+        dqTensor,
+        dkTensor,
+        dvTensor,
+        &workspaceSize,
         &executor
     );
 
@@ -751,7 +749,7 @@ int main() {
     // 13. 释放所有资源
     LOG_PRINT("Cleaning up resources...\n");
     if (workspaceAddr) aclrtFree(workspaceAddr);
-    
+
     aclrtFree(qAddr); aclrtFree(kAddr); aclrtFree(vAddr);
     aclrtFree(doutAddr); aclrtFree(outAddr);
     aclrtFree(lseAddr); aclrtFree(maskAddr);
@@ -761,7 +759,7 @@ int main() {
     aclDestroyTensor(doutTensor); aclDestroyTensor(outTensor);
     aclDestroyTensor(lseTensor); aclDestroyTensor(maskTensor);
     aclDestroyTensor(dqTensor); aclDestroyTensor(dkTensor); aclDestroyTensor(dvTensor);
-    
+
     aclDestroyIntArray(blockShapeArr);
     aclDestroyIntArray(qSeqLenArr);
     aclDestroyIntArray(kvSeqLenArr);

@@ -255,8 +255,7 @@ protected:
                 return ge::GRAPH_FAILED;
             }
             if (maskShape.GetDim(0) != q_batch_num || maskShape.GetDim(1) != q_head_num) {
-                OP_LOGE(context_->GetNodeName(),
-                        "attenMaskOptional shape[0]/[1] must equal to batch_num/q_head_num.");
+                OP_LOGE(context_->GetNodeName(), "attenMaskOptional shape[0]/[1] must equal to batch_num/q_head_num.");
                 return ge::GRAPH_FAILED;
             }
         } else if (maskType != 0) {
@@ -319,12 +318,11 @@ protected:
             auto &maskShape = attenMaskOptional->GetStorageShape();
             if (maskShape.GetDim(0) != static_cast<int64_t>(batch_num_) ||
                 maskShape.GetDim(1) != static_cast<int64_t>(q_head_num_) ||
-                maskShape.GetDim(2) != static_cast<int64_t>(maxBlockNum) ||
-                maskShape.GetDim(3) != 2) {
+                maskShape.GetDim(2) != static_cast<int64_t>(maxBlockNum) || maskShape.GetDim(3) != 2) {
                 OP_LOGE(context_->GetNodeName(),
-                        "attenMaskOptional shape must be [%d, %d, %u, 2], got [%ld, %ld, %ld, %ld].",
-                        batch_num_, q_head_num_, maxBlockNum, maskShape.GetDim(0), maskShape.GetDim(1),
-                        maskShape.GetDim(2), maskShape.GetDim(3));
+                        "attenMaskOptional shape must be [%d, %d, %u, 2], got [%ld, %ld, %ld, %ld].", batch_num_,
+                        q_head_num_, maxBlockNum, maskShape.GetDim(0), maskShape.GetDim(1), maskShape.GetDim(2),
+                        maskShape.GetDim(3));
                 return ge::GRAPH_FAILED;
             }
             if (attenMaskOptional->GetDataType() != ge::DT_INT32) {
