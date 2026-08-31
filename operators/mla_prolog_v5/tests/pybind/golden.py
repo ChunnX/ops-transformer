@@ -9,17 +9,13 @@
 # -----------------------------------------------------------------------------------------------------------
 """mla_prolog_v5 CPU golden 实现（fp32）。
 
-公式（与 mla_prolog_v3 README 一致）：
-    cQ  = alpha_q  * RmsNorm(x @ Wdq, gamma_cq, eps)
-    qN  = per-head(cQ @ Wuq) @ Wuk
-    qR  = RoPE(cQ @ Wqr)
-    cKV = alpha_kv * RmsNorm(x @ Wdkv, gamma_ckv, eps)
-    kR  = RoPE(x @ Wkr)
-
-RoPE 语义（与 arch22 kernel service_rope_arch22.h 的奇偶拆分实现一致，
-且约定 ropeSin/ropeCos 每行 Dr 个元素、前后两半重复）：
-    out[2j]   = x[2j] * sin_j + x[2j+1] * cos_j
-    out[2j+1] = x[2j] * cos_j + x[2j+1] * sin_j
+关键布局契约（依据 kernel 实现与 NPU 实测标定，见 docs/LOG.md 2026-08-31 记录）：
+1. weight_uq_qr 的列布局为 **按头交错**：[Qc_h(D) | Qr_h(Dr)] × N（注意不是 [Wuq|Wqr] 分离拼接）。
+2. weight_dkv_kr 的列布局为 **分离**：[W_dkv(Hckv) | W_kr(Dr)]。
+3. RoPE：输入 x 视为 32 个 (x[2j], x[2j+1]) 旋转对；sin/cos 形状 (..., Dr) 且前后半重复
+   （标准 RoPE 频率表形态）；输出为 [前半分量 | 后半分量] 布局：
+       out[j]      = x[2j]*cos[j]   - x[2j+1]*sin[j]   (j < Dr/2)
+       out[Dr/2+j] = x[2j]*sin[j]   + x[2j+1]*cos[j]
 """
 
 import torch
@@ -32,25 +28,28 @@ def rmsnorm(x: torch.Tensor, gamma: torch.Tensor, eps: float) -> torch.Tensor:
 
 
 def rope(x: torch.Tensor, sin: torch.Tensor, cos: torch.Tensor) -> torch.Tensor:
-    """x/sin/cos: (..., Dr)，sin/cos 前后半重复布局。"""
+    """RoPE 旋转（kernel 语义，见模块 docstring 第 3 条）。
+
+    x: (..., Dr)；sin/cos: (..., Dr) 前后半重复。输出与 x 同形（[前半|后半] 布局）。
+    """
     d = x.shape[-1]
     half = d // 2
-    even = x[..., 0::2]  # (..., d/2) 偶数位
-    odd = x[..., 1::2]  # (..., d/2) 奇数位
+    a = x[..., 0::2]  # 偶数位 (..., d/2)
+    b = x[..., 1::2]  # 奇数位 (..., d/2)
     s = sin[..., :half]
     c = cos[..., :half]
     out = torch.empty_like(x)
-    out[..., 0::2] = even * s + odd * c
-    out[..., 1::2] = even * c + odd * s
+    out[..., :half] = a * c - b * s
+    out[..., half:] = a * s + b * c
     return out
 
 
 def mla_prolog_golden(
-    x: torch.Tensor,  # (T, He) bf16->fp32
+    x: torch.Tensor,  # (T, He)
     w_dq: torch.Tensor,  # (He, Hcq)
-    w_uq_qr: torch.Tensor,  # (Hcq, N*(D+Dr))
+    w_uq_qr: torch.Tensor,  # (Hcq, N*(D+Dr)) 按头交错 [Qc_h|Qr_h]
     w_uk: torch.Tensor,  # (N, D, Hckv)
-    w_dkv_kr: torch.Tensor,  # (He, Hckv+Dr)
+    w_dkv_kr: torch.Tensor,  # (He, Hckv+Dr) 分离 [W_dkv|W_kr]
     gamma_cq: torch.Tensor,  # (Hcq,)
     gamma_ckv: torch.Tensor,  # (Hckv,)
     rope_sin: torch.Tensor,  # (T, Dr) or None
@@ -68,21 +67,27 @@ def mla_prolog_golden(
 ) -> dict:
     """返回 dict: query(T,N,Hckv), query_rope(T,N,Dr), query_norm(T,Hcq), c_kv(T,Hckv), k_r(T,Dr)"""
     t = x.shape[0]
-    hckv_plus_dr = w_dkv_kr.shape[1]
 
-    # cQ
+    # cQ（下采样 + RmsNorm）
     cq = alpha_q * rmsnorm(x @ w_dq, gamma_cq, eps_cq)  # (T, Hcq)
-    # qN: cQ @ Wuq -> (T, N*D) -> per-head @ Wuk -> (T, N, Hckv)
-    w_uq = w_uq_qr[:, : n * d]  # (Hcq, N*D)
-    q_c = (cq @ w_uq).view(t, n, d)  # (T, N, D)
-    query = torch.einsum("tnd,ndh->tnh", q_c, w_uk.to(q_c.dtype))  # (T, N, Hckv)
-    # qR
-    w_qr = w_uq_qr[:, n * d :]  # (Hcq, N*Dr)
-    q_r = (cq @ w_qr).view(t, n, dr)  # (T, N, Dr)
+
+    # mm3：cQ @ W_uq_qr，结果列布局与权重一致（按头交错）
+    mm3 = cq @ w_uq_qr  # (T, N*(D+Dr))
+    mm3 = mm3.view(t, n, d + dr)
+    qc = mm3[:, :, :d]  # (T, N, D) 各头 Qc
+    qr = mm3[:, :, d:]  # (T, N, Dr) 各头 Qr
+
+    # query：per-head (Qc @ W_uk)
+    query = torch.einsum("tnd,ndh->tnh", qc, w_uk.to(qc.dtype))  # (T, N, Hckv)
+
+    # query_rope
     if do_rope:
-        query_rope = rope(q_r, rope_sin.unsqueeze(1), rope_cos.unsqueeze(1))
+        query_rope = rope(
+            qr, rope_sin.unsqueeze(1), rope_cos.unsqueeze(1)
+        )  # (T, N, Dr)
     else:
-        query_rope = q_r
+        query_rope = qr
+
     # cKV / kR
     w_dkv = w_dkv_kr[:, :hckv]  # (He, Hckv)
     w_kr = w_dkv_kr[:, hckv:]  # (He, Dr)

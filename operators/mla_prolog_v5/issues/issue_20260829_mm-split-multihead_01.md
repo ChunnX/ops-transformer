@@ -28,3 +28,30 @@
 1. 用 CANN kernel 调试工具（msdebug/simulator）dump mm3/mm4 中间结果，定位 20 核分块 bug。
 2. 在 910B（24 核）环境复跑同一用例，验证"核数差异"假设。
 3. 修正 golden 的 rope 布局假设后，将 kr/query_rope 纳入精度判据。
+
+---
+
+## ✅ 问题关闭（2026-08-31）：根因为测试 harness 权重布局构造错误，kernel 本身完全正确
+
+### 最终结论
+经内核级插桩（tiling 参数转储、mm3 workspace 区域转储、全核执行拓扑记录）逐层实证：
+
+1. **kernel 与 tiling 均正确**：kernel 侧 tiling 参数（mm3SingleCoreN=192 等）与 host 一致；
+   MatmulQcQr 以正确参数执行；mm3 输出布局严格跟随 weight_uq_qr 的列布局。
+2. **真正根因**：`weight_uq_qr` 的算子契约是**按头交错**列布局 `[Qc_h(D) | Qr_h(Dr)] × N`，
+   而测试 harness（golden.py/test.py）按数学直觉将其构造为分离布局 `[Wuq | Wqr]`。
+   mm3 输出因此呈分离布局，而消费者（mm4/RopeQr）按交错布局读取 → head≥1 输出错位。
+   "head 0 的 query 正确 + 最后一个 head 的 query_rope 正确"正是两种布局下重叠位置的精确特征。
+3. **"未使用 slot 被写入"为误报**：-12345 在 bf16 下舍入为 -12352，`== -12345` 判定必然失败。
+4. **rope 输出布局语义**（单位探针实证标定）：
+   `out[j<Dr/2] = x[2j]*cos[j] - x[2j+1]*sin[j]`，`out[Dr/2+j] = x[2j]*sin[j] + x[2j+1]*cos[j]`
+   （标准 RoPE 旋转对，输出为 [前半分量|后半分量] 布局；sin/cos 前后半重复）。
+
+### 修复（仅测试侧，kernel/tiling 保持源仓原样）
+- golden.py / test.py：weight_uq_qr 按头交错构造；golden 按交错布局提取 Qc/Qr；
+  rope 公式按实证语义修正；cache 初始标记改用 bf16 可精确表示值。
+- 排查过程中引入的全部 kernel/tiling 调试插桩已移除，vendored 代码还原为源仓原版。
+
+### 验证
+tests/pybind/test.py 全量 5/5 PASS（query / query_rope / query_norm / kv_cache / kr_cache
+全部输出、全部用例：TND、PA_BSND、3 维输入、do_rope 开关、scale 校正）。

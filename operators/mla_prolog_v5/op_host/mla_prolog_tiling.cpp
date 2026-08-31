@@ -461,11 +461,8 @@ ge::graphStatus MlaPrologTiling::FillMatmul3Tiling()
         // dequant流水掩盖场景，dimHeadSizeQc + dimHeadRope不跨核
         singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, baseShapeInfo_.dSize + baseShapeInfo_.drSize);
     } else {
-        // headnum * (dimHeadSizeQc + dimHeadRope) 合轴切。
-        // 对齐粒度取 (dimHeadSizeQc + dimHeadRope)：源仓在 24 核（910B）下按 16 对齐的分量恰为
-        // 头边界因子；910B3 为 20 核，按 16 对齐会得到 160 这类非头边界倍数的分块，导致
-        // mm3/mm4 头跨界错误（head>=1 输出错）。此处按头边界对齐以适配 910B3 核数。
-        singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, baseShapeInfo_.dSize + baseShapeInfo_.drSize);
+        // headnum * (dimHeadSizeQc + dimHeadRope) 合轴切
+        singlecoreHeadSizeQcQr_ = CalcSingleCoreN(oriM, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     }
     mm3BlockNum_ = CeilDiv(oriM, singlecoreHeadSizeQcQr_);
 

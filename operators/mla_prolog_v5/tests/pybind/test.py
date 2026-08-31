@@ -7,7 +7,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""mla_prolog_v5 pybind 接口测试：NPU 实际运行 + CPU golden 比对。
+"""mla_prolog_v5 pybind 接口测试：NPU 实际运行 + CPU golden 全量比对。
+
+关键输入构造契约（与 kernel 实现一致，详见 golden.py 模块 docstring）：
+- weight_uq_qr 按头交错：[Qc_h(D) | Qr_h(Dr)] × N
+- weight_dkv_kr 分离：[W_dkv(Hckv) | W_kr(Dr)]
+- rope_sin/rope_cos 形状 (T, Dr)（3 维输入为 (B,S,Dr)），前后半重复布局
 
 运行前置：
   bash build.sh --soc=ascend910b --install      # 编译+安装算子包
@@ -47,29 +52,27 @@ HCKV = 512
 DR = 64
 NKV = 1
 BLOCK_SIZE = 128
-CACHE_INIT_MARK = -12345.0
+# bf16 可精确表示的 cache 初始标记值（避免 bf16 舍入导致校验误报）
+CACHE_INIT_MARK = -12352.0
 
 # bf16 输出比对容差（kernel bf16 计算 vs golden fp32）
-RTOL = 2e-2  # bf16 相对精度约 0.4%，预留 2% 余量
-ATOL = 5e-2  # bf16 输出值域 O(1~5)，绝对误差余量
+RTOL = 2e-2
+ATOL = 5e-2
 
 
 def compare(name: str, out: torch.Tensor, ref: torch.Tensor) -> bool:
     out_f = out.float().cpu()
     ref_f = ref.float().cpu()
     diff = (out_f - ref_f).abs()
-    tol = atol = ATOL + RTOL * ref_f.abs()
+    tol = ATOL + RTOL * ref_f.abs()
     bad = diff > tol
     num_bad = int(bad.sum())
     total = ref_f.numel()
     max_abs = float(diff.max()) if total else 0.0
-    denom = ref_f.abs().clamp_min(1e-6)
-    max_rel = float((diff / denom).max()) if total else 0.0
     ok = num_bad == 0
     status = "PASS" if ok else "FAIL"
     print(
-        f"    [{status}] {name}: shape={tuple(out.shape)}, max_abs_err={max_abs:.6f}, "
-        f"max_rel_err={max_rel:.6f}, bad={num_bad}/{total}"
+        f"    [{status}] {name}: shape={tuple(out.shape)}, max_abs_err={max_abs:.6f}, bad={num_bad}/{total}"
     )
     if not ok:
         idx = bad.nonzero()[:3]
@@ -82,27 +85,34 @@ def compare(name: str, out: torch.Tensor, ref: torch.Tensor) -> bool:
 
 
 def gen_sin_cos(t: int, device):
-    """生成前后半重复布局的 rope sin/cos（(T, Dr)，bf16）。"""
+    """生成前后半重复布局的 rope sin/cos（(T, Dr)，bf16 设备张量 + fp32 CPU 参照）。"""
     theta = torch.arange(DR // 2, dtype=torch.float32)
     inv = 1.0 / (10000.0 ** (2.0 * theta / DR))
     pos = torch.arange(t, dtype=torch.float32).unsqueeze(1)
     s_half = torch.sin(pos * inv)  # (T, Dr/2)
     c_half = torch.cos(pos * inv)
-    sin = torch.cat([s_half, s_half], dim=-1).to(device).to(torch.bfloat16)
-    cos = torch.cat([c_half, c_half], dim=-1).to(device).to(torch.bfloat16)
-    return (
-        sin,
-        cos,
-        torch.cat([s_half, s_half], dim=-1),
-        torch.cat([c_half, c_half], dim=-1),
-    )
+    sin_cpu = torch.cat([s_half, s_half], dim=-1)
+    cos_cpu = torch.cat([c_half, c_half], dim=-1)
+    sin = sin_cpu.to(device).to(torch.bfloat16)
+    cos = cos_cpu.to(device).to(torch.bfloat16)
+    return sin, cos, sin_cpu, cos_cpu
 
 
 def make_nz(weight_2d: torch.Tensor, device):
-    """CPU 2D 权重 -> NPU FRACTAL_NZ tensor。返回 (npu_nz_tensor, cpu_ref)。"""
+    """CPU 2D 权重 -> NPU FRACTAL_NZ tensor。"""
     t = weight_2d.to(device).to(torch.bfloat16).contiguous()
-    t_nz = torch_npu.npu_format_cast(t, 29)  # 29 = ACL_FORMAT_FRACTAL_NZ
-    return t_nz
+    return torch_npu.npu_format_cast(t, 29)  # 29 = ACL_FORMAT_FRACTAL_NZ
+
+
+def gen_weights(n: int, d: int):
+    """生成 CPU fp32 权重。w_uq_qr 按头交错 [Qc_h|Qr_h]；w_dkv_kr 分离 [W_dkv|W_kr]。"""
+    w_dq = torch.randn(HE, HCQ) * (1.0 / HE**0.5)
+    wuq = torch.randn(HCQ, n, d) * (1.0 / HCQ**0.5)
+    wqr = torch.randn(HCQ, n, DR) * (1.0 / HCQ**0.5)
+    w_uq_qr = torch.cat([wuq, wqr], dim=2).view(HCQ, n * (d + DR)).contiguous()
+    w_uk = torch.randn(n, d, HCKV) * (1.0 / d**0.5)
+    w_dkv_kr = torch.randn(HE, HCKV + DR) * (1.0 / HE**0.5)
+    return w_dq, w_uq_qr, w_uk, w_dkv_kr
 
 
 def run_case(
@@ -126,18 +136,13 @@ def run_case(
 
     # ---------- CPU golden 输入（fp32）----------
     x_cpu = torch.randn(t_len, HE, dtype=torch.float32) * 0.5
-    w_dq_cpu = torch.randn(HE, HCQ, dtype=torch.float32) * (1.0 / HE**0.5)
-    w_uq_qr_cpu = torch.randn(HCQ, N * (D + DR), dtype=torch.float32) * (1.0 / HCQ**0.5)
-    w_uk_cpu = torch.randn(N, D, HCKV, dtype=torch.float32) * (1.0 / D**0.5)
-    w_dkv_kr_cpu = torch.randn(HE, HCKV + DR, dtype=torch.float32) * (1.0 / HE**0.5)
+    w_dq_cpu, w_uq_qr_cpu, w_uk_cpu, w_dkv_kr_cpu = gen_weights(N, D)
     gamma_cq_cpu = torch.ones(HCQ, dtype=torch.float32)
     gamma_ckv_cpu = torch.ones(HCKV, dtype=torch.float32)
 
     sin_cpu = cos_cpu = None
     if do_rope:
         _, _, sin_cpu, cos_cpu = gen_sin_cos(t_len, "cpu")
-        sin_cpu = sin_cpu.float()
-        cos_cpu = cos_cpu.float()
 
     golden = mla_prolog_golden(
         x_cpu,
@@ -227,52 +232,41 @@ def run_case(
     )
     torch.npu.synchronize()
 
-    # ---------- 比对 ----------
+    # ---------- 全量比对 ----------
     ok = True
-    # ---- 已验证正确项（计入判定）----
+    ok &= compare("query", query, golden["query"].view(query.shape))
+    ok &= compare("query_rope", query_rope, golden["query_rope"].view(query_rope.shape))
     if query_norm_flag:
         ok &= compare(
             "query_norm", query_norm, golden["query_norm"].view(query_norm.shape)
         )
-    # ---- 已知限制项（不计入判定，仅打印供参考）----
-    compare("[known-limit] query", query, golden["query"].view(query.shape))
-    compare(
-        "[known-limit] query_rope",
-        query_rope,
-        golden["query_rope"].view(query_rope.shape),
-    )
 
-    # cache 比对：cacheIndex 指定 slot 的 kv 值（已验证正确）计入判定；
-    # kr（rope 布局语义待修正）与"未使用 slot 被写"（已知现象）不计入。
     kv_npu = kv_cache.float().cpu()
     kr_npu = kr_cache.float().cpu()
     if cache_mode == "TND":
         ok &= compare("kv_cache", kv_npu.view(t_len, HCKV), golden["c_kv"])
-        compare("[known-limit] kr_cache", kr_npu.view(t_len, DR), golden["k_r"])
+        ok &= compare("kr_cache", kr_npu.view(t_len, DR), golden["k_r"])
     else:
         kv_flat = kv_npu.view(-1, HCKV)
         kr_flat = kr_npu.view(-1, DR)
         idx = cache_index.long().cpu().view(-1)
         ok &= compare("kv_cache[slots]", kv_flat[idx], golden["c_kv"])
-        compare("[known-limit] kr_cache[slots]", kr_flat[idx], golden["k_r"])
+        ok &= compare("kr_cache[slots]", kr_flat[idx], golden["k_r"])
+        # 未写入槽位应保持初始标记（bf16 精确表示值）
         mask = torch.ones(kv_flat.shape[0], dtype=torch.bool)
         mask[idx] = False
-        untouched_ok = bool((kv_flat[mask] == CACHE_INIT_MARK).all())
-        print(
-            f"    [known-limit] untouched slots keep init value: {untouched_ok} ({int(mask.sum())} slots)"
+        untouched_ok = bool((kv_flat[mask] == CACHE_INIT_MARK).all()) and bool(
+            (kr_flat[mask] == CACHE_INIT_MARK).all()
         )
+        print(
+            f"    [{'PASS' if untouched_ok else 'FAIL'}] untouched slots keep init value "
+            f"({int(mask.sum())} slots)"
+        )
+        ok &= untouched_ok
     return ok
 
 
 def main():
-    # 说明：当前算子在 910B3（20 核）上的已知限制（详见 issues/）：
-    #   1) 多头（N>=2）时 query/query_rope 的 head>=1 输出与 golden 不一致（vendored kernel 的
-    #      mm3/mm4 多核分块在 20 核下的行为，源仓原样迁移未改动）；
-    #   2) rope 开启时 kr_cache/query_rope 的存储布局与标准 interleaved 假设不同（pos=0 语义已
-    #      单点验证正确），golden 公式待后续按 kernel 语义修正；
-    #   3) PA 模式下未使用的 cache slot 也会被写入。
-    # 因此验证分层：执行链路 + 已验证正确的输出（rmsnorm 链路：query_norm/kv_cache 值，
-    # do_rope=False 的 kr_cache，以及 cacheIndex 指定 slot 的 kv 值）。
     results = {}
     results["TND_bf16_fused"] = run_case(
         "TND_bf16_fused", token_shape=(128, HE), cache_mode="TND"

@@ -34,8 +34,10 @@
 |------|------|----------|------|
 | A. 需求分析+精简方案 | ✅ | 2026-08-29 | REQUIREMENTS.md / DESIGN.md 产出，依赖闭包採查完成 |
 | B. 编码迁移 + pybind 打通 | ✅ | 2026-08-29 | 编译/安装/调用链路全通，详见开发记录 |
-| C. 测试验证（Python 接口 + NPU 精度） | ✅ | 2026-08-29 | tests/pybind/test.py 5/5 PASS（分层验证） |
-| 收尾：pre-commit + commit | ✅ | 2026-08-29 | pre-commit 全 Passed（含 OAT/clang-format），commit 0d3921f92 |
+| C. 测试验证（Python 接口 + NPU 精度） | ✅ | 2026-08-29 | 当时按分层验证（后证实分层不必要，见 D/E） |
+| D. 多头输出问题攻坚 | ✅ | 2026-08-31 | 根因确证：测试 harness 权重布局错误，kernel 正确；插桩全移除 |
+| E. 全量精度验证 | ✅ | 2026-08-31 | test.py 全输出全用例 5/5 PASS |
+| 收尾：pre-commit + commit | ✅ | 2026-08-29/31 | 0d3921f92 / 3d423a4c0 + 本轮提交 |
 
 ## 交付物清单
 
@@ -66,6 +68,12 @@
   "not null"校验失败）；③ **attr float 错配**（API double 形参直接传 OP_ATTR，被按 def Float(4B) 解释成
   巨值 → rmsnorm 输出全 0；scale 用例出现 1e24 量级误差）→ 显式转 float（与 opbuild 生成 Inner 一致），
   修复后 query_norm/kv_cache 全量精确 PASS；④ 910B3 适配：tiling mm3 分块按头边界 (D+Dr) 对齐。
-  最终 tests/pybind/test.py 5/5 PASS（分层验证：rmsnorm 链路 query_norm/kv_cache 数值精确，
-  do_rope=False 的 kr_cache 精确；多头 query/query_rope 的 head≥1 已知问题记录于 issues/，
-  系 vendored kernel mm3/mm4 在 910B3（20 核）多核分块行为，需 kernel 级调试后续跟进）。
+  当时 tests/pybind/test.py 分层验证 5/5 PASS（rmsnorm 链路数值精确）。
+- 2026-08-31 阶段D/E（多头输出问题攻坚 → 全量验证）：对"多头 query/query_rope head≥1 错误"进行
+  内核级插桩实证（kernel 转储 tiling 参数 / mm3 workspace 区域 / 全核执行拓扑），确认 kernel 与
+  tiling 全部正确，mm3 输出布局严格跟随 weight_uq_qr 列布局 → **真正根因：测试 harness 将
+  weight_uq_qr 构造为分离布局 [Wuq|Wqr]，而算子契约为按头交错 [Qc_h|Qr_h]×N**；同时实证标定
+  rope 输出布局语义（[前半|后半] 分量布局的标准旋转公式）；"未用 slot 被写"系 bf16 舍入误报
+  （-12345→-12352）。修复 golden.py/test.py 后全量 5/5 PASS（全部输出、全部用例）。
+  排查用全部插桩已移除，kernel/tiling vendored 代码还原为源仓原版（零逻辑改动）。详见
+  issues/issue_20260829_mm-split-multihead_01.md 的关闭结论。
