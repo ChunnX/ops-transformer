@@ -1902,22 +1902,9 @@ void MoeInitRoutingV3TilingArch35::ComputeUseGatherCopy()
 
 void MoeInitRoutingV3TilingArch35::Tiling4TopkWeightOut()
 {
-    if (isInputTopkWeight_ == 0) {
-        tilingDataPtr_->topkWeightOutPerCorePerLoopElements = 0;
-        return;
-    }
-
-    int64_t splitBase = totalLength_;
-    int64_t perCoreElements = Ops::Base::CeilDiv(splitBase, aivCoreNum_);
-
-    // TopkWeightOut使用独立TPipe，UB全部可用。
-    // kernel侧UB占用: topkWeightCopyInQueue_固定32字节 + rowIdxCopyInQueue_双缓冲每元素8字节(2*4)
-    int64_t fixedBuffer = AlignBytes(1, static_cast<int64_t>(sizeof(float)));
-    int64_t perElementSize = DOUBLE_BUFFER * static_cast<int64_t>(sizeof(int32_t));
-    int64_t perLoopMaxElements = (availUbSize_ - fixedBuffer) / perElementSize;
-    int64_t perCorePerLoopElements = std::min(perLoopMaxElements, perCoreElements);
-
-    tilingDataPtr_->topkWeightOutPerCorePerLoopElements = perCorePerLoopElements;
+    // The SIMT topk rearrangement accesses GM directly and allocates no UB queue. Keep the
+    // serialized field for ABI compatibility, but explicitly record zero UB consumption.
+    tilingDataPtr_->topkWeightOutPerCorePerLoopElements = 0;
 }
 
 void MoeInitRoutingV3TilingArch35::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)
