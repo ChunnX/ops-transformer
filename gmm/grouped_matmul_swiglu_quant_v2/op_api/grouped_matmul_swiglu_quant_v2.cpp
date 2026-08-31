@@ -45,7 +45,26 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     L0_DFX(GroupedMatmulSwigluQuantV2, x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale,
            groupList, dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, tuningConfigOptional);
     if (x == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x is nullptr.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "x", "does not support nullptr");
+        return std::tuple(nullptr, nullptr);
+    }
+    if (xScale == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "xScale", "does not support nullptr");
+        return std::tuple(nullptr, nullptr);
+    }
+    if (weightScale == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "weightScale",
+                                                 "does not support nullptr");
+        return std::tuple(nullptr, nullptr);
+    }
+    if (weightScale->Size() == 0) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "weightScale",
+                                                 "does not support empty tensor list");
+        return std::tuple(nullptr, nullptr);
+    }
+    if ((*weightScale)[0] == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "weightScale[0]",
+                                                 "does not support nullptr");
         return std::tuple(nullptr, nullptr);
     }
     int64_t m = xScale->GetViewShape().GetDim(0);
@@ -84,6 +103,14 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
         // 当quantMode等于2时，outScale的DataType为FLOAT8_E8M0
         scaleOut = quantMode == 2 ? executor->AllocTensor(scaleOutShapeV2, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND) :
                                     executor->AllocTensor(scaleOutShapeV2, DataType::DT_FLOAT, ge::FORMAT_ND);
+    }
+    if (out == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmulSwigluQuantV2 out failed.");
+        return std::tuple(nullptr, nullptr);
+    }
+    if (scaleOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmulSwigluQuantV2 scaleOut failed.");
+        return std::tuple(nullptr, nullptr);
     }
     auto ret = INFER_SHAPE(GroupedMatmulSwigluQuantV2,
                     OP_INPUT(x, xScale, groupList, weight, weightScale, weightAssistanceMatrix, bias, smoothScale),
