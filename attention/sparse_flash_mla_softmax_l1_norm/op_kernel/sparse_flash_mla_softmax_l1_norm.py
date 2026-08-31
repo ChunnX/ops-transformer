@@ -16,7 +16,6 @@ from dataclasses import dataclass
 import pypto_pro.language as pl
 from pypto_pro.runtime.tilingkey import TilingKeyField
 
-
 # ================================================================
 #  Tile dimensions and constants
 # ================================================================
@@ -1002,9 +1001,7 @@ def sparse_flash_mla_softmax_l1_norm(
     init_start_offset = tiling.init_per_core_num * (core_id * 2 + sub_id)
     init_end_offset = init_start_offset + tiling.init_per_core_num
     init_end_offset = (
-        tiling.init_total_num
-        if init_end_offset > tiling.init_total_num
-        else init_end_offset
+        min(init_end_offset, tiling.init_total_num)
     )
     init_per_loop_num = 8 * 1024
     init_num = init_per_loop_num

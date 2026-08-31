@@ -286,7 +286,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKV(const GlobalTensor<I
     }
 
     for (i = curBlk; i < curBlk + curActualSelCntOffset / 2 * 2; i += 2) {
-int32_t indices1 = useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOffset + i);
+        int32_t indices1 = useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOffset + i);
         int32_t indices2 = useUbTopk ? topkUb.GetValue(i + 1) : topkIndicesGm.GetValue(gmOffset + i + 1);
         if (unlikely(indices1 < 0 || indices1 >= runInfo.actualSelectedBlockCount)) {
             break;
@@ -339,10 +339,10 @@ int32_t indices1 = useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOff
                     keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset1 * constInfo.n2Size * constInfo.dRopeSize],
                     intriParamsRope, padParams);
                 if (multiCopy) {
-                    DataCopyPad(
-                        gatherRopeTensor[constInfo.selectedBlockSize * constInfo.dRopeSize],
-                        keyRopeGm[runInfo.commonRunInfo.kRopeOffset + keyOffset2 * constInfo.n2Size * constInfo.dRopeSize],
-                        intriParamsRope, padParams);
+                    DataCopyPad(gatherRopeTensor[constInfo.selectedBlockSize * constInfo.dRopeSize],
+                                keyRopeGm[runInfo.commonRunInfo.kRopeOffset +
+                                          keyOffset2 * constInfo.n2Size * constInfo.dRopeSize],
+                                intriParamsRope, padParams);
                 }
             } else {
                 intriParamsRope.blockCount = multiCopy ? 2 : 1;
@@ -399,8 +399,9 @@ int32_t indices1 = useUbTopk ? topkUb.GetValue(i) : topkIndicesGm.GetValue(gmOff
             // CopyOut
             DataCopyPad(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + outWsOffset], gatherTensor, outParamK);
             if constexpr (IS_ROPE) {
-                DataCopyPad(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + constInfo.commonConstInfo.dSize + outWsOffset],
-                            gatherRopeTensor, outParamRope);
+                DataCopyPad(
+                    selectedKWorkSpaceGm[runInfo.kSelectedWsAddr + constInfo.commonConstInfo.dSize + outWsOffset],
+                    gatherRopeTensor, outParamRope);
             }
         }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
@@ -629,7 +630,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
         for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
             int32_t s2Idx = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>(loop * UB_ROW_SIZE + row)) :
                                         topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
-            if (s2Idx >= 0) {
+            if (s2Idx >= 0 && s2Idx < runInfo.actualSelectedBlockCount) {
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[dkOff + row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
@@ -656,7 +657,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
     for (int64_t row = 0; row < tailRows; row++) {
         int32_t s2Idx = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>((maxLoops - 1) * UB_ROW_SIZE + row)) :
                                     topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
-        if (s2Idx >= 0) {
+        if (s2Idx >= 0 && s2Idx < runInfo.actualSelectedBlockCount) {
             SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[dkOff + row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
@@ -737,7 +738,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
         }
         int32_t s2IdxLocal[8];
         for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-s2IdxLocal[row] = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>(loop * UB_ROW_SIZE + row)) :
+            s2IdxLocal[row] = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>(loop * UB_ROW_SIZE + row)) :
                                           topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
         }
         for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
@@ -781,7 +782,7 @@ s2IdxLocal[row] = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>(loop * UB_RO
     }
     int32_t s2IdxTail[8];
     for (int64_t row = 0; row < tailRows; row++) {
-s2IdxTail[row] = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>((maxLoops - 1) * UB_ROW_SIZE + row)) :
+        s2IdxTail[row] = useUbTopk ? topkUb.GetValue(static_cast<uint32_t>((maxLoops - 1) * UB_ROW_SIZE + row)) :
                                      topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
     }
     for (int64_t row = 0; row < tailRows; row++) {
@@ -903,7 +904,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             }
             int32_t s2IdxLocal[8];
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-s2IdxLocal[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+                s2IdxLocal[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
             }
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 int32_t s2Idx = s2IdxLocal[row];
@@ -949,7 +950,7 @@ s2IdxLocal[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
         }
         int32_t s2IdxTail[8];
         for (int64_t row = 0; row < tailRows; row++) {
-s2IdxTail[row] = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+            s2IdxTail[row] = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
         }
         for (int64_t row = 0; row < tailRows; row++) {
             int32_t s2Idx = s2IdxTail[row];
