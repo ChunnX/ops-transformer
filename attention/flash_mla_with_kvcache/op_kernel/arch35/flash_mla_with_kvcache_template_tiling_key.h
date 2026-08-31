@@ -19,11 +19,11 @@
  * metadata 各 section mLen>0 驱动，见 kernel 入口注释）。
  *
  * 实例化集合（SEL 笛卡尔积 × 2 dtype）：
- *   InOutLayoutType ∈ {BSND, BNSD, TND}                  (3, 无输出转置)
+ *   InOutLayoutType ∈ {BSND, BNSD, TND, TND_NTD}           (4, TND_NTD 为 TND→NTD 输出转置)
  *   KvLayoutType    ∈ {PA_BBND, PA_BNBD, PA_NZ}          (3, 仅 PA 分页)
  *   HasAttenMask    ∈ {false, true}                       (2)
  *   Config          ∈ {0: S1=64/S2=128/D=576/DV=512}      (1, MLA 唯一配置)
- *   ⇒ 18 组合/ dtype × {half, bfloat16_t}（ORIG_DTYPE_* 编译宏）= 36 个 kernel 实例。
+ *   ⇒ 24 组合/ dtype × {half, bfloat16_t}（ORIG_DTYPE_* 编译宏）= 48 个 kernel 实例。
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_TEMPLATE_TILING_KEY_H_
@@ -58,8 +58,10 @@ ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
                       // InOutLayoutType（位宽 8-bit，key 位 7-0）
                       //    0: InOutLayoutType_BSND （q=BSND）
                       //    1: InOutLayoutType_BNSD （q=BNSD）
-                      //    2: InOutLayoutType_TND  （q=TND；无输出转置，out 布局恒等于 q）
-                      ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2),
+                      //    2: InOutLayoutType_TND  （q=TND, out=TND）
+                      //    3: （预留，flash_attn 的 BNSD_BSND，MLA 未使用）
+                      //    4: InOutLayoutType_TND_NTD（q=TND, out=NTD 输出转置）
+                      ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4),
                       // KvLayoutType（位宽 8-bit，key 位 15-8）
                       //    0: KvLayoutType_NO_PA   （不实例化：连续 KV 从未被 MLA 跑过）
                       //    1: KvLayoutType_PA_BBND
@@ -76,7 +78,8 @@ ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
                       ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 0), );
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
-                                                          InOutLayoutType_BNSD, InOutLayoutType_TND),
+                                                          InOutLayoutType_BNSD, InOutLayoutType_TND,
+                                                          InOutLayoutType_TND_NTD),
                                      ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_PA_BBND,
                                                           KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ),
                                      ASCENDC_TPL_BOOL_SEL(HasAttenMask, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE,

@@ -93,13 +93,15 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableSparseLayoutCheckMla()
         return false;
     }
     // layout 约束（宽矩阵，与 common_checker 的 SinglePara 布局路由一致）:
-    // q ∈ {TND, BNSD, BSND}；out 必须与 q 同布局（不支持转置）；
+    // q ∈ {TND, BNSD, BSND}；out 必须与 q 同布局，或 TND→NTD 输出转置；
     // kv 仅分页布局: PA_NZ / PA_BNBD / PA_BBND，连续 KV 永不放行
     if (faInfo_->qLayout != FlashMlaWithKvcacheLayout::TND && faInfo_->qLayout != FlashMlaWithKvcacheLayout::BNSD &&
         faInfo_->qLayout != FlashMlaWithKvcacheLayout::BSND) {
         return false;
     }
-    if (faInfo_->outLayout != faInfo_->qLayout) { // out 必须与 q 一致，不支持转置
+    const bool tndToNtd =
+        (faInfo_->qLayout == FlashMlaWithKvcacheLayout::TND && faInfo_->outLayout == FlashMlaWithKvcacheLayout::NTD);
+    if (faInfo_->outLayout != faInfo_->qLayout && !tndToNtd) {
         return false;
     }
     if (faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_NZ &&
@@ -290,11 +292,14 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyConfig()
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyLayout()
 {
-    // q 布局 -> InOutLayoutType（取值以 op_kernel/utils/flash_mla_with_kvcache_common_def.h
-    // 为准，数值对齐 flash_attn：BSND=0 / BNSD=1 / TND=2；out 布局恒等于 q，无输出转置，
-    // 不占独立键位）
+    // q/out 布局 -> InOutLayoutType（取值以 op_kernel/utils/flash_mla_with_kvcache_common_def.h
+    // 为准，数值对齐 flash_attn：BSND=0 / BNSD=1 / TND=2 / TND_NTD=4）
     if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::TND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_TND;
+        if (faInfo_->outLayout == FlashMlaWithKvcacheLayout::NTD) {
+            tilingKeyInfo_.inputLayout = InOutLayoutType_TND_NTD;
+        } else {
+            tilingKeyInfo_.inputLayout = InOutLayoutType_TND;
+        }
     } else if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::BSND) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_BSND;
     } else if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::BNSD) {

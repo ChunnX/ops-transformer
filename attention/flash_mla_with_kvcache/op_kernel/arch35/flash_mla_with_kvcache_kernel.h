@@ -179,8 +179,6 @@ public:
         constInfo_.actualSeqLenKVSize = flashMlaWithKvcacheBaseParams.actualSeqLengthsKVSize;
         constInfo_.scaleValue = flashMlaWithKvcacheBaseParams.scaleValue;
         constInfo_.coreNum = flashMlaWithKvcacheBaseParams.coreNum;
-        constInfo_.outputLayout =
-            static_cast<FLASH_MLA_WITH_KVCACHE_LAYOUT>(flashMlaWithKvcacheBaseParams.outputLayout);
 
         constInfo_.keyStrides.bnStride = flashMlaWithKvcacheBaseParams.keyStrides.bnStride;
         constInfo_.keyStrides.n2Stride = flashMlaWithKvcacheBaseParams.keyStrides.n2Stride;

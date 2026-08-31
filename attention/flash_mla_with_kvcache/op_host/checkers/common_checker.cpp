@@ -57,7 +57,8 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTi
     const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {
         FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD};
     const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {
-        FlashMlaWithKvcacheLayout::TND, FlashMlaWithKvcacheLayout::BNSD, FlashMlaWithKvcacheLayout::BSND};
+        FlashMlaWithKvcacheLayout::TND, FlashMlaWithKvcacheLayout::BNSD, FlashMlaWithKvcacheLayout::BSND,
+        FlashMlaWithKvcacheLayout::NTD};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) == supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q", LayoutToSerialString(faInfo.qLayout).c_str(),
@@ -311,7 +312,7 @@ struct LayoutConstraintConfig {
 };
 
 // kv 侧只接受 paged 布局（仅 PA 分页，KvLayoutType 0 连续 KV 永不放行）：
-// 三个 PA 布局。out 列恒等于 q（不支持转置）。
+// 三个 PA 布局。out 列恒等于 q，或 TND→NTD 输出转置。
 static const std::map<FlashMlaWithKvcacheLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
     {FlashMlaWithKvcacheLayout::BNSD,
      {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD},
@@ -321,7 +322,7 @@ static const std::map<FlashMlaWithKvcacheLayout, LayoutConstraintConfig> LAYOUT_
       {FlashMlaWithKvcacheLayout::BSND}}},
     {FlashMlaWithKvcacheLayout::TND,
      {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND, FlashMlaWithKvcacheLayout::PA_BNBD},
-      {FlashMlaWithKvcacheLayout::TND}}},
+      {FlashMlaWithKvcacheLayout::TND, FlashMlaWithKvcacheLayout::NTD}}},
 };
 
 ge::graphStatus CommonChecker::CheckMultiParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)

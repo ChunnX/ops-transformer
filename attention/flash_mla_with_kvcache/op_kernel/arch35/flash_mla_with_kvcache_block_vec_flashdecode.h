@@ -112,8 +112,10 @@ protected:
     SeqLensToolType &seqLensTool_;
 
     static constexpr GmFormat OUT_FORMAT = GetQueryGmFormat<LAYOUT_OUT>();
-    using FaGmTensorOut =
-        FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, (LAYOUT_OUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND)>;
+    // WITH_ZERO_HEAD 由 q 布局决定（parser 来自 q 侧 cu_seqlens，TND 带首零头）；
+    // TND→NTD 转置时 LAYOUT_OUT=NTD 但 LAYOUT_T 仍为 TND，需按 LAYOUT_T 取 true 以匹配
+    // seqLensTool_.qActSeqLensParser（ActualSeqLensParser<ACCUM, SEQLEN_T, true>）。
+    using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND)>;
     FaGmTensorOut outGmTensor_;
     CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
 

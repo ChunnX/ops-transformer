@@ -15,8 +15,8 @@
  *        结构完全对齐 flash_attn.cpp：单层 __global__，四模板参数
  *        (InOutLayoutType, KvLayoutType, HasAttenMask, Config) 直接解析 q 布局与
  *        模板块大小，无中间分发层；无 isFd（FD 能力恒实例化，运行时由 metadata
- *        各 section mLen>0 驱动）。q 仅支持 BSND/BNSD/TND 三布局，不支持输出转置
- *        （out 布局恒等于 q）；rope 已并入 q/k_cache 576 宽单张量，无独立 rope 输入。
+ *        各 section mLen>0 驱动）。q 支持 BSND/BNSD/TND 三布局，TND→NTD 输出转置
+ *        （InOutLayoutType_TND_NTD）；rope 已并入 q/k_cache 576 宽单张量，无独立 rope 输入。
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -41,19 +41,33 @@ using namespace optiling;
 using namespace AscendC;
 
 // ============ 入口 layout 推导（flash_attn.cpp 同款：if-constexpr 直接映射，无表查找）============
-// InOutLayoutType → q 布局（MLA 不支持输出转置，out 布局恒等于 q，无需 GetOutLayout）
+// InOutLayoutType → q 布局（TND_NTD 输入仍为 TND q 布局）
 template <uint8_t inOutLayoutType>
 __aicore__ inline constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT GetQueryLayoutMla()
 {
     static_assert((inOutLayoutType == InOutLayoutType_BSND) || (inOutLayoutType == InOutLayoutType_BNSD) ||
-                      (inOutLayoutType == InOutLayoutType_TND),
+                      (inOutLayoutType == InOutLayoutType_TND) || (inOutLayoutType == InOutLayoutType_TND_NTD),
                   "GetQueryLayoutMla fail, inOutLayoutType is incorrect");
     if constexpr (inOutLayoutType == InOutLayoutType_BSND) {
         return FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH;
     } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD) {
         return FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD;
-    } else { // InOutLayoutType_TND
+    } else { // InOutLayoutType_TND / InOutLayoutType_TND_NTD
         return FLASH_MLA_WITH_KVCACHE_LAYOUT::TND;
+    }
+}
+
+// InOutLayoutType → out 布局（TND_NTD 转置输出为 NTD，其余 out 恒等于 q）
+template <uint8_t inOutLayoutType>
+__aicore__ inline constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT GetOutLayoutMla()
+{
+    static_assert((inOutLayoutType == InOutLayoutType_BSND) || (inOutLayoutType == InOutLayoutType_BNSD) ||
+                      (inOutLayoutType == InOutLayoutType_TND) || (inOutLayoutType == InOutLayoutType_TND_NTD),
+                  "GetOutLayoutMla fail, inOutLayoutType is incorrect");
+    if constexpr (inOutLayoutType == InOutLayoutType_TND_NTD) {
+        return FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD;
+    } else {
+        return GetQueryLayoutMla<inOutLayoutType>();
     }
 }
 
@@ -101,7 +115,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     fa_base_matmul::idCounterNum = 0;
     // —— 编译期解析 tiling key（flash_attn.cpp 同款：ConfigValue[config] 查模板块大小）——
     constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = GetQueryLayoutMla<inOutLayoutType>();
-    constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = qLayout; // MLA 不支持输出转置
+    constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = GetOutLayoutMla<inOutLayoutType>();
     constexpr GmFormat kvGmFormat = GetKvLayoutMla<inOutLayoutType, KvLayoutType>();
     constexpr bool pageAttention = IsPageAttentionMla<KvLayoutType>();
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
