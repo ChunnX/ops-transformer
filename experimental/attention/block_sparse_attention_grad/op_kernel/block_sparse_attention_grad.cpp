@@ -10,7 +10,11 @@
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
+#if __CCE_AICORE__ == 310
 #include "arc35/block_sparse_attention_grad.h"
+#else
+#include "arc22/block_sparse_attention_grad_interface.h"
+#endif
 // ============================================================================
 // Kernel Entry Point
 // ============================================================================
@@ -29,6 +33,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(
 {
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
 
+#if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA_WITH_STRUCT(BlockSparseAttentionGradTilingDataArch35, tiling_data_in, tiling);
     const BlockSparseAttentionGradTilingDataArch35 *__restrict tilingDataPtrArch35 = &tiling_data_in;
@@ -65,4 +70,26 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(
         op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     }
+
+#else
+    __gm__ BlockSparseAttentionGradTilingData *tilingDataPtr =
+        reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(tiling);
+    if (TILING_KEY_IS(0)) {
+        BSA::BlockSparseAttentionGradInfer<half, 0>(
+            dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+            actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(1)) {
+        BSA::BlockSparseAttentionGradInfer<half, 1>(
+            dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+            actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(10)) {
+        BSA::BlockSparseAttentionGradInfer<bfloat16_t, 0>(
+            dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+            actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tiling);
+    } else if (TILING_KEY_IS(11)) {
+        BSA::BlockSparseAttentionGradInfer<bfloat16_t, 1>(
+            dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+            actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tiling);
+    }
+#endif
 }
