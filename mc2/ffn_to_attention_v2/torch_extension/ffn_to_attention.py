@@ -167,7 +167,7 @@ class FFNToAttentionBuffer:
                 "Ascend950": "channel",
             },
             commAlg="urma",
-            opname="ffn_to_attention_v2",
+            opname="ffn_to_attention",
             customCclBufferSize=required_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
