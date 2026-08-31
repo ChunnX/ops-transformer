@@ -14,7 +14,8 @@
 #include "../../attn_infra/base_defs.hpp"
 #include "../../attn_infra/arch/arch.hpp"
 
-namespace NpuArch::Arch {
+namespace NpuArch::Arch
+{
 
 struct LocalTensorBufferBase {
 public:
@@ -203,6 +204,140 @@ public:
     }
 };
 
+
+/// Partial specialization for TPosition::A1
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::A1> : LocalTensorBufferBase {
+public:
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::A1;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::A1> tbufA1;
+        GetTPipePtr()->InitBuffer(tbufA1, Arch::AtlasA2::L1_SIZE);
+        tensor = tbufA1.Get<uint8_t>();
+    }
+};
+
+///////////////////////////////////////////////////////////
+
+/// Partial specialization for TPosition::A2
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::A2> : LocalTensorBufferBase {
+public:
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::A2;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::A2> tbufA2;
+        GetTPipePtr()->InitBuffer(tbufA2, Arch::AtlasA2::L0A_SIZE);
+        tensor = tbufA2.Get<uint8_t>();
+    }
+};
+
+///////////////////////////////////////////////////////////
+
+/// Partial specialization for TPosition::B1
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::B1> : LocalTensorBufferBase {
+public:
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::B1;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::B1> tbufB1;
+        GetTPipePtr()->InitBuffer(tbufB1, Arch::AtlasA2::L1_SIZE);
+        tensor = tbufB1.Get<uint8_t>();
+    }
+};
+
+///////////////////////////////////////////////////////////
+
+/// Partial specialization for AtlasA2, TPosition::B2
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::B2> : LocalTensorBufferBase {
+public:
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::B2;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::B2> tbufB2;
+        GetTPipePtr()->InitBuffer(tbufB2, Arch::AtlasA2::L0B_SIZE);
+        tensor = tbufB2.Get<uint8_t>();
+    }
+};
+
+///////////////////////////////////////////////////////////
+
+/// Partial specialization for AtlasA2, TPosition::C1
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::C1> : LocalTensorBufferBase {
+public:
+    using ArchTag = Arch::AtlasA2;
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::C1;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::C1> tbufC1;
+        GetTPipePtr()->InitBuffer(tbufC1, Arch::AtlasA2::L1_SIZE);
+        tensor = tbufC1.Get<uint8_t>();
+    }
+};
+
+///////////////////////////////////////////////////////////
+
+/// Partial specialization for AtlasA2, TPosition::C2
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::C2> : LocalTensorBufferBase {
+public:
+    using ArchTag = Arch::AtlasA2;
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::C2;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::C2> tbufC2;
+        GetTPipePtr()->InitBuffer(tbufC2, Arch::AtlasA2::BIAS_SIZE);
+        tensor = tbufC2.Get<uint8_t>();
+    }
+};
+
+///////////////////////////////////////////////////////////
+
+/// Partial specialization for TPosition::CO1
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::CO1> : LocalTensorBufferBase {
+public:
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::CO1;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::CO1> tbufCO1;
+        GetTPipePtr()->InitBuffer(tbufCO1, Arch::AtlasA2::L0C_SIZE);
+        tensor = tbufCO1.Get<uint8_t>();
+    }
+};
+
+/// Partial specialization for TPosition::VECCALC
+template <>
+struct LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::VECCALC> : LocalTensorBufferBase {
+public:
+    static constexpr AscendC::TPosition Position = AscendC::TPosition::VECCALC;
+
+    __aicore__ inline
+    LocalTensorBuffer()
+    {
+        AscendC::TBuf<AscendC::TPosition::VECCALC> tbufVECCALC;
+        GetTPipePtr()->InitBuffer(tbufVECCALC, Arch::AtlasA2::UB_SIZE);
+        tensor = tbufVECCALC.Get<uint8_t>();
+    }
+};
 }  // namespace NpuArch::Arch
 
 #endif  // INCLUDE_ARCH_MEMORY_H
