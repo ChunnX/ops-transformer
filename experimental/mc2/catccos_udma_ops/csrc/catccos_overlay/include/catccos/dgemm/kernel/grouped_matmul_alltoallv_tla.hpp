@@ -333,6 +333,9 @@ public:
         auto commLoops = scheduler.GetCommLoops();
 
         uint32_t receiveAccum = 0;
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+        bool quietFailureReported = false;
+#endif
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
 
@@ -377,10 +380,25 @@ public:
                         actualBlockShape, srcRankIdx
                     );
                 }
-                blockRemoteCopy.FinalizeBlockLoop();
+                uint32_t quietStatus =
+                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
 
-                aclshmem_fence();
-                aclshmemx_signal_op(syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+                if (quietStatus == 0) {
+                    aclshmem_fence();
+                    aclshmemx_signal_op(
+                        syncCommFinish, 1,
+                        ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+                }
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+                else if (!quietFailureReported) {
+                    AscendC::printf(
+                        "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
+                        "rank=%u source=%u comm=%u stage=%u status=0x%x; "
+                        "completion will not be published\n",
+                        rankIdx, srcRankIdx, commIdx, stageIdx, quietStatus);
+                    quietFailureReported = true;
+                }
+#endif
             }
 
             if (isSyncCore) {
@@ -536,6 +554,9 @@ private:
 
         uint32_t receiveAccum = 0;
         uint32_t commLoops = scheduler.GetCommLoops();
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+        bool quietFailureReported = false;
+#endif
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             scheduler.UpdateCommContext(commIdx);
@@ -564,11 +585,25 @@ private:
                 blockRemoteCopy(
                     gmBlockSrc, layoutBlockSrc, gmBlockDst, layoutBlockDst,
                     actualShape, srcRankIdx);
-                blockRemoteCopy.FinalizeBlockLoop();
+                uint32_t quietStatus =
+                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
 
-                aclshmem_fence();
-                aclshmemx_signal_op(
-                    syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+                if (quietStatus == 0) {
+                    aclshmem_fence();
+                    aclshmemx_signal_op(
+                        syncCommFinish, 1,
+                        ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+                }
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+                else if (!quietFailureReported) {
+                    AscendC::printf(
+                        "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
+                        "rank=%u source=%u comm=%u stage=%u status=0x%x; "
+                        "completion will not be published\n",
+                        rankIdx, srcRankIdx, commIdx, stageIdx, quietStatus);
+                    quietFailureReported = true;
+                }
+#endif
             }
 
             if (isSyncCore) {

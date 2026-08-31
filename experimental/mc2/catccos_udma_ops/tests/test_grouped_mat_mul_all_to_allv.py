@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 
+import re
 from pathlib import Path
 
 
@@ -214,3 +215,51 @@ def test_workspace_reuse_guard_avoids_unsigned_underflow():
         "commLoops >= WORKSPACE_STAGES &&\n"
         "                commIdx < commLoops - WORKSPACE_STAGES"
     ) in kernel
+
+
+def test_get_cq_failure_is_detected_before_completion_is_published():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert kernel.count("FinalizeBlockLoopWithStatus()") == 2
+    assert kernel.count("if (quietStatus == 0)") == 2
+    assert kernel.count("GET CQ failure") == 2
+    for match in re.finditer("FinalizeBlockLoopWithStatus\\(\\)", kernel):
+        completion = kernel.index("ACLSHMEM_SIGNAL_ADD", match.end())
+        success_guard = kernel.rfind("if (quietStatus == 0)", match.end(), completion)
+        assert success_guard >= match.end()
+
+
+def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():
+    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert "option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS" in root_cmake
+    assert 'set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS "-DASCENDC_DUMP=0")' in root_cmake
+    assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 -DASCENDC_DUMP=1" in root_cmake
+    assert 'cmake_boolean_from_env("CATCCOS_UDMA_DEVICE_DIAGNOSTICS")' in setup_source
+    for match in re.finditer("AscendC::printf\\(", kernel):
+        guard = kernel.rfind(
+            "#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS)", 0, match.start()
+        )
+        end = kernel.find("#endif", match.end())
+        assert guard >= 0
+        assert end > match.end()

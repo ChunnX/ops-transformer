@@ -44,6 +44,20 @@ python3 -m pip install --force-reinstall --no-deps dist/*.whl
 It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
 match the package version in `ops_transformer_catccos_udma/_version.py`.
 
+Production builds compile out every device-side `AscendC::printf` call and
+disable the AscendC Dump buffer. To diagnose a UDMA CQ timeout or CQE failure,
+build and install a separate diagnostic Wheel:
+
+```bash
+CATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 bash scripts/build_wheel.sh
+python3 -m pip install --force-reinstall --no-deps dist/*.whl
+```
+
+That Wheel prints the first failed GET completion for each communication core,
+including rank, source rank, communication round, stage, and CQ status. Device
+printf reserves additional HBM and affects timing, so do not use a diagnostic
+Wheel for performance measurement or model delivery.
+
 `prepare_dependencies.sh` refuses an existing CatCCOS or SHMEM checkout at
 another revision. SHMEM is built with `-soc_type Ascend950` and the same C++
 ABI setting as the active PyTorch installation. Both the extension's device

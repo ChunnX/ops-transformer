@@ -62,6 +62,8 @@ set(NPU_SOC_VERSION "ascend950" CACHE STRING "NPU SOC version")
 set(EXTENSION_MODULE_NAME "ops_transformer_catccos_udma" CACHE STRING "PyTorch operator namespace")
 option(CATCCOS_UDMA_MSSANITIZER
     "Build Ascend950 device kernels with source-line information for msSanitizer" OFF)
+option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS
+    "Compile device-side printf diagnostics (never enable for performance delivery)" OFF)
 set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "")
 if(CATCCOS_UDMA_MSSANITIZER)
     # Ascend 950 does not support --cce-enable-sanitizer/--sanitizer. Those
@@ -71,6 +73,18 @@ if(CATCCOS_UDMA_MSSANITIZER)
     set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "-g")
     message(STATUS
         "Enable Ascend950 msSanitizer source-line information (-g only)")
+endif()
+set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS "-DASCENDC_DUMP=0")
+if(CATCCOS_UDMA_DEVICE_DIAGNOSTICS)
+    # AscendC printf enables the device Dump path and reserves per-core output
+    # storage. Keep both the call sites and Dump runtime out of production
+    # binaries; this switch is only for a dedicated diagnosis Wheel.
+    set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS
+        "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 -DASCENDC_DUMP=1")
+    message(WARNING
+        "Enable device printf diagnostics; this Wheel is not valid for performance measurement")
+else()
+    message(STATUS "Disable AscendC device Dump/printf in the production Wheel")
 endif()
 if(NOT NPU_SOC_VERSION STREQUAL "ascend950")
     message(FATAL_ERROR "CatCCOS UDMA operators currently support only NPU_SOC_VERSION=ascend950")

@@ -124,10 +124,10 @@ public:
         aclshmemx_udma_quiet(peerIdx);
     }
 
-    /// Diagnostic equivalent of aclshmemx_udma_quiet that preserves the
+    /// Completion equivalent of aclshmemx_udma_quiet that preserves the
     /// pinned SHMEM implementation's CQ return code. The public API returns
-    /// void and silently discards timeout/CQE failures, so this method is used
-    /// only by the synchronization diagnosis path.
+    /// void and silently discards timeout/CQE failures; completion-sensitive
+    /// collectives must not publish an acknowledgement on such failures.
     CATLASS_DEVICE
     uint32_t FinalizeWithStatus(uint32_t peerIdx)
     {

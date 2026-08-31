@@ -493,7 +493,9 @@ public:
         aclshmemx_barrier_all_vec();
 
         uint32_t receiveAccum = 0;
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
         bool quietFailureReported = false;
+#endif
         auto commLoops = scheduler.GetCommLoops();
         if constexpr (EXPORT_ALLTOALLV) {
             static_assert(!std::is_void_v<BlockExport>,
@@ -689,6 +691,7 @@ public:
                             blockRemoteCopy.FinalizeBlockLoop();
                         }
                     }
+#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
                     if (quietStatus != 0 && !quietFailureReported) {
                         AscendC::printf(
                             "[CATCCOS_UDMA_SYNC_DIAG] "
@@ -697,6 +700,7 @@ public:
                             rankIdx, completionPeerIdx, commIdx, quietStatus);
                         quietFailureReported = true;
                     }
+#endif
                     if (!useStrongReady && completedBlocks > 0) {
                         if (useGenerationReady) {
                             // Diagnostic midpoint: preserve the legacy UDMA
