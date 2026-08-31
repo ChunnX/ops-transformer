@@ -636,9 +636,24 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
         int64_t groupSize = 0;
         OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr group_size failed.");
-        int64_t yDtype = 28;
+        // y_dtype 非量化应跟随 x1/原输出，避免重建后落到 DT_FLOAT
+        int64_t yDtype = static_cast<int64_t>(ge::DT_UNDEFINED);
         OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDtype) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr y_dtype failed.");
+        if (yDtype == static_cast<int64_t>(ge::DT_UNDEFINED)) {
+            ge::TensorDesc x1Desc;
+            if (mc2Node.GetInputDesc(static_cast<int>(ops::MC2InputIdx::K_X1), x1Desc) == ge::GRAPH_SUCCESS &&
+                (x1Desc.GetDataType() == ge::DT_FLOAT16 || x1Desc.GetDataType() == ge::DT_BF16)) {
+                // 非量化/伪量化 output 与 x1 同类型
+                yDtype = static_cast<int64_t>(x1Desc.GetDataType());
+            } else {
+                ge::TensorDesc yDesc;
+                if (mc2Node.GetOutputDesc(0, yDesc) == ge::GRAPH_SUCCESS && yDesc.GetDataType() != ge::DT_UNDEFINED) {
+                    // 量化等 output≠x1：继承原图已推断的输出类型
+                    yDtype = static_cast<int64_t>(yDesc.GetDataType());
+                }
+            }
+        }
         int64_t commQuantMode = 0;
         OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr comm_quant_mode failed.");
