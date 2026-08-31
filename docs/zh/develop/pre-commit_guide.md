@@ -63,6 +63,22 @@ pre-commit install
 pre-commit installed at .git/hooks/pre-commit
 ```
 
+### 4. 配置 git pc 别名
+
+配置 `git pc` 别名，用于对指定范围的提交变更文件运行 pre-commit 检查（每个环境执行一次，全局生效）：
+
+```bash
+git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
+```
+
+配置后即可使用（详见[补查历史提交](#补查历史提交-no-verify-跳过后)）：
+
+```bash
+git pc HEAD~2 HEAD           # 检查最近2笔提交
+git pc HEAD~1                # 检查最近1笔提交（末尾HEAD可省略）
+git pc origin/master...HEAD  # 检查PR全部提交
+```
+
 ## 使用方法
 
 ### 自动检查（推荐）
@@ -132,13 +148,7 @@ pre-commit run --files $(git diff --name-only <commit>^ <commit>)
 pre-commit run --files $(git diff --name-only origin/master...HEAD)
 ```
 
-推荐配置 `git pc` 别名简化命令（每个环境执行一次，全局生效）：
-
-```bash
-git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
-```
-
-配置后：
+推荐使用已配置的 `git pc` 别名（见安装步骤第 4 步）：
 
 ```bash
 git pc HEAD~2 HEAD           # 检查最近2笔提交
