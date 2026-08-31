@@ -10,8 +10,8 @@
 
 /*!
  * \file msa_index_score_tiling.cpp
- * \brief MsaIndexScore Tiling 实现（A2/A3：PA BBND/BNBD + TND packed key；sparse_mode 0/3；
- *        950 PA key 允许 dim0 非连续，strideKvBlock 来自 GetInputStride）。
+ * \brief MsaIndexScore Tiling 实现（A2/A3 / 950：PA BBND/BNBD + TND packed key；sparse_mode 0/3；
+ *        PA key 允许 dim0 非连续，strideKvBlock 来自 GetInputStride）。
  */
 
 #include "msa_index_score_tiling.h"
@@ -117,14 +117,11 @@ inline bool ValidateKeyInnerAxesContiguous(gert::TilingContext *context, const g
     return true;
 }
 
-// 950 PA：strideKvBlock 取 key dim0 元素 stride。A2/A3 只用 shape 推连续值。
+// PA：strideKvBlock 取 key dim0 元素 stride（A2/A3 与 950 同一套）。连续输入写入值与 shape 推算相同。
 inline ge::graphStatus ResolveStrideKvBlock(gert::TilingContext *context, const MsaIndexScoreInfo &info,
                                             uint32_t defaultStrideKvBlock, uint32_t &strideKvBlock)
 {
     strideKvBlock = defaultStrideKvBlock;
-    if (!info.isAscend950) {
-        return ge::GRAPH_SUCCESS;
-    }
 
     const gert::StorageShape *keyShape = context->GetInputShape(MSA_IDX_KEY);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
