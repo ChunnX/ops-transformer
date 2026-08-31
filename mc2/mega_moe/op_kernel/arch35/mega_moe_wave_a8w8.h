@@ -576,7 +576,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     uint32_t waveGlobalRowEnd = GetGlobalRowForPosition(dispatchPosition);
     if (waveGlobalRowEnd > waveGlobalRowBegin) {
         RunGlobalWaveDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true,
-                                   WAVE_DISPATCH_GROUP_READY>(
+                                   A8W8_DISPATCH_GROUP_READY>(
             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
             g_winRankAddr_, tokenDispatchScratch_, waveBeginPosition.expertIdx, waveGlobalRowBegin,
             waveGlobalRowEnd - waveGlobalRowBegin);

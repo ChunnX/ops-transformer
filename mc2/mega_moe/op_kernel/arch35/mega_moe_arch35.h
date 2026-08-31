@@ -97,7 +97,7 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
-    __aicore__ inline ExpertTokenPosition DispatchMoeWave(ExpertTokenPosition &dispatchPosition);
+    __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -515,45 +515,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-// 构造下一个完整 WAVE，并把跨专家连续 row 作为一个整体分配给全部 AIV1。
+// 使用统一 expert-count Dispatch stage 增量发送一个专家，供 W4 的 Wave-ahead 调度调用。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline ExpertTokenPosition MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeWave(
-    ExpertTokenPosition &dispatchPosition)
+__aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
 {
-    ExpertTokenPosition waveBeginPosition = dispatchPosition;
-    uint32_t waveMGroupCount = 0U;
-    while (dispatchPosition.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_) {
-        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
-            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
-            dispatchPosition.expertIdx);
-        AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_, waveMGroupCount,
-                                                      dispatchPosition);
-    }
-
-    uint64_t boundedGlobalRowBegin = waveBeginPosition.globalTokenIndex;
-    uint64_t boundedGlobalRowEnd = dispatchPosition.globalTokenIndex;
-    if (boundedGlobalRowBegin > tokenDispatchConfig_.maxOutputSize) {
-        boundedGlobalRowBegin = tokenDispatchConfig_.maxOutputSize;
-    }
-    if (boundedGlobalRowEnd > tokenDispatchConfig_.maxOutputSize) {
-        boundedGlobalRowEnd = tokenDispatchConfig_.maxOutputSize;
-    }
-    if (boundedGlobalRowEnd <= boundedGlobalRowBegin) {
-        return dispatchPosition;
-    }
-
-    uint32_t lastExpertIdx = dispatchPosition.expertIdx;
-    if (dispatchPosition.tokenIndexInExpert == 0U) {
-        lastExpertIdx -= 1U;
-    }
-    ReloadWaveDispatchCumsumRange(commonConfig_, tokenDispatchScratch_, waveBeginPosition.expertIdx, lastExpertIdx);
-    RunGlobalWaveDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true,
-                               WAVE_DISPATCH_GROUP_READY>(
+    ReloadWaveExpertDispatchCumsum(commonConfig_, tokenDispatchScratch_, expertIdx);
+    return RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true>(
         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
-        g_winRankAddr_, tokenDispatchScratch_, waveBeginPosition.expertIdx,
-        static_cast<uint32_t>(boundedGlobalRowBegin),
-        static_cast<uint32_t>(boundedGlobalRowEnd - boundedGlobalRowBegin));
-    return dispatchPosition;
+        g_winRankAddr_, tokenDispatchScratch_, expertIdx);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。

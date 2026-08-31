@@ -48,7 +48,7 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
     using MegaMoeBase::DispatchBuffInit;
-    using MegaMoeBase::DispatchMoeWave;
+    using MegaMoeBase::DispatchMoeExpert;
     using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmmLoopCount_;
     using MegaMoeBase::commonConfig_;
@@ -165,8 +165,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
  * 控制总负载；空间不足时可在专家内部切分，但同一 Wave 的 GMM1 和 GMM2 始终处理相同的 token 范围。
  *
  * Dispatch 预取用于提前准备下一 Wave 的 GMM1 输入。启动阶段先 Dispatch 第一个完整 Wave；稳态阶段
- * 由 AIV1 一次 Dispatch 下一整个 Wave，同时 AIC/AIV0 执行当前 Wave 的 GMM1/Activation。当前 Wave
- * 完成后执行其 GMM2/Combine，再切换到已经准备好的下一 Wave。
+ * 由 AIV1 准备下一 Wave，同时 AIC/AIV0 执行当前 Wave 的 GMM1/Activation。当前 Wave 完成后执行其
+ * GMM2/Combine，再切换到已经准备好的下一 Wave。
  */
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages()
@@ -204,7 +204,16 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
-            DispatchMoeWave(dispatchPosition);
+            uint32_t dispatchedWaveMGroupCount = 0U;
+            while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
+                uint32_t expertTokenCount =
+                    dispatchPosition.tokenIndexInExpert == 0U ?
+                        DispatchMoeExpert(dispatchPosition.expertIdx) :
+                        GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
+                                                         commonConfig_.moeExpertPerRank, dispatchPosition.expertIdx);
+                AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
+                                                              dispatchedWaveMGroupCount, dispatchPosition);
+            }
         }
     }
 
@@ -216,20 +225,27 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         uint32_t waveLastActiveExpertIdx = commonConfig_.moeExpertPerRank;
         bool currentWaveNeedsGmm1 = true;
 
+        uint32_t nextDispatchWaveMGroupCount = 0U;
         bool nextWaveNeedsDispatch = false;
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                nextWaveNeedsDispatch = dispatchPosition.expertIdx < commonConfig_.moeExpertPerRank;
+                nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
             }
         }
 
         // 两侧进度可能不同：只有当前计算和下一 Wave 的 Dispatch 都结束后，才能切换到当前 Wave 的 GMM2。
         while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
-            // AIV1 一次发送下一整个 Wave；AIC/AIV0 独立推进当前 Wave 的 GMM1/Activation。
+            // AIV1 逐专家准备下一 Wave；AIC/AIV0 同时推进当前 Wave 的 GMM1/Activation。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    DispatchMoeWave(dispatchPosition);
-                    nextWaveNeedsDispatch = false;
+                    uint32_t expertTokenCount = dispatchPosition.tokenIndexInExpert == 0U ?
+                                                    DispatchMoeExpert(dispatchPosition.expertIdx) :
+                                                    GetExpertTokenCountFromWorkspace(
+                                                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
+                                                        commonConfig_.moeExpertPerRank, dispatchPosition.expertIdx);
+                    AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
+                                                                  nextDispatchWaveMGroupCount, dispatchPosition);
+                    nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
                 }
             }
 
