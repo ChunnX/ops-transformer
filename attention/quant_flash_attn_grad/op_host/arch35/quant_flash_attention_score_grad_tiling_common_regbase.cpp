@@ -758,7 +758,7 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
 }
 
 ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams)
-{ 
+{
     auto yInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTN_OUT));
     auto deqScaleQInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_Q));
     auto deqScaleKInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_K));
@@ -775,7 +775,7 @@ ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const F
                         ge::TypeUtils::DataTypeToSerialString(yInputDtype).c_str(),
                         "When the dType of query is HIFLOAT8, the dtype of attentionInOptional must be BFLOAT16"),
                     return ge::GRAPH_FAILED);
-    } 
+    }
     if (deqScaleQInput != nullptr && deqScaleKInput != nullptr && deqScaleVInput != nullptr &&
         deqScaleDyInput != nullptr && deqScaleDsInput != nullptr && deqScalePInput != nullptr) {
         auto deqScaleQDtype = deqScaleQInput->GetDataType();
