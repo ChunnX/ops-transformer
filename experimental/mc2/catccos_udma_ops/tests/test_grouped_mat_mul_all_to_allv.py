@@ -265,7 +265,7 @@ def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():
         assert end > match.end()
 
 
-def test_per_round_stage_sync_remains_rank_local_for_imbalanced_routes():
+def test_balanced_route_experiment_uses_paired_global_stage_barriers():
     kernel = (
         PROJECT_ROOT
         / "csrc"
@@ -277,10 +277,11 @@ def test_per_round_stage_sync_remains_rank_local_for_imbalanced_routes():
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
 
-    # Each of the legacy and target-order paths has two launch-boundary SHMEM
-    # barriers. Per-round producer/consumer joins must stay local because an
-    # imbalanced route can give different ranks different commLoops.
-    assert kernel.count("aclshmemx_barrier_all_vec();") == 4
-    assert kernel.count("AscendC::SyncAll<true>();") == 4
-    assert "different ranks different commLoops" in kernel
-    assert "number of communication rounds is route-dependent" in kernel
+    # Each path has two launch-boundary barriers and a producer/consumer pair
+    # inside the communication loop. This experiment is intentionally limited
+    # to balanced routes whose commLoops match on every rank.
+    assert kernel.count("aclshmemx_barrier_all_vec();") == 8
+    assert kernel.count("AscendC::SyncAll<true>();") == 0
+    assert kernel.count("Balanced-route synchronization experiment") == 2
+    assert "same commLoops" in kernel
+    assert "commLoops differ across ranks" in kernel

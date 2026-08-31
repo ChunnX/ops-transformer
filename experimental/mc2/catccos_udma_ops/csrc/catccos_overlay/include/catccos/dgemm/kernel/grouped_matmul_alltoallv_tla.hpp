@@ -343,10 +343,9 @@ public:
             receiveAccum += scheduler.GetActualReceiveAccum();
 
             Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
-            // AllToAllV routes may give different ranks different commLoops.
-            // Keep the per-round rendezvous rank-local: a global SHMEM barrier
-            // here would be called a different number of times and deadlock.
-            AscendC::SyncAll<true>();
+            // Balanced-route synchronization experiment: every rank must have
+            // the same commLoops and enter these per-round barriers equally.
+            aclshmemx_barrier_all_vec();
 
             if (isSyncCore) {
                 aclshmemx_signal_op(syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
@@ -407,11 +406,11 @@ public:
             if (isSyncCore) {
                 aclshmem_signal_wait_until(syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
             }
-            // Join every local AIV before the sync core releases this stage to
-            // AIC. This must remain unconditional even for the final stages.
-            AscendC::SyncAll<true>();
+
             if (commLoops >= WORKSPACE_STAGES &&
                 commIdx < commLoops - WORKSPACE_STAGES) {
+                // Pair with the producer barrier before any rank reuses stage.
+                aclshmemx_barrier_all_vec();
                 Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComm[stageIdx]);
             }
         }
@@ -568,9 +567,9 @@ private:
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
 
             Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
-            // The number of communication rounds is route-dependent. Do not
-            // substitute a cross-rank barrier for this local AIV rendezvous.
-            AscendC::SyncAll<true>();
+            // Balanced-route synchronization experiment: this is not safe
+            // when route-dependent commLoops differ across ranks.
+            aclshmemx_barrier_all_vec();
             if (isSyncCore) {
                 aclshmemx_signal_op(
                     syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
@@ -617,10 +616,11 @@ private:
                 aclshmem_signal_wait_until(
                     syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
             }
-            // All local communication workers must finish the round before
-            // AIC is allowed to overwrite the rolling symmetric stage.
-            AscendC::SyncAll<true>();
+
             if (commIdx + WORKSPACE_STAGES < commLoops) {
+                // All ranks leave the current balanced-route GET phase before
+                // this symmetric stage is released back to AIC.
+                aclshmemx_barrier_all_vec();
                 Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
                     flagAivFinishComm[stageIdx]);
             }
