@@ -38,7 +38,7 @@ const constexpr int64_t INDEX_T = 0;
 const constexpr int64_t INDEX_N = 1;
 const constexpr int64_t INDEX_D_TND = 1;
 
-const constexpr int32_t C0_BASE_M = 256;
+const constexpr int32_t C0_BASE_M = 128;
 const constexpr int32_t C0_BASE_N = 128;
 const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MIN_D_LENGTH = 1;
@@ -51,7 +51,6 @@ const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
-const constexpr uint32_t C0_M_STEP = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
@@ -253,8 +252,8 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
 
 void MhcPreBackwardTiling::SetC0TilingParams()
 {
-    // 两块M分组只在已验证的N=4满块规格启用；N=6/8或短T恢复单块，避免L1步长与实际shape不匹配。
-    const uint32_t c0MStep = (N_ == 4 && totalLength_ >= C0_SET_SHAPE_M) ? C0_M_STEP : C0_SET_VALUE;
+    // 每次迭代只产出一个128行M块，与V2的细粒度等待一一对应。
+    const uint32_t c0MStep = C0_SET_VALUE;
     tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKa(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKb(C0_SET_VALUE);
