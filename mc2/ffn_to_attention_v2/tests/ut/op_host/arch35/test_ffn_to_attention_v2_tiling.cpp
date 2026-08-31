@@ -43,12 +43,9 @@ enum class InvalidInput {
 std::vector<TensorDescription> BuildInputs(bool rankTableMode, InvalidInput invalidInput = InvalidInput::NONE)
 {
     std::vector<TensorDescription> inputs = {
-        {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1584, 7168}, {1584, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},       {{{1584, 7168}, {1584, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND}, {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND}, {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND},
     };
     if (rankTableMode) {
@@ -78,8 +75,7 @@ std::vector<TensorDescription> BuildInputs(bool rankTableMode, InvalidInput inva
             inputs[6] = TensorDescription{{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND};
             break;
         case InvalidInput::X_FORMAT:
-            inputs[1] = TensorDescription{{{1584, 7168}, {1584, 7168}}, ge::DT_FLOAT16,
-                                          ge::FORMAT_FRACTAL_NZ};
+            inputs[1] = TensorDescription{{{1584, 7168}, {1584, 7168}}, ge::DT_FLOAT16, ge::FORMAT_FRACTAL_NZ};
             break;
         case InvalidInput::CONTEXT_SHAPE:
             inputs[0] = TensorDescription{{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND};
@@ -101,11 +97,11 @@ std::vector<TensorDescription> BuildInputs(bool rankTableMode, InvalidInput inva
 std::vector<OpAttr> BuildAttrs(bool invalidBs = false, bool invalidMicroBatchNum = false,
                                int64_t cclBufferSize = DEFAULT_CCL_BUFFER_SIZE)
 {
-    const std::vector<int64_t> tokenInfoTableShape = invalidMicroBatchNum ? std::vector<int64_t>{2, 16, 9}
-                                                                         : std::vector<int64_t>{1, invalidBs ? 513 : 16, 9};
-    const std::vector<int64_t> tokenDataShape = invalidMicroBatchNum
-                                                    ? std::vector<int64_t>{2, 16, 9, 7168}
-                                                    : std::vector<int64_t>{1, invalidBs ? 513 : 16, 9, 7168};
+    const std::vector<int64_t> tokenInfoTableShape =
+        invalidMicroBatchNum ? std::vector<int64_t>{2, 16, 9} : std::vector<int64_t>{1, invalidBs ? 513 : 16, 9};
+    const std::vector<int64_t> tokenDataShape = invalidMicroBatchNum ?
+                                                    std::vector<int64_t>{2, 16, 9, 7168} :
+                                                    std::vector<int64_t>{1, invalidBs ? 513 : 16, 9, 7168};
     return {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
@@ -120,10 +116,8 @@ std::vector<OpAttr> BuildAlignmentBoundaryAttrs(int64_t cclBufferSize)
     return {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-        {"token_info_table_shape",
-         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 9, 15})},
-        {"token_data_shape",
-         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 9, 15, 7764})},
+        {"token_info_table_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 9, 15})},
+        {"token_data_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 9, 15, 7764})},
         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cclBufferSize)},
     };
 }
@@ -133,10 +127,8 @@ std::vector<OpAttr> BuildAttrsWithHs(int64_t hs)
     return {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-        {"token_info_table_shape",
-         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 16, 9})},
-        {"token_data_shape",
-         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 16, 9, hs})},
+        {"token_info_table_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 16, 9})},
+        {"token_data_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 16, 9, hs})},
         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(DEFAULT_CCL_BUFFER_SIZE)},
     };
 }
@@ -145,8 +137,8 @@ void ExecuteTilingCase(const std::vector<TensorDescription> &inputs, const std::
                        ge::graphStatus expectedStatus, uint64_t expectedTilingKey = 0UL)
 {
     FFNToAttentionV2CompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "FFNToAttentionV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}}, attrs, &compileInfo, "Ascend950");
+    gert::TilingContextPara tilingContextPara("FFNToAttentionV2", inputs, {{{}, ge::DT_INT64, ge::FORMAT_ND}}, attrs,
+                                              &compileInfo, "Ascend950");
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     if (expectedStatus == ge::GRAPH_SUCCESS) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
@@ -174,13 +166,13 @@ TEST_P(FFNToAttentionV2InvalidInputTest, RejectsInvalidInput)
     ExecuteTilingCase(BuildInputs(true, GetParam()), BuildAttrs(), ge::GRAPH_FAILED);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    InvalidInputs, FFNToAttentionV2InvalidInputTest,
-    testing::Values(InvalidInput::X_H, InvalidInput::SESSION_IDS_SHAPE, InvalidInput::MICRO_BATCH_IDS_SHAPE,
-                    InvalidInput::TOKEN_IDS_SHAPE, InvalidInput::EXPERT_OFFSETS_SHAPE,
-                    InvalidInput::ACTUAL_TOKEN_NUM_SHAPE, InvalidInput::ACTUAL_TOKEN_NUM_DTYPE,
-                    InvalidInput::X_FORMAT, InvalidInput::CONTEXT_SHAPE, InvalidInput::CONTEXT_DTYPE,
-                    InvalidInput::CONTEXT_FORMAT));
+INSTANTIATE_TEST_SUITE_P(InvalidInputs, FFNToAttentionV2InvalidInputTest,
+                         testing::Values(InvalidInput::X_H, InvalidInput::SESSION_IDS_SHAPE,
+                                         InvalidInput::MICRO_BATCH_IDS_SHAPE, InvalidInput::TOKEN_IDS_SHAPE,
+                                         InvalidInput::EXPERT_OFFSETS_SHAPE, InvalidInput::ACTUAL_TOKEN_NUM_SHAPE,
+                                         InvalidInput::ACTUAL_TOKEN_NUM_DTYPE, InvalidInput::X_FORMAT,
+                                         InvalidInput::CONTEXT_SHAPE, InvalidInput::CONTEXT_DTYPE,
+                                         InvalidInput::CONTEXT_FORMAT));
 
 TEST_F(FFNToAttentionV2Arch35TilingTest, RejectsInvalidBs)
 {
@@ -209,6 +201,3 @@ TEST_F(FFNToAttentionV2Arch35TilingTest, AcceptsBufferWithTokenInfoAlignmentSpac
 
 } // namespace
 } // namespace FFNToAttentionV2UT
-
-
-

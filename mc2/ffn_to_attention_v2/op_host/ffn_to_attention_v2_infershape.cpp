@@ -26,5 +26,7 @@ static ge::graphStatus InferDataTypeFFNToAttentionV2(gert::InferDataTypeContext 
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(FFNToAttentionV2).InferShape(InferShapeFFNToAttentionV2).InferDataType(InferDataTypeFFNToAttentionV2);
+IMPL_OP_INFERSHAPE(FFNToAttentionV2)
+    .InferShape(InferShapeFFNToAttentionV2)
+    .InferDataType(InferDataTypeFFNToAttentionV2);
 } // namespace ops

@@ -40,8 +40,7 @@ struct FFNToAttentionTilingConfig {
     bool isMc2Context = false;
 };
 
-ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context,
-                                              const FFNToAttentionTilingConfig &config);
+ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const FFNToAttentionTilingConfig &config);
 ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext *context);
 } // namespace MC2Tiling
 

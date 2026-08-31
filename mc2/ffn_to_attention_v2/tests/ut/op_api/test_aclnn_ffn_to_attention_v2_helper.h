@@ -25,7 +25,7 @@ ACLNN_API aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(
     const aclIntArray *tokenDataShape, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 ACLNN_API aclnnStatus aclnnFFNToAttentionV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                             aclrtStream stream);
+                                            aclrtStream stream);
 
 #ifdef __cplusplus
 }

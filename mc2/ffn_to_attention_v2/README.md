@@ -1,4 +1,4 @@
-# FFNToAttention
+# FFNToAttentionV2
 
 ## 产品支持情况
 
@@ -14,6 +14,8 @@
 ## 功能说明
 
 - 算子功能：将FFN节点上的数据发往Attention节点。
+
+
 
 ## 参数说明
 
@@ -96,7 +98,7 @@
     <tr>
     <td>worldSize</td>
     <td>属性</td>
-    <td>通信域大小：取值区间[2, 768]。</td>
+    <td>通信域大小：取值区间[2, 1024]。</td>
     <td>INT64</td>
     <td>-</td>
     </tr>
@@ -127,29 +129,36 @@
 
 ## 约束说明
 
-- 调用算子过程中使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。
+- 所有rank使用的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`和`cclBufferSize`必须保持一致。
+- 所有rank必须先完成MC2 context初始化。FFN Worker执行算子期间，Attention Worker必须保持context、通信window和通信域有效。
+- shape取值需满足以下约束：
+    - `Y`表示本rank需要分发的最大token数量。
+    - `tokenInfoTableShape`为`[1, BS, expertNumPerToken]`，`tokenDataShape`为`[1, BS, expertNumPerToken, HS]`，两个shape的前三维必须相同。
+    - `BS`取值范围为`[1, 512]`。
+    - `H`表示hidden size，取值范围为`[1024, 8192]`。
+    - `HS`表示通信window中每个token槽位的长度，需满足`H <= HS <= 8320`。
+    - `worldSize`取值范围为`[2, 1024]`。
+- 可选输入`attnRankTableOptional`必须是一维Tensor，其长度小于`worldSize`；表中每个目标rank的取值范围为`[0, worldSize)`。
+- 同一目标rank内，多个有效token不得映射到相同的`(microBatchId, tokenId, expertOffset)`槽位，否则写入结果存在覆盖风险。
 
-- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），需满足：
+- `cclBufferSize`为HBM上分配的通信window总大小，单位为Byte，必须大于0并满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$cclBufferSize \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize}, 512) + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
 
 其中：
+
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`
   - `tokenDataSize = microBatchNum × BS × expertNumPerToken × HS × 2B`
 
-可通过 `get_ffn_to_attention_v2_ccl_buffer_size` 接口计算所需最小值。
-
-- 参数说明里shape格式说明：
-    - `Y`：表示本卡需要分发的最大token数量。
-    - `BS`：示各Attention节点上的发送token数，取值范围为0 < `BS` ≤ 512。
-    - `H`：表示hidden size隐藏层大小，取值范围为1024 ≤ `H` ≤ 8192。
-    - `HS`：表示hidden与scale隐藏层大小，取值范围为1152 ≤ `HS` ≤ 8320。
-    - `ffnRankNum`：表示选取ffnRankNum个卡作为FFnWorker，取值范围为0 < `ffnRankNum` < `worldSize`。
-    - `attnRankNum`：表示选取attnRankNum个卡作为AttnWorker，取值范围为0 < `attnRankNum` < `worldSize`。
-    - `sharedExpertNum`：表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），取值范围为0 ≤ `sharedExpertNum` ≤ 4。
+可通过`get_ffn_to_attention_v2_ccl_buffer_size`接口计算所需最小值。
 
 - 通信域使用约束：
-    - FFNToAttention算子的通信域中不允许有其他算子。
+    - FFNToAttentionV2算子的通信域中不允许有其他算子。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-    - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+
+## 调用说明
+
+| 调用方式  | 样例代码                                  | 说明                                                     |
+| :--------: | :----------------------------------------: | :-------------------------------------------------------: |
+| aclnn接口 | [test_aclnn_ffn_to_attention_v2.cpp](./examples/test_aclnn_ffn_to_attention_v2.cpp) | 通过[aclnnFFNToAttentionV2](./docs/aclnnFFNToAttentionV2.md)接口方式调用FFNToAttentionV2算子。 |
+

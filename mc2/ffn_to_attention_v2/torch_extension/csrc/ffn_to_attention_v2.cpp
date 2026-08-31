@@ -24,12 +24,11 @@ const int DIM_TWO = 2;
  *        data is sent to peer ranks via the HCCL window. We therefore return an empty
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
-void NpuFFNToAttentionV2(
-    const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds, const at::Tensor &microBatchIds,
-    const at::Tensor &tokenIds, const at::Tensor &expertOffsets, const at::Tensor &actualTokenNum,
-    const c10::optional<at::Tensor> &attnRankTable, std::string group, int64_t worldSize,
-    const std::vector<int64_t> &tokenInfoTableShape, const std::vector<int64_t> &tokenDataShape,
-    int64_t cclBufferSize)
+void NpuFFNToAttentionV2(const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds,
+                         const at::Tensor &microBatchIds, const at::Tensor &tokenIds, const at::Tensor &expertOffsets,
+                         const at::Tensor &actualTokenNum, const c10::optional<at::Tensor> &attnRankTable,
+                         std::string group, int64_t worldSize, const std::vector<int64_t> &tokenInfoTableShape,
+                         const std::vector<int64_t> &tokenDataShape, int64_t cclBufferSize)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D, current dim is: ", x.dim());
     TORCH_CHECK((sessionIds.dim() == DIM_ONE) && (microBatchIds.dim() == DIM_ONE) && (tokenIds.dim() == DIM_ONE) &&
@@ -37,10 +36,10 @@ void NpuFFNToAttentionV2(
                 "sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum should be 1D.");
     TORCH_CHECK((worldSize > 0), "The world_size should be greater than 0, current is: ", worldSize);
     TORCH_CHECK(!group.empty(), "group should not be empty.");
-    TORCH_CHECK((tokenInfoTableShape.size() == 3), "token_info_table_shape should be 3D, current size is: ",
-                tokenInfoTableShape.size());
-    TORCH_CHECK((tokenDataShape.size() == 4), "token_data_shape should be 4D, current size is: ",
-                tokenDataShape.size());
+    TORCH_CHECK((tokenInfoTableShape.size() == 3),
+                "token_info_table_shape should be 3D, current size is: ", tokenInfoTableShape.size());
+    TORCH_CHECK((tokenDataShape.size() == 4),
+                "token_data_shape should be 4D, current size is: ", tokenDataShape.size());
     TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)),
                 "dtype of x should be bfloat16 or float16, but got ", x.scalar_type());
     TORCH_CHECK((sessionIds.scalar_type() == at::kInt), "dtype of sessionIds should be int32.");
@@ -75,12 +74,11 @@ int64_t CeilAlign(int64_t val, int64_t align)
 } // namespace
 
 int64_t GetFFNToAttentionV2CclBufferSize(const std::vector<int64_t> &tokenInfoTableShape,
-                                          const std::vector<int64_t> &tokenDataShape)
+                                         const std::vector<int64_t> &tokenDataShape)
 {
     TORCH_CHECK(tokenInfoTableShape.size() == 3, "token_info_table_shape should have 3 elements, but got ",
                 tokenInfoTableShape.size());
-    TORCH_CHECK(tokenDataShape.size() == 4, "token_data_shape should have 4 elements, but got ",
-                tokenDataShape.size());
+    TORCH_CHECK(tokenDataShape.size() == 4, "token_data_shape should have 4 elements, but got ", tokenDataShape.size());
 
     int64_t microBatchNum = tokenInfoTableShape[0];
     int64_t bs = tokenInfoTableShape[1];

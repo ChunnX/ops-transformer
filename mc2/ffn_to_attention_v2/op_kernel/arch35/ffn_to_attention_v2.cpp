@@ -18,6 +18,11 @@
 #else
 #include "kernel_operator.h"
 #endif
+#if __has_include("../../ffn_to_attention/ffn_to_attention.h")
+#include "../../ffn_to_attention/ffn_to_attention.h"
+#else
+#include "../../../ffn_to_attention/op_kernel/ffn_to_attention.h"
+#endif
 #include "../ffn_to_attention_v2_tiling.h"
 #include "../ffn_to_attention_v2_tilling_key.h"
 #include "../ffn_to_attention_urma.h"
@@ -26,17 +31,21 @@ using namespace AscendC;
 using namespace FFNToAttentionImpl;
 using namespace Mc2Tiling;
 
+static_assert(sizeof(FFNToAttentionV2Info) == sizeof(FFNToAttentionInfo),
+              "FFNToAttention V1/V2 tiling info layout size mismatch");
+static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingData),
+              "FFNToAttention V1/V2 tiling data layout size mismatch");
+
 /*
  * A5 tiling key fields:
  *   RankTableMode: whether attnRankTable is provided.
  *   ArchTag: A5.
- *   Communication mode: URMA.
+ *   CommModeType: MTE or URMA.
  */
 template <bool RankTableMode, uint8_t ArchTag>
-__global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds,
-                                               GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
-                                               GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM,
-                                               GM_ADDR tilingGM)
+__global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
+                                               GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
+                                               GM_ADDR attnRankTable, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(FFNToAttentionV2TilingData);
     TPipe pipe;

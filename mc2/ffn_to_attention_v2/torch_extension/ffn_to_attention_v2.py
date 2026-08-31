@@ -19,7 +19,9 @@ from ..common import CommContextManager
 
 class _FFNToAttentionV2OpBuilder(OpBuilder):
     def __init__(self):
-        super(_FFNToAttentionV2OpBuilder, self).__init__("npu_ffn_to_attention_v2", category="mc2")
+        super(_FFNToAttentionV2OpBuilder, self).__init__(
+            "npu_ffn_to_attention_v2", category="mc2"
+        )
 
     def sources(self):
         return ["csrc/mc2/ffn_to_attention_v2.cpp"]
@@ -52,11 +54,15 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
         ):
             torch._check(
                 world_size > 0,
-                lambda: (f"world_size should be greater than 0, {ops_error(ErrCode.VALUE)}."),
+                lambda: (
+                    f"world_size should be greater than 0, {ops_error(ErrCode.VALUE)}."
+                ),
             )
             torch._check(
                 x.dim() == 2,
-                lambda: (f"x should be 2D, but got {x.dim()}D, {ops_error(ErrCode.VALUE)}."),
+                lambda: (
+                    f"x should be 2D, but got {x.dim()}D, {ops_error(ErrCode.VALUE)}."
+                ),
             )
             torch._check(
                 len(token_info_table_shape) == 3,
@@ -123,7 +129,9 @@ def _get_hccl_comm_name(group, rank_id):
 def _calc_window_size(token_info_table_shape, token_data_shape):
     """Calculate the required window buffer size in bytes."""
     _op_module = _ffn_to_attention_v2_op_builder.load()
-    return _op_module.get_ffn_to_attention_v2_ccl_buffer_size(token_info_table_shape, token_data_shape)
+    return _op_module.get_ffn_to_attention_v2_ccl_buffer_size(
+        token_info_table_shape, token_data_shape
+    )
 
 
 class FFNToAttentionV2Buffer:
@@ -147,7 +155,9 @@ class FFNToAttentionV2Buffer:
         self.token_info_table_shape = list(token_info_table_shape)
         self.token_data_shape = list(token_data_shape)
 
-        required_buffer_size = _calc_window_size(token_info_table_shape, token_data_shape)
+        required_buffer_size = _calc_window_size(
+            token_info_table_shape, token_data_shape
+        )
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
@@ -156,8 +166,6 @@ class FFNToAttentionV2Buffer:
                 "Ascend910_93": "kfc",
                 "Ascend950": "channel",
             },
-            commAlg = "urma",
-            opName = "ffn_to_attention_v2",
             customCclBufferSize=required_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
@@ -177,9 +185,6 @@ class FFNToAttentionV2Buffer:
         context_ptr = host_tensor.data_ptr()
         if context_ptr == 0:
             return 0
-
-        # offset_buffer_start = 2 * 4 + 8
-        # addr_bytes = ctypes.c_uint64.from_address(context_ptr + offset_buffer_start)
 
         offset_epHcclBuffer = 2 * 4 + 8
         offset_target = offset_epHcclBuffer + self.rank_id * 8

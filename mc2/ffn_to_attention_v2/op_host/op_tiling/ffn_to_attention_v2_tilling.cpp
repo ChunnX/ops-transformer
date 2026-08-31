@@ -72,8 +72,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
         return ret;
     }
     OP_TILING_CHECK(context->SetScheduleMode(BATCH_MODE_SCHEDULE) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "failed to enable batch schedule mode"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "failed to enable batch schedule mode"), return ge::GRAPH_FAILED);
 
     // Reserve one token staging slot and one flag slot for every AIV. URMA WriteNbi uses these local GM slots.
     FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
@@ -85,8 +84,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const gert::StorageShape *xShape = context->GetInputShape(config.xIndex);
     OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "xShape"),
                     return ge::GRAPH_FAILED);
-    tilingData->ffnToAttentionV2Info.maxTokenNum =
-        static_cast<uint64_t>(xShape->GetStorageShape().GetDim(0));
+    tilingData->ffnToAttentionV2Info.maxTokenNum = static_cast<uint64_t>(xShape->GetStorageShape().GetDim(0));
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),

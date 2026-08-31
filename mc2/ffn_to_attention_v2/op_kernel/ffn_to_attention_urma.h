@@ -24,27 +24,25 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "ffn_to_attention_v2_tiling.h"
 
-#if __has_include("../common/attention_ffn_context.h")
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
 #include "../common/attention_ffn_context.h"
 #include "../common/mc2_kernel_utils.h"
 #else
+#include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/attention_ffn_context.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 namespace FFNToAttentionImpl {
 
+constexpr uint8_t URMA_BUFFER_NUM = 2U;
+constexpr uint32_t URMA_UB_ALIGN = 32U;
+constexpr uint64_t URMA_WIN_ADDR_ALIGN = 512UL;
+
 constexpr uint32_t URMA_HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr int32_t URMA_FLAG_VALUE = 1;
-
-struct FFNToAttentionV2TokenMetaData {
-    uint32_t curAttenWorkIds;
-    uint32_t curAttenWorkRank;
-    uint32_t curMicroBatchIds;
-    uint32_t curTokenBatchOffset;
-    uint32_t curTokenTopkOffset;
-};
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
@@ -56,17 +54,12 @@ class FFNToAttentionUrma {
 public:
     __aicore__ inline FFNToAttentionUrma(){};
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
-                                GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
-                                GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
-                                const FFNToAttentionV2TilingData *tilingData);
+                                GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
+                                GM_ADDR workspaceGM, TPipe *pipe, const FFNToAttentionV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
-    static constexpr uint8_t URMA_BUFFER_NUM = 2U;
-    static constexpr uint32_t URMA_UB_ALIGN = 32U;
-    static constexpr uint64_t URMA_WIN_ADDR_ALIGN = 512UL;
-
-    __aicore__ inline void ReadTokenMetaData(FFNToAttentionV2TokenMetaData &metaDataStruct, uint64_t yOffset);
+    __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
     __aicore__ inline void HcommInit();
@@ -120,12 +113,10 @@ private:
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void
-FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds,
-                                                              GM_ADDR microBatchIds, GM_ADDR tokenIds,
-                                                              GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
-                                                              GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
-                                                              const FFNToAttentionV2TilingData *tilingData)
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(
+    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
+    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
+    const FFNToAttentionV2TilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -203,24 +194,22 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline GM_ADDR
-FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetWindowAddr(uint32_t curAttenWorkRank)
+__aicore__ inline GM_ADDR FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetWindowAddr(
+    uint32_t curAttenWorkRank)
 {
     return (GM_ADDR)mc2Context_->epHcclBuffer_[curAttenWorkRank];
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline uint64_t
-FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetUrmaCommHandle(uint32_t dstRank)
+__aicore__ inline uint64_t FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetUrmaCommHandle(uint32_t dstRank)
 {
     uint32_t index = dstRank > rankId_ ? dstRank - 1U : dstRank;
     return mc2Context_->hcommHandle_[index];
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void
-FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(
-    FFNToAttentionV2TokenMetaData &metaDataStruct, uint64_t yOffset)
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(
+    ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset)
 {
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         sessionIdsGMTensor_[yOffset]);
@@ -263,8 +252,8 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(
         expertOffsetsGMTensor_[yOffset]);
     int32_t curTokenTopkOffset = expertOffsetsGMTensor_.GetValue(yOffset);
     ascendc_assert(curTokenTopkOffset >= 0 && static_cast<uint32_t>(curTokenTopkOffset) < expertNumPerToken_,
-                   "expertOffset out of range, expertOffset=%d, expertNumPerToken=%u, yOffset=%lu",
-                   curTokenTopkOffset, expertNumPerToken_, yOffset);
+                   "expertOffset out of range, expertOffset=%d, expertNumPerToken=%u, yOffset=%lu", curTokenTopkOffset,
+                   expertNumPerToken_, yOffset);
     metaDataStruct.curTokenTopkOffset = static_cast<uint32_t>(curTokenTopkOffset);
 }
 
@@ -309,20 +298,21 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToRemote(
-    uint32_t sourceAivId, uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr)
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToRemote(uint32_t sourceAivId,
+                                                                                            uint32_t dstRank,
+                                                                                            GM_ADDR remoteDataAddr,
+                                                                                            GM_ADDR remoteFlagAddr)
 {
     ascendc_assert(aivId_ == 0U, "only AIV0 may submit URMA writes, aivId=%u", aivId_);
-    ascendc_assert(sourceAivId < aivNum_, "sourceAivId out of range, sourceAivId=%u, aivNum=%u", sourceAivId,
-                   aivNum_);
+    ascendc_assert(sourceAivId < aivNum_, "sourceAivId out of range, sourceAivId=%u, aivNum=%u", sourceAivId, aivNum_);
     GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(sourceAivId) * dataWorkspaceStride_;
     uint64_t channel = GetUrmaCommHandle(dstRank);
     int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, sourceDataAddr, static_cast<int64_t>(hSize_));
     ascendc_assert(ret == 0, "WriteNbi data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
                    dstRank, sourceAivId);
     ret = hcomm_.Drain(channel);
-    ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
-                   dstRank, sourceAivId);
+    ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_, dstRank,
+                   sourceAivId);
     // Publish the flag only after the token data has reached the destination window.
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, static_cast<int64_t>(sizeof(int32_t)));
     ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
@@ -347,24 +337,22 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint64_t yOffset = static_cast<uint64_t>(aivId_) + round * aivNum_;
             if (yOffset < actualTokenNum_) {
-                FFNToAttentionV2TokenMetaData metaDataStruct;
+                ReadTokenMetaDataStruct metaDataStruct;
                 ReadTokenMetaData(metaDataStruct, yOffset);
                 if (metaDataStruct.curAttenWorkRank == rankId_) {
                     GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
                     ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
                                    metaDataStruct.curAttenWorkRank);
-                    const uint64_t tokenSlot =
-                        (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
-                         metaDataStruct.curTokenBatchOffset) *
-                            expertNumPerToken_ +
-                        metaDataStruct.curTokenTopkOffset;
-                    const uint64_t remoteDataOffset =
-                        winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
+                    const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                                                metaDataStruct.curTokenBatchOffset) *
+                                                   expertNumPerToken_ +
+                                               metaDataStruct.curTokenTopkOffset;
+                    const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
                     const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
-                    ascendc_assert(remoteDataOffset <= requiredWindowSize_ &&
-                                       hSize_ <= requiredWindowSize_ - remoteDataOffset,
-                                   "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
-                                   remoteDataOffset, hSize_, requiredWindowSize_);
+                    ascendc_assert(
+                        remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                        "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                        remoteDataOffset, hSize_, requiredWindowSize_);
                     ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
                                        sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
                                    "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
@@ -386,7 +374,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     if (sourceYOffset >= actualTokenNum_) {
                         break;
                     }
-                    FFNToAttentionV2TokenMetaData metaDataStruct;
+                    ReadTokenMetaDataStruct metaDataStruct;
                     ReadTokenMetaData(metaDataStruct, sourceYOffset);
                     if (metaDataStruct.curAttenWorkRank == rankId_) {
                         continue;
@@ -395,18 +383,17 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
                     ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
                                    metaDataStruct.curAttenWorkRank);
-                    const uint64_t tokenSlot =
-                        (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
-                         metaDataStruct.curTokenBatchOffset) *
-                            expertNumPerToken_ +
-                        metaDataStruct.curTokenTopkOffset;
+                    const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                                                metaDataStruct.curTokenBatchOffset) *
+                                                   expertNumPerToken_ +
+                                               metaDataStruct.curTokenTopkOffset;
                     const uint64_t tokenDataOffset = tokenSlot * axisHS_ * sizeof(xType);
                     const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenDataOffset;
                     const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
-                    ascendc_assert(remoteDataOffset <= requiredWindowSize_ &&
-                                       hSize_ <= requiredWindowSize_ - remoteDataOffset,
-                                   "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
-                                   remoteDataOffset, hSize_, requiredWindowSize_);
+                    ascendc_assert(
+                        remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                        "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                        remoteDataOffset, hSize_, requiredWindowSize_);
                     ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
                                        sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
                                    "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
