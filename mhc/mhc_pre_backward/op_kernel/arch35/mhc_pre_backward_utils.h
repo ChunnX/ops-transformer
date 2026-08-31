@@ -67,6 +67,11 @@ constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 5 - 1) * 1024; // 87KB；两个VE
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
+constexpr uint32_t B32_CUBE_BLOCK_SIZE = 8;
+// 每块保存最多128行、128列FP32的NZ数据；双缓冲固定占用L1顶部128KB。
+constexpr uint32_t C1_L1_CHUNK_ELEMENTS = PROCESS_V2_CHUNK_SIZE * ND_BLOCK_SIZE;
+constexpr uint32_t C1_L1_BUFFER_ELEMENTS = DOUBLE_BUFFER * C1_L1_CHUNK_ELEMENTS;
+constexpr uint32_t C1_L1_OFFSET_BYTES = 384 * 1024;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
 constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;
@@ -87,8 +92,13 @@ constexpr float ZERO = 0.0f;
 constexpr uint32_t MATMUL_WRITE_OFFSET_M = 256;
 constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
+constexpr uint32_t CROSS_CORE_C1_FLAG_INDEX = 0x4;
+constexpr uint32_t CROSS_CORE_SUBBLOCK_FLAG_OFFSET = 0x10;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_READY_0 = 0x8;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_READY_1 = 0xB;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_FREE_0 = 0xA;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_FREE_1 = 0xC;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 
 constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
@@ -146,7 +156,9 @@ using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
-using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+// C1右矩阵由V2从VECOUT直接写入TSCM，省去GM往返搬运。
+using bT_C1 = MatmulType<TPosition::TSCM, CubeFormat::NZ, float, false, LayoutMode::NONE, false,
+                         TPosition::VECOUT>;
 using cT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C1 = matmul::MatmulImpl<aT_C1, bT_C1, cT_C1>;
 

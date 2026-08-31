@@ -72,13 +72,14 @@ public:
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                               uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                              uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf);
+                                              uint32_t currentN, uint32_t buffId, uint32_t chunkIdx,
+                                              LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkLoadInvRms(uint32_t bsChunkStart, uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
                                                      uint32_t currentChunkSize, uint32_t currentN, uint32_t bsStart);
     __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                        uint32_t bsChunkStart, uint32_t currentChunkSize,
-                                                       uint32_t buffId);
+                                                       uint32_t buffId, uint32_t chunkIdx);
     __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
                                                           uint32_t currentChunkSize, uint32_t buffId,
                                                           LocalTensor<P> &sumBuf);
@@ -208,6 +209,7 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
+    LocalTensor<P> xRsL1_;
 
     uint32_t hPreMaxBufLen_;
     uint32_t hPostMaxBufLen_;
@@ -283,6 +285,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
+    // AIC与两个AIV通过相同物理偏移访问共享L1；顶部128KB划分为两块64KB缓冲。
+    xRsL1_ = LocalTensor<P>(TPosition::TSCM, C1_L1_OFFSET_BYTES, C1_L1_BUFFER_ELEMENTS);
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
@@ -1006,19 +1010,51 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
-    // 1C2V 对应操作两块 workspaceGm_
-    buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    // 设置矩阵形状
-    uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
-    mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
-    mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
-    // h_mix_grad^T @ x_rs
-    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
-    mm1.SetTensorB(workSpaceGm_[offsetXs], false);                                 // [BS, NDBlock]
-    // 计算
+    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
+    uint32_t chunkCount = CeilDiv(currentBSBlock, chunkSize);
+    // 此时预取的下一次C0已经结束，才允许V2覆盖L1，避免两条流水争用同一片L1。
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_FREE_0);
+    if (currentNDBlock > ND_BLOCK_SIZE / 2) {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+            CROSS_CORE_WAIT_FLAG_C1_FREE_0 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
+    }
+    if (chunkCount > 1) {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_FREE_1);
+        if (currentNDBlock > ND_BLOCK_SIZE / 2) {
+            AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+                CROSS_CORE_WAIT_FLAG_C1_FREE_1 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
+        }
+    }
+
+    for (uint32_t chunkIdx = 0, kOffset = 0; kOffset < currentBSBlock; ++chunkIdx, kOffset += chunkSize) {
+        uint32_t currentChunkSize = Min(chunkSize, currentBSBlock - kOffset);
+        uint32_t l1BuffId = chunkIdx % DOUBLE_BUFFER;
+        uint32_t readyFlag = l1BuffId == 0 ? CROSS_CORE_WAIT_FLAG_C1_READY_0 : CROSS_CORE_WAIT_FLAG_C1_READY_1;
+        AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(readyFlag);
+        if (currentNDBlock > ND_BLOCK_SIZE / 2) {
+            AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+                readyFlag + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
+        }
+
+        mm1.SetOrgShape(fusionSize_, currentNDBlock, currentChunkSize, currentChunkSize, nD_);
+        mm1.SetSingleShape(fusionSize_, currentNDBlock, currentChunkSize);
+        mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS + kOffset)], true);
+        mm1.SetTensorB(xRsL1_[l1BuffId * C1_L1_CHUNK_ELEMENTS], false);
+        mm1.Iterate(kOffset != 0);
+
+        // 仅在该缓冲还会复用时归还许可，避免下一轮残留未消费的同步事件。
+        if (chunkIdx + DOUBLE_BUFFER < chunkCount) {
+            uint32_t freeFlag = l1BuffId == 0 ? CROSS_CORE_WAIT_FLAG_C1_FREE_0 : CROSS_CORE_WAIT_FLAG_C1_FREE_1;
+            AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(freeFlag);
+            if (currentNDBlock > ND_BLOCK_SIZE / 2) {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+                    freeFlag + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
+            }
+        }
+    }
+
     bool enAtomic = (offsetBS != 0);
-    mm1.IterateAll(gradPhiGm_[offsetND], enAtomic); // 非连续写
+    mm1.GetTensorC(gradPhiGm_[offsetND], enAtomic);
     mm1.End();
 }
 
@@ -1056,8 +1092,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             // 执行当前的V2
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId);
             buffId++;
-            // 通知C1计算
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1);
         }
         if (withGamma_) {
             vecOutQueueSmall_.EnQue(sumBuf);
@@ -1252,13 +1286,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
     // ==========================================================
-    for (uint32_t bsChunkStart = bsStart; bsChunkStart < bsEnd; bsChunkStart += chunkSize) {
+    uint32_t chunkIdx = 0;
+    for (uint32_t bsChunkStart = bsStart; bsChunkStart < bsEnd; bsChunkStart += chunkSize, ++chunkIdx) {
         uint32_t bsChunkEnd = Min(bsChunkStart + chunkSize, bsEnd);
         uint32_t currentChunkSize = bsChunkEnd - bsChunkStart;
         uint32_t chunkNDSize = currentChunkSize * copySizeND;
 
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
-                           sumBuf);
+                           chunkIdx, sumBuf);
     }
 }
 
@@ -1266,7 +1301,8 @@ template <class T, class P>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                               uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf)
+                                               uint32_t currentN, uint32_t buffId, uint32_t chunkIdx,
+                                               LocalTensor<P> &sumBuf)
 {
     // 1. 加载inv_rms和inv_rms_grad
     ProcessV2ChunkLoadInvRms(bsChunkStart, currentChunkSize);
@@ -1275,7 +1311,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
     ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart);
 
     // 3. 加载x和gamma，计算xRs
-    ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, buffId);
+    ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, buffId, chunkIdx);
 
     // 4. 融合计算xRsGrad并处理xRsGradMm
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
@@ -1344,7 +1380,7 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
                                                                                uint32_t bsStart, uint32_t bsChunkStart,
                                                                                uint32_t currentChunkSize,
-                                                                               uint32_t buffId)
+                                                                               uint32_t buffId, uint32_t chunkIdx)
 {
     DataCopyExtParams xCopyParams;
     DataCopyPadExtParams<T> xCopyPadParams;
@@ -1380,19 +1416,31 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     vecOutQueue1_.EnQue(gammaOutUb_);
     gammaOutUb_ = vecOutQueue1_.DeQue<P>();
 
-    // 输出gamma到workspace
-    DataCopyExtParams fp32ExtCopyParams;
-    fp32ExtCopyParams.blockCount = currentChunkSize;
-    fp32ExtCopyParams.blockLen = copySizeND * sizeof(P);
-    fp32ExtCopyParams.srcStride = 0;
-    fp32ExtCopyParams.dstStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
-
-    uint64_t offset = workspaceBuf_.GetXRsOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
+    // 等待AIC归还对应L1缓冲，再将当前K分片从UB转换为NZ直接写入L1。
     uint32_t vecIdx = blockIdx_ % 2;
-    offset += (bsChunkStart - bsStart) * ND_BLOCK_SIZE;
-    offset += vecIdx * (ND_BLOCK_SIZE / 2);
+    uint32_t l1BuffId = chunkIdx % DOUBLE_BUFFER;
+    uint32_t freeFlag = l1BuffId == 0 ? CROSS_CORE_WAIT_FLAG_C1_FREE_0 : CROSS_CORE_WAIT_FLAG_C1_FREE_1;
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE3>(freeFlag);
 
-    DataCopyPad(workSpaceGm_[offset], gammaOutUb_, fp32ExtCopyParams);
+    uint32_t l1KStride = MhcPreBackwardUtils::CeilAlign(currentChunkSize, B32_CUBE_BLOCK_SIZE);
+    uint64_t columnOffset = vecIdx * (ND_BLOCK_SIZE / 2) * l1KStride;
+    Nd2NzParams nd2NzParams;
+    nd2NzParams.ndNum = 1;
+    nd2NzParams.nValue = currentChunkSize;
+    nd2NzParams.dValue = copySizeND;
+    nd2NzParams.srcNdMatrixStride = 0;
+    nd2NzParams.srcDValue = copySizeND;
+    nd2NzParams.dstNzC0Stride = l1KStride;
+    nd2NzParams.dstNzNStride = 1;
+    nd2NzParams.dstNzMatrixStride = 0;
+    SetFlag<HardEvent::V_MTE3>(EVENT_ID3);
+    WaitFlag<HardEvent::V_MTE3>(EVENT_ID3);
+    DataCopy(xRsL1_[l1BuffId * C1_L1_CHUNK_ELEMENTS + columnOffset], gammaOutUb_, nd2NzParams);
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
+
+    uint32_t readyFlag = l1BuffId == 0 ? CROSS_CORE_WAIT_FLAG_C1_READY_0 : CROSS_CORE_WAIT_FLAG_C1_READY_1;
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE3>(readyFlag);
     vecOutQueue1_.FreeTensor(gammaOutUb_);
 }
 
