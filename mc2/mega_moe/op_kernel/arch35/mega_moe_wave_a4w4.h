@@ -141,11 +141,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
-            MegaMoeImpl::DispatchWaveAndGetEndPosition<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                                       TopkWeightsPrefetch, true>(
+            uint32_t firstDispatchWaveMGroupCount = 0U;
+            MegaMoeImpl::DispatchWaveAndAdvance<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                                TopkWeightsPrefetch, false, true>(
                 tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
                 syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
-                mGroupsPerWave_);
+                mGroupsPerWave_, firstDispatchWaveMGroupCount);
         }
     }
 
@@ -170,8 +171,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             // AIV1 每轮先发送下一 Wave 的一个专家 slice，再处理当前 Wave 的一个专家 slice。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    nextWaveNeedsDispatch = MegaMoeImpl::DispatchWaveExpertSliceAndAdvance<
-                        ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true>(
+                    nextWaveNeedsDispatch = MegaMoeImpl::DispatchWaveAndAdvance<
+                        ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true, true>(
                         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
                         syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
                         mGroupsPerWave_, nextDispatchWaveMGroupCount);

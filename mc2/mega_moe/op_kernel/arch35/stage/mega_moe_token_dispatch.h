@@ -453,11 +453,11 @@ __aicore__ inline void ReloadWaveDispatchCumsumRange(const MoeStageCommonConfig 
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 }
 
-// 发送当前 WAVE 中一个专家的 slice，并推进 Dispatch 位置与 WAVE group 计数。
-// 返回 true 表示本 WAVE 仍有 Dispatch 工作；空专家会在本次调用内跳过。
+// 三条路径的唯一 WAVE Dispatch 入口。整 WAVE 模式在一次调用中累积完整范围后全局分核；
+// 专家 slice 模式每次只推进当前专家在本 WAVE 中的范围。返回 true 表示本 WAVE 仍有 Dispatch 工作。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool NeedCumsumReload = false>
-__aicore__ inline bool DispatchWaveExpertSliceAndAdvance(
+          bool DispatchOneExpertSlice = false, bool NeedCumsumReload = false>
+__aicore__ inline bool DispatchWaveAndAdvance(
     const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
     const BlockWorkspaceContext &countWorkspace, const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
     GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch, ExpertTokenPosition &dispatchPosition,
@@ -470,61 +470,9 @@ __aicore__ inline bool DispatchWaveExpertSliceAndAdvance(
         return false;
     }
 
-    uint32_t expertTokenCount = 0U;
-    while (dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave) {
-        expertTokenCount = GetExpertTokenCountFromWorkspace(params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace,
-                                                            common.moeExpertPerRank, dispatchPosition.expertIdx);
-        if (expertTokenCount != 0U && dispatchPosition.tokenIndexInExpert < expertTokenCount) {
-            break;
-        }
-        ++dispatchPosition.expertIdx;
-        dispatchPosition.tokenIndexInExpert = 0U;
-    }
-    if (dispatchPosition.expertIdx >= common.moeExpertPerRank || processedMGroupCount >= mGroupsPerWave) {
-        return false;
-    }
-
-    ExpertTokenPosition sliceBeginPosition = dispatchPosition;
-    AdvanceExpertTokenPositionInWave<PipelineTileM>(expertTokenCount, mGroupsPerWave, processedMGroupCount,
-                                                    dispatchPosition);
-    uint32_t sliceGlobalRowBegin =
-        static_cast<uint32_t>(sliceBeginPosition.globalTokenIndex < context.maxOutputSize ?
-                                  sliceBeginPosition.globalTokenIndex :
-                                  context.maxOutputSize);
-    uint32_t sliceGlobalRowEnd =
-        static_cast<uint32_t>(dispatchPosition.globalTokenIndex < context.maxOutputSize ?
-                                  dispatchPosition.globalTokenIndex :
-                                  context.maxOutputSize);
-    if (sliceGlobalRowEnd > sliceGlobalRowBegin) {
-        if constexpr (NeedCumsumReload) {
-            ReloadWaveDispatchCumsumRange(common, scratch, sliceBeginPosition.expertIdx,
-                                          sliceBeginPosition.expertIdx);
-        }
-        RunWaveDispatchStage<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
-            context, common, blockJob, syncLayout, params, winRankAddr, scratch, sliceBeginPosition.expertIdx,
-            sliceGlobalRowBegin, sliceGlobalRowEnd - sliceGlobalRowBegin);
-    }
-    return dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave;
-}
-
-// A8W8 与启动阶段的整 WAVE Dispatch 入口：先确定完整 WAVE，再按全局连续 row 分核并发送。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
-          bool NeedCumsumReload = false>
-__aicore__ inline ExpertTokenPosition DispatchWaveAndGetEndPosition(
-    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
-    const BlockWorkspaceContext &countWorkspace, const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-    GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch, ExpertTokenPosition &dispatchPosition,
-    uint32_t mGroupsPerWave)
-{
-    if constexpr (g_coreType == AIC) {
-        return dispatchPosition;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return dispatchPosition;
-    }
-
-    ExpertTokenPosition waveBeginPosition = dispatchPosition;
-    uint32_t processedMGroupCount = 0U;
+    ExpertTokenPosition dispatchRangeBegin = dispatchPosition;
+    uint32_t lastDispatchedExpertIdx = common.moeExpertPerRank;
+    bool hasDispatchRange = false;
     while (dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave) {
         uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
             params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace, common.moeExpertPerRank,
@@ -534,29 +482,37 @@ __aicore__ inline ExpertTokenPosition DispatchWaveAndGetEndPosition(
             dispatchPosition.tokenIndexInExpert = 0U;
             continue;
         }
+        if (!hasDispatchRange) {
+            if constexpr (DispatchOneExpertSlice) {
+                dispatchRangeBegin = dispatchPosition;
+            }
+            hasDispatchRange = true;
+        }
+        lastDispatchedExpertIdx = dispatchPosition.expertIdx;
         AdvanceExpertTokenPositionInWave<PipelineTileM>(expertTokenCount, mGroupsPerWave, processedMGroupCount,
                                                         dispatchPosition);
+        if constexpr (DispatchOneExpertSlice) {
+            break;
+        }
     }
 
-    uint32_t waveGlobalRowBegin = static_cast<uint32_t>(waveBeginPosition.globalTokenIndex < context.maxOutputSize ?
-                                                            waveBeginPosition.globalTokenIndex :
-                                                            context.maxOutputSize);
-    uint32_t waveGlobalRowEnd = static_cast<uint32_t>(dispatchPosition.globalTokenIndex < context.maxOutputSize ?
-                                                          dispatchPosition.globalTokenIndex :
-                                                          context.maxOutputSize);
-    if (waveGlobalRowEnd <= waveGlobalRowBegin) {
-        return dispatchPosition;
+    uint32_t dispatchGlobalRowBegin =
+        static_cast<uint32_t>(dispatchRangeBegin.globalTokenIndex < context.maxOutputSize ?
+                                  dispatchRangeBegin.globalTokenIndex :
+                                  context.maxOutputSize);
+    uint32_t dispatchGlobalRowEnd =
+        static_cast<uint32_t>(dispatchPosition.globalTokenIndex < context.maxOutputSize ?
+                                  dispatchPosition.globalTokenIndex :
+                                  context.maxOutputSize);
+    if (hasDispatchRange && dispatchGlobalRowEnd > dispatchGlobalRowBegin) {
+        if constexpr (NeedCumsumReload) {
+            ReloadWaveDispatchCumsumRange(common, scratch, dispatchRangeBegin.expertIdx, lastDispatchedExpertIdx);
+        }
+        RunWaveDispatchStage<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+            context, common, blockJob, syncLayout, params, winRankAddr, scratch, dispatchRangeBegin.expertIdx,
+            dispatchGlobalRowBegin, dispatchGlobalRowEnd - dispatchGlobalRowBegin);
     }
-
-    if constexpr (NeedCumsumReload) {
-        uint32_t lastExpertIdx = dispatchPosition.tokenIndexInExpert == 0U ? dispatchPosition.expertIdx - 1U :
-                                                                           dispatchPosition.expertIdx;
-        ReloadWaveDispatchCumsumRange(common, scratch, waveBeginPosition.expertIdx, lastExpertIdx);
-    }
-    RunWaveDispatchStage<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
-        context, common, blockJob, syncLayout, params, winRankAddr, scratch, waveBeginPosition.expertIdx,
-        waveGlobalRowBegin, waveGlobalRowEnd - waveGlobalRowBegin);
-    return dispatchPosition;
+    return dispatchPosition.expertIdx < common.moeExpertPerRank && processedMGroupCount < mGroupsPerWave;
 }
 
 template <typename ActivationType>
