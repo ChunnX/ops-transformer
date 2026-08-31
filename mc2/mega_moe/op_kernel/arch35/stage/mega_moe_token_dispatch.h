@@ -14,23 +14,19 @@
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
-#ifndef MEGA_MOE_WAVE_DISPATCH_GROUP_READY
-#ifdef MEGA_MOE_A8W8_DISPATCH_GROUP_READY
-#define MEGA_MOE_WAVE_DISPATCH_GROUP_READY MEGA_MOE_A8W8_DISPATCH_GROUP_READY
-#else
-#define MEGA_MOE_WAVE_DISPATCH_GROUP_READY 0
+#ifndef MEGA_MOE_A8W8_DISPATCH_GROUP_READY
+#define MEGA_MOE_A8W8_DISPATCH_GROUP_READY 0
 #endif
-#endif
-#if MEGA_MOE_WAVE_DISPATCH_GROUP_READY != 0 && MEGA_MOE_WAVE_DISPATCH_GROUP_READY != 1
-#error "MEGA_MOE_WAVE_DISPATCH_GROUP_READY must be 0 or 1"
+#if MEGA_MOE_A8W8_DISPATCH_GROUP_READY != 0 && MEGA_MOE_A8W8_DISPATCH_GROUP_READY != 1
+#error "MEGA_MOE_A8W8_DISPATCH_GROUP_READY must be 0 or 1"
 #endif
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-// Compact Wave Dispatch ready 发布策略：0=本核专家段完成后发布，1=每个 256-token group 完成后发布。
-constexpr bool WAVE_DISPATCH_GROUP_READY = MEGA_MOE_WAVE_DISPATCH_GROUP_READY != 0;
+// Compact A8W8 Dispatch ready 发布策略：0=本核专家段完成后发布，1=每个 256-token group 完成后发布。
+constexpr bool A8W8_DISPATCH_GROUP_READY = MEGA_MOE_A8W8_DISPATCH_GROUP_READY != 0;
 
 // Token Dispatch 的阶段私有配置。任务分工(BlockJobContext)与 count 槽位(BlockWorkspaceContext)
 // 与 GMM 阶段共用编排层的同一份实例，不在此重复持有。
@@ -429,8 +425,8 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
     return searchBegin - expertRankBegin;
 }
 
-// Compact Wave 路径：本核的单专家连续段完成后，一次发布所覆盖的全部 group。
-// 非 compact 路径保留 source-rank 段发布，避免切 group 后从头重复扫描 mask。
+// Compact A8W8 粗粒度实验路径：本核的单专家连续段完成后，一次发布所覆盖的全部 group。
+// 非 compact 路径保留 PR10302/A8W4 的 source-rank 段发布，避免切 group 后从头重复扫描 mask。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
           bool UseCompactRouteIndex>
 __aicore__ inline void DispatchWaveExpertRowsDeferred(const TokenDispatchConfig &context,
@@ -615,7 +611,8 @@ __aicore__ inline void RunGlobalWaveDispatchStage(const TokenDispatchConfig &con
 }
 
 // 非 layered 路径统一入口：使用独立 count 表规划跨专家滚动分核，并发送当前专家的有效行。
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
+          bool UseCompactRouteIndex = false>
 __aicore__ inline uint32_t RunWaveExpertDispatchStage(
     const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
     const MoeSyncWorkspaceLayout &syncLayout, const Params &params, GM_ADDR *winRankAddr,
@@ -629,7 +626,8 @@ __aicore__ inline uint32_t RunWaveExpertDispatchStage(
     }
     WaveDispatchCoreRange coreRange = PlanWaveExpertDispatch(context, common, blockJob, scratch, localExpertId);
     if (coreRange.localExpertRowBegin < coreRange.localExpertRowEnd) {
-        DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
+        DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,
+                               UseCompactRouteIndex>(
             context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
     }
     return static_cast<uint32_t>(coreRange.expertRowCount);
@@ -676,12 +674,13 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
-// W4 的 Activation/SwiGLU 会覆盖从 UB 0 开始的 prefix 表。每次 Dispatch 前从当前物理 block 的
-// GM 备份恢复当前 Wave 跨越的全部专家 prefix；起点向下对齐 32B，兼顾 MTE 地址约束。
+// W4 的 Activation/SwiGLU 会覆盖从 UB 0 开始的 prefix 表。每次进入新专家 Dispatch 前，
+// 从当前物理 block 的 GM 备份恢复“上一专家尾值 + 当前专家各 source-rank 前缀”。
+// 起点向下对齐 32B，兼顾 MTE 地址约束，并避免重载与当前专家无关的整张表。
 template <typename ActivationType>
-__aicore__ inline void ReloadWaveDispatchCumsumRange(const MoeStageCommonConfig &common,
-                                                     TokenDispatchScratch<ActivationType> &scratch,
-                                                     uint32_t firstExpertIdx, uint32_t lastExpertIdx)
+__aicore__ inline void ReloadWaveExpertDispatchCumsum(const MoeStageCommonConfig &common,
+                                                      TokenDispatchScratch<ActivationType> &scratch,
+                                                      uint32_t localExpertId)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -690,26 +689,14 @@ __aicore__ inline void ReloadWaveDispatchCumsumRange(const MoeStageCommonConfig 
         return;
     }
 
-    if (firstExpertIdx >= common.moeExpertPerRank || firstExpertIdx > lastExpertIdx) {
-        return;
-    }
-    lastExpertIdx = lastExpertIdx < common.moeExpertPerRank ? lastExpertIdx : common.moeExpertPerRank - 1U;
     constexpr uint32_t INT32_PER_32B = ALIGN_32 / sizeof(int32_t);
-    uint32_t requiredBeginIndex = firstExpertIdx == 0U ? 0U : firstExpertIdx * common.worldSize - 1U;
+    uint32_t requiredBeginIndex = localExpertId == 0U ? 0U : localExpertId * common.worldSize - 1U;
     uint32_t alignedBeginIndex = requiredBeginIndex / INT32_PER_32B * INT32_PER_32B;
-    uint32_t requiredEndIndex = (lastExpertIdx + 1U) * common.worldSize;
+    uint32_t requiredEndIndex = (localExpertId + 1U) * common.worldSize;
     uint32_t reloadElementCount = requiredEndIndex - alignedBeginIndex;
     DataCopyPad(scratch.cumsumInfoTensor[alignedBeginIndex], scratch.cumsumInfoGlobalTensor[alignedBeginIndex],
                 {1U, reloadElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-}
-
-template <typename ActivationType>
-__aicore__ inline void ReloadWaveExpertDispatchCumsum(const MoeStageCommonConfig &common,
-                                                      TokenDispatchScratch<ActivationType> &scratch,
-                                                      uint32_t localExpertId)
-{
-    ReloadWaveDispatchCumsumRange(common, scratch, localExpertId, localExpertId);
 }
 
 template <typename ActivationType>
