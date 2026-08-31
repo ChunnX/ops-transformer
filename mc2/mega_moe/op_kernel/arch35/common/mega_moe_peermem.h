@@ -78,15 +78,14 @@ HOST_DEVICE bool UseMteGroupCombineReady(int64_t topoType, uint8_t groupedMatmul
            (groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL || groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
 }
 
-// 当前仅 W4 Wave 使用 compact route index；A8W8 保留 mask 路由，便于小 BS 场景独立验证。
-// Combine 的 group-ready 协议仍由 UseMteGroupCombineReady 独立控制，避免路由格式选择
-// 隐式改变量化 Combine workspace 布局。
+// MTE Wave 的三个模板统一使用 compact route index。Combine 的 group-ready 协议仍由
+// UseMteGroupCombineReady 独立控制，避免路由格式选择隐式改变 W4 的量化 Combine workspace 布局。
 HOST_DEVICE bool UseCompactRouteIndex(int64_t topoType, uint8_t groupedMatmulMode)
 {
     bool isW4Mode = groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
                     groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                     groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
-    return topoType == TOPO_TYPE_MTE && isW4Mode;
+    return UseMteGroupCombineReady(topoType, groupedMatmulMode) || (topoType == TOPO_TYPE_MTE && isW4Mode);
 }
 
 // mask 接收区总字节数：每个 (localExpert, srcRank) 一个槽，槽 = mask 位区 + 末尾 32B count 区。
