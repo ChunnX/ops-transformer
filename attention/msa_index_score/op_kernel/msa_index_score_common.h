@@ -41,7 +41,7 @@ constexpr uint32_t MSA_K_TILE = 128;
 constexpr uint32_t MSA_BLOCKS_PER_STILE = 8;
 
 // S workspace 轮转级数。AIC 领先 AIV 的未消费 tile 数 <= MSA_WORKSPACE_STAGES - 1。
-// 5 -> 8：AIV 乒乓化后服务速度提升，加深缓冲让 AIC 几乎不因 AIV 停顿（wait_id2→0）。
+// 5 -> 8：AIV 乒乓化后速度提升，加深缓冲让 AIC 几乎不因 AIV 停顿（wait_id2→0）。
 // 非量化路径 S 为 fp16，8 级 × 256KB × 20 核 = 40MB，仍可整体驻留 L2。
 constexpr uint32_t MSA_WORKSPACE_STAGES = 8;
 

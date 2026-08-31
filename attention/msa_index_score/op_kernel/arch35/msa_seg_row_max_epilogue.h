@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file msa_index_score_epilogue.h
+ * \file msa_seg_row_max_epilogue.h
  * \brief AIV 侧 Epilogue：可选反量化列乘 -> atten_mask -> 分段 RowMax -> local_mask -> 写回。
  *
  * 数值路径：
@@ -18,8 +18,8 @@
  * local_mask 由 start_loc（query 所在逻辑 block）+ init/local_blocks 生成强制 +∞。
  */
 
-#ifndef MSA_INDEX_SCORE_EPILOGUE_ARCH35_H
-#define MSA_INDEX_SCORE_EPILOGUE_H
+#ifndef MSA_SEG_ROW_MAX_EPILOGUE_ARCH35_H
+#define MSA_SEG_ROW_MAX_EPILOGUE_ARCH35_H
 
 #include "kernel_operator.h"
 
@@ -72,8 +72,7 @@ public:
         ((UB_OFF_RED16 + UB_SIZE_RED16 + MSA_UB_ALIGN_BYTES - 1U) / MSA_UB_ALIGN_BYTES) * MSA_UB_ALIGN_BYTES;
     static constexpr uint32_t UB_SIZE_STAGE = MSA_STAGE_ROWS * MSA_STAGE_BLOCKS * sizeof(float);
     // 非量化：S16（fp16 载入缓冲）复用量化路径的 fp32 S 区（64KB = 两级 32KB 乒乓）。
-    // v0.7 PipeUtilization：aiv_mte2_wait_ratio≈0.84、aiv_mte2_ratio≈0.33、aiv_vec_ratio≈0.57，
-    // 说明 GM→UB 与归约串行；两级缓冲让下一 pass 的 MTE2 叠在当前 pass 的 V 上。
+    // 两级缓冲让下一 pass 的 MTE2 叠在当前 pass 的 V 上。
     static constexpr uint32_t UB_OFF_S16 = UB_OFF_S;
     static constexpr uint32_t UB_SIZE_S16 = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * sizeof(half);
     static constexpr uint32_t S16_STAGES = 2;
@@ -85,8 +84,7 @@ public:
                   "C2UB fp16 128-wide pack exceeds T64");
     // v40：两路 64 宽 fp32 WRM 的 dst 落在 T8，需 32B 对齐且互不重叠。
     static constexpr uint32_t C2UB_WRM_DST_STRIDE = (MSA_A5_S_PING_ROWS + 7U) & ~7U;
-    static_assert(2U * C2UB_WRM_DST_STRIDE * sizeof(float) <= UB_SIZE_T8,
-                  "C2UB dual fp32 WRM dst exceeds T8");
+    static_assert(2U * C2UB_WRM_DST_STRIDE * sizeof(float) <= UB_SIZE_T8, "C2UB dual fp32 WRM dst exceeds T8");
 
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
     // fp16：一个 32B datablock 16 个元素，一个 repeat 128 个元素（掩码 128 位）。
@@ -253,7 +251,7 @@ public:
         }
         constexpr uint32_t N_PER_ND = 64;
         constexpr uint32_t N_PAGE = MSA_BLOCK_SIZE;
-        constexpr uint8_t SRC_REP_128 = N_PAGE / MSA_HALF_PER_BLOCK; // 8
+        constexpr uint8_t SRC_REP_128 = N_PAGE / MSA_HALF_PER_BLOCK;  // 8
         constexpr uint8_t REP_BLK_64 = N_PER_ND / MSA_FP32_PER_BLOCK; // 8
         const uint32_t col = blk % MSA_BLOCKS_PER_STILE;
         if (col == 0U) {
@@ -270,10 +268,10 @@ public:
                 auto dst0 = ubT8_;
                 auto dst1 = ubT8_[C2UB_WRM_DST_STRIDE];
                 AscendC::WholeReduceMax<float>(dst0, ubPage, static_cast<int32_t>(N_PER_ND),
-                                              static_cast<int32_t>(mSub_), 1, 1, REP_BLK_64,
-                                              AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+                                               static_cast<int32_t>(mSub_), 1, 1, REP_BLK_64,
+                                               AscendC::ReduceOrder::ORDER_ONLY_VALUE);
                 AscendC::WholeReduceMax<float>(dst1, ubP1, static_cast<int32_t>(N_PER_ND), static_cast<int32_t>(mSub_),
-                                              1, 1, REP_BLK_64, AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+                                               1, 1, REP_BLK_64, AscendC::ReduceOrder::ORDER_ONLY_VALUE);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::Max(dst0, dst0, dst1, mSub_);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -837,8 +835,7 @@ private:
         StageScore(colOff, 0, mSub_);
     }
 
-    __aicore__ inline void ApplyDequantScalePage(const MsaTask &task, uint32_t blk,
-                                                 AscendC::LocalTensor<float> ubPage)
+    __aicore__ inline void ApplyDequantScalePage(const MsaTask &task, uint32_t blk, AscendC::LocalTensor<float> ubPage)
     {
         uint64_t scaleOff = 0;
         uint32_t nValidScale = MSA_BLOCK_SIZE;
@@ -886,8 +883,11 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         for (uint32_t r = 0; r < mSub_; ++r) {
-            AscendC::Mul(ubPage[r * 64U], ubPage[r * 64U], ubDeqScale_, 64);
-            AscendC::Mul(ubPage[mSub_ * 64U + r * 64U], ubPage[mSub_ * 64U + r * 64U], ubDeqScale_[64], 64);
+            AscendC::Mul(ubPage[r * MSA_FP32_PER_REPEAT], ubPage[r * MSA_FP32_PER_REPEAT], ubDeqScale_,
+                         MSA_FP32_PER_REPEAT);
+            AscendC::Mul(ubPage[mSub_ * MSA_FP32_PER_REPEAT + r * MSA_FP32_PER_REPEAT],
+                         ubPage[mSub_ * MSA_FP32_PER_REPEAT + r * MSA_FP32_PER_REPEAT],
+                         ubDeqScale_[MSA_FP32_PER_REPEAT], MSA_FP32_PER_REPEAT);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -949,4 +949,4 @@ private:
 
 } // namespace MsaIndexScoreNs
 
-#endif // MSA_INDEX_SCORE_EPILOGUE_ARCH35_H
+#endif // MSA_SEG_ROW_MAX_EPILOGUE_ARCH35_H

@@ -11,9 +11,9 @@
 /*!
  * \file msa_index_score.cpp
  * \brief torch_extension 适配：aclnnMsaIndexScore C++ wrapper。
-        *        Atlas A2/A3 + Ascend 950；key 支持 PA BBND/BNBD 与 TND packed。
-         *        950 另支持 query/key 同型 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN；
-         *        A2/A3 与 950：PA key 允许 dim0 非连续（torch view stride 经 ConvertType 传入）。
+ *        key 支持 PA BBND/BNBD 与 TND packed。
+ *        950 另支持 query/key 同型 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN；
+ *        PA key 允许 dim0 非连续（torch view stride 经 ConvertType 传入）。
  */
 
 #include <string>
@@ -81,8 +81,8 @@ void CheckMsaLayoutRanks(const at::Tensor &query, const at::Tensor &key, const c
         TORCH_CHECK(!block_table.has_value() || !block_table.value().defined(),
                     "layout_key=TND must not pass block_table.");
     } else {
-        TORCH_CHECK(key.dim() == KEY_PA_DIM,
-                    "layout_key=", layoutKeyStr, " requires key rank 4, but got dim=", key.dim());
+        TORCH_CHECK(key.dim() == KEY_PA_DIM, "layout_key=", layoutKeyStr,
+                    " requires key rank 4, but got dim=", key.dim());
         TORCH_CHECK(block_table.has_value() && block_table.value().defined() && block_table.value().numel() > 0,
                     "PageAttention (BBND/BNBD) requires block_table.");
     }
@@ -240,5 +240,8 @@ at::Tensor msa_index_score(const at::Tensor &query, const at::Tensor &key, const
     return score;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("msa_index_score", &msa_index_score, "msa_index_score"); }
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("msa_index_score", &msa_index_score, "msa_index_score");
+}
 } // namespace op_api

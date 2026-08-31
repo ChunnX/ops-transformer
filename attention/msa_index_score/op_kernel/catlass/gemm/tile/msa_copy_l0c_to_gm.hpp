@@ -199,7 +199,8 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA5, ElementAccumulator_, Gemm::GemmType<E
     CopyL0CToGm() = default;
 
     CATLASS_DEVICE
-    CopyL0CToGm(Params const &params_) : params(params_) {};
+    CopyL0CToGm(Params const &params_)
+        : params(params_) {};
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
@@ -211,7 +212,7 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA5, ElementAccumulator_, Gemm::GemmType<E
         AscendC::DataCopyCO12DstParams copyParams;
         copyParams.nSize = dstLayout.shape(1);
         copyParams.mSize = dstLayout.shape(0);
-        copyParams.srcStride = srcLayout.stride(3) / srcLayout.stride(0);
+        copyParams.srcStride = srcLayout.stride(LayoutSrc::RANK - 1) / srcLayout.stride(0);
         copyParams.dstStride = dstLayout.stride(0);
         copyParams.quantPre = quantPre;
         copyParams.nz2ndEn = true;

@@ -42,7 +42,7 @@ extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR key
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     (void)attenMask; // host 校验；device 按 sparse_mode 解析 rightDownCausal
-    // 950 非量化 PA：S 在 UB、无 K scratch，user workspace 可能为 0。不能因此跳过整个 kernel。
+    // 950 非量化 PA：S 在 UB、无 K scratch，user workspace 可能为 0。不能因此跳过整个 kernel 流程。
     GM_ADDR userWs = AscendC::GetUserWorkspace(workspace);
     if (userWs == nullptr) {
         userWs = workspace;

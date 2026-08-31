@@ -62,7 +62,7 @@ class MsaIndexScoreOpBuilder(OpBuilder):
             query: torch.Tensor,
             key: torch.Tensor,
             start_loc: torch.Tensor,
-            block_table: Optional[torch.Tensor],
+            block_table: torch.Tensor | None,
             scale: Optional[torch.Tensor],
             atten_mask: Optional[torch.Tensor],
             actual_seq_qlen: Optional[torch.Tensor],
@@ -173,10 +173,10 @@ def msa_index_score(
 ) -> torch.Tensor:
     """MSA Index Branch block score，封装 aclnnMsaIndexScore。
 
-    Atlas A2/A3 与 Ascend 950。950 额外支持 query/key 同型
+    950 额外支持 query/key 同型
     ``torch_npu.hifloat8`` / ``torch.float8_e5m2`` / ``torch.float8_e4m3fn``（无 scale）。
     key 布局由 ``layout_key`` 指定：PA BBND ``[NP, P, N2, D]``、BNBD ``[NP, N2, P, D]``、TND ``[T2, N2, D]``。
-    A2/A3 与 Ascend 950 允许 ``q_len`` / ``kv_len`` 为 0（含整 batch）：跳过该请求的 QK；空 KV 的 score 为 ``-inf``。
+    允许 ``q_len`` / ``kv_len`` 为 0（含整 batch）：跳过该请求的 QK；空 KV 的 score 为 ``-inf``。
 
     Args:
         query: ``[T1, N1, D]`` float16 / bfloat16；950 还可为三种 FP8

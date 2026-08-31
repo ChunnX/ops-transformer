@@ -401,9 +401,9 @@ struct CopyL1ToL0A<Arch::AtlasA5, Gemm::GemmType<Element, layout::zN, AscendC::T
         loadDataParams.mStartPosition = 0;
         loadDataParams.kStartPosition = 0;
         loadDataParams.mStep = layoutDst.shape(1);
-        loadDataParams.kStep = layoutDst.shape(3);
-        loadDataParams.srcStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutSrc.stride(3));
-        loadDataParams.dstStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutDst.stride(3));
+        loadDataParams.kStep = layoutDst.shape(LayoutDst::RANK - 1);
+        loadDataParams.srcStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutSrc.stride(LayoutSrc::RANK - 1));
+        loadDataParams.dstStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutDst.stride(LayoutDst::RANK - 1));
         loadDataParams.ifTranspose = false;
         AscendC::LoadData(dstTensor, srcTensor, loadDataParams);
     }
