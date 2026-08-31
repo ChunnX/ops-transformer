@@ -131,6 +131,7 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
 
     __VEC_SCOPE__
     {
+        MicroAPI::RegTensor<T> vreg_min;
         MicroAPI::RegTensor<T> vreg_input_x_1;
         MicroAPI::RegTensor<T> vreg_input_x_2;
         MicroAPI::RegTensor<T> vreg_input_max_tmp;
@@ -151,15 +152,19 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
         MicroAPI::RegTensor<T> vreg_exp_res;
         MicroAPI::RegTensor<T> vreg_exp_res_1;
         MicroAPI::RegTensor<T> vreg_exp_res_2;
+        MicroAPI::MaskReg preg_ori_tail_n = MicroAPI::UpdateMask<T>(originN - halfRepSize);
 
+        Duplicate(vreg_min, minValue);
         for (uint16_t i = 0; i < rows; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
             MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_1, vreg_input_x_1, scale, preg_all_b16);
-            MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale, preg_all_b16);
+            MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale,
+                                                                   preg_ori_tail_n);
+            MicroAPI::Select(vreg_input_x_2, vreg_input_x_2, vreg_min, preg_ori_tail_n);
             MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
             MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2,
-                                                                      preg_all_b16);
+                                                                      preg_ori_tail_n);
             MicroAPI::Max(vreg_input_max_tmp, vreg_input_x_1, vreg_input_x_2, preg_all_b16);
             MicroAPI::ReduceMax<T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_max_tmp, preg_all_b16);
             MicroAPI::DataCopyUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(maxUb, vreg_input_max, ureg_max, 1);
@@ -182,7 +187,6 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
                                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
             static constexpr MicroAPI::CastTrait castTrait1 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN,
                                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-
 
             MicroAPI::DataCopy<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 (__ubuf__ T2 *&)expUb1, vreg_exp_res_1, blockStride, repeatStride, preg_all_b16);
@@ -405,6 +409,7 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
 
     __VEC_SCOPE__
     {
+        MicroAPI::RegTensor<T> vreg_min;
         MicroAPI::RegTensor<T> vreg_input_x_1;
         MicroAPI::RegTensor<T> vreg_input_x_2;
         MicroAPI::RegTensor<T> vreg_input_max;
@@ -450,14 +455,19 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
                                                            MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
         // x_max = max(src, axis=-1, keepdims=True); x_max = Max(x_max, inMax)
+
+        MicroAPI::MaskReg preg_ori_tail_n = MicroAPI::UpdateMask<T>(originN - halfRepSize);
+        Duplicate(vreg_min, minValue);
         for (uint16_t i = 0; i < rows; ++i) {
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
             MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
             MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_1, vreg_input_x_1, scale, preg_all_b16);
-            MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale, preg_all_b16);
+            MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale,
+                                                                   preg_ori_tail_n);
+            MicroAPI::Select(vreg_input_x_2, vreg_input_x_2, vreg_min, preg_ori_tail_n);
             MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
             MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2,
-                                                                      preg_all_b16);
+                                                                      preg_ori_tail_n);
             MicroAPI::Max(vreg_input_max_tmp, vreg_input_x_1, vreg_input_x_2, preg_all_b16);
             MicroAPI::ReduceMax<T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_max_tmp, preg_all_b16);
             MicroAPI::DataCopyUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, vreg_input_max, ureg_max,
