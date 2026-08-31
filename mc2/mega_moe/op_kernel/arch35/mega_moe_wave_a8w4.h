@@ -139,7 +139,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
                  */
                 SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
             }
-            // Final Combine restores the maximum-capacity row ring on both AIVs. Drain the two-slot steady ring so
+            // Final Combine restores the maximum-capacity row ring on both AIVs. Drain the steady ring so
             // rowSequence and its MTE3_MTE2 events restart from slot 0 under the new modulo.
             DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         }

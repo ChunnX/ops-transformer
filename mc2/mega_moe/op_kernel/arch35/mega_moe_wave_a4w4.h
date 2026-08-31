@@ -134,7 +134,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
                 /* A4W4 复用同一 W4 prologue UB；Final Combine 覆盖前等待该 MTE3 搬运完成。 */
                 SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
             }
-            // Final Combine restores the maximum-capacity row ring on both AIVs. Drain the two-slot steady ring so
+            // Final Combine restores the maximum-capacity row ring on both AIVs. Drain the steady ring so
             // rowSequence and its MTE3_MTE2 events restart from slot 0 under the new modulo.
             DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         }

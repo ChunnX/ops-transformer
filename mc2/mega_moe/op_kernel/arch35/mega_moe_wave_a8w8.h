@@ -765,7 +765,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         bool useAllAivCores = expertIdx == allCoreCombineExpertIndex;
         UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, combineAddrInfo, combineState);
         if (useAllAivCores) {
-            // AIV1 has used the two-slot ring for preceding experts. Final Combine restores the maximum-capacity ring;
+            // AIV1 has used the steady ring for preceding experts. Final Combine restores the maximum-capacity ring;
             // drain and reset first so the new modulo never waits on an event that the old ring did not produce.
             DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
             activeBufferConfig = PrepareFinalWaveCombineBuffers<CombineQuantMode, true>(
