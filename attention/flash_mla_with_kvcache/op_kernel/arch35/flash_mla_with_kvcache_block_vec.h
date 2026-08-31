@@ -382,8 +382,10 @@ public:
         const uint32_t maskBufId = runInfo.loop % DB;
         if constexpr (hasAtten) {
             attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
-            // [flash_attn 同款协议] 两槽生产-消费锁全部在 AttenMaskCopyIn 内部，调用点不再套锁
+            // [flash_attn 同款协议] 生产端锁内置 AttenMaskCopyIn；消费端此处 Lock 等待数据就绪，
+            // 下方软max 在 Lock/Unlock 之间读取 mask（对齐 flash_attn_block_vec_nd.h:408-411,449-453）
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝（含 pre 槽与 MergeMask）
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
         LocalTensor<float> sumUb =
@@ -431,6 +433,10 @@ public:
             }
         }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
+        if constexpr (hasAtten) {
+            // [flash_attn 同款协议] 软max 已消费完本槽 mask，Unlock 释放供下一轮 MTE2 覆写
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
+        }
 
         // ===================DataCopy to L1 ====================
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0);
@@ -444,15 +450,6 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0);
-
-        if constexpr (hasAtten) {
-            // per-slot 消费端释放（V 管道到达此处即两槽读完成，允许下一轮 MTE2 覆写）
-            // [flash_attn 同款协议] 与 AttenMaskCopyIn 内部生产端 MTE2 锁配对，缺此块会死锁
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
-        }
     }
 
     __aicore__ inline void Vec1PostProcess(FlashMlaWithKvcacheRunInfoX runInfo)
