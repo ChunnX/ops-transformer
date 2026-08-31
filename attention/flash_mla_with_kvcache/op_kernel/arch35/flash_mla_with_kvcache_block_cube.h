@@ -16,16 +16,12 @@
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
-#if __has_include("../../../common/op_kernel/offset_calculator.h")
-#include "../../../common/op_kernel/offset_calculator.h"
+#if __has_include("../../../common/op_kernel/matmul.h")
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/const_def.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
 #else
-#include "../../common/offset_calculator.h"
 #include "../../common/matmul.h"
 #include "../../common/const_def.h"
-#include "../../common/FixpipeOut.h"
 #endif
 #include "memory_copy_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -53,7 +49,7 @@ public:
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
     using SeqLensToolType = FlashMlaSeqLensTool<Q_MODE, KV_MODE>;
 
-    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true}; // true: bmm2Write2Ub
+    static constexpr FixpipeConfig FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<FA_T::qLayout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<FA_T::qLayout, FA_T::kvLayoutType, PAGE_ATTENTION>();
 
@@ -347,7 +343,7 @@ public:
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
 
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<T, T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm1(FlashMlaWithKvcacheRunInfoX &runInfo)
@@ -420,7 +416,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<T, T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2(FlashMlaWithKvcacheRunInfoX &runInfo)
