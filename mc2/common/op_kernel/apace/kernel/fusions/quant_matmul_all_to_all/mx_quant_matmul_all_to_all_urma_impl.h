@@ -323,22 +323,5 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
     allToAll_.Finalize();
 }
 
-// =================================================================================
-// Kernel 入口（统一模板，TransA=false, TransB=true）
-// 调用方按 quantType 推导 AType/BType，按输出类型推导 CType
-// =================================================================================
-
-template <bool LocalDelay, typename AType, typename BType, typename CType>
-__global__ __aicore__ void MatmulAllToAllMxKernel(
-    __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM,
-    GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR biasGM, GM_ADDR cGM,
-    MatmulAllToAllTilingData tilingData)
-{
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-    MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay> impl;
-    impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, biasGM, cGM, &tilingData);
-    impl.Run();
-}
-
-} // namespace MatmulAllToAllMxImpl
+} // namespace Apace
 
