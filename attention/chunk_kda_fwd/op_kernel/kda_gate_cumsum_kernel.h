@@ -33,7 +33,7 @@ constexpr uint32_t GATE_BULK_ELEMENTS = GATE_BULK_ROWS * GATE_BULK_COLS;
 static __simd_vf__ inline void AccumulateGateRowRegbase(__ubuf__ float *input, __ubuf__ float *acc,
                                                         __ubuf__ float *output, uint16_t count)
 {
-    using namespace AscendC::MicroAPI;
+    using namespace AscendC::Reg;
     constexpr uint16_t FLOAT_ELEMENTS_PER_REG = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     constexpr uint16_t ELEMENTS_PER_PAIR = 2 * FLOAT_ELEMENTS_PER_REG;
 
@@ -65,7 +65,7 @@ static __simd_vf__ inline void AccumulateGateChunk128Regbase(__ubuf__ float *inp
                                                              __ubuf__ float *output,
                                                              uint16_t rows)
 {
-    using namespace AscendC::MicroAPI;
+    using namespace AscendC::Reg;
     constexpr uint16_t FLOAT_ELEMENTS_PER_REG = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     constexpr uint16_t ROW_ELEMENTS = 2 * FLOAT_ELEMENTS_PER_REG;
 
@@ -95,7 +95,7 @@ static __simd_vf__ inline void AccumulateSafeGateChunk128Regbase(
     __ubuf__ float *input, __ubuf__ float *bias, __ubuf__ float *output,
     uint16_t rows, float expA, float lowerBound)
 {
-    using namespace AscendC::MicroAPI;
+    using namespace AscendC::Reg;
     constexpr uint16_t FLOAT_ELEMENTS_PER_REG = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     constexpr uint16_t ROW_ELEMENTS = 2 * FLOAT_ELEMENTS_PER_REG;
 
