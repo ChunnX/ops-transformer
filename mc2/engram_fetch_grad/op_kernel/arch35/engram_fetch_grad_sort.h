@@ -19,7 +19,6 @@ constexpr uint32_t SIMT_THREAD_NUM = 1024;
 constexpr bool kUseSimtScatter = true;
 constexpr uint32_t SIMT_SLOT_ALIGN = 32U;
 constexpr uint32_t SIMT_SLOT_ALIGN_ELEMS = SIMT_SLOT_ALIGN / sizeof(int32_t);
-constexpr uint32_t SIMT_STAGING_PAD_BYTES = 256U * (SIMT_SLOT_ALIGN - sizeof(int32_t)) + SIMT_SLOT_ALIGN;
 
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
 __aicore__ inline void GatherGroupsSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
@@ -59,6 +58,9 @@ enum : uint32_t {
     VECTOR_LEN_INT16 = 128,
     VECTOR_LEN_INT8 = 256,
 };
+
+// 256 字面量已由 HISTOGRAM_BINS 单一来源化（CG-4.2）
+constexpr uint32_t SIMT_STAGING_PAD_BYTES = HISTOGRAM_BINS * (SIMT_SLOT_ALIGN - sizeof(int32_t)) + SIMT_SLOT_ALIGN;
 
 constexpr uint32_t UB_BLOCK_BYTES = Ops::Base::GetUbBlockSize();
 

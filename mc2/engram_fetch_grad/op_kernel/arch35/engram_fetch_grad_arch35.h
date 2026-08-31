@@ -55,7 +55,6 @@ __aicore__ inline void EngramFetchGradSyncFunc()
 
 constexpr uint32_t ENGRAM_GRAD_TIMEOUT_US = 5U * 1000U * 1000U;
 constexpr uint32_t ENGRAM_GRAD_CYCLES_PER_US = 1000U;
-constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
 constexpr uint32_t COMM_RETRY_COUNT = 3U;
 
 class EngramFetchGradArch35 {
@@ -84,7 +83,6 @@ private:
     __aicore__ inline void DrainAndSendFlags();
     __aicore__ inline void RecvGradFromPeers();
     __aicore__ inline void FinishExchangeGrad();
-    __aicore__ inline void UniqueScatterAdd();
     __aicore__ inline void InitCompanion(uint32_t numRecv);
     __aicore__ inline void RunSort(uint32_t numRecv);
     __aicore__ inline void InitFlagsAndDispls();
@@ -385,7 +383,7 @@ __aicore__ inline static uint32_t CastBufBytes(uint32_t hiddenDim, uint32_t maxB
 
 __aicore__ inline static uint32_t AccumBufBytes(uint32_t hiddenDim)
 {
-    return Ceil(hiddenDim * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
+    return Ceil(hiddenDim * sizeof(float), UB_ALIGN) * UB_ALIGN * Mc2Kernel::ACCUM_BUF_COPIES;
 }
 
 __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR gradFetched, GM_ADDR permOut,
@@ -1071,35 +1069,6 @@ __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
     sorter_.SetValueOffset(static_cast<int32_t>(offset));
     sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
     sorter_.Process(numRecv, *tpipe_);
-}
-
-__aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
-{
-    GlobalTensor<int32_t> numRecvGM;
-    numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
-    uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
-    if (numRecv == 0) {
-        FinishExchangeGrad();
-        uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
-        return;
-    }
-
-    InitCompanion(numRecv);
-    SyncAll<true>();
-
-    RunSort(numRecv);
-    SyncAll<true>();
-
-    uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
-
-    uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
-
-    FinishExchangeGrad();
-    SyncAll<true>();
-
-    uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                  gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
