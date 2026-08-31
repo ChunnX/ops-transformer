@@ -18,6 +18,7 @@
 #include "flash_attention_score_grad_tiling_common_regbase.h"
 #include "candidate/fag_kernel_capability.h"
 #include "candidate/fag_planned_candidate_verifier.h"
+#include "planner/fag_core_partition_dispatcher.h"
 #include "planner/fag_dense_core_partition_planner.h"
 #include "policy/fag_legacy_policy_v1.h"
 #include "op_host/tiling_templates_registry.h"
@@ -85,10 +86,9 @@ protected:
     void DoSplit();
     CorePartitionOutcome BuildDenseCorePartitionPlan(VariantId variantId) const;
     CorePartitionOutcome CaptureLegacyCorePartitionOutcome(VariantId variantId, bool available) const;
+    CorePartitionDispatchInput CaptureCorePartitionDispatchInput(VariantId variantId) const;
     void ApplyCorePartitionPlan(const CorePartitionPlan &plan);
-    PlannedCandidateExecutionResult ExecuteBn2s2CorePartition();
-    PlannedCandidateExecutionResult ExecuteBn2MultiBlockCorePartition();
-    PlannedCandidateExecutionResult ExecuteSelectedCorePartition();
+    PlannedCandidateExecutionResult ExecuteCorePartition(VariantId variantId);
     void DetermineBlockSchedule();
     ge::graphStatus DoSparse();
     uint32_t GetDeterSparseTilingKey();

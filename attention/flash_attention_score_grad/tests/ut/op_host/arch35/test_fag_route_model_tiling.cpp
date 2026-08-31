@@ -14,6 +14,7 @@
 #include "../../../../op_host/arch35/candidate/fag_kernel_capability.h"
 #include "../../../../op_host/arch35/candidate/fag_planned_candidate_verifier.h"
 #include "../../../../op_host/arch35/model/fag_route_model.h"
+#include "../../../../op_host/arch35/planner/fag_core_partition_dispatcher.h"
 #include "../../../../op_host/arch35/planner/fag_dense_core_partition_planner.h"
 #include "../../../../op_host/arch35/policy/fag_legacy_policy_v1.h"
 
@@ -122,6 +123,32 @@ CorePartitionPlan BuildFrozenLegacyDenseCorePartition(VariantId variantId, const
     return plan;
 }
 
+CorePartitionStrategy SelectWithFrozenLegacyCorePartitionDispatch(const CorePartitionDispatchInput &input)
+{
+    if (input.variantId == VariantId::BN2S2) {
+        if (!input.bn2s2Eligible) {
+            return CorePartitionStrategy::UNAVAILABLE;
+        }
+        return input.isTnd || input.isSparse ? CorePartitionStrategy::BN2S2_LOAD_BALANCE : CorePartitionStrategy::DENSE;
+    }
+    if (input.variantId == VariantId::BN2_MULTI_BLOCK) {
+        if (input.isTnd) {
+            return CorePartitionStrategy::BN2_MULTI_BLOCK_TND;
+        }
+        return input.isSparse ? CorePartitionStrategy::BN2_MULTI_BLOCK_SPARSE : CorePartitionStrategy::DENSE;
+    }
+    if (input.variantId != VariantId::BN2 && input.variantId != VariantId::BN2GS1S2) {
+        return CorePartitionStrategy::UNAVAILABLE;
+    }
+    if (input.isTnd) {
+        return CorePartitionStrategy::TND_UNPAD;
+    }
+    if (input.isSparse) {
+        return input.isPrefixSparse ? CorePartitionStrategy::SPARSE_PREFIX : CorePartitionStrategy::SPARSE_GENERAL;
+    }
+    return CorePartitionStrategy::DENSE;
+}
+
 LegacyInitialVariantDecision SelectWithFrozenLegacyExpression(const InitialVariantCandidateInput &input,
                                                               const InitialVariantLimits &limits)
 {
@@ -220,6 +247,8 @@ TEST(FagRouteModel, TraceProtocolIdsAreExplicitAndStable)
     EXPECT_EQ(4U, static_cast<uint32_t>(SourceLayoutId::TND));
     EXPECT_EQ(5U, static_cast<uint32_t>(SourceLayoutId::BSND));
     EXPECT_EQ(2U, static_cast<uint32_t>(VariantId::BN2_MULTI_BLOCK));
+    EXPECT_EQ(13U, static_cast<uint32_t>(RouteField::CORE_PARTITION_STRATEGY));
+    EXPECT_EQ(301U, static_cast<uint32_t>(RouteReason::CORE_PARTITION_STRATEGY_SELECTED));
     EXPECT_EQ(500U, static_cast<uint32_t>(RouteReason::LEGACY_NZ_CAPABILITY_REJECTED));
     EXPECT_EQ(801U, static_cast<uint32_t>(RouteReason::FINAL_KEY_ENCODED));
     EXPECT_EQ(1001U, FAG_RULE_LEGACY_NZ_LARGE_SEQUENCE);
@@ -432,6 +461,49 @@ TEST(FagPlannedCandidateVerifier, RejectsBn2MultiBlockWithStableInvalidBlockMask
               static_cast<uint32_t>(outcome.rejected.reason));
     EXPECT_EQ(3, outcome.rejected.actual);
     EXPECT_EQ(0, outcome.rejected.expected);
+}
+
+TEST(FagCorePartitionDispatcher, MatchesFrozenLegacyDispatchForAllBooleanInputs)
+{
+    const VariantId variants[] = {VariantId::UNKNOWN, VariantId::BN2_MULTI_BLOCK, VariantId::BN2, VariantId::BN2S2,
+                                  VariantId::BN2GS1S2};
+    size_t mismatchCount = 0;
+    for (const VariantId variantId : variants) {
+        for (uint32_t mask = 0; mask < 16; ++mask) {
+            CorePartitionDispatchInput input;
+            input.variantId = variantId;
+            input.isTnd = (mask & 1U) != 0;
+            input.isSparse = (mask & 2U) != 0;
+            input.isPrefixSparse = (mask & 4U) != 0;
+            input.bn2s2Eligible = (mask & 8U) != 0;
+            mismatchCount +=
+                SelectWithFrozenLegacyCorePartitionDispatch(input) != CorePartitionDispatcher::Select(input);
+        }
+    }
+    EXPECT_EQ(0U, mismatchCount);
+}
+
+TEST(FagCorePartitionDispatcher, GivesLayoutAndEligibilityRulesExplicitPrecedence)
+{
+    CorePartitionDispatchInput input;
+    input.variantId = VariantId::BN2S2;
+    input.isTnd = true;
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionStrategy::UNAVAILABLE),
+              static_cast<uint32_t>(CorePartitionDispatcher::Select(input)));
+
+    input.bn2s2Eligible = true;
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionStrategy::BN2S2_LOAD_BALANCE),
+              static_cast<uint32_t>(CorePartitionDispatcher::Select(input)));
+
+    input.variantId = VariantId::BN2_MULTI_BLOCK;
+    input.isSparse = true;
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionStrategy::BN2_MULTI_BLOCK_TND),
+              static_cast<uint32_t>(CorePartitionDispatcher::Select(input)));
+
+    input.variantId = VariantId::BN2;
+    input.isPrefixSparse = true;
+    EXPECT_EQ(static_cast<uint32_t>(CorePartitionStrategy::TND_UNPAD),
+              static_cast<uint32_t>(CorePartitionDispatcher::Select(input)));
 }
 
 TEST(FagDenseCorePartitionPlanner, BuildsVariantSpecificGroupingPlans)

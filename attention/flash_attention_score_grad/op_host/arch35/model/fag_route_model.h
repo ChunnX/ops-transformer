@@ -129,6 +129,7 @@ enum class RouteField : uint8_t {
     WORKSPACE_BYTES = 10,
     BLOCK_DIM = 11,
     TILING_KEY = 12,
+    CORE_PARTITION_STRATEGY = 13,
 };
 
 enum class RouteReason : uint16_t {
@@ -147,6 +148,7 @@ enum class RouteReason : uint16_t {
     TND_DETER_BN2S2_UNSUPPORTED = 204,
     TND_DETER_SYNC_COST_FALLBACK = 205,
     CORE_PARTITION_SELECTED = 300,
+    CORE_PARTITION_STRATEGY_SELECTED = 301,
     L2_OR_INVALID_BLOCK_SWIZZLE = 400,
     TND_SWIZZLE_SELECTED = 401,
     LEGACY_NZ_CAPABILITY_REJECTED = 500,
@@ -191,6 +193,8 @@ inline const char *GetRouteReasonName(RouteReason reason)
             return "tnd_deter_sync_cost_fallback";
         case RouteReason::CORE_PARTITION_SELECTED:
             return "core_partition_selected";
+        case RouteReason::CORE_PARTITION_STRATEGY_SELECTED:
+            return "core_partition_strategy_selected";
         case RouteReason::L2_OR_INVALID_BLOCK_SWIZZLE:
             return "l2_or_invalid_block_swizzle";
         case RouteReason::TND_SWIZZLE_SELECTED:
