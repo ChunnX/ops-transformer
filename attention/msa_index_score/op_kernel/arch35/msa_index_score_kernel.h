@@ -42,7 +42,7 @@
 #include "msa_block_mmad.h"
 #endif
 #include "../arch22/msa_index_score_task.h"
-#include "msa_index_score_epilogue.h"
+#include "msa_seg_row_max_epilogue.h"
 
 namespace MsaIndexScoreNs {
 
