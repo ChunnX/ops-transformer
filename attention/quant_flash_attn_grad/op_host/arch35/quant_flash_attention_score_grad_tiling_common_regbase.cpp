@@ -904,9 +904,9 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
     if (quantScaleShapeCheckRet != ge::GRAPH_SUCCESS) {
         return quantScaleShapeCheckRet;
     }
-    auto quantScaleDtypeCheckRet = QuantScaleDtypeValidCheck(context_, fBaseParams); 
-    if (quantScaleDtypeCheckRet != ge::GRAPH_SUCCESS) { 
-        return quantScaleDtypeCheckRet; 
+    auto quantScaleDtypeCheckRet = QuantScaleDtypeValidCheck(context_, fBaseParams);
+    if (quantScaleDtypeCheckRet != ge::GRAPH_SUCCESS) {
+        return quantScaleDtypeCheckRet;
     }
     return ge::GRAPH_SUCCESS;
 }
