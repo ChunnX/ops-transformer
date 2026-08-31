@@ -137,7 +137,7 @@ cann_ops_transformer.block_attn_res_update(
 
 ## 确定性计算
 
-当前接口不提供单独的确定性开关，确定性能力继承底层`aclnnBlockAttnResUpdate`实现。
+默认支持确定性计算
 
 ## 调用说明
 
