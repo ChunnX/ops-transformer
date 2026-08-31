@@ -118,7 +118,7 @@ public:
     template <bool hasGamma, bool reuseGamma>
     __aicore__ inline void VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, __ubuf__ P *xRsGradMmAddr,
                                                    __ubuf__ P *xRsFp32Addr, __ubuf__ P *invRmsAddr,
-                                                   __ubuf__ P *gammaInAddr,
+                                                   __ubuf__ P *gammaInAddr, __ubuf__ P *gammaSumAddr,
                                                    uint32_t currentChunkSize, uint32_t copySizeND);
 
     template <bool hasGradXPost>
@@ -1118,14 +1118,18 @@ template <bool hasGamma, bool reuseGamma>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, __ubuf__ P *xRsGradMmAddr,
                                                     __ubuf__ P *xRsFp32Addr, __ubuf__ P *invRmsAddr,
-                                                    __ubuf__ P *gammaInAddr,
+                                                    __ubuf__ P *gammaInAddr, __ubuf__ P *gammaSumAddr,
                                                     uint32_t currentChunkSize, uint32_t copySizeND)
 {
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<P> gammaReg, xRsFp32Reg, xRsGradMmReg, xRsGradReg, gammaGradReg, xGradReg;
-        MicroAPI::RegTensor<P> invRmsReg;
+        MicroAPI::RegTensor<P> invRmsReg, gammaSumReg;
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
+        if constexpr (hasGamma) {
+            // 仅在当前chunk内累加，chunk之间仍沿用原有FP32累加路径。
+            MicroAPI::Duplicate<P>(gammaSumReg, 0.0f, maskAll);
+        }
         if constexpr (hasGamma && reuseGamma) {
             // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
             MicroAPI::LoadAlign(gammaReg, gammaInAddr);
@@ -1151,11 +1155,16 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
                 MicroAPI::Mul(xRsGradReg, gammaReg, xRsGradMmReg, mask);
                 MicroAPI::Add(xGradReg, xGradReg, xRsGradReg, mask);
                 MicroAPI::Mul(gammaGradReg, xRsFp32Reg, xRsGradMmReg, mask);
-                MicroAPI::StoreAlign(xRsGradMmAddr + offset, gammaGradReg, mask);
+                MicroAPI::Add(gammaSumReg, gammaSumReg, gammaGradReg, mask);
             } else {
                 MicroAPI::Add(xGradReg, xGradReg, xRsGradMmReg, mask);
             }
             MicroAPI::StoreAlign(xGradVec3Addr + offset, xGradReg, mask);
+        }
+        if constexpr (hasGamma) {
+            uint32_t gammaLen = copySizeND;
+            MicroAPI::MaskReg gammaMask = MicroAPI::UpdateMask<P>(gammaLen);
+            MicroAPI::StoreAlign(gammaSumAddr, gammaSumReg, gammaMask);
         }
     }
 }
@@ -1428,27 +1437,24 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
     __ubuf__ P *invRmsAddr = (__ubuf__ P *)invRmsUb_.GetPhyAddr() + (bsChunkStart - bsStart);
     if (withGamma_) {
         __ubuf__ P *gammaInAddr = (__ubuf__ P *)gammaIn_.GetPhyAddr();
+        // 首chunk直接写总和，其余chunk复用已消费的xRs工作区保存局部和。
+        __ubuf__ P *gammaSumAddr = bsChunkStart == 0 ? (__ubuf__ P *)sumBuf.GetPhyAddr() : xRsFp32Addr;
         if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
             VFDoV2GammaMulXRsGradMm<true, true>(xGradVec3Addr, xRsGradMmInBufAddr, xRsFp32Addr, invRmsAddr,
-                                               gammaInAddr, currentChunkSize, copySizeND);
+                                               gammaInAddr, gammaSumAddr, currentChunkSize, copySizeND);
         } else {
             VFDoV2GammaMulXRsGradMm<true, false>(xGradVec3Addr, xRsGradMmInBufAddr, xRsFp32Addr, invRmsAddr,
-                                                gammaInAddr, currentChunkSize, copySizeND);
+                                                gammaInAddr, gammaSumAddr, currentChunkSize, copySizeND);
         }
     } else {
         VFDoV2GammaMulXRsGradMm<false, false>(xGradVec3Addr, xRsGradMmInBufAddr, xRsFp32Addr, invRmsAddr, nullptr,
-                                             currentChunkSize, copySizeND);
+                                             nullptr, currentChunkSize, copySizeND);
     }
 
-    uint32_t srcReduceShape[] = {currentChunkSize, copySizeND};
     if (withGamma_) {
         LocalTensor<P> reduceSumBuf = xRsFp32Buf_;
         PipeBarrier<PIPE_V>();
-        if (bsChunkStart == 0) {
-            ReduceSum<P, Pattern::Reduce::RA, true>(sumBuf, xRsGradMmInBuf_, srcReduceShape, true);
-        } else {
-            ReduceSum<P, Pattern::Reduce::RA, true>(reduceSumBuf, xRsGradMmInBuf_, srcReduceShape, true);
-            PipeBarrier<PIPE_V>();
+        if (bsChunkStart != 0) {
             Add(sumBuf, sumBuf, reduceSumBuf, copySizeND);
         }
         PipeBarrier<PIPE_V>();
