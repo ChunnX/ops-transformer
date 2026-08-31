@@ -147,13 +147,13 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
         }
         combineBufferConfig =
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                                          waveCombineScratch_, params_, gmmAddrInfo, state,
-                                                          state.expertIdx, combineRowSequence);
-    } else {
-        RunWaveExpertCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
+        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                     waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
                                                     combineRowSequence);
+    } else {
+        RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
+                                              waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
+                                              combineRowSequence);
     }
 }
 

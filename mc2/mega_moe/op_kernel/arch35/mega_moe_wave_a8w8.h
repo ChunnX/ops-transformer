@@ -827,12 +827,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
     uint32_t rowSequence = 0U;
     if (isFinalWave) {
-        RunGlobalWaveCombineStage<CombineQuantMode, true>(
+        RunWaveCombineStage<CombineQuantMode, true>(
             commonConfig_, waveCombineJob_, countWorkspace_, syncWorkspaceLayout_, activeBufferConfig,
             waveCombineScratch_, params_, waveBeginPosition.expertIdx, waveBeginPosition.tokenIndexInExpert,
             waveGlobalRowBegin, waveGlobalRowEnd - waveGlobalRowBegin, rowSequence);
     } else {
-        RunGlobalWaveCombineStage<CombineQuantMode>(
+        RunWaveCombineStage<CombineQuantMode>(
             commonConfig_, waveCombineJob_, countWorkspace_, syncWorkspaceLayout_, activeBufferConfig,
             waveCombineScratch_, params_, waveBeginPosition.expertIdx, waveBeginPosition.tokenIndexInExpert,
             waveGlobalRowBegin, waveGlobalRowEnd - waveGlobalRowBegin, rowSequence);
