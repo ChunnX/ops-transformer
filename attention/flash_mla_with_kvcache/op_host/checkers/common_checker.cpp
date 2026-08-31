@@ -433,8 +433,9 @@ ge::graphStatus CommonChecker::CheckAttnOutShape(const FlashMlaWithKvcacheTiling
     shapeParams.S = static_cast<int64_t>(faInfo.s1Size);
     // attn_out carries only the value (nope) width; rope is not part of the output
     shapeParams.D = static_cast<int64_t>(faInfo.vHeadDim);
-    if (faInfo.outLayout == FlashMlaWithKvcacheLayout::TND) {
-        // T 轴仅存在于 TND; out==q（约束表保证），BNSD/BSND 下 qTSize==0 属正常
+    // T 轴存在于 TND 输出（(T,N,D)）和 NTD 输出（(N,T,D)）；BNSD/BSND 下 qTSize==0 属正常
+    if (faInfo.outLayout == FlashMlaWithKvcacheLayout::TND ||
+        faInfo.outLayout == FlashMlaWithKvcacheLayout::NTD) {
         shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
     }
     if (attnOutShapeCmp_->CompareShape(shapeParams, __func__) != ge::GRAPH_SUCCESS) {
