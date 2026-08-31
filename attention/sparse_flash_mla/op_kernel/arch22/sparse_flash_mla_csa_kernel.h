@@ -424,7 +424,8 @@ __aicore__ inline void SparseFlashMlaCsa<SMLAT>::GetSparseActualSeqLen()
     }
 
     // 对于cmp部分还有top k, tempLoopInfo.actS2Size只针对cmp
-    int32_t thresHold = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+    int32_t thresHold = (tempLoopInfo.cmpMaskRight + static_cast<int32_t>(tempLoopInfo.s1EndIdx) + 1) /
+                        static_cast<int32_t>(constInfo.cmpRatio);
     tempLoopInfo.actCmpS2Size = Min(tempLoopInfo.actCmpS2Size,
                                     Min(constInfo.sparseBlockCount * constInfo.sparseBlockSize, Max(thresHold, 0)));
 }
@@ -643,7 +644,8 @@ __aicore__ inline void SparseFlashMlaCsa<SMLAT>::CalcParams(uint32_t loop, uint3
             info.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
         }
         info.s2StartPoint = tempLoopInfo.oriMaskLeft;
-        info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + static_cast<int32_t>(tempLoopInfo.s1EndIdx) + 1) /
+                            static_cast<int32_t>(constInfo.cmpRatio);
     } else {
         info.isOriOnly = false;
         info.relativeS2Idx = info.s2Idx - tempLoopInfo.oriLoopTimes;
@@ -654,7 +656,8 @@ __aicore__ inline void SparseFlashMlaCsa<SMLAT>::CalcParams(uint32_t loop, uint3
             info.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
         }
         info.s2StartPoint = 0;
-        info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + static_cast<int32_t>(tempLoopInfo.s1EndIdx) + 1) /
+                            static_cast<int32_t>(constInfo.cmpRatio);
         if constexpr (HEAD_RATIO_ONE) {
             info.v0S2Start = static_cast<int32_t>(s2Offset);
             info.v0S2DealSize = static_cast<int32_t>(info.actualSingleProcessSInnerSize);
