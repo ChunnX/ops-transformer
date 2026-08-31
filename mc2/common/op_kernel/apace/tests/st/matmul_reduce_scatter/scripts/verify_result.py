@@ -94,20 +94,47 @@ def verify_result(m, n, rank_num, base_dir="./output"):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Usage: python3 verify_result.py m n rank_num [base_dir]")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Verify QuantMatmulReduceScatter output")
+    parser.add_argument("m", type=int, help="matrix M dimension")
+    parser.add_argument("n", type=int, help="matrix N dimension")
+    parser.add_argument("rank_num", type=int, help="number of ranks")
+    parser.add_argument(
+        "base_dir", nargs="?", default="./output", help="output directory"
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Silent mode: print only PASS or FAIL and exit",
+    )
+    args = parser.parse_args()
+
+    m, n, rank_num, base_dir = args.m, args.n, args.rank_num, args.base_dir
+
+    if m % rank_num != 0:
+        print(f"Error: m={m} is not divisible by rank_num={rank_num}")
         sys.exit(1)
 
-    m = int(sys.argv[1])
-    n = int(sys.argv[2])
-    rank_num = int(sys.argv[3])
-    base_dir = sys.argv[4] if len(sys.argv) > 4 else "./output"
-
     try:
-        all_pass = verify_result(m, n, rank_num, base_dir)
-        if not all_pass:
-            raise ValueError("[ERROR] Some NPU results differ from CPU.\n")
-        print(f"\n[ALL PASS] All {rank_num} ranks passed verification!\n")
+        if args.check:
+            # Quiet mode for run.sh --perf — only print PASS or FAIL
+            import io
+            from contextlib import redirect_stdout, redirect_stderr
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                try:
+                    all_pass = verify_result(m, n, rank_num, base_dir)
+                except Exception:
+                    all_pass = False
+            print("PASS" if all_pass else "FAIL")
+            sys.exit(0 if all_pass else 1)
+        else:
+            all_pass = verify_result(m, n, rank_num, base_dir)
+            if not all_pass:
+                raise ValueError("[ERROR] Some NPU results differ from CPU.\n")
+            print(f"\n[ALL PASS] All {rank_num} ranks passed verification!\n")
+            sys.exit(0)
     except Exception as e:
         print(e)
         sys.exit(1)

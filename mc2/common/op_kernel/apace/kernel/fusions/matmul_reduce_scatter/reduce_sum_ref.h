@@ -28,8 +28,6 @@
 #ifndef REDUCE_SUM_REF_H
 #define REDUCE_SUM_REF_H
 
-#include "reduce_sum_utils.h"
-#include "mc2_kernel_utils.h"
 #include "kernel_operator.h"
 
 namespace AiVReduceSumImpl {
@@ -39,6 +37,12 @@ using namespace AscendC;
 constexpr static uint64_t UB_ALIGN_BYTES = 32UL;
 constexpr int32_t FLAG_ID_NUM_ONE = 1;
 constexpr uint32_t PINGPONG_NUM = 2U;
+
+// 向上取整除法
+__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
+{
+    return (b == 0) ? 0 : (a + b - 1) / b;
+}
 
 template <typename DataType>
 class ReduceSumForAlltoAll {

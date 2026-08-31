@@ -146,14 +146,6 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     headMSize = (headMSize / 16) * 16;
     if (headMSize == 0) { headMSize = 16; }
 
-    // 点5: 自适应 headMSize — 通信尽早启动 + 流水掩盖
-    // R<=2: 保持 headMSize (大 tile, 少 SyncAll, 通信效率高)
-    // R>=4: 压缩到 128 (小 tile, 多 commTurn, 流水掩盖效果好, 通信时间短)
-    if (rankNum >= 4 && headMSize > 128U && chunkM > 128U && (chunkM % 128U) == 0U) {
-        INFO_LOG("[Opt] Adaptive compress: rankNum=%d, headMSize %u->128 (R>=4 pipeline mode)", rankNum, headMSize);
-        headMSize = 128U;
-    }
-
     uint32_t headTileCnt = chunkM / headMSize;
     uint32_t tailMSize = chunkM % headMSize;
     // tailMSize 必须 16 对齐 (Blaze matmul 最小行粒度)
@@ -172,17 +164,10 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = static_cast<uint64_t>(n);
 
-    // 子问题 tiling: m=headMSize, 用于 T>1 per-tile head tile (baseM 减半优化)
+    // 子问题 tiling: m=headMSize, 用于 T>1 per-tile head tile
     if (tileCnt > 1) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> subTilingEngine;
         subTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.subMmTilingData);
-        if (tilingData.subMmTilingData.baseM == 256U && headMSize % 128U == 0U) {
-            INFO_LOG("[Opt] Halving subMmTiling baseM: 256 -> 128 for better tile distribution");
-            tilingData.subMmTilingData.baseM = 128U;
-            tilingData.subMmTilingData.mTailTile = 1U;
-            tilingData.subMmTilingData.mBaseTailSplitCnt = 1U;
-            tilingData.subMmTilingData.mTailMain = 0U;
-        }
         // tail tile tiling: m=rankSize*tailMSize (tailMSize 已保证 16 对齐)
         if (tailTileCnt > 0 && tailMSize > 0) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tailTilingEngine;
@@ -342,67 +327,36 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
     INFO_LOG("[Rank %d] Step 10: data loaded to device", rankId);
 
-    if (mode == "precision") {
-        INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, PUT mode)", rankId, tilingData.mmTilingData.usedCoreNum);
-        QuantMatmulReduceScatterKernelE4M3E4M3<<<
-            tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
-                devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
-                deviceWorkspace, deviceOutput, tilingData);
-        INFO_LOG("[Rank %d] Step 12: kernel launched, syncing...", rankId);
+    INFO_LOG("[Rank %d] Step 11: launching kernel (usedCoreNum=%u, PUT mode)", rankId, tilingData.mmTilingData.usedCoreNum);
+    QuantMatmulReduceScatterKernelE4M3E4M3<<<
+        tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
+            devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
+            deviceWorkspace, deviceOutput, tilingData);
+    INFO_LOG("[Rank %d] Step 12: kernel launched, syncing...", rankId);
 
-        ACL_CHECK(aclrtSynchronizeStream(stream));
-        INFO_LOG("[Rank %d] Step 13: stream synced", rankId);
+    ACL_CHECK(aclrtSynchronizeStream(stream));
+    INFO_LOG("[Rank %d] Step 13: stream synced", rankId);
 
-        // 只拷回 chunkM * n 的输出（reduceSum 后的 per-rank 结果）
-        ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput,
-                              ACL_MEMCPY_DEVICE_TO_HOST));
+    // 只拷回 chunkM * n 的输出（reduceSum 后的 per-rank 结果），precision/perf 模式共用
+    ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput,
+                          ACL_MEMCPY_DEVICE_TO_HOST));
 
-        WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
-    } else {
-        constexpr int64_t HEAVY_BLOCK_NUM = 56;
-        constexpr int64_t BOOST_ELEM_COUNT = 10000LL * 10000LL;
-        size_t boostSize = static_cast<size_t>(BOOST_ELEM_COUNT) * sizeof(uint16_t);
-        GM_ADDR boostIn = nullptr;
-        GM_ADDR boostOut = nullptr;
-        ACL_CHECK(aclrtMalloc((void**)&boostIn, boostSize, ACL_MEM_MALLOC_HUGE_ONLY));
-        ACL_CHECK(aclrtMalloc((void**)&boostOut, boostSize, ACL_MEM_MALLOC_HUGE_ONLY));
-        std::vector<uint16_t> boostHost(BOOST_ELEM_COUNT, 0x3F00);
-        ACL_CHECK(aclrtMemcpy(boostIn, boostSize, boostHost.data(), boostSize, ACL_MEMCPY_HOST_TO_DEVICE));
+    WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
 
-        constexpr int64_t CACHE_FLUSH_ELEM_COUNT = 128LL * 1024 * 1024;
-        size_t cacheFlushSize = static_cast<size_t>(CACHE_FLUSH_ELEM_COUNT) * sizeof(uint16_t);
-        GM_ADDR cacheFlush = nullptr;
-        ACL_CHECK(aclrtMalloc((void**)&cacheFlush, cacheFlushSize, ACL_MEM_MALLOC_HUGE_ONLY));
-        std::vector<uint16_t> cacheFlushHost(CACHE_FLUSH_ELEM_COUNT, 0x0000);
-        ACL_CHECK(aclrtMemcpy(
-            cacheFlush, cacheFlushSize, cacheFlushHost.data(), cacheFlushSize, ACL_MEMCPY_HOST_TO_DEVICE));
-
-        constexpr int PERF_LOOP_COUNT = 10;
-        std::vector<double> durations(PERF_LOOP_COUNT);
-        for (int i = 0; i < PERF_LOOP_COUNT; ++i) {
+    constexpr int32_t BENCHMARK_ITERATIONS = 10;
+    int32_t iterations = (mode == "perf") ? BENCHMARK_ITERATIONS : 1;
+    if (iterations > 1) {
+        for (int32_t i = 1; i < iterations; ++i) {
             auto t0 = std::chrono::steady_clock::now();
             QuantMatmulReduceScatterKernelE4M3E4M3<<<
                 tilingData.mmTilingData.usedCoreNum, nullptr, stream>>>(
                     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB,
                     deviceWorkspace, deviceOutput, tilingData);
-            aclrtSynchronizeStream(stream);
+            ACL_CHECK(aclrtSynchronizeStream(stream));
             auto t1 = std::chrono::steady_clock::now();
-            durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            double elapsedUs = std::chrono::duration<double, std::micro>(t1 - t0).count();
+            INFO_LOG("[Rank %d] iteration %d/%d: %.3f us", rankId, i + 1, iterations, elapsedUs);
         }
-
-        double sum = 0, minv = 1e9, maxv = 0;
-        for (int i = 1; i < PERF_LOOP_COUNT; ++i) {
-            sum += durations[i];
-            minv = std::min(minv, durations[i]);
-            maxv = std::max(maxv, durations[i]);
-        }
-        double avg = sum / (PERF_LOOP_COUNT - 1);
-        INFO_LOG("[Rank %d] PUT mode | per-iter ms: avg=%.3f min=%.3f max=%.3f (excl warmup)",
-                 rankId, avg, minv, maxv);
-
-        aclrtFree(boostIn);
-        aclrtFree(boostOut);
-        aclrtFree(cacheFlush);
     }
 
     aclrtFree(deviceA);
