@@ -99,9 +99,9 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T * maxUb, __ubuf__
         ExpSub<float, half, RegLayout::ZERO>(vreg_exp_max_even_fp32, vreg_in_max, vreg_max, preg_all);
         ExpSub<float, half, RegLayout::ONE>(vreg_exp_max_odd_fp32, vreg_in_max, vreg_max, preg_all);
         Interleave(vreg_exp_max, vreg_exp_max_tmp, vreg_exp_max_even_fp32, vreg_exp_max_odd_fp32);
-        StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(
             (__ubuf__ float *&)expMaxUb, vreg_exp_max, preg_all);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(
             (__ubuf__ T *&)maxUb, vreg_max, preg_all);
 
         // x_sum = exp_max * insum + x_sum
@@ -109,7 +109,7 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T * maxUb, __ubuf__
         LoadAlign(vreg_exp_sum_brc, (__ubuf__ float *&)tmpExpSumUb);
         Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
         Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(
             (__ubuf__ float *&)expSumUb, vreg_exp_sum_update, preg_all);
     } else {
         RegTensor<float> vreg_max;
@@ -124,9 +124,9 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T * maxUb, __ubuf__
         LoadAlign(vreg_max, tmpMaxUb);
         LoadAlign(vreg_in_max, inMaxUb);
         ExpSub(vreg_exp_max, vreg_in_max, vreg_max, preg_all);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)maxUb, vreg_max, preg_all);
 
         // x_sum = exp_max * insum + x_sum
@@ -134,7 +134,7 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T * maxUb, __ubuf__
         LoadAlign(vreg_exp_sum_brc, tmpExpSumUb);
         Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
         Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)expSumUb, vreg_exp_sum_update, preg_all);
     }
 }
@@ -462,7 +462,7 @@ __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T * sumUb, __ubuf__ T * maxU
     LoadAlign(vreg_sum, sumUb);
     Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
     Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)sumUb, vreg_sum_new, preg_all);
 }
 
