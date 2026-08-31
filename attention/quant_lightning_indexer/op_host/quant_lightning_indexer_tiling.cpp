@@ -1249,9 +1249,13 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     constexpr uint32_t qliLdSplitCoreNum = 28;
     // gate refinement: LD workspace constants (LD_WS_S1_BASE=8, s1Base=8 rows) are pinned to
     // the PD g32 tiling; gSize 16 (mBase 64) crashes, gSize 64 (s1Base 4) intermittent ->
-    // only decode tiling + gSize==32 prefill (g1/g2 shapes) may open LD.
+    // only decode tiling may open LD.
+    // g32 prefill LD disabled: every LD-split row (28 cores -> 27 split rows, every 9th task)
+    // produces corrupted output; root cause = tail segment list carries ~100-280 candidates
+    // from the head's last trunk range (off-by-one-trunk in tail segmentation/offset),
+    // deep in shared LITopk internals. Direct path is proven master-equivalent.
     bool ldOpen = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) && (tilingInfo->s2Size >= 2048) &&
-                  ((tilingInfo->tSize <= 64) || (tilingInfo->gSize == 32));
+                  (tilingInfo->tSize <= 64);
     uint32_t ldCores = qliLdSplitCoreNum < aicNum ? qliLdSplitCoreNum : aicNum;
     tilingData_.set_isLDOpen(ldOpen ? 1U : 0U);
     tilingData_.set_ldSplitCoreNum(ldCores);
