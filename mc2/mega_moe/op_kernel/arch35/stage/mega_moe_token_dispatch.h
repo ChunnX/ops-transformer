@@ -563,12 +563,12 @@ __aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context
 // 轮转首 owner 由 waveGlobalRowBegin 决定，热点专家跨 wave 时余数不会固定落到低编号核。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
           bool UseCompactRouteIndex = false, bool PublishGroupReady = false>
-__aicore__ inline void RunGlobalWaveDispatchStage(const TokenDispatchConfig &context,
-                                                  const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
-                                                  const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-                                                  GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
-                                                  uint32_t waveFirstExpertIdx, uint32_t waveGlobalRowBegin,
-                                                  uint32_t waveRowCount)
+__aicore__ inline void RunWaveDispatchStage(const TokenDispatchConfig &context,
+                                            const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
+                                            const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                            GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
+                                            uint32_t waveFirstExpertIdx, uint32_t waveGlobalRowBegin,
+                                            uint32_t waveRowCount)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -613,7 +613,7 @@ __aicore__ inline void RunGlobalWaveDispatchStage(const TokenDispatchConfig &con
 // 非 layered 路径统一入口：使用独立 count 表规划跨专家滚动分核，并发送当前专家的有效行。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
           bool UseCompactRouteIndex = false>
-__aicore__ inline uint32_t RunWaveExpertDispatchStage(
+__aicore__ inline uint32_t RunWaveDispatchStage(
     const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
     const MoeSyncWorkspaceLayout &syncLayout, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId)

@@ -520,7 +520,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
 {
     ReloadWaveExpertDispatchCumsum(commonConfig_, tokenDispatchScratch_, expertIdx);
-    return RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true>(
+    return RunWaveDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch, true>(
         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
         g_winRankAddr_, tokenDispatchScratch_, expertIdx);
 }
