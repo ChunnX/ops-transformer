@@ -82,6 +82,8 @@ public:
     static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
+    static constexpr InnerMLayout Q_M_LAYOUT =
+        USE_DN ? InnerMLayout::S1_ONLY_LAYOUT : InnerMLayout::GS1_MERGE_LAYOUT;
     static constexpr bool SPLITD = splitD;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, BMM2_TOUB};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
@@ -147,7 +149,7 @@ public:
     CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1;
     KeyScaleGmToL1Type copyKeyScaleGmToL1;
     ValueScaleGmToL1Type copyValueScaleGmToL1;
-    CopyQueryGmToL1<ROPE_T, Q_FORMAT> copyQueryRopeGmToL1;
+    CopyQueryGmToL1<ROPE_T, Q_FORMAT, L1Format::NZ, Q_M_LAYOUT> copyQueryRopeGmToL1;
     CopyKvGmToL1<ROPE_T, KV_FORMAT> copyKeyRopeGmToL1;
 
     /* =====================LocalBuffer变量====================*/
@@ -354,13 +356,25 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = nopeDealSize};
-        copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
+        if constexpr (USE_DN) {
+            // DN分支中realGSize=1，gS1Idx即S1Idx，gIdx恒为0
+            GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> gmCoord{.bIdx = runInfo.bIdx,
+                                                           .n2Idx = runInfo.realN2Idx,
+                                                           .gIdx = 0,
+                                                           .s1Idx = runInfo.gS1Idx,
+                                                           .dIdx = dOffset,
+                                                           .s1DealSize = runInfo.actMSize,
+                                                           .dDealSize = nopeDealSize};
+            copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
+        } else {
+            GmCoord gmCoord{.bIdx = runInfo.bIdx,
+                            .n2Idx = runInfo.realN2Idx,
+                            .gS1Idx = runInfo.gS1Idx,
+                            .dIdx = dOffset,
+                            .gS1DealSize = runInfo.actMSize,
+                            .dDealSize = nopeDealSize};
+            copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
+        }
 
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
@@ -370,13 +384,24 @@ public:
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor{.tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                                                       .rowCount = dstStrideRope};
 
-            GmCoord gmCoord = {.bIdx = runInfo.bIdx,
-                               .n2Idx = runInfo.realN2Idx,
-                               .gS1Idx = runInfo.gS1Idx,
-                               .dIdx = 0,
-                               .gS1DealSize = runInfo.actMSize,
-                               .dDealSize = ropeDealSize};
-            copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
+            if constexpr (USE_DN) {
+                GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> gmCoord = {.bIdx = runInfo.bIdx,
+                                                                  .n2Idx = runInfo.realN2Idx,
+                                                                  .gIdx = 0,
+                                                                  .s1Idx = runInfo.gS1Idx,
+                                                                  .dIdx = 0,
+                                                                  .s1DealSize = runInfo.actMSize,
+                                                                  .dDealSize = ropeDealSize};
+                copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
+            } else {
+                GmCoord gmCoord = {.bIdx = runInfo.bIdx,
+                                   .n2Idx = runInfo.realN2Idx,
+                                   .gS1Idx = runInfo.gS1Idx,
+                                   .dIdx = 0,
+                                   .gS1DealSize = runInfo.actMSize,
+                                   .dDealSize = ropeDealSize};
+                copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
+            }
         }
     }
 

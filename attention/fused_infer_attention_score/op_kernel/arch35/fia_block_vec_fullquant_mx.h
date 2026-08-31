@@ -98,6 +98,8 @@ public:
             MaskFormat::GS;
 
     static constexpr bool USE_DN = useDn;
+    static constexpr UbFormat OUT_UB_FORMAT = USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
+    using OutGmCoord = std::conditional_t<USE_DN, GmCoordT<InnerMLayout::S1_ONLY_LAYOUT>, GmCoord>;
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
@@ -875,16 +877,28 @@ public:
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
         FaUbTensor<OUTPUT_T, false> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.realN2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = gmDealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
-        CopyAttentionOut(ubTensor, gmCoord);
+        if constexpr (USE_DN) {
+            // DN分支中realGSize=1，gS1Idx即S1Idx，gIdx恒为0
+            OutGmCoord gmCoord{.bIdx = info.bIdx,
+                               .n2Idx = info.realN2Idx,
+                               .gIdx = 0,
+                               .s1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                               .dIdx = 0,
+                               .s1DealSize = gmDealRowCount,
+                               .dDealSize = (uint32_t)constInfo.dSizeV};
+            CopyAttentionOut(ubTensor, gmCoord);
+        } else {
+            OutGmCoord gmCoord{.bIdx = info.bIdx,
+                               .n2Idx = info.realN2Idx,
+                               .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                               .dIdx = 0,
+                               .gS1DealSize = gmDealRowCount,
+                               .dDealSize = (uint32_t)constInfo.dSizeV};
+            CopyAttentionOut(ubTensor, gmCoord);
+        }
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, OutGmCoord &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -893,7 +907,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize, false, 0);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
@@ -902,7 +916,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize, false, 0);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -910,7 +924,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
@@ -918,7 +932,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
