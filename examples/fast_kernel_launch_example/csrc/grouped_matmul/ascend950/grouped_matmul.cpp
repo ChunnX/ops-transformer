@@ -61,7 +61,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 }
 
 // 持久 cycle buffer（固定 GM 地址，capture 时地址固化进 kernel 参数，replay 模式必需）
-static torch::Tensor g_gmm_cycle_tensor;  // [64*2] int64, NPU device
+static torch::Tensor g_gmm_cycle_tensor;  // [64*3] int64, NPU device
 static int64_t g_gmm_cycle_launch_count = 0;
 
 __global__ __aicore__ __cube__ void groupedmatmul_kernel(__gm__ uint8_t *x, __gm__ uint8_t *weight, __gm__ uint8_t *bias,
@@ -120,7 +120,7 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
     // 持久 cycle buffer 懒初始化（一次分配固定地址，capture 时固化进 kernel 参数）
     if (!g_gmm_cycle_tensor.defined()) {
         auto cycle_options = torch::TensorOptions().dtype(torch::kInt64).device(x[0].device());
-        g_gmm_cycle_tensor = torch::zeros({64 * 2}, cycle_options);  // 最多 64 blocks
+        g_gmm_cycle_tensor = torch::zeros({64 * 3}, cycle_options);  // 最多 64 blocks × 3 slots (T0/T1/T2)
     }
     ++g_gmm_cycle_launch_count;
     auto cycle_ptr = (GM_ADDR)g_gmm_cycle_tensor.data_ptr();
@@ -138,7 +138,7 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
 }
 
 // Getter: 读取 gemm 持久 cycle buffer（capture/replay 外部调用）
-// 返回 [64, 2] int64 CPU tensor，仅 t0>0 的行有效
+// 返回 [64, 3] int64 CPU tensor，仅 t0>0 的行有效
 torch::Tensor gmm_read_cycle(const torch::Tensor &dummy)
 {
     TORCH_CHECK(g_gmm_cycle_tensor.defined(), "gmm cycle buffer not initialized, call grouped_matmul first");

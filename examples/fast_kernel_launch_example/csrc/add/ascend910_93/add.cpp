@@ -95,7 +95,7 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
 
     // T1: prologue 之后
     int64_t T1 = AscendC::GetSystemCycle();
-    __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 2;
+    __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 3;
     cycleBuf[0] = T0;
     cycleBuf[1] = T1;
 
@@ -156,12 +156,16 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
         AscendC::DataCopyPad(zGm[offset], zLocal, copyParams);
         outQueueZ.FreeTensor(zLocal);
     }
+
+    // T2: kernel 末尾（所有计算完成后）
+    int64_t T2 = AscendC::GetSystemCycle();
+    cycleBuf[2] = T2;
 }
 
 // 持久 cycle buffer：固定 GM 地址，跨 launch 复用（replay/capture 模式必需）
 // add_npu 内不做任何 host 回读（回读与 NPUGraph capture 互斥），
 // 由 read_cycle() getter 在 capture/replay 外部调用读取。
-static torch::Tensor g_cycle_tensor;  // [64*2] int64, NPU device
+static torch::Tensor g_cycle_tensor;  // [64*3] int64, NPU device
 static int64_t g_cycle_launch_count = 0;  // 累计 launch 次数
 
 torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
@@ -178,7 +182,7 @@ torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
     // 持久 buffer 懒初始化（一次分配，固定地址；capture 时该地址被固化进 kernel 参数）
     if (!g_cycle_tensor.defined() || g_cycle_tensor.device() != x.device()) {
         auto cycle_options = torch::TensorOptions().dtype(torch::kInt64).device(x.device());
-        g_cycle_tensor = torch::zeros({64 * 2}, cycle_options);  // 最多 64 blocks
+        g_cycle_tensor = torch::zeros({64 * 3}, cycle_options);  // 最多 64 blocks × 3 slots (T0/T1/T2)
     }
     auto cycle_ptr = (GM_ADDR)g_cycle_tensor.data_ptr();
     ++g_cycle_launch_count;
@@ -203,7 +207,7 @@ torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
 }
 
 // Getter: 读取持久 cycle buffer（capture/replay 外部调用）
-// 返回 [64, 2] int64 CPU tensor，仅 t0>0 的行有效
+// 返回 [64, 3] int64 CPU tensor，仅 t0>0 的行有效
 // 注意：capture 阶段不可调用（含 D2H 拷贝），replay 之后或 eager 模式下调用
 torch::Tensor read_cycle(const torch::Tensor &dummy)
 {

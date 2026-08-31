@@ -8,13 +8,13 @@
 # 核数说明: 核数由安装的 wheel 决定（run_head_overhead.sh 通过 sed 改源码 + rebuild）
 #   本脚本不控制核数，只负责 capture + cycle 数据导出
 #
-# T0/T1 cycle 打点（配合 msprof + parse_stars_log.py 计算头开销）:
-#   add:  T0 = kernel 第一行; T1 = prologue 之后（InitBuffer/SetGlobalBuffer/tiling 完成）
-#   gemm: T0 = kernel 第一行; T1 = mm.Init/computeOp.Init/op.Init 完成后、第一个 MTE2 搬运前
+# T0/T1/T2 cycle 打点（配合 msprof + parse_stars_log.py 计算头开销）:
+#   add:  T0 = kernel 第一行; T1 = prologue 之后（InitBuffer/SetGlobalBuffer/tiling 完成）; T2 = kernel 末尾（计算完成）
+#   gemm: T0 = kernel 第一行; T1 = mm.Init/computeOp.Init/op.Init 完成后、第一个 MTE2 搬运前; T2 = op.Process 完成后
 #   打点数据由算子侧写入持久 GM cycle buffer（capture 模式地址固化），replay 后由本脚本导出
 #
 # 导出格式（stderr，供后处理与 STARS 最近邻匹配）:
-#   ReplayLast Block <bid>: T0=<abs> T1=<abs> T1-T0=<diff>
+#   ReplayLast Block <bid>: T0=<abs> T1=<abs> T2=<abs> T1-T0=<diff> T2-T0=<diff>
 #
 # 注意:
 #   - capture 模式 TASK_QUEUE_ENABLE 必须为 1（=2 与 NPUGraph capture 冲突）
@@ -31,8 +31,11 @@ os.environ["TASK_QUEUE_ENABLE"] = "1"
 
 op_type = os.environ.get("OP_TYPE", "add")
 op_iters = int(os.environ.get("OP_ITERS", "101"))
-# SYS_CNT 频率 (cycle→us 换算): A5=283MHz, A3/910C 与 A2/910B=200MHz, 由 run_head_overhead.sh 按芯片注入
-sys_cnt_freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283"))
+# SYS_CNT 频率 (cycle→us 换算), A5 实测标定:
+#   AIV (add) = 283 MHz (aiv_time 交叉标定)
+#   AIC (gemm) ≈ 587 MHz (T2-T0 vs TaskDur 标定: 2555cyc / 4.351us, Cube 核计数器约为 AIV 的 2.07 倍)
+# 环境变量 SYS_CNT_FREQ_MHZ 可整体覆盖; A3/910C 需上板重新标定
+sys_cnt_freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283" if op_type == "add" else "587"))
 
 # === 数据准备 + run 函数 ===
 if op_type == "add":
@@ -42,7 +45,7 @@ if op_type == "add":
     dummy = x
     def run():
         torch.ops.ascend_ops.add(x, y)
-    read_cycle = lambda: torch.ops.ascend_ops.read_cycle(dummy).view(64, 2)
+    read_cycle = lambda: torch.ops.ascend_ops.read_cycle(dummy).view(64, 3)
 
 elif op_type == "gemm":
     # grouped_matmul: bf16 (Cube 核, 核数由 wheel 决定)
@@ -70,7 +73,7 @@ elif op_type == "gemm":
             x, weight, None, None, None, None, None,
             group_list, None, 0, 0, 0, 0, None
         )
-    read_cycle = lambda: torch.ops.ascend_ops.gmm_read_cycle(dummy).view(64, 2)
+    read_cycle = lambda: torch.ops.ascend_ops.gmm_read_cycle(dummy).view(64, 3)
 else:
     raise ValueError(f"Unknown OP_TYPE: {op_type}")
 
@@ -89,42 +92,55 @@ torch.npu.synchronize()
 elapsed = time.time() - t0
 print(f"replay done in {elapsed*1000:.2f} ms")
 
-# === 导出最后一次 replay 的 T0/T1 cycle 数据 ===
-# 注: 偶发个别 block 的 GM 标量值在单次 D2H 回读中为 0（55/56 现象，缺失 block 随机），
-# 采用重读合并：连续 max_tries 轮读取，非零 slot 逐轮合并，连续两轮无新增即收敛，
-# 保证满核 block 全量可见（n = 核数）
-def read_cycle_merged(max_tries=6):
-    merged = {}
-    stable = 0
+# === 导出最后一次 replay 的 T0/T1/T2 cycle 数据 ===
+# 注: 偶发个别 block 的 GM 标量值在单次 D2H 回读中滞后/为 0（D2H 可见性问题）：
+#   - 0 值: 该 slot 本拍未写（55/56 现象）
+#   - 旧值: 读到前几拍 kernel 写入的值（T2 写在 kernel 末尾最易滞后）
+#     旧值形态: 整组旧(三元组自洽,仍可独立匹配 dispatch)/混合旧(slot 间拍次错位)
+# 采用每 slot 独立收敛: 值连续 2 轮不变即接受(不管稳定在第几拍)。
+# 拍次错位不影响单值指标——T0/T1/T2 各自与 STARS dispatch 最近邻独立匹配即自洽;
+# 仅跨 slot 差值(T1-T0/T2-T0)要求同拍, 由下游软校验(单调)兜底
+def read_cycle_merged(max_tries=12):
+    accepted = {}   # (block, slot) -> value
+    streak = {}     # (block, slot) -> 连续稳定轮数
+    last = {}       # (block, slot) -> 上轮值
     for _ in range(max_tries):
         cyc = read_cycle()
-        new = 0
+        cur = {}
         for b in range(cyc.shape[0]):
-            t0 = int(cyc[b, 0].item())
-            t1 = int(cyc[b, 1].item())
-            if t0 > 0 and t1 > 0 and b not in merged:
-                merged[b] = (t0, t1)
-                new += 1
-        if new == 0:
-            stable += 1
-            if stable >= 2:
-                break
-        else:
-            stable = 0
+            for j in range(3):
+                v = int(cyc[b, j].item())
+                if v > 0:
+                    cur[(b, j)] = v
+        for key, v in cur.items():
+            if last.get(key) == v:
+                streak[key] = streak.get(key, 0) + 1
+                if streak[key] >= 2:
+                    accepted[key] = v
+            else:
+                streak[key] = 1
+        last = cur
+        if cur and all(streak.get(k, 0) >= 2 for k in cur):
+            break  # 全部 slot 稳定
         time.sleep(0.05)
-    return merged
+    merged = {}
+    for (b, j), v in accepted.items():
+        if b not in merged:
+            merged[b] = [0, 0, 0]
+        merged[b][j] = v
+    return {b: tuple(v) for b, v in merged.items()}
 
 try:
     merged = read_cycle_merged()
     valid = sorted(merged.items())
     n = len(valid)
     print(f"valid blocks: {n}/64 (merged re-read)")
-    for b, (a, bb) in valid:
-        print(f"ReplayLast Block {b}: T0={a} T1={bb} T1-T0={bb-a}", file=sys.stderr, flush=True)
+    for b, (a, bb, c) in valid:
+        print(f"ReplayLast Block {b}: T0={a} T1={bb} T2={c} T1-T0={bb-a} T2-T0={c-a}", file=sys.stderr, flush=True)
     if n > 0:
-        prologues = [bb - a for _, (a, bb) in valid]
-        print(f"last replay T1-T0: mean={statistics.mean(prologues):.0f} cyc "
-              f"({statistics.mean(prologues)/sys_cnt_freq:.3f} us) min={min(prologues)} max={max(prologues)} n={n}")
+        kernel_durs = [c - a for _, (a, bb, c) in valid]
+        print(f"last replay T2-T0(kernel exec): mean={statistics.mean(kernel_durs):.0f} cyc "
+              f"({statistics.mean(kernel_durs)/sys_cnt_freq:.3f} us) min={min(kernel_durs)} max={max(kernel_durs)} n={n}")
     else:
         print("[WARN] cycle buffer 为空（kernel 未执行或打点未生效）")
 except Exception as e:

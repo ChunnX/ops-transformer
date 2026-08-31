@@ -108,14 +108,9 @@ else
     CUBE_CORES="${CUBE_CORES:-24}"
     VECTOR_CORES="${VECTOR_CORES:-48}"
 fi
-# SYS_CNT 频率 (cycle→us 换算, scan_replay.py 读取): A5=283MHz; A3/910C、A2/910B 按 200MHz (上板可标定)
-if [ "$SOC_VERSION" = "ascend950" ]; then
-    SYS_CNT_FREQ_MHZ=283.0
-else
-    SYS_CNT_FREQ_MHZ=200.0
-fi
-export SYS_CNT_FREQ_MHZ
-echo "[CHECK] 设备: ${SOC_NAME:-?}  Cube 核数: ${CUBE_CORES}  Vector 核数: ${VECTOR_CORES}  SYS_CNT=${SYS_CNT_FREQ_MHZ}MHz"
+# SYS_CNT 频率由 scan_replay.py/汇总段按算子取默认 (A5: AIV=283, AIC≈587), 不再导出覆盖;
+# 如需手工指定可 export SYS_CNT_FREQ_MHZ (整体覆盖两算子)
+echo "[CHECK] 设备: ${SOC_NAME:-?}  Cube 核数: ${CUBE_CORES}  Vector 核数: ${VECTOR_CORES}"
 echo ""
 
 mkdir -p "$OUTPUT_DIR"
@@ -238,7 +233,11 @@ if soc_version == "ascend950":
     add_cores, gmm_cores = 56, 28
 else:
     add_cores, gmm_cores = 48, 24  # A3/910C 与 A2/910B 同为 48 AIV / 24 AIC
-freq = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283"))  # 与采集侧同源: A5=283, A3/910C=200
+# SYS_CNT 频率按算子区分 (A5 实测标定):
+#   AIV(add)=283MHz; AIC(gmm)≈587MHz (T2-T0 vs TaskDur 标定, Cube 核计数器为 AIV 的 2.07 倍)
+# SYS_CNT_FREQ_MHZ 环境变量整体覆盖; A3/910C 需上板重新标定
+freq_add = float(os.environ.get("SYS_CNT_FREQ_MHZ", "283"))
+freq_gmm = float(os.environ.get("SYS_CNT_FREQ_MHZ", "587"))
 
 def parse_stars_dispatches(prof_dir):
     """解析 PROF 目录下的 stars_soc.data, 返回排序的 dispatch sys_cnt 列表"""
@@ -261,21 +260,24 @@ def parse_stars_dispatches(prof_dir):
     except Exception:
         return []
 
-BLOCK_RE = re.compile(r"ReplayLast Block (\d+): T0=(\d+) T1=(\d+)")
+BLOCK_RE = re.compile(r"ReplayLast Block (\d+): T0=(\d+) T1=(\d+) T2=(\d+)")
 
 def parse_cycle_blocks(stderr_log):
-    """解析 scan_replay.py dump 的每 block T0/T1 明细"""
+    """解析 scan_replay.py dump 的每 block T0/T1/T2 明细"""
     recs = []
     if not os.path.exists(stderr_log):
         return recs
     for line in open(stderr_log, errors="ignore"):
         m = BLOCK_RE.search(line)
         if m:
-            recs.append((int(m.group(2)), int(m.group(3))))
+            recs.append((int(m.group(2)), int(m.group(3)), int(m.group(4))))
     return recs
 
-def three_metrics(prof_dir, op):
-    """T0-stars / T1-T0 / T1-stars 三指标 (kernel 打点 + STARS 联合)"""
+def three_metrics(prof_dir, op, freq):
+    """T0-stars / T1-T0 / T1-stars / T2-stars 四指标 (kernel 打点 + STARS 联合)
+    每个时间戳独立最近邻匹配 dispatch（免疫 D2H 回读拍次错位）:
+    T0/T1/T2 即使回读为不同拍的值, 各自匹配同拍 dispatch 后单值指标自洽。
+    跨 slot 差值(T1-T0/T2-T0)仅同拍可信, 单调软校验兜底。"""
     stderr_log = f"{prof_dir}.stderr.log"
     recs = parse_cycle_blocks(stderr_log)
     if not recs:
@@ -283,19 +285,42 @@ def three_metrics(prof_dir, op):
     disp = parse_stars_dispatches(prof_dir)
     if not disp:
         return None
-    t0s, t1t0, t1s = [], [], []
-    for a, b in recs:
-        near = min(disp, key=lambda d: abs(a - d))
-        d0 = a - near
+
+    def match(ts):
+        # 只向前匹配 (dispatch <= ts): back-to-back 排队时下一个 kernel 的 dispatch
+        # 会早于本 kernel 结束下发, 最近邻会把 T2 配到下一个 dispatch 上 (d 为负)
+        import bisect
+        i = bisect.bisect_right(disp, ts) - 1
+        if i < 0:
+            return -1
+        return ts - disp[i]
+
+    t0s, t1t0, t1s, t2s, t2t0 = [], [], [], [], []
+    for a, b, b2 in recs:
+        d0 = match(a)
         if 50 <= d0 <= 20000:
-            t0s.append(d0); t1t0.append(b - a); t1s.append(b - near)
+            t0s.append(d0)
+        d1 = match(b)
+        if 50 <= d1 <= 20000:
+            t1s.append(d1)
+        d2 = match(b2)
+        if 50 <= d2 <= 20000:
+            t2s.append(d2)
+        if a < b <= b2:  # 同拍单调: 跨 slot 差值才可信
+            t1t0.append(b - a)
+            t2t0.append(b2 - a)
     if not t0s:
         return None
     return {
         'n': len(t0s),
+        'n_t1': len(t1s),
+        'n_t2': len(t2s),
+        # 差值指标用中位数: 混合回读(拍次错位)产生的离群差值不拉偏均值
         't0_stars': statistics.mean(t0s) / freq,
-        't1_t0': statistics.mean(t1t0) / freq,
-        't1_stars': statistics.mean(t1s) / freq,
+        't1_t0': statistics.median(t1t0) / freq if t1t0 else None,
+        't1_stars': statistics.mean(t1s) / freq if t1s else None,
+        't2_stars': statistics.mean(t2s) / freq if t2s else None,
+        't2_t0': statistics.median(t2t0) / freq if t2t0 else None,
     }
 
 def analyze_add(prof_dir, label):
@@ -311,7 +336,7 @@ def analyze_add(prof_dir, label):
         return None, None
     durs = [float(r['Task Duration(us)'].strip().rstrip('\t')) for r in kr[2:]]
     result = {'label': label, 'mean': statistics.mean(durs)}
-    return result, three_metrics(prof_dir, 'add')
+    return result, three_metrics(prof_dir, 'add', freq_add)
 
 def analyze_gmm(prof_dir, label):
     csvs = glob.glob(os.path.join(prof_dir, "**", "op_summary_*.csv"), recursive=True)
@@ -340,13 +365,17 @@ def analyze_gmm(prof_dir, label):
         return None, None
     steady = all_durs[2:]
     result = {'label': label, 'mean': statistics.mean(steady)}
-    return result, three_metrics(prof_dir, 'gemm')
+    return result, three_metrics(prof_dir, 'gemm', freq_gmm)
+
+def fmt(v):
+    return f"{v:.3f}" if v is not None else "N/A"
 
 print()
 print("============================================")
 print("  头开销测试结果 (稳态=跳过前2次)")
-print("  新增 STARS 三指标: T0-stars / T1-T0 / T1-stars")
-print("  (T0-stars=调度+硬件启动, T1-T0=软件头, T1-stars=总头开销)")
+print("  STARS 四指标: T0-stars / T1-T0 / T1-stars / T2-stars")
+print("  (T0-stars=调度+硬件启动, T1-T0=软件头, T1-stars=总头开销, T2-stars≈TaskDur校验)")
+print("  T2-stars 与 TaskDur 吻合(±0.3us)即整条测量链路可信")
 print("============================================")
 print()
 
@@ -357,8 +386,8 @@ if os.path.isdir(os.path.join(output_dir, 'add_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
-            print(f"  {'':12s} T0-stars={m['t0_stars']:.3f}us  T1-T0={m['t1_t0']:.3f}us  "
-                  f"T1-stars={m['t1_stars']:.3f}us  (n={m['n']} blocks)")
+            print(f"  {'':12s} T0-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
+                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(m['t2_stars'])}us  (n={m['n']} blocks)")
         results.append(('add', 'Vector', add_cores, r['mean'], m))
     print()
 if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
@@ -367,8 +396,8 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     if r:
         print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
         if m:
-            print(f"  {'':12s} T0-stars={m['t0_stars']:.3f}us  T1-T0={m['t1_t0']:.3f}us  "
-                  f"T1-stars={m['t1_stars']:.3f}us  (n={m['n']} blocks)")
+            print(f"  {'':12s} T0-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
+                  f"T1-stars={fmt(m['t1_stars'])}us  T2-stars={fmt(m['t2_stars'])}us  (n={m['n']} blocks)")
         results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean'], m))
     print()
 
@@ -376,13 +405,13 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
 summary_path = os.path.join(output_dir, 'summary.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
-    w.writerow(['算子', '类型', '核数', 'TaskDur稳态mean(us)', 'T0-stars(us)', 'T1-T0(us)', 'T1-stars(us)'])
+    w.writerow(['算子', '类型', '核数', 'TaskDur稳态mean(us)', 'T0-stars(us)', 'T1-T0(us)', 'T1-stars(us)', 'T2-stars(us)'])
     for op, typ, cores, mean, m in results:
         if m:
-            w.writerow([op, typ, cores, f"{mean:.3f}", f"{m['t0_stars']:.3f}",
-                        f"{m['t1_t0']:.3f}", f"{m['t1_stars']:.3f}"])
+            w.writerow([op, typ, cores, f"{mean:.3f}", fmt(m['t0_stars']),
+                        fmt(m['t1_t0']), fmt(m['t1_stars']), fmt(m['t2_stars'])])
         else:
-            w.writerow([op, typ, cores, f"{mean:.3f}", "N/A", "N/A", "N/A"])
+            w.writerow([op, typ, cores, f"{mean:.3f}", "N/A", "N/A", "N/A", "N/A"])
 
 print(f"汇总 CSV: {summary_path}")
 print()

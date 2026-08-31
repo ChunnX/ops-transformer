@@ -56,11 +56,16 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         /* T1: Init 完成、第一个 MTE2 搬运（op.Process 内 DataCopy）之前 */                                              \
         if (cycleData != nullptr) {                                                                                    \
             int64_t T1 = AscendC::GetSystemCycle();                                                                    \
-            __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 2;                       \
+            __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 3;                       \
             cycleBuf[0] = T0;                                                                                          \
             cycleBuf[1] = T1;                                                                                          \
         }                                                                                                              \
         op.Process();                                                                                                  \
+        if (cycleData != nullptr) {                                                                                    \
+            int64_t T2 = AscendC::GetSystemCycle();                                                                    \
+            __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 3;                        \
+            cycleBuf[2] = T2;                                                                                          \
+        }                                                                                                              \
     } while (0)
 
 template <int D_T_A, int D_T_B, int D_T_Y, int TRANS_A, int TRANS_B, int GROUP_LIST_TYPE, int IS_STATIC_TILING_API,
