@@ -175,7 +175,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
 {
     __gm__ uint8_t *sequsedOriKv = seqUsedOriKV;
     __gm__ uint8_t *sequsedCmpKv = seqUsedCmpKV;
-    fa_base_matmul::ResetIdCounter();
+    fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();

@@ -26,11 +26,6 @@ namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
 #define MAKE_ID ((++idCounterNum) % 11)
 
-__aicore__ inline void ResetIdCounter()
-{
-    idCounterNum = 0;
-}
-
 // 核间同步中，AIC(flagId 0-10)对应AIV0(flagId 0-10)，对应AIV1(flagId 16-26)
 #define AIV0_AIV1_OFFSET 16
 
@@ -170,7 +165,9 @@ class Buffer {
     using TargetTensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<T>, LocalTensor<T>>;
 
 public:
-    __aicore__ inline Buffer() {}
+    __aicore__ inline Buffer()
+    {
+    }
     __aicore__ inline Buffer(TensorType tensor, uint32_t size)
     {
         tensor_ = tensor;

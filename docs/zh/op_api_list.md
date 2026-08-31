@@ -42,7 +42,6 @@
 |[aclnnAlltoAllvQuantGroupedMatMul](../../mc2/allto_allv_quant_grouped_mat_mul/docs/aclnnAlltoAllvQuantGroupedMatMul.md)|完成路由专家AlltoAllv、Permute、量化GroupedMatMul计算融合并实现与共享专家量化MatMul并行融合。| - | 默认确定性实现 |
 |[aclnnAlltoAllvQuantGroupedMatMulV2](../../mc2/allto_allv_quant_grouped_mat_mul/docs/aclnnAlltoAllvQuantGroupedMatMulV2.md)|兼容[aclnnAlltoAllvQuantGroupedMatMul](../../mc2/allto_allv_quant_grouped_mat_mul/docs/aclnnAlltoAllvQuantGroupedMatMul.md)支持的功能，在此基础上新增commMode参数，供用户指定通信引擎参数。| - | 默认确定性实现 |
 |[aclnnApplyRotaryPosEmb](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmb.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现| 默认确定性实现 |
-|[aclnnApplyRotaryPosEmbGrad](../../posembedding/apply_rotary_pos_emb_grad/docs/aclnnApplyRotaryPosEmbGrad.md)|执行双路旋转位置编码aclnnApplyRotaryPosEmb的反向计算，同时计算query和key的rope反向梯度，融合为一次kernel调用。| - | 默认确定性实现 |
 |[aclnnApplyRotaryPosEmbV2](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmbV2.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现| 默认确定性实现 |
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现| 默认确定性实现 |
 |[aclnnAttentionWorkerCombine](../../attention/attention_worker_combine/docs/aclnnAttentionWorkerCombine.md)|Attention和FFN分离部署场景下，Attention侧数据融合算子，将多个计算单元处理的注意力token数据进行融合，结合专家权重对结果进行加权，输出最终的注意力融合结果，并更新层ID。|默认确定性实现| - |
@@ -96,7 +95,6 @@
 |[aclnnFusedInferAttentionScoreV4](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV4.md)|适配Decode & Prefill场景的FlashAttention算子。|默认确定性实现| - |
 |[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现| 默认确定性实现 |
 |[aclnnGatherPaKvCache](../../attention/gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)|根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。|默认确定性实现| 默认确定性实现 |
-|[aclnnGenericBlockSparseAttention](../../attention/generic_block_sparse_attention/docs/aclnnGenericBlockSparseAttention.md)|GenericBlockSparseAttention通过sparseBlockIdx指定每个Q块选择的KV块，sparseBlockCount指定每个Q块保留的KV块数量，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulAdd](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAdd.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulAddV2](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAddV2.md)|实现分组矩阵乘计算后原地累加，每组矩阵乘的维度大小可以不同。|默认确定性实现|-|

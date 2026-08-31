@@ -11,7 +11,7 @@
 #ifndef CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
 #define CATLASS_EPILOGUE_DISPATCH_POLICY_HPP
 
-#include "../arch/tla_arch_arch.hpp"
+#include "../arch/arch.hpp"
 
 namespace Catlass::Epilogue {
 
