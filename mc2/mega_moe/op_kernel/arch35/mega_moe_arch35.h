@@ -526,8 +526,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-// W4 基类统一调度一个专家 slice 的 GMM2/Combine。派生模板只传入当前 slice 边界；
-// 本函数负责选择同步协议，并将实际 Combine 收敛到公共 CombineTokenRange 入口。
+// W4 基类统一执行原 A8W4/A4W4 的专家 GMM2/Combine；派生模板只提供当前专家 slice。
+// 非量化路径增量采用 GMM2 tile 一对一同步，所有 Combine 均通过 CombineTokenRange 进入。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -536,7 +536,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
 {
     constexpr Gmm2CombineSyncProtocol syncProtocol =
         CombineQuantMode == COMBINE_NO_QUANT ? Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE
-                                             : Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS;
+                                             : Gmm2CombineSyncProtocol::NONE;
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
@@ -552,36 +552,45 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         }
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+        int32_t *gmm2TileSequence = nullptr;
+        if constexpr (syncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
+            gmm2TileSequence = &pairwiseTileSequence;
+        }
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     TopkWeightsPrefetch, false, false, true, syncProtocol>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
-    }
-
-    CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, waveCombineJob_, countWorkspace_,
-                                       syncWorkspaceLayout_, params_, moeWeightTensorListAddrs_};
-    CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence, combineRowSequence};
-    ExpertTokenRange sliceRange{
-        {state.expertIdx, tokenStartIndexInExpert,
-         static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert},
-        {state.expertIdx, tokenStartIndexInExpert + sliceTokenCount,
-         static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert + sliceTokenCount}};
-    if (sliceRange.end.tokenIndexInExpert >= expertTokenCount) {
-        sliceRange.end.expertIdx = state.expertIdx + 1U;
-        sliceRange.end.tokenIndexInExpert = 0U;
+            tokenStartIndexInExpert, nullptr, gmm2TileSequence);
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        // 非量化 Combine 紧跟当前 GMM2 slice，AIV1 按相同 scheduler 逐 tile 消费。
+        CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, waveCombineJob_, countWorkspace_,
+                                           syncWorkspaceLayout_, params_, moeWeightTensorListAddrs_};
+        CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence, combineRowSequence};
+        ExpertTokenRange sliceRange{
+            {state.expertIdx, tokenStartIndexInExpert,
+             static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert},
+            {state.expertIdx, tokenStartIndexInExpert + sliceTokenCount,
+             static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert + sliceTokenCount}};
+        if (sliceRange.end.tokenIndexInExpert >= expertTokenCount) {
+            sliceRange.end.expertIdx = state.expertIdx + 1U;
+            sliceRange.end.tokenIndexInExpert = 0U;
+        }
         CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
                           Gmm2KernelKind::W4, GMM1_TILE_M, TopkWeightsPrefetch>(
             combineContext, combineBufferConfig, waveCombineScratch_, sliceRange, combineRuntime);
         return;
     }
+
+    // 量化 Combine 保持原 W4 语义：跨 WAVE 的专家必须等最后一个 slice 完成后再消费。
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
     }
 
     NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
+    CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, waveCombineJob_, countWorkspace_,
+                                       syncWorkspaceLayout_, params_, moeWeightTensorListAddrs_};
+    CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence, combineRowSequence};
     ExpertTokenRange expertRange{
         {state.expertIdx, 0U, static_cast<uint64_t>(state.globalTokenStartIndex)},
         {state.expertIdx + 1U, 0U, static_cast<uint64_t>(state.globalTokenStartIndex) + expertTokenCount}};
