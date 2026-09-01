@@ -52,6 +52,12 @@ def aclnn_sageattn_pv_py(q, k, v, is_causal=False):
     q_f = q.to(torch.float32)
     k_f = k.to(torch.float32)
     v_f = v.to(torch.float32)
+    # GQA：kv 头数少于 q 时按 Hq/Hk 广播（对齐 sageattn 适配层语义）
+    hkv = k_f.shape[1]
+    if hkv != h:
+        rep = h // hkv
+        k_f = torch.repeat_interleave(k_f, rep, dim=1)
+        v_f = torch.repeat_interleave(v_f, rep, dim=1)
     # MM1: INT8 QK^T (fp32 matmul 近似)
     s_mat = torch.matmul(q_f, k_f.transpose(-2, -1))
     if is_causal:
