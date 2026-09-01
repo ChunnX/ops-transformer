@@ -55,11 +55,7 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
-#if CVRATIO > 1
     static constexpr uint64_t M_BASIC_BLOCK = 128;
-#else
-    static constexpr uint64_t M_BASIC_BLOCK = 256;
-#endif
     static constexpr uint64_t D_BASIC_BLOCK = 128;
     static constexpr uint64_t S2_BASIC_BLOCK = 128;
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;

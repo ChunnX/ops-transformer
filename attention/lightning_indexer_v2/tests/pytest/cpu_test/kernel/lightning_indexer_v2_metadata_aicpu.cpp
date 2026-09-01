@@ -229,7 +229,8 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
     // cpu_test仅用于A6仿真，直接写死分块参数
-    s1BaseSize_ = 4;
+    // A6: L0A仅64KB, s1BaseSize=2(与kernel InitTilingData的A6分支一致)
+    s1BaseSize_ = 2;
     mBaseSize_ = s1BaseSize_ * groupSize_;
     s2BaseSize_ = 128U;
     return true;
