@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import pytest
+import torch
 import torch_npu
 
 import custom_ops  # noqa: E402, F401
@@ -38,5 +39,7 @@ def test_fused_gdn_gating(case):
         pytest.skip("BF16 not supported on 310P")
     if case["soc"] == "310p" and not is_310p:
         pytest.skip("310P specific test")
+    if is_310p and case["param_dtype"] != torch.float16:
+        pytest.skip("310P kernel supports FP16 A_log/dt_bias only")
 
     fused_gdn_gating_golden.run_fused_gdn_gating_eager(case)
