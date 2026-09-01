@@ -1350,7 +1350,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkHInGrad(uint32
     blockCopyParams.blockLen = copySizeND * sizeof(T);
     blockCopyParams.srcStride = (D_ - copySizeND) * sizeof(T);
     blockCopyParams.dstStride = 0;
-    LocalTensor<T> hInPrefetchBuf = vecInQueue0_.AllocTensor<T>();
+    LocalTensor<T> hInPrefetchBuf;
+    vecInQueue0_.AllocTensor<T>(hInPrefetchBuf);
     DataCopyPad(hInPrefetchBuf, gradHInGm_[bsChunkStart * D_ + (offsetND % D_)], blockCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(hInPrefetchBuf);
 }
@@ -1362,7 +1363,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_
                                                       uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart,
                                                       uint64_t bsEnd, uint32_t chunkSize)
 {
-    LocalTensor<T> currentHInBuf = vecInQueue0_.DeQue<T>();
+    LocalTensor<T> currentHInBuf;
+    vecInQueue0_.DeQue<T>(currentHInBuf);
     uint64_t nextChunkStart = bsChunkStart + currentChunkSize;
     if (nextChunkStart < bsEnd) {
         uint32_t nextChunkSize =
