@@ -37,6 +37,7 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+using HcommBatchHandle = UbcCtpBatchHandle;
 
 namespace CombineImpl {
 
@@ -107,7 +108,8 @@ template <typename DataType, bool IsQuantized = true>
 __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
                                                 uint32_t groupIdx, uint32_t rankId,
                                                 LocalTensor<int32_t> &metaInfoTensor, LocalTensor<DataType> &ubQuant,
-                                                const Params &params, GM_ADDR localSrcPtr)
+                                                const Params &params, GM_ADDR localSrcPtr,
+                                                HcommBatchHandle &batchHandle)
 {
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID3>();
@@ -146,9 +148,11 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
     }
 
     if (toRankId != rankId) {
-        uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
+        // 调用方已经按目标 rank 和固定归属核完成分组，此处直接向已绑定的批量句柄追加写 WQE。
         GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
-        params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
+        // Combine 使用 Hcomm 默认 WQE 配置，不能复用 Dispatch 一级的无 CQE 配置。
+        params.combineCommParams.hcomm->WriteNbi(batchHandle, remoteAddr, srcAddr,
+                                                 quantTokenSize * sizeof(DataType));
     }
 #endif
 }
@@ -173,12 +177,18 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
 
+struct LayeredCombineBatchState {
+    uint32_t dstRankId = 0U;
+    HcommBatchHandle batchHandle{};
+    uint32_t pendingTokenCount = 0U;
+};
+
 // 读取并按需量化一组普通/layered Combine token，然后发送到目标 rank。
 template <uint8_t QuantMode, typename T, bool IsLayered = false, bool IsQuantized = true>
 __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx,
                                          uint32_t rankId, GM_ADDR gmm2OutAddr, const Params &params,
                                          LocalTensor<int32_t> &metaInfoTensor, int64_t ubTensorSize, int64_t offset,
-                                         uint32_t quantTokenSizeBytes)
+                                         uint32_t quantTokenSizeBytes, LayeredCombineBatchState &batchState)
 {
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
     offset += ubTensorSize * sizeof(T);
@@ -217,8 +227,16 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                 ubQuantSend = ubBf16;
             }
             GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
-            CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
-                                                            ubQuantSend, params, localSrcPtr);
+            CombineSendTokenToRemote<SendType, IsQuantized>(
+                i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params, localSrcPtr,
+                batchState.batchHandle);
+            if (batchState.dstRankId != rankId) {
+                ++batchState.pendingTokenCount;
+                if (batchState.pendingTokenCount == L1_TILE_M_256) {
+                    params.combineCommParams.hcomm->BatchCommit(batchState.batchHandle);
+                    batchState.pendingTokenCount = 0U;
+                }
+            }
         } else {
             CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params,
                                              quantTokenSizeBytes);
@@ -552,10 +570,13 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr (IsLayered && !IsShared) {
-        uint32_t logicalCoreCount = config.blockNum;
-        if constexpr (!std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
-            logicalCoreCount *= 2U;
+    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+        uint32_t logicalCoreCount = gmmAddrInfo.gmm2CombineLogicalCoreCount;
+        if (logicalCoreCount == 0U) {
+            logicalCoreCount = config.blockNum;
+            if constexpr (!std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
+                logicalCoreCount *= 2U;
+            }
         }
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
     }
@@ -604,7 +625,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 }
 
 // 执行 A8W4 GMM2 tile 循环。
-template <bool IsShared, bool IsLayered, typename BlockMmad, typename Scheduler, typename TensorA,
+template <uint8_t CombineQuantMode, bool IsShared, bool IsLayered, typename BlockMmad, typename Scheduler, typename TensorA,
           typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                        TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
@@ -613,8 +634,11 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr (IsLayered && !IsShared) {
-        uint32_t logicalCoreCount = config.blockNum;
+    if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+        uint32_t logicalCoreCount = gmmAddrInfo.gmm2CombineLogicalCoreCount;
+        if (logicalCoreCount == 0U) {
+            logicalCoreCount = config.blockNum;
+        }
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(expertTokenCount, logicalCoreCount);
     }
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -643,10 +667,10 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
-        if constexpr (IsLayered && !IsShared) {
+        if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
-        } else if constexpr (IsShared) {
+        } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
     }
@@ -758,8 +782,8 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
                                                    L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-        Gmm2AicMmadA8W4<IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler), decltype(workSet.gmA),
-                        decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
+        Gmm2AicMmadA8W4<CombineQuantMode, IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler),
+                        decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(
             blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
             config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);

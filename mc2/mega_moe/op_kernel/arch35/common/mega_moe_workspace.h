@@ -30,7 +30,6 @@ constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 // a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。GMM2 需要 gmm2MmadResPtr workspace。
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
-
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
@@ -58,10 +57,8 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertGmm2TileCounterPtr{nullptr};
 
     GM_ADDR maskSlotPtr{nullptr};       // urma发送mask临时GM
-    GM_ADDR dispatchL1CommPtr{nullptr}; // dispatch L1 communication workspace
-    GM_ADDR dispatchCursorPtr{nullptr}; // dispatch cnt for each expert
-    GM_ADDR dispatchDonePtr{nullptr};   // dispatch done
-    GM_ADDR dispatchL2CommPtr{nullptr}; // dispatch l2 communication workspace
+    GM_ADDR dispatchRelaySendQueuePtr{nullptr};       // 按目标 Server 划分的一级中继发送队列
+    GM_ADDR dispatchRemoteReadyFlagSnapshotPtr{nullptr}; // 各逻辑核的完整 [bs] 远端就绪标志快照
 
     // 连续 flag 通知区（自 flagActivationToGmm2Ptr 起）的 int32 元素总数。
     // 在分配处顺手记账，保证 ResetSyncStatus 的清零范围与分配范围恒同源。
@@ -71,8 +68,11 @@ struct WorkspaceInfo {
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
+        uint32_t rankNumPerServer = tilingData->rankNumPerServer == 0U ?
+                                        tilingData->epWorldSize : tilingData->rankNumPerServer;
+        uint32_t serverNum = Ops::Base::CeilDiv(tilingData->epWorldSize, rankNumPerServer);
         workspaceSize = 0;
         dispatchRevDataPtr = base;
 
@@ -184,6 +184,7 @@ struct WorkspaceInfo {
         gmm2MmadResPtr = nullptr;
         bool usePersistentDispatchCumsum =
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+            tilingData->topoType == TOPO_TYPE_URMA ||
             (tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                                                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ));
         if (usePersistentDispatchCumsum) {
@@ -243,24 +244,18 @@ struct WorkspaceInfo {
             workspaceSize += Ops::Base::CeilAlign(
                 (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
 
-            dispatchL1CommPtr = base + workspaceSize;
+            dispatchRelaySendQueuePtr = base + workspaceSize;
             int64_t serverWorkspaceBytes =
                 static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * ALIGN_32;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * serverWorkspaceBytes,
                                                   static_cast<int64_t>(ALIGN_512));
 
-            dispatchCursorPtr = base + workspaceSize;
-            workspaceSize +=
-                Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
-
-            dispatchDonePtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32),
-                                                  static_cast<int64_t>(ALIGN_512));
-
-            dispatchL2CommPtr = base + workspaceSize;
-            int64_t flagSnapshotBytes = static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(sizeof(uint64_t));
-            int64_t dispatchL2ScratchBytes = Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
-            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * dispatchL2ScratchBytes;
+            dispatchRemoteReadyFlagSnapshotPtr = base + workspaceSize;
+            // 每个逻辑核缓存完整 [bs] 远端就绪标志，配合一次连续 ReadNbi 避免逐 token 的 8B 小读。
+            int64_t flagSnapshotBytes = static_cast<int64_t>(tilingData->bs) * sizeof(uint64_t);
+            int64_t relayFlagSnapshotBytesPerBlock =
+                Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * relayFlagSnapshotBytesPerBlock;
         }
 
         // 共享专家 workspace buffer。
@@ -294,6 +289,7 @@ struct WorkspaceInfo {
                                                       tilingData->hiddenDim / ACTIVATION_N_HALF / MXFP_SCALE_GROUP_NUM,
                                                   ALIGN_512);
         }
+
     }
 };
 
