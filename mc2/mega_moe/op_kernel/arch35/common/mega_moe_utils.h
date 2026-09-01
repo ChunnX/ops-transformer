@@ -533,6 +533,46 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
     SyncAll<true>();
 }
 
+
+// ==================== 去全核同步(计数屏障)原语——阶梯档位实验用 ====================
+// 槽区: rankSyncInWorld [0,60K) 自由段 [52K,~57.25K); 每槽 64B 独占 cache line;
+// int32[0]=prep 完成计数(AIC 槽借该字段做 launch 计数), int32[1]=MoE 完成计数。
+// 免清零: 每 launch 恰 +1, 精确等值/至少判据。宽退避 600cy 防多核轮询读风暴。
+constexpr uint64_t SYNC_SPLIT_STAGE_SLOT_BASE = 52ULL * 1024ULL;
+constexpr uint32_t SYNC_SPLIT_PREP_FIELD = 0U;
+constexpr uint32_t SYNC_SPLIT_MOE_FIELD = 1U;
+
+__aicore__ inline void SyncSplitWaitAtLeast(__gm__ int32_t *flagAddr, int32_t targetValue)
+{
+    constexpr int64_t pollBackoffCycles = 600;
+    while (ReadGmByPassDCache(flagAddr) < targetValue) {
+        int64_t startCycle = GetSystemCycle();
+        while (GetSystemCycle() - startCycle < pollBackoffCycles) {
+        }
+    }
+}
+
+__aicore__ inline __gm__ int32_t *SyncSplitStageSlot(GM_ADDR rankSyncPtr, uint32_t slotIdx, uint32_t field)
+{
+    return reinterpret_cast<__gm__ int32_t *>(rankSyncPtr + SYNC_SPLIT_STAGE_SLOT_BASE +
+                                              static_cast<uint64_t>(slotIdx) * 64U) + field;
+}
+
+__aicore__ inline int32_t SyncSplitPublish(GM_ADDR rankSyncPtr, uint32_t slotIdx, uint32_t field)
+{
+    __gm__ int32_t *slot = SyncSplitStageSlot(rankSyncPtr, slotIdx, field);
+    int32_t next = ReadGmByPassDCache(slot) + 1;
+    WriteGmByPassDCache(slot, next);
+    return next;
+}
+
+__aicore__ inline void SyncSplitWaitAll(GM_ADDR rankSyncPtr, uint32_t slotCount, uint32_t field, int32_t target)
+{
+    for (uint32_t s = 0U; s < slotCount; ++s) {
+        SyncSplitWaitAtLeast(SyncSplitStageSlot(rankSyncPtr, s, field), target);
+    }
+}
+
 template <AscendC::HardEvent event, int32_t eventId>
 __aicore__ inline void SyncFuncStatic()
 {
