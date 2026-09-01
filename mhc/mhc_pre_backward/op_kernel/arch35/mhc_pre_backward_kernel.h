@@ -30,6 +30,19 @@ using namespace MhcPreBackwardUtils;
 constexpr uint32_t GAMMA_REG_REUSE_T_THRESHOLD = 3072;
 
 template <class T, class P>
+__aicore__ inline void MhcPreBackwardAccumulateDot(
+    MicroAPI::RegTensor<P> &sumReg, MicroAPI::RegTensor<T> &xInB16Reg, MicroAPI::RegTensor<P> &xFp32Reg,
+    MicroAPI::RegTensor<P> &mulReg, MicroAPI::RegTensor<P> &tmpSumReg, __ubuf__ T *xB16InAddr, uint32_t xOffset,
+    MicroAPI::RegTensor<P> &gradHInFp32Reg, MicroAPI::MaskReg mask)
+{
+    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, xB16InAddr + xOffset);
+    MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
+    MicroAPI::Mul(mulReg, xFp32Reg, gradHInFp32Reg, mask);
+    MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(tmpSumReg, mulReg, mask);
+    MicroAPI::Add(sumReg, sumReg, tmpSumReg, mask);
+}
+
+template <class T, class P>
 class MhcPreBackwardKernel {
 public:
     __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
@@ -91,9 +104,10 @@ public:
     __aicore__ inline void ProcessV3BiasGrad();
 
     // 向量化计算函数 (VFDo*)
+    template <uint16_t HEAD_COUNT>
     __aicore__ inline void VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
-                                            __ubuf__ T *gradHInB16InAddr, uint16_t curLenN, uint32_t lenD, uint64_t i,
-                                            uint32_t j, uint64_t runBSStart);
+                                            __ubuf__ T *gradHInB16InAddr, uint32_t lenD, uint64_t i, uint32_t j,
+                                            uint64_t runBSStart);
     __aicore__ inline void VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr, __ubuf__ P *gradHInAddr,
                                           uint32_t totalElem);
     __aicore__ inline void VFDoV0ProcessGradHPost(__ubuf__ P *hPostIn, __ubuf__ P *gradHPostIn,
@@ -373,41 +387,104 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
-                                                                    __ubuf__ T *gradHInB16InAddr, uint16_t curLenN,
-                                                                    uint32_t lenD, uint64_t i, uint32_t j,
-                                                                    uint64_t runBSStart)
+template <uint16_t HEAD_COUNT>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *hPreGradAddr,
+                                                                    __ubuf__ T *xB16InAddr,
+                                                                    __ubuf__ T *gradHInB16InAddr, uint32_t lenD,
+                                                                    uint64_t i, uint32_t j, uint64_t runBSStart)
 {
     uint16_t eleNumPerVf = 64;
     uint16_t dLoopCnt = (lenD + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<P> sumReg;
+        MicroAPI::RegTensor<P> sumReg0, sumReg1, sumReg2, sumReg3;
+        MicroAPI::RegTensor<P> sumReg4, sumReg5, sumReg6, sumReg7;
+        MicroAPI::RegTensor<T> xInB16Reg, gradHInB16InReg;
+        MicroAPI::RegTensor<P> xFp32Reg, gradHInFp32Reg, mulReg, tmpSumPerVfReg;
+        MicroAPI::Duplicate(sumReg0, 0.0f);
+        if constexpr (HEAD_COUNT > 1) {
+            MicroAPI::Duplicate(sumReg1, 0.0f);
+        }
+        if constexpr (HEAD_COUNT > 2) {
+            MicroAPI::Duplicate(sumReg2, 0.0f);
+        }
+        if constexpr (HEAD_COUNT > 3) {
+            MicroAPI::Duplicate(sumReg3, 0.0f);
+        }
+        if constexpr (HEAD_COUNT > 4) {
+            MicroAPI::Duplicate(sumReg4, 0.0f);
+        }
+        if constexpr (HEAD_COUNT > 5) {
+            MicroAPI::Duplicate(sumReg5, 0.0f);
+        }
+        if constexpr (HEAD_COUNT > 6) {
+            MicroAPI::Duplicate(sumReg6, 0.0f);
+        }
+        if constexpr (HEAD_COUNT > 7) {
+            MicroAPI::Duplicate(sumReg7, 0.0f);
+        }
+
         uint32_t offset = static_cast<uint32_t>((i - runBSStart) * N_ + j);
-        for (uint16_t offsetN = 0; offsetN < curLenN; offsetN++) { // x [curLenN, lenD],  hinGrad [1, lenD]
-            MicroAPI::Duplicate(sumReg, 0.0f);
-            uint32_t curLenD = lenD;
-            // x[1, lenD]  hinGrad [1, lenD]   res[1, lenD]
-            MicroAPI::RegTensor<T> xInB16Reg, gradHInB16InReg;
-            MicroAPI::RegTensor<P> xFp32Reg, gradHInFp32Reg, mulReg, tmpSumPerVfReg;
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < dLoopCnt; vfBlockIdx++) {
-                MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLenD);
-
-                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, xB16InAddr + offsetN * lenD +
-                                                                                           vfBlockIdx * eleNumPerVf);
-                MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
-
-                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    gradHInB16InReg, gradHInB16InAddr + vfBlockIdx * eleNumPerVf);
-                MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(gradHInFp32Reg, gradHInB16InReg, mask);
-
-                MicroAPI::Mul(mulReg, xFp32Reg, gradHInFp32Reg, mask); // mulReg[1,lenD] 0-63
-                MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(tmpSumPerVfReg, mulReg,
-                                                            mask);   // 每个vfBlockIdx循环的临时求和，每64个元素的和
-                MicroAPI::Add(sumReg, sumReg, tmpSumPerVfReg, mask); // D方向上的reduceSum
+        uint32_t curLenD = lenD;
+        for (uint16_t vfBlockIdx = 0; vfBlockIdx < dLoopCnt; vfBlockIdx++) {
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curLenD);
+            uint32_t dOffset = vfBlockIdx * eleNumPerVf;
+            // 同一个D向量块的grad_h_in只加载并转换一次，供当前N分块的所有点积复用。
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInB16InReg,
+                                                                        gradHInB16InAddr + dOffset);
+            MicroAPI::Cast<float, T, ctHalf2Fp32Zero>(gradHInFp32Reg, gradHInB16InReg, mask);
+            MhcPreBackwardAccumulateDot<T, P>(sumReg0, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                              dOffset, gradHInFp32Reg, mask);
+            if constexpr (HEAD_COUNT > 1) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg1, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  lenD + dOffset, gradHInFp32Reg, mask);
             }
-            uint32_t bufIdx = offset + offsetN;
-            MicroAPI::Store(hPreGradAddr + bufIdx, sumReg, 1);
+            if constexpr (HEAD_COUNT > 2) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg2, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  2 * lenD + dOffset, gradHInFp32Reg, mask);
+            }
+            if constexpr (HEAD_COUNT > 3) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg3, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  3 * lenD + dOffset, gradHInFp32Reg, mask);
+            }
+            if constexpr (HEAD_COUNT > 4) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg4, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  4 * lenD + dOffset, gradHInFp32Reg, mask);
+            }
+            if constexpr (HEAD_COUNT > 5) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg5, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  5 * lenD + dOffset, gradHInFp32Reg, mask);
+            }
+            if constexpr (HEAD_COUNT > 6) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg6, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  6 * lenD + dOffset, gradHInFp32Reg, mask);
+            }
+            if constexpr (HEAD_COUNT > 7) {
+                MhcPreBackwardAccumulateDot<T, P>(sumReg7, xInB16Reg, xFp32Reg, mulReg, tmpSumPerVfReg, xB16InAddr,
+                                                  7 * lenD + dOffset, gradHInFp32Reg, mask);
+            }
+        }
+        MicroAPI::Store(hPreGradAddr + offset, sumReg0, 1);
+        if constexpr (HEAD_COUNT > 1) {
+            MicroAPI::Store(hPreGradAddr + offset + 1, sumReg1, 1);
+        }
+        if constexpr (HEAD_COUNT > 2) {
+            MicroAPI::Store(hPreGradAddr + offset + 2, sumReg2, 1);
+        }
+        if constexpr (HEAD_COUNT > 3) {
+            MicroAPI::Store(hPreGradAddr + offset + 3, sumReg3, 1);
+        }
+        if constexpr (HEAD_COUNT > 4) {
+            MicroAPI::Store(hPreGradAddr + offset + 4, sumReg4, 1);
+        }
+        if constexpr (HEAD_COUNT > 5) {
+            MicroAPI::Store(hPreGradAddr + offset + 5, sumReg5, 1);
+        }
+        if constexpr (HEAD_COUNT > 6) {
+            MicroAPI::Store(hPreGradAddr + offset + 6, sumReg6, 1);
+        }
+        if constexpr (HEAD_COUNT > 7) {
+            MicroAPI::Store(hPreGradAddr + offset + 7, sumReg7, 1);
         }
     }
 }
@@ -452,7 +529,34 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
             __ubuf__ T *xB16InAddr = (__ubuf__ T *)bf16InputBuf.GetPhyAddr();
             __ubuf__ T *gradHInB16InAddr = (__ubuf__ T *)gradHInInputBuf.GetPhyAddr();
             __ubuf__ P *hPreGradAddr = (__ubuf__ P *)hPreGradBuf.GetPhyAddr();
-            VFDoPreProcessV0(hPreGradAddr, xB16InAddr, gradHInB16InAddr, curLenN, copySizeD, i, j, runBSStart);
+            switch (curLenN) {
+                case 1:
+                    VFDoPreProcessV0<1>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 2:
+                    VFDoPreProcessV0<2>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 3:
+                    VFDoPreProcessV0<3>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 4:
+                    VFDoPreProcessV0<4>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 5:
+                    VFDoPreProcessV0<5>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 6:
+                    VFDoPreProcessV0<6>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 7:
+                    VFDoPreProcessV0<7>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                case 8:
+                    VFDoPreProcessV0<8>(hPreGradAddr, xB16InAddr, gradHInB16InAddr, copySizeD, i, j, runBSStart);
+                    break;
+                default:
+                    break;
+            }
 
             inputOffset += copySizeD * curLenN;
             vecInQueue0_.FreeTensor(bf16InputBuf);
