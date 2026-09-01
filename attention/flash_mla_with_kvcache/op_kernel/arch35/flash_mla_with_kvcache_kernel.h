@@ -67,6 +67,9 @@ public:
     uint32_t sectionNum_ = 0U;
     uint32_t metaAicCoreNum_ = 0U;
     uint32_t metaAivCoreNum_ = 0U;
+    // header 第 1 个 uint32：producer 写 1 表示任意 section 存在 FD 任务（与 flash_attn
+    // HEAD_IS_FD_INDEX=1 一致）；全局开关，所有 AIV core 读取一致
+    bool enableFlashDecode_ = false;
     FlashMlaWithKvcacheFdParamsX fdParams_ = {};
     // 与 producer（flash_mla_metadata 改名克隆）的核 strides 一致：AICPU 侧 FA_METADATA_STRIDE=16 /
     // FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，producer 侧 static_assert 已就位于
@@ -112,9 +115,11 @@ public:
     {
         this->tilingData_ = tiling;
 
-        // metadata（GM 输入）：section 数在 16-word header 第 0 个 uint32；header 第 4/5 个 uint32
-        // 为 producer 自描述写入的 FA/FD 区每 section 核数（硬件实际值）
+        // metadata（GM 输入）：section 数在 16-word header 第 0 个 uint32；header 第 1 个 uint32
+        // 为 producer 写入的全局 FD 启用标志（与 flash_attn HEAD_IS_FD_INDEX=1 一致）；第 4/5 个
+        // uint32 为 producer 自描述写入的 FA/FD 区每 section 核数（硬件实际值）
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
+        enableFlashDecode_ = static_cast<bool>(((__gm__ uint32_t *)metadata)[1U]);
         metaAicCoreNum_ = ((__gm__ uint32_t *)metadata)[FLASH_MLA_METADATA_AIC_NUM_INDEX];
         metaAivCoreNum_ = ((__gm__ uint32_t *)metadata)[FLASH_MLA_METADATA_AIV_NUM_INDEX];
         // FA 区从 header 后开始（参见 metadata 消费段）
@@ -627,10 +632,14 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        GetFDSectionInfo(sectionIdx);
-        if (!fdParams_.fdCoreEnable) {
+        // [flash_attn 同款] 全局 FD 开关（header 第 1 个 uint32），所有 AIV core 读取一致：
+        // false 时全部直接 return（0 次 SyncAll，barrier 平衡），true 时全部执行完整 FD 流程
+        // （2 次 SyncAll）。GetFDSectionInfo 对无任务 core 只设 fdCoreEnable=0 后 return，
+        // vecFdBlock_.FlashDecode 内部按其 mLen 跳过计算，但外层 SyncAll 仍执行 → 全核 barrier 平衡。
+        if (!enableFlashDecode_) {
             return;
         }
+        GetFDSectionInfo(sectionIdx);
         vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
         AscendC::SyncAll();
