@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#include "../gemm/policy/dispatch_policy_mega_moe.h"
+#include "apace/block/policy/dispatch_policy.h"
 
 namespace Blaze {
 namespace Gemm {
