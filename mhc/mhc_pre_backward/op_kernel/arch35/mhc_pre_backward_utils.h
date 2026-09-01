@@ -89,11 +89,6 @@ constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
-constexpr uint32_t C1_K_EVENT_SIZE = 256;
-constexpr uint32_t C1_EVENTS_PER_BUFFER = (SINGLE_M + C1_K_EVENT_SIZE - 1) / C1_K_EVENT_SIZE;
-constexpr uint32_t C1_EVENT_COUNT = DOUBLE_BUFFER * C1_EVENTS_PER_BUFFER * VEC_CORE_VECIDX_MOD;
-static_assert(C1_EVENT_COUNT <= CROSS_CORE_WAIT_FLAG_C1,
-              "C1分段事件不得与既有C0/C1事件编号重叠");
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 
 constexpr Reg::CastTrait ctHalf2Fp32Zero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
