@@ -1418,16 +1418,6 @@
   </tr>
   <tr>
     <td>moe</td>
-    <td><a href="../../moe/moe_token_unpermute_with_ep/README.md">moe_token_unpermute_with_ep</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。</td>
-  </tr>
-  <tr>
-    <td>moe</td>
     <td><a href="../../moe/moe_token_unpermute_with_ep_grad/README.md">moe_token_unpermute_with_ep_grad</a></td>
     <td>✓</td>
     <td>✓</td>
