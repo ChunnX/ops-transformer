@@ -67,6 +67,25 @@ __simd_callee__ inline void ComputeSwiGluVector(
 template <typename InputType, bool TopkWeightsPrefetch, bool IsStep>
 __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context, float clampLimit)
 {
+    __ubuf__ InputType *gate = context.gate;
+    __ubuf__ InputType *up = context.up;
+    __ubuf__ bfloat16_t *output = context.output;
+    __ubuf__ float *topkWeights = context.topkWeights;
+    __ubuf__ InputType *gateTail = context.gateTail;
+    __ubuf__ InputType *upTail = context.upTail;
+    __ubuf__ bfloat16_t *outputTail = context.outputTail;
+    __ubuf__ bfloat16_t *additionalPaddingOutput = context.additionalPaddingOutput;
+
+    const uint32_t inputRowStrideElements = context.inputRowStrideElements;
+    const uint32_t outputRowStrideElements = context.outputRowStrideElements;
+    const uint16_t rowLoopCount = context.rowLoopCount;
+    const uint16_t fullVectorLoopCount = context.fullVectorLoopCount;
+    const uint16_t needTailVectorCompute = context.needTailVectorCompute;
+    const uint16_t needAdditionalPaddingStore = context.needAdditionalPaddingStore;
+    uint32_t tailComputeMaskElementCount = context.tailComputeMaskElementCount;
+    uint32_t tailStoreMaskElementCount = context.tailStoreMaskElementCount;
+    uint32_t additionalPaddingStoreMaskElementCount = context.additionalPaddingStoreMaskElementCount;
+
     AscendC::Reg::RegTensor<InputType> gateReg;
     AscendC::Reg::RegTensor<InputType> upReg;
     AscendC::Reg::RegTensor<float> gateFp32Reg;
@@ -81,55 +100,52 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
     AscendC::Reg::RegTensor<bfloat16_t> zeroReg;
 
     AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    uint32_t tailComputeMaskCount = context.tailComputeMaskElementCount;
-    uint32_t tailStoreMaskCount = context.tailStoreMaskElementCount;
-    uint32_t additionalPaddingStoreMaskCount = context.additionalPaddingStoreMaskElementCount;
-    AscendC::Reg::MaskReg tailComputeMask = AscendC::Reg::UpdateMask<float>(tailComputeMaskCount);
-    AscendC::Reg::MaskReg tailStoreMask = AscendC::Reg::UpdateMask<float>(tailStoreMaskCount);
+    AscendC::Reg::MaskReg tailComputeMask = AscendC::Reg::UpdateMask<float>(tailComputeMaskElementCount);
+    AscendC::Reg::MaskReg tailStoreMask = AscendC::Reg::UpdateMask<float>(tailStoreMaskElementCount);
     AscendC::Reg::MaskReg additionalPaddingStoreMask =
-        AscendC::Reg::UpdateMask<bfloat16_t>(additionalPaddingStoreMaskCount);
+        AscendC::Reg::UpdateMask<bfloat16_t>(additionalPaddingStoreMaskElementCount);
 
-    for (uint16_t rowIndex = 0; rowIndex < context.rowLoopCount; ++rowIndex) {
+    for (uint16_t rowIndex = 0; rowIndex < rowLoopCount; ++rowIndex) {
         if constexpr (TopkWeightsPrefetch) {
             AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                weightReg, context.topkWeights + rowIndex * INT32_PER_256B + WEIGHT_INDEX);
+                weightReg, topkWeights + rowIndex * INT32_PER_256B + WEIGHT_INDEX);
         }
 
-        const uint32_t inputRowOffset = static_cast<uint32_t>(rowIndex) * context.inputRowStrideElements;
-        const uint32_t outputRowOffset = static_cast<uint32_t>(rowIndex) * context.outputRowStrideElements;
-        for (uint16_t vectorIndex = 0; vectorIndex < context.fullVectorLoopCount; ++vectorIndex) {
+        const uint32_t inputRowOffset = static_cast<uint32_t>(rowIndex) * inputRowStrideElements;
+        const uint32_t outputRowOffset = static_cast<uint32_t>(rowIndex) * outputRowStrideElements;
+        for (uint16_t vectorIndex = 0; vectorIndex < fullVectorLoopCount; ++vectorIndex) {
             const uint32_t vectorOffset = static_cast<uint32_t>(vectorIndex) * VECTOR_LENGTH_FP32;
             LoadSwiGluInputAsFp32<InputType>(
-                gateFp32Reg, gateReg, context.gate + inputRowOffset + vectorOffset, fullMask);
+                gateFp32Reg, gateReg, gate + inputRowOffset + vectorOffset, fullMask);
             LoadSwiGluInputAsFp32<InputType>(
-                upFp32Reg, upReg, context.up + inputRowOffset + vectorOffset, fullMask);
+                upFp32Reg, upReg, up + inputRowOffset + vectorOffset, fullMask);
             ComputeSwiGluVector<IsStep>(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
                                         sigmoidReg, fullMask, clampLimit);
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, fullMask);
             }
-            StoreSwiGluFp32AsBf16(context.output + outputRowOffset + vectorOffset, outputReg, outputFp32Reg, fullMask,
+            StoreSwiGluFp32AsBf16(output + outputRowOffset + vectorOffset, outputReg, outputFp32Reg, fullMask,
                                   fullMask);
         }
 
-        for (uint16_t tailIndex = 0; tailIndex < context.needTailVectorCompute; ++tailIndex) {
+        for (uint16_t tailIndex = 0; tailIndex < needTailVectorCompute; ++tailIndex) {
             LoadSwiGluInputAsFp32<InputType>(
-                gateFp32Reg, gateReg, context.gateTail + inputRowOffset, tailComputeMask);
+                gateFp32Reg, gateReg, gateTail + inputRowOffset, tailComputeMask);
             LoadSwiGluInputAsFp32<InputType>(
-                upFp32Reg, upReg, context.upTail + inputRowOffset, tailComputeMask);
+                upFp32Reg, upReg, upTail + inputRowOffset, tailComputeMask);
             ComputeSwiGluVector<IsStep>(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
                                         sigmoidReg, tailComputeMask, clampLimit);
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, tailComputeMask);
             }
-            StoreSwiGluFp32AsBf16(context.outputTail + outputRowOffset, outputReg, outputFp32Reg, tailComputeMask,
+            StoreSwiGluFp32AsBf16(outputTail + outputRowOffset, outputReg, outputFp32Reg, tailComputeMask,
                                   tailStoreMask);
         }
 
         for (uint16_t additionalPaddingIndex = 0;
-             additionalPaddingIndex < context.needAdditionalPaddingStore; ++additionalPaddingIndex) {
+             additionalPaddingIndex < needAdditionalPaddingStore; ++additionalPaddingIndex) {
             AscendC::Reg::Duplicate(zeroReg, static_cast<bfloat16_t>(0));
-            AscendC::Reg::StoreAlign<bfloat16_t>(context.additionalPaddingOutput + outputRowOffset, zeroReg,
+            AscendC::Reg::StoreAlign<bfloat16_t>(additionalPaddingOutput + outputRowOffset, zeroReg,
                                                  additionalPaddingStoreMask);
         }
     }
