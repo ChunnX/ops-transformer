@@ -56,8 +56,6 @@ struct GMMSetOutputParams {
     size_t numX;
 };
 
-static inline std::string ToString(const std::int64_t value) { return std::to_string(value); }
-
 static ge::graphStatus CheckSplitItem(int64_t splitItem)
 {
     if (splitItem == GMM_X_Y_SEPARATED || splitItem == GMM_NO_SEPARATED || splitItem == GMM_X_SEPARATED ||
