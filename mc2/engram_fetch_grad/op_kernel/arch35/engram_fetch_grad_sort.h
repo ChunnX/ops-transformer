@@ -576,6 +576,22 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
 
     AscendC::PipeBarrier<PIPE_V>();
 
+    // totalBuf（= 全核直方图合计）是 ProcessScatter 的 basePos = 全局 bin 维互斥前缀 + tileOffsets
+    // 的前缀来源（prefixLocal = prefixBuffer_），必须在此完成 256-bin 互斥扫描；标量整数实现，
+    // 规避 float 路径在 totalRecv > 2^24 时的舍入误差
+    event_t evtVS = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
+    event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
+    int32_t running = 0;
+    for (uint32_t b = 0; b < HISTOGRAM_BINS; b++) {
+        int32_t binTotal = totalBuf.GetValue(b);
+        totalBuf.SetValue(b, running);
+        running += binTotal;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+    AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+
     // 说明：跨核互斥前缀已在上方 __VEC_SCOPE__ 中以 uint32 精确完成（prefixUb=前核部分和、
     // totalBuf=全核合计）；totalBuf 的全量前缀扫描对本函数输出（tileOffsetsGm）无任何消费，
     // 且 float 路径在 totalRecv > 2^24 时产生舍入误差，故整段删除（原 float CumSum 死代码）。
@@ -770,7 +786,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(evtMte2S);
 
             AscendC::LocalTensor<uint8_t> sortTemp =
-                sortWorkspace_.GetWithOffset<uint8_t>(tileAlignBytes_, 3U * tileAlignBytes_);
+                sortWorkspace_.GetWithOffset<uint8_t>(SortTmpBytes(tileLen), 3U * tileAlignBytes_);
             if (batchCount == 1U) {
                 // Single batch: ProcessHist of this round already wrote keyLocal for THIS
                 // tile on THIS core (V-pipe masked store); reuse it directly (V->V order).

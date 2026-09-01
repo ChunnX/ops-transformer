@@ -319,7 +319,7 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     bool hasPendingMte3 = false;
 
     while (off < len) {
-        uint32_t thisLen = (len - off > tileBytes_) ? tileBytes_ : static_cast<uint32_t>(len - off);
+        uint32_t thisLen = (len - off > MAX_BLOCK_BYTES) ? MAX_BLOCK_BYTES : static_cast<uint32_t>(len - off);
         uint32_t bufIdx = tileIdx % 2U;
         LocalTensor<uint8_t> &buf = (bufIdx == 0U) ? buf0 : buf1;
 
