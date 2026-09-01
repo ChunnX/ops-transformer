@@ -1191,7 +1191,11 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
                return ge::GRAPH_FAILED);
     SetSparseTilingInfo(sparseType);
     inputParamsRegbase_->set_implMode(static_cast<uint8_t>(implMode));
-    implMode = (hasAttenMask && inputDtypeBytes != DATA_TYPE_FP32) ? implMode : ImplMode::AA_HIGH_PRECISION;
+    const bool supportInvalidLineModeWithoutMask =
+        inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16;
+    implMode = ((hasAttenMask || supportInvalidLineModeWithoutMask) && inputDtypeBytes != DATA_TYPE_FP32)
+                   ? implMode
+                   : ImplMode::AA_HIGH_PRECISION;
     if (!isSparseValidSizeAligned) {
         s1SparseValidSize = preTokens;
         s2SparseValidSize = nextTokens;
