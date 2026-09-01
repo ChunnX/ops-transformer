@@ -17,11 +17,9 @@ GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
 GSAG_TASK_ENTRY_SIZE = 4
 GSAG_METADATA_OP_NAME = "generic_sparse_attention_grad_metadata"
 
-
 def calc_gsag_metadata_size(batch_size: int, num_q_heads: int, num_j: int) -> int:
     """Required metadata int64 length: TASK_LIST_OFFSET + B * N1 * J * TASK_ENTRY_SIZE."""
     return GSAG_TASK_LIST_OFFSET + batch_size * num_q_heads * num_j * GSAG_TASK_ENTRY_SIZE
-
 
 class GenericSparseAttentionGradOpBuilder(OpBuilder):
     def __init__(self):
@@ -40,7 +38,7 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
             "int max_q_seqlen=0, int max_kv_seqlen=0, int num_q_heads=0, int num_kv_heads=0, int head_dim=128, "
             "int[] block_shape=[1, 128], int is_packed_gqa=1, "
             'str q_input_layout="TND", str kv_input_layout="TND", '
-            "int mask_type=1, int softmax_precision=0, "
+            "int mask_type=0, int softmax_precision=0, "
             "int window_size_left=-1, int window_size_right=-1) -> Tensor",
             "generic_sparse_attention_grad("
             "Tensor query, Tensor key, Tensor value, Tensor dout, Tensor out, Tensor lse, "
@@ -49,7 +47,7 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "int[] block_shape=[0], int is_packed_gqa=1, "
             'str q_input_layout="TND", str kv_input_layout="TND", '
-            "float scale_value=1.0, int mask_type=1, int softmax_precision=0, "
+            "float scale_value=1.0, int mask_type=0, int softmax_precision=0, "
             "int window_size_left=-1, int window_size_right=-1) -> (Tensor, Tensor, Tensor)",
         ]
 
@@ -71,7 +69,7 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
             is_packed_gqa: int = 1,
             q_input_layout: str = "TND",
             kv_input_layout: str = "TND",
-            mask_type: int = 1,
+            mask_type: int = 0,
             softmax_precision: int = 0,
             window_size_left: int = -1,
             window_size_right: int = -1,
@@ -124,7 +122,7 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
             q_input_layout: str = "TND",
             kv_input_layout: str = "TND",
             scale_value: float = 1.0,
-            mask_type: int = 1,
+            mask_type: int = 0,
             softmax_precision: int = 0,
             window_size_left: int = -1,
             window_size_right: int = -1,
@@ -157,10 +155,8 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
                 torch.empty_like(value, device="meta"),
             )
 
-
 generic_sparse_attention_grad_op_builder = GenericSparseAttentionGradOpBuilder()
 generic_sparse_attention_grad_op_builder._ensure_initialized()
-
 
 @impl(get_as_library(), GSAG_METADATA_OP_NAME, "PrivateUse1")
 def generic_sparse_attention_grad_metadata(
@@ -179,7 +175,7 @@ def generic_sparse_attention_grad_metadata(
     is_packed_gqa: int = 1,
     q_input_layout: str = "TND",
     kv_input_layout: str = "TND",
-    mask_type: int = 1,
+    mask_type: int = 0,
     softmax_precision: int = 0,
     window_size_left: int = -1,
     window_size_right: int = -1,
@@ -209,7 +205,6 @@ def generic_sparse_attention_grad_metadata(
         window_size_right,
     )
 
-
 @impl(get_as_library(), "generic_sparse_attention_grad", "PrivateUse1")
 def generic_sparse_attention_grad(
     query: torch.Tensor,
@@ -231,7 +226,7 @@ def generic_sparse_attention_grad(
     q_input_layout: str = "TND",
     kv_input_layout: str = "TND",
     scale_value: float = 1.0,
-    mask_type: int = 1,
+    mask_type: int = 0,
     softmax_precision: int = 0,
     window_size_left: int = -1,
     window_size_right: int = -1,
@@ -265,16 +260,13 @@ def generic_sparse_attention_grad(
         window_size_right,
     )
 
-
 @torch.library.register_kernel("cann_ops_transformer::generic_sparse_attention_grad", None)
 def generic_sparse_attention_grad_fallback(*args, **kwargs):
     return generic_sparse_attention_grad(*args, **kwargs)
 
-
 @torch.library.register_kernel("cann_ops_transformer::" + GSAG_METADATA_OP_NAME, None)
 def generic_sparse_attention_grad_metadata_fallback(*args, **kwargs):
     return generic_sparse_attention_grad_metadata(*args, **kwargs)
-
 
 torch.compiler.allow_in_graph(generic_sparse_attention_grad_metadata)
 torch.compiler.allow_in_graph(generic_sparse_attention_grad)

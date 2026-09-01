@@ -49,7 +49,7 @@ private:
     LocalTensor<float> mm1_res_ub_tensor_ping_, mm1_res_ub_tensor_pong_;
     LocalTensor<float> mm2_res_ub_tensor_ping_, mm2_res_ub_tensor_pong_;
     LocalTensor<float> mm1_res_ub_tensor_, mm2_res_ub_tensor_;
-    // SFAG-style: mm1/mm2 ping-pong slots are exclusive to Softmax/Cube Fixpipe.
+    // mm1/mm2 ping-pong slots are exclusive to Softmax/Cube Fixpipe.
     // Gather ND/NZ uses one shared staging buffer (Preload is serial per task).
     LocalTensor<INPUT_TYPE> gather_q_nd_ub_, gather_dout_nd_ub_;
     LocalTensor<INPUT_TYPE> query_nz_ub_tensor_, dout_nz_ub_tensor_;
@@ -97,7 +97,7 @@ private:
         return true;
     }
 
-    /** SFAG ProcessPreload: Gather(curr) on AIV — Q/dO L1 for Cube MM12. */
+    /** ProcessPreload: Gather(curr) on AIV — Q/dO L1 for Cube MM12. */
     __aicore__ inline void ProcessPreloadVec(VecOp<GSAG_TYPE> &vecOp, uint32_t currIdx, uint32_t loopTaskId)
     {
         (void)vecOp;
@@ -121,7 +121,7 @@ private:
         (void)mAlign;
     }
 
-    /** SFAG ProcessNotFirst: Softmax(last) on AIV — overlaps Cube MM12(curr). */
+    /** ProcessNotFirst: Softmax(last) on AIV — overlaps Cube MM12(curr). */
     __aicore__ inline void ProcessNotFirstVec(VecOp<GSAG_TYPE> &vecOp, uint32_t lastIdx)
     {
         const RunTimeInfo &last = runTimeInfo_[lastIdx];
@@ -155,7 +155,7 @@ private:
         vecOp.ScatterDqSel(last, ubBuffer, lastIdx);
     }
 
-    /** SFAG ProcessPreload: MM12(curr) on AIC — overlaps Vec Gather/Softmax. */
+    /** ProcessPreload: MM12(curr) on AIC — overlaps Vec Gather/Softmax. */
     __aicore__ inline void ProcessPreloadCube(CubeOp<GSAG_TYPE> &cubeOp, GM_ADDR query, GM_ADDR key, GM_ADDR value,
                                               GM_ADDR dout, uint32_t currIdx, uint32_t loopTaskId)
     {
@@ -188,7 +188,7 @@ private:
         (void)dout;
     }
 
-    /** SFAG ProcessNotFirst: MM345(last) on AIC — after Vec Softmax Sets V*. */
+    /** ProcessNotFirst: MM345(last) on AIC — after Vec Softmax Sets V*. */
     __aicore__ inline void ProcessNotFirstCube(CubeOp<GSAG_TYPE> &cubeOp, uint32_t lastIdx)
     {
         const RunTimeInfo &last = runTimeInfo_[lastIdx];
@@ -267,7 +267,7 @@ public:
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
 
         // Per ping-pong slot: mm1 float MN | mm2 float MN (Softmax / Fixpipe only).
-        // Shared gather staging after both slots — SFAG-style, no mm1/mm2 overlay.
+        // Shared gather staging after both slots, no mm1/mm2 overlay.
         static_assert(sizeof(INPUT_TYPE) == 2, "GSAG arch35 expects bf16/fp16");
         const uint32_t mmSlotElems = vec_base_m * vec_base_n;
         const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n;
@@ -459,7 +459,7 @@ public:
         (void)dv;
         (void)workspace;
 
-        // SFAG: Preload(N)[Gather+MM12] then NotFirst(N-1)[Softmax+MM345]; epilogue for last task.
+        // Preload(N)[Gather+MM12] then NotFirst(N-1)[Softmax+MM345]; epilogue for last task.
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
@@ -475,7 +475,7 @@ public:
             }
             taskId++;
         }
-        // Epilogue: MM345 for the final task (SFAG: ProcessNotFirst after loop).
+        // Epilogue: MM345 for the final task (ProcessNotFirst after loop).
         if (taskId > 0) {
             const uint32_t epilogueIdx = (taskId + 1) % 2;
             if (runTimeInfo_[epilogueIdx].need_compute) {
@@ -506,7 +506,7 @@ public:
         PipeBarrier<PIPE_ALL>();
         SyncAll();
         vecOp.SetFlag();
-        // SFAG: Preload(N)=Gather(curr) then NotFirst(N-1)=Softmax(last); Scatter after MM345(last).
+        // Preload(N)=Gather(curr) then NotFirst(N-1)=Softmax(last); Scatter after MM345(last).
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;

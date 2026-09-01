@@ -310,7 +310,7 @@ private:
         SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        // Same as BSAG: Fixpipe mSize/srcStride use s1LenAlign (= RoundUp(m, 16)).
+        // Fixpipe mSize/srcStride use s1LenAlign (= RoundUp(m, 16)).
         fixpipeParams.mSize = static_cast<uint16_t>(mProcessAlign);
         fixpipeParams.nSize = static_cast<uint16_t>(nProcessAlign);
         fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
@@ -362,7 +362,7 @@ private:
         SET_FLAG(M, MTE1, evnet_id);
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        // Same as BSAG ComputeMM12: Fixpipe mSize/srcStride = mProcessAlign (RoundUp(m, 16)).
+        // ComputeMM12: Fixpipe mSize/srcStride = mProcessAlign (RoundUp(m, 16)).
         fixpipeParams.mSize = static_cast<uint16_t>(mProcessAlign);
         fixpipeParams.nSize = static_cast<uint16_t>(nProcessAlign);
         fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
@@ -534,7 +534,7 @@ private:
     {
         /*
          * L1 NZ layout from AIV CopyQAndDoutToL1 / load_data_gm_2_l1:
-         * [K1, M_align, C0], M_align = s1LenAlign (multiple of 16, same as BSAG).
+         * [K1, M_align, C0], M_align = s1LenAlign (multiple of 16).
          * srcStride / mStep are in 16-row fractal units.
          */
         AscendC::LoadData2DParamsV2 loadData2dParams;
