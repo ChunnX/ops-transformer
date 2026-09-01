@@ -953,7 +953,21 @@ static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData
     return fixedBufferBytes;
 }
 
-// MTE Wave 的 route 已在发送端压紧为连续 int32 topkIndex，接收侧只需一份 index batch。
+/*
+ * MTE Wave 的 route 已在发送端压紧为连续 int32 topkIndex，接收侧不再保留 mask 扫描相关 tensor，
+ * 只需要一份 index batch 和若干 token/scale/meta copy ring slot。UB 按两阶段分配：
+ *
+ *   第一阶段：从基准 route batch 起步，按 256 items 递减，先保证固定 tensor、一个 index batch 和
+ *   MIN_DISPATCH_BUFFER_COUNT 个 copy slot 能同时放入 UB；batch 可行后，将剩余 UB 尽量分给 copy ring，
+ *   ring 越深越有利于隐藏跨卡 token/scale 搬运延迟。
+ *
+ *   第二阶段：固定第一阶段选出的 ring 深度，把剩余 UB 反过来用于扩大 route batch，以减少处理同一
+ *   (expert, source-rank) compact index 段所需的批次数。
+ *
+ * 单个 expert 从一张源卡最多接收 numMaxTokensPerRank 条 index，因此 routeCapacity 不乘 topK；
+ * routeItemsPerBatch 始终按 256 items 对齐，既满足搬运/向量对齐要求，也保证阶段一可按固定步长回退。
+ * 若连最小 batch 和最小 ring 都放不下，返回零配置，由 SetAdaptiveBufferConfigs 统一报 UB 不足。
+ */
 static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoeTilingData *tilingData,
                                                                    uint32_t activationElementsPerByte,
                                                                    uint32_t availableUbBytes)
@@ -966,6 +980,7 @@ static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoe
     uint32_t fixedBufferBytes = CalcDispatchFixedBufferBytes(tilingData);
     uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
 
+    // 第一阶段：先找能容纳最小 copy ring 的最大基准 batch。
     uint32_t routeItemsPerBatch =
         static_cast<uint32_t>(std::min(routeCapacity, static_cast<uint64_t>(BASE_RECV_ROUTE_ITEMS_PER_BATCH)));
     while (routeItemsPerBatch >= static_cast<uint32_t>(ALIGN_256)) {
@@ -981,6 +996,7 @@ static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoe
         return bufferConfig;
     }
 
+    // 基准 batch 已可行，剩余空间全部换算为 copy ring 深度，再钳位到事件槽支持的上限。
     uint64_t bytesWithoutDispatchSlots =
         static_cast<uint64_t>(fixedBufferBytes) + static_cast<uint64_t>(routeItemsPerBatch) * sizeof(int32_t);
     bufferConfig.bufferCount =
@@ -991,6 +1007,7 @@ static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoe
         return bufferConfig;
     }
 
+    // 第二阶段：ring 深度固定后，用余量扩大 index batch；实际批数按未对齐的真实容量计算。
     uint64_t fixedBytesWithDispatchSlots =
         static_cast<uint64_t>(fixedBufferBytes) + static_cast<uint64_t>(bufferConfig.bufferCount) * dispatchSlotBytes;
     uint64_t expandedRouteItems =
