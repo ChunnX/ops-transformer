@@ -41,6 +41,12 @@ class AclnnMatmulAllReduceSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
 
 class MatmulAllReduceE2ESpec:
     """TestSpec for torch_npu.npu_mm_all_reduce_base (E2E multi-device path)."""
@@ -54,6 +60,8 @@ class MatmulAllReduceE2ESpec:
 
 __spec__ = {
     "aclnnMatmulAllReduce": "AclnnMatmulAllReduceSpec",
+    "aclnnQuantMatmulAllReduce": "AclnnMatmulAllReduceSpec",
+    "aclnnWeightQuantMatmulAllReduce": "AclnnMatmulAllReduceSpec",
     "aclnnMatmulAllReduceV2": "AclnnMatmulAllReduceSpec",
     "aclnnMatmulAllReduceV3": "AclnnMatmulAllReduceSpec",
     "torch_npu.npu_mm_all_reduce_base": "MatmulAllReduceE2ESpec",

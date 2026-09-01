@@ -17,8 +17,97 @@ Handles V2 (extra x3 add), WeightQuant, and QuantMatmul variants.
 """
 
 import logging
+import os
+import tempfile
+from pathlib import Path
 
 import numpy as np
+
+
+_next_port_base = [30220]
+
+
+def _next_port():
+    import threading
+
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
+    with threading.Lock():
+        port = _next_port_base[0]
+        _next_port_base[0] += 13
+        if _next_port_base[0] > 60000:
+            _next_port_base[0] = 30220
+        return port
+
+
+def _save_inputs_per_rank(thread_contexts, device_ids, path):
+    import torch
+
+    arrays = {}
+    dtypes = {}
+    for did in device_ids:
+        tc = thread_contexts[did]
+        for i, tensor in enumerate(tc.flatten_tensors):
+            if tensor is None:
+                continue
+            dtype_str = str(tensor.dtype).replace("torch.", "") if hasattr(tensor, "dtype") else "numpy"
+            if dtype_str in ("torch.bfloat16", "bfloat16"):
+                arrays[f"did{did}_t{i}"] = tensor.view(torch.uint16).cpu().numpy()
+            elif hasattr(tensor, "cpu") and hasattr(tensor, "numpy"):
+                arrays[f"did{did}_t{i}"] = tensor.cpu().numpy()
+            else:
+                arrays[f"did{did}_t{i}"] = np.asarray(tensor)
+            dtypes[f"did{did}_t{i}_dtype"] = dtype_str
+    arrays.update(dtypes)
+    np.savez(path, **arrays)
+
+
+def _run_matmul_all_reduce_cascade(thread_contexts, device_ids, is_trans_b):
+    import subprocess
+    import sys
+    import torch
+    import os
+
+    n = len(device_ids)
+    if n < 2:
+        return {}
+    port = _next_port()
+    worker_script = str(Path(__file__).with_name("cascade_worker.py"))
+    with tempfile.TemporaryDirectory(prefix="ttk_cascade_mmar_") as tmpdir:
+        input_path = os.path.join(tmpdir, "inputs.npz")
+        result_path = os.path.join(tmpdir, "results.npz")
+        error_path = os.path.join(tmpdir, "errors.log")
+        _save_inputs_per_rank(thread_contexts, device_ids, input_path)
+        first_ctx = next(iter(thread_contexts.values()))
+        os.environ["TTK_ANTIQUNT_GROUP_SIZE"] = str(
+            first_ctx.attributes.get("antiquantGroupSize", 0)
+        )
+        procs = []
+        for rank in range(n):
+            cmd = [
+                sys.executable, worker_script, str(rank), str(n), str(port),
+                input_path, result_path, error_path, str(is_trans_b),
+            ]
+            procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE))
+        for proc in procs:
+            proc.wait()
+        error_msg = ""
+        if os.path.exists(error_path):
+            with open(error_path) as f:
+                error_msg = f.read()
+        for proc in procs:
+            if proc.returncode != 0:
+                stderr = proc.stderr.read().decode(errors="replace")[-2000:] if proc.stderr else ""
+                raise RuntimeError(
+                    f"MatmulAllReduce cascade worker exited {proc.returncode}\n{error_msg}\n{stderr}"
+                )
+        outs = {}
+        for did in device_ids:
+            rank_file = f"{result_path}.did{did}.npz"
+            if not os.path.exists(rank_file):
+                raise RuntimeError(f"MatmulAllReduce cascade result missing for did={did}")
+            data = np.load(rank_file, allow_pickle=False)
+            outs[did] = torch.from_numpy(data["cascade"].copy())
+        return outs
 
 
 def _load_framework():
@@ -89,9 +178,12 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
             )
             group_size = int(attrs.get("antiquantGroupSize", 0))
             if group_size > 0 and aq_scale_f is not None:
-                aq_scale_f = aq_scale_f.repeat_interleave(group_size, dim=0)
+                group_count = (x2_f.shape[0] + group_size - 1) // group_size
+                if tuple(aq_scale_f.shape) == (group_count, x2_f.shape[1]):
+                    aq_scale_f = aq_scale_f.repeat_interleave(group_size, dim=0)[: x2_f.shape[0]]
                 if aq_offset_f is not None:
-                    aq_offset_f = aq_offset_f.repeat_interleave(group_size, dim=0)
+                    if tuple(aq_offset_f.shape) == (group_count, x2_f.shape[1]):
+                        aq_offset_f = aq_offset_f.repeat_interleave(group_size, dim=0)[: x2_f.shape[0]]
             if aq_offset_f is not None:
                 weight_deq = (x2_f + aq_offset_f) * aq_scale_f
             elif aq_scale_f is not None:
@@ -210,8 +302,23 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
     total = total.float()
     del local_results
 
-    rank_goldens = {did: total for did in device_ids}
-    apply_compare(thread_contexts, device_ids, rank_goldens, all_precision)
+    is_trans_b = get_transpose_flags(first_ctx)
+    rank_third_parties = None
+    try:
+        cascade_outs = _run_matmul_all_reduce_cascade(thread_contexts, device_ids, is_trans_b)
+        rank_third_parties = {did: [cascade_outs[did]] for did in device_ids}
+        logging.info("MatmulAllReduce: real HCCL cascade succeeded")
+    except Exception:
+        logging.exception("MatmulAllReduce: real HCCL cascade failed")
+        rank_third_parties = None
+
+    apply_compare(
+        thread_contexts,
+        device_ids,
+        {did: total for did in device_ids},
+        all_precision,
+        rank_third_parties=rank_third_parties,
+    )
 
 
 # ---------------------------------------------------------------------------
