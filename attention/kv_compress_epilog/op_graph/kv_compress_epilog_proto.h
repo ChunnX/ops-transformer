@@ -72,7 +72,7 @@ REG_OP(KvCompressEpilog)
     .ATTR(quant_mode, Int, 1)
     .ATTR(round_scale, Bool, true)
     .ATTR(x_scale, Float, 1.0)
-.OP_END_FACTORY_REG(KvCompressEpilog)
-}  // namespace ge
+    .OP_END_FACTORY_REG(KvCompressEpilog)
+} // namespace ge
 
-#endif  // OPS_OP_PROTO_INC_KvCompressEpilog_H_
+#endif // OPS_OP_PROTO_INC_KvCompressEpilog_H_

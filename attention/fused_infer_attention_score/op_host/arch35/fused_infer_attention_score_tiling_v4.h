@@ -23,4 +23,4 @@ namespace optiling {
 ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context);
 
 } // namespace optiling
-#endif  // AIR_CXX_RUNTIME_V4_OP_IMPL_FUSEDINFERATTENTIONSCORE_V4_H_
+#endif // AIR_CXX_RUNTIME_V4_OP_IMPL_FUSEDINFERATTENTIONSCORE_V4_H_

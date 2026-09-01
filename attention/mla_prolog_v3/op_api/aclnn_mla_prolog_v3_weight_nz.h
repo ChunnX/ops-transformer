@@ -45,7 +45,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMlaPrologV3WeightNz(void
                                                                             aclOpExecutor *executor,
                                                                             const aclrtStream stream);
 
-
 #ifdef __cplusplus
 }
 #endif

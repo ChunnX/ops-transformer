@@ -26,10 +26,11 @@
 namespace optiling {
 class BaseChecker {
 public:
-    BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-                enableNonQuant_(enableNonQuant),
-                enableFullQuant_(enableFullQuant),
-                enableAntiQuant_(enableAntiQuant) {}
+    BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : enableNonQuant_(enableNonQuant),
+          enableFullQuant_(enableFullQuant),
+          enableAntiQuant_(enableAntiQuant)
+    {}
     virtual ~BaseChecker() = default;
 
 protected:
@@ -44,7 +45,7 @@ protected:
     template <typename T>
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
     ge::graphStatus CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
-        const gert::Stride *Strides, int32_t &index) const;
+                                          const gert::Stride *Strides, int32_t &index) const;
 
     // public funcs
     std::string DataTypeToSerialString(ge::DataType type) const;
@@ -56,4 +57,3 @@ protected:
 };
 } // namespace optiling
 #endif // BASE_CHECKER_FUSED_INFER_H
-

@@ -149,10 +149,9 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyToL1Nd
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PrepareMm1Input(Buffer<BufferType::L1> &mm1A, RunInfo<isInfer> &runInfo,
-                                                               RunParamStr<isInfer> &runParam,
-                                                               ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PrepareMm1Input(
+    Buffer<BufferType::L1> &mm1A, RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam,
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     if (unlikely(runInfo.s2LoopCount == 0)) {
         mm1A = mm1AL1Buffers.Get();
@@ -165,7 +164,8 @@ FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PrepareMm1Input(Buffer<BufferType
                 constInfo.isPfaGS1Merge) {
                 CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], constInfo.s1Size, constInfo.gSize,
                               constInfo.dSize, constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize,
-                              runInfo.s1RealSize, constInfo.gSize * 32 / sizeof(Q_T)); // 32 / sizeof(Q_T): 每Block元素个数
+                              runInfo.s1RealSize,
+                              constInfo.gSize * 32 / sizeof(Q_T)); // 32 / sizeof(Q_T): 每Block元素个数
             } else {
                 CopyToL1Nd2Nz(mm1ATensor, this->queryGm[runParam.tensorQOffset], 1, runInfo.s1RealSize, constInfo.dSize,
                               0, constInfo.mm1Ka, runInfo.s1RealSize, 0);
@@ -211,10 +211,12 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
     CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[runInfo.taskIdMod2]);
     CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + VC_MM1RES_EVENT[runInfo.taskIdMod2]); // 16 is Vec num
 
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;    // L0C->UB
     fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // 7 >> 3 <<3: 8位对齐
-    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 1 >> 1 << 1: 2位对齐，L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 15 / 16 / 16: L0C上matmul结果相邻连续数据片断间隔，单位为16
+    fixpipeParams.mSize =
+        (runInfo.s1RealSize + 1) >> 1 << 1; // 1 >> 1 << 1: 2位对齐，L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+    fixpipeParams.srcStride =
+        ((fixpipeParams.mSize + 15) / 16) * 16; // 15 / 16 / 16: L0C上matmul结果相邻连续数据片断间隔，单位为16
     fixpipeParams.dstStride = s2BaseSize;
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
@@ -277,7 +279,7 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;  // L0C->UB
     fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3; // 7 >> 3 << 3: 8位对齐
     fixpipeParams.mSize = s1BaseSize;
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 15 / 16 / 16: 16位对齐
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;    // 15 / 16 / 16: 16位对齐
     fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4; // 15 >> 4 << 4: 16位对齐
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
@@ -292,27 +294,17 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
         16 + CV_MM2RES_EVENT[runInfo.taskIdMod2]); // fixpip将结果搬运到UB后，设置SYNC_C1_V1_FLAG, 16 is aiv num
 }
 
-
 ANTIQUANT_TEMPLATES_DEF
 class FABlockCubeAntiquantDummy {
 public:
     __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query,
                                          const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *pipe,
                                          BufferManager<BufferType::L1> *l1BuffMgr)
-    {
-    }
-    __aicore__ inline void SetCrossCoreFlag()
-    {
-    }
-    __aicore__ inline void WaitCrossCoreFlag()
-    {
-    }
-    __aicore__ inline void InitLocalBuffer()
-    {
-    }
-    __aicore__ inline void UninitLocalBuffer()
-    {
-    }
+    {}
+    __aicore__ inline void SetCrossCoreFlag() {}
+    __aicore__ inline void WaitCrossCoreFlag() {}
+    __aicore__ inline void InitLocalBuffer() {}
+    __aicore__ inline void UninitLocalBuffer() {}
 };
 
 template <typename T>
@@ -322,22 +314,22 @@ struct CubeBlockTraitsAntiquant;
 #define GEN_TRAIT_TYPE_ANTIQUANT(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST_ANTIQAUNT(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(CUBE_BLOCK_CLASS_ANTIQUANT)                                                 \
-    ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT                                                                                 \
-    struct CubeBlockTraitsAntiquant<CUBE_BLOCK_CLASS_ANTIQUANT<ANTIQUANT_TEMPLATE_ARGS>> {                             \
-        ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE_ANTIQUANT)                                              \
-        ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST_ANTIQAUNT)                                            \
+#define DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(CUBE_BLOCK_CLASS_ANTIQUANT) \
+    ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraitsAntiquant<CUBE_BLOCK_CLASS_ANTIQUANT<ANTIQUANT_TEMPLATE_ARGS>> { \
+        ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE_ANTIQUANT) \
+        ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST_ANTIQAUNT) \
     }
 
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquant);
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquantDummy);
 
-#define GEN_ARGS_TYPE_ANTIQUANT(name, ...)                                                                             \
+#define GEN_ARGS_TYPE_ANTIQUANT(name, ...) \
     using name = typename CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##_TRAITS;
-#define GEN_ARGS_CONST_ANTIQUANT(name, type, ...)                                                                      \
+#define GEN_ARGS_CONST_ANTIQUANT(name, type, ...) \
     static constexpr type name = CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##Traits;
-#define ARGS_TRAITS_ANTIQUANT                                                                                          \
-    ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE_ANTIQUANT)                                                   \
+#define ARGS_TRAITS_ANTIQUANT \
+    ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE_ANTIQUANT) \
     ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST_ANTIQUANT)
 } // namespace BaseApi
 #endif
