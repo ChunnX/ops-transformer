@@ -1186,7 +1186,9 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     // A8W8 MTE wave 的 GMM2/Combine 依赖按 expert-local 256-token group 发布。
     // 同一 token 的 topK expert id 不重复，因此单专家从每张卡最多接收 numMaxTokensPerRank 行；
     // 再与整卡 maxOutputSize 取小，避免按整卡容量为每个专家重复预留 counter。
-    if (tilingData->topoType == TOPO_TYPE_MTE && IsA8W8GroupedMatmulMode(tilingData->groupedMatmulMode)) {
+    bool isA8W8Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                      tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+    if (tilingData->topoType == TOPO_TYPE_MTE && isA8W8Mode) {
         uint64_t maxTokenCountForOneExpert =
             static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
         maxTokenCountForOneExpert =
@@ -1226,7 +1228,10 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 
     uint64_t flagElementCount = moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
                                                   static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
-    if (IsW4GroupedMatmulMode(tilingData->groupedMatmulMode) ||
+    bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+    if (isW4Mode ||
         combineSyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
