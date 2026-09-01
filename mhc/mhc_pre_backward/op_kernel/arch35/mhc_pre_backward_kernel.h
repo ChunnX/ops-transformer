@@ -46,43 +46,43 @@ public:
 
     // V0 流程 (向量计算)
     __aicore__ inline void ProcessV0Main();
-    __aicore__ inline void ProcessV0MainLoop(uint32_t vecRunTimes, float alphaPre, float alphaPost, float alphaComb,
+    __aicore__ inline void ProcessV0MainLoop(uint64_t vecRunTimes, float alphaPre, float alphaPost, float alphaComb,
                                              LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId);
-    __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t runBSStart, uint32_t runBSEnd);
-    __aicore__ inline void AllocV0V1Buffers(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers);
-    __aicore__ inline void ProcessV0(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers, float alphaPre,
+    __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint64_t runBSStart, uint64_t runBSEnd);
+    __aicore__ inline void AllocV0V1Buffers(uint64_t runBSStart, uint64_t runBSEnd, V0V1Buffers<P> &buffers);
+    __aicore__ inline void ProcessV0(uint64_t runBSStart, uint64_t runBSEnd, V0V1Buffers<P> &buffers, float alphaPre,
                                      float alphaPost, float alphaComb);
-    __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
-                                     uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
+    __aicore__ inline void ProcessV1(uint64_t runBSStart, uint64_t runBSEnd, V0V1Buffers<P> &buffers,
+                                     uint64_t vecRuntimesId, LocalTensor<P> &sumBuf);
     __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf, uint64_t currentDealBsNum,
                                         float alphaPre, float alphaPost, float alphaComb);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
     // C0/C1 流程 (矩阵计算)
     __aicore__ inline void ProcessC0C1Pipeline();
-    __aicore__ inline void ProcessC0(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
+    __aicore__ inline void ProcessC0(uint32_t offsetND, uint32_t currentNDBlock, uint64_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
-    __aicore__ inline void ProcessC1(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
+    __aicore__ inline void ProcessC1(uint32_t offsetND, uint32_t currentNDBlock, uint64_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
 
     // V2 流程 (向量计算)
     __aicore__ inline void ProcessV2Pipeline();
-    __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart, uint32_t bsEnd,
+    __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart, uint64_t bsEnd,
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
-    __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
-                                              uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
+    __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
+                                              uint64_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
                                               uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf);
-    __aicore__ inline void ProcessV2ChunkLoadInvRms(uint32_t bsChunkStart, uint32_t currentChunkSize);
-    __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
-                                                     uint32_t currentChunkSize, uint32_t currentN, uint32_t bsStart);
-    __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
-                                                       uint32_t bsChunkStart, uint32_t currentChunkSize,
+    __aicore__ inline void ProcessV2ChunkLoadInvRms(uint64_t bsChunkStart, uint32_t currentChunkSize);
+    __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
+                                                     uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart);
+    __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
+                                                       uint64_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
-    __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
+    __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uint64_t bsChunkStart, uint32_t copySizeND,
                                                           uint32_t currentChunkSize, uint32_t buffId,
                                                           LocalTensor<P> &sumBuf);
-    __aicore__ inline void ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
+    __aicore__ inline void ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
                                                      uint32_t currentChunkSize, uint32_t chunkNDSize);
 
     // V3 流程 (向量计算)
@@ -92,8 +92,8 @@ public:
 
     // 向量化计算函数 (VFDo*)
     __aicore__ inline void VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
-                                            __ubuf__ T *gradHInB16InAddr, uint16_t curLenN, uint32_t lenD, uint32_t i,
-                                            uint32_t j, uint32_t runBSStart);
+                                            __ubuf__ T *gradHInB16InAddr, uint16_t curLenN, uint32_t lenD, uint64_t i,
+                                            uint32_t j, uint64_t runBSStart);
     __aicore__ inline void VFDoV0HPreGrad(__ubuf__ P *hPreBufS1Addr, __ubuf__ P *hPreAddr, __ubuf__ P *gradHInAddr,
                                           uint32_t totalElem);
     __aicore__ inline void VFDoV0ProcessGradHPost(__ubuf__ P *hPostIn, __ubuf__ P *gradHPostIn,
@@ -131,11 +131,11 @@ private:
     MT_C0 &mm0;
     MT_C1 &mm1;
     uint32_t coreNum_;
-    uint32_t totalLength_;
-    uint32_t vecDealBSPeCore_;
+    uint64_t totalLength_;
+    uint64_t vecDealBSPeCore_;
     uint32_t vecCoreNum_;
-    uint32_t dealStartBS_;
-    uint32_t dealEndBS_;
+    uint64_t dealStartBS_;
+    uint64_t dealEndBS_;
     uint32_t usedVecCoreNum_;
     uint32_t D_;
     uint32_t N_;
@@ -271,7 +271,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     N_ = static_cast<uint32_t>(tiling_->N);
     fusionSize_ = static_cast<uint32_t>(tiling_->fusionSize);
     coreNum_ = tiling_->coreNum;
-    totalLength_ = static_cast<uint32_t>(tiling_->totalLength);
+    // BS维全链路保留64位，避免大shape在核内截断后漏算或地址回绕。
+    totalLength_ = tiling_->totalLength;
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = (nD_ > 0) ? (1.0f / nD_) : 0.0f;
@@ -304,10 +305,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
             vecDealBSPeCore_ = totalLength_;
             usedVecCoreNum_ = 1;
         } else {
-            vecDealBSPeCore_ = MhcPreBackwardUtils::CeilAlign(vecDealBSPeCore_, CEIL_ALIGN_16);
-            usedVecCoreNum_ = CeilDiv(totalLength_, vecDealBSPeCore_) > vecCoreNum_ ?
-                                  vecCoreNum_ :
-                                  CeilDiv(totalLength_, vecDealBSPeCore_);
+            vecDealBSPeCore_ =
+                MhcPreBackwardUtils::CeilAlign(vecDealBSPeCore_, static_cast<uint64_t>(CEIL_ALIGN_16));
+            uint64_t usedVecCoreNum = CeilDiv(totalLength_, vecDealBSPeCore_);
+            usedVecCoreNum_ = usedVecCoreNum > vecCoreNum_ ? vecCoreNum_ : static_cast<uint32_t>(usedVecCoreNum);
         }
         dealStartBS_ = vecDealBSPeCore_ * blockIdx_;
         dealEndBS_ = dealStartBS_ + vecDealBSPeCore_;
@@ -374,8 +375,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *hPreGradAddr, __ubuf__ T *xB16InAddr,
                                                                     __ubuf__ T *gradHInB16InAddr, uint16_t curLenN,
-                                                                    uint32_t lenD, uint32_t i, uint32_t j,
-                                                                    uint32_t runBSStart)
+                                                                    uint32_t lenD, uint64_t i, uint32_t j,
+                                                                    uint64_t runBSStart)
 {
     uint16_t eleNumPerVf = 64;
     uint16_t dLoopCnt = (lenD + eleNumPerVf - 1) / eleNumPerVf;
@@ -412,8 +413,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &hPreGradBuf, uint32_t runBSStart,
-                                                                uint32_t runBSEnd)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &hPreGradBuf, uint64_t runBSStart,
+                                                                uint64_t runBSEnd)
 {
     uint32_t maxDLen = MAX_D_LEN;
     uint32_t queueCopySize = INOUT_QUEUE_SIZE / sizeof(T);
@@ -424,10 +425,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
 
-    for (uint32_t i = runBSStart; i < runBSEnd; i++) {
+    for (uint64_t i = runBSStart; i < runBSEnd; i++) {
         uint64_t inputOffset = static_cast<uint64_t>(i) * N_ * copySizeD;
-        // grad_h_in[t, :] is shared by every N chunk of this row. Keep one UB copy
-        // alive across the chunks instead of reloading the same D elements from GM.
+        // 同一行的grad_h_in[t, :]由所有N分块共享，在UB中保留一份，避免从GM重复加载D个元素。
         dataCopyParams.blockLen = copySizeD * sizeof(T);
         dataCopyParams.blockCount = 1;
         dataCopyParams.srcStride = 0;
@@ -467,8 +467,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     if (blockIdx_ >= usedVecCoreNum_) {
         return;
     }
-    uint32_t dealBsNum = dealEndBS_ - dealStartBS_;
-    uint32_t vecRunTimes = CeilDiv(dealBsNum, vecDealChunk_);
+    uint64_t dealBsNum = dealEndBS_ - dealStartBS_;
+    uint64_t vecRunTimes = CeilDiv(dealBsNum, static_cast<uint64_t>(vecDealChunk_));
     float alphaPre = alphaGm_.GetValue(0);
     float alphaPost = alphaGm_.GetValue(1);
     float alphaComb = alphaGm_.GetValue(2);
@@ -479,17 +479,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainLoop(uint32_t vecRunTimes, float alphaPre,
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainLoop(uint64_t vecRunTimes, float alphaPre,
                                                                      float alphaPost, float alphaComb,
                                                                      LocalTensor<P> &sumBuf)
 {
-    for (uint32_t cIdx = 0; cIdx < vecRunTimes; cIdx++) {
-        uint32_t runBSStart = cIdx * vecDealChunk_ + dealStartBS_;
-        uint32_t runBSEnd = runBSStart + vecDealChunk_;
+    for (uint64_t cIdx = 0; cIdx < vecRunTimes; cIdx++) {
+        uint64_t runBSStart = cIdx * vecDealChunk_ + dealStartBS_;
+        uint64_t runBSEnd = runBSStart + vecDealChunk_;
         if (runBSEnd > dealEndBS_) {
             runBSEnd = dealEndBS_;
         }
-        uint32_t currentDealBsNum = runBSEnd - runBSStart;
+        uint32_t currentDealBsNum = static_cast<uint32_t>(runBSEnd - runBSStart);
         V0V1Buffers<P> buffers;
         AllocV0V1Buffers(runBSStart, runBSEnd, buffers);
         PreProcessV0(buffers.hPreGradBuf, runBSStart, runBSEnd);
@@ -529,10 +529,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainAlphaReduce(Loca
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::AllocV0V1Buffers(uint32_t runBSStart, uint32_t runBSEnd,
+__aicore__ inline void MhcPreBackwardKernel<T, P>::AllocV0V1Buffers(uint64_t runBSStart, uint64_t runBSEnd,
                                                                     V0V1Buffers<P> &buffers)
 {
-    buffers.stepLength = (runBSEnd - runBSStart) * N_;
+    buffers.stepLength = static_cast<uint32_t>((runBSEnd - runBSStart) * N_);
     uint32_t hMixLength = static_cast<uint32_t>((runBSEnd - runBSStart) * N_ * N_);
     buffers.gatherLength = buffers.stepLength * 2 + hMixLength;
     uint32_t stepOffset1 =
@@ -597,7 +597,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0HPreGrad(__ubuf__ P *hP
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart, uint32_t runBSEnd,
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint64_t runBSStart, uint64_t runBSEnd,
                                                              V0V1Buffers<P> &buffers, float alphaPre, float alphaPost,
                                                              float alphaComb)
 {
@@ -653,7 +653,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     PipeBarrier<PIPE_V>();
     vecInQueue0_.FreeTensor(gradHResBuf);
 
-    uint32_t currentDealBsNum = runBSEnd - runBSStart;
+    uint32_t currentDealBsNum = static_cast<uint32_t>(runBSEnd - runBSStart);
     AIV02Process(buffers, hMixGradBuf, currentDealBsNum, alphaPre, alphaPost, alphaComb);
 }
 
@@ -744,11 +744,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart, uint32_t runBSEnd,
-                                                             V0V1Buffers<P> &buffers, uint32_t vecRuntimesId,
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart, uint64_t runBSEnd,
+                                                             V0V1Buffers<P> &buffers, uint64_t vecRuntimesId,
                                                              LocalTensor<P> &sumBuf)
 {
-    uint32_t curBSSize = runBSEnd - runBSStart;
+    uint32_t curBSSize = static_cast<uint32_t>(runBSEnd - runBSStart);
     constexpr bool isReuse = false;
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = 1;
@@ -943,7 +943,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     }
 
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
-    uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_));
+    uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
     uint32_t buffId = 0;
     // 预执行第一个C0
     ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
@@ -951,19 +951,22 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
-        for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
-            currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
+        for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
+            currentBSBlock =
+                static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
 
-            uint32_t nextOffsetBS = offsetBS + SINGLE_M;
+            uint64_t nextOffsetBS = offsetBS + SINGLE_M;
             if (nextOffsetBS < totalLength_) { // BS还有未计算
-                uint32_t nextBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - nextOffsetBS));
+                uint32_t nextBSBlock =
+                    static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
                 ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
             } else { // 预计算下一个nD块的C0
                 uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
                 if (nextOffsetND < dealEndND_) { // ND 还有未计算
                     uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
                     nextOffsetBS = 0;
-                    uint32_t nextBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - nextOffsetBS));
+                    uint32_t nextBSBlock =
+                        static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
                     ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
                 }
             }
@@ -981,7 +984,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, uint32_t currentNDBlock,
-                                                             uint32_t offsetBS, uint32_t currentBSBlock,
+                                                             uint64_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
@@ -1005,7 +1008,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, uint32_t currentNDBlock,
-                                                             uint32_t offsetBS, uint32_t currentBSBlock,
+                                                             uint64_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
     AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
@@ -1050,8 +1053,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
 
         // BS方向切分：与C0保持一致，按SINGLE_M切分
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
-        for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
-            uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
+        for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
+            uint32_t currentBSBlock =
+                static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
             // 执行当前的V2
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId);
             buffId++;
@@ -1200,15 +1204,15 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
-                                                             uint32_t bsEnd, LocalTensor<P> &sumBuf, uint32_t buffId)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
+                                                             uint64_t bsEnd, LocalTensor<P> &sumBuf, uint32_t buffId)
 {
     // ==========================================================
     // 初始化
     // ==========================================================
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
     uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
-    uint32_t currentBsSize = bsEnd - bsStart;
+    uint32_t currentBsSize = static_cast<uint32_t>(bsEnd - bsStart);
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
     // ==========================================================
@@ -1263,9 +1267,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
     // ==========================================================
-    for (uint32_t bsChunkStart = bsStart; bsChunkStart < bsEnd; bsChunkStart += chunkSize) {
-        uint32_t bsChunkEnd = Min(bsChunkStart + chunkSize, bsEnd);
-        uint32_t currentChunkSize = bsChunkEnd - bsChunkStart;
+    for (uint64_t bsChunkStart = bsStart; bsChunkStart < bsEnd; bsChunkStart += chunkSize) {
+        uint64_t bsChunkEnd = Min(bsChunkStart + chunkSize, bsEnd);
+        uint32_t currentChunkSize = static_cast<uint32_t>(bsChunkEnd - bsChunkStart);
         uint32_t chunkNDSize = currentChunkSize * copySizeND;
 
         // N=4每chunk等待一次，N=6/8每两个64行chunk等待一次，尾块同样配对。
@@ -1279,8 +1283,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
 template <class T, class P>
 __aicore__ inline void
-MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
-                                               uint32_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
+MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
+                                               uint64_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
                                                uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf)
 {
     // 2. 加载hInGrad并进行向量计算
@@ -1298,7 +1302,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
 
 // 子函数1: 加载inv_rms和inv_rms_grad
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint32_t bsChunkStart,
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint64_t bsChunkStart,
                                                                             uint32_t currentChunkSize)
 {
     DataCopyPadParams dataCopyPadParams;
@@ -1328,8 +1332,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint
 // 子函数2: 加载hInGrad并进行向量计算
 template <class T, class P>
 __aicore__ inline void
-MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
-                                                      uint32_t currentChunkSize, uint32_t currentN, uint32_t bsStart)
+MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
+                                                      uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart)
 {
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
@@ -1354,7 +1358,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_
 // 子函数3: 加载x和gamma，计算xRs
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
-                                                                               uint32_t bsStart, uint32_t bsChunkStart,
+                                                                               uint64_t bsStart, uint64_t bsChunkStart,
                                                                                uint32_t currentChunkSize,
                                                                                uint32_t buffId)
 {
@@ -1412,7 +1416,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
 // 子函数4: 融合计算xRsGrad并处理xRsGradMm
 template <class T, class P>
 __aicore__ inline void
-MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
+MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uint64_t bsChunkStart, uint32_t copySizeND,
                                                            uint32_t currentChunkSize, uint32_t buffId,
                                                            LocalTensor<P> &sumBuf)
 {
@@ -1497,7 +1501,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2AddGradXPostAndCast(
 // 子函数6: 融合处理gradXPost并输出grad_x
 template <class T, class P>
 __aicore__ inline void
-MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
+MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
                                                       uint32_t currentChunkSize, uint32_t chunkNDSize)
 {
     bf16OutputBuf_ = vecOutQueue1_.AllocTensor<T>();
