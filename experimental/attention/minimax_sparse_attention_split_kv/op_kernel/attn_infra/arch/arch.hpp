@@ -15,6 +15,16 @@
 
 namespace NpuArch::Arch {
 
+struct AtlasA2 {
+    static constexpr uint32_t BIAS_SIZE = 1024;
+    static constexpr uint32_t FIXBUF_SIZE = 7U * 1024U;
+    static constexpr uint32_t UB_SIZE = 192U * 1024U;
+    static constexpr uint32_t L1_SIZE = 512U * 1024U;
+    static constexpr uint32_t L0A_SIZE = 64U * 1024U;
+    static constexpr uint32_t L0B_SIZE = 64U * 1024U;
+    static constexpr uint32_t L0C_SIZE = 128U * 1024U;
+};
+
 struct AtlasA5 {
     static constexpr uint32_t BIAS_SIZE = 4U * 1024U;
     static constexpr uint32_t FIXBUF_SIZE = 16U * 1024U;
