@@ -74,7 +74,7 @@ source ${CANN_DIR}/cann/set_env.sh
 rm -rf ~/.cache/torch_extensions/*
 
 # 构建 torch 扩展 whl（全量包，包名 cann_ops_transformer 保持不变，whl 输出至 build_out/）
-bash build.sh --torch_extension
+bash build.sh --torch_extension --soc=ascend950
 
 # 安装
 python3 -m pip install build_out/*.whl --force-reinstall --no-deps
@@ -85,16 +85,6 @@ python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```bash
 python3 -c "from cann_ops_transformer.ops import flash_attn, flash_attn_metadata; print('ok')"
 ```
-
-**注意事项**：
-
-- 如需保持安装包名为 `cann_ops_transformer`，**不要**给 `--torch_extension` 附加
-  `--ops`：一旦指定 `--ops`，包名会变为带 vendor 后缀的选装包（默认
-  `cann_ops_transformer_custom`），导入路径随之改变。
-- **避免 `pip install -e`（editable）安装**：editable 模式不执行构建期算子模块收集，
-  `ops/<category>/<op>/` 目录不会生成，导入将失败。
-- 接口文档路径（含参数与调用示例）：
-  [flash_attn.md](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)。
 
 ### 3. 接口调用
 
@@ -121,7 +111,7 @@ source ${CANN_DIR}/vendors/custom_transformer/bin/set_env.bash
 
 ```bash
 cd attention/flash_attn/tests/pytests
-python3 test_flash_attn.py --case_files functional_redline_infer --case_id Prefill_D256_FP16_BNSD_1024_1024
+python3 test_flash_attn.py --case_files functional_redline_infer --case_id Decode_Unquant_BF16_BF16_L0_1_5_1_1_2048_BNSD_BSND_000004
 python3 test_flash_attn.py --device_id 0            # 跑全部functional用例
 python3 test_flash_attn.py --device_id 0 --case_id <id>   # 跑单个用例
 python3 test_flash_attn.py --device_id 0 --use_gpu --gpu_device 0   # 用GPU端flash_attn库对照
