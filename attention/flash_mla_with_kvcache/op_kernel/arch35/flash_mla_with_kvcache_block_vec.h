@@ -169,6 +169,14 @@ public:
     flashdecodeGmType softmaxFDSumGm;
     flashdecodeGmType softmaxFDMaxGm;
 
+    // 输出 GM tensor + 拷贝器（flash_attn 风格成员变量，编译期模板化）
+    static constexpr GmFormat OUT_FORMAT = GetQueryGmFormat<outLayout>();
+    using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t,
+                                     (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND ||
+                                      outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD)>;
+    FaGmTensorOut outGmTensor_;
+    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
+
     // ub/l1 静态 tensor（InitBuffers 内按表 1 布局建立）
     LocalTensor<uint8_t> ubMm2ResBuffers_;
     LocalTensor<uint8_t> ubMm1ResBuffers_;
@@ -218,6 +226,20 @@ public:
             softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
             softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
                                            constInfo.logSumExpSize);
+        }
+        InitAttenOutBuffer();
+    }
+
+    __aicore__ inline void InitAttenOutBuffer()
+    {
+        outGmTensor_.gmTensor = attentionOutGm;
+        if constexpr (GmLayoutParams<OUT_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
+            outGmTensor_.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                                               constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
+                                               constInfo.actualSeqLenSize);
+        } else {
+            outGmTensor_.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
+                                               seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
         }
     }
 
@@ -632,51 +654,7 @@ public:
 
     __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
-        // layout 由 tiling key 编译期推导（outLayout = FA_T::attnOutLayout），不从 tiling data 获取
-        if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
-            constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
-            outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
-            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
-            constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
-            outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
-            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
-            constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
-            outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
-                                              seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
-            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
-            constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
-            outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
-                                              seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
-            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (outLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
-            constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
-            outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
-            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        }
+        copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }
 
     __aicore__ inline void BroadCastAndCopyOut(const FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<float> &sumUb,
