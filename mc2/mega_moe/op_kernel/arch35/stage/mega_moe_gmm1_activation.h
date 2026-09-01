@@ -895,11 +895,13 @@ __aicore__ inline void RunGmm1Generic(
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
           bool IsShared = false, bool IsWaveFlagGrained = false, typename... LayoutArgs>
-__aicore__ inline void RunGmm1A8W4(
-    BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch> &activationQuantOp,
-    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence,
-    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx, const LayoutArgs &...layoutArgs)
+__aicore__ inline void RunGmm1A8W4(BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N,
+                                                                  TopkWeightsPrefetch> &activationQuantOp,
+                                   const Params &params,
+                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                   const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
+                                   int32_t &gmm1TileReadySequence, const BlockJobContext &blockJob,
+                                   uint32_t expertBeforeCnt, uint32_t expertIdx, const LayoutArgs &...layoutArgs)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
