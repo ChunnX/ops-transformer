@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <cmath>
 #include "quant_flash_attn_metadata_aicpu.h"
-#include "../../quant_flash_attn/op_host/qfa_adjust_sinner_souter.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
@@ -61,7 +60,6 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q_descale", layoutQDescale_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
-    GetAttrValueOpt(ctx, "is_grad_enabled", isGradEnabled_);
     GetAttrValueOpt(ctx, "head_dim_v", headDimV_);
     return ParamsInit();
 }
@@ -227,63 +225,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.fdTolerance = 300;
     param.fdOn = 0;
 
-    if (isGradEnabled_) {
-        int64_t deterMaxRound = CalDeterMaxRound();
-        detail::QuantFAGMetaData quantFAGMetaData(metaData_->GetData());
-        quantFAGMetaData.SetDeterMaxRound(optiling::QUANT_FAG_DETER_MAX_NUM_INDEX, deterMaxRound);
-    }
     needInitOutput_ = CheckNeedInitOutput();
     return true;
-}
-
-// 确定性计算最大循环次数
-int64_t QuantFlashAttnMetadataCpuKernel::CalDeterMaxRound()
-{
-    s1Size_ = GetS1SeqSize(0);
-    s2Size_ = GetS2SeqSize(0);
-    // 非ND场景
-    int64_t b = batchSize_ * baseInfo.kvHeadNum;
-    int64_t m = CeilDiv<int64_t>(s1Size_, 512);
-    int64_t n = CeilDiv<int64_t>(s2Size_, 512);
-    int64_t k = aicCoreNum_;
-
-    if (n == 1) {
-        return std::max(CeilDiv<int64_t>(m * b, k), m);
-    } else {
-        return CeilDiv<int64_t>(n * b, std::min(k, m * b)) * m;
-    }
-}
-
-uint32_t QuantFlashAttnMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
-{
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
-        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
-    }
-
-    if (layoutQ_ == "TND") {
-        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
-            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
-        }
-    }
-    return static_cast<uint32_t>(maxSeqlenQ_);
-}
-
-uint32_t QuantFlashAttnMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
-{
-    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedKv_->GetData());
-        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
-    }
-
-    if (layoutKv_ == "TND") {
-        if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-            const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensKv_->GetData());
-            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
-        }
-    }
-    return static_cast<uint32_t>(maxSeqlenKv_);
 }
 
 bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
