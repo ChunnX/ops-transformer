@@ -623,8 +623,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                                                this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx))) {
             this->vecBlock.ClearInvalidDpse(this->constInfo);
         }
-        if (taskId > 0) {
+        if (taskId > 1) {
             prevRunInfo = runInfos[(taskId + 1) % PRELOAD_TIMES];
+        }
+        if (taskId > 0 && lastTwoLoopCount <= 1) {
             if (likely(!this->constInfo.enablePreSfmg)) {
                 this->vecBlock.ProcessVec1(this->constInfo,
                                            runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES]); // v1: softmaxGrad

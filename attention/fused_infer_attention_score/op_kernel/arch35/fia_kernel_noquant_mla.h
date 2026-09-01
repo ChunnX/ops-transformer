@@ -40,9 +40,8 @@ public:
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-    // todo zhj mla老模板使用preload 1，新模板是preload 2，需要看下为什么不使用2，能否切到2
-    static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
@@ -77,12 +76,6 @@ public:
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
-
-    uint32_t coreGS1Loops_ = 0U;
-    uint32_t accGS1Loops_ = 0U;
-    uint32_t varlenCalcTimes_ = 0U;
-    int64_t preTaskIdx_ = 0;
-    int64_t curTaskIdx_ = 0;
 
     // schduler params
     int64_t validTaskNum_ = 0;
@@ -189,8 +182,9 @@ public:
         const auto &fiaAttenMaskParams = this->tilingData_->fiaAttenMaskParams;
         const auto &fiaPageAttentionParams = this->tilingData_->fiaPageAttentionParams;
         const auto &fiaWorkspaceParams = this->tilingData_->fiaWorkspaceParams;
-        const auto &fiaS1OuterSplitCoreParams = this->tilingData_->fiaS1OuterSplitCoreParams;
         const auto &fiaEmptyTensorParams = this->tilingData_->fiaEmptyTensorParams;
+        // 清零开关: 短kv/空kv/短q 等整行无任务写回场景由 host 置1, vecFaBlock_.ClearOutput() 消费
+        constInfo_.needInit = fiaEmptyTensorParams.needInit;
 
         constInfo_.bSize = fiaBaseParams.bSize;
         constInfo_.t1Size = fiaBaseParams.t1Size;
@@ -205,6 +199,7 @@ public:
         constInfo_.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo_.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo_.scaleValue = fiaBaseParams.scaleValue;
+        constInfo_.l2CacheOffFlag = fiaBaseParams.l2CacheOffFlag;
         constInfo_.coreNum = fiaBaseParams.coreNum;
         constInfo_.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
@@ -234,28 +229,14 @@ public:
         // LSE
         constInfo_.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
 
-        if (fiaS1OuterSplitCoreParams.enableS1OutSplit) {
-            constInfo_.enableS1OutSplit = true;
-            constInfo_.bN2Start = 0;
-            constInfo_.gS1OStart = 0;
-            constInfo_.s2OStart = 0;
-            constInfo_.bN2End = 0;
-            constInfo_.gS1OEnd = 0;
-            constInfo_.s2OEnd = 0;
-            constInfo_.coreFirstTmpOutWsPos = 0;
-            constInfo_.totalSize = fiaS1OuterSplitCoreParams.totalSize;
-        } else {
-            // 任务起始位置
-            constInfo_.enableS1OutSplit = false;
-            constInfo_.bN2Start = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_BN2_START_INDEX));
-            constInfo_.gS1OStart = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_M_START_INDEX));
-            constInfo_.s2OStart = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_S2_START_INDEX));
-            constInfo_.bN2End = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_BN2_END_INDEX));
-            constInfo_.gS1OEnd = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_M_END_INDEX));
-            constInfo_.s2OEnd = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_S2_END_INDEX));
-            constInfo_.coreFirstTmpOutWsPos =
-                fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
-        }
+        constInfo_.bN2Start = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_BN2_START_INDEX));
+        constInfo_.gS1OStart = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_M_START_INDEX));
+        constInfo_.s2OStart = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_S2_START_INDEX));
+        constInfo_.bN2End = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_BN2_END_INDEX));
+        constInfo_.gS1OEnd = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_M_END_INDEX));
+        constInfo_.s2OEnd = fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_S2_END_INDEX));
+        constInfo_.coreFirstTmpOutWsPos =
+            fiaMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         constInfo_.dBasicBlock = AttentionCommon::Align(constInfo_.dSizeV, 64U);
         constInfo_.kRopeStrides.bnStride = fiaBaseParams.kRopeStrides.bnStride;
         constInfo_.kRopeStrides.n2Stride = fiaBaseParams.kRopeStrides.n2Stride;
@@ -269,30 +250,6 @@ public:
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx)
     {
         return FA_METADATA_SIZE * NPU_AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
-    }
-
-    __aicore__ inline void CalcS1OutSplitLoopTimes()
-    {
-        int64_t varlenCycleCoreNums = constInfo_.coreNum * 2;
-        int64_t varlenCalcLoops =
-            constInfo_.totalSize / varlenCycleCoreNums;                             // 需要进行计算的循环次数(正序+倒序为一次循环)
-        int64_t varlenCalcLoopsRemain = constInfo_.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
-        varlenCalcTimes_ = varlenCalcLoops * 2;
-        if (varlenCalcLoopsRemain >= constInfo_.aicIdx + 1) {
-            varlenCalcTimes_++;
-            if (varlenCalcLoopsRemain > constInfo_.coreNum &&
-                (constInfo_.aicIdx + 1) > varlenCycleCoreNums - varlenCalcLoopsRemain) {
-                varlenCalcTimes_++;
-            }
-        }
-    }
-
-    __aicore__ inline int64_t CalcS1OutTaskIdx()
-    {
-        if (coreGS1Loops_ % 2 == 0) {
-            return coreGS1Loops_ * constInfo_.coreNum + constInfo_.aicIdx;
-        }
-        return (coreGS1Loops_ + 1U) * constInfo_.coreNum - constInfo_.aicIdx - 1U;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -332,16 +289,12 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+        RunInfoX taskRunInfo[PRELOAD_N] = {};
         uint32_t bN2Cur = constInfo_.bN2Start;
         uint32_t gS1Cur = constInfo_.gS1OStart;
         uint32_t s2Cur = constInfo_.s2OStart;
         prevBN2Idx_ = bN2Cur;
         prevGS1Idx_ = gS1Cur;
-
-        if (constInfo_.enableS1OutSplit) {
-            CalcS1OutSplitLoopTimes();
-        }
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
@@ -379,9 +332,6 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (constInfo_.enableS1OutSplit) {
-            return coreGS1Loops_ < varlenCalcTimes_;
-        }
         if (bN2Cur != constInfo_.bN2End) {
             return bN2Cur < constInfo_.bN2End;
         }
@@ -391,7 +341,7 @@ public:
         return s2Cur < constInfo_.s2OEnd;
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N])
     {
         return validTaskNum_ > 0;
     }
@@ -408,10 +358,6 @@ public:
             cachedS2LoopTimes_ = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
             uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
             cachedG1S1LoopTimes_ = (gS1Size + mBaseSize - 1) / mBaseSize;
-        }
-
-        if (constInfo_.enableS1OutSplit && accGS1Loops_ != CalcS1OutTaskIdx()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
         if (cachedS2LoopTimes_ == 0 || cachedG1S1LoopTimes_ == 0) {
@@ -479,7 +425,7 @@ public:
             curS2Start_ = constInfo_.s2OStart;
         }
 
-        if (!constInfo_.enableS1OutSplit && (bN2Cur == constInfo_.bN2End) && (gS1Cur == constInfo_.gS1OEnd)) {
+        if ((bN2Cur == constInfo_.bN2End) && (gS1Cur == constInfo_.gS1OEnd)) {
             tailS2Split_ = constInfo_.s2OEnd != 0U;
             curS2End_ = constInfo_.s2OEnd;
         }
@@ -544,10 +490,10 @@ public:
         return;
     }
 
-    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_N])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_N];                        // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - (PRELOAD_N - 1)) % PRELOAD_N]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -556,7 +502,7 @@ public:
             }
         }
 
-        if (loop >= PRELOAD_N) {
+        if (loop >= (PRELOAD_N - 1)) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -602,9 +548,9 @@ public:
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
-                                      RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+                                      RunInfoX taskRunInfo[PRELOAD_N])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_N]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         EnableTask(runInfo);
     }
@@ -657,11 +603,6 @@ public:
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
-        if (constInfo_.enableS1OutSplit) {
-            info.isS2SplitCore = false;
-            return;
-        }
-
         if ((constInfo_.bN2Start == constInfo_.bN2End && constInfo_.gS1OStart == constInfo_.gS1OEnd)) {
             // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
@@ -677,77 +618,6 @@ public:
         }
     }
 
-    __aicore__ inline void S1OutSplitUpdateAxis(uint32_t &bN2Cur, uint32_t &gS1Cur)
-    {
-        if (coreGS1Loops_ >= varlenCalcTimes_ || bN2Cur >= constInfo_.n2Size * constInfo_.bSize) {
-            return;
-        }
-        curTaskIdx_ = CalcS1OutTaskIdx();
-
-        // 本次需要跳过的GS1
-        int64_t gS1Skip = curTaskIdx_ - preTaskIdx_;
-        accGS1Loops_ += gS1Skip;
-        preTaskIdx_ = curTaskIdx_;
-        if (gS1Skip == 0) {
-            return;
-        }
-
-        uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
-        uint64_t gS1LoopTimes = actSeqLensQ_ == 0 ? constInfo_.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
-        uint64_t gS1RemainCurBN2 = gS1LoopTimes - gS1Cur;
-
-        // gS1Skip 不超过当前BN2剩余的S1G，则只需要更新gS1Cur
-        if (gS1Skip < gS1RemainCurBN2) {
-            gS1Cur += gS1Skip;
-            return;
-        }
-
-        // 先跳过当前BN2剩余的S1G，再跳N2
-        gS1Skip -= gS1RemainCurBN2;
-        gS1Cur = 0;
-
-        uint32_t n2Size = constInfo_.n2Size;
-        uint32_t n2Idx = bN2Cur % n2Size;
-        uint32_t bIdx = bN2Cur / n2Size;
-        uint64_t gS1RemainCurBatch = 0;
-        // 先跳过当前Batch剩余的N2
-        if (n2Idx + 1 < n2Size) {
-            bN2Cur++;
-            n2Idx++;
-            gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
-            // 这个batch剩余的N2足够 gS1Skip
-            if (gS1Skip < gS1RemainCurBatch) {
-                bN2Cur += gS1Skip / gS1LoopTimes;
-                gS1Cur = gS1Skip % gS1LoopTimes;
-                return;
-            }
-            gS1Skip -= gS1RemainCurBatch;
-        }
-        n2Idx = 0;
-        bIdx++;
-
-        // 跳batch
-        while (bIdx < constInfo_.bSize) {
-            actSeqLensQ_ = qActSeqLensParser_.GetActualSeqLength(bIdx);
-            actSeqLensKv_ = kvActSeqLensParser_.GetActualSeqLength(bIdx);
-            gS1Size = actSeqLensQ_ * constInfo_.gSize;
-            gS1LoopTimes = actSeqLensQ_ == 0 ? constInfo_.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
-            if (gS1Skip >= n2Size * gS1LoopTimes) {
-                bIdx++;
-                gS1Skip -= n2Size * gS1LoopTimes;
-                continue;
-            }
-
-            gS1Cur = gS1Skip % gS1LoopTimes;
-            n2Idx = (gS1Skip / gS1LoopTimes) % n2Size;
-            bN2Cur = bIdx * n2Size + n2Idx;
-            return;
-        }
-
-        // 所有batch已经执行完
-        bN2Cur = constInfo_.bSize * n2Size;
-    }
-
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
@@ -761,13 +631,6 @@ public:
 
         // 当前BN2未处理完
         s2Cur = 0;
-        if (constInfo_.enableS1OutSplit) {
-            if (taskDealMode != TASK_DEAL_MODE::SKIP_S1OUT) {
-                coreGS1Loops_++;
-            }
-            S1OutSplitUpdateAxis(bN2Cur, gS1Cur);
-            return;
-        }
 
         uint64_t gS1LoopTimes = cachedG1S1LoopTimes_;
         if (gS1Cur + 1 < gS1LoopTimes) {
