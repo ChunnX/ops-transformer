@@ -18,12 +18,22 @@
 
 1. Install Dependencies:
 
-    ```sh
-    python3 -m pip install -r requirements.txt
-    ```
-
+   ```sh
+   python3 -m pip install -r requirements.txt
+   ```
 2. Build the Wheel:
 
+<<<<<<< HEAD
+   ```sh
+   # -n: non-isolated build (uses existing environment)
+   python3 -m build --wheel -n
+   ```
+3. Install Package:
+
+   ```sh
+   python3 -m pip install dist/*.whl --force-reinstall --no-deps
+   ```
+=======
     ```sh
     cd <repo_root>
     # 整包编译（含所有算子）
@@ -38,6 +48,7 @@
     ```sh
     python3 -m pip install build_out/*.whl --force-reinstall --no-deps
     ```
+>>>>>>> upstream/master
 
 ## Quick Start
 
@@ -172,8 +183,8 @@ from .graph_convert_abs import convert_abs
 
 ### Technical Notes
 
-| Component | Responsibility |
-| --- | --- |
-| **OpBuilder** | Handles JIT compilation of C++ source using `ninja`. |
-| **Meta Dispatch** | Allows PyTorch to know the output shape/type without running NPU code. |
-| **PrivateUse1** | The specific backend key PyTorch uses to route NPU-specific operations. |
+| Component               | Responsibility                                                          |
+| ----------------------- | ----------------------------------------------------------------------- |
+| **OpBuilder**     | Handles JIT compilation of C++ source using`ninja`.                   |
+| **Meta Dispatch** | Allows PyTorch to know the output shape/type without running NPU code.  |
+| **PrivateUse1**   | The specific backend key PyTorch uses to route NPU-specific operations. |

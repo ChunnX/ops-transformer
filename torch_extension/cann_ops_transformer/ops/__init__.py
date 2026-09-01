@@ -7,7 +7,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 import os
 import importlib
 import logging
@@ -168,6 +167,3 @@ if __name__ == "cann_ops_transformer.ops":
             _sys.modules["cann_ops_transformer.ops.%s" % _old_name] = _new_mod
         except (ImportError, RuntimeError, AttributeError) as _e:
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
-
-
-# Centralized operators not yet migrated to distributed structure
