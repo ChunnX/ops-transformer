@@ -39,10 +39,10 @@ bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
-The two EP8/256-expert GroupedMatMul-AllToAllV delivery profiles
-(`K=1024/512`, `N=2048`) use 19 independent symmetric staging slots and do not
-recycle a slot within one launch. Choose the producer synchronization protocol
-when building the Wheel:
+The two EP8/256-expert GroupedMatMul-AllToAllV delivery profiles use independent
+symmetric staging slots and do not recycle a slot within one launch. The
+`K=1024, N=2048` profile uses 19 slots; the `K=512, N=2048` profile uses 22.
+Choose the producer synchronization protocol when building the Wheel:
 
 ```bash
 # Recommended/default: no reuse plus an all-PE producer barrier.
@@ -60,8 +60,8 @@ the target topology before delivery. Both variants compile out root-cause
 records, producer-trace copies, diagnostic delays and device printf unless the
 corresponding diagnostic build switches are explicitly enabled. Other shapes
 retain the general two-stage kernel. The no-reuse profiles support at most 19
-communication rounds; their current delivery target is the balanced
-`M=131072` business case.
+and 22 communication rounds respectively; their current delivery target is the
+balanced `M=131072` business case.
 
 `build_wheel.sh` removes only this subproject's previous `build`, `dist`,
 `egg-info`, staged extension, and staged runtime libraries before rebuilding.
@@ -389,9 +389,10 @@ bash scripts/run_gmm_a2av_root_cause.sh \
 environment variable before `scripts/build_wheel.sh`; the validation-only raw
 operator is compiled out of ordinary delivery Wheels. The default matrix runs:
 
-- `no_reuse_trace`: a dedicated 19-stage kernel gives every `commIdx` an
-  independent symmetric stage, disables per-round recycle, waits once at the
-  end, and copies the retained producer staging into a regular NPU tensor;
+- `no_reuse_trace`: a dedicated profile-specific 19/22-stage kernel gives every
+  `commIdx` an independent symmetric stage, disables per-round recycle, waits
+  once at the end, and copies the retained producer staging into a regular NPU
+  tensor;
 - `pre_get_delay_medium`: 20,000 cycles after producer-ready wait and before
   GET;
 - `post_quiet_delay_{short,medium,long}`: 2,000/20,000/200,000 cycles after

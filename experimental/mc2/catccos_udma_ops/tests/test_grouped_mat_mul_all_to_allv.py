@@ -70,13 +70,31 @@ def test_business_profiles_use_compile_time_no_reuse_delivery_kernel():
     assert "(k64 == 1024 || k64 == 512)" in host
     assert "useNoReuseKernel" in host
     assert "GroupedMatMulAllToAllVUdmaNoReuseConfig" in host
-    assert "kNoReuseWorkspaceStages = 19" in device
+    assert "kNoReuseM0_128WorkspaceStages = 19" in device
+    assert "kNoReuseM0_256WorkspaceStages = 22" in device
+    assert "NoReuseWorkspaceStages(tiling.kernelVariant)" in host
+    assert (
+        "kNoReuseM0_128WorkspaceStages, kNoReuseSymmetricDataBytes, true"
+        in device
+    )
+    assert (
+        "kNoReuseM0_256WorkspaceStages, kNoReuseSymmetricDataBytes, true"
+        in device
+    )
     assert "kNoReuseSymmetricDataBytes" in device
     assert "640UL * 1024 * 1024" in device
     assert "NoReuseStaging = false" in device
     assert "kNoReuseSymmetricDataBytes, true" in device
     assert "static constexpr bool NO_REUSE_STAGING" in kernel
     assert "if constexpr (!NO_REUSE_STAGING)" in kernel
+
+
+def test_no_reuse_host_and_device_use_the_same_profile_stage_count():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "selectedWorkspaceStages == SelectedConfig::kWorkspaceStages" in host
 
 
 def test_delivery_producer_sync_is_selected_at_build_time():

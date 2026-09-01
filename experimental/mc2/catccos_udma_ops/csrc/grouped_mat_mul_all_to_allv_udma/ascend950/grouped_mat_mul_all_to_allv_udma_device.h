@@ -147,11 +147,13 @@ using GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         256, 128, 256, false, true>;
 
-// Delivery and validation no-reuse variants. The target model cases have at
-// most 19 communication rounds, so every commIdx owns a distinct stage.
-// The 640 MiB data area accommodates
-// 19 * 8 ranks * 896 rows * 2048 BF16 columns (532 MiB) with headroom.
-static constexpr uint32_t kNoReuseWorkspaceStages = 19;
+// Delivery and validation no-reuse variants. Each tuned profile owns a
+// profile-specific number of stages so every commIdx has a distinct staging
+// slot without adding empty producer barriers to the K=1024 profile:
+//   K=1024 / M0=128: 19 * 8 * 896 * 2048 * BF16 = 532 MiB
+//   K=512  / M0=256: 22 * 8 * 768 * 2048 * BF16 = 528 MiB
+static constexpr uint32_t kNoReuseM0_128WorkspaceStages = 19;
+static constexpr uint32_t kNoReuseM0_256WorkspaceStages = 22;
 static constexpr uint64_t kNoReuseSymmetricDataBytes =
     640UL * 1024 * 1024;
 
@@ -161,7 +163,7 @@ using GroupedMatMulAllToAllVUdmaNoReuseConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         128, 256, 256, false, false,
-        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes, true>;
+        kNoReuseM0_128WorkspaceStages, kNoReuseSymmetricDataBytes, true>;
 
 using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
     GroupedMatMulAllToAllVUdmaConfig<
@@ -169,7 +171,7 @@ using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         256, 128, 256, false, false,
-        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes, true>;
+        kNoReuseM0_256WorkspaceStages, kNoReuseSymmetricDataBytes, true>;
 
 } // namespace OpsTransformer::CatccosUdma
 

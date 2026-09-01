@@ -69,6 +69,13 @@ const TilingProfile &SelectTiling(
     return kDefaultTiling;
 }
 
+constexpr uint32_t NoReuseWorkspaceStages(KernelVariant kernelVariant)
+{
+    return kernelVariant == KernelVariant::kM0_256
+        ? kNoReuseM0_256WorkspaceStages
+        : kNoReuseM0_128WorkspaceStages;
+}
+
 constexpr uint32_t kUbStages = 2;
 constexpr uint32_t kWorkspaceStages = 2;
 constexpr uint32_t kMaxLocalExperts = 32;
@@ -344,7 +351,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
         (k64 == 1024 || k64 == 512);
     const bool useNoReuseKernel = useNoReuseTrace || useNoReuseDelivery;
     const uint32_t selectedWorkspaceStages = useNoReuseKernel
-        ? kNoReuseWorkspaceStages : kWorkspaceStages;
+        ? NoReuseWorkspaceStages(tiling.kernelVariant) : kWorkspaceStages;
     const uint64_t selectedSymmetricDataBytes = useNoReuseKernel
         ? kNoReuseSymmetricDataBytes
         : GroupedMatMulAllToAllVUdmaDefaultConfig::kSymmetricDataBytes;
@@ -356,7 +363,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
                 "kernel tiling requires ", requiredWorkspaceBytes,
                 " symmetric workspace bytes, exceeding ",
                 selectedSymmetricDataBytes);
-
     // This fused direction consumes sum(global_tokens) rows and returns
     // sum(local_tokens) rows. Use the caller-provided capacity on the reusable
     // out path to avoid a device-to-host reduction in the hot launch path.
@@ -414,6 +420,10 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
                         tiling.n0 == SelectedConfig::kN0 &&
                         tiling.k0 == SelectedConfig::kK0,
                     "tiling profile does not match the selected kernel instance");
+        TORCH_CHECK(!useNoReuseKernel ||
+                        selectedWorkspaceStages == SelectedConfig::kWorkspaceStages,
+                    "Host no-reuse workspace-stage selection does not match "
+                    "the selected kernel instance");
         typename SelectedDeviceOp::Arguments arguments{
             shape,
             static_cast<uint32_t>(runtime.Rank()),
