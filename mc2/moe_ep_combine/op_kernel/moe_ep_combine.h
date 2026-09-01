@@ -126,34 +126,42 @@ private:
     __aicore__ inline void SendLocalMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                                  GM_ADDR localDataBase, GM_ADDR localStateBase);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
-                                                  GM_ADDR remoteDataBase, GM_ADDR remoteStateBase,
-                                                  uint64_t tokenBytes);
+                                                  GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline bool ProcessLocalMetadataRange(uint64_t rangeBegin, uint64_t rangeEnd);
     __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd);
     __aicore__ inline void SendPhaseDirectFromMetadata();
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
     {
+        PipeBarrier<PIPE_ALL>();
         return hcommHandle_[rankId * channelsPerRank_];
     }
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
     {
+        PipeBarrier<PIPE_ALL>();
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId, uint64_t offset)
     {
+        PipeBarrier<PIPE_ALL>();
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
     __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
     {
+        PipeBarrier<PIPE_ALL>();
         return combineSendDataWorkspaceAddr_ + sendDataWorkspaceSizePerRank_ * rankId;
     }
     __aicore__ inline uint32_t ReduceSumWorkNeedSize(int32_t count, int32_t typeSize)
     {
+        PipeBarrier<PIPE_ALL>();
         int32_t elementsPerBlock = UB_ALIGN / typeSize;
+        PipeBarrier<PIPE_ALL>();
         int32_t elementsPerRepeat = ALIGNED_LEN_256 / typeSize;
+        PipeBarrier<PIPE_ALL>();
         int32_t iter1OutputCount = (count + elementsPerRepeat - 1) / elementsPerRepeat;
+        PipeBarrier<PIPE_ALL>();
         uint32_t iter1AlignEnd = ((iter1OutputCount + elementsPerBlock - 1) / elementsPerBlock) * elementsPerBlock;
+        PipeBarrier<PIPE_ALL>();
         return iter1AlignEnd;
     }
 
@@ -201,7 +209,7 @@ private:
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> weightQueue_;
-    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
@@ -225,93 +233,163 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
                                                                         GM_ADDR workspace, GM_ADDR tilingGM,
                                                                         TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_ = pipe;
+    PipeBarrier<PIPE_ALL>();
     tilingData_ = tilingData;
+    PipeBarrier<PIPE_ALL>();
     aivId_ = GetBlockIdx();
+    PipeBarrier<PIPE_ALL>();
     combineSendDataWorkspaceAddr_ = workspace;
+    PipeBarrier<PIPE_ALL>();
     epWorldSize_ = tilingData_->cfg.epWorldSize;
+    PipeBarrier<PIPE_ALL>();
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
+    PipeBarrier<PIPE_ALL>();
     topK_ = tilingData_->cfg.topK;
+    PipeBarrier<PIPE_ALL>();
     axisH_ = tilingData_->cfg.hidden;
+    PipeBarrier<PIPE_ALL>();
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
+    PipeBarrier<PIPE_ALL>();
     aivNum_ = tilingData_->aivNum;
+    PipeBarrier<PIPE_ALL>();
     localmoeNum_ = tilingData_->cfg.numLocalExperts;
+    PipeBarrier<PIPE_ALL>();
     recvCapacity_ = tilingData_->recvCapacity;
+    PipeBarrier<PIPE_ALL>();
     sendDataWorkspaceSizePerRank_ = tilingData->sendDataWorkspaceSizePerRank;
     // TODO(delete): legacy address-table workspace placed flag storage after every rank's send table.
     // flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
     //                      static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     rankCountWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
                               static_cast<uint64_t>(aivNum_) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     perCoreRankCountStride_ = Ceil(static_cast<uint64_t>(epWorldSize_) * UB_ALIGN, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     perCoreRankCountWorkspaceAddr_ = rankCountWorkspaceAddr_ + static_cast<uint64_t>(epWorldSize_) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
-    hWeightAlignSize_ = hAlignSize_ + UB_ALIGN;                      // UB 32字节对齐
+    PipeBarrier<PIPE_ALL>();
+    hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    PipeBarrier<PIPE_ALL>();
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    PipeBarrier<PIPE_ALL>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(hcommBatchBuf_, HCOMM_BATCH_BUFFER_BYTES);
+    PipeBarrier<PIPE_ALL>();
     hcommBatchTensor_ = hcommBatchBuf_.Get<uint8_t>();
+    PipeBarrier<PIPE_ALL>();
     Duplicate<uint8_t>(hcommBatchTensor_, 0U, HCOMM_BATCH_BUFFER_BYTES);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_S>();
 
+    PipeBarrier<PIPE_ALL>();
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
+    PipeBarrier<PIPE_ALL>();
     rankId_ = mc2Context_->epRankId;
+    PipeBarrier<PIPE_ALL>();
     channelsPerRank_ = mc2Context_->channelsPerRank;
+    PipeBarrier<PIPE_ALL>();
     if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
+        PipeBarrier<PIPE_ALL>();
         channelsPerRank_ = 1;
     }
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
+        PipeBarrier<PIPE_ALL>();
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
+    PipeBarrier<PIPE_ALL>();
     uint32_t handleCount = epWorldSize_ * channelsPerRank_;
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t i = 0; i < handleCount; ++i) {
+        PipeBarrier<PIPE_ALL>();
         hcommHandle_[i] = mc2Context_->hcommHandle[i];
     }
 
+    PipeBarrier<PIPE_ALL>();
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
+    PipeBarrier<PIPE_ALL>();
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
 
+    PipeBarrier<PIPE_ALL>();
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
+    PipeBarrier<PIPE_ALL>();
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
+    PipeBarrier<PIPE_ALL>();
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
 
     // 计算actualA_的大小
+    PipeBarrier<PIPE_ALL>();
     uint32_t numRecvBytes = Ceil(localmoeNum_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     uint32_t reduceTmpBytes = ReduceSumWorkNeedSize(localmoeNum_, sizeof(int64_t)) * sizeof(int64_t);
+    PipeBarrier<PIPE_ALL>();
     TBuf<TPosition::VECCALC> numRecvBuf;
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(numRecvBuf, numRecvBytes + reduceTmpBytes + UB_ALIGN); // 数据 + ReduceSum tmp + 输出
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int64_t> numRecvLocal = numRecvBuf.Get<int64_t>();
 
+    PipeBarrier<PIPE_ALL>();
     DataCopyExtParams numRecvCopyParams{1U, static_cast<uint32_t>(localmoeNum_ * sizeof(int64_t)), 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     DataCopyPadExtParams<int64_t> numRecvPadParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     DataCopyPad(numRecvLocal, numRecvPerExpertGm_, numRecvCopyParams, numRecvPadParams);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int64_t> reduceTmp = numRecvLocal[numRecvBytes / sizeof(int64_t)];
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int64_t> sumOut = reduceTmp[reduceTmpBytes / sizeof(int64_t)];
+    PipeBarrier<PIPE_ALL>();
     ReduceSum<int64_t>(sumOut, numRecvLocal, reduceTmp, static_cast<int32_t>(localmoeNum_));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_S>();
+    PipeBarrier<PIPE_ALL>();
     int64_t actualASigned = sumOut.GetValue(0);
+    PipeBarrier<PIPE_ALL>();
     actualA_ = (actualASigned > 0) ? static_cast<uint64_t>(actualASigned) : 0U;
+    PipeBarrier<PIPE_ALL>();
     if (actualA_ > recvCapacity_) {
+        PipeBarrier<PIPE_ALL>();
         actualA_ = recvCapacity_;
     }
+    PipeBarrier<PIPE_ALL>();
     XTypeAlign32Size_ = hAlignSize_;
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         topkWeightsGm_.SetGlobalBuffer((__gm__ float *)topkWeights);
     }
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(xQueue_, SEND_DOUBLE_BUFFER_NUM, XTypeAlign32Size_);
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         tpipe_->InitBuffer(weightQueue_, SEND_DOUBLE_BUFFER_NUM, UB_ALIGN);
     }
+    PipeBarrier<PIPE_ALL>();
     metadataChunkTokens_ = (actualA_ < META_CHUNK_TOKEN_MAX) ? static_cast<uint32_t>(actualA_) : META_CHUNK_TOKEN_MAX;
+    PipeBarrier<PIPE_ALL>();
     metadataChunkTokens_ = (metadataChunkTokens_ == 0U) ? 1U : metadataChunkTokens_;
+    PipeBarrier<PIPE_ALL>();
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
+    PipeBarrier<PIPE_ALL>();
     statusTensor_ = readStateBuf_.Get<uint32_t>();
 }
 
@@ -319,189 +397,322 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressTable()
 {
     // Follow dispatch PR 10309: count per core, derive an exclusive prefix, then batch-write records.
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t rankCountBlockElements = UB_ALIGN / sizeof(int32_t);
+    PipeBarrier<PIPE_ALL>();
     uint32_t metaChunkTokens = (actualA_ < META_CHUNK_TOKEN_MAX) ? actualA_ : META_CHUNK_TOKEN_MAX;
+    PipeBarrier<PIPE_ALL>();
     metaChunkTokens = (metaChunkTokens == 0U) ? 1U : metaChunkTokens;
+    PipeBarrier<PIPE_ALL>();
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     uint32_t rankCountElements = epWorldSize_ * rankCountBlockElements;
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         uint32_t weightChunkBytes = Ceil(metaChunkTokens * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+        PipeBarrier<PIPE_ALL>();
         tpipe_->InitBuffer(weightsBuf_, weightChunkBytes);
     }
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(addressTableBuf_, ADDRESS_TABLE_BUFFER_BYTES);
+    PipeBarrier<PIPE_ALL>();
     tpipe_->InitBuffer(rankInfoBuf_, 3U * rankCountElements * sizeof(int32_t));
 
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> rankCounts = rankInfoBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> rankPrefix = rankCounts[rankCountElements];
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> prefixSums = rankCounts[2U * rankCountElements];
+    PipeBarrier<PIPE_ALL>();
     Duplicate<int32_t>(rankCounts, 0, rankCountElements);
+    PipeBarrier<PIPE_ALL>();
     Duplicate<int32_t>(rankPrefix, 0, rankCountElements);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_S>();
 
+    PipeBarrier<PIPE_ALL>();
     DataCopyParams rankCountCopyParams{static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(UB_ALIGN), 0U,
                                        static_cast<uint16_t>(WIN_ADDR_ALIGN - UB_ALIGN)};
 
+    PipeBarrier<PIPE_ALL>();
     uint64_t tokensPerCore = actualA_ / aivNum_;
+    PipeBarrier<PIPE_ALL>();
     uint64_t remainder = actualA_ % aivNum_;
+    PipeBarrier<PIPE_ALL>();
     uint64_t scanStart = static_cast<uint64_t>(aivId_) * tokensPerCore + ((aivId_ < remainder) ? aivId_ : remainder);
+    PipeBarrier<PIPE_ALL>();
     uint64_t scanEnd = scanStart + tokensPerCore + ((aivId_ < remainder) ? 1U : 0U);
 
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
     const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     for (uint64_t chunkStart = scanStart; chunkStart < scanEnd; chunkStart += metaChunkTokens) {
+        PipeBarrier<PIPE_ALL>();
         uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : chunkStart + metaChunkTokens;
+        PipeBarrier<PIPE_ALL>();
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
 
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t i = 0; i < curChunkTokens; ++i) {
+            PipeBarrier<PIPE_ALL>();
             int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS);
+            PipeBarrier<PIPE_ALL>();
             if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_) ||
                 srcRank == static_cast<int32_t>(rankId_)) {
                 continue;
             }
+            PipeBarrier<PIPE_ALL>();
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
+            PipeBarrier<PIPE_ALL>();
             rankCounts.SetValue(countOffset, rankCounts.GetValue(countOffset) + 1);
         }
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 
     // Publish this core's row. Address-table positions and totals are derived from these rows without atomic ops.
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<int32_t> perCoreRankCounts;
+    PipeBarrier<PIPE_ALL>();
     perCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
         perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::S_MTE3>();
+    PipeBarrier<PIPE_ALL>();
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
     // Group preceding rows into a few MTE2 copies, as in PR 10309 GetSlotStartNum().
+    PipeBarrier<PIPE_ALL>();
     uint32_t rankCountRowBytes = rankCountElements * sizeof(int32_t);
+    PipeBarrier<PIPE_ALL>();
     uint32_t prefixRowsPerBatch = ADDRESS_TABLE_BUFFER_BYTES / rankCountRowBytes;
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> prefixRows = addressTableBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<int32_t> allPerCoreRankCounts;
+    PipeBarrier<PIPE_ALL>();
     allPerCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(perCoreRankCountWorkspaceAddr_));
+    PipeBarrier<PIPE_ALL>();
     const DataCopyPadExtParams<int32_t> prefixPadParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t coreStart = 0; coreStart < aivId_; coreStart += prefixRowsPerBatch) {
+        PipeBarrier<PIPE_ALL>();
         uint32_t copyRows = (coreStart + prefixRowsPerBatch > aivId_) ? aivId_ - coreStart : prefixRowsPerBatch;
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams prefixCopyParams{static_cast<uint16_t>(copyRows), rankCountRowBytes,
                                            static_cast<uint32_t>(perCoreRankCountStride_ - rankCountRowBytes), 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(prefixRows,
                     allPerCoreRankCounts[static_cast<uint64_t>(coreStart) * perCoreRankCountStride_ / sizeof(int32_t)],
                     prefixCopyParams, prefixPadParams);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_V>();
+        PipeBarrier<PIPE_ALL>();
         const uint32_t prefixShape[] = {copyRows, rankCountElements};
+        PipeBarrier<PIPE_ALL>();
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(prefixSums, prefixRows, prefixShape, false);
+        PipeBarrier<PIPE_ALL>();
         Add(rankPrefix, rankPrefix, prefixSums, rankCountElements);
+        PipeBarrier<PIPE_ALL>();
         if (coreStart + copyRows < aivId_) {
+            PipeBarrier<PIPE_ALL>();
             SyncFunc<AscendC::HardEvent::V_MTE2>();
         }
     }
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_S>();
 
     // rankCounts still holds this core's row. The last AIV writes prefix + own count as each remote rank's total.
+    PipeBarrier<PIPE_ALL>();
     if (aivId_ == aivNum_ - 1U) {
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t countOffset = rank * rankCountBlockElements;
+            PipeBarrier<PIPE_ALL>();
             rankCounts.SetValue(countOffset, rankPrefix.GetValue(countOffset) + rankCounts.GetValue(countOffset));
         }
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<int32_t> totalRankCounts;
+        PipeBarrier<PIPE_ALL>();
         totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rankCountWorkspaceAddr_));
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE3>();
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
     // Each group fits even if all records target the same rank. Records are grouped by rank in UB.
+    PipeBarrier<PIPE_ALL>();
     uint32_t entriesPerRank = ADDRESS_TABLE_BUFFER_BYTES / epWorldSize_ / ADDRESS_ENTRY_UB_BYTES;
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<uint32_t> addressEntries = addressTableBuf_.Get<uint32_t>();
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t entryElements = ADDRESS_ENTRY_UB_BYTES / sizeof(uint32_t);
     // DataCopyParams uses 32-byte blocks, unlike the byte-based DataCopyPad parameters above.
+    PipeBarrier<PIPE_ALL>();
     DataCopyParams addressCopyParams{
         0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES / UB_ALIGN), 0U,
         static_cast<uint16_t>((ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES) / UB_ALIGN)};
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     for (uint64_t groupStart = scanStart; groupStart < scanEnd; groupStart += entriesPerRank) {
+        PipeBarrier<PIPE_ALL>();
         uint64_t groupEnd = (groupStart + entriesPerRank > scanEnd) ? scanEnd : groupStart + entriesPerRank;
+        PipeBarrier<PIPE_ALL>();
         uint32_t groupTokens = static_cast<uint32_t>(groupEnd - groupStart);
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams metaCopyParams{1U, groupTokens * metaBytesPerToken, 0U, 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[groupStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
 
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<uint32_t> weightsLocal;
+        PipeBarrier<PIPE_ALL>();
         if constexpr (HasTopkWeight == 1) {
+            PipeBarrier<PIPE_ALL>();
             weightsLocal = weightsBuf_.Get<uint32_t>();
+            PipeBarrier<PIPE_ALL>();
             DataCopyExtParams weightCopyParams{1U, static_cast<uint32_t>(groupTokens * sizeof(uint32_t)), 0U, 0U, 0U};
+            PipeBarrier<PIPE_ALL>();
             const DataCopyPadExtParams<uint32_t> weightPadParams{false, 0U, 0U, 0U};
+            PipeBarrier<PIPE_ALL>();
             DataCopyPad(weightsLocal, topkWeightsGm_[groupStart].template ReinterpretCast<uint32_t>(), weightCopyParams,
                         weightPadParams);
         }
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        PipeBarrier<PIPE_ALL>();
         Duplicate<int32_t>(rankCounts, 0, rankCountElements);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::V_S>();
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t i = 0; i < groupTokens; ++i) {
+            PipeBarrier<PIPE_ALL>();
             int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS);
+            PipeBarrier<PIPE_ALL>();
             if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
+                PipeBarrier<PIPE_ALL>();
                 continue;
             }
+            PipeBarrier<PIPE_ALL>();
             uint32_t tokenIndex = static_cast<uint32_t>(groupStart) + i;
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
+            PipeBarrier<PIPE_ALL>();
             uint32_t weight = 0U;
+            PipeBarrier<PIPE_ALL>();
             if constexpr (HasTopkWeight == 1) {
+                PipeBarrier<PIPE_ALL>();
                 weight = weightsLocal.GetValue(i);
             }
+            PipeBarrier<PIPE_ALL>();
             if (srcRank == static_cast<int32_t>(rankId_)) {
+                PipeBarrier<PIPE_ALL>();
                 SendLocalSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, localDataBase, localStateBase);
+                PipeBarrier<PIPE_ALL>();
                 continue;
             }
+            PipeBarrier<PIPE_ALL>();
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
+            PipeBarrier<PIPE_ALL>();
             uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
+            PipeBarrier<PIPE_ALL>();
             uint32_t entryOffset = (static_cast<uint32_t>(srcRank) * entriesPerRank + localIndex) * entryElements;
+            PipeBarrier<PIPE_ALL>();
             addressEntries.SetValue(entryOffset, tokenIndex);
+            PipeBarrier<PIPE_ALL>();
             addressEntries.SetValue(entryOffset + 1, static_cast<uint32_t>(srcTokenIdx));
+            PipeBarrier<PIPE_ALL>();
             addressEntries.SetValue(entryOffset + 2, static_cast<uint32_t>(srcTopKIdx));
+            PipeBarrier<PIPE_ALL>();
             addressEntries.SetValue(entryOffset + 3, weight);
+            PipeBarrier<PIPE_ALL>();
             rankCounts.SetValue(countOffset, static_cast<int32_t>(localIndex + 1));
         }
 
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE3>();
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t countOffset = rank * rankCountBlockElements;
+            PipeBarrier<PIPE_ALL>();
             uint32_t count = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
+            PipeBarrier<PIPE_ALL>();
             if (count == 0U) {
+                PipeBarrier<PIPE_ALL>();
                 continue;
             }
+            PipeBarrier<PIPE_ALL>();
             uint32_t prefixOffset = rank * rankCountBlockElements;
+            PipeBarrier<PIPE_ALL>();
             uint32_t writeStart = static_cast<uint32_t>(rankPrefix.GetValue(prefixOffset));
+            PipeBarrier<PIPE_ALL>();
             GlobalTensor<uint32_t> addressTable;
+            PipeBarrier<PIPE_ALL>();
             addressTable.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetLocalSendDataWorkspaceAddr(rank)));
+            PipeBarrier<PIPE_ALL>();
             addressCopyParams.blockCount = static_cast<uint16_t>(count);
+            PipeBarrier<PIPE_ALL>();
             DataCopy(addressTable[static_cast<uint64_t>(writeStart) * ADDRESS_ENTRY_GM_BYTES / sizeof(uint32_t)],
                      addressEntries[rank * entriesPerRank * entryElements], addressCopyParams);
+            PipeBarrier<PIPE_ALL>();
             rankPrefix.SetValue(prefixOffset, static_cast<int32_t>(writeStart + count));
         }
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline uint32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetAddressTableCount(uint32_t targetRank)
 {
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<uint32_t> totalRankCounts;
+    PipeBarrier<PIPE_ALL>();
     totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(rankCountWorkspaceAddr_));
+    PipeBarrier<PIPE_ALL>();
     DataCopy(statusTensor_, totalRankCounts[static_cast<uint64_t>(targetRank) * WIN_ADDR_ALIGN / sizeof(uint32_t)],
              UB_ALIGN / sizeof(uint32_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+    PipeBarrier<PIPE_ALL>();
     uint32_t count = statusTensor_.GetValue(0);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
+    PipeBarrier<PIPE_ALL>();
     return count;
 }
 
@@ -510,42 +721,72 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTa
                                                                                          uint32_t entryStart,
                                                                                          uint32_t entryEnd)
 {
+    PipeBarrier<PIPE_ALL>();
     if (entryStart >= entryEnd) {
+        PipeBarrier<PIPE_ALL>();
         return;
     }
+    PipeBarrier<PIPE_ALL>();
     if (targetRank != rankId_) {
+        PipeBarrier<PIPE_ALL>();
         BeginPreparedWrites(targetRank);
     }
 
+    PipeBarrier<PIPE_ALL>();
     uint32_t metaChunkTokens = (actualA_ < META_CHUNK_TOKEN_MAX) ? actualA_ : META_CHUNK_TOKEN_MAX;
+    PipeBarrier<PIPE_ALL>();
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     uint32_t entryChunkMax = metaChunkBytes / ADDRESS_ENTRY_UB_BYTES;
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<uint32_t> entriesLocal = metadataBuf_.Get<uint32_t>();
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<uint32_t> addressTable;
+    PipeBarrier<PIPE_ALL>();
     addressTable.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetLocalSendDataWorkspaceAddr(targetRank)));
+    PipeBarrier<PIPE_ALL>();
     const DataCopyPadExtParams<uint32_t> padParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t localEntryStride = ADDRESS_ENTRY_UB_BYTES / sizeof(uint32_t);
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t globalEntryStride = ADDRESS_ENTRY_GM_BYTES / sizeof(uint32_t);
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(targetRank, combineDataWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
 
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t chunkStart = entryStart; chunkStart < entryEnd; chunkStart += entryChunkMax) {
+        PipeBarrier<PIPE_ALL>();
         uint32_t chunkEnd = (chunkStart + entryChunkMax > entryEnd) ? entryEnd : chunkStart + entryChunkMax;
+        PipeBarrier<PIPE_ALL>();
         uint32_t curEntries = chunkEnd - chunkStart;
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams copyParams{static_cast<uint16_t>(curEntries), ADDRESS_ENTRY_UB_BYTES,
                                      ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES, 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(entriesLocal, addressTable[chunkStart * globalEntryStride], copyParams, padParams);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t i = 0; i < curEntries; ++i) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t offset = i * localEntryStride;
+            PipeBarrier<PIPE_ALL>();
             uint32_t tokenIndex = entriesLocal.GetValue(offset);
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTokenIdx = static_cast<int32_t>(entriesLocal.GetValue(offset + 1));
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTopKIdx = static_cast<int32_t>(entriesLocal.GetValue(offset + 2));
+            PipeBarrier<PIPE_ALL>();
             uint32_t weight = entriesLocal.GetValue(offset + 3);
+            PipeBarrier<PIPE_ALL>();
             SendRemoteSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, remoteDataBase, remoteStateBase, tokenBytes);
         }
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 }
@@ -553,29 +794,46 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTa
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr)
 {
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<XType> outToken;
+    PipeBarrier<PIPE_ALL>();
     outToken.SetGlobalBuffer((__gm__ XType *)dstAddr);
 
+    PipeBarrier<PIPE_ALL>();
     DataCopyPadParams padParams = {false, 0, 0, 0};
+    PipeBarrier<PIPE_ALL>();
     DataCopyParams copyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<XType> tokenTensor = xQueue_.AllocTensor<XType>();
+    PipeBarrier<PIPE_ALL>();
     DataCopyPad(tokenTensor, xGm_[static_cast<uint64_t>(tokenIndex) * axisH_], copyParams, padParams);
+    PipeBarrier<PIPE_ALL>();
     xQueue_.EnQue(tokenTensor);
+    PipeBarrier<PIPE_ALL>();
     tokenTensor = xQueue_.DeQue<XType>();
+    PipeBarrier<PIPE_ALL>();
     DataCopyPad(outToken, tokenTensor, copyParams);
+    PipeBarrier<PIPE_ALL>();
     xQueue_.FreeTensor<XType>(tokenTensor);
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
+    PipeBarrier<PIPE_ALL>();
     if (preparedWriteCount_ != 0) {
+        PipeBarrier<PIPE_ALL>();
         (void)hcomm_.BatchCommit(activeBatchHandle_);
+        PipeBarrier<PIPE_ALL>();
         preparedWriteCount_ = 0;
     }
+    PipeBarrier<PIPE_ALL>();
     if (!keepHandle) {
+        PipeBarrier<PIPE_ALL>();
         activeBatchHandle_ = {};
+        PipeBarrier<PIPE_ALL>();
         activeBatchChannel_ = 0;
+        PipeBarrier<PIPE_ALL>();
         activeBatchInitialized_ = false;
     }
 }
@@ -583,16 +841,24 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BeginPreparedWrites(uint32_t dstRank)
 {
+    PipeBarrier<PIPE_ALL>();
     uint64_t commHandle = GetCommHandle(dstRank);
+    PipeBarrier<PIPE_ALL>();
     if (activeBatchInitialized_ && activeBatchChannel_ == commHandle) {
+        PipeBarrier<PIPE_ALL>();
         return;
     }
+    PipeBarrier<PIPE_ALL>();
     if (activeBatchInitialized_) {
+        PipeBarrier<PIPE_ALL>();
         FlushPreparedWrites();
     }
+    PipeBarrier<PIPE_ALL>();
     activeBatchHandle_ =
         hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES, winRankAddr_[dstRank]);
+    PipeBarrier<PIPE_ALL>();
     activeBatchChannel_ = commHandle;
+    PipeBarrier<PIPE_ALL>();
     activeBatchInitialized_ = true;
 }
 
@@ -600,11 +866,15 @@ template <TemplateMoeEpCombineTypeClass>
 template <auto const &config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
+    PipeBarrier<PIPE_ALL>();
     if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
         // BatchCommit resets the WQE count in the handle; keep using it for this channel as PR 10309 does.
+        PipeBarrier<PIPE_ALL>();
         FlushPreparedWrites(true);
     }
+    PipeBarrier<PIPE_ALL>();
     (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    PipeBarrier<PIPE_ALL>();
     ++preparedWriteCount_;
 }
 
@@ -615,17 +885,28 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalSlot
                                                                                  GM_ADDR localDataBase,
                                                                                  GM_ADDR localStateBase)
 {
+    PipeBarrier<PIPE_ALL>();
     uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
+    PipeBarrier<PIPE_ALL>();
     uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
 
+    PipeBarrier<PIPE_ALL>();
     SendLocalToken(tokenIndex, localDataBase + sendTokenOffset);
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        PipeBarrier<PIPE_ALL>();
         statusTensor_(0) = weight;
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE3>();
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<uint32_t> state;
+        PipeBarrier<PIPE_ALL>();
         state.SetGlobalBuffer((__gm__ uint32_t *)(localStateBase + recvStateOffset));
+        PipeBarrier<PIPE_ALL>();
         DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(state, statusTensor_, weightCopyParams);
     }
 }
@@ -635,12 +916,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteSlo
     uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight, GM_ADDR remoteDataBase,
     GM_ADDR remoteStateBase, uint64_t tokenBytes)
 {
+    PipeBarrier<PIPE_ALL>();
     uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
+    PipeBarrier<PIPE_ALL>();
     uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
+    PipeBarrier<PIPE_ALL>();
     PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + sendTokenOffset, tokenAddr, tokenBytes);
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
+        PipeBarrier<PIPE_ALL>();
         PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + recvStateOffset, weightAddr, sizeof(uint32_t));
     }
 }
@@ -648,83 +936,132 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteSlo
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFlag(uint32_t dstRank)
 {
+    PipeBarrier<PIPE_ALL>();
     uint64_t flagOffset = (static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ + rankId_) * WIN_ADDR_ALIGN;
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR flagAddr = GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + flagOffset;
+    PipeBarrier<PIPE_ALL>();
     if (dstRank == rankId_) {
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<uint64_t> localFlag;
+        PipeBarrier<PIPE_ALL>();
         localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        PipeBarrier<PIPE_ALL>();
         DataCopy(localFlag, flagTensor, UB_ALIGN / sizeof(uint64_t));
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        PipeBarrier<PIPE_ALL>();
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
+        PipeBarrier<PIPE_ALL>();
         return;
     }
+    PipeBarrier<PIPE_ALL>();
     BeginPreparedWrites(dstRank);
+    PipeBarrier<PIPE_ALL>();
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSource()
 {
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+    PipeBarrier<PIPE_ALL>();
     Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_MTE3>();
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<uint64_t> flagWorkspace;
+    PipeBarrier<PIPE_ALL>();
     flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
+    PipeBarrier<PIPE_ALL>();
     DataCopy(flagWorkspace, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline int32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReadMetadataRank(uint64_t metadataRow)
 {
+    PipeBarrier<PIPE_ALL>();
     if (metadataRow >= actualA_) {
+        PipeBarrier<PIPE_ALL>();
         return static_cast<int32_t>(epWorldSize_);
     }
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
     DataCopyExtParams copyParams{1U, RECV_META_FIELDS * sizeof(int32_t), 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     DataCopyPad(metadataLocal, recvSrcMetadataGm_[metadataRow * RECV_META_FIELDS], copyParams, padParams);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+    PipeBarrier<PIPE_ALL>();
     int32_t srcRank = metadataLocal.GetValue(META_SRC_RANK_OFFSET);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
+    PipeBarrier<PIPE_ALL>();
     return srcRank;
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline uint64_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::LowerBoundSrcRank(uint32_t targetRank)
 {
+    PipeBarrier<PIPE_ALL>();
     uint64_t left = 0U;
+    PipeBarrier<PIPE_ALL>();
     uint64_t right = actualA_;
+    PipeBarrier<PIPE_ALL>();
     while (left < right) {
+        PipeBarrier<PIPE_ALL>();
         uint64_t mid = left + ((right - left) >> 1U);
+        PipeBarrier<PIPE_ALL>();
         int32_t srcRank = ReadMetadataRank(mid);
+        PipeBarrier<PIPE_ALL>();
         if (srcRank < static_cast<int32_t>(targetRank)) {
+            PipeBarrier<PIPE_ALL>();
             left = mid + 1U;
         } else {
+            PipeBarrier<PIPE_ALL>();
             right = mid;
         }
     }
+    PipeBarrier<PIPE_ALL>();
     return left;
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(
-    uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex, uint64_t &coreBegin,
-    uint64_t &coreEnd)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(uint64_t rangeBegin, uint64_t rangeEnd,
+                                                                              uint32_t coreCount, uint32_t coreIndex,
+                                                                              uint64_t &coreBegin, uint64_t &coreEnd)
 {
+    PipeBarrier<PIPE_ALL>();
     if (rangeBegin >= rangeEnd || coreCount == 0U || coreIndex >= coreCount) {
+        PipeBarrier<PIPE_ALL>();
         coreBegin = rangeBegin;
+        PipeBarrier<PIPE_ALL>();
         coreEnd = rangeBegin;
+        PipeBarrier<PIPE_ALL>();
         return;
     }
+    PipeBarrier<PIPE_ALL>();
     uint64_t count = rangeEnd - rangeBegin;
+    PipeBarrier<PIPE_ALL>();
     uint64_t base = count / coreCount;
+    PipeBarrier<PIPE_ALL>();
     uint64_t remainder = count % coreCount;
+    PipeBarrier<PIPE_ALL>();
     uint64_t prefix = static_cast<uint64_t>(coreIndex) * base +
                       ((static_cast<uint64_t>(coreIndex) < remainder) ? coreIndex : remainder);
+    PipeBarrier<PIPE_ALL>();
     uint64_t coreCountValue = base + ((static_cast<uint64_t>(coreIndex) < remainder) ? 1U : 0U);
+    PipeBarrier<PIPE_ALL>();
     coreBegin = rangeBegin + prefix;
+    PipeBarrier<PIPE_ALL>();
     coreEnd = coreBegin + coreCountValue;
 }
 
@@ -732,6 +1069,7 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::IsMetadataRowValid(
     uint32_t targetRank, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, int32_t recvXIdx)
 {
+    PipeBarrier<PIPE_ALL>();
     return srcRank == static_cast<int32_t>(targetRank) && srcTokenIdx >= 0 &&
            srcTokenIdx < static_cast<int32_t>(numMaxTokensPerRank_) && srcTopKIdx >= 0 &&
            srcTopKIdx < static_cast<int32_t>(topK_) && recvXIdx >= 0 && static_cast<uint64_t>(recvXIdx) < actualA_;
@@ -740,16 +1078,27 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::IsMetadataRow
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr)
 {
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<float> outWeight;
+        PipeBarrier<PIPE_ALL>();
         outWeight.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dstAddr));
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<float> weightTensor = weightQueue_.AllocTensor<float>();
+        PipeBarrier<PIPE_ALL>();
         DataCopyParams copyParams{1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPadParams padParams{false, 0U, 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(weightTensor, topkWeightsGm_[recvXIdx], copyParams, padParams);
+        PipeBarrier<PIPE_ALL>();
         weightQueue_.EnQue(weightTensor);
+        PipeBarrier<PIPE_ALL>();
         weightTensor = weightQueue_.DeQue<float>();
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(outWeight, weightTensor, copyParams);
+        PipeBarrier<PIPE_ALL>();
         weightQueue_.FreeTensor<float>(weightTensor);
     }
 }
@@ -758,10 +1107,14 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalMetadataSlot(
     uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR localDataBase, GM_ADDR localStateBase)
 {
-    uint64_t dstSlot = static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ +
-                       static_cast<uint32_t>(srcTopKIdx);
+    PipeBarrier<PIPE_ALL>();
+    uint64_t dstSlot =
+        static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
+    PipeBarrier<PIPE_ALL>();
     SendLocalToken(recvXIdx, localDataBase + dstSlot * perSlotBytes_);
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         SendLocalWeight(recvXIdx, localStateBase + dstSlot * WIN_ADDR_ALIGN);
     }
 }
@@ -771,91 +1124,142 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR remoteDataBase, GM_ADDR remoteStateBase,
     uint64_t tokenBytes)
 {
-    uint64_t dstSlot = static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ +
-                       static_cast<uint32_t>(srcTopKIdx);
+    PipeBarrier<PIPE_ALL>();
+    uint64_t dstSlot =
+        static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
+    PipeBarrier<PIPE_ALL>();
     PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    PipeBarrier<PIPE_ALL>();
     if constexpr (HasTopkWeight == 1) {
+        PipeBarrier<PIPE_ALL>();
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
+        PipeBarrier<PIPE_ALL>();
         PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
     }
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessLocalMetadataRange(uint64_t rangeBegin,
-                                                                                              uint64_t rangeEnd)
+                                                                                             uint64_t rangeEnd)
 {
+    PipeBarrier<PIPE_ALL>();
     if (rangeBegin >= rangeEnd) {
+        PipeBarrier<PIPE_ALL>();
         return false;
     }
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     bool didLocalWrite = false;
 
+    PipeBarrier<PIPE_ALL>();
     for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
-        uint64_t chunkEnd = (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd
-                                                                          : chunkStart + metadataChunkTokens_;
+        PipeBarrier<PIPE_ALL>();
+        uint64_t chunkEnd =
+            (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
+        PipeBarrier<PIPE_ALL>();
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t i = 0; i < chunkCount; ++i) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t metaOffset = i * RECV_META_FIELDS;
-            // int32_t srcRank = metadataLocal.GetValue(metaOffset + META_SRC_RANK_OFFSET); // TODO(delete): validation only
+            // int32_t srcRank = metadataLocal.GetValue(metaOffset + META_SRC_RANK_OFFSET); // TODO(delete): validation
+            // only
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            PipeBarrier<PIPE_ALL>();
             int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
             // TODO(delete): remove the legacy per-row validation helper after metadata contract validation.
             // Kernel trusts metadata produced by Dispatch Epilogue; do not validate every row on the hot path.
             // if (!IsMetadataRowValid(rankId_, srcRank, srcTokenIdx, srcTopKIdx, recvXIdx)) {
             //     continue;
             // }
+            PipeBarrier<PIPE_ALL>();
             SendLocalMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, localDataBase,
                                   localStateBase);
+            PipeBarrier<PIPE_ALL>();
             didLocalWrite = true;
         }
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
+    PipeBarrier<PIPE_ALL>();
     return didLocalWrite;
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemoteMetadataRange(
-    uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemoteMetadataRange(uint32_t targetRank,
+                                                                                              uint64_t rangeBegin,
+                                                                                              uint64_t rangeEnd)
 {
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    PipeBarrier<PIPE_ALL>();
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(targetRank, combineDataWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
+    PipeBarrier<PIPE_ALL>();
     uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
 
+    PipeBarrier<PIPE_ALL>();
     for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
-        uint64_t chunkEnd = (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd
-                                                                          : chunkStart + metadataChunkTokens_;
+        PipeBarrier<PIPE_ALL>();
+        uint64_t chunkEnd =
+            (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
+        PipeBarrier<PIPE_ALL>();
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+        PipeBarrier<PIPE_ALL>();
         DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
+        PipeBarrier<PIPE_ALL>();
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        PipeBarrier<PIPE_ALL>();
         for (uint32_t i = 0; i < chunkCount; ++i) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t metaOffset = i * RECV_META_FIELDS;
-            // int32_t srcRank = metadataLocal.GetValue(metaOffset + META_SRC_RANK_OFFSET); // TODO(delete): validation only
+            // int32_t srcRank = metadataLocal.GetValue(metaOffset + META_SRC_RANK_OFFSET); // TODO(delete): validation
+            // only
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            PipeBarrier<PIPE_ALL>();
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            PipeBarrier<PIPE_ALL>();
             int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
             // TODO(delete): remove the legacy per-row validation helper after metadata contract validation.
             // Kernel trusts metadata produced by Dispatch Epilogue; do not validate every row on the hot path.
             // if (!IsMetadataRowValid(targetRank, srcRank, srcTokenIdx, srcTopKIdx, recvXIdx)) {
             //     continue;
             // }
+            PipeBarrier<PIPE_ALL>();
             SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase,
                                    remoteStateBase, tokenBytes);
         }
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 }
@@ -863,46 +1267,75 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDirectFromMetadata()
 {
+    PipeBarrier<PIPE_ALL>();
     if (epWorldSize_ == 0U || aivNum_ == 0U) {
+        PipeBarrier<PIPE_ALL>();
         return;
     }
 
+    PipeBarrier<PIPE_ALL>();
     InitFlagSource();
 
+    PipeBarrier<PIPE_ALL>();
     uint64_t localBegin = LowerBoundSrcRank(rankId_);
+    PipeBarrier<PIPE_ALL>();
     uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
+    PipeBarrier<PIPE_ALL>();
     uint64_t localCoreBegin = 0U;
+    PipeBarrier<PIPE_ALL>();
     uint64_t localCoreEnd = 0U;
+    PipeBarrier<PIPE_ALL>();
     SplitRange(localBegin, localEnd, aivNum_, aivId_, localCoreBegin, localCoreEnd);
+    PipeBarrier<PIPE_ALL>();
     bool didLocalWrite = ProcessLocalMetadataRange(localCoreBegin, localCoreEnd);
+    PipeBarrier<PIPE_ALL>();
     if (didLocalWrite) {
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
     // All AIVs must reach this barrier, including empty local ranges and actualA_ == 0.
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
+    PipeBarrier<PIPE_ALL>();
     if (aivId_ == 0U) {
+        PipeBarrier<PIPE_ALL>();
         SendChannelFlag(rankId_);
     }
 
+    PipeBarrier<PIPE_ALL>();
     activeBatchHandle_ = {};
+    PipeBarrier<PIPE_ALL>();
     activeBatchChannel_ = 0U;
+    PipeBarrier<PIPE_ALL>();
     preparedWriteCount_ = 0U;
+    PipeBarrier<PIPE_ALL>();
     activeBatchInitialized_ = false;
 
+    PipeBarrier<PIPE_ALL>();
     uint64_t remoteOrdinalBegin = 0U;
+    PipeBarrier<PIPE_ALL>();
     uint64_t remoteOrdinalEnd = 0U;
+    PipeBarrier<PIPE_ALL>();
     uint32_t remoteRankCount = epWorldSize_ - 1U;
+    PipeBarrier<PIPE_ALL>();
     SplitRange(0U, remoteRankCount, aivNum_, aivId_, remoteOrdinalBegin, remoteOrdinalEnd);
+    PipeBarrier<PIPE_ALL>();
     for (uint64_t ordinal = remoteOrdinalBegin; ordinal < remoteOrdinalEnd; ++ordinal) {
-        uint32_t dstRank = (ordinal < rankId_) ? static_cast<uint32_t>(ordinal)
-                                              : static_cast<uint32_t>(ordinal + 1U);
+        PipeBarrier<PIPE_ALL>();
+        uint32_t dstRank = (ordinal < rankId_) ? static_cast<uint32_t>(ordinal) : static_cast<uint32_t>(ordinal + 1U);
+        PipeBarrier<PIPE_ALL>();
         uint64_t rankBegin = LowerBoundSrcRank(dstRank);
+        PipeBarrier<PIPE_ALL>();
         uint64_t rankEnd = LowerBoundSrcRank(dstRank + 1U);
+        PipeBarrier<PIPE_ALL>();
         BeginPreparedWrites(dstRank);
+        PipeBarrier<PIPE_ALL>();
         ProcessRemoteMetadataRange(dstRank, rankBegin, rankEnd);
+        PipeBarrier<PIPE_ALL>();
         SendChannelFlag(dstRank);
+        PipeBarrier<PIPE_ALL>();
         FlushPreparedWrites();
     }
 }
@@ -913,78 +1346,131 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
                                                                                      uint32_t &coreIndexInGroup,
                                                                                      uint32_t &groupSize)
 {
+    PipeBarrier<PIPE_ALL>();
     uint32_t maxChannelAivNum = epWorldSize_ * COMBINE_CHANNEL_COUNT;
+    PipeBarrier<PIPE_ALL>();
     bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
+    PipeBarrier<PIPE_ALL>();
     if (assignRemainingToLocal) {
         // Put all remote communication AIVs first, then give every remaining AIV to local copies.
+        PipeBarrier<PIPE_ALL>();
         uint32_t remoteAivNum = (epWorldSize_ - 1U) * COMBINE_CHANNEL_COUNT;
+        PipeBarrier<PIPE_ALL>();
         if (aivId_ < remoteAivNum) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t remoteRankIndex = aivId_ / COMBINE_CHANNEL_COUNT;
+            PipeBarrier<PIPE_ALL>();
             targetRank = remoteRankIndex < rankId_ ? remoteRankIndex : remoteRankIndex + 1U;
+            PipeBarrier<PIPE_ALL>();
             coreIndexInGroup = aivId_ % COMBINE_CHANNEL_COUNT;
+            PipeBarrier<PIPE_ALL>();
             groupSize = COMBINE_CHANNEL_COUNT;
         } else {
+            PipeBarrier<PIPE_ALL>();
             targetRank = rankId_;
+            PipeBarrier<PIPE_ALL>();
             coreIndexInGroup = aivId_ - remoteAivNum;
+            PipeBarrier<PIPE_ALL>();
             groupSize = totalBlocks - remoteAivNum;
         }
+        PipeBarrier<PIPE_ALL>();
         return;
     }
 
+    PipeBarrier<PIPE_ALL>();
     uint32_t baseGroupSize = totalBlocks / epWorldSize_;
+    PipeBarrier<PIPE_ALL>();
     uint32_t remainder = totalBlocks % epWorldSize_;
+    PipeBarrier<PIPE_ALL>();
     uint32_t accumulated = 0;
+    PipeBarrier<PIPE_ALL>();
     for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+        PipeBarrier<PIPE_ALL>();
         uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
+        PipeBarrier<PIPE_ALL>();
         if (aivId_ < accumulated + currentGroupSize) {
+            PipeBarrier<PIPE_ALL>();
             targetRank = rank;
+            PipeBarrier<PIPE_ALL>();
             groupSize = currentGroupSize;
+            PipeBarrier<PIPE_ALL>();
             coreIndexInGroup = aivId_ - accumulated;
+            PipeBarrier<PIPE_ALL>();
             return;
         }
+        PipeBarrier<PIPE_ALL>();
         accumulated += currentGroupSize;
     }
+    PipeBarrier<PIPE_ALL>();
     targetRank = epWorldSize_;
+    PipeBarrier<PIPE_ALL>();
     groupSize = 0;
+    PipeBarrier<PIPE_ALL>();
     coreIndexInGroup = 0;
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpertToToken()
 {
+    PipeBarrier<PIPE_ALL>();
     if (epWorldSize_ == 0 || aivNum_ == 0) {
+        PipeBarrier<PIPE_ALL>();
         return;
     }
+    PipeBarrier<PIPE_ALL>();
     uint32_t activeAivNum = aivNum_;
 
     // Build once with all AIVs; communication AIVs consume only their compact rank table below.
+    PipeBarrier<PIPE_ALL>();
     BuildAddressTable();
 
+    PipeBarrier<PIPE_ALL>();
     activeBatchHandle_ = {};
+    PipeBarrier<PIPE_ALL>();
     activeBatchChannel_ = 0;
+    PipeBarrier<PIPE_ALL>();
     preparedWriteCount_ = 0;
+    PipeBarrier<PIPE_ALL>();
     activeBatchInitialized_ = false;
 
+    PipeBarrier<PIPE_ALL>();
     bool splitRankTokens = activeAivNum >= epWorldSize_;
+    PipeBarrier<PIPE_ALL>();
     uint32_t targetRank = epWorldSize_;
+    PipeBarrier<PIPE_ALL>();
     uint32_t coreIndexInGroup = 0;
+    PipeBarrier<PIPE_ALL>();
     uint32_t groupSize = 1;
+    PipeBarrier<PIPE_ALL>();
     if (splitRankTokens && aivId_ < activeAivNum) {
+        PipeBarrier<PIPE_ALL>();
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
+    PipeBarrier<PIPE_ALL>();
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
+    PipeBarrier<PIPE_ALL>();
     if (sendsTokens) {
+        PipeBarrier<PIPE_ALL>();
         if (splitRankTokens) {
+            PipeBarrier<PIPE_ALL>();
             uint32_t entryCount = GetAddressTableCount(targetRank);
+            PipeBarrier<PIPE_ALL>();
             uint32_t entriesPerCore = entryCount / groupSize;
+            PipeBarrier<PIPE_ALL>();
             uint32_t remainder = entryCount % groupSize;
+            PipeBarrier<PIPE_ALL>();
             uint32_t entryStart =
                 coreIndexInGroup * entriesPerCore + ((coreIndexInGroup < remainder) ? coreIndexInGroup : remainder);
+            PipeBarrier<PIPE_ALL>();
             uint32_t entryEnd = entryStart + entriesPerCore + ((coreIndexInGroup < remainder) ? 1U : 0U);
+            PipeBarrier<PIPE_ALL>();
             SendAddressTableRange(targetRank, entryStart, entryEnd);
         } else {
+            PipeBarrier<PIPE_ALL>();
             for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
+                PipeBarrier<PIPE_ALL>();
                 uint32_t entryCount = GetAddressTableCount(rank);
+                PipeBarrier<PIPE_ALL>();
                 SendAddressTableRange(rank, 0U, entryCount);
             }
         }
@@ -992,27 +1478,44 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
     // Local copies completed before BuildAddressTable's final barrier. Each remote rank publishes one completion
     // flag through channel 0 without a second all-core barrier here.
+    PipeBarrier<PIPE_ALL>();
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
+    PipeBarrier<PIPE_ALL>();
     bool publishesChannelFlag =
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
+    PipeBarrier<PIPE_ALL>();
     if (publishesChannelFlag) {
+        PipeBarrier<PIPE_ALL>();
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        PipeBarrier<PIPE_ALL>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::V_MTE3>();
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<uint64_t> flagWorkspace;
+        PipeBarrier<PIPE_ALL>();
         flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
+        PipeBarrier<PIPE_ALL>();
         DataCopy(flagWorkspace, flagTensor, UB_ALIGN / sizeof(uint64_t));
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        PipeBarrier<PIPE_ALL>();
         if (splitRankTokens) {
+            PipeBarrier<PIPE_ALL>();
             SendChannelFlag(targetRank);
         } else {
+            PipeBarrier<PIPE_ALL>();
             for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+                PipeBarrier<PIPE_ALL>();
                 SendChannelFlag(dstRank);
             }
         }
     }
+    PipeBarrier<PIPE_ALL>();
     FlushPreparedWrites();
+    PipeBarrier<PIPE_ALL>();
     if (sendsTokens) {
+        PipeBarrier<PIPE_ALL>();
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
 }
@@ -1022,6 +1525,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
     // TODO(delete): remove the legacy address-table entry point and its helpers after direct-path validation.
     // SendPhaseExpertToToken();
+    PipeBarrier<PIPE_ALL>();
     SendPhaseDirectFromMetadata();
 }
 
