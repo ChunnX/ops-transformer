@@ -1114,32 +1114,19 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
     }
 }
 
-// AIV1 按与通用 GMM2 完全相同的 block scheduler 重放一个专家 slice，仅消费 AIC 已发布的 tile。
-template <typename ElementA, typename QuantScaleType, bool IsWeightNZ, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
-__aicore__ inline void ReplayGenericGmm2TilesForCombine(const ProblemShape &problemShape,
-                                                        const BlockJobContext &blockJob,
-                                                        const GMMAddrInfo &gmmAddrInfo, const Params &params,
-                                                        uint32_t &startBlockIdx, int32_t &tileReadySequence)
+// 使用 GMM2 已构造的配置重放 AIV1 tile；不同模板只需在入口选择配置类型和 scheduler N。
+template <typename ProblemConfig>
+__aicore__ inline void ConsumeGmm2TilesForCombine(const ProblemConfig &config, uint32_t schedulerN,
+                                                  const GMMAddrInfo &gmmAddrInfo, const Params &params,
+                                                  uint32_t &startBlockIdx, int32_t &tileReadySequence)
 {
-    if constexpr (g_coreType == AscendC::AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-    using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementA, bfloat16_t, QuantScaleType,
-                                        QuantScaleType, IsWeightNZ, TopkWeightsPrefetch, false, false,
-                                        IsGmm1Interleaved, true>;
-    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
-    GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
+    GmmKernel::BlockScheduler scheduler({config.m, schedulerN, config.k},
                                         GmmKernel::BlockScheduler::Params{Te::MakeCoord(
                                             static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
     if (startLoopIdx < tileNum) {
-        using ProblemConfig = std::remove_reference_t<decltype(config)>;
         using KernelConfig = typename ProblemConfig::KernelConfig;
         auto layouts = KernelConfig::BuildLayouts(config);
         auto gmC = Te::MakeTensor(
@@ -1152,64 +1139,40 @@ __aicore__ inline void ReplayGenericGmm2TilesForCombine(const ProblemShape &prob
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 
-// AIV1 按与 W4 GMM2 完全相同的 block scheduler 重放一个专家 slice。
-template <typename ElementA, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch>
-__aicore__ inline void ReplayW4Gmm2TilesForCombine(const ProblemShape &problemShape,
-                                                   const BlockJobContext &blockJob,
-                                                   const GMMAddrInfo &gmmAddrInfo, const Params &params,
-                                                   uint32_t &startBlockIdx, int32_t &tileReadySequence)
-{
-    if constexpr (g_coreType == AscendC::AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-    using GmmConfig = GmmKernel::Config<true, 0, ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
-                                        false, TopkWeightsPrefetch, false, false, false, true>;
-    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob, Gmm1TileM);
-    GmmKernel::BlockScheduler scheduler({config.m, config.outputN, config.k},
-                                        GmmKernel::BlockScheduler::Params{Te::MakeCoord(
-                                            static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t tileNum = scheduler.GetTileNum();
-    uint32_t startLoopIdx =
-        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
-    if (startLoopIdx < tileNum) {
-        using ProblemConfig = std::remove_reference_t<decltype(config)>;
-        using KernelConfig = typename ProblemConfig::KernelConfig;
-        auto layouts = KernelConfig::BuildLayouts(config);
-        auto gmC = Te::MakeTensor(
-            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ bfloat16_t *>(gmmAddrInfo.gmm2OutGlobal)),
-            layouts.c);
-        using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-        GmmKernel::Gmm2Aiv1EpilogueGeneric<bfloat16_t, MakeLayoutC>(
-            scheduler, gmC, params, gmmAddrInfo, tileReadySequence, config, startLoopIdx, tileNum);
-    }
-    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
-}
-
-// 根据模板的 GMM2 实现选择对应 scheduler；这里只做非量化 Combine 的 tile 重放。
+// AIV1 按对应 GMM2 的配置和 block scheduler 消费 AIC 已发布的非量化 Combine tile。
 template <typename ElementA, typename WeightType, typename QuantScaleType, Gmm2KernelKind KernelKind,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved>
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
 __aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmConfig,
                                                  const ProblemShape &problemShape,
                                                  const GMMAddrInfo &gmmAddrInfo, const Params &params,
                                                  uint32_t &startBlockIdx, int32_t &tileReadySequence)
 {
+    if constexpr (g_coreType == AscendC::AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return;
+    }
     if constexpr (KernelKind == Gmm2KernelKind::W4) {
-        ReplayW4Gmm2TilesForCombine<ElementA, WeightType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch>(
-            problemShape, gmmConfig.blockJob, gmmAddrInfo, params, startBlockIdx, tileReadySequence);
+        using GmmConfig = GmmKernel::Config<true, 0, ElementA, WeightType, bfloat16_t, QuantScaleType,
+                                            QuantScaleType, false, TopkWeightsPrefetch, false, false, false, true>;
+        auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
+        ConsumeGmm2TilesForCombine(config, config.outputN, gmmAddrInfo, params, startBlockIdx, tileReadySequence);
     } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        ReplayGenericGmm2TilesForCombine<ElementA, QuantScaleType, true, Gmm1TileM, TopkWeightsPrefetch,
-                                         IsGmm1Interleaved>(
-            problemShape, gmmConfig.blockJob, gmmAddrInfo, params, startBlockIdx, tileReadySequence);
+        using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementA, bfloat16_t,
+                                            QuantScaleType, QuantScaleType, true, TopkWeightsPrefetch, false, false,
+                                            IsGmm1Interleaved, true>;
+        auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
+        ConsumeGmm2TilesForCombine(config, config.schedulerN, gmmAddrInfo, params, startBlockIdx,
+                                  tileReadySequence);
     } else {
-        ReplayGenericGmm2TilesForCombine<ElementA, QuantScaleType, false, Gmm1TileM, TopkWeightsPrefetch,
-                                         IsGmm1Interleaved>(
-            problemShape, gmmConfig.blockJob, gmmAddrInfo, params, startBlockIdx, tileReadySequence);
+        using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementA, bfloat16_t,
+                                            QuantScaleType, QuantScaleType, false, TopkWeightsPrefetch, false, false,
+                                            IsGmm1Interleaved, true>;
+        auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
+        ConsumeGmm2TilesForCombine(config, config.schedulerN, gmmAddrInfo, params, startBlockIdx,
+                                  tileReadySequence);
     }
 }
 
@@ -1221,80 +1184,6 @@ __aicore__ inline void BindMoeExpertGmm2GroupCounter(const MoeSyncWorkspaceLayou
     uint64_t syncSlotOffset = static_cast<uint64_t>(expertIdx) * syncLayout.combineSyncSlotCountPerExpert;
     gmmAddrInfo.gmm2CombineSyncCounter = reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
                                          syncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
-}
-
-// 将一个显式 token 范围展开为逐专家 GMM2 slice。非量化模式下 AIV1 不在这里推进 scheduler，
-// 而是在 CombineTokenRange 中按相同范围重放；AIC/AIV0 仍按原顺序执行计算或 prologue。
-template <typename ElementA, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
-__aicore__ inline void RunGmm2TokenRange(
-    const MoeStageCommonConfig &common, const GmmExecutionConfig &gmmConfig,
-    const BlockWorkspaceContext &countWorkspace, const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-    const ExpertWeightTensorListAddrs &weights, const ExpertTokenRange &range, ExpertLoopState &state,
-    GMMAddrInfo &gmmAddrInfo,
-    GmmRuntimeState &runtimeState, int32_t &tileReadySequence)
-{
-    if constexpr (g_coreType == AscendC::AIV) {
-        if (GetSubBlockIdx() == 1U) {
-            return;
-        }
-    }
-    ExpertTokenPosition position = range.begin;
-    const ExpertTokenPosition &rangeEnd = range.end;
-    uint32_t gmm2TilesPerMGroup =
-        Ops::Base::CeilDiv(common.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
-    while ((position.expertIdx != rangeEnd.expertIdx ||
-            position.tokenIndexInExpert != rangeEnd.tokenIndexInExpert) &&
-           position.expertIdx < common.moeExpertPerRank) {
-        if (position.tokenIndexInExpert == 0U) {
-            uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
-                params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace, common.moeExpertPerRank,
-                position.expertIdx);
-            UpdateExpertLoopState(state, position.expertIdx, expertTokenCount);
-        }
-
-        uint64_t expertRowCount = Get<M_VALUE>(state.problemShape);
-        if (expertRowCount == 0U || position.tokenIndexInExpert >= expertRowCount) {
-            ++position.expertIdx;
-            position.tokenIndexInExpert = 0U;
-            continue;
-        }
-
-        uint32_t sliceEndIndexInExpert = static_cast<uint32_t>(expertRowCount);
-        if (position.expertIdx == rangeEnd.expertIdx) {
-            sliceEndIndexInExpert = rangeEnd.tokenIndexInExpert;
-        }
-        uint32_t sliceTokenCount = sliceEndIndexInExpert - position.tokenIndexInExpert;
-        uint32_t problemTileCount =
-            GetMGroupCountForRows(sliceTokenCount, Gmm1TileM) * gmm2TilesPerMGroup;
-        bool skipProblem = HandleWaveProblemWithoutWork(problemTileCount, gmmConfig.blockJob,
-                                                        runtimeState.startBlockIdx);
-        if (!skipProblem) {
-            UpdateMoeExpertGmm2GlobalBuffer<WeightType, ElementA, QuantScaleType>(
-                gmmConfig, syncLayout, params.workspaceInfo, weights, gmmAddrInfo, state,
-                position.tokenIndexInExpert);
-            gmmAddrInfo.gmmToEpilogueFlag =
-                reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(gmmConfig.blockJob.jobIndex) * INT_CACHELINE;
-
-            ProblemShape sliceProblemShape = state.problemShape;
-            Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-            bool isWholeExpert =
-                position.tokenIndexInExpert == 0U && static_cast<uint64_t>(sliceEndIndexInExpert) == expertRowCount;
-            RunGmm2ByMode<COMBINE_NO_QUANT, ElementA, ElementA, WeightType, QuantScaleType, false, false, Gmm1TileM,
-                          TopkWeightsPrefetch, false, IsGmm1Interleaved, true,
-                          Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE>(
-                gmmConfig, gmmAddrInfo, sliceProblemShape, runtimeState, nullptr, isWholeExpert,
-                position.tokenIndexInExpert, &params, &tileReadySequence);
-        }
-
-        position.tokenIndexInExpert = sliceEndIndexInExpert;
-        position.globalTokenIndex += sliceTokenCount;
-        if (position.tokenIndexInExpert >= expertRowCount) {
-            ++position.expertIdx;
-            position.tokenIndexInExpert = 0U;
-        }
-    }
 }
 
 constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;
