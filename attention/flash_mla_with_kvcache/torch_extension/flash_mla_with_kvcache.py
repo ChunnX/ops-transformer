@@ -146,15 +146,17 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
                 d_size = head_dim_v
                 softmax_out_size = (b_size, n_size, s_size)
 
-            # D7: 输出布局必须与 query 布局相同（TND/BNSD/BSND），不支持转置；旧默认
-            # layout_out="NTD" 已淘汰（FIA 的 NTD 输出约定），layout_out 缺省时跟随 layout_q。
+            # D7: 输出布局默认跟随 layout_q，允许 TND→NTD 转置。
             if layout_out is not None:
                 torch._check(
-                    layout_out == layout_q,
+                    layout_out == layout_q or (layout_q == "TND" and layout_out == "NTD"),
                     lambda: f"layout_out must equal layout_q ({layout_q}), but got {layout_out}",
                 )
             if layout_q == "TND":
-                attention_out_size = (t_size, n_size, d_size)
+                if layout_out == "NTD":
+                    attention_out_size = (n_size, t_size, d_size)
+                else:
+                    attention_out_size = (t_size, n_size, d_size)
             elif layout_q == "BSND":
                 attention_out_size = (b_size, s_size, n_size, d_size)
             else:
