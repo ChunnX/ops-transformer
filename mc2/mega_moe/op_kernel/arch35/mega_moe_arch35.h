@@ -144,12 +144,10 @@ protected:
     SendMaskScratch sendMaskScratch_;
     LocalTensor<int32_t> resetTensor_;
 
-    using BlockEpilogue =
-        BlockEpilogueActivationMxQuant<typename MoeQuantConfig::ActivationQuantOutType, bfloat16_t,
-                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
-    using SharedBlockEpilogue =
-        BlockEpilogueActivationMxQuant<typename SharedQuantConfig::ActivationQuantOutType, bfloat16_t,
-                                       L1_TILE_M_256, L1_TILE_N, false>;
+    using BlockEpilogue = BlockEpilogueActivationMxQuant<typename MoeQuantConfig::ActivationQuantOutType, bfloat16_t,
+                                                         EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
+    using SharedBlockEpilogue = BlockEpilogueActivationMxQuant<typename SharedQuantConfig::ActivationQuantOutType,
+                                                               bfloat16_t, L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<typename MoeQuantConfig::QuantStorageType> tokenDispatchScratch_;
