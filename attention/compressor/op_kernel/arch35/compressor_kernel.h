@@ -21,7 +21,7 @@
 #include "compressor_tiling_data.h"
 #include "compressor_tools.h"
 #include "compressor_block_cube.h"
-#include "compressor_block_vec.h"
+#include "compressor_block_vec_normal.h"
 
 using namespace AscendC;
 
@@ -95,7 +95,7 @@ private:
 
     // ==============================Service Define==============================
     CompressorBlockCube<COMP> blockCube_;
-    CompressorBlockVector<COMP> blockVec_;
+    CompressorBlockVectorNormal<COMP> blockVec_;
 
     uint32_t loopTimes = 0;
     uint32_t cubeLoop = 0;
