@@ -10,9 +10,9 @@
 # ---------------- CANN 版本检查 ----------------
 # 参考 cmake/config.cmake 中 CANN_VERSION 的获取方式（check_version_compatible.py 读取 CANN 包 version.info），
 # 优先使用 config.cmake 输出的 CANN_VERSION（已转小写），否则直接读取 version.info 的 Version= 完整版本号；
-# 版本为 9.2.0-beta.1 / 9.2.0-beta.2 时跳过本算子编译，其余版本正常编译。
+# 版本为 9.2.0-beta.1 / 9.2.0-beta.2 / 9.2.0 时跳过本算子编译，其余版本正常编译。
 message(STATUS "[quant_flash_attn_grad][DEBUG] CANN_VERSION='${CANN_VERSION}', ASCEND_CANN_PACKAGE_PATH='${ASCEND_CANN_PACKAGE_PATH}'")
-set(_qfag_excluded_versions "9.2.0-beta.1;9.2.0-beta.2")
+set(_qfag_excluded_versions "9.2.0-beta.1;9.2.0-beta.2;9.2.0")
 set(_qfag_cann_version "")
 if(DEFINED CANN_VERSION AND NOT "${CANN_VERSION}" STREQUAL "")
     set(_qfag_cann_version "${CANN_VERSION}")
