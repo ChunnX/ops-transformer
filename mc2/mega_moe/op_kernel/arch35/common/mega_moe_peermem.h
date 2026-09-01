@@ -129,7 +129,8 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
     int64_t expertCountRecvSize = CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
     int64_t tokenScaleBytes =
         CalcQuantTokenScaleBytes(params.h, params.elemsPerByte, params.topK, params.topkWeightsPrefetch);
-    int64_t dispatchRecordAreaSize = 0;
+    int64_t dispatchRecordAreaSize =
+        Ops::Base::CeilAlign(params.numMaxTokensPerRank * tokenScaleBytes, ALIGN_512);
     if (params.topoType == TOPO_TYPE_URMA) {
         int64_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, ALIGN_512);
         int64_t relayDataSize = Ops::Base::CeilAlign(
@@ -137,8 +138,6 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
         int64_t relayFlagSize = Ops::Base::CeilAlign(
             params.serverNum * params.numMaxTokensPerRank * static_cast<int64_t>(sizeof(uint64_t)), ALIGN_512);
         dispatchRecordAreaSize = relayDataSize + relayFlagSize;
-    } else {
-        dispatchRecordAreaSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * tokenScaleBytes, ALIGN_512);
     }
     int64_t combineTokenBytes = CalcCombineTokenBytes(params.h, params.yDtypeSize, params.isQuantCombine);
     int64_t combineSendSize =
