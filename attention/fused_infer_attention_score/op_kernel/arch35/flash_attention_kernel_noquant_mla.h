@@ -489,9 +489,8 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(int64_t bnIndx, int64_t gS1Index,
-                                                                          RunParamStr<isInfer> &runParam)
+__aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
+    int64_t bnIndx, int64_t gS1Index, RunParamStr<isInfer> &runParam)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         if (runParam.boIdx == 0) {
@@ -514,10 +513,11 @@ FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(int64_
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FAKernelNoquantMla<CubeBlockType, VecBlockType>::SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam,
-                                                            int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
-                                                            int64_t multiCoreInnerIdx)
+__aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::SetRunInfo(RunInfo<isInfer> &runInfo,
+                                                                                   RunParamStr<isInfer> &runParam,
+                                                                                   int64_t taskId, int64_t s2LoopCount,
+                                                                                   int64_t s2LoopLimit,
+                                                                                   int64_t multiCoreInnerIdx)
 {
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;

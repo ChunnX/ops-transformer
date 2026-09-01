@@ -103,15 +103,13 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::InitUniqueRunInfo(const RunParamStr<isInfer> &runParam,
-                                                                                 RunInfo<isInfer> &runInfo)
+__aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
+    const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo)
 {
     InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, runInfo);
     ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
         runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
 }
-
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::ProcessS2Loop(
@@ -296,9 +294,8 @@ __aicore__ inline int64_t FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlo
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t
-FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1RealSize(const int64_t &actualS1Len,
-                                                                             const int64_t &actualS2Len)
+__aicore__ inline int64_t FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1RealSize(
+    const int64_t &actualS1Len, const int64_t &actualS2Len)
 {
     if constexpr (hasAtten) {
         if (this->attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
@@ -310,9 +307,8 @@ FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1RealSize(con
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1OuterSize(const int64_t &multiCoreInnerOffset,
-                                                                              RunParamStr<isInfer> &runParam)
+__aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1OuterSize(
+    const int64_t &multiCoreInnerOffset, RunParamStr<isInfer> &runParam)
 {
     int64_t actualS1Outersize = 0;
     this->s1OuterSizeAcc = 0;
@@ -342,9 +338,8 @@ FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1OuterSize(co
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::ComputeAxisIdx(int64_t multiCoreInnerIdx,
-                                                                              RunParamStr<isInfer> &runParam)
+__aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::ComputeAxisIdx(
+    int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
 {
     this->GetSeqQlenKvlenByBoidx(runParam.boIdx, runParam.actualS1Size, runParam.actualS2Size);
     int64_t tmpS1Outersize = CalS1RealSize(runParam.actualS1Size, runParam.actualS2Size);
