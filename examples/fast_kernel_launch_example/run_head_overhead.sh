@@ -773,35 +773,31 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
         print_op_result('grouped_matmul', 'Cube', gmm_cores, r, m, fm, s2)
         results.append(('grouped_matmul', 'Cube', gmm_cores, r, m, fm, s2))
 
-# 生成汇总表 (文件名带 SoC 前缀; 每指标 min/mean/max 三组)
+# 生成汇总表 (长表: 每算子 min/mean/max 各一行, 2 算子共 6 行数据)
 summary_path = os.path.join(output_dir, f'summary_{soc_version}.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
-    w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)',
-                '段1kick-stars_min(us)', '段1kick-stars_mean(us)', '段1kick-stars_max(us)', '段1_n',
-                '段2T0-kick_min(us)', '段2T0-kick_mean(us)', '段2T0-kick_max(us)', '段2_n',
-                '段3T1-T0_min(us)', '段3T1-T0_mean(us)', '段3T1-T0_max(us)',
-                '头开销T1-stars_min(us)', '头开销T1-stars_mean(us)', '头开销T1-stars_max(us)',
-                'T2-stars_min(us)', 'T2-stars_mean(us)', 'T2-stars_max(us)'])
+    w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)', '统计口径',
+                '段1kick-stars(us)', '段1_n',
+                '段2T0-kick(us)', '段2_n',
+                '段3T1-T0(us)',
+                '头开销T1-stars(us)',
+                'T2-stars(us)'])
     for op, typ, cores, r, m, fm, s2 in results:
         seg1 = fm.get('seg1_dist') if fm else None
-        row = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1, m['n'] if m else '',
-               f"{r['mean']:.3f}"]
-        if seg1:
-            row += [fmt(seg1[k]) for k in ('min', 'mean', 'max')] + [seg1['n']]
-        else:
-            row += ['N/A', 'N/A', 'N/A', '']
-        if s2:
-            row += [fmt(s2[k]) for k in ('min', 'mean', 'max')] + [s2['n']]
-        else:
-            row += ['N/A', 'N/A', 'N/A', '']
-        if m:
-            row += [fmt(m.get(k)) for k in ('t1_t0_min', 't1_t0_mean', 't1_t0_max')]
-            row += [fmt(m.get(k)) for k in ('t1_stars_min', 't1_stars_mean', 't1_stars')]
-            row += [fmt(m.get(k)) for k in ('t2_stars_min', 't2_stars_mean', 't2_stars')]
-        else:
-            row += ['N/A'] * 9
-        w.writerow(row)
+        base = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1,
+                m['n'] if m else '', f"{r['mean']:.3f}"]
+        for stat in ('min', 'mean', 'max'):
+            row = list(base) + [stat]
+            row += [fmt(seg1[stat]) if seg1 else 'N/A', seg1['n'] if seg1 else '']
+            row += [fmt(s2[stat]) if s2 else 'N/A', s2['n'] if s2 else '']
+            if m:
+                row += [fmt(m.get('t1_t0_' + stat))]
+                row += [fmt(m.get('t1_stars_' + stat if stat != 'max' else 't1_stars'))]
+                row += [fmt(m.get('t2_stars_' + stat if stat != 'max' else 't2_stars'))]
+            else:
+                row += ['N/A'] * 3
+            w.writerow(row)
 
 print(f"汇总 CSV: {summary_path}")
 print()
