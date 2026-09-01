@@ -40,6 +40,9 @@ public:
     __aicore__ inline void SetSwizzleConstInfo();
     __aicore__ inline void SetAxisRunInfo(FagRunInfo &runInfo, int64_t s2CvBegin, int64_t s2CvEnd, int64_t boIdx,
                                           int64_t n2oIdx, int64_t goIdx, int64_t s1oIdx, int64_t s2oIdx);
+    __aicore__ inline void SetInvalidDpseRunInfo(FagRunInfo &runInfo, int64_t s2CvBegin, int64_t s2CvEnd, int64_t boIdx,
+                                                 int64_t n2oIdx, int64_t goIdx, int64_t s1oIdx, int64_t s2oIdx,
+                                                 int64_t actualS1Size, int64_t actualS2Size, int64_t b1SSOffset);
     __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, FagRunInfo &nextRunInfo, int64_t taskId, int64_t index,
                                       int64_t nextIndex = -1);
     __aicore__ inline void Process();
@@ -231,7 +234,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                dropInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
-                              deqScaleV, deqScaleDy, dq, dk, dv, dqRope, dkRope, sink, dsink, workspace);
+                              deqScaleV, deqScaleDy, dq, dk, dv, dpse, dqRope, dkRope, sink, dsink, workspace);
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) {
         vecBlock.SetOldDeterFp32Param(constInfo);
     }
@@ -1152,17 +1155,45 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetInvalidDpseRunInfo(
+    FagRunInfo &runInfo, int64_t s2CvBegin, int64_t s2CvEnd, int64_t boIdx, int64_t n2oIdx, int64_t goIdx,
+    int64_t s1oIdx, int64_t s2oIdx, int64_t actualS1Size, int64_t actualS2Size, int64_t b1SSOffset)
+{
+    SetAxisRunInfo(runInfo, s2CvBegin, s2CvEnd, boIdx, n2oIdx, goIdx, s1oIdx, s2oIdx);
+    runInfo.commonRunInfo.actualS1Size = actualS1Size;
+    runInfo.commonRunInfo.actualS2Size = actualS2Size;
+    runInfo.commonRunInfo.s1RealSize = Min(static_cast<int64_t>(CUBE_BASEM), actualS1Size - s1oIdx * CUBE_BASEM);
+    runInfo.commonRunInfo.firstHalfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
+    runInfo.commonRunInfo.halfS1RealSize =
+        vSubBlockIdx == 0 ? runInfo.commonRunInfo.firstHalfS1RealSize :
+                            runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.firstHalfS1RealSize;
+    runInfo.commonRunInfo.vecCoreOffset = vSubBlockIdx * runInfo.commonRunInfo.firstHalfS1RealSize;
+    runInfo.commonRunInfo.s2StartIdx = s2CvBegin;
+    runInfo.commonRunInfo.s2RealSize = s2CvEnd - s2CvBegin;
+    runInfo.commonRunInfo.b1SSOffset = b1SSOffset;
+    runInfo.isInvalidDpseBlock = true;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsValidForTND(
     FagRunInfo &runInfo, int64_t taskId, int64_t index)
 {
     int64_t resbaseIdx = 0;
     int64_t startBIdx = 0;
+    int64_t b1SSOffset = 0;
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
         resbaseIdx = index - tilingData->tndParam.tndPrefixSum[cBlockIdx] * constInfo.commonConstInfo.n2G;
         startBIdx = tilingData->tndParam.tndStartBIdx[cBlockIdx];
+        if ASCEND_IS_AIV {
+            b1SSOffset = tilingData->tndParam.tndS1S2PrefixSum[cBlockIdx];
+        }
     } else {
         resbaseIdx = index - curBatchTotalBaseIdx;
         startBIdx = curBatchIdx;
+        if ASCEND_IS_AIV {
+            b1SSOffset = curBatchTotalS1S2Size;
+        }
     }
     int64_t actualS1Len = 0;
     int64_t actualS2Len = 0;
@@ -1194,6 +1225,15 @@ __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                         s2EndLen = Min(Max(s2EndLen, ((__gm__ int64_t *)prefixNAddr)[bIdx]), actualS2Len);
                     }
                     bool isValid = s2IdxLeft < s2EndLen;
+                    if (!isValid) {
+                        if ASCEND_IS_AIV {
+                            int64_t n2gIdx = resbaseIdx / (s1OuterTmp * s2OuterTmp);
+                            SetInvalidDpseRunInfo(runInfo, s2IdxLeft, s2IdxRight, bIdx,
+                                                  n2gIdx / constInfo.commonConstInfo.gSize,
+                                                  n2gIdx % constInfo.commonConstInfo.gSize, s1oDimIdx, s2oDimIdx,
+                                                  actualS1Len, actualS2Len, b1SSOffset);
+                        }
+                    }
                     if (isValid) {
                         runInfo.s2CvBegin = s2IdxLeft;
                         runInfo.s2CvEnd = s2IdxRight;
@@ -1225,6 +1265,15 @@ __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                     AlignTo64(Min(CUBE_BASEM * (s1oDimIdx + 1), constInfo.commonConstInfo.s1Size) + actualCalcS2Token);
                 s2SparseRight = Min(s2SparseRight, actualS2Len);
                 bool isValid = s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
+                if (!isValid) {
+                    if ASCEND_IS_AIV {
+                        int64_t n2gIdx = resbaseIdx / (s1OuterTmp * s2OuterTmp);
+                        SetInvalidDpseRunInfo(runInfo, s2IdxLeft, s2IdxRight, bIdx,
+                                              n2gIdx / constInfo.commonConstInfo.gSize,
+                                              n2gIdx % constInfo.commonConstInfo.gSize, s1oDimIdx, s2oDimIdx,
+                                              actualS1Len, actualS2Len, b1SSOffset);
+                    }
+                }
                 runInfo.s2CvBegin = s2IdxLeft;
                 runInfo.s2CvEnd = s2IdxRight;
                 if constexpr (IS_BN2_MULTIBLK) {
@@ -1257,6 +1306,9 @@ __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             }
         } else {
             resbaseIdx -= totalBaseIdx;
+            if ASCEND_IS_AIV {
+                b1SSOffset += actualS1Len * actualS2Len;
+            }
         }
     }
     return false;
@@ -1266,6 +1318,9 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsValid(
     FagRunInfo &runInfo, int64_t taskId, int64_t index)
 {
+    if ASCEND_IS_AIV {
+        runInfo.isInvalidDpseBlock = false;
+    }
     if constexpr (IS_TND) {
         return IsValidForTND(runInfo, taskId, index);
     } else {
@@ -1277,7 +1332,19 @@ __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         if constexpr (IS_ATTEN_MASK) {
             if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL || constInfo.sparseMode == PREFIX ||
                 constInfo.sparseMode == PREFIX_COMPRESS) {
-                return CheckIsValidBlock(runInfo, index, s1oDimIdx, s2oDimIdx, taskId);
+                bool isValid = CheckIsValidBlock(runInfo, index, s1oDimIdx, s2oDimIdx, taskId);
+                if (!isValid) {
+                    if ASCEND_IS_AIV {
+                        int64_t bDimTail = index % constInfo.n2GS1oS2o;
+                        int64_t n2DimTail = bDimTail % constInfo.gS1oS2o;
+                        int64_t bIdx = index / constInfo.n2GS1oS2o;
+                        SetInvalidDpseRunInfo(runInfo, s2IdxLeft, s2IdxRight, bIdx, bDimTail / constInfo.gS1oS2o,
+                                              n2DimTail / constInfo.s1oS2o, s1oDimIdx, s2oDimIdx,
+                                              constInfo.commonConstInfo.s1Size, constInfo.commonConstInfo.s2Size,
+                                              bIdx * constInfo.commonConstInfo.s1S2);
+                    }
+                }
+                return isValid;
             } else {
                 int64_t s2SparseLeft = Max(CUBE_BASEM * s1oDimIdx - constInfo.s1Token, 0);
                 s2SparseLeft = s2SparseLeft >> 6 << 6;
@@ -1299,6 +1366,16 @@ __aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                     int64_t n2DimTail = bDimTail % constInfo.gS1oS2o;
                     SetAxisRunInfo(runInfo, s2IdxLeft, s2IdxRight, index / constInfo.n2GS1oS2o,
                                    bDimTail / constInfo.gS1oS2o, n2DimTail / constInfo.s1oS2o, s1oDimIdx, s2oDimIdx);
+                } else {
+                    if ASCEND_IS_AIV {
+                        int64_t bDimTail = index % constInfo.n2GS1oS2o;
+                        int64_t n2DimTail = bDimTail % constInfo.gS1oS2o;
+                        int64_t bIdx = index / constInfo.n2GS1oS2o;
+                        SetInvalidDpseRunInfo(runInfo, s2IdxLeft, s2IdxRight, bIdx, bDimTail / constInfo.gS1oS2o,
+                                              n2DimTail / constInfo.s1oS2o, s1oDimIdx, s2oDimIdx,
+                                              constInfo.commonConstInfo.s1Size, constInfo.commonConstInfo.s2Size,
+                                              bIdx * constInfo.commonConstInfo.s1S2);
+                    }
                 }
                 return isValid;
             }
@@ -1388,10 +1465,9 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
                 return nextValidBlockInnerIdx;
             } else {
                 nextValidBlockInnerIdx = blockInnerIdx;
-                while (!IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
-                    if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
-                        return -1;
-                    }
+                while (nextValidBlockInnerIdx < tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx] &&
+                       !IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
+                    vecBlock.ClearInvalidDpseBlock(constInfo, runInfo);
                     nextValidBlockInnerIdx++;
                 }
                 if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
@@ -1401,10 +1477,9 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
             }
         } else {
             nextValidBlockInnerIdx = blockInnerIdx;
-            while (!IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
-                if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
-                    return -1;
-                }
+            while (nextValidBlockInnerIdx < tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx] &&
+                   !IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
+                vecBlock.ClearInvalidDpseBlock(constInfo, runInfo);
                 nextValidBlockInnerIdx++;
             }
             if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {

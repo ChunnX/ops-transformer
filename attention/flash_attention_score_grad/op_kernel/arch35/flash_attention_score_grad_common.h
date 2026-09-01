@@ -547,6 +547,7 @@ struct FagRunInfo {
     bool isNextKeyReuse = false;
     bool isLastProcessBlock = false;
     bool isFirstProcessBlock = false;
+    bool isInvalidDpseBlock = false;
 
     int64_t maxsumOffset;
 
