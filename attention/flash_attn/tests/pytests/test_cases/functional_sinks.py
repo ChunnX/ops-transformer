@@ -11,8 +11,6 @@
 """Auto-generated generalized flash_attn test cases (seed=2026)."""
 
 # fmt: off
-
-# fmt: off
 TestCases = {
     "FlashGen_S1_varlen_TND_TND_m3_86": {
         "B": [223],
