@@ -366,11 +366,15 @@ public:
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
-                                        uint32_t s2RealSize)
+                                        uint32_t s2RealSize, uint32_t nCount = 0)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
-        fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
+        uint32_t nFull = (runInfo.actMSize + 31) >> 5 << 5;
+        if (nCount == 0) {
+            nCount = nFull;
+        }
+        fixpipeParams.nSize = nCount;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
         fixpipeParams.mSize = (s2RealSize + 7) >> 3 << 3;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
@@ -424,9 +428,29 @@ public:
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
         outputBuf.WaitCrossCore();
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        // [性能实验1] fixpipe按N方向(列/z-block)拆成两半: fixpipe的L0C源只支持z-block粒度寻址
+        // (srcOffset=cburstNum*nIterIndex*srcStride*BLOCK_CUBE), 因此拆分必须落在完整z-block边界上。
+        // S_T = [s2行 × m列], m列方向=8个z-block; chunk1搬z-block0..3(前64列), chunk2搬z-block4..7(后64列)。
+        // UB侧布局与整块版逐字节一致(AIV侧零感知)。前半完成即发跨核信号, AIV提前启动与后半搬运重叠;
+        // 极限时序下AIV可能读到尚未写完的后半数据(数值错误, 仅用于性能测量, 访存模式不变)。
+        {
+            LocalTensor<T> mm1DstUb = outputBuf.template GetTensor<T>();
+            LocalTensor<T> mm1SrcL0C = mm1ResL0C.GetTensor<T>();
+            uint32_t nFull = (runInfo.actMSize + 31) >> 5 << 5;
+            if (nFull > 64) {
+                uint32_t halfN = ((nFull >> 1) + 15) >> 4 << 4; // 16列(1个z-block)对齐
+                uint32_t srcStrideWhole = ((((s2CalcSize + 7) >> 3 << 3) + 15) / 16) * 16;
+                FixpipeMm1Dn(mm1DstUb, mm1SrcL0C, runInfo, s2CalcSize, halfN);
+                outputBuf.SetCrossCore(); // 前半完成信号(替代原整块完成信号)
+                // chunk2源基址: halfN列 = halfN/16个z-block, 每个z-block字节跨度=srcStrideWhole*16元素
+                FixpipeMm1Dn(mm1DstUb[halfN], mm1SrcL0C[(halfN / 16) * srcStrideWhole * 16], runInfo, s2CalcSize,
+                            nFull - halfN);
+            } else {
+                FixpipeMm1Dn(mm1DstUb, mm1SrcL0C, runInfo, s2CalcSize);
+                outputBuf.SetCrossCore();
+            }
+        }
         mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
     }
 
     __aicore__ inline void IterateBmm2(MM2_DBUF_T &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
