@@ -471,7 +471,7 @@ bool MeetCore(const std::unique_ptr<ge::fusion::MatchResult> &matchResult, const
     if (!IsAntiquantDirectConnectAllowed(matchResult, patternNameStr)) {
         return false;
     }
-    OPS_LOG_I(passName, "Found One pattern that meets requirements");
+    OPS_LOG_I(passName, "Found One pattern that meets requirements, pattern=%s", patternNameStr.c_str());
     return true;
 }
 
@@ -562,6 +562,80 @@ bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder
                                                                inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     }
     return true;
+}
+
+// ES 重建时 nullptr 可选输入可能仍留下入边/占位；fallback 见 dequant 非空会误判 K_QUANT 并走 QuantV4
+static bool DisconnectOptionalInput(ge::Graph &graph, ge::GNode &mc2Node, int32_t inputIdx, const char *passName)
+{
+    auto peer = mc2Node.GetInDataNodesAndPortIndexs(inputIdx);
+    if (peer.first == nullptr) {
+        return true;
+    }
+    if (graph.RemoveEdge(*peer.first, peer.second, mc2Node, inputIdx) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_W(passName, "Failed to disconnect optional input idx=%d.", inputIdx);
+        return false;
+    }
+    // 断开后若源节点无其它数据出边，删掉占位 Const，避免残留
+    bool hasOutData = false;
+    const size_t outSize = peer.first->GetOutputsSize();
+    for (size_t i = 0; i < outSize; ++i) {
+        if (!peer.first->GetOutDataNodesAndPortIndexs(static_cast<int32_t>(i)).empty()) {
+            hasOutData = true;
+            break;
+        }
+    }
+    if (!hasOutData) {
+        (void)graph.RemoveNode(*peer.first);
+    }
+    return true;
+}
+
+static bool DisconnectUnusedMarOptionalInputs(ge::Graph &graph, const std::string &patternNameStr, const char *passName)
+{
+    ge::GNode marNode;
+    bool foundMar = false;
+    for (auto &node : graph.GetDirectNode()) {
+        ge::AscendString nodeType;
+        if (node.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType.GetString() == nullptr) {
+            continue;
+        }
+        if (std::string(nodeType.GetString()) == "MatmulAllReduce") {
+            marNode = node;
+            foundMar = true;
+            break;
+        }
+    }
+    if (!foundMar) {
+        OPS_LOG_W(passName, "MatmulAllReduce node not found when disconnecting optionals.");
+        return true;
+    }
+
+    // 对齐 aclnn 非量化：未使用的 optional 必须保持未实例化（尤其 dequant=6）
+    const bool hasBias = patternNameStr.find(PATTERN_BIAS) != std::string::npos;
+    const bool hasScale = patternNameStr.find(PATTERN_SCALE) != std::string::npos;
+    const bool hasOffset = patternNameStr.find(PATTERN_OFFSET) != std::string::npos;
+    const bool hasDequant = patternNameStr.find(PATTERN_DEQUANT) != std::string::npos;
+
+    bool ok = true;
+    if (!hasBias) {
+        ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_BIAS), passName) && ok;
+    }
+    ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_X3), passName) && ok;
+    if (!hasScale) {
+        ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_SCALE), passName) && ok;
+    }
+    if (!hasOffset) {
+        ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_OFFSET), passName) && ok;
+    }
+    if (!hasDequant) {
+        ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_DEQUANT), passName) && ok;
+    }
+    ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_PERTOKEN), passName) && ok;
+    ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_COMMQUANTSCALE1), passName) &&
+         ok;
+    ok = DisconnectOptionalInput(graph, marNode, static_cast<int32_t>(ops::MC2InputIdx::K_COMMQUANTSCALE2), passName) &&
+         ok;
+    return ok;
 }
 
 bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
@@ -665,7 +739,14 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
                                          inputTensors.rDequantScale, nullptr, nullptr, nullptr, group.GetString(),
                                          reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize,
                                          groupSize, yDtype, commQuantMode, commMode.GetString());
-        return replaceGraphBuilder.BuildAndReset({y});
+        auto replaceGraph = replaceGraphBuilder.BuildAndReset({y});
+        if (replaceGraph == nullptr) {
+            return nullptr;
+        }
+        if (!DisconnectUnusedMarOptionalInputs(*replaceGraph, patternNameStr, passName)) {
+            OPS_LOG_W(passName, "Disconnect unused optional inputs failed, continue with replace graph.");
+        }
+        return replaceGraph;
     }
 
     float epsilon = 1e-6f;
