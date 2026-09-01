@@ -236,7 +236,7 @@ def test_host_registers_private_diagnostic_op_and_mte3_variants():
     assert "uint32_t FinalizeWithStatus" in scratch
 
 
-def test_official_block_mode_calls_the_official_tile_once():
+def test_official_block_mode_uses_the_exact_official_call_pattern():
     device = (
         PROJECT_ROOT / "csrc" / "grouped_mat_mul_all_to_allv_udma" /
         "ascend950" / "grouped_mat_mul_all_to_allv_udma_device.h"
@@ -246,10 +246,22 @@ def test_official_block_mode_calls_the_official_tile_once():
         "catccos" / "dgemm" / "kernel" /
         "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
-    assert "OfficialUdmaTileAdapter" in device
+    assert "OfficialUdmaTileAdapter" not in device
+    assert "OfficialUdmaBlockAdapter" not in device
     assert "CopyTransport::Udma" in device
     assert "UseOfficialUdmaBlock" in device
-    branch_start = kernel.index("if constexpr (OFFICIAL_UDMA_BLOCK)")
+    assert "using OfficialBlockComm = Catccos::Comm::Block::CommBlock<" in device
+    assert "using BlockComm = HybridBlockComm" in device
+    assert "OfficialBlockComm blockRemoteCopy;" in kernel
+    assert "RunTargetOrderAivWithBlock(params, blockRemoteCopy);" in kernel
+    assert "if (srcRankIdx != rankIdx)" in kernel
+    assert "selfOutputBase + selfConsumedRows + blockOffsetC.row()" in kernel
+    official_call_comment = kernel.index(
+        "Exactly mirror the official MatMulAllToAll pattern"
+    )
+    branch_start = kernel.rfind(
+        "if constexpr (OFFICIAL_UDMA_BLOCK)", 0, official_call_comment
+    )
     branch_end = kernel.index("if (quietStatus == 0)", branch_start)
     official_branch = kernel[branch_start:branch_end]
     assert "blockRemoteCopy(" in official_branch

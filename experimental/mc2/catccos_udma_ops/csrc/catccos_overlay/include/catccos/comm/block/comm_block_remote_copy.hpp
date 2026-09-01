@@ -11,6 +11,8 @@
 #ifndef CATCCOS_COMM_BLOCK_REMOTE_COPY_HPP
 #define CATCCOS_COMM_BLOCK_REMOTE_COPY_HPP
 
+#include <type_traits>
+
 #include "catccos/catccos.hpp"
 #include "catccos/comm/comm_dispatch_policy.hpp"
 #include "catccos/detail/remote_copy_type.hpp"
@@ -29,6 +31,14 @@ namespace Catccos::Comm::Block
 
 using Catlass::GemmCoord;
 using Catlass::MatrixCoord;
+
+template <class TileRemoteCopy, class = void>
+struct TileRemoteCopyDefersQuiet : std::false_type {};
+
+template <class TileRemoteCopy>
+struct TileRemoteCopyDefersQuiet<
+    TileRemoteCopy, std::void_t<decltype(TileRemoteCopy::DEFER_QUIET)>>
+    : std::bool_constant<TileRemoteCopy::DEFER_QUIET> {};
 
 // 婢舵氨娣弫鐗堝祦閻ㄥ嫯绻欑粩顖炩偓姘繆鐎圭偟骞?// for matmul fusion kernel
 template <class ArchTag_, uint32_t UB_STAGES_, bool IsDynamic_, class SrcType_, class DstType_, class BlockShape_,
@@ -318,7 +328,7 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
     uint32_t FinalizeBlockLoopWithStatus()
     {
         uint32_t status = 0;
-        if constexpr (TileRemoteCopy::DEFER_QUIET)
+        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value)
         {
             if (hasPendingCopy)
             {
@@ -332,7 +342,7 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
     CATLASS_DEVICE
     void FinalizeBlockLoop()
     {
-        if constexpr (TileRemoteCopy::DEFER_QUIET)
+        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value)
         {
             if (hasPendingCopy)
             {
@@ -352,7 +362,7 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
             return;
         }
 
-        if constexpr (TileRemoteCopy::DEFER_QUIET)
+        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value)
         {
             // Current collective schedules one peer per block loop. Keep this
             // guard so future schedulers can switch peers without mixing two
@@ -366,7 +376,7 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
 
         tileRemoteCopy(gmDst, layoutDst, gmSrc, layoutSrc, actualCommBlockShape, ubSList[ubListId],
                        copyEventIdList[ubListId], rankIdx);
-        if constexpr (TileRemoteCopy::DEFER_QUIET)
+        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value)
         {
             activePeerIdx = rankIdx;
             hasPendingCopy = true;
@@ -387,7 +397,7 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
         if (actualCommBlockShape.row() == 0) {
             return;
         }
-        if constexpr (TileRemoteCopy::DEFER_QUIET) {
+        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value) {
             if (hasPendingCopy && activePeerIdx != rankIdx) {
                 tileRemoteCopy.Finalize(activePeerIdx);
                 hasPendingCopy = false;
@@ -396,7 +406,7 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
         tileRemoteCopy.PutContiguousWithSignal(
             gmDst, layoutDst, gmSrc, layoutSrc, actualCommBlockShape,
             signalAddress, signalValue, rankIdx);
-        if constexpr (TileRemoteCopy::DEFER_QUIET) {
+        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value) {
             activePeerIdx = rankIdx;
             hasPendingCopy = true;
         }

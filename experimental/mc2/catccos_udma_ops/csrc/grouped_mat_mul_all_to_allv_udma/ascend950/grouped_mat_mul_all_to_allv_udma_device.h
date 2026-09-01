@@ -34,45 +34,6 @@
 
 namespace OpsTransformer::CatccosUdma {
 
-// The target-order kernel gets its dynamic block/tile shape from the local-MTE
-// block Params.  CatCCOS' official UDMA CommBlock does not expose a Params
-// alias because its TileRemoteCopy builds and completes the WQE internally.
-// This adapter supplies only that host/device construction ABI; the actual
-// block operator, UDMA GET and quiet remain the official CatCCOS code path.
-template <class OfficialBlock_, class ParamsBlock_>
-class OfficialUdmaBlockAdapter : public OfficialBlock_ {
-public:
-    using Base = OfficialBlock_;
-    // Keep the same host-side dynamic block/tile parameter ABI as the local
-    // MTE block.  The official UDMA block itself has no Params alias and its
-    // TileRemoteCopy owns a different Params type, but its device constructor
-    // accepts an arbitrary parameter object.
-    using Params = typename ParamsBlock_::Params;
-    using TileRemoteCopy = typename ParamsBlock_::TileRemoteCopy;
-    using ElementSrc = typename Base::ElementSrc;
-    using LayoutSrc = typename Base::LayoutSrc;
-    using ElementDst = typename Base::ElementDst;
-    using LayoutDst = typename Base::LayoutDst;
-
-    template <class ResourceArch>
-    CATLASS_DEVICE
-    OfficialUdmaBlockAdapter(
-        Catlass::Arch::Resource<ResourceArch> &resource,
-        Params const &params)
-        : Base(resource, params)
-    {
-    }
-};
-
-// Our overlay CommBlock supports deferred checked quiet for the custom tiles.
-// The official TileRemoteCopy instead performs quiet inside operator(); expose
-// that existing contract to the overlay without changing the official body.
-template <class OfficialTile_>
-class OfficialUdmaTileAdapter : public OfficialTile_ {
-public:
-    static constexpr bool DEFER_QUIET = false;
-};
-
 template <class ElementA, class LayoutA, class ElementB, class LayoutB,
           class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0,
           bool UseMte3Udma = false, bool UseOfficialUdmaBlock = false>
@@ -120,23 +81,22 @@ struct GroupedMatMulAllToAllVUdmaConfig {
         RemoteDispatch, CType, CType, TileRemoteCopy>;
     using HybridBlockComm =
         Catccos::Comm::Block::CommBlockMteUdma<BlockLocalComm, BlockRemoteComm>;
-    using OfficialTile = OfficialUdmaTileAdapter<
-        Catccos::Comm::Tile::TileRemoteCopy<
-            ArchTag, kIsDynamic, CType, CType, void,
-            Catccos::detail::CopyDirect::Get,
-            Catccos::detail::CopyTransport::Udma>>;
-    using OfficialBlockBase = Catccos::Comm::Block::CommBlock<
+    // Keep the validation path byte-for-byte on CatCCOS' public UDMA tile and
+    // block types. The kernel default-constructs this block exactly like the
+    // ascend950_mxfp8_matmul_alltoall example; no MTE/UDMA adapter participates.
+    using OfficialTile = Catccos::Comm::Tile::TileRemoteCopy<
+        ArchTag, kIsDynamic, CType, CType, void,
+        Catccos::detail::CopyDirect::Get,
+        Catccos::detail::CopyTransport::Udma>;
+    using OfficialBlockComm = Catccos::Comm::Block::CommBlock<
         RemoteDispatch, CType, CType, OfficialTile>;
-    using OfficialBlockComm = OfficialUdmaBlockAdapter<
-        OfficialBlockBase, BlockLocalComm>;
-    using BlockComm = std::conditional_t<
-        UseOfficialUdmaBlock, OfficialBlockComm, HybridBlockComm>;
+    using BlockComm = HybridBlockComm;
 
     using ProblemShape = Catccos::DGemm::AllToAllVAllGatherProblemShape;
     using Kernel = Catccos::DGemm::Kernel::GroupedMatmulAllToAllVTla<
         ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler,
         BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes, true,
-        UseOfficialUdmaBlock>;
+        UseOfficialUdmaBlock, OfficialBlockComm>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 

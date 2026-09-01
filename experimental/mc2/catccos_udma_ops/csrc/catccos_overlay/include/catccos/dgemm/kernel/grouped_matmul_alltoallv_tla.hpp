@@ -47,7 +47,8 @@ template <
     uint32_t WORKSPACE_STAGES_,
     uint64_t SYMMETRIC_DATA_BYTES_ = 1000UL * 1024 * 1024,
     bool TARGET_ORDER_STAGING_ = false,
-    bool OFFICIAL_UDMA_BLOCK_ = false
+    bool OFFICIAL_UDMA_BLOCK_ = false,
+    class OfficialBlockComm_ = void
 >
 class GroupedMatmulAllToAllVTla {
 public:
@@ -66,6 +67,7 @@ public:
     using LayoutC = typename BlockMmad::LayoutC;
 
     using BlockComm = BlockComm_;
+    using OfficialBlockComm = OfficialBlockComm_;
     using BlockCommParams = typename BlockComm::Params;
 
     using ElementComm = typename BlockComm::ElementSrc;
@@ -643,7 +645,29 @@ private:
         gmA.SetGlobalBuffer(params.ptrA);
         AscendC::GlobalTensor<ElementB> gmB;
         gmB.SetGlobalBuffer(params.ptrB);
+        AscendC::GlobalTensor<ElementC> gmC;
+        gmC.SetGlobalBuffer(params.ptrC);
         auto tensorA = tla::MakeTensor(gmA, params.layoutA, Catlass::Arch::PositionGM{});
+        auto tensorC = tla::MakeTensor(gmC, params.layoutC, Catlass::Arch::PositionGM{});
+
+        // The official MatMulAllToAll example does not communicate the self
+        // slice: AIC writes it directly to the final output and AIV skips the
+        // local PE. Mirror that behavior in the official validation mode so no
+        // custom local-MTE copy is part of this experiment.
+        uint32_t selfOutputBase = 0;
+        uint32_t selfConsumedRows = 0;
+        if constexpr (OFFICIAL_UDMA_BLOCK) {
+            uint32_t selfEpIdx = params.problemShape.rankIdx() %
+                params.problemShape.epSize();
+            for (uint32_t epIdx = 0; epIdx < selfEpIdx; ++epIdx) {
+                for (uint32_t localExpertIdx = 0;
+                     localExpertIdx < params.problemShape.localExpertNum();
+                     ++localExpertIdx) {
+                    selfOutputBase += params.problemShape.localTokensPerExpert(
+                        epIdx, localExpertIdx);
+                }
+            }
+        }
 
         uint32_t commLoops = scheduler.GetCommLoops();
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
@@ -681,23 +705,73 @@ private:
                     auto tensorBlockB = GetTile(
                         tensorB, tla::MakeCoord(blockOffsetB.row(), blockOffsetB.column()),
                         tla::MakeShape(actualBlockShape.k(), actualBlockShape.n()));
-                    auto tensorBlockC = GetTile(
-                        tensorSymmetric,
-                        tla::MakeCoord(
-                            blockOffsetC.row() + stageRankOffset.row(), blockOffsetC.column()),
-                        tla::MakeShape(actualBlockShape.m(), actualBlockShape.n()));
-                    blockMmad(tensorBlockA, tensorBlockB, tensorBlockC, actualBlockShape);
+                    if constexpr (OFFICIAL_UDMA_BLOCK) {
+                        if (dstRankIdx == params.problemShape.rankIdx()) {
+                            auto tensorBlockC = GetTile(
+                                tensorC,
+                                tla::MakeCoord(
+                                    selfOutputBase + selfConsumedRows + blockOffsetC.row(),
+                                    blockOffsetC.column()),
+                                tla::MakeShape(
+                                    actualBlockShape.m(), actualBlockShape.n()));
+                            blockMmad(
+                                tensorBlockA, tensorBlockB, tensorBlockC,
+                                actualBlockShape);
+                        } else {
+                            auto tensorBlockC = GetTile(
+                                tensorSymmetric,
+                                tla::MakeCoord(
+                                    blockOffsetC.row() + stageRankOffset.row(),
+                                    blockOffsetC.column()),
+                                tla::MakeShape(
+                                    actualBlockShape.m(), actualBlockShape.n()));
+                            blockMmad(
+                                tensorBlockA, tensorBlockB, tensorBlockC,
+                                actualBlockShape);
+                        }
+                    } else {
+                        auto tensorBlockC = GetTile(
+                            tensorSymmetric,
+                            tla::MakeCoord(
+                                blockOffsetC.row() + stageRankOffset.row(),
+                                blockOffsetC.column()),
+                            tla::MakeShape(
+                                actualBlockShape.m(), actualBlockShape.n()));
+                        blockMmad(
+                            tensorBlockA, tensorBlockB, tensorBlockC,
+                            actualBlockShape);
+                    }
                 }
             }
             if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
                 blockMmad.SynchronizeBlock();
             }
             Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[stageIdx]);
+            if constexpr (OFFICIAL_UDMA_BLOCK) {
+                selfConsumedRows += scheduler.GetActualRows(
+                    params.problemShape.rankIdx());
+            }
         }
     }
 
     CATLASS_DEVICE
     void RunTargetOrderAiv(Params const &params)
+    {
+        if constexpr (OFFICIAL_UDMA_BLOCK) {
+            // Match the CatCCOS example: the UDMA CommBlock is default
+            // constructed and owns the official TileRemoteCopy directly.
+            OfficialBlockComm blockRemoteCopy;
+            RunTargetOrderAivWithBlock(params, blockRemoteCopy);
+        } else {
+            BlockComm blockRemoteCopy(resource, params.blockCommParams);
+            RunTargetOrderAivWithBlock(params, blockRemoteCopy);
+        }
+    }
+
+    template <class ActiveBlockComm>
+    CATLASS_DEVICE
+    void RunTargetOrderAivWithBlock(
+        Params const &params, ActiveBlockComm &blockRemoteCopy)
     {
         uint32_t aicoreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
         uint32_t subcoreIdx = AscendC::GetSubBlockIdx();
@@ -717,8 +791,6 @@ private:
         BlockCommScheduler scheduler{
             params.problemShape, groupsPerCommInRank, srcEpIdx,
             mmadBlockShape.GetCoordMN(), commBlockShape, commCoreSplit};
-        BlockComm blockRemoteCopy(resource, params.blockCommParams);
-
         auto layoutSymmetric = Catlass::layout::RowMajor(stageRows, params.problemShape.n());
         auto ptrSymmetric = reinterpret_cast<__gm__ ElementC *>(params.ptrSymmetric);
         AscendC::GlobalTensor<ElementC> gmSymmetricList[WORKSPACE_STAGES];
@@ -804,13 +876,15 @@ private:
                 auto layoutBlockDst = layoutC.GetTileLayout(actualShape);
 
                 if constexpr (OFFICIAL_UDMA_BLOCK) {
-                    // CatCCOS' official UDMA TileRemoteCopy owns WQE scratch,
-                    // submission and quiet inside this single call. It uses
-                    // the public void quiet API, so no CQ status is exposed.
-                    blockRemoteCopy(
-                        gmBlockSrc, layoutBlockSrc,
-                        gmBlockDst, layoutBlockDst,
-                        actualShape, srcRankIdx);
+                    // Exactly mirror the official MatMulAllToAll pattern:
+                    // self data was written directly by AIC, while remote PEs
+                    // use the default-constructed official UDMA CommBlock.
+                    if (srcRankIdx != rankIdx) {
+                        blockRemoteCopy(
+                            gmBlockSrc, layoutBlockSrc,
+                            gmBlockDst, layoutBlockDst,
+                            actualShape, srcRankIdx);
+                    }
                     quietStatus = 0;
                 } else {
                     blockRemoteCopy.InitBlockLoop();

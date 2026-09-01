@@ -85,8 +85,9 @@ MODE_DESCRIPTIONS = {
         "producer_sync": "SHMEM all-PE barrier replacing producer SyncAll",
         "stage_recycle_sync": "SHMEM all-PE barrier replacing recycle SyncAll",
         "udma_wqe_path": (
-            "official CatCCOS BlockRemoteCopy: per-call TPipe/TBuf, "
-            "UDMA GET and internal void quiet"
+            "exact CatCCOS BlockRemoteCopy call: default-constructed block, "
+            "AIC direct self output, remote-only UDMA GET with per-call "
+            "TPipe/TBuf and internal void quiet"
         ),
     },
 }
