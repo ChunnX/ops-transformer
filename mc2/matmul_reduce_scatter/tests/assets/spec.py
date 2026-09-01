@@ -41,6 +41,12 @@ class AclnnMatmulReduceScatterSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
 
 class MmReduceScatterBaseE2ESpec:
     """TestSpec for torch_npu.npu_mm_reduce_scatter_base (E2E multi-device path)."""
