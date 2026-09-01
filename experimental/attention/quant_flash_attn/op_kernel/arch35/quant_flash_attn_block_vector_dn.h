@@ -366,13 +366,16 @@ public:
     {
         LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
 
-        bool needMutex = (runInfo.loop % 2 == constInfo.subBlockIdx) && runInfo.isS2FirstTilePerCore &&
-                         runInfo.isUpdatePScale;
-        if (needMutex) {
-            Mutex::Unlock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
-            Mutex::Lock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+        // 单任务尾tile: 该tile任务未在本核执行, 本核未持有GMAX锁, 只需上传本核gmax到L1
+        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
+            DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
+                     localGlobalMax, {1, 8, 0, 0});
+            return;
         }
 
+        // 等本核V1算完gmax, 交接到MTE3再上传
+        Mutex::Unlock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+        Mutex::Lock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
         DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
                  localGlobalMax, {1, 8, 0, 0});
     }
@@ -419,11 +422,8 @@ public:
                                                              localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                              firstLoop, secondLoop, constInfo.subBlockIdx);
         }
-        bool needMutexGmax = (runInfo.loop % 2 == constInfo.subBlockIdx) && runInfo.isS2FirstTilePerCore &&
-                             runInfo.isUpdatePScale;
-        if (needMutexGmax) {
-            Mutex::Unlock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
-        }
+        // pscale计算完成后, 本tile的gmax buffer才可以被tile+4复用
+        Mutex::Unlock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
         Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
         Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
         Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
