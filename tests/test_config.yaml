@@ -1213,7 +1213,6 @@ moe:
       - moe/moe_token_unpermute_with_ep
     exclude:
       - moe/moe_token_unpermute_with_ep/docs
-      - moe/moe_token_unpermute_with_ep/README.md
     ut_cov_exclude:
       - moe/moe_token_unpermute_with_ep/op_api
       - moe/moe_token_unpermute_with_ep/op_graph

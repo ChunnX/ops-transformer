@@ -44,12 +44,12 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr) {
       LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
       return );
   for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+    LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
   }
 }
 
 int Init(int32_t deviceId, aclrtStream *stream) {
-  // 固定写法，资源初始化
+  // 初始化ACL和Stream
   auto ret = aclInit(nullptr);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
             return ret);
@@ -65,18 +65,9 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 }
 
 template <typename T>
-int CreateAclIntArray(const std::vector<T>& hostData, void** deviceAddr, aclIntArray** intArray) {
-  auto size = GetShapeSize(hostData) * sizeof(T);
-  // Call aclrtMalloc to allocate memory on the device.
-  auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-  // Call aclrtMemcpy to copy the data on the host to the memory on the device.
-  ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-
-  // Call aclCreateIntArray to create an aclIntArray.
+int CreateAclIntArray(const std::vector<T> &hostData, aclIntArray **intArray) {
   *intArray = aclCreateIntArray(hostData.data(), hostData.size());
+  CHECK_RET(*intArray != nullptr, LOG_PRINT("aclCreateIntArray failed.\n"); return 1);
   return 0;
 }
 
@@ -111,15 +102,14 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
-  // 根据自己的实际device填写deviceId
+  // 1. 初始化Device和Stream
   int32_t deviceId = 0;
   aclrtStream stream;
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret);
             return ret);
 
-  // 2. 构造输入与输出，需要根据API的接口自定义构造
+  // 2. 构造输入与输出
 
   std::vector<float> permutedTokensData = {2, 2, 1, 1, 3, 3, 2, 2};
   std::vector<int64_t> permutedTokensShape = {4, 2};
@@ -151,11 +141,10 @@ int main() {
                       aclDataType::ACL_FLOAT, &probsOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  int64_t num_topk = 2;
-  void* rangeDeviceAddr = nullptr;
-  aclIntArray* range = nullptr;
+  int64_t numTopk = 2;
+  aclIntArray *range = nullptr;
   std::vector<int64_t> rangeHostData = {1, 5};
-  ret = CreateAclIntArray(rangeHostData, &rangeDeviceAddr, &range);
+  ret = CreateAclIntArray(rangeHostData, &range);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   std::vector<float> outData = {0, 0, 0, 0, 0, 0};
@@ -168,13 +157,13 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
 
-  // 3. 调用CANN算子库API，需要修改为具体的Api名称
+  // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;
   aclOpExecutor *executor;
 
   // 调用aclnnMoeTokenUnpermuteWithEp第一段接口
   ret = aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(permutedTokens, sortedIndices,
-                                                     probsOptional, num_topk, range, false, nullptr,
+                                                     probsOptional, numTopk, range, false, nullptr,
                                                      out, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
@@ -197,27 +186,27 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermuteWithEp failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4. 同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
             return ret);
 
-  // 5.获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+  // 5. 将输出从Device侧拷贝至Host侧
   PrintOutResult(outShape, &outAddr);
 
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
+  // 6. 释放aclTensor和aclIntArray
   aclDestroyTensor(permutedTokens);
   aclDestroyTensor(sortedIndices);
   aclDestroyTensor(probsOptional);
   aclDestroyTensor(out);
+  aclDestroyIntArray(range);
 
   // 7. 释放device资源
   aclrtFree(permutedTokensAddr);
   aclrtFree(sortedIndicesAddr);
   aclrtFree(probsOptionalAddr);
   aclrtFree(outAddr);
-  aclrtFree(rangeDeviceAddr);
 
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);

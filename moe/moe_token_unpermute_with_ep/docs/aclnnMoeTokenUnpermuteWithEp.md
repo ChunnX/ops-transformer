@@ -25,37 +25,34 @@
 
 ## 功能说明
 
-- **接口功能：** 根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。
+- **接口功能：** 用于MoE专家并行场景，根据sortedIndices记录的全局token索引，从本卡rangeOptional范围内的permutedTokens中取回token，并按numTopk分组累加；传入probsOptional时，累加前会乘以对应的专家概率。
 
 - **计算公式：**
 
+  设numTopk为$K$，原始token数为$N$，隐藏维度为$H$，rangeOptional为$[r_0,r_1)$。对于$i\in[0,N)$、$j\in[0,K)$和$h\in[0,H)$，令：
+
   $$
-  sortedIndices = sortedIndices[rangeOptional[0]<=i<rangeOptional[1]]
+  s_{i,j}=sortedIndices_{iK+j}
   $$
 
-  （1）probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., topK\_num - 1}$，$k \in {0, 1, 2, ..., num\_tokens * topK\_num}$：
+  $$
+  v_{i,j,h}=\begin{cases}
+  permutedTokens_{s_{i,j}-r_0,h}, & r_0\le s_{i,j}<r_1 \\
+  0, & \text{其他情况}
+  \end{cases}
+  $$
 
-    $$
-    permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-    $$
+  传入probsOptional时：
 
-    $$
-    permutedTokens_{k} = permutedTokens_{k} * probs_{i,j}
-    $$
+  $$
+  out_{i,h}=\sum_{j=0}^{K-1}v_{i,j,h}\times probsOptional_{i,j}
+  $$
 
-    $$
-    out_{i} = \sum_{k=i*topK\_num}^{(i+1)*topK\_num - 1 } permutedTokens_{k}
-    $$
+  未传入probsOptional时：
 
-  （2）probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., topK\_num - 1}$：
-
-    $$
-    permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-    $$
-
-    $$
-    out_{i} = \sum_{k=i*topK\_num}^{(i+1)*topK\_num - 1 } permutedTokens_{k}
-    $$
+  $$
+  out_{i,h}=\sum_{j=0}^{K-1}v_{i,j,h}
+  $$
 
 ## 函数原型
 
@@ -85,16 +82,17 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 ## aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize
 
-- **参数说明：**
-  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 187px">
-  <col style="width: 121px">
-  <col style="width: 287px">
-  <col style="width: 387px">
-  <col style="width: 187px">
-  <col style="width: 187px">
-  <col style="width: 187px">
-  <col style="width: 146px">
+- **参数说明**
+
+  <table style="table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 180px">
+  <col style="width: 120px">
+  <col style="width: 280px">
+  <col style="width: 320px">
+  <col style="width: 250px">
+  <col style="width: 120px">
+  <col style="width: 140px">
+  <col style="width: 140px">
   </colgroup>
   <thead>
   <tr>
@@ -109,93 +107,87 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
   </tr></thead>
   <tbody>
   <tr>
-      <td>permutedTokens</td>
+      <td>permutedTokens（aclTensor*）</td>
       <td>输入</td>
-      <td>表示经过扩展并排序过的tokens。</td>
-      <td>shape支持2D维度，不支持空tensor。</td>
+      <td>经过EP切分后的本地token，对应公式中的permutedTokens。</td>
+      <td><ul><li>不能传入空指针，不支持空Tensor。</li><li>必须为二维Tensor，shape为(R,H)。传入rangeOptional时，要求R不小于r1-r0，其中rangeOptional为[r0,r1)。</li></ul></td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>（（rangeOptional[1] - rangeOptional[0]）*topK_num，hidden_size）</td>
+      <td>(R,H)</td>
       <td>√</td>
   </tr>
   <tr>
-      <td>sortedIndices</td>
+      <td>sortedIndices（aclTensor*）</td>
       <td>输入</td>
-      <td>表示需要计算的数据在permutedTokens中的位置。</td>
-      <td>shape支持1D维度，要求元素值大于等于0小于2134372523，num_tokens为原tokens的数目，不支持空Tensor。</td>
+      <td>每个原始token所对应专家输出的全局索引，对应公式中的sortedIndices。</td>
+      <td><ul><li>不能传入空指针，不支持空Tensor。</li><li>必须为一维Tensor，长度为N×K，其中N为原始token数，K为numTopk。</li><li>超出[r0,r1)的索引对应的输出贡献为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>（num_tokens * topK_num）</td>
+      <td>(N×K,)</td>
       <td>√</td>
   </tr>
   <tr>
-      <td>probsOptional</td>
+      <td>probsOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>表示输入tokens对应的专家概率。</td>
-      <td>
-      shape支持2D维度，num_tokens为原tokens的数目。<br>
-      传入非空并合法的Tensor时，permutedTokens中的输入数据与probsOptional相乘。<br>
-      传入空时，permutedTokens中的输入数据不进行乘法。</td>
+      <td>每个原始token对应的专家概率，对应公式中的probsOptional。</td>
+      <td><ul><li>允许传入空指针；传入空指针时不进行概率加权。</li><li>传入Tensor时不支持空Tensor，必须为二维Tensor，shape为(N,K)，且K等于numTopk。</li><li>数据类型可以与permutedTokens不同。</li></ul></td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>（num_tokens，topK_num）</td>
+      <td>(N,K)</td>
       <td>√</td>
   </tr>
   <tr>
-      <td>numTopk</td>
+      <td>numTopk（int64_t）</td>
       <td>输入</td>
-      <td>被选中的专家个数。</td>
+      <td>每个原始token选中的专家数量，对应公式中的K。</td>
+      <td>取值必须大于等于1；传入probsOptional时，取值必须小于等于512。</td>
       <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>rangeOptional（aclIntArray*）</td>
+      <td>输入</td>
+      <td>本卡EP切分的全局token索引范围，对应公式中的[r0,r1)。</td>
+      <td><ul><li>允许传入空指针；传入空指针时使用默认值{0,0}，没有索引落入有效范围，输出为全0。</li><li>传入aclIntArray时，元素数量必须为2。</li></ul></td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>(2,)</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>paddedMode（bool）</td>
+      <td>输入</td>
+      <td>表示是否启用padded模式。</td>
+      <td>当前仅支持false。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>restoreShapeOptional（aclIntArray*）</td>
+      <td>输入</td>
+      <td>padded模式下用于恢复输出shape的预留参数。</td>
+      <td>当前计算不使用该参数，传入空指针即可。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
   </tr>
-    <tr>
-      <td>rangeOptional</td>
-      <td>输入</td>
-      <td>ep切分的有效范围， size为2。</td>
-      <td>为空时，忽略numTopk，执行逻辑回退到<a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-  </tr>
   <tr>
-      <td>paddedMode</td>
-      <td>输入</td>
-      <td>-</td>
-      <td>true表示开启paddedMode。<br>false表示关闭paddedMode。<br>目前仅支持false。</td>
-      <td>bool</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-  </tr>
-  <tr>
-      <td>restoreShapeOptional</td>
-      <td>输入</td>
-      <td>-</td>
-      <td>paddedMode=true时生效，否则不会对其进行操作，目前仅支持nullptr。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-  </tr>
-  <tr>
-      <td>out</td>
+      <td>out（aclTensor*）</td>
       <td>输出</td>
-      <td>表示permutedTokens反重排的输出结果。</td>
-      <td>shape支持2D维度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>按原始token顺序合并后的输出，对应公式中的out。</td>
+      <td><ul><li>不能传入空指针，不支持空Tensor。</li><li>必须为二维Tensor，shape为(N,H)。</li><li>数据类型必须与permutedTokens一致。</li></ul></td>
+      <td>与permutedTokens一致</td>
       <td>ND</td>
-      <td>
-        paddedMode=false时：（num_tokens，hidden_size）<br>
-        paddedMode=true时：与restoreShapeOptional保持一致
-      </td>
-      <td>√</td>
+      <td>(N,H)</td>
+      <td>×</td>
   </tr>
   <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -205,7 +197,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>-</td>
   </tr>
   <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -217,16 +209,16 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
   </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-      <col style="width: 267px">
-      <col style="width: 124px">
-      <col style="width: 775px">
+  <table style="table-layout: fixed; width: 1000px"><colgroup>
+      <col style="width: 300px">
+      <col style="width: 150px">
+      <col style="width: 550px">
       </colgroup>
       <thead>
           <tr>
@@ -237,13 +229,13 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       </thead>
       <tbody>
           <tr>
-          <td> ACLNN_ERR_PARAM_NULLPTR </td>
-          <td> 161001 </td>
-          <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>permutedTokens、sortedIndices、out或executor为空指针。</td>
           </tr>
           <tr>
-          <td> ACLNN_ERR_PARAM_INVALID </td>
-          <td> 161002 </td>
+          <td>ACLNN_ERR_PARAM_INVALID</td>
+          <td>161002</td>
           <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
           </tr>
       </tbody>
@@ -251,11 +243,12 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 ## aclnnMoeTokenUnpermuteWithEp
 
-- **参数说明：**
-  <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
-  <col style="width: 173px">
-  <col style="width: 133px">
-  <col style="width: 860px">
+- **参数说明**
+
+  <table style="table-layout: fixed; width: 1000px"><colgroup>
+  <col style="width: 180px">
+  <col style="width: 120px">
+  <col style="width: 700px">
   </colgroup>
       <thead>
           <tr>
@@ -287,22 +280,23 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       </tbody>
   </table>
 
-- **返回值：**
+- **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnMoeTokenUnpermuteWithEp默认确定性实现。
-
-- topK_num <= 512。
-- 不支持paddedMode为`True`。
-- 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)。
+- 确定性说明：aclnnMoeTokenUnpermuteWithEp默认确定性实现。
+- 不支持Broadcast。
+- aclTensor的shape必须为运行时确定的实际值，不支持使用-1表示动态维度或使用-2表示动态Rank。
+- permutedTokens的shape为(R,H)。传入rangeOptional时要求r0小于等于r1，且R不小于r1-r0；sortedIndices的长度为N×K，out的shape为(N,H)。传入probsOptional时，其shape必须为(N,K)。
+- numTopk必须大于等于1；传入probsOptional时，numTopk还必须小于等于512。
+- rangeOptional传入aclIntArray时必须包含两个元素。传入空指针时使用默认值{0,0}，不会回退调用其他算子。
+- paddedMode仅支持false，restoreShapeOptional传入空指针即可。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+以下示例展示基本调用流程，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 
@@ -342,12 +336,12 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr) {
       LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
       return );
   for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+    LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
   }
 }
 
 int Init(int32_t deviceId, aclrtStream *stream) {
-  // 固定写法，资源初始化
+  // 初始化ACL和Stream
   auto ret = aclInit(nullptr);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
             return ret);
@@ -363,18 +357,9 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 }
 
 template <typename T>
-int CreateAclIntArray(const std::vector<T>& hostData, void** deviceAddr, aclIntArray** intArray) {
-  auto size = GetShapeSize(hostData) * sizeof(T);
-  // Call aclrtMalloc to allocate memory on the device.
-  auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-  // Call aclrtMemcpy to copy the data on the host to the memory on the device.
-  ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-
-  // Call aclCreateIntArray to create an aclIntArray.
+int CreateAclIntArray(const std::vector<T> &hostData, aclIntArray **intArray) {
   *intArray = aclCreateIntArray(hostData.data(), hostData.size());
+  CHECK_RET(*intArray != nullptr, LOG_PRINT("aclCreateIntArray failed.\n"); return 1);
   return 0;
 }
 
@@ -409,15 +394,14 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化，参考acl API手册
-  // 根据自己的实际device填写deviceId
+  // 1. 初始化Device和Stream
   int32_t deviceId = 0;
   aclrtStream stream;
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret);
             return ret);
 
-  // 2. 构造输入与输出，需要根据API的接口自定义构造
+  // 2. 构造输入与输出
 
   std::vector<float> permutedTokensData = {2, 2, 1, 1, 3, 3, 2, 2};
   std::vector<int64_t> permutedTokensShape = {4, 2};
@@ -449,11 +433,10 @@ int main() {
                       aclDataType::ACL_FLOAT, &probsOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  int64_t num_topk = 2;
-  void* rangeDeviceAddr = nullptr;
-  aclIntArray* range = nullptr;
+  int64_t numTopk = 2;
+  aclIntArray *range = nullptr;
   std::vector<int64_t> rangeHostData = {1, 5};
-  ret = CreateAclIntArray(rangeHostData, &rangeDeviceAddr, &range);
+  ret = CreateAclIntArray(rangeHostData, &range);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   std::vector<float> outData = {0, 0, 0, 0, 0, 0};
@@ -466,13 +449,13 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
 
-  // 3. 调用CANN算子库API，需要修改为具体的Api名称
+  // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;
   aclOpExecutor *executor;
 
   // 调用aclnnMoeTokenUnpermuteWithEp第一段接口
   ret = aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(permutedTokens, sortedIndices,
-                                                     probsOptional, num_topk, range, false, nullptr,
+                                                     probsOptional, numTopk, range, false, nullptr,
                                                      out, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
@@ -495,27 +478,27 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermuteWithEp failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4.（固定写法）同步等待任务执行结束
+  // 4. 同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
             return ret);
 
-  // 5.获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+  // 5. 将输出从Device侧拷贝至Host侧
   PrintOutResult(outShape, &outAddr);
 
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
+  // 6. 释放aclTensor和aclIntArray
   aclDestroyTensor(permutedTokens);
   aclDestroyTensor(sortedIndices);
   aclDestroyTensor(probsOptional);
   aclDestroyTensor(out);
+  aclDestroyIntArray(range);
 
   // 7. 释放device资源
   aclrtFree(permutedTokensAddr);
   aclrtFree(sortedIndicesAddr);
   aclrtFree(probsOptionalAddr);
   aclrtFree(outAddr);
-  aclrtFree(rangeDeviceAddr);
 
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);

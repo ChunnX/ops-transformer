@@ -1418,7 +1418,7 @@
   </tr>
   <tr>
     <td>moe</td>
-    <td><a href="../../moe/moe_token_unpermute_with_ep/README.md">moe_token_unpermute_with_ep</a></td>
+    <td><a href="../../moe/moe_token_unpermute_with_ep/docs/aclnnMoeTokenUnpermuteWithEp.md">moe_token_unpermute_with_ep</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✗</td>
