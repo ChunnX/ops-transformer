@@ -47,14 +47,15 @@ public:
     // V0 流程 (向量计算)
     __aicore__ inline void ProcessV0Main();
     __aicore__ inline void ProcessV0MainLoop(uint64_t vecRunTimes, float alphaPre, float alphaPost, float alphaComb,
-                                             LocalTensor<P> &sumBuf);
+                                             LocalTensor<P> &sumBuf, LocalTensor<P> &biasSumBuf);
     __aicore__ inline void ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId);
+    __aicore__ inline void ProcessV0MainBiasOutput(LocalTensor<P> &biasSumBuf, uint32_t coreId);
     __aicore__ inline void PreProcessV0(LocalTensor<P> &hPreGradBuf, uint64_t runBSStart, uint64_t runBSEnd);
     __aicore__ inline void AllocV0V1Buffers(uint64_t runBSStart, uint64_t runBSEnd, V0V1Buffers<P> &buffers);
     __aicore__ inline void ProcessV0(uint64_t runBSStart, uint64_t runBSEnd, V0V1Buffers<P> &buffers, float alphaPre,
                                      float alphaPost, float alphaComb);
     __aicore__ inline void ProcessV1(uint64_t runBSStart, uint64_t runBSEnd, V0V1Buffers<P> &buffers,
-                                     uint64_t vecRuntimesId, LocalTensor<P> &sumBuf);
+                                     uint64_t vecRuntimesId, LocalTensor<P> &sumBuf, LocalTensor<P> &biasSumBuf);
     __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf, uint64_t currentDealBsNum,
                                         float alphaPre, float alphaPost, float alphaComb);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
@@ -474,14 +475,18 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     float alphaComb = alphaGm_.GetValue(2);
     LocalTensor<P> sumBuf = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
     globalUbOffset_ += MhcPreBackwardUtils::CeilAlign(uint32_t(fusionSize_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
-    ProcessV0MainLoop(vecRunTimes, alphaPre, alphaPost, alphaComb, sumBuf);
+    LocalTensor<P> biasSumBuf = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
+    globalUbOffset_ += MhcPreBackwardUtils::CeilAlign(uint32_t(fusionSize_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    ProcessV0MainLoop(vecRunTimes, alphaPre, alphaPost, alphaComb, sumBuf, biasSumBuf);
+    ProcessV0MainBiasOutput(biasSumBuf, GetBlockIdx());
     ProcessV0MainAlphaReduce(sumBuf, GetBlockIdx());
 }
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainLoop(uint64_t vecRunTimes, float alphaPre,
                                                                      float alphaPost, float alphaComb,
-                                                                     LocalTensor<P> &sumBuf)
+                                                                     LocalTensor<P> &sumBuf,
+                                                                     LocalTensor<P> &biasSumBuf)
 {
     for (uint64_t cIdx = 0; cIdx < vecRunTimes; cIdx++) {
         uint64_t runBSStart = cIdx * vecDealChunk_ + dealStartBS_;
@@ -494,8 +499,23 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainLoop(uint64_t ve
         AllocV0V1Buffers(runBSStart, runBSEnd, buffers);
         PreProcessV0(buffers.hPreGradBuf, runBSStart, runBSEnd);
         ProcessV0(runBSStart, runBSEnd, buffers, alphaPre, alphaPost, alphaComb);
-        ProcessV1(runBSStart, runBSEnd, buffers, cIdx, sumBuf);
+        ProcessV1(runBSStart, runBSEnd, buffers, cIdx, sumBuf, biasSumBuf);
     }
+}
+
+template <class T, class P>
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainBiasOutput(LocalTensor<P> &biasSumBuf,
+                                                                           uint32_t coreId)
+{
+    // 每个向量核只在全部BS分块完成后写回一次，删除分块间的GM原子累加。
+    SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+    WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+    DataCopyParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = fusionSize_ * sizeof(P);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], biasSumBuf, dataCopyParams);
 }
 
 template <class T, class P>
@@ -746,7 +766,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart, uint64_t runBSEnd,
                                                              V0V1Buffers<P> &buffers, uint64_t vecRuntimesId,
-                                                             LocalTensor<P> &sumBuf)
+                                                             LocalTensor<P> &sumBuf, LocalTensor<P> &biasSumBuf)
 {
     uint32_t curBSSize = static_cast<uint32_t>(runBSEnd - runBSStart);
     constexpr bool isReuse = false;
@@ -757,33 +777,33 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
 
-    AscendC::LocalTensor<P> fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
     AscendC::LocalTensor<P> invRmsGradUb = vecOutQueueSmall_.AllocTensor<P>();
-    if (N_ == 8) {
-        VFDoV1ProcessBiasGradForN8((__ubuf__ P *)fp32OutBuf.GetPhyAddr(),
-                                   (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
+    if (vecRuntimesId == 0) {
+        if (N_ == 8) {
+            VFDoV1ProcessBiasGradForN8((__ubuf__ P *)biasSumBuf.GetPhyAddr(),
+                                       (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
+        } else {
+            VFDoV1ProcessBiasGradForN4N6((__ubuf__ P *)biasSumBuf.GetPhyAddr(),
+                                         (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
+        }
     } else {
-        VFDoV1ProcessBiasGradForN4N6((__ubuf__ P *)fp32OutBuf.GetPhyAddr(),
-                                     (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
+        AscendC::LocalTensor<P> biasChunkBuf = vecOutQueue1_.AllocTensor<P>();
+        if (N_ == 8) {
+            VFDoV1ProcessBiasGradForN8((__ubuf__ P *)biasChunkBuf.GetPhyAddr(),
+                                       (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
+        } else {
+            VFDoV1ProcessBiasGradForN4N6((__ubuf__ P *)biasChunkBuf.GetPhyAddr(),
+                                         (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
+        }
+        vecOutQueue1_.EnQue(biasChunkBuf);
+        LocalTensor<P> biasChunkOutBuf = vecOutQueue1_.DeQue<P>();
+        Add(biasSumBuf, biasSumBuf, biasChunkOutBuf, fusionSize_);
+        PipeBarrier<PIPE_V>();
+        vecOutQueue1_.FreeTensor(biasChunkOutBuf);
     }
-    vecOutQueue1_.EnQue(fp32OutBuf);
-    LocalTensor<P> BiasOutBuf = vecOutQueue1_.DeQue<P>();
-
-    uint32_t coreId = GetBlockIdx();
-    dataCopyParams.blockLen = fusionSize_ * sizeof(P);
-    if (vecRuntimesId != 0) {
-        SetAtomicAdd<float>();
-        DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams);
-        PipeBarrier<PIPE_MTE3>();
-        SetAtomicNone();
-    } else {
-        DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams);
-        PipeBarrier<PIPE_MTE3>();
-    }
-    vecOutQueue1_.FreeTensor(BiasOutBuf);
 
     auto hMixGradBuf = buffers.calcTmpBuf;
-    fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
+    AscendC::LocalTensor<P> fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
     dataCopyParams.blockLen = curBSSize * sizeof(P);
     AscendC::LocalTensor<P> fp32InputBuf = vecInQueue1_.AllocTensor<P>();
     DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams, dataCopyPadParams);
