@@ -439,9 +439,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
 
         for (uint32_t j = 0; j < N_; j += lenN) {
             uint32_t curLenN = static_cast<uint32_t>(j + lenN > N_ ? N_ - j : lenN);
-            // 当前N分块在GM和UB中均连续，合并为单块搬运以减少DMA描述符开销。
-            dataCopyParams.blockLen = curLenN * copySizeD * sizeof(T);
-            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = copySizeD * sizeof(T);
+            dataCopyParams.blockCount = curLenN;
             dataCopyParams.srcStride = 0;
             dataCopyParams.dstStride = 0;
 
