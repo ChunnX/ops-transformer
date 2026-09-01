@@ -681,7 +681,8 @@ private:
                 l1Offset += s1Size * offsetCalculator.GetDimD();
             }
 
-            if (s1IdxEnd > 0) {
+            // 尾块仅在跨group时存在, 组内整块由headSize覆盖, 避免越界写L1
+            if (gIdxEnd > gIdxStart && s1IdxEnd > 0) {
                 gmOffset = queryScaleGmbaseOffset + (gIdxEnd - gIdxStart) * offsetCalculator.GetStrideG();
                 CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
                                         s1IdxEnd, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
