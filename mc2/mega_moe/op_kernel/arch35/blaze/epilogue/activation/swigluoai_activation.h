@@ -29,7 +29,7 @@ struct SwiGluOaiParams {
     float beta = 0.0F;
 };
 
-template <typename InputType, bool FuseTopkWeight>
+template <typename InputType, bool TopkWeightsPrefetch>
 __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> &context, const SwiGluOaiParams &params)
 {
     const float scalarOne = 1.0f;
@@ -63,7 +63,7 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
             AscendC::MicroAPI::UpdateMask<bfloat16_t>(additionalPaddingStoreMaskElementCount);
 
         for (uint16_t rowIndex = 0; rowIndex < rowLoopCount; rowIndex++) {
-            if constexpr (FuseTopkWeight) {
+            if constexpr (TopkWeightsPrefetch) {
                 AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
                     weightReg, context.topkWeights + rowIndex * INT32_PER_256B + WEIGHT_INDEX);
             }
@@ -86,7 +86,7 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
                 AscendC::MicroAPI::Adds(denominatorReg, expReg, scalarOne, fullMask);
                 AscendC::MicroAPI::Div(sigmoidReg, gateFp32Reg, denominatorReg, fullMask);
                 AscendC::MicroAPI::Mul(outputFp32Reg, sigmoidReg, upFp32Reg, fullMask);
-                if constexpr (FuseTopkWeight) {
+                if constexpr (TopkWeightsPrefetch) {
                     AscendC::MicroAPI::Mul(outputFp32Reg, outputFp32Reg, weightReg, fullMask);
                 }
 
@@ -118,7 +118,7 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
                 AscendC::MicroAPI::Adds(denominatorReg, expReg, scalarOne, tailComputeMask);
                 AscendC::MicroAPI::Div(sigmoidReg, gateFp32Reg, denominatorReg, tailComputeMask);
                 AscendC::MicroAPI::Mul(outputFp32Reg, sigmoidReg, upFp32Reg, tailComputeMask);
-                if constexpr (FuseTopkWeight) {
+                if constexpr (TopkWeightsPrefetch) {
                     AscendC::MicroAPI::Mul(outputFp32Reg, outputFp32Reg, weightReg, tailComputeMask);
                 }
 

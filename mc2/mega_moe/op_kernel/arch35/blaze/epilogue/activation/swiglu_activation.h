@@ -64,7 +64,7 @@ __simd_callee__ inline void ComputeSwiGluVector(
     AscendC::Reg::Mul(outputFp32Reg, sigmoidReg, upFp32Reg, computeMask);
 }
 
-template <typename InputType, bool FuseTopkWeight, bool IsStep>
+template <typename InputType, bool TopkWeightsPrefetch, bool IsStep>
 __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context, float clampLimit)
 {
     AscendC::Reg::RegTensor<InputType> gateReg;
@@ -90,7 +90,7 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
         AscendC::Reg::UpdateMask<bfloat16_t>(additionalPaddingStoreMaskCount);
 
     for (uint16_t rowIndex = 0; rowIndex < context.rowLoopCount; ++rowIndex) {
-        if constexpr (FuseTopkWeight) {
+        if constexpr (TopkWeightsPrefetch) {
             AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
                 weightReg, context.topkWeights + rowIndex * INT32_PER_256B + WEIGHT_INDEX);
         }
@@ -105,7 +105,7 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
                 upFp32Reg, upReg, context.up + inputRowOffset + vectorOffset, fullMask);
             ComputeSwiGluVector<IsStep>(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
                                         sigmoidReg, fullMask, clampLimit);
-            if constexpr (FuseTopkWeight) {
+            if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, fullMask);
             }
             StoreSwiGluFp32AsBf16(context.output + outputRowOffset + vectorOffset, outputReg, outputFp32Reg, fullMask,
@@ -119,7 +119,7 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
                 upFp32Reg, upReg, context.upTail + inputRowOffset, tailComputeMask);
             ComputeSwiGluVector<IsStep>(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
                                         sigmoidReg, tailComputeMask, clampLimit);
-            if constexpr (FuseTopkWeight) {
+            if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, tailComputeMask);
             }
             StoreSwiGluFp32AsBf16(context.outputTail + outputRowOffset, outputReg, outputFp32Reg, tailComputeMask,
