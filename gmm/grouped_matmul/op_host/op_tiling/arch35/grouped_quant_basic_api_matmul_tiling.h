@@ -45,6 +45,7 @@ protected:
     ge::graphStatus PostTiling() override;
     virtual void Reset();
     ge::graphStatus CalL1Tiling();
+    uint8_t GetL1BufferStage() const;
 
 private:
     struct L1SearchResult {

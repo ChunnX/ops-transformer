@@ -492,6 +492,7 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
     tilingData_.mmTilingData.isBias = 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
+    tilingData_.mmTilingData.l1BufferStage = GetL1BufferStage();
     return ge::GRAPH_SUCCESS;
 }
 

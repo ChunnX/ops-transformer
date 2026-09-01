@@ -47,7 +47,8 @@ TILING_DATA_FIELD_DEF(uint32_t, scaleKAL1);
 TILING_DATA_FIELD_DEF(uint32_t, scaleKBL1);
 TILING_DATA_FIELD_DEF(uint8_t, isBias);
 TILING_DATA_FIELD_DEF(uint8_t, dbL0C);
-TILING_DATA_FIELD_DEF(uint16_t, reserved1);
+TILING_DATA_FIELD_DEF(uint8_t, l1BufferStage);
+TILING_DATA_FIELD_DEF(uint8_t, reserved1);
 TILING_DATA_FIELD_DEF(uint32_t, reserved2);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMActivationQuantMMTilingOp, GMMActivationQuantMMTiling)
