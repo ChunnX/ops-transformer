@@ -124,6 +124,7 @@ private:
     event_t eventMTE3S_;
     event_t eventMTE2V_;
     event_t eventVMTE2_;
+    event_t eventSV_;
 };
 
 template <typename D_IN>
@@ -328,7 +329,9 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeGradProb
             CopyInRowEnqueue(GetLogicRowGm(n + 1U), GetLogicRowOffset(tokenIdx, n + 1U));
         }
         PipeBarrier<PIPE_V>();
-        RegBase::ReduceMulSum(scalarLocal_, vRow_, gradOutFp32_, hiddenSize_);
+        AscendC::Mul(outFp32_, vRow_, gradOutFp32_, hiddenSize_);
+        PipeBarrier<PIPE_V>();
+        RegBase::ReduceMulSumTree(scalarLocal_, outFp32_, hiddenSize_, eventSV_);
         PipeBarrier<PIPE_V>();
         RegBase::CopyScalarToDense(gradProb_[n], scalarLocal_);
         PipeBarrier<PIPE_V>();
@@ -338,7 +341,9 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeGradProb
 template <typename D_IN>
 __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::SoftmaxBackward()
 {
-    RegBase::ReduceMulSum(scalarLocal_, probs_, gradProb_, blockCount_);
+    AscendC::Mul(gradScore_, probs_, gradProb_, blockCount_);
+    PipeBarrier<PIPE_V>();
+    RegBase::ReduceMulSumTree(scalarLocal_, gradScore_, blockCount_, eventSV_);
     PipeBarrier<PIPE_V>();
     RegBase::SoftmaxBackwardVf(gradScore_, probs_, gradProb_, scalarLocal_, blockCount_);
     PipeBarrier<PIPE_V>();
@@ -361,7 +366,9 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
     RegBase::CopyScalarToDense(scalarLocal_[3U * RegBase::GRAD_ELEM_PER_BLK_FP32], invRms_[blk]);
     PipeBarrier<PIPE_V>();
 
-    RegBase::ReduceMulSum(scalarLocal_, scoreWeight_, vRow_, hiddenSize_);
+    AscendC::Mul(outFp32_, scoreWeight_, vRow_, hiddenSize_);
+    PipeBarrier<PIPE_V>();
+    RegBase::ReduceMulSumTree(scalarLocal_, outFp32_, hiddenSize_, eventSV_);
     PipeBarrier<PIPE_V>();
 
     // sc = gs * inv_rms
@@ -523,6 +530,7 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Process()
     eventMTE3S_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
     eventMTE2V_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     eventVMTE2_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    eventSV_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     Duplicate(gswAcc_, 0.0f, hiddenSizeAlignFp32_);
     Duplicate(gswCmp_, 0.0f, hiddenSizeAlignFp32_);
     PipeBarrier<PIPE_V>();

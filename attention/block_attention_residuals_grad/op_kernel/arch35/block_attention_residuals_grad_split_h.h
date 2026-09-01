@@ -312,7 +312,9 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeAndSaveGra
             LoadGradHiddenTile(static_cast<uint64_t>(batch) * hiddenSize_ + hStart, length, gradHidden);
             for (uint32_t block = 0; block < K; ++block) {
                 LoadTensorTile(GetV(block, batch), hStart, length, v);
-                RegBase::ReduceMulSum(scalar, gradHidden, v, length);
+                Mul(floatBuf2_.Get<float>(), gradHidden, v, length);
+                PipeBarrier<PIPE_V>();
+                RegBase::ReduceMulSumTree(scalar, floatBuf2_.Get<float>(), length, eventSV_);
                 SetFlag<HardEvent::V_S>(eventVS_);
                 WaitFlag<HardEvent::V_S>(eventVS_);
                 float partial = scalar.GetValue(0);
@@ -323,7 +325,9 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeAndSaveGra
                 gradProbCmp.SetValue(block, (updated - sum) - corrected);
                 gradProb.SetValue(block, updated);
 
-                RegBase::ReduceMulSum(scalar, scoreWeightBuf_.Get<float>(), v, length);
+                Mul(floatBuf2_.Get<float>(), scoreWeightBuf_.Get<float>(), v, length);
+                PipeBarrier<PIPE_V>();
+                RegBase::ReduceMulSumTree(scalar, floatBuf2_.Get<float>(), length, eventSV_);
                 SetFlag<HardEvent::V_S>(eventVS_);
                 WaitFlag<HardEvent::V_S>(eventVS_);
                 partial = scalar.GetValue(0);
@@ -338,7 +342,9 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeAndSaveGra
         SetFlag<HardEvent::S_V>(eventSV_);
         WaitFlag<HardEvent::S_V>(eventSV_);
         // A5 RegBase Softmax backward：gradScore = probs*gradProb - probs*sum(probs*gradProb)。
-        RegBase::ReduceMulSum(scalar, probs, gradProb, K);
+        Mul(gradScore, probs, gradProb, K);
+        PipeBarrier<PIPE_V>();
+        RegBase::ReduceMulSumTree(scalar, gradScore, K, eventSV_);
         PipeBarrier<PIPE_V>();
         RegBase::SoftmaxBackwardVf(gradScore, probs, gradProb, scalar, K);
         PipeBarrier<PIPE_V>();

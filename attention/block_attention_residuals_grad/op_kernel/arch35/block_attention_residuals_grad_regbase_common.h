@@ -110,91 +110,103 @@ __aicore__ inline void KahanFusedMulAddDual(const LocalTensor<float> &sum, const
                 Sub(c0, c0, y0, mask);
                 DataCopy(sAddr + i * kVlFp32, t0, mask);
                 DataCopy(cAddr + i * kVlFp32, c0, mask);
+                sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
             }
         }
     }
 }
 
 /*!
- * Number of independent fp32 accumulators used by ReduceMulSum.
- * Chunk partial sums are spread across these accumulators and combined with a
- * pairwise tree at the end, so rounding error grows with ceil(repeatTimes/8)
- * sequential adds plus a 3-level tree instead of repeatTimes sequential adds.
+ * Half-interval binary-tree fold parameters for ReduceMulSumTree, mirroring the
+ * arch22 reduction so the A5 accumulation order matches the passing A2/A3 path.
  */
-constexpr uint32_t REDUCE_TREE_WIDTH = 8;
+constexpr uint32_t REDUCE_FOLD_LANE_NUM = 64;
+constexpr int32_t REDUCE_FOLD_INTERVAL = 2;
+constexpr int32_t REDUCE_FOLD_SHIFT_1 = 1;
+constexpr int32_t REDUCE_FOLD_SHIFT_2 = 2;
+constexpr int32_t REDUCE_FOLD_SHIFT_4 = 4;
+constexpr int32_t REDUCE_FOLD_SHIFT_8 = 8;
+constexpr int32_t REDUCE_FOLD_SHIFT_16 = 16;
 
-/*! 8-way blocked tree accumulation for dot products. */
-__aicore__ inline void ReduceMulSumTree(const LocalTensor<float> &dstScalar, const LocalTensor<float> &src0,
-                                        const LocalTensor<float> &src1, uint32_t elemCount)
+__aicore__ inline int32_t ArgFindPowerTwo(int32_t n)
 {
-    __local_mem__ float *aAddr = (__local_mem__ float *)src0.GetPhyAddr();
-    __local_mem__ float *bAddr = (__local_mem__ float *)src1.GetPhyAddr();
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dstScalar.GetPhyAddr();
-    uint32_t sreg = elemCount;
-    const uint16_t repeatTimes = static_cast<uint16_t>((elemCount + kVlFp32 - 1U) / kVlFp32);
-    __VEC_SCOPE__
-    {
-        RegTensor<float> a, b, prod, part;
-        RegTensor<float> acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7;
-        MaskReg mask;
-        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-        Duplicate(acc0, 0.0f, maskAll);
-        Duplicate(acc1, 0.0f, maskAll);
-        Duplicate(acc2, 0.0f, maskAll);
-        Duplicate(acc3, 0.0f, maskAll);
-        Duplicate(acc4, 0.0f, maskAll);
-        Duplicate(acc5, 0.0f, maskAll);
-        Duplicate(acc6, 0.0f, maskAll);
-        Duplicate(acc7, 0.0f, maskAll);
-        for (uint16_t i = 0; i < repeatTimes; ++i) {
-            mask = UpdateMask<float>(sreg);
-            DataCopy<float, LoadDist::DIST_NORM>(a, aAddr + i * kVlFp32);
-            DataCopy<float, LoadDist::DIST_NORM>(b, bAddr + i * kVlFp32);
-            Mul(prod, a, b, mask);
-            ReduceSum(part, prod, mask);
-            switch (i % REDUCE_TREE_WIDTH) {
-                case 0:
-                    Add(acc0, acc0, part, maskAll);
-                    break;
-                case 1:
-                    Add(acc1, acc1, part, maskAll);
-                    break;
-                case 2:
-                    Add(acc2, acc2, part, maskAll);
-                    break;
-                case 3:
-                    Add(acc3, acc3, part, maskAll);
-                    break;
-                case 4:
-                    Add(acc4, acc4, part, maskAll);
-                    break;
-                case 5:
-                    Add(acc5, acc5, part, maskAll);
-                    break;
-                case 6:
-                    Add(acc6, acc6, part, maskAll);
-                    break;
-                default:
-                    Add(acc7, acc7, part, maskAll);
-                    break;
-            }
-        }
-        Add(acc0, acc0, acc4, maskAll);
-        Add(acc1, acc1, acc5, maskAll);
-        Add(acc2, acc2, acc6, maskAll);
-        Add(acc3, acc3, acc7, maskAll);
-        Add(acc0, acc0, acc2, maskAll);
-        Add(acc1, acc1, acc3, maskAll);
-        Add(acc0, acc0, acc1, maskAll);
-        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, acc0, maskAll);
-    }
+    n |= n >> REDUCE_FOLD_SHIFT_1;
+    n |= n >> REDUCE_FOLD_SHIFT_2;
+    n |= n >> REDUCE_FOLD_SHIFT_4;
+    n |= n >> REDUCE_FOLD_SHIFT_8;
+    n |= n >> REDUCE_FOLD_SHIFT_16;
+    return (n + 1) >> 1;
 }
 
-/*! dst[0] = sum(src0 * src1), src buffers are not modified */
-__aicore__ inline void ReduceMulSum(const LocalTensor<float> &dstScalar, const LocalTensor<float> &src0,
-                                    const LocalTensor<float> &src1, uint32_t elemCount)
+/*!
+ * Kahan compensated summation over at most REDUCE_FOLD_LANE_NUM lanes,
+ * matching the final step of the arch22 ReduceSumHalfInterval helper.
+ */
+__aicore__ inline float ReduceSumKahan(const LocalTensor<float> &srcLocal, int32_t count)
 {
-    ReduceMulSumTree(dstScalar, src0, src1, elemCount);
+    float sum = 0.0f;
+    float comp = 0.0f;
+    for (int32_t i = 0; i < count; i++) {
+        const float y = srcLocal.GetValue(i) - comp;
+        const float t = sum + y;
+        comp = (t - sum) - y;
+        sum = t;
+    }
+    return sum;
+}
+
+/*! buf[0, len) += buf[srcOffset, srcOffset + len), register-level vector fold. */
+__aicore__ inline void AddFoldHalf(const LocalTensor<float> &buf, uint32_t len, uint32_t srcOffset)
+{
+    __local_mem__ float *bufAddr = (__local_mem__ float *)buf.GetPhyAddr();
+    const uint16_t repeatTimes = static_cast<uint16_t>((len + kVlFp32 - 1U) / kVlFp32);
+    uint32_t sreg = len;
+    __VEC_SCOPE__
+    {
+        RegTensor<float> x, y, sum;
+        MaskReg mask;
+        for (uint16_t i = 0; i < repeatTimes; ++i) {
+            mask = UpdateMask<float>(sreg);
+            DataCopy<float, LoadDist::DIST_NORM>(x, bufAddr + i * kVlFp32);
+            DataCopy<float, LoadDist::DIST_NORM>(y, bufAddr + srcOffset + i * kVlFp32);
+            Add(sum, x, y, mask);
+            DataCopy(bufAddr + i * kVlFp32, sum, mask);
+            sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
+        }
+    }
+    PipeBarrier<PIPE_V>();
+}
+
+/*!
+ * Binary-tree reduction: dst[0] = sum(productBuf[0, elemCount)).
+ * The caller materializes src0 * src1 into productBuf first, same as arch22.
+ * The products are folded with the half-interval tree used by arch22 (tail into
+ * head, halve until 64 lanes), then combined with a Kahan summation.
+ */
+__aicore__ inline void ReduceMulSumTree(const LocalTensor<float> &dstScalar, const LocalTensor<float> &productBuf,
+                                        uint32_t elemCount, event_t eventSV)
+{
+    if (elemCount == 0U) {
+        return;
+    }
+    int32_t reduceCount = static_cast<int32_t>(elemCount);
+    if (elemCount > REDUCE_FOLD_LANE_NUM) {
+        int32_t bodyCount = ArgFindPowerTwo(reduceCount);
+        const int32_t tailCount = reduceCount - bodyCount;
+        if (tailCount > 0) {
+            AddFoldHalf(productBuf, static_cast<uint32_t>(tailCount), static_cast<uint32_t>(bodyCount));
+        }
+        while (bodyCount > static_cast<int32_t>(REDUCE_FOLD_LANE_NUM)) {
+            bodyCount = bodyCount / REDUCE_FOLD_INTERVAL;
+            AddFoldHalf(productBuf, static_cast<uint32_t>(bodyCount), static_cast<uint32_t>(bodyCount));
+        }
+        reduceCount = static_cast<int32_t>(REDUCE_FOLD_LANE_NUM);
+    }
+
+    PipeBarrier<PIPE_V>();
+    dstScalar.SetValue(0, ReduceSumKahan(productBuf, reduceCount));
+    SetFlag<HardEvent::S_V>(eventSV);
+    WaitFlag<HardEvent::S_V>(eventSV);
 }
 
 /*!
@@ -235,6 +247,7 @@ __aicore__ inline void FusedMulAddAccumulate(const LocalTensor<float> &sum, cons
             Mul(acc, x0, scReg, mask);
             Add(acc, acc, s0, mask);
             DataCopy(sumAddr + i * kVlFp32, acc, mask);
+            sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
         }
     }
 }
@@ -323,6 +336,7 @@ __aicore__ inline void FusedGradVF(const LocalTensor<float> &dst, const LocalTen
                 MulAddDst(acc0, sw0, scReg, mask);
                 MulAddDst(acc0, v0, varReg, mask);
                 DataCopy(dstAddr + i * kVlFp32, acc0, mask);
+                sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
             }
         }
     }
@@ -352,6 +366,7 @@ __aicore__ inline void SoftmaxBackwardVf(const LocalTensor<float> &gradScore, co
             Mul(tmp2, pReg, scalarReg, mask);
             Sub(tmp, tmp, tmp2, mask);
             DataCopy(gsAddr + i * kVlFp32, tmp, mask);
+            sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
         }
     }
 }
