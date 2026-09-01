@@ -26,6 +26,16 @@ constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
 
+HOST_DEVICE bool IsW4GmmMode(uint8_t gmmMode)
+{
+    return gmmMode == GMM_MODE_A8W4_NZ || gmmMode == GMM_MODE_A4W4_ND || gmmMode == GMM_MODE_A4W4_NZ;
+}
+
+HOST_DEVICE bool IsA4W4GmmMode(uint8_t gmmMode)
+{
+    return gmmMode == GMM_MODE_A4W4_ND || gmmMode == GMM_MODE_A4W4_NZ;
+}
+
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
