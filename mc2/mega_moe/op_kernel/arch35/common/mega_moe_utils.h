@@ -464,6 +464,57 @@ __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenC
     return static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
 }
 
+/*
+ * 在当前 WAVE 的剩余容量内规划下一个非空专家 slice，并返回其左闭右开 token 范围。
+ * 该函数只负责推进位置和 M-group 计数，不执行 Dispatch；因此 W4 稳态可每轮只规划一个专家 slice，
+ * 再与当前 WAVE 的一个专家 Activation 交错。返回的非空范围最多覆盖一个专家。
+ */
+template <uint32_t TileM>
+__aicore__ inline bool PlanNextExpertTokenRangeInWave(
+    GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
+    uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
+{
+    while (position.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
+            expertTokenCountWorkspace, countWorkspace, expertCount, position.expertIdx);
+        // 空专家或已完成专家不占用 WAVE 容量，直接规范化到下一专家起点。
+        if (expertTokenCount == 0U || position.tokenIndexInExpert >= expertTokenCount) {
+            ++position.expertIdx;
+            position.tokenIndexInExpert = 0U;
+            continue;
+        }
+
+        range.begin = position;
+        AdvanceExpertTokenPositionInWave<TileM>(expertTokenCount, waveMGroupTarget, waveMGroupCount, position);
+        range.end = position;
+        return range.end.globalTokenIndex > range.begin.globalTokenIndex;
+    }
+    return false;
+}
+
+/*
+ * 从当前位置规划当前 WAVE 的全部剩余 token，范围可以跨越多个专家，也可以在大专家中间结束。
+ * A8W8 的每轮 Dispatch 和 W4 的启动 Dispatch 使用该规划方式；实际搬运统一交给 DispatchTokenRange。
+ */
+template <uint32_t TileM>
+__aicore__ inline bool PlanRemainingWaveTokenRange(
+    GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
+    uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
+{
+    bool hasTokenRange = false;
+    ExpertTokenRange expertRange{};
+    while (PlanNextExpertTokenRangeInWave<TileM>(expertTokenCountWorkspace, countWorkspace, expertCount,
+                                                  waveMGroupTarget, waveMGroupCount, position, expertRange)) {
+        // 第一个非空专家 slice 确定整段起点；后续 slice 只延伸整段终点。
+        if (!hasTokenRange) {
+            range.begin = expertRange.begin;
+            hasTokenRange = true;
+        }
+        range.end = expertRange.end;
+    }
+    return hasTokenRange;
+}
+
 // 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。
 __aicore__ inline void WaitUntilGmFlagEquals(__gm__ int32_t *flagAddr, int32_t expectedValue,
                                              int64_t pollBackoffCycles = GM_FLAG_POLL_BACKOFF_CYCLES)
