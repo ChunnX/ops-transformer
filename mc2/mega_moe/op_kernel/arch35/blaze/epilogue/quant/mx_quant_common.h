@@ -26,22 +26,8 @@
 namespace MegaMoeImpl {
 namespace MxQuant {
 
-constexpr uint16_t BF16_EXPONENT_MASK = 0x7f80;
-constexpr uint16_t FP8_NAN_EXPONENT = 0x00ff;
-constexpr uint16_t BF16_EXPONENT_BIAS = 0x7f00;
-constexpr int16_t BF16_EXPONENT_SHIFT = 7;
-constexpr uint16_t BF16_NAN_VALUE = 0x7f81;
-constexpr uint16_t SPECIAL_EXPONENT_THRESHOLD = 0x0040;
-
-constexpr uint16_t FP8_E4M3_MAX_EXPONENT = 0x0400;
-constexpr uint16_t FP8_E5M2_MAX_EXPONENT = 0x0780;
-constexpr uint16_t FP4_E2M1_MAX_EXPONENT = 0x0100;
-constexpr uint16_t FP4_E1M2_MAX_EXPONENT = 0x0000;
-
 constexpr int64_t DATA_ELEMENT_COUNT_PER_LOOP = 256;
 constexpr int64_t SCALE_ELEMENT_COUNT_PER_DATA_LOOP = 8;
-constexpr int64_t SCALE_ELEMENT_COUNT_PER_VECTOR = 128;
-constexpr int64_t SCALE_PACK_ELEMENT_COUNT = 64;
 constexpr int64_t FP4_OUTPUT_ELEMENT_COUNT_PER_STORE = 64;
 
 constexpr AscendC::Reg::CastTrait CAST_BF16_TO_FP32_ZERO_LAYOUT = {
@@ -65,20 +51,6 @@ constexpr AscendC::Reg::CastTrait CAST_FP32_TO_FP8_LAYOUT_THREE = {
 constexpr AscendC::Reg::CastTrait CAST_BF16_TO_FP4 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
                                                       AscendC::Reg::MaskMergeMode::ZEROING,
                                                       AscendC::RoundMode::CAST_RINT};
-
-template <typename OutputType>
-__aicore__ inline uint16_t GetOutputMaxExponent()
-{
-    if constexpr (AscendC::IsSameType<OutputType, fp8_e4m3fn_t>::value) {
-        return FP8_E4M3_MAX_EXPONENT;
-    } else if constexpr (AscendC::IsSameType<OutputType, fp8_e5m2_t>::value) {
-        return FP8_E5M2_MAX_EXPONENT;
-    } else if constexpr (AscendC::IsSameType<OutputType, fp4x2_e2m1_t>::value) {
-        return FP4_E2M1_MAX_EXPONENT;
-    } else {
-        return FP4_E1M2_MAX_EXPONENT;
-    }
-}
 
 } // namespace MxQuant
 } // namespace MegaMoeImpl
