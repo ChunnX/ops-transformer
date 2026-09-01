@@ -29,6 +29,40 @@ namespace FagBaseApi {
 constexpr uint32_t BIT_MASK_NUM = 8;
 constexpr uint32_t BIT32_ALIGN_NUM = 8;
 
+#ifndef __CCE_KT_TEST__
+constexpr static AscendC::MicroAPI::CastTrait DPSE_CAST_TRAIT_B32_TO_B16 = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+template <typename T>
+__simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue, uint32_t dataSize)
+{
+    using namespace AscendC::MicroAPI;
+    RegTensor<float> srcReg;
+    RegTensor<float> scaledReg;
+    RegTensor<T> dstReg;
+    uint32_t sreg = dataSize;
+    constexpr uint32_t regSize = VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t repeatTimes = CeilDivision(dataSize, regSize);
+
+#pragma unroll
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        MaskReg mask = UpdateMask<float>(sreg);
+        LoadAlign(srcReg, (__ubuf__ float *&)srcLocalInt + i * regSize);
+        Muls(scaledReg, srcReg, scaleValue, mask);
+        Cast<T, float, DPSE_CAST_TRAIT_B32_TO_B16>(dstReg, scaledReg, mask);
+        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T *&)dstLocalInt + i * regSize, dstReg, mask);
+    }
+}
+#else
+template <typename T>
+__aicore__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue, uint32_t dataSize)
+{}
+#endif
+
 TEMPLATES_DEF
 class FAGBlockVec {
 private:
@@ -54,8 +88,8 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope,
-                                            GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace);
+                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
+                                            GM_ADDR dkRope, GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace);
     __aicore__ inline void SetOldDeterFp32Param(FagConstInfo &constInfo);
     __aicore__ inline void InitUbBuffer();
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo);
@@ -84,6 +118,7 @@ public:
     __aicore__ inline void CopyUBToL1Vec3(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
                                           LocalTensor<INPUT_TYPE> &vecOutBuffer, FagRunInfo &runInfo,
                                           bool isDqNeedDeter);
+    __aicore__ inline void CopyDsToDpse(LocalTensor<CALC_TYPE> &dsTensor, FagConstInfo &constInfo, FagRunInfo &runInfo);
     template <const bool IS_DK>
     __aicore__ inline void ProcessPostDeter(FagConstInfo &constInfo, GlobalTensor<float> dkvWorkSpaceTensor,
                                             GlobalTensor<INPUT_TYPE> &dkvGmTensor, int64_t specialHalfS2RealSize,
@@ -138,7 +173,7 @@ public:
     GlobalTensor<float> softmaxMaxGm, softmaxSumGm, pseFloatGm, sfmgWorkSpaceGm;
     GM_ADDR pseSlope;
     GlobalTensor<uint8_t> dropMaskWorkspaceGm;
-    GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
+    GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm, dpseGm;
     GlobalTensor<OUTDTYPE> dqRopeGm, dkRopeGm;
     GlobalTensor<float> sinkGm, dsinkGm, dsinkWorkSpaceGm;
 
@@ -167,6 +202,7 @@ public:
     AttenMaskInfo attenMaskInfoPtr;
     PseInfo pseInfoPtr;
     DropMaskInfo dropInfoPtr;
+    bool isDpseBnss = false;
 
     // old deter info
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), bool, std::nullptr_t>::type isFirstDeter;
@@ -234,6 +270,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::SetVecBlockParams(TPipe *pipe
     attenMaskInfoPtr = attenMaskInfo;
     pseInfoPtr = pseInfo;
     dropInfoPtr = dropInfo;
+    if constexpr (IS_PSE) {
+        isDpseBnss = tilingData->s1s2BNGS1S2BaseParams.pseShapeType == PSE_SHAPE_TYPE_BNSS;
+    }
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
         isFirstDeter = true;
     }
@@ -243,7 +282,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask, GM_ADDR attenMask, GM_ADDR softmaxMax,
     GM_ADDR softmaxSum, GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR dq,
-    GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace)
+    GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR sink, GM_ADDR dsink,
+    GM_ADDR workspace)
 {
     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
     dyGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dy);
@@ -258,6 +298,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
     dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
+    if constexpr (IS_PSE) {
+        if (isDpseBnss) {
+            dpseGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dpse);
+        }
+    }
     if constexpr (IS_ROPE) {
         dqRopeGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
         dkRopeGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dkRope);
@@ -539,6 +584,49 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyUBToL1Vec3(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyDsToDpse(LocalTensor<CALC_TYPE> &dsTensor,
+                                                                FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
+    if constexpr (IS_PSE) {
+        // dpse currently supports BNSS only. Broadcast and compressed PSE shapes require reduction and must not
+        // write the raw dS block into their output.
+        if (!isDpseBnss || runInfo.commonRunInfo.halfS1RealSize == 0 || runInfo.commonRunInfo.s2RealSize == 0) {
+            return;
+        }
+
+        LocalTensor<OUTDTYPE> dpseOutTensor = dSOutQue.AllocTensor<OUTDTYPE>();
+        bool needPseScale = pseInfoPtr.pseType == static_cast<uint32_t>(PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE);
+        if constexpr (IsSameType<OUTDTYPE, CALC_TYPE>::value) {
+            if (needPseScale) {
+                Muls(dpseOutTensor, dsTensor, constInfo.scaleValue, VECTOR_BASEM * VECTOR_BASEN);
+            } else {
+                DataCopy(dpseOutTensor, dsTensor, VECTOR_BASEM * VECTOR_BASEN);
+            }
+        } else {
+            if (needPseScale) {
+                MulsCastDpseVF<OUTDTYPE>(dpseOutTensor.GetPhyAddr(), dsTensor.GetPhyAddr(), constInfo.scaleValue,
+                                         VECTOR_BASEM * VECTOR_BASEN);
+            } else {
+                Cast(dpseOutTensor, dsTensor, RoundMode::CAST_ROUND, VECTOR_BASEM * VECTOR_BASEN);
+            }
+        }
+        dSOutQue.EnQue(dpseOutTensor);
+        dSOutQue.DeQue<OUTDTYPE>();
+
+        int64_t dpseOffset = PseComputeOffset<IS_PSE>(runInfo.commonRunInfo, constInfo.commonConstInfo, pseInfoPtr);
+        DataCopyExtParams copyOutParams;
+        copyOutParams.blockCount = runInfo.commonRunInfo.halfS1RealSize;
+        copyOutParams.blockLen = runInfo.commonRunInfo.s2RealSize * sizeof(OUTDTYPE);
+        copyOutParams.srcStride =
+            CeilDiv(VECTOR_BASEN * sizeof(OUTDTYPE), blockBytes) - CeilDiv(copyOutParams.blockLen, blockBytes);
+        copyOutParams.dstStride =
+            (runInfo.commonRunInfo.actualS2Size - runInfo.commonRunInfo.s2RealSize) * sizeof(OUTDTYPE);
+        DataCopyPad(dpseGm[dpseOffset], dpseOutTensor, copyOutParams);
+        dSOutQue.FreeTensor(dpseOutTensor);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(
     MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm1ResTensor,
     LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo, FagRunInfo &runInfo, bool isDqNeedDeter)
@@ -574,7 +662,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(
         softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
     }
 
-    LocalTensor<INPUT_TYPE> vecOutBuffer = dSOutQue.AllocTensor<INPUT_TYPE>();
     if (runInfo.commonRunInfo.s2RealSize > static_cast<uint32_t>(S2TemplateType::Aligned64)) {
         BroadcastSubMul<CALC_TYPE, static_cast<uint16_t>(S2TemplateType::Aligned128), 0, false>(
             mm1ResTensor, mm1ResTensor, softmaxGradResTensor, mm2ResTensor, runInfo.commonRunInfo.halfS1RealSize,
@@ -612,11 +699,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(
         }
     }
 
+    CopyDsToDpse(mm1ResTensor, constInfo, runInfo);
+
     // input type fp32, no post, mov muls here
     if constexpr (IS_FP32_INPUT) {
         Muls(mm1ResTensor, mm1ResTensor, constInfo.scaleValue, VECTOR_BASEM * VECTOR_BASEN);
     }
 
+    LocalTensor<INPUT_TYPE> vecOutBuffer = dSOutQue.AllocTensor<INPUT_TYPE>();
     LocalTensor<uint8_t> selrIndexesTensor;
     CastTransdataDeconflict<INPUT_TYPE, CALC_TYPE, VECTOR_BASEN>(vecOutBuffer, mm1ResTensor, selrIndexesTensor,
                                                                  VECTOR_BASEM);
@@ -1442,8 +1532,8 @@ public:
     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope,
-                                            GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace) {};
+                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
+                                            GM_ADDR dkRope, GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace) {};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, AttenMaskInfo &attenMaskInfo,
                                              PseInfo &pseInfo, DropMaskInfo &dropInfo) {};

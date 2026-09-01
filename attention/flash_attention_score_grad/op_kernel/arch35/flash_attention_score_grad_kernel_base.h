@@ -231,7 +231,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                dropInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
-                              deqScaleV, deqScaleDy, dq, dk, dv, dqRope, dkRope, sink, dsink, workspace);
+                              deqScaleV, deqScaleDy, dq, dk, dv, dpse, dqRope, dkRope, sink, dsink, workspace);
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) {
         vecBlock.SetOldDeterFp32Param(constInfo);
     }
