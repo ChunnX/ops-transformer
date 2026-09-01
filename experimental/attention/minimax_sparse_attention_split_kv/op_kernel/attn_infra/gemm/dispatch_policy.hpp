@@ -16,13 +16,36 @@
 
 namespace NpuArch::Gemm {
 
+// Block Mmad Policies
+
+template <bool ASYNC_ = false>
+struct MmadAtlasA2Base {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t ASYNC = ASYNC_;
+};
+
 template <bool ASYNC_ = false>
 struct MmadAtlasA5Base {
     using ArchTag = Arch::AtlasA5;
     static constexpr uint32_t ASYNC = ASYNC_;
 };
 
+using MmadAtlasA2 = MmadAtlasA2Base<false>;
 using MmadAtlasA5 = MmadAtlasA5Base<false>;
+
+template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
+struct MmadAtlasA2SFAIQK : public MmadAtlasA2 {
+    static constexpr uint32_t STAGES = 2;
+    static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
+    static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
+};
+
+template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
+struct MmadAtlasA2SFAIPV : public MmadAtlasA2 {
+    static constexpr uint32_t STAGES = 2;
+    static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
+    static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
+};
 
 struct MmadAtlasA5SplitKvQK : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
@@ -32,6 +55,14 @@ struct MmadAtlasA5SplitKvPV : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
 };
 
-}  // namespace NpuArch::Gemm
+struct MmadAtlasA2PrefillQK : public MmadAtlasA2 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
 
-#endif  // GEMM_DISPATCH_POLICY_HPP
+struct MmadAtlasA2PrefillPV : public MmadAtlasA2 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
+
+} // namespace NpuArch::Gemm
+
+#endif // GEMM_DISPATCH_POLICY_HPP
