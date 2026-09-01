@@ -41,7 +41,7 @@ stages:
             with:
               repo_name: ${{ env.repo_name }}
               target_branch: ${{ env.TARGET_BRANCH }}
-              repo_url: ${{ vars.CI_PATH }}
+              repo_url: "https://gitcode.com/tanghaoran7/.gitcode.git"
           -
             name: show_output
             run: |
