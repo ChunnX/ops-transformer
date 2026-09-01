@@ -167,6 +167,7 @@ class ElasticBufferOpBuilder(OpBuilder):
     def include_paths(self):
         """Override include paths to ensure CANN headers are prioritized."""
         return [
+            os.path.join(self._cann_path, "asc/include/adv_api"),
             os.path.join(self._cann_path, "include"),
             os.path.join(self._torch_npu_path, "include"),
             os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
