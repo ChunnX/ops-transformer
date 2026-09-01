@@ -586,12 +586,15 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
         }
 
+#if 0
+        // Precision diagnostics are retained for reuse but disabled after confirming the L0 slot1 issue.
         bool debugFirstExpertRow = false;
         if constexpr (!IsShared && !IsLayered) {
             debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
                                   rowOffsetInExpert == 0U &&
                                   mLoc == 0U && nLoc == 0U && kLoc == 0U;
         }
+#endif
 
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
@@ -602,14 +605,20 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+#if 0
         if (debugFirstExpertRow) {
-            StageDebug::LogGmm2WeightDependencyHashes(
-                reinterpret_cast<GM_ADDR>(gmBlockB.Data().Get()),
-                reinterpret_cast<GM_ADDR>(gmBlockScaleB.Data().Get()),
-                config.k, config.scaleK,
-                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
+            using KernelConfig = typename Config::KernelConfig;
+            const auto &tilingConfig = config.blockMmadTiling;
+            StageDebug::LogGmm2Config(
+                config.m, config.n, config.k, config.scaleK,
+                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape),
+                tilingConfig.tileM, tilingConfig.tileN, tilingConfig.l1Params.kL1,
+                tilingConfig.l1Params.scaleKL1, KernelConfig::IS_WEIGHT_NZ ? 1U : 0U,
+                mLoc, nLoc, kLoc, gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
         }
+#endif
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+#if 0
         if (debugFirstExpertRow) {
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -617,6 +626,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                 reinterpret_cast<GM_ADDR>(gmBlockC.Data().Get()),
                                 gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
         }
+#endif
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo);

@@ -1722,34 +1722,6 @@ class GenInputAndGolden():
             sample = np.asarray(values).reshape(-1)[:count].astype(np.float32).tolist()
         print(f"[golden {marker}] {name}: {sample}")
 
-    @staticmethod
-    def _word_hash(values):
-        raw = np.ascontiguousarray(np.asarray(values)).view(np.uint8).reshape(-1)
-        if raw.size % 4 != 0:
-            raise ValueError(f"word hash input must be 4-byte aligned, got {raw.size} bytes")
-        hash_value = 2166136261
-        for word in raw.view("<u4"):
-            hash_value = ((hash_value ^ int(word)) * 16777619) & 0xFFFFFFFF
-        return hash_value
-
-    def print_gmm2_weight_dependency_hashes(self, weight_storage, weight_scale_storage):
-        k = self.n // 2
-        output_columns = 20
-        weight = np.asarray(weight_storage)
-        weight_scale = np.asarray(weight_scale_storage)
-        if self.transpose_weight:
-            weight_block = weight[0, :output_columns, :k]
-            weight_scale_block = weight_scale[0, :output_columns].reshape(output_columns, -1)
-        else:
-            weight_block = weight[0, :k, :output_columns]
-            weight_scale_block = weight_scale[0, :, :output_columns]
-        hashes = {
-            "b_n0_19_k_all": self._word_hash(weight_block),
-            "scale_b_n0_19_k_all": self._word_hash(weight_scale_block),
-        }
-        formatted = {name: f"0x{value:08x}" for name, value in hashes.items()}
-        print(f"[golden 910010] gmm2_dependency_hashes: {formatted}")
-
     def __init__(self, **kwargs):
         self.bs = kwargs['bs']
         self.h = kwargs['h']
@@ -2344,8 +2316,6 @@ class GenInputAndGolden():
             stage_times["swiglu_quant"] = time.perf_counter() - stage_start
 
             stage_start = time.perf_counter()
-            if global_expert_idx == 0:
-                self.print_gmm2_weight_dependency_hashes(w2_npu, weight_scale2_npu)
             output2 = qbmm_mx_golden_calculate(
                 [quant_output],
                 [weight2[0]],
@@ -2905,9 +2875,6 @@ class GenInputAndGolden():
                     perTokenScale_input.shape[0], perTokenScale_input.shape[1] * 2
                 )
                 perTokenScale_input = transpose_last_two_dim(perTokenScale_input, x_transpose_flag)
-                if debug_expert_zero:
-                    self.print_gmm2_weight_dependency_hashes(
-                        w2_npu[0:1], weight_scale2_npu_cpu[0:1])
                 del output1, swiglu_out
                 quant_output = [quant_output[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)]
                 quant_scale_output = [
