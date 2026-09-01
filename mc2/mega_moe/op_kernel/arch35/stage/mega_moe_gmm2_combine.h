@@ -970,28 +970,22 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
 // 供普通模板、Wave 模板和共享专家的 GMM2 阶段复用。
 // 使用调用方传入的 block 任务执行 GMM2，并保持所选同步约定不变。
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
-          typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
+          typename QuantScaleType, AxWMode QuantMode, bool IsWeightNz, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const GMMAddrInfo &gmmAddrInfo,
                                      const ProblemShape &problemShape, GmmRuntimeState &runtimeState,
                                      void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false)
 {
-    if constexpr (EnableA8W4 || EnableA4W4) {
+    if constexpr (QuantMode == AxWMode::A8W4 || QuantMode == AxWMode::A4W4) {
         RunGmm2A8W4<A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
                     TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained>(
             problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
             static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
-    } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-               gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
-                       false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
-            problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
-            allowWeightL2Bypass);
     } else {
-        RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
-                       false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
-            problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
-            allowWeightL2Bypass);
+        RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType,
+                       IsWeightNz, false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved,
+                       IsWaveFlagGrained>(problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
+                                          persistentBlockMmadContext, allowWeightL2Bypass);
     }
 }
 
