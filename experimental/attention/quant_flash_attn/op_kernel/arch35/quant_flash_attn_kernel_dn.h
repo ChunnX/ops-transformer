@@ -591,9 +591,8 @@ public:
                 }
                 FlashAttention(sectionIdx);
                 if ASCEND_IS_AIV {
-                    vectorBlock.ReleaseTensors();
+
                 } else {
-                    cubeBlock.ReleaseTensors();
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0]);

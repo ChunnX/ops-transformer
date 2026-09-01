@@ -379,8 +379,6 @@ public:
         peerGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, 229888, 128 * 4);
     }
 
-    __aicore__ inline void ReleaseTensors() {}
-
     __aicore__ inline void ComputeMm1(const RunInfo &info)
     {
         if (unlikely(info.isFirstS2Loop)) {
