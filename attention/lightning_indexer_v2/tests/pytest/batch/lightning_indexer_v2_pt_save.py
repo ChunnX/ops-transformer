@@ -12,6 +12,8 @@
 
 import os
 from functools import partial
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lightning_indexer_v2_golden import generate_liv2_test_data
 import pandas as pd
 import numpy as np
