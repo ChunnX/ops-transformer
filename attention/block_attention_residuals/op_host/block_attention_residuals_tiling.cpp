@@ -145,7 +145,8 @@ uint32_t BlockAttentionResidualsTiling::CalcHSliceChunk() const
 {
     // TK-HSLICE 的 h 切块大小：取满足切块 UB 预算的最大 chunk。
     // 切块缓冲：inQue 2×chunk×elemBytes + outQue 1×chunk×elemBytes + 3 个 fp32 buf ×chunk×4B；
-    // 元数据：vecMeta+metaSoftmax+sumSq+score(各 metaAlign×4B) + metaBrc(metaAlign×8×4B) + scalar + 全局开销。
+    // 元数据：vecMeta+metaSoftmax+sumSq+sumSqComp+score+scoreComp(各 metaAlign×4B)
+    //         + metaBrc(metaAlign×8×4B) + scalar + 全局开销。
     const uint32_t B = tilingData_.blockCount;
     const uint32_t H = tilingData_.hiddenSize;
     if (B == 0 || H == 0) {
@@ -154,7 +155,8 @@ uint32_t BlockAttentionResidualsTiling::CalcHSliceChunk() const
     const uint32_t elemBytes = DtypeElemBytes();
     const uint32_t elemsPerBlk = DtypeElemsPerBlk();
     const uint32_t metaAlign = AlignUpU32(B, ELEM_PER_BLK_FP32);
-    constexpr uint32_t META_FLOAT_PER_ALIGN = 1U + 1U + 8U + 1U + 1U; // vecMeta+metaSoftmax+metaBrc+sumSq+score
+    constexpr uint32_t META_FLOAT_PER_ALIGN =
+        1U + 1U + 8U + 2U + 2U; // vecMeta + metaSoftmax + metaBrc + Kahan(sumSq, score)
     uint64_t metaBytes =
         static_cast<uint64_t>(metaAlign) * META_FLOAT_PER_ALIGN * sizeof(float) +
         static_cast<uint64_t>(SCALAR_LOCAL_ELEMS) * sizeof(float) + UB_OVERHEAD_BYTES;

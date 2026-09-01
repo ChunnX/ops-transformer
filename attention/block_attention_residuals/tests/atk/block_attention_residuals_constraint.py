@@ -56,5 +56,5 @@ class BlockAttentionResidualsConstraintGenerator(CaseGenerator):
             elif inp.name == "norm_eps":
                 inp.range_values = 1.0e-5
             elif inp.name == "need_backward":
-                inp.range_values = False
+                inp.range_values = bool(inp.range_values)
         return case_config

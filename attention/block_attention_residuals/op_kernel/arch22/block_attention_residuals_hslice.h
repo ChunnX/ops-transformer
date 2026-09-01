@@ -17,7 +17,7 @@
  *   Phase A（score pass，按 h 块）：
  *     每块先搬 projWeight/normWeight 对应切片 → scoreWeight 块；
  *     再逐行搬 v[n, hc] → Cast → 本块行内归约 sumSq[n]/score[n]（vecMeta/metaSoftmax 标量槽）；
- *     块结束时 Add 累加进 sumSqAcc/scoreAcc（对齐基址向量累加）。
+ *     块结束时用 Kahan 求和累加进 sumSqAcc/scoreAcc。
  *   Finalize：逐元素 invNorm = 1/sqrt(sumSq*invH+eps)、score *= invNorm（全向量）。
  *   SoftmaxSmall：小 B 向量 Softmax → probs → Brcb 展开到 metaBrc[n*8]。
  *   Phase B（weighted pass，按 h 块）：
@@ -105,6 +105,32 @@ public:
     }
 
 private:
+    __aicore__ inline void KahanSumUpdate(LocalTensor<float> &input, LocalTensor<float> sumList[2],
+                                          int32_t &sumPos)
+    {
+        LocalTensor<float> sum = sumList[sumPos];
+        LocalTensor<float> compensation = sumList[1 - sumPos];
+        Sub(input, input, compensation, blockCount_); // y = x - c
+        PipeBarrier<PIPE_V>();
+        Add(compensation, input, sum, blockCount_); // t = sum + y
+        PipeBarrier<PIPE_V>();
+        Sub(sum, compensation, sum, blockCount_);
+        PipeBarrier<PIPE_V>();
+        Sub(sum, sum, input, blockCount_); // c = (t - sum) - y
+        PipeBarrier<PIPE_V>();
+        sumPos = 1 - sumPos;
+    }
+
+    __aicore__ inline LocalTensor<float> GetSumSqAcc()
+    {
+        return sumSqKahanPos_ == 0 ? sumSqAcc_ : sumSqComp_;
+    }
+
+    __aicore__ inline LocalTensor<float> GetScoreAcc()
+    {
+        return scoreKahanPos_ == 0 ? scoreAcc_ : scoreComp_;
+    }
+
     __aicore__ inline void InitBuffers()
     {
         pipe_->InitBuffer(inQue_, BUFFER_NUM_RELOAD, hChunkAlignBf16_ * sizeof(D_IN));
@@ -118,7 +144,9 @@ private:
         pipe_->InitBuffer(metaBrcBuf_, metaAlign_ * ELEM_PER_BLK_FP32 * sizeof(float));
         pipe_->InitBuffer(scalarBuf_, SCALAR_LOCAL_ELEMS * sizeof(float));
         pipe_->InitBuffer(sumSqBuf_, metaAlign_ * sizeof(float));
+        pipe_->InitBuffer(sumSqCompBuf_, metaAlign_ * sizeof(float));
         pipe_->InitBuffer(scoreBuf_, metaAlign_ * sizeof(float));
+        pipe_->InitBuffer(scoreCompBuf_, metaAlign_ * sizeof(float));
 
         scoreWeight_ = scoreWeightBuf_.Get<float>();
         vRow_ = vRowBuf_.Get<float>();
@@ -130,7 +158,9 @@ private:
         Duplicate(scalarLocal_, 0.0f, SCALAR_LOCAL_ELEMS);
         PipeBarrier<PIPE_V>();
         sumSqAcc_ = sumSqBuf_.Get<float>();
+        sumSqComp_ = sumSqCompBuf_.Get<float>();
         scoreAcc_ = scoreBuf_.Get<float>();
+        scoreComp_ = scoreCompBuf_.Get<float>();
 
         if (needBackward_) {
             // inv/probs 均整块（metaAlign float）经 Que 直写 GM
@@ -213,12 +243,16 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    /*! Phase A：按 h 块累计 sumSqAcc/scoreAcc（块间 Add 为对齐基址向量累加） */
+    /*! Phase A：按 h 块用 Kahan 求和累计 sumSqAcc/scoreAcc */
     __aicore__ inline void ComputePreSoftmaxScores(uint32_t tokenIdx)
     {
         Duplicate(sumSqAcc_, 0.0f, metaAlign_);
+        Duplicate(sumSqComp_, 0.0f, metaAlign_);
         Duplicate(scoreAcc_, 0.0f, metaAlign_);
+        Duplicate(scoreComp_, 0.0f, metaAlign_);
         PipeBarrier<PIPE_V>();
+        sumSqKahanPos_ = 0;
+        scoreKahanPos_ = 0;
         for (uint32_t hc = 0; hc < hChunks_; ++hc) {
             const uint32_t hcLen = (hc == hChunks_ - 1U) ? lastChunkLen_ : hiddenSizeChunk_;
             const uint64_t hcOffset = static_cast<uint64_t>(hc) * hiddenSizeChunk_;
@@ -232,30 +266,33 @@ private:
                 ProcessRowScoreChunk(inLocal, n, hcLen);
                 FreeInRow(inLocal);
             }
-            Add(sumSqAcc_, sumSqAcc_, vecMeta_, blockCount_);
-            Add(scoreAcc_, scoreAcc_, metaSoftmax_, blockCount_);
-            PipeBarrier<PIPE_V>();
+            LocalTensor<float> sumSqList[2] = {sumSqAcc_, sumSqComp_};
+            LocalTensor<float> scoreList[2] = {scoreAcc_, scoreComp_};
+            KahanSumUpdate(vecMeta_, sumSqList, sumSqKahanPos_);
+            KahanSumUpdate(metaSoftmax_, scoreList, scoreKahanPos_);
         }
     }
 
     /*! invNorm=1/sqrt(sumSq*invH+eps)（逐元素）；score *= invNorm；整块写 invNorm GM */
     __aicore__ inline void FinalizeScores(uint32_t tokenIdx)
     {
-        Muls(sumSqAcc_, sumSqAcc_, invHiddenSize_, blockCount_);
+        LocalTensor<float> sumSqAcc = GetSumSqAcc();
+        LocalTensor<float> scoreAcc = GetScoreAcc();
+        Muls(sumSqAcc, sumSqAcc, invHiddenSize_, blockCount_);
         PipeBarrier<PIPE_V>();
-        Adds(sumSqAcc_, sumSqAcc_, normEps_, blockCount_);
+        Adds(sumSqAcc, sumSqAcc, normEps_, blockCount_);
         PipeBarrier<PIPE_V>();
-        Sqrt(sumSqAcc_, sumSqAcc_, blockCount_);
+        Sqrt(sumSqAcc, sumSqAcc, blockCount_);
         PipeBarrier<PIPE_V>();
         Duplicate(metaSoftmax_, 1.0f, metaAlign_);
         PipeBarrier<PIPE_V>();
-        Div(sumSqAcc_, metaSoftmax_, sumSqAcc_, blockCount_); // sumSqAcc ← invNorm
+        Div(sumSqAcc, metaSoftmax_, sumSqAcc, blockCount_); // sumSqAcc ← invNorm
         PipeBarrier<PIPE_V>();
-        Mul(scoreAcc_, scoreAcc_, sumSqAcc_, blockCount_);
+        Mul(scoreAcc, scoreAcc, sumSqAcc, blockCount_);
         PipeBarrier<PIPE_V>();
         if (needBackward_) {
             LocalTensor<float> invUb = invQue_.AllocTensor<float>();
-            CopyCompactFloatsUb(invUb, sumSqAcc_, blockCount_);
+            CopyCompactFloatsUb(invUb, sumSqAcc, blockCount_);
             invQue_.EnQue(invUb);
             invUb = invQue_.DeQue<float>();
             DataCopyExtParams invParams{1, blockCount_ * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
@@ -267,11 +304,12 @@ private:
 
     __aicore__ inline void SoftmaxSmall()
     {
-        SoftmaxSmallVec(scoreAcc_, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
+        LocalTensor<float> scoreAcc = GetScoreAcc();
+        SoftmaxSmallVec(scoreAcc, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
         // 紧凑 prob → metaBrc[n*8]：零填充 staging 后单次 Brcb（repeat=ceil(B/8)）
         Duplicate(metaSoftmax_, 0.0f, metaAlign_);
         PipeBarrier<PIPE_V>();
-        CopyCompactFloatsUb(metaSoftmax_, scoreAcc_, blockCount_);
+        CopyCompactFloatsUb(metaSoftmax_, scoreAcc, blockCount_);
         const uint8_t brcRepeat =
             static_cast<uint8_t>((blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32);
         Brcb(metaBrc_, metaSoftmax_, brcRepeat, {1, MOV_8});
@@ -280,8 +318,9 @@ private:
 
     __aicore__ inline void WriteProbsQue(uint32_t tokenIdx)
     {
+        LocalTensor<float> scoreAcc = GetScoreAcc();
         LocalTensor<float> probsUb = probsQue_.AllocTensor<float>();
-        CopyCompactFloatsUb(probsUb, scoreAcc_, blockCount_);
+        CopyCompactFloatsUb(probsUb, scoreAcc, blockCount_);
         probsQue_.EnQue(probsUb);
         probsUb = probsQue_.DeQue<float>();
         DataCopyExtParams probsParams{1, blockCount_ * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
@@ -372,7 +411,9 @@ private:
     TBuf<TPosition::VECCALC> metaBrcBuf_;
     TBuf<TPosition::VECCALC> scalarBuf_;
     TBuf<TPosition::VECCALC> sumSqBuf_;
+    TBuf<TPosition::VECCALC> sumSqCompBuf_;
     TBuf<TPosition::VECCALC> scoreBuf_;
+    TBuf<TPosition::VECCALC> scoreCompBuf_;
 
     LocalTensor<float> scoreWeight_;
     LocalTensor<float> vRow_;
@@ -382,7 +423,9 @@ private:
     LocalTensor<float> metaBrc_;
     LocalTensor<float> scalarLocal_;
     LocalTensor<float> sumSqAcc_;
+    LocalTensor<float> sumSqComp_;
     LocalTensor<float> scoreAcc_;
+    LocalTensor<float> scoreComp_;
 
     uint32_t numTokens_{0};
     uint32_t numBlocks_{0};
@@ -399,6 +442,8 @@ private:
     uint32_t tokenNum_{0};
     uint32_t blockIdx_{0};
     uint32_t blockNum_{0};
+    int32_t sumSqKahanPos_{0};
+    int32_t scoreKahanPos_{0};
     float normEps_{1e-5f};
     float invHiddenSize_{0.0f};
     bool needBackward_{false};

@@ -148,4 +148,4 @@ inputs:
       values: [attr_bool]
     ranges:
       valid:
-        values: [false]
+        values: [false, true]

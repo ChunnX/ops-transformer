@@ -34,13 +34,11 @@ class BlockAttentionResidualsAtk(BaseApi):
         valid_block_num = int(args["valid_block_num"])
         norm_eps = float(args["norm_eps"])
         need_backward = bool(args["need_backward"])
-        if need_backward:
-            raise ValueError("ATK case is restricted to need_backward=false")
-
         if self.device == "cpu":
             return golden.apply_attn_res_cust(
                 prefix_sum, block_res, proj_weight, norm_weight, norm_eps,
                 is_benchmark_task=bool(self.task_result.is_benchmark_task),
+                need_backward=need_backward,
             )
         if self.device == "npu":
             op = torch_runner.get_block_attention_residuals_fn()
@@ -51,7 +49,7 @@ class BlockAttentionResidualsAtk(BaseApi):
                 norm_weight.to(f"npu:{self.device_id}"),
                 valid_block_num,
                 norm_eps,
-                False,
+                need_backward,
             )
             torch.npu.synchronize()
             return output
