@@ -445,6 +445,16 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
+    const bool isFp8Pertensor =
+        quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE &&
+        (args_.geAType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geAType == ge::DataType::DT_FLOAT8_E5M2) &&
+        (args_.geBType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geBType == ge::DataType::DT_FLOAT8_E5M2);
+    isPeerOnly_ = !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
+                  args_.rankDim == PEER_ONLY_RANK_SIZE && isFp8Pertensor &&
+                  mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    if (isPeerOnly_) {
+        mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+    }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
@@ -556,7 +566,8 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     }
 
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
-    uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
+    uint8_t commAlg = isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY :
+        (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType,
                                             scaleType, commAlg, commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
