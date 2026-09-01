@@ -312,7 +312,7 @@ public:
         }
     }
 
-    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfoX &runInfo)
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfo &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
