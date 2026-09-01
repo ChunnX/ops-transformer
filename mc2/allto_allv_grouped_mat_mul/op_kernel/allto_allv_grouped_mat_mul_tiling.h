@@ -19,6 +19,154 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
+constexpr uint32_t A2AVGMM_MAX_COUNT_NUM = 1024U;
+constexpr uint32_t A2AVGMM_EXPERT_OVERLAP_DISABLED = 0U;
+constexpr uint32_t A2AVGMM_EXPERT_OVERLAP_ENABLED = 1U;
+constexpr uint32_t A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS = 64U;
+constexpr uint32_t A2AVGMM_MIN_EXPERT_OVERLAP_DIMENSION = 64U;
+
+namespace AlltoAllvGroupedMatMulAivMode {
+
+#if defined(__CCE_AICORE__)
+#define A2AVGMM_AIV_TILING_HOST_DEVICE __aicore__ inline
+#else
+#define A2AVGMM_AIV_TILING_HOST_DEVICE inline
+#endif
+
+struct ExpertOverlapStats {
+    uint32_t nonEmptyExperts = 0U;
+    uint32_t cappedTotalTokens = 0U;
+};
+
+A2AVGMM_AIV_TILING_HOST_DEVICE bool BuildExpertOverlapStats(
+    const int64_t *recvCounts, uint32_t rankSize, uint32_t expertPerRank,
+    ExpertOverlapStats &stats)
+{
+    stats = {};
+    if (recvCounts == nullptr || rankSize == 0U || expertPerRank == 0U) {
+        return false;
+    }
+
+    for (uint32_t expertIdx = 0U; expertIdx < expertPerRank; ++expertIdx) {
+        uint32_t cappedExpertTokens = 0U;
+        bool nonEmpty = false;
+        for (uint32_t rankIdx = 0U; rankIdx < rankSize; ++rankIdx) {
+            const int64_t count =
+                recvCounts[rankIdx * expertPerRank + expertIdx];
+            if (count < 0) {
+                return false;
+            }
+            nonEmpty = nonEmpty || count > 0;
+            if (cappedExpertTokens < A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS) {
+                const uint32_t remaining =
+                    A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS - cappedExpertTokens;
+                if (count >= static_cast<int64_t>(remaining)) {
+                    cappedExpertTokens = A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS;
+                } else {
+                    cappedExpertTokens += static_cast<uint32_t>(count);
+                }
+            }
+        }
+        if (nonEmpty) {
+            ++stats.nonEmptyExperts;
+        }
+        if (stats.cappedTotalTokens < A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS) {
+            const uint32_t remaining =
+                A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS - stats.cappedTotalTokens;
+            if (cappedExpertTokens >= remaining) {
+                stats.cappedTotalTokens = A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS;
+            } else {
+                stats.cappedTotalTokens += cappedExpertTokens;
+            }
+        }
+    }
+    return true;
+}
+
+A2AVGMM_AIV_TILING_HOST_DEVICE bool IsExpertOverlapProtocolSafe(
+    const int64_t *recvCounts, uint32_t rankSize, uint32_t expertPerRank)
+{
+    ExpertOverlapStats stats = {};
+    return expertPerRank >= 2U &&
+           BuildExpertOverlapStats(recvCounts, rankSize, expertPerRank, stats) &&
+           stats.nonEmptyExperts >= 2U;
+}
+
+A2AVGMM_AIV_TILING_HOST_DEVICE bool ShouldUseAutomaticExpertOverlap(
+    const int64_t *recvCounts, uint32_t rankSize, uint32_t expertPerRank,
+    uint32_t k, uint32_t n)
+{
+    ExpertOverlapStats stats = {};
+    return expertPerRank >= 2U &&
+           BuildExpertOverlapStats(recvCounts, rankSize, expertPerRank, stats) &&
+           stats.nonEmptyExperts >= 2U &&
+           stats.cappedTotalTokens >= A2AVGMM_MIN_EXPERT_OVERLAP_TOKENS &&
+           k >= A2AVGMM_MIN_EXPERT_OVERLAP_DIMENSION &&
+           n >= A2AVGMM_MIN_EXPERT_OVERLAP_DIMENSION;
+}
+
+#undef A2AVGMM_AIV_TILING_HOST_DEVICE
+
+} // namespace AlltoAllvGroupedMatMulAivMode
+
+#pragma pack(push, 8)
+struct AlltoAllvGmmInfo {
+    uint32_t M = 0U;
+    uint32_t K = 0U;
+    uint32_t N = 0U;
+    uint32_t rankSize = 0U;
+    uint32_t expertPerRank = 0U;
+    uint32_t maxOutputSize = 0U;
+    uint32_t isTransposeB = 0U;
+    uint32_t hasSharedExpert = 0U;
+    uint32_t hasPermuteOut = 0U;
+    uint32_t aivCoreNum = 0U;
+    uint32_t aicCoreNum = 0U;
+    uint32_t totalUbSize = 0U;
+};
+
+struct AlltoAllvGmmCoCTiling {
+    uint32_t m0 = 0U;
+    uint32_t k0 = 0U;
+    uint32_t n0 = 0U;
+    uint32_t ubMoveNum = 0U;
+    uint32_t swizzlCount = 0U;
+    uint32_t swizzlDirect = 0U;
+};
+
+struct AlltoAllvGmmExpertMeta {
+    uint64_t recvTokenBase = 0U;
+    uint32_t tokenCount = 0U;
+    uint32_t reserved = 0U;
+};
+
+struct AlltoAllvGmmExpertSourceMeta {
+    uint64_t dstTokenOffset = 0U;
+    uint64_t srcTokenOffset = 0U;
+    uint32_t tokenCount = 0U;
+    uint32_t sourceRank = 0U;
+};
+
+struct AlltoAllvGmmAivTilingData {
+    Mc2InitTiling hcclInitTiling;
+    Mc2CcTiling hcclCcTiling;
+    AlltoAllvGmmInfo gmmInfo;
+    AlltoAllvGmmInfo mmInfo;
+    AlltoAllvGmmCoCTiling gmmCocTiling;
+    AlltoAllvGmmCoCTiling mmCocTiling;
+    int64_t sendCounts[A2AVGMM_MAX_COUNT_NUM] = {};
+    int64_t recvCounts[A2AVGMM_MAX_COUNT_NUM] = {};
+    uint64_t recvTokenOffset = 0U;
+    uint64_t countTableOffset = 0U;
+    uint64_t expertMetaOffset = 0U;
+    uint64_t expertReadyOffset = 0U;
+    uint64_t userWorkspaceSize = 0U;
+    uint32_t countNum = 0U;
+    uint32_t is910C = 0U;
+    uint32_t expertOverlapMode = A2AVGMM_EXPERT_OVERLAP_DISABLED;
+};
+#pragma pack(pop)
+
 #pragma pack(push, 8)
 struct AlltoAllvGmmTilingData {
     MC2KernelTemplate::HcclA2avTilingInfo hcclA2avTilingInfo;
