@@ -737,7 +737,7 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
         blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n,
-                      config.blockMmadTiling.l1Params.kBL1);
+                      config.blockMmadTiling.l1Params.kL1);
     }
 }
 

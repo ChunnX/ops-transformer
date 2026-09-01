@@ -23,8 +23,8 @@
 
 | 编号 | 优先级 | 状态 | 整改项 | 主要依赖 |
 |---|---|---|---|---|
-| R01 | P1/P2 | 单 L0 slot 正确性已闭环/双 slot 待恢复 | 验证并恢复 arch92 自研 MX FP8 BlockMmad 的 L0 operand 双缓冲 | arch92 原生 MX MMAD 参考与 A6 实机验证 |
-| R02 | P0 | 外部阻塞/本仓有绕过 | 恢复共享专家 GMM1 路径 | CANN CopyL0C2UB 接口一致性或本地兼容实现 |
+| R01 | P0 | 已切换 A5 QBMM 接口/待 A6 回归 | 验证 arch92 直接复用 QBMM MX BlockMmad 的编译与精度 | A6 CANN 与实机验证 |
+| R02 | P0 | 原因已定位/待整改 | 让共享专家 GMM1 按 arch92 策略走 GM handoff | 共享专家地址、sequence 和 flag 协议 |
 | R03 | P1 | 未完成 | 删除 arch92 A8W4/A4W4 类型和控制流残留 | R01 稳定后执行 |
 | R04 | P1 | 未完成 | 系统清理 1C2V、AIV0/AIV1、subBlock 遗留语义 | 无 |
 | R05 | P1 | 未完成 | 收敛 arch92 Dispatch cumsum 策略接口 | R08 决定最终存储方式 |
@@ -44,7 +44,20 @@
 
 ## 3. P0 正确性与功能缺口
 
-### R01 验证并恢复自研 MX FP8 BlockMmad 的 L0 operand 双缓冲
+### R01 验证 arch92 直接复用 QBMM MX BlockMmad
+
+#### 0. 当前整改状态
+
+当前默认 A6 与 A5 一样提供并支持 `block_mmad_qbmm_mx.h`。arch92 不新增仓内 BlockMmad 或
+K-tail padding 适配，而是完全仿照 A5：
+
+- 直接包含 `blaze/gemm/block/block_mmad_qbmm_mx.h`；
+- DispatchPolicy 使用 `MatmulWithScaleMx<>`；
+- `L1Params` 使用 `kL1/scaleKL1/l1BufNum`；
+- 按 A5 的五参数接口调用 `BlockMmad::Init`。
+
+下文关于旧 `mega_moe_block_mmad_mx_fp8.h`、单 L0 slot fallback、QGMM 尝试和分段诊断的内容仅保留为
+历史定位记录，不再描述当前代码。下一步直接在 A6 环境验证编译、GMM1/GMM2 中间值和最终精度。
 
 #### 1. 问题背景与原始现象
 
@@ -194,28 +207,65 @@ arch92 MX 路径上不成立。恢复步骤如下：
 
 **当前事实**
 
-- 共享专家 GMM1 当前因 CANN Tensor API `CopyL0C2UB` 参数签名不一致被临时注释。
-- A6 除 URMA 外应支持 A5 已有特性，因此跳过共享专家不是最终可接受实现。
-- 该问题触发于共享专家 `RunGmm1Generic<..., QF322BF16_PRE, ...>` 的 L0C 到 UB 路径，普通 MoE 专家当前未由此报错。
+- 共享专家开发已确认：A6 共享专家的原始 GMM1 Gate/Up 结果应写入 GM，再由唯一 AIV 搬入 UB 执行
+  SwiGLU/量化；SwiGLU 量化结果继续写入 `sharedExpertActivationDataPtr` 和
+  `sharedExpertActivationScalePtr`。
+- A5 并不存在 `UseGmHandoff`：A8W4 通过独立 `RunGmm1A8W4` 路径在未开启
+  `TopkWeightsPrefetch` 时仍固定写 GM；A8W8 Generic 非 Prefetch 路径则直接写 UB。因此“是否写 GM”与
+  `TopkWeightsPrefetch` 在算法语义上并不等价。
+- `UseGmHandoff` 是 arch92 抽取时新增的编译期参数，用于让普通 MoE A8W8 Generic 在
+  `TopkWeightsPrefetch == false` 时仍走 GM handoff。普通 MoE wave 已显式传入
+  `ArchitecturePolicy::USE_GM_HANDOFF == true`。
+- arch92 的 `RunSharedExpertGmm1ActivationStage` 没有接收或传递 `UseGmHandoff`，调用
+  `RunGmm1Generic` 时遗漏最后一个模板参数，因而落到默认值 `false`。这会使共享专家错误进入 L0C 到 UB
+  分支。此前切换到 QGMM BlockMmad 的实验版本还会因此实例化
+  `CopyL0C2UBTraitMixSplitM`/`DUAL_DST_SPLIT_M`，并在 arch9201/9202 上触发
+  `dualDstCtl == DUAL_DST_DISABLE` 静态断言；当前已像 A5 一样直接使用 QBMM，该编译现象不再是当前问题，
+  但共享专家应走 GM handoff 的语义遗漏仍未修复。
+- `WorkspaceInfo` 已分配 `sharedExpertGmm1OutPtr`，但当前 arch92 A8W8 共享路径只在不可达的
+  `EnableA8W4` 分支配置 `gmm1OutGlobal`，该 GM 区域实际上未被 A8W8 共享专家使用。
+- 因此当前问题应首先按“共享专家 GM handoff 迁移遗漏”整改，而不是修改 CANN 公共
+  `CopyL0C2UBTraitMixSplitM`，也不能把升级 CANN 视为最终解决方案。
 
 **待修改**
 
-1. 优先在兼容版本 CANN 上恢复 `ProcessSharedExpertGmm1` 并验证。
-2. 如果目标 CANN 仍不一致，为 arch92 提供局部兼容实现，避免修改 A5 文件或全局篡改 CANN 头：
-   - 使用目标 SoC 实际生效的 `asc_copy_l0c2ub` 重载；或
-   - 将共享专家 epilogue 改为 arch92 可编译且语义一致的输出路径。
-3. 删除 `skip for now`/注释调用等临时绕过。
-4. 重新检查共享专家 GMM1、Activation、GMM2 的 Workspace、同步和最终融合路径都实际可达。
+1. 让 arch92 共享专家沿用 A6 普通 MoE 的 GM handoff 策略：AIC 将 Gate/Up BF16 写入
+   `sharedExpertGmm1OutPtr`，唯一 AIV 按 tile 从 GM 搬入两段 UB 后执行 SwiGLU/量化。
+2. 补齐共享专家地址和同步配置：
+   - 为 `UpdateSharedExpertGmm1GlobalBuffer` 增加 arch92 GM handoff 语义，配置 `gmm1OutGlobal`；
+   - 配置并复用正确的 `gmmToEpilogueFlag` 槽位；
+   - 复用 `Gmm1AicPrefetchMmadGeneric` 的非 TopK GM 发布分支和
+     `Gmm1AivGmHandoffEpilogueGeneric`，不要再进入 UB/CV 分支；
+   - 核对多共享专家、空 tile、M/N tail 下 AIC/AIV 的 `gmTileSequence` 推进完全一致。
+3. 审计共享专家末尾同步。GM handoff 下不能继续无条件执行仅服务于 UB/CV 路径的
+   `EndSync(runtimeState.vecSetSyncCom)`；同时把新增 flag 纳入 reset 范围和多轮调用防污染检查。
+4. 重新评估 `UseGmHandoff` 的必要性。如果 arch92 首版所有可达 A8W8 GMM1（普通 MoE 和共享专家）都
+   固定使用 GM handoff，则优先把它收敛为 arch92 architecture policy 或直接固定路径，删除层层传递且默认
+   `false` 的模板维度；只有确实保留可达 UB handoff 模式时才继续保留该参数。
+5. 不得通过伪造 `TopkWeightsPrefetch == true` 复用 GM 分支，因为 TopK Prefetch 还控制 meta/tile-status
+   协议；GM handoff 必须保持独立、准确的语义。
+6. 不修改 CANN 的 dual-dst 实现，也不为 arch92 新增 Copy trait。当前直接沿用 A5 QBMM 默认的
+   `L0C2UB_MODE_NONE`；共享专家通过修复 GM handoff 退出 UB 输出路径。
+7. 删除 `skip for now`、注释调用等临时绕过，并重新核对共享专家 GMM1、Activation、GMM2 的
+   Workspace、同步和最终融合路径都实际可达。
 
 **主要文件**
 
 - `mc2/mega_moe/op_kernel/arch92/mega_moe_a8w8_wave.h`
+- `mc2/mega_moe/op_kernel/arch92/mega_moe.h`
+- `mc2/mega_moe/op_kernel/arch92/common/mega_moe_core_context.h`
+- `mc2/mega_moe/op_kernel/arch92/common/mega_moe_workspace.h`
 - `mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm1_activation.h`
 - `mc2/mega_moe/op_kernel/arch92/blaze/epilogue/block_epilogue_activation_mx_quant.h`
 
 **完成标准**
 
 - `sharedExpertNum > 0` 不再跳过 GMM1。
+- 共享专家 AIC 的 BlockMmad 输出 tensor 位于 GM，不进入 QBMM 的 L0C 到 UB 输出分支。
+- AIV 从 `sharedExpertGmm1OutPtr` 搬入 Gate/Up UB 后执行 SwiGLU，地址、tile shape 和 sequence 与 AIC
+  完全一致。
+- `UseGmHandoff` 已按审计结论删除、固定为 architecture policy，或在所有共享专家调用点显式正确传递，
+  不再依赖容易误入 UB 路径的默认 `false`。
 - 共享专家开启/关闭均能编译，开启时结果正确且不会破坏 MoE 专家流水。
 
 ### R18 修复 Combine group-sync counter 跨 expert 槽位别名
@@ -293,7 +343,10 @@ arch92 当前产品范围只有 A8W8，但本地主类和部分 stage 仍保留�
 **待修改**
 
 1. 从 arch92 主类、stage、common 和 Host Tiling 中删除不可达的数据类型与模板实例。
-2. 对实际仍需要的行为重新按语义命名，例如 `UseGmHandoff`、`UseRankSharding`，不要借用 `EnableA8W4` 表达 A6 行为。
+2. 对实际仍需要的行为重新按语义命名，不要借用 `EnableA8W4` 表达 A6 行为；其中
+   `UseGmHandoff` 必须先按 R02 判断是否仍有多个可达取值。如果 arch92 只允许 GM handoff，则删除该模板
+   维度并固定为 architecture policy，而不是仅保留一个永远为 `true` 的开关。`UseRankSharding` 等确有多种
+   可达策略的参数再按其真实语义保留。
 3. 删除只为兼容 arch35 调用签名存在的 wrapper，让 arch92 调用点直接使用本地接口。
 4. 保留 A5 arch35 文件零侵入。
 
@@ -519,7 +572,7 @@ slot parity 与整算子回归后再彻底删除。不得长期保留会增加�
 - arch92 Kernel 入口放到 `op_kernel/mega_moe_apt.cpp`，并显式包含 arch92 头。
 - arch92 Host Tiling 使用可解析的本地头文件路径。
 - FP8 类型去掉错误的 `AscendC::` 命名空间前缀。
-- arch92 本地 A8W8 BlockMmad 已建立；L0 slot1 异常已定位，当前用单 slot 闭环正确性，剩余任务是按 R01 验证并恢复双 slot 性能。
+- arch92 已改为像 A5 一样直接调用 CANN QBMM A8W8 BlockMmad，当前待 A6 编译与精度回归；不再维护仓内 BlockMmad 适配实现。
 - BlockMmad 诊断中的 `GetBlockIdx` 已改为 `AscendC::GetBlockIdx`。
 - 第一版沿用 A5 最新 A8W4 token-grained Wave 的专家内切分能力。
 - Host 已通过平台接口读取 UB 大小并生成 Dispatch、SendMask、Unpermute 自适应 buffer 配置。
