@@ -387,6 +387,15 @@ public:
             CopyQScaleGmToL1(info);
             Mutex::Unlock<PIPE_MTE2>(Q_MUTEX_ID_BASE + qBufId);
             Mutex::Lock<PIPE_MTE1>(Q_MUTEX_ID_BASE + qBufId);
+            // Q 常驻 L0B: Q 在整个 task 序列内不变, 且 QK 的 L0B([0..16K))与 PV 的 L0B([16K起))分属
+            // 不同区间, mm1/mm2 交错执行也不会覆写 QK L0B, 故首个 s2 loop 一次灌满两个 ping-pong 槽,
+            // 后续 subloop 只装 K, 消除对同一份 Q 的重复 L1->L0 装载(QK 内层 MTE1 流量减半)
+            for (uint32_t i = 0; i < QK_L0AB_BUFCNT; ++i) {
+                Mutex::Lock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                LoadQToL0(info); // 128 * 128
+                Mutex::Unlock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                qkL0abBufId = (qkL0abBufId + 1) % 2;
+            }
         }
 
         Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
@@ -398,6 +407,12 @@ public:
             uint32_t loopCnt = CeilDiv((uint32_t)info.actSingleLoopS2Size, (uint32_t)QK_L0_S2_SPLIT_SIZE);
             uint32_t actS2Size = QK_L0_S2_SPLIT_SIZE;
             uint32_t actS2SizeAlign = QK_L0_S2_SPLIT_SIZE;
+            // fixpipe 延后一拍发射: 本轮 fixpipe 只挂 pending, 插到下一轮 LoadKToL0 之后发射,
+            // 用真实工作掩盖 MTE1->M 与 M->FIX 两处裸露的跨流水往返延迟(每 subloop 约92 cycle)
+            bool fixPending = false;
+            uint32_t pendL0cBufId = 0;
+            uint32_t pendSubLoop = 0;
+            uint32_t pendS2Size = 0;
             for (uint32_t loop = 0; loop < loopCnt; ++loop) {
                 if (loop + 1 == loopCnt) {
                     actS2Size = info.actSingleLoopS2Size - loop * QK_L0_S2_SPLIT_SIZE;
@@ -407,19 +422,33 @@ public:
                 Mutex::Lock<PIPE_M>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
                 {
                     Mutex::Lock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
-                    LoadQToL0(info);                       // 128 * 128
-                    LoadKToL0(info, loop, actS2SizeAlign); // 128 * 128
+                    LoadKToL0(info, loop, actS2SizeAlign); // 128 * 128, Q 已常驻 L0B
                     Mutex::Unlock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                    // 上一轮 pending 的 fixpipe 在此发射: Lock<FIX> 的等待被刚发出的 LoadK 覆盖
+                    if (fixPending) {
+                        Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+                        FixpipeMm1(info, pendSubLoop, pendS2Size, pendL0cBufId); // 128 * 256
+                        Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+                        fixPending = false;
+                    }
                     Mutex::Lock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     MatmulQK(info, actS2Size); // 128 * 128 * 128
                     Mutex::Unlock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     qkL0abBufId = (qkL0abBufId + 1) % 2;
                 }
                 Mutex::Unlock<PIPE_M>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
-                Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
-                FixpipeMm1(info, loop, actS2Size); // 128 * 256
-                Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
+                pendL0cBufId = qkL0cBufId;
+                pendSubLoop = loop;
+                pendS2Size = actS2Size;
+                fixPending = true;
                 qkL0cBufId = (qkL0cBufId + 1) % 2;
+            }
+            // 返回前必须 flush: ExecuteTask 随后会用 CROSS_CORE_SYNC_V1_C1 通知 AIV mm1 结果已落 UB,
+            // pending 的 fixpipe 不能带出本次调用, 否则向量核会读到未写完的 UB
+            if (fixPending) {
+                Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+                FixpipeMm1(info, pendSubLoop, pendS2Size, pendL0cBufId); // 128 * 256
+                Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
             }
         }
         Mutex::Unlock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
@@ -730,7 +759,7 @@ private:
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
 
-        uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
+        uint32_t qkL0Offset = qkL0abBufId * (QK_L0B_SIZE / sizeof(DATA_T));
         uint32_t qL1Offset = qBufId * (L1_Q_SIZE / sizeof(DATA_T));
         uint32_t qScaleL1Offset = qBufId * (L1_Q_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(qkL0BTensor[qkL0Offset].ReinterpretCast<QUANT_T>(), qL1Tensor[qL1Offset].ReinterpretCast<QUANT_T>(),
@@ -756,7 +785,7 @@ private:
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
 
-        uint32_t qkL0Offset = qkL0abBufId * (QK_L0B_SIZE / sizeof(DATA_T));
+        uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
         uint32_t kvL1Offset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         uint32_t kvScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kvL1Tensor[kvL1Offset].ReinterpretCast<QUANT_T>(),
@@ -779,7 +808,7 @@ private:
              qkL0BTensor[qkL0BOffset].ReinterpretCast<QUANT_T>(), mmadParams);
     }
 
-    __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size)
+    __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size, uint32_t l0cBufId)
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -801,7 +830,8 @@ private:
         fixpipeParams.params.srcNdStride = (actS2Size + 1) >> 1 << 1;
         fixpipeParams.params.dstNdStride = 512 / sizeof(half);
 
-        uint32_t qkL0COffset = qkL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
+        // 注意: 槽号由参数传入, 不能用成员 qkL0cBufId —— fixpipe 延后一拍发射时成员已轮转到下一槽
+        uint32_t qkL0COffset = l0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
         uint32_t ubOffset = subLoop * QK_L0_S2_SPLIT_SIZE * fixpipeParams.dstStride;
         Fixpipe<half, COMPUTE_T, CFG_ROW_MAJOR_UB>(mm1ResUB[info.loop / 2 % 2 * 128 + ubOffset],
                                                    qkL0CTensor[qkL0COffset], fixpipeParams);
