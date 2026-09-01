@@ -118,9 +118,16 @@ else
     CUBE_CORES="${CUBE_CORES:-24}"
     VECTOR_CORES="${VECTOR_CORES:-48}"
 fi
-# SYS_CNT 频率由 scan_replay.py/汇总段按算子取默认 (A5: AIV=283, AIC≈587), 不再导出覆盖;
-# 如需手工指定可 export SYS_CNT_FREQ_MHZ (整体覆盖两算子)
-echo "[CHECK] 设备: ${SOC_NAME:-?}  Cube 核数: ${CUBE_CORES}  Vector 核数: ${VECTOR_CORES}"
+# SYS_CNT 频率按 SoC 内置默认 (A5 实测 1000MHz 时钟速率直测; A3/910C 实测 50MHz PMU/host 交叉标定):
+# 忘带频率时 A3 匹配窗口错位会把 add 打点全部滤掉且数值 ÷20 缩水, 必须内置;
+# 如需手工指定可 export SYS_CNT_FREQ_MHZ (覆盖内置默认)
+case "$SOC_VERSION" in
+    ascend950)    SYS_CNT_FREQ_DEFAULT=1000 ;;  # A5
+    ascend910_93) SYS_CNT_FREQ_DEFAULT=50 ;;    # A3/910C
+    *)            SYS_CNT_FREQ_DEFAULT=50 ;;    # 未知平台保守取低频 (窗口更宽)
+esac
+export SYS_CNT_FREQ_MHZ="${SYS_CNT_FREQ_MHZ:-$SYS_CNT_FREQ_DEFAULT}"
+echo "[CHECK] 设备: ${SOC_NAME:-?}  Cube 核数: ${CUBE_CORES}  Vector 核数: ${VECTOR_CORES}  SYS_CNT=${SYS_CNT_FREQ_MHZ}MHz"
 echo ""
 
 mkdir -p "$OUTPUT_DIR"
@@ -264,9 +271,12 @@ if soc_version == "ascend950":
     add_cores, gmm_cores = 56, 28
 else:
     add_cores, gmm_cores = 48, 24  # A3/910C 与 A2/910B 同为 48 AIV / 24 AIC
-# SYS_CNT 频率 (A5 实测 1000MHz, 时钟速率直测, AIV/AIC 同频全局计数器; 历史 283/587 为误标定)
-freq_add = float(os.environ.get("SYS_CNT_FREQ_MHZ", "1000"))
-freq_gmm = float(os.environ.get("SYS_CNT_FREQ_MHZ", "1000"))
+# SYS_CNT 频率 (A5 实测 1000MHz, 时钟速率直测, AIV/AIC 同频全局计数器; 历史 283/587 为误标定;
+# A3/910C 实测 50MHz, PMU/host 交叉标定。bash 侧已按 SOC_VERSION export SYS_CNT_FREQ_MHZ,
+# 此处 default 与 bash 内置保持一致, 双保险: 单独调用汇总段也不会取错频率)
+_freq_default = 1000 if soc_version == "ascend950" else 50
+freq_add = float(os.environ.get("SYS_CNT_FREQ_MHZ", str(_freq_default)))
+freq_gmm = float(os.environ.get("SYS_CNT_FREQ_MHZ", str(_freq_default)))
 
 def parse_stars_dispatches(prof_dir):
     """解析 PROF 目录下的 stars_soc.data, 返回排序的 dispatch sys_cnt 列表"""
