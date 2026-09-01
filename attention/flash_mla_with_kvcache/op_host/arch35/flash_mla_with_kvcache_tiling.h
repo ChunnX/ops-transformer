@@ -26,7 +26,7 @@ namespace optiling {
 namespace flash_mla_with_kvcache {
 
 // 4 字段 tiling key —— 与 flash_mla_with_kvcache_template_tiling_key.h 的 ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
-// ...) 声明序一致（InOutLayoutType 8bw / KvLayoutType 8bw / HasAttenMask 1bw / Config 3bw），对齐 flash_attn。
+// ...) 声明序一致（InOutLayoutType 8bw / KvLayoutType 8bw / HasAttenMask 1bw / Config 3bw）。
 // 键内含语义按限定路由裁剪：InOutLayoutType 恒 BSND/BNSD/TND、Config 恒 MLA(config 0)、KvLayoutType 恒 PA 三类。
 // 无 isFd——FD 能力恒实例化，运行时由 metadata mLen>0 决定。
 struct FlashMlaWithKvcacheTilingKeyInfo {

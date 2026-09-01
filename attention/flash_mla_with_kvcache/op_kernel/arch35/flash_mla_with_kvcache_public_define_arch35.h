@@ -102,7 +102,7 @@ struct StridesConstInfo {
 };
 
 struct CommonConstInfo {
-    /* 轴长度（与 flash_attn CommonConstInfo 同构的公共字段：b/t/d/g/n/s 系列） */
+    /* 轴长度（公共字段：b/t/d/g/n/s 系列） */
     uint32_t bSize;
     uint64_t t1Size;
     uint64_t t2Size;
@@ -150,8 +150,8 @@ struct CommonConstInfo {
     FLASH_MLA_WITH_KVCACHE_LAYOUT outputLayout;
 };
 
-/* MLA 特有扩展层（flash_attn 基础结构不含、MLA 独有的字段，如 rope/KV strides/S1 外切/无效行开关）；
- * 与 flash_attn 的 Layering（公共基础 → PA → LSE → 特有扩展）同构，禁为对齐而继承 mla 不需要的
+/* MLA 特有扩展层（MLA 独有的字段，如 rope/KV strides/S1 外切/无效行开关）；
+ * 仅含 MLA 必需的字段，禁继承 mla 不需要的
  * Sink/Pse/PostQuant/LeftPadding/SysPrefix 等基础结构（避免内存布局与成员遮蔽语义漂移）。 */
 struct MlaExtConstInfo {
     uint32_t realGSize;

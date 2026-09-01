@@ -10,8 +10,8 @@
 
 /*!
  * \file flash_mla_with_kvcache_block_cube.h
- * \brief arch35 flash_mla_with_kvcache block cube MLA（由 fia_block_cube_noquant_mla.h 复制改名）；
- *        静态 tensor buffer + Mutex/cross-core 显式同步（镜像 flash_attn_block_cube_nd.h）。
+ * \brief arch35 flash_mla_with_kvcache block cube MLA；
+ *        静态 tensor buffer + Mutex/cross-core 显式同步。
  *        L0C 例外（表 2 注 3）：bmm2 单次 Mmad 足迹 128K，槽保持 2×128K 静态 + 2 Mutex（不得拆 4×64K）。
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
@@ -58,7 +58,7 @@ public:
 
     using ConstInfoX = ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>;
 
-    // ================== 核间同步 ID（与 vec 侧逐字节一致，参照 flash_attn_block_cube_nd.h:67-75）==================
+    // ================== 核间同步 ID（与 vec 侧逐字节一致）==================
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t CROSSCORE_BMM1_0 = 0U;
     static constexpr uint32_t CROSSCORE_BMM1_1 = 1U;
@@ -69,7 +69,7 @@ public:
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
     // AIV0_AIV1_OFFSET 使用全局宏（attention/common/op_kernel/buffer.h:30，=16）
 
-    // ================== 核内 Mutex ID（AIC 核内 0-26 自洽，参照 flash_attn_block_cube_nd.h:77-91）==================
+    // ================== 核内 Mutex ID（AIC 核内 0-26 自洽）==================
     static constexpr uint32_t L0C_BUFFER_ID0 = 0U;
     static constexpr uint32_t L0C_BUFFER_ID1 = 1U;
     static constexpr uint32_t Q_L1_BUFFER_ID0 = 2U; // Q 单槽（表 1），仅用 base
@@ -122,7 +122,7 @@ public:
     // query 与 key 的 GM stride 布局按 576 宽初始化（偏移切分见 CopyQueryAndRopeTile/CopyKeyAndRopeTile）。
     // seq-lens（cu_seqlens_q/cache_seqlens）为 INT32，ACTLEN_T=uint32_t。
     // WITH_ZERO_HEAD 仅对 TND（cu_seqlens 首零头）成立；BSND/BNSD 走 GM_Q_OUT_BNGSD 3-参实现
-    // （offset_calculator_v2.h，无 WITH_ZERO_HEAD 形参），与 flash_attn IS_TND 同构。
+    // （offset_calculator_v2.h，无 WITH_ZERO_HEAD 形参），与 IS_TND 同构。
     FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> kCacheGm;
     GlobalTensor<int32_t> blockTableGm;
@@ -237,7 +237,7 @@ public:
     __aicore__ inline void UnInitCrossCoreSync()
     {
         // 收尾 drain 8 个 c1v1/c2v2 旗标（4 标志 × {本 AIV0, +AIV0_AIV1_OFFSET}），防悬空旗标
-        // 污染下一 kernel 的首次 Wait（flash_attn_block_cube_nd.h:221-231 逐一对齐）
+        // 污染下一 kernel 的首次 Wait
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0 + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_1);

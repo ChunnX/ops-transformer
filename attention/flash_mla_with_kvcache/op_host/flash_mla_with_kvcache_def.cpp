@@ -14,7 +14,7 @@
  *        输入数据类型仅支持FLOAT16和BFLOAT16。
  *        无独立 v / q_rope / k_rope 输入：rope 已合并进 q 与 k_cache（最后维 576 = nope 512 + rope 64，
  *        head_dim_v 为 k_cache 内 nope（value）段宽度，head_dim_v + 64 == 576 由 checker/infershape 保证）。
- *        cache_seqlens 携带逐 batch 的 KV cache 长度（替代 flash_attn 的 cu_seqlens_kv/seqused_kv，KV 走分页）。
+ *        cache_seqlens 携带逐 batch 的 KV cache 长度（替代 cu_seqlens_kv/seqused_kv，KV 走分页）。
  */
 
 #include "register/op_def_registry.h"

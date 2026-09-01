@@ -12,8 +12,7 @@
  * \file flash_mla_with_kvcache_template_tiling_key.h
  * \brief flash_mla_with_kvcache TilingKey 定义（非量化 MLA，仅 FP16/BF16）。
  *
- * 四字段布局完全对齐 flash_attn（attention/flash_attn/op_kernel/arch35/
- * flash_attn_template_tiling_key.h）：InOutLayoutType 8bw / KvLayoutType 8bw /
+ * 四字段布局：InOutLayoutType 8bw / KvLayoutType 8bw /
  * HasAttenMask 1bw / Config 3bw，同序同位宽；枚举/表/常量见 utils/
  * flash_mla_with_kvcache_common_def.h。无 IsFd（FD 能力恒实例化，运行时由
  * metadata 各 section mLen>0 驱动，见 kernel 入口注释）。
@@ -59,7 +58,7 @@ ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
                       //    0: InOutLayoutType_BSND （q=BSND）
                       //    1: InOutLayoutType_BNSD （q=BNSD）
                       //    2: InOutLayoutType_TND  （q=TND, out=TND）
-                      //    3: （预留，flash_attn 的 BNSD_BSND，MLA 未使用）
+                      //    3: （预留 BNSD_BSND，MLA 未使用）
                       //    4: InOutLayoutType_TND_NTD（q=TND, out=NTD 输出转置）
                       ASCENDC_TPL_UINT_DECL(InOutLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4),
                       // KvLayoutType（位宽 8-bit，key 位 15-8）

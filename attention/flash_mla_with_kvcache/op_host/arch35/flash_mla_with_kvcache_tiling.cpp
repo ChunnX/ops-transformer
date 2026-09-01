@@ -115,7 +115,7 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableSparseLayoutCheckMla()
 bool FlashMlaWithKvcacheTilingImpl::IsCapable()
 {
     if (!metadataPassthrough_) {
-        // metadata 为必传（flash_attn metadata_checker 语义），缺失即不可达
+        // metadata 为必传（metadata_checker 语义），缺失即不可达
         OP_LOGE(faInfo_->opName, "FlashMlaWithKvcache is not capable: metadata is required but is null.");
         return false;
     }
@@ -209,7 +209,7 @@ ge::graphStatus FlashMlaWithKvcacheTilingImpl::SetPlatMemoryInfo()
 }
 
 // ACLNN 直调路径下 seq-lens tensor 的 GetData<int32_t>() 返回设备指针（host 侧解引用即段错误），
-// 与 flash_attn 的 host tiling 同策略：只按 shape/attr 存在性推导，不读 GM 值（编译期实测）。
+// 与 host tiling 同策略：只按 shape/attr 存在性推导，不读 GM 值（编译期实测）。
 // 每 batch 实际长度统一取 s1Size/s2Size（= max_seqlen_q/kv attr）；needInit 仅当总 token 数为 0。
 // kernel 侧的 ACTLEN_T=uint32_t 解析器仍按 cu_seqlens_q/cache_seqlens 的 GM 值工作，不受影响。
 void FlashMlaWithKvcacheTilingImpl::InitImplParam()
@@ -263,7 +263,7 @@ void FlashMlaWithKvcacheTilingImpl::SplitPolicy()
     // metadata 透传——跳过 split_core_v2 切分计算（无内嵌 fiaMetaData 可写，kernel 按 GM
     // metadata 逐 section 驱动）；全核分工，FD 使能以各 section 的 FD 元数据（mLen>0）为准。
     // 路由：只要 metadata 可能存在 FD/s2-核间切分归约（长 KV 的 SectionStreamK WithFd 调度），
-    // 就必须实例化 FD 能力 → 恒真（与 flash_attn tiling flashDecodeFlag_=true 一致）。曾用
+    // 就必须实例化 FD 能力 → 恒真。曾用
     // s1Size<=1 代理，漏掉 prefill 长 KV（kvS=32768 时 producer 会产 FD 归约 section），
     // 导致 isFd=false 内核不执行归约 → LSE/out 只含单核 s2 片段。非 FD 几何下 FD section 为空
     // （mLen=0），运行时按元数据跳过，无副作用。
@@ -293,7 +293,7 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyConfig()
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyLayout()
 {
     // q/out 布局 -> InOutLayoutType（取值以 op_kernel/utils/flash_mla_with_kvcache_common_def.h
-    // 为准，数值对齐 flash_attn：BSND=0 / BNSD=1 / TND=2 / TND_NTD=4）
+    // 为准：BSND=0 / BNSD=1 / TND=2 / TND_NTD=4）
     if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::TND) {
         if (faInfo_->outLayout == FlashMlaWithKvcacheLayout::NTD) {
             tilingKeyInfo_.inputLayout = InOutLayoutType_TND_NTD;
@@ -312,7 +312,7 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     tilingKeyInfo_.hasAttenMask = faInfo_->attenMaskFlag;
-    // kv 布局 -> KvLayoutType（取值同 flash_attn 的 UpdateTilingKeyKvLayout 映射）：
+    // kv 布局 -> KvLayoutType：
     //   PA_NZ -> KvLayoutType_PA_NZ(3)；PA_BNBD -> KvLayoutType_PA_BNBD(2)；PA_BBND -> KvLayoutType_PA_BBND(1)
     tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     if (faInfo_->kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD) {
