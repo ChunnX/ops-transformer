@@ -163,7 +163,7 @@ aclnnStatus aclnnMhcSinkhorn(
 
 ## 调用示例
 
-以下为C++调用示例，需结合AscendCL环境编译运行，具体流程参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+以下为C++调用示例，需结合 AscendCL 环境编译运行，具体流程参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
