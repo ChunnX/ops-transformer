@@ -272,7 +272,8 @@ void MhcPreBackwardTiling::SetC1TilingParams()
     tilingData_.matmulTilingC1.set_stepKa(C0_SET_VALUE);
     tilingData_.matmulTilingC1.set_stepKb(C0_SET_VALUE);
     tilingData_.matmulTilingC1.set_depthA1(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_depthB1(C0_SET_VALUE);
+    // 仅对沿BS方向流式读取的B矩阵开启L1双缓冲，A矩阵保持单缓冲以控制L1占用。
+    tilingData_.matmulTilingC1.set_depthB1(BUFFER_NUM);
     tilingData_.matmulTilingC1.set_stepM(C0_SET_VALUE);
     tilingData_.matmulTilingC1.set_stepN(C0_SET_VALUE);
 }
