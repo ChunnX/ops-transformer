@@ -9,22 +9,23 @@
  */
 
 /*!
- * \file dispatch_policy_mega_moe.h
- * \brief Dispatch policy for the MX FP8/FP4 dynamic KL1 tail-resplit path.
- *        Extracted from blaze/gemm/policy/dispatch_policy.h for mega_moe.
+ * \file block_prologue.h
+ * \brief block prologue interface.
  */
 #pragma once
 
-#include "../utils/common_utils_mega_moe.h"
+#include "apace/block/policy/dispatch_policy.h"
 
 namespace Blaze {
 namespace Gemm {
+namespace Prologue {
 
-/**
- * @struct MatmulMxFp8Fp4DynamicKL1TailResplit
- * @brief Dispatch policy for the MX FP8/FP4 dynamic KL1 tail-resplit path.
- */
-struct MatmulMxFp8Fp4DynamicKL1TailResplit {};
+template <class DispatchPolicy, class... Args>
+class BlockPrologue {
+    static_assert(!AscendC::Std::is_same_v<DispatchPolicy, DispatchPolicy>,
+                  "BlockPrologue is not implemented for this DispatchPolicy");
+};
 
+} // namespace Prologue
 } // namespace Gemm
 } // namespace Blaze

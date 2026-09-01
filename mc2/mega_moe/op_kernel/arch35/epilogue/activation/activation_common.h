@@ -22,7 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../../common/mega_moe_constants.h"
+#include "../../common/mega_moe_constants.h"
 
 namespace MegaMoeImpl {
 namespace Activation {
