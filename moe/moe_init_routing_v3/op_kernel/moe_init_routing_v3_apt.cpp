@@ -34,6 +34,7 @@
 #include "arch35/moe_v3_full_load_unquantized_arch35.h"
 #include "arch35/moe_v3_full_load_dynamic_quant_arch35.h"
 #include "arch35/moe_v3_full_load_static_quant_arch35.h"
+#include "arch35/moe_v3_counting_sort_unfull_load.h"
 #include "arch35/moe_v3_row_idx_gather_droppad_arch35.h"
 #include "arch35/moe_v3_gather_out_droppad_arch35.h"
 #include "arch35/moe_v3_topk_weight_out.h"
@@ -166,8 +167,14 @@
  */
 #define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 410000   // 模板1、非量化、GATHER
 #define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 411000 // 模板1、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED 420000  // 模板2、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT 430000 // 模板2、静态量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S 421000  // 模板2、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S 431000 // 模板2、静态量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D 420100 // 模板2、非量化、GATHER、dropPad
 
 #define EMPTY_TENSOR 3000000
+
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -199,6 +206,14 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     auto t = &tilingData;
     const bool isInt8DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC;
     const bool isInt4DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC;
+
+    const bool isCsCutOriginGather = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
+                                     TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT);
+    const bool isCsCutOriginScatter = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S) ||
+                                      TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S);
+    const bool isCsCutOriginDropPad = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D);
+    const bool isCsCutOriginUnquant = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
+                                      TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S);
 
     if (TILING_KEY_IS(EMPTY_TENSOR)) {
         if (GetBlockIdx() != 0) {
@@ -318,8 +333,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         return;
     }
 
-    // CountingSort 全载模板
-    // 类型守卫：仅承接 X∈{bf16,fp16,fp32,int8} 的非量化场景，其余扩展类型回退到原分阶段路径。
+    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化/静态量化场景（dynamic 已被 tiling IsCountingSortApplicable 排除），
+    // 其余扩展类型（fp8/fp4/hifloat8/int8 X 等）回退到原分阶段路径。
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
@@ -335,6 +351,16 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
         return;
+    } else if (isCsCutOriginGather || isCsCutOriginScatter || isCsCutOriginDropPad) {
+        TPipe phasePipe;
+        MoeV3CutOriginPhaseAB<DTYPE_X> phaseOp;
+        phaseOp.Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &phasePipe);
+        phaseOp.Process();
+        phasePipe.Destroy();
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        // 注意：这里不 return，继续落入 Stage3/Stage5 复用既有 dispatch。
     }
 
     // 1.排序阶段，计算SortedExpertIdx和SortedRowIdx。若rowIdxType=1(Scatter)，则SortedRowIdx直接写到输出expandedRowIdx。
@@ -439,10 +465,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER)) {
-        RowIdxGather rowIdxGatherOp;
-        rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
-        rowIdxGatherOp.Process();
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
+        isCsCutOriginGather) {
+            RowIdxGather rowIdxGatherOp;
+            rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
+            rowIdxGatherOp.Process();
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
@@ -459,7 +486,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             rowIdxGatherOp.Process();
         }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
+               isCsCutOriginDropPad) {
         // GATHER索引 + DropPad
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
@@ -486,7 +514,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
+        isCsCutOriginUnquant) {
         if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
             TPipe gatherPipe;
@@ -501,16 +530,17 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         } else {
-            // 非量化
-            TPipe gatherPipe;
-            MoeGatherOut<DTYPE_X> gatherOp;
-            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
-            gatherPipe.Destroy();
+                // 非量化
+                TPipe gatherPipe;
+                MoeGatherOut<DTYPE_X> gatherOp;
+                gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+                gatherOp.Process();
+                gatherPipe.Destroy();
         }
         // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
+               isCsCutOriginDropPad) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
@@ -524,8 +554,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER)) {
-        // 静态量化
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float>::value) {
             TPipe gatherPipe;
