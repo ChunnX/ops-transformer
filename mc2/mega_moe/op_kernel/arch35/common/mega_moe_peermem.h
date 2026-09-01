@@ -113,10 +113,12 @@ struct PeermemSizeParams {
     uint32_t elemsPerByte;
     bool topkWeightsPrefetch;
     bool isQuantCombine;
+    int64_t topoType;
+    int64_t serverNum;
 };
 
 /*
- * MTE 路径下 peermem 窗口所需的最小字节数，逐段与下方 PeermemInfo 构造函数的偏移推进同源：
+ * peermem 窗口所需的最小字节数，逐段与下方 PeermemInfo 构造函数的偏移推进同源：
  *   同步区(PEERMEM_DATA_OFFSET) + mask 接收区 + count 接收区 + 量化 token 接收区 + combine 接收区。
  * host 侧 tiling 用它校验用户传入的 cclBufferSize，不再各自手写一份布局公式。
  */
@@ -127,11 +129,21 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
     int64_t expertCountRecvSize = CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
     int64_t tokenScaleBytes =
         CalcQuantTokenScaleBytes(params.h, params.elemsPerByte, params.topK, params.topkWeightsPrefetch);
-    int64_t quantTokenScaleSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * tokenScaleBytes, ALIGN_512);
+    int64_t dispatchRecordAreaSize = 0;
+    if (params.topoType == TOPO_TYPE_URMA) {
+        int64_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, ALIGN_512);
+        int64_t relayDataSize = Ops::Base::CeilAlign(
+            params.numMaxTokensPerRank * relayRecordBytes * params.serverNum, ALIGN_512);
+        int64_t relayFlagSize = Ops::Base::CeilAlign(
+            params.serverNum * params.numMaxTokensPerRank * static_cast<int64_t>(sizeof(uint64_t)), ALIGN_512);
+        dispatchRecordAreaSize = relayDataSize + relayFlagSize;
+    } else {
+        dispatchRecordAreaSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * tokenScaleBytes, ALIGN_512);
+    }
     int64_t combineTokenBytes = CalcCombineTokenBytes(params.h, params.yDtypeSize, params.isQuantCombine);
     int64_t combineSendSize =
         Ops::Base::CeilAlign(params.numMaxTokensPerRank * params.topK * combineTokenBytes, ALIGN_512);
-    return PEERMEM_DATA_OFFSET + maskRecvSize + expertCountRecvSize + quantTokenScaleSize + combineSendSize;
+    return PEERMEM_DATA_OFFSET + maskRecvSize + expertCountRecvSize + dispatchRecordAreaSize + combineSendSize;
 }
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
@@ -171,10 +183,14 @@ struct PeermemInfo {
             dispatchRecivePtr = base + offset;
             int64_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, ALIGN_512);
             offset += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->bs) * relayRecordBytes * static_cast<int64_t>(serverNum), ALIGN_512);
+                static_cast<int64_t>(tilingData->numMaxTokensPerRank) * relayRecordBytes *
+                    static_cast<int64_t>(serverNum),
+                ALIGN_512);
             dispatchFlagPtr = base + offset;
             offset += Ops::Base::CeilAlign(
-                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)), ALIGN_512);
+                static_cast<int64_t>(serverNum) * tilingData->numMaxTokensPerRank *
+                    static_cast<int64_t>(sizeof(uint64_t)),
+                ALIGN_512);
         }
         combineSendPtr = base + offset;
     }
