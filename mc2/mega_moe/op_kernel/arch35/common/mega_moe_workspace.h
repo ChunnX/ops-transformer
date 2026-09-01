@@ -51,6 +51,7 @@ struct WorkspaceInfo {
     GM_ADDR gmm2MmadResPtr{nullptr};
     GM_ADDR sharedExpertResultPtr{nullptr};
     GM_ADDR sharedExpertGmm1OutPtr{nullptr};
+    GM_ADDR sharedExpertInputPtr{nullptr};
     GM_ADDR sharedExpertInputDataPtr{nullptr};
     GM_ADDR sharedExpertInputScalePtr{nullptr};
     GM_ADDR sharedExpertActivationDataPtr{nullptr};
@@ -263,17 +264,29 @@ struct WorkspaceInfo {
             sharedExpertGmm1OutPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
-            // sharedExpertInputData：GMM1 输入数据 [bs × h]。按 FP8 的 1 byte/元素预留；
-            // shared 使用 FP4 时实际只占其中一半，保留统一上界避免 workspace 布局依赖量化类型。
-            sharedExpertInputDataPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
-            // sharedExpertInputScale：GMM1 输入 scale [bs × CeilDiv(h, 32) × 2]。
-            sharedExpertInputScalePtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs *
-                                                      Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
-                                                                         static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
-                                                      MXFP_MULTI_BASE_SIZE,
-                                                  ALIGN_512);
+            if (tilingData->topoType == TOPO_TYPE_MTE) {
+                // MTE shared GMM1 统一读取逐 token 交织记录 [Align256(data) | Align32(scale)]。
+                sharedExpertInputPtr = base + workspaceSize;
+                uint32_t elementsPerByte =
+                    tilingData->sharedGmmMode == GMM_MODE_A4W4_ND || tilingData->sharedGmmMode == GMM_MODE_A4W4_NZ ?
+                        2U :
+                        1U;
+                int64_t recordBytes =
+                    CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elementsPerByte, 0LL, false);
+                workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * recordBytes,
+                                                      static_cast<int64_t>(ALIGN_512));
+            } else {
+                // URMA layered kernel 仍使用连续 data/scale，两块地址契约保持不变。
+                sharedExpertInputDataPtr = base + workspaceSize;
+                workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
+                sharedExpertInputScalePtr = base + workspaceSize;
+                workspaceSize +=
+                    Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs *
+                                             Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
+                                                                static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
+                                             MXFP_MULTI_BASE_SIZE,
+                                         ALIGN_512);
+            }
             // sharedExpertActivationData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
             // A4W4 的 GMM2 固定使用 A8W4，因此其 SwiGLU 输出也在这里提升并保存为 FP8。
             sharedExpertActivationDataPtr = base + workspaceSize;

@@ -1266,7 +1266,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
  * 该字段必须在调用前写好。
  */
 static void SetSendMaskBufferConfigs(MegaMoeTilingData *tilingData, uint32_t moeActivationElementsPerByte,
-                                     uint32_t sharedActivationElementsPerByte, uint32_t availableUbBytes)
+                                     uint32_t sharedActivationElementsPerByte, bool needsIndependentSharedQuant,
+                                     uint32_t availableUbBytes)
 {
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
@@ -1286,9 +1287,12 @@ static void SetSendMaskBufferConfigs(MegaMoeTilingData *tilingData, uint32_t moe
         moeQuantOutputBufferBytes +=
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     }
-    // MoE 量化槽可能附带 topk weight，shared 量化槽只包含 data 和 scale；两者分时复用 UB。
-    uint32_t sharedQuantOutputBufferBytes = sharedQuantTokenBytes + quantScaleAlignBytes;
-    uint32_t quantOutputBufferBytes = std::max(moeQuantOutputBufferBytes, sharedQuantOutputBufferBytes);
+    uint32_t quantOutputBufferBytes = moeQuantOutputBufferBytes;
+    if (needsIndependentSharedQuant) {
+        // 独立 shared 量化与 MoE 量化分时复用同一组 xOut UB，因此按两侧较大值预留。
+        uint32_t sharedQuantOutputBufferBytes = sharedQuantTokenBytes + quantScaleAlignBytes;
+        quantOutputBufferBytes = std::max(moeQuantOutputBufferBytes, sharedQuantOutputBufferBytes);
+    }
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按本卡 MoE 专家数分配，与 kernel 地址布局一致。
     uint32_t maxExpertCountPerCore =
@@ -1361,6 +1365,9 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoe
     if (expertParams.shared.expertCount > 0) {
         sharedActivationElementsPerByte = expertParams.shared.activationDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
     }
+    // 与 kernel 的 SHARED_INPUT_REUSES_MOE_QUANT 保持一致：量化输出类型相同时直接复用 MoE 结果。
+    bool needsIndependentSharedQuant =
+        expertParams.shared.expertCount > 0 && expertParams.shared.activationDtype != expertParams.moe.activationDtype;
     // 所有 AIV 核共用同一套 dispatch UB 配置：这块布局和怎么分核无关。
     // kernel 那边如果改成按核拆 tensor，或者动了 copyTmp 的槽位布局，这里要跟着改。
     tilingData->dispatchBufferConfig =
@@ -1370,7 +1377,8 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoe
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte, availableUbBytes);
+    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
+                             needsIndependentSharedQuant, availableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
