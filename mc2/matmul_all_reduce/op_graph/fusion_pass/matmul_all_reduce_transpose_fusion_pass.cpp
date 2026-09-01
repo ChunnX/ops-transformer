@@ -30,7 +30,6 @@ const std::string PATTERN_TRANSPOSE = "Transpose";
 const std::string PATTERN_BIAS = "HasBias";
 const std::string PATTERN_SCALE = "HasScale";
 const std::string PATTERN_OFFSET = "HasOffset";
-const std::string PATTERN_DEQUANT = "HasDequant";
 const std::string PATTERN_SCALE_TRANSPOSE = "ScaleTranspose";
 const std::string PATTERN_OFFSET_TRANSPOSE = "OffsetTranspose";
 const std::string PATTERN_ARN = "Arn";
@@ -57,7 +56,6 @@ struct OriginalGraphInfo {
     bool hasBias = false;
     bool hasScale = false;
     bool hasOffset = false;
-    bool hasDequant = false; // 仅拓扑：canndev 非 A5 不吸 dequant，但有边时必须进 pattern 才能匹配
     bool scaleTranspose = false;
     bool offsetTranspose = false;
 };
@@ -70,7 +68,6 @@ struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rGamma;
     ge::es::EsTensorHolder rAntiquantScale;
     ge::es::EsTensorHolder rAntiquantOffset;
-    ge::es::EsTensorHolder rDequantScale;
 };
 
 typedef EsCTensorHolder *(*EsTransposeFunc)(EsCTensorHolder *, EsCTensorHolder *);
@@ -139,9 +136,6 @@ size_t GetPatternInputNum(const OriginalGraphInfo &info)
     if (info.hasOffset) {
         ++n;
     }
-    if (info.hasDequant) {
-        ++n;
-    }
     return n;
 }
 
@@ -167,9 +161,6 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
     }
     if (info.hasOffset) {
         patternName += PATTERN_OFFSET;
-    }
-    if (info.hasDequant) {
-        patternName += PATTERN_DEQUANT;
     }
     if (info.scaleTranspose) {
         patternName += PATTERN_SCALE_TRANSPOSE;
@@ -201,10 +192,6 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
     if (info.hasOffset) {
         antiquantOffset = inputs[idx++];
     }
-    ge::es::EsTensorHolder dequantScale = nullptr;
-    if (info.hasDequant) {
-        dequantScale = inputs[idx++];
-    }
 
     auto transposeX2 = MakeTransposeNode(x2);
     ge::es::EsTensorHolder transposeScale = nullptr;
@@ -222,22 +209,23 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
 
     const char *group = "";
     std::unique_ptr<ge::fusion::Pattern> pattern;
+    // 对齐 canndev 非 A5：dequant 不影响本 pass，不进排列、固定 nullptr（不吸 T、不重建该口）
     if (info.opKind == Mc2OpKind::Mar) {
-        // x3/pertoken/comm_quant 固定 nullptr；dequant 仅透传不吸 T
-        auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, nullptr, scaleIn, offsetIn, dequantScale, nullptr,
-                                         nullptr, nullptr, group);
+        // x3/pertoken/comm_quant/dequant 固定 nullptr
+        auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, nullptr, scaleIn, offsetIn, nullptr, nullptr, nullptr,
+                                         nullptr, group);
         auto graph = graphBuilder.BuildAndReset({y});
         pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
         pattern->CaptureTensor({*y.GetProducer(), 0}).CaptureTensor({*transposeX2.GetProducer(), 0});
     } else if (info.opKind == Mc2OpKind::Arn) {
-        auto out = ge::es::MatmulAllReduceAddRmsNorm(x1, transposeX2, bias, residual, gamma, scaleIn, offsetIn,
-                                                     dequantScale, group);
+        auto out = ge::es::MatmulAllReduceAddRmsNorm(x1, transposeX2, bias, residual, gamma, scaleIn, offsetIn, nullptr,
+                                                     group);
         auto graph = graphBuilder.BuildAndReset({out.y, out.norm_out});
         pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
         pattern->CaptureTensor({*out.y.GetProducer(), 0}).CaptureTensor({*transposeX2.GetProducer(), 0});
     } else {
         auto out = ge::es::InplaceMatmulAllReduceAddRmsNorm(x1, transposeX2, bias, residual, gamma, scaleIn, offsetIn,
-                                                            dequantScale, group);
+                                                            nullptr, group);
         auto graph = graphBuilder.BuildAndReset({out.ref_residual, out.norm_out});
         pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
         pattern->CaptureTensor({*out.ref_residual.GetProducer(), 0}).CaptureTensor({*transposeX2.GetProducer(), 0});
@@ -266,11 +254,10 @@ std::vector<ge::fusion::PatternUniqPtr> BuildAllPatterns(const std::string &pass
                             if (offsetTranspose && !hasOffset) {
                                 continue;
                             }
-                            for (bool hasDequant : {false, true}) {
-                                OriginalGraphInfo info{opKind,     hasBias,        hasScale,       hasOffset,
-                                                       hasDequant, scaleTranspose, offsetTranspose};
-                                patternGraphs.emplace_back(MakePattern(passName, info));
-                            }
+                            // 只排列影响融合的可选口：bias/scale/offset（及是否吸 T）；不含 dequant
+                            OriginalGraphInfo info{opKind,    hasBias,        hasScale,
+                                                   hasOffset, scaleTranspose, offsetTranspose};
+                            patternGraphs.emplace_back(MakePattern(passName, info));
                         }
                     }
                 }
@@ -298,7 +285,6 @@ size_t GetExpectedSubgraphInputNum(const std::string &patternNameStr)
     info.hasBias = patternNameStr.find(PATTERN_BIAS) != std::string::npos;
     info.hasScale = patternNameStr.find(PATTERN_SCALE) != std::string::npos;
     info.hasOffset = patternNameStr.find(PATTERN_OFFSET) != std::string::npos;
-    info.hasDequant = patternNameStr.find(PATTERN_DEQUANT) != std::string::npos;
     return GetPatternInputNum(info);
 }
 
@@ -556,11 +542,6 @@ bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder
                                             inputShapes[inputIdx].GetDims());
         ++inputIdx;
     }
-    inputs.rDequantScale = nullptr;
-    if (patternNameStr.find(PATTERN_DEQUANT) != std::string::npos) {
-        inputs.rDequantScale = replaceGraphBuilder.CreateInput(inputIdx, "dequant_scale", inputDTypes[inputIdx],
-                                                               inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-    }
     return true;
 }
 
@@ -636,20 +617,32 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
         int64_t groupSize = 0;
         OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr group_size failed.");
-        int64_t yDtype = 28;
+        // y_dtype 常为 UNDEFINED：非量化跟随 x1，量化等继承原输出，避免重建后落到 DT_FLOAT
+        int64_t yDtype = static_cast<int64_t>(ge::DT_UNDEFINED);
         OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDtype) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr y_dtype failed.");
+        if (yDtype == static_cast<int64_t>(ge::DT_UNDEFINED)) {
+            ge::TensorDesc x1Desc;
+            if (mc2Node.GetInputDesc(static_cast<int>(ops::MC2InputIdx::K_X1), x1Desc) == ge::GRAPH_SUCCESS &&
+                (x1Desc.GetDataType() == ge::DT_FLOAT16 || x1Desc.GetDataType() == ge::DT_BF16)) {
+                yDtype = static_cast<int64_t>(x1Desc.GetDataType());
+            } else {
+                ge::TensorDesc yDesc;
+                if (mc2Node.GetOutputDesc(0, yDesc) == ge::GRAPH_SUCCESS && yDesc.GetDataType() != ge::DT_UNDEFINED) {
+                    yDtype = static_cast<int64_t>(yDesc.GetDataType());
+                }
+            }
+        }
         int64_t commQuantMode = 0;
         OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr comm_quant_mode failed.");
         ge::AscendString commMode;
         OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr comm_mode failed.");
-        auto y = ge::es::MatmulAllReduce(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, nullptr,
-                                         inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset,
-                                         inputTensors.rDequantScale, nullptr, nullptr, nullptr, group.GetString(),
-                                         reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize,
-                                         groupSize, yDtype, commQuantMode, commMode.GetString());
+        auto y = ge::es::MatmulAllReduce(
+            inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, nullptr, inputTensors.rAntiquantScale,
+            inputTensors.rAntiquantOffset, nullptr, nullptr, nullptr, nullptr, group.GetString(), reduceOp.GetString(),
+            isTransA, isTransB, commTurn, antiquantGroupSize, groupSize, yDtype, commQuantMode, commMode.GetString());
         return replaceGraphBuilder.BuildAndReset({y});
     }
 
@@ -659,15 +652,15 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
     if (opKind == Mc2OpKind::Arn) {
         auto out = ge::es::MatmulAllReduceAddRmsNorm(
             inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rResidual, inputTensors.rGamma,
-            inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset, inputTensors.rDequantScale, group.GetString(),
+            inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset, nullptr, group.GetString(),
             reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize, epsilon);
         return replaceGraphBuilder.BuildAndReset({out.y, out.norm_out});
     }
 
     auto out = ge::es::InplaceMatmulAllReduceAddRmsNorm(
         inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rResidual, inputTensors.rGamma,
-        inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset, inputTensors.rDequantScale, group.GetString(),
-        reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize, epsilon);
+        inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset, nullptr, group.GetString(), reduceOp.GetString(),
+        isTransA, isTransB, commTurn, antiquantGroupSize, epsilon);
     return replaceGraphBuilder.BuildAndReset({out.ref_residual, out.norm_out});
 }
 
