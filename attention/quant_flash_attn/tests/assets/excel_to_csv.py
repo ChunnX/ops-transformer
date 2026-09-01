@@ -427,16 +427,23 @@ def _build_attributes(row, cols):
     _set("absolute_precision", ABSOLUTE_PRECISION_DEFAULT)
     _set("p_scale_value", _str_to_float(row.get(cols.get("p_scale_value"))))
     # cu_seqlens value → list，shape/dtype 不传（由 tensor_view_shapes 表达）
-    # shape 已抽出为 tensor；value 保留供 wrapper 覆盖随机生成。
+    # shape 已抽出为 tensor；value 保留供插件覆盖随机生成。
+    # 键名必须带 _values 后缀：cu_seqlens_q/kv、seqused_q/kv 与
+    # cann_ops_transformer::quant_flash_attn schema 的张量参数同名，
+    # 若不改名会被 TTK match_overload 计为 scalar_cover，
+    # effective_count = 15 + 4 = 19 > 15 → param plan 解析失败。
     _set_force(
-        "cu_seqlens_q", _str_to_int_list(row.get(cols.get("cu_seqlens_q_value")))
+        "cu_seqlens_q_values", _str_to_int_list(row.get(cols.get("cu_seqlens_q_value")))
     )
     _set_force(
-        "cu_seqlens_kv", _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value")))
+        "cu_seqlens_kv_values",
+        _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value"))),
     )
-    # seqused_q/kv：空则写 None（wrapper 无默认值，需要 key 存在，golden 透传 None 给 NPU）
-    _set_force("seqused_q", _str_to_int_list(row.get(cols.get("seqused_q_value"))))
-    _set_force("seqused_kv", _str_to_int_list(row.get(cols.get("seqused_kv_value"))))
+    # seqused_q/kv：空则写 None（需要 key 存在，golden 透传 None 给 NPU）
+    _set_force("seqused_q_values", _str_to_int_list(row.get(cols.get("seqused_q_value"))))
+    _set_force(
+        "seqused_kv_values", _str_to_int_list(row.get(cols.get("seqused_kv_value")))
+    )
     # attn_mask 的 shape/dtype 也写入 attributes：mask 由 golden _build_causal_mask()
     # 按此 shape 重建（如 (1,2048,2048)）；同时 attn_mask 仍是 tensor slot 13（shape 信息双份）。
     # attn_mask_dtype 缺省 int8（golden causal mask 用 int8）。

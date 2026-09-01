@@ -13,7 +13,7 @@
 import logging
 import os
 import sys
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import torch_npu
@@ -92,10 +92,6 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         N_q: int,
         N_kv: int,
         D: int,
-        cu_seqlens_q: Optional[List[int]] = None,
-        cu_seqlens_kv: Optional[List[int]] = None,
-        seqused_q: Optional[List[int]] = None,
-        seqused_kv: Optional[List[int]] = None,
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
         enable_pa: bool = False,

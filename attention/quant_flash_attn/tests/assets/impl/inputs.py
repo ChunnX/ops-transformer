@@ -101,10 +101,10 @@ def generate_qfa_mxfp8_inputs(
     N_q: int,
     N_kv: int,
     D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
+    cu_seqlens_q_values: List[int] = None,
+    cu_seqlens_kv_values: List[int] = None,
+    seqused_q_values: List[int] = None,
+    seqused_kv_values: List[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -129,8 +129,12 @@ def generate_qfa_mxfp8_inputs(
     **kwargs,
 ):
     # cu_seqlens -> actual_seq (差分还原)
-    cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
-    cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+    cu_seqlens_q = list(cu_seqlens_q_values) if cu_seqlens_q_values is not None else [0]
+    cu_seqlens_kv = (
+        list(cu_seqlens_kv_values) if cu_seqlens_kv_values is not None else [0]
+    )
+    seqused_q = seqused_q_values
+    seqused_kv = seqused_kv_values
     actual_seq_q = (
         [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
         if len(cu_seqlens_q) > 1
@@ -445,10 +449,10 @@ def generate_qfa_gqa_fp8_inputs(
     N_q: int,
     N_kv: int,
     D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
+    cu_seqlens_q_values: List[int] = None,
+    cu_seqlens_kv_values: List[int] = None,
+    seqused_q_values: List[int] = None,
+    seqused_kv_values: List[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -485,8 +489,12 @@ def generate_qfa_gqa_fp8_inputs(
         raise NotImplementedError("GQA FP8 (quant_mode=6) 仅支持 PA 模式")
 
     # cu_seqlens -> actual_seq (差分还原)
-    cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
-    cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+    cu_seqlens_q = list(cu_seqlens_q_values) if cu_seqlens_q_values is not None else [0]
+    cu_seqlens_kv = (
+        list(cu_seqlens_kv_values) if cu_seqlens_kv_values is not None else [0]
+    )
+    seqused_q = seqused_q_values
+    seqused_kv = seqused_kv_values
     actual_seq_q = (
         [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
         if len(cu_seqlens_q) > 1
@@ -728,10 +736,10 @@ def generate_qfa_hif8_inputs(
     N_q: int,
     N_kv: int,
     D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
+    cu_seqlens_q_values: List[int] = None,
+    cu_seqlens_kv_values: List[int] = None,
+    seqused_q_values: List[int] = None,
+    seqused_kv_values: List[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -769,8 +777,12 @@ def generate_qfa_hif8_inputs(
     import quant_flash_attn_hif8_golden as hif8_golden_mod
 
     input_layout = layout_q or input_layout
-    cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
-    cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+    cu_seqlens_q = list(cu_seqlens_q_values) if cu_seqlens_q_values is not None else [0]
+    cu_seqlens_kv = (
+        list(cu_seqlens_kv_values) if cu_seqlens_kv_values is not None else [0]
+    )
+    seqused_q = seqused_q_values
+    seqused_kv = seqused_kv_values
 
     B = (
         batch_size
