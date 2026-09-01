@@ -520,7 +520,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
 template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::UpdateUsedSeqLen(int64_t batchIdx)
 {
-    // 与 arch35 / smlag 一致：三个 seqused 各自可选，未传入时退回物理槽位长度
     usedS1 = curS1;
     usedS2 = curS2;
     usedS3 = curS3;

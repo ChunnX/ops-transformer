@@ -221,7 +221,6 @@ uint64_t SparseFlashMlaGradBasicTiling::GetTilingKey() const
     // -------------set tilingkey-----------------
     // LAYOUT: 0(BSND); 1(TND)
     // CMP_MODE: 0(SWA); 1(CFA); 2(SCFA)
-    // HAS_SEQUSED: 0(无seqused); 1(任一seqused存在，按对应seqused限制有效长度)
     uint32_t layout = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? 1U : 0U;
     bool hasSeqused = tmpData.usedSeqQ || tmpData.usedSeqOriKV || tmpData.usedSeqCmpKV;
     return GET_TPL_TILING_KEY(layout, tmpData.mode, static_cast<uint8_t>(hasSeqused));
