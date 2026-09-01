@@ -399,12 +399,11 @@ public:
             return;
         }
 
-        uint16_t firstLoop = 0;
-        uint16_t secondLoop = 0;
-        uint16_t firstLoopStart = 0;
-        uint16_t secondLoopStart = 0;
-
-        GetPScaleParams(runInfo, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
+        // CalcParams阶段已预计算进RunInfo, 避免UpdatePScale热路径的scalar索引推导
+        uint16_t firstLoopStart = runInfo.firstLoopStart;
+        uint16_t firstLoop = runInfo.firstLoop;
+        uint16_t secondLoopStart = runInfo.secondLoopStart;
+        uint16_t secondLoop = runInfo.secondLoop;
 
         LocalTensor<uint8_t> pscale1 = this->pscaleUB;
         LocalTensor<uint8_t> pscale2 = this->pscaleUB[firstLoop * SINGLE_PSCALE_SPACE_SIZE];
@@ -577,45 +576,6 @@ public:
     __aicore__ inline LocalTensor<float> GetUpdateScaleByCurIdx(uint32_t spaceIdx)
     {
         return updateScaleUB[spaceIdx * UB_UPDATE_SIZE];
-    }
-
-    __aicore__ inline void GetPScaleParams(const RunInfo &runInfo, uint16_t &firstLoopStart, uint16_t &firstLoop,
-                                           uint16_t &secondLoopStart, uint16_t &secondLoop)
-    {
-        uint32_t subBlockIdx = constInfo.subBlockIdx;
-        uint16_t isLoopFirstTaskVecCore = (subBlockIdx == runInfo.s2FirstStartVecCore);
-        uint32_t loop = runInfo.loop;
-        uint32_t GROUP_MAX_SPACE_LEN = 20;
-        uint32_t WHOLE_PROCESS_LOOP = 16;
-
-        uint32_t curS2LoopIdx = runInfo.curS2LoopIdx;
-        // 求单核目前为止，计算对应的第几个softmax(即第几个groupmax 8*128)（跨batch）
-        // 等价groupMaxEndLoop = (loop % 2 == 0) ? ((subBlockIdx == 0) ? (loop / 2) : ((loop / 2) - 1)) : (loop / 2);
-        uint32_t groupMaxEndLoop = (loop >> 1) - (subBlockIdx != 0 && loop % 2 == 0);
-        // 这一轮pscale的任务loop在groupMax空间下发的groupMaxEndIdx，*2的原因是因为groupmax一片空间承载4*128
-        uint32_t groupMaxEndIdx = groupMaxEndLoop * 2 % GROUP_MAX_SPACE_LEN + 1;
-
-        // toProcessGroupMaxLoopLen 求当前FD切核对应的Tile(16个softmax是一个tile)在每个核上有占用几片groupmax(4*128)空间
-        uint16_t toProcessGroupMaxLoopLen =
-            (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP + isLoopFirstTaskVecCore;
-        toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen / 2 * 2;
-        toProcessGroupMaxLoopLen =
-            toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen : WHOLE_PROCESS_LOOP;
-        firstLoop = (toProcessGroupMaxLoopLen / 2 + 1) / 2 * 2;
-        secondLoop = toProcessGroupMaxLoopLen - firstLoop;
-        int32_t firstLoopStartNotU = groupMaxEndIdx - toProcessGroupMaxLoopLen + 1;
-        if (firstLoopStartNotU < 0) {
-            firstLoopStart = firstLoopStartNotU + GROUP_MAX_SPACE_LEN;
-            firstLoop = GROUP_MAX_SPACE_LEN - firstLoopStart;
-            secondLoop = toProcessGroupMaxLoopLen - firstLoop;
-            secondLoopStart = 0;
-        } else {
-            firstLoopStart = firstLoopStartNotU;
-            secondLoopStart = firstLoopStart + firstLoop; // 向上对齐到2
-        }
-        // 两片groupmax空间对应其中的一个softmax任务
-        firstLoop /= 2;
-        secondLoop /= 2;
     }
 };
 } // namespace QFA_KERNEL
