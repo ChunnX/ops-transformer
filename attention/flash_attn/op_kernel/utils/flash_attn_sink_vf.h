@@ -10,23 +10,27 @@
 
 /*!
  * \file flash_attn_sink_vf.h
- * \brief sink 注入链(Phase 1: 消费侧直写快路 + 旧 walk 兜底)。
+ * \brief sink 注入链寄存器直写: maxUb[r] = cast(inUb[idx(r)]), r < m(<= 64)。
  *
- * 数学本质(27号文档 §4.0): maxUb[r] = cast(window[(gStart + r) mod gSize]), r < m <= 64。
- * S1G 分派(27号文档 Phase 1 终版):
- *   gSize == 1:  BRC 广播直写(LoadAlign DIST_BRC_B16 单值广播 + reg Cast + StoreAlign 整块),
- *                3 条指令单 launch, CopyIn 沿用旧 4 情况(1 微 burst), 实测稳定收益(S3: 21%->8.8%)。
- *   其余:        旧逐行 walk 原样(平铺缓存直写方案本轮实验后撤除, 见下方教训)。
- * GS1(BNSD): 旧 walk 原样(idx(r) = (s0 + r) / actS1Size), 分支结构与 Phase 0 逐字节等价
- *                (实测本文件代码结构对 GS1 路径代码生成敏感, 勿重构其 if/else 形状)。
- * 实验教训(2026-08-31, 27号文档 Phase 1 记录, 三轮实测):
- *   1. T 个微型 GM burst 的平铺拷贝(Compact + 负 srcStride)在小 gSize 深回绕场景退化 40-80%
- *      (S4_451684 gSize=2: 14.9%->55%; T = ceil((gStart+m)/gSize) 最高 33);
- *   2. 即便 T<=2, LoadUnAlign(vldas/vldus 单发类)逐注入固定开销使结果混沌: 同画像 case 一升一降
- *      (S1_98529 gSize=9: -4.6pp vs S7_608778 gSize=10: +22pp, 均跨复跑稳定) —— 撤除;
- *   3. BNSD 未改路径可因 dispatcher 重构产生 ±30pp 代码生成漂移(S5_557256) —— GS1 分支保持原状;
- *   4. 平铺缓存的正确打开方式 = Phase 2 per-n2 缓存(拷贝次数摊销后 T burst 不再逐注入支付)。
- * API 依据: asc-devkit LoadAlign_continuous.md(表 3 DIST_BRC_B16)/StoreAlign_continuous.md(mask 约束)。
+ * idx(r) 依布局(值区布局由 SinkCopyInGS1/SinkCopyInS1G 决定, 本文件只读不写):
+ *   GS1(BNSD):       idx = (s0 + r) / actS1Size           —— SinkGs1DirectVF;
+ *   S1G gSize==1:    恒同值, BRC 单值广播                   —— SinkBrcVF;
+ *   S1G case1:       idx = r(值区连续)                     —— SinkContigDirectVF;
+ *   S1G case2.1:     前 headLen 行 idx = headOff + r,
+ *                    其余行 idx = r - headLen(gap 双段)    —— SinkGapDirectVF;
+ *   S1G case2.2/3:   idx = (gStart + r) mod gSize(回绕)    —— SinkRotDirectVF。
+ *
+ * 数据流: 值区 UNPACK 进寄存器(每值解压到 32bit 槽低半 = Cast ZERO 布局) -> reg Cast ->
+ * (Gather/Select 重排) -> 整块 StoreAlign 单次写 maxUb(唯一 REG->UB 落点, 256B, 带 mask)。
+ * 值区跨寄存器时统一宽模式: A/B 双 UNPACK(基址 0/64, 后者 128B 天然 32B 对齐) + 双 Gather
+ * (B 路索引 = idx - 64) + Compares(idx < 64) Select 拼合 —— 值域 <= 64 时 B 路恒被掩掉。
+ * 索引取模/整除用寄存器 Div 实现(无 Mod 指令): k = a - (a / d) * d。
+ * 越界语义: Gather 索引越界按 mod (VL/sizeof(T)) 取值, 负数经 uint32 重解释变 huge,
+ * 其结果恒被 Select/store mask 掩掉, 不产生有效输出。
+ *
+ * API 依据(asc-devkit SIMD-API): LoadAlign_continuous.md 表3(DIST_UNPACK_B16, 32B 对齐)/
+ * Cast.md 表 7(b16->b32 宽转换, RegLayout::ZERO)/Gather.md(索引无符号且与 dst 位宽一致)/
+ * Select.md/Arange.md/StoreAlign_continuous.md(目的侧剩余 < 256B 需 mask)。
  * 设计文档: my-skills/docs/27_flash_attn_sinks_phase2_latency_hiding_plan.md。
  */
 #ifndef FLASH_ATTN_SINK_VF_H_
@@ -38,10 +42,8 @@ namespace AscendC {
 namespace FaSinkVfApi {
 using namespace MicroAPI;
 
-constexpr static uint32_t SINK_BRCB_NUM = 8U; // 每值 8 lane(32B), 与旧 Brcb 布局一致
-
-// b16 -> b32 宽转换: roundMode 不生效(asc-devkit Cast.md 表 7); RegLayout::ZERO 与
-// DIST_BRC_B16 的排布配套(值位于每个 32bit 组的低 16bit)。
+// b16 -> b32 宽转换: roundMode 不生效(Cast.md 表 7); RegLayout::ZERO 与 UNPACK_B16 的
+// 排布配套(值位于每个 32bit 槽的低 16bit)。
 constexpr static MicroAPI::CastTrait CAST_TRAIT_SINK_B16_TO_B32 = {
     MicroAPI::RegLayout::ZERO,
     MicroAPI::SatMode::UNKNOWN,
@@ -49,148 +51,230 @@ constexpr static MicroAPI::CastTrait CAST_TRAIT_SINK_B16_TO_B32 = {
     AscendC::RoundMode::UNKNOWN,
 };
 
-// 单行发射: expandUb[row*8 .. row*8+8) = inUb[idx](单值广播 + reg 内 16->32 cast, mask 8)
-// 源直接读 INPUT_T 区(免张量 Cast 与其后的 PipeBarrier), 寄存器依赖自动保序
-template <typename T, typename INPUT_T>
-__simd_callee__ inline void SinkEmitRow(__ubuf__ T *expandUb, __ubuf__ INPUT_T *inUb, uint32_t row, uint32_t idx,
-                                        MaskReg &pregRow)
-{
-    RegTensor<INPUT_T> srcReg;
-    RegTensor<T> valReg;
-    MaskReg pregCast = CreateMask<INPUT_T, MicroAPI::MaskPattern::ALL>();
-    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B16>(srcReg, inUb + idx);
-    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(valReg, srcReg, pregCast);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(expandUb + row * SINK_BRCB_NUM, valReg, pregRow);
-}
-
-// GS1(BNSD): idx(r) = (s0 + r) / actS1Size —— 计数器推进, 免除法
-template <typename T, typename INPUT_T>
-__simd_vf__ inline void SinkExpandGs1VF(__ubuf__ T *expandUb, __ubuf__ INPUT_T *inUb, uint32_t m, uint32_t s0,
-                                        uint32_t actS1Size)
-{
-    MaskReg pregRow = CreateMask<T, MicroAPI::MaskPattern::VL8>();
-    uint32_t rowsLeft = (s0 == 0) ? actS1Size : (actS1Size - s0);
-    uint32_t idx = 0;
-    for (uint16_t r = 0; r < static_cast<uint16_t>(m); ++r) {
-        if (rowsLeft == 0) {
-            idx++;
-            rowsLeft = actS1Size;
-        }
-        SinkEmitRow<T, INPUT_T>(expandUb, inUb, r, idx, pregRow);
-        rowsLeft--;
-    }
-}
-
-// S1G 连续值段: rows [rowStart, rowStart+rowCount), idx = idxStart + (r - rowStart)
-template <typename T, typename INPUT_T>
-__simd_vf__ inline void SinkExpandRunVF(__ubuf__ T *expandUb, __ubuf__ INPUT_T *inUb, uint32_t rowStart,
-                                        uint32_t rowCount, uint32_t idxStart)
-{
-    MaskReg pregRow = CreateMask<T, MicroAPI::MaskPattern::VL8>();
-    uint32_t idx = idxStart;
-    for (uint16_t r = 0; r < static_cast<uint16_t>(rowCount); ++r) {
-        SinkEmitRow<T, INPUT_T>(expandUb, inUb, rowStart + r, idx, pregRow);
-        idx++;
-    }
-}
-
-// S1G 旋转(整 gSize 区): idx(r) = (gStart + r) % gSize —— 回绕计数器, 免取模
-template <typename T, typename INPUT_T>
-__simd_vf__ inline void SinkExpandRotVF(__ubuf__ T *expandUb, __ubuf__ INPUT_T *inUb, uint32_t m, uint32_t gStart,
-                                        uint32_t gSize)
-{
-    MaskReg pregRow = CreateMask<T, MicroAPI::MaskPattern::VL8>();
-    uint32_t idx = gStart;
-    for (uint16_t r = 0; r < static_cast<uint16_t>(m); ++r) {
-        SinkEmitRow<T, INPUT_T>(expandUb, inUb, r, idx, pregRow);
-        idx++;
-        if (idx == gSize) {
-            idx = 0;
-        }
-    }
-}
-
-// 阶段B: 每 8 行一组, ReduceDataBlock<MAX> 得 8 个行 max, 直接写 maxUb(组间 32B 对齐)
-template <typename T>
-__simd_vf__ inline void SinkReduceMaxVF(__ubuf__ T *maxUb, __ubuf__ T *expandUb, uint32_t m)
-{
-    // 等待阶段A(或前置 VF)的 VEC_STORE 完成, 保证 expandUb 可读
-    LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-    RegTensor<T> srcReg;
-    MaskReg pregAll = CreateMask<T, MicroAPI::MaskPattern::ALL>();
-    MaskReg pregBlk = CreateMask<T, MicroAPI::MaskPattern::VL8>();
-    uint32_t groups = (m + SINK_BRCB_NUM - 1) / SINK_BRCB_NUM;
-    for (uint16_t g = 0; g < static_cast<uint16_t>(groups); ++g) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(srcReg, expandUb + g * 64);
-        MicroAPI::ReduceDataBlock<MicroAPI::ReduceType::MAX>(srcReg, srcReg, pregAll);
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb + g * SINK_BRCB_NUM, srcReg, pregBlk);
-    }
-}
-
 /*!
- * \brief gSize==1 快路: 单值广播直写(27号文档 Phase 1)。
- * 前置: 旧 CopyIn 已将 window[0] 放入 cache[0](gSize==1 时旧 4 情况均为 1 burst 拷 1 值)。
- * BRC_B16 将 cache[0] 广播到全部 128 个 b16 lane, Cast ZERO 取每槽低半得 64 个同值 float。
+ * \brief gSize==1: 单值广播直写。
+ * 前置: CopyIn 已将唯一 sink 值放入 inUb[0]。BRC_B16 将其广播到 128 个 b16 lane,
+ * Cast 取每槽低半得 64 个同值 float。
  */
 template <typename T, typename INPUT_T>
-__simd_vf__ inline void SinkBrcVf(__ubuf__ T *maxUb, __ubuf__ INPUT_T *cache, uint32_t m)
+__simd_vf__ inline void SinkBrcVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inUb, uint32_t m)
 {
     RegTensor<INPUT_T> srcReg;
     RegTensor<T> valReg;
     MaskReg pregCast = CreateMask<INPUT_T, MicroAPI::MaskPattern::ALL>();
-    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B16>(srcReg, cache); // 单值广播 128 lane
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_BRC_B16>(srcReg, inUb);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(valReg, srcReg, pregCast);
     uint32_t sreg = m;
     MaskReg pregF = UpdateMask<T>(sreg);
-    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(valReg, srcReg, pregCast);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb, valReg, pregF);
 }
 
 /*!
- * \brief sink 展开 dispatcher(V 锁内调用)。源直接读 INPUT_T 值区(reg 内 16->32 cast, 免张量 Cast)。
- * \param maxUb        [out] softmaxMax 槽位(64 float)
- * \param sinkTmpUb    [in]  INPUT_T 值区(gSize==1 快路仅读 cache[0], 其余为旧 CopyIn 布局)
- * \param sinkExpandUb [tmp] 展开区(容量 >= actVecMSize*8 float, 旧链同位置)
+ * \brief 连续值段直写: maxUb[r] = cast(inUb[r]), r < m。
+ * 前置: inUb[0..m) 为本块行值连续段(基址 32B 对齐)。
+ */
+template <typename T, typename INPUT_T>
+__simd_vf__ inline void SinkContigDirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inUb, uint32_t m)
+{
+    RegTensor<INPUT_T> uReg;
+    RegTensor<T> fReg;
+    MaskReg pregAll = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uReg, inUb);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fReg, uReg, pregAll);
+    uint32_t sreg = m;
+    MaskReg pregF = UpdateMask<T>(sreg);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb, fReg, pregF);
+}
+
+/*!
+ * \brief GS1(BNSD) 直写: maxUb[r] = cast(inUb[(s0 + r) / actS1Size]), r < m。
+ * 前置: inUb[0..gCount) 为本块 g 值连续区(GS1 CopyIn 布局)。
+ */
+template <typename T, typename INPUT_T>
+__simd_vf__ inline void SinkGs1DirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inUb, uint32_t s0, uint32_t actS1Size,
+                                        uint32_t m)
+{
+    RegTensor<INPUT_T> uRegA;
+    RegTensor<INPUT_T> uRegB;
+    RegTensor<T> fRegA;
+    RegTensor<T> fRegB;
+    RegTensor<T> gRegA;
+    RegTensor<T> gRegB;
+    RegTensor<T> oReg;
+    RegTensor<int32_t> aReg;
+    RegTensor<int32_t> qReg;
+    RegTensor<int32_t> qSub;
+    MaskReg pregAll = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegA, inUb);
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegB, inUb + 64);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fRegA, uRegA, pregAll);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fRegB, uRegB, pregAll);
+    // 行索引 idx = (s0 + r) / actS1Size(寄存器 Div 整除)
+    MicroAPI::Arange<int32_t>(aReg, static_cast<int32_t>(s0));
+    RegTensor<int32_t> aszReg;
+    MicroAPI::Duplicate<int32_t>(aszReg, static_cast<int32_t>(actS1Size), pregAll);
+    MicroAPI::Div<int32_t>(qReg, aReg, aszReg, pregAll);
+    MicroAPI::Adds<int32_t>(qSub, qReg, -64, pregAll); // B 段 lane = idx - 64
+    // 宽模式拼合: idx < 64 取 A 段, 否则取 B 段(负值 huge 越界, 被 Select 掩掉)
+    RegTensor<uint32_t> &qU32 = (RegTensor<uint32_t> &)qReg;
+    RegTensor<uint32_t> &qSubU32 = (RegTensor<uint32_t> &)qSub;
+    MicroAPI::Gather<T>(gRegA, fRegA, qU32);
+    MicroAPI::Gather<T>(gRegB, fRegB, qSubU32);
+    MaskReg pregA = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::Compares<int32_t, CMPMODE::LT>(pregA, qReg, 64, pregAll);
+    MicroAPI::Select<T>(oReg, gRegA, gRegB, pregA);
+    uint32_t sreg = m;
+    MaskReg pregF = UpdateMask<T>(sreg);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb, oReg, pregF);
+}
+
+/*!
+ * \brief 旋转(S1G case2.2/3) 直写: maxUb[r] = cast(inUb[(gStart + r) mod gSize]), r < m。
+ * 前置: inUb[0..gSize) 为本 n2 完整值区(case2.2/3 CopyIn 布局)。
+ * case2.2(gStart <= gEnd)序列不回绕, 索引恒等重排, 同样正确。
+ */
+template <typename T, typename INPUT_T>
+__simd_vf__ inline void SinkRotDirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inUb, uint32_t gStart, uint32_t gSize,
+                                        uint32_t m)
+{
+    RegTensor<INPUT_T> uRegA;
+    RegTensor<INPUT_T> uRegB;
+    RegTensor<T> fRegA;
+    RegTensor<T> fRegB;
+    RegTensor<T> gRegA;
+    RegTensor<T> gRegB;
+    RegTensor<T> oReg;
+    RegTensor<int32_t> aReg;
+    RegTensor<int32_t> qReg;
+    RegTensor<int32_t> kReg;
+    RegTensor<int32_t> kSub;
+    MaskReg pregAll = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegA, inUb);
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegB, inUb + 64);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fRegA, uRegA, pregAll);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fRegB, uRegB, pregAll);
+    // 行索引 k = (gStart + r) mod gSize(Div 取模: k = a - (a/gSize)*gSize)
+    MicroAPI::Arange<int32_t>(aReg, static_cast<int32_t>(gStart));
+    RegTensor<int32_t> gszReg;
+    MicroAPI::Duplicate<int32_t>(gszReg, static_cast<int32_t>(gSize), pregAll);
+    MicroAPI::Div<int32_t>(qReg, aReg, gszReg, pregAll);
+    MicroAPI::Muls<int32_t>(kReg, qReg, static_cast<int32_t>(gSize), pregAll);
+    MicroAPI::Sub<int32_t>(kReg, aReg, kReg, pregAll);
+    MicroAPI::Adds<int32_t>(kSub, kReg, -64, pregAll); // B 段 lane = k - 64
+    // 宽模式拼合: k < 64 取 A 段, 否则取 B 段(负值 huge 越界, 被 Select 掩掉)
+    RegTensor<uint32_t> &kU32 = (RegTensor<uint32_t> &)kReg;
+    RegTensor<uint32_t> &kSubU32 = (RegTensor<uint32_t> &)kSub;
+    MicroAPI::Gather<T>(gRegA, fRegA, kU32);
+    MicroAPI::Gather<T>(gRegB, fRegB, kSubU32);
+    MaskReg pregA = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::Compares<int32_t, CMPMODE::LT>(pregA, kReg, 64, pregAll);
+    MicroAPI::Select<T>(oReg, gRegA, gRegB, pregA);
+    uint32_t sreg = m;
+    MaskReg pregF = UpdateMask<T>(sreg);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb, oReg, pregF);
+}
+
+/*!
+ * \brief gap 双段(S1G case2.1) 直写。
+ * 前置: 尾段值在 inUb[0..gEnd], 头段值在 inUb[headOff..headOff+headLen)
+ * (headOff 16 元素对齐, 由 CopyIn gap 布局约定; 最坏 span = headOff+headLen <= 128)。
+ * 行序列: r < headLen 取 inUb[headOff + r], 其余行取 inUb[r - headLen]。
+ */
+template <typename T, typename INPUT_T>
+__simd_vf__ inline void SinkGapDirectVF(__ubuf__ T *maxUb, __ubuf__ INPUT_T *inUb, uint32_t headOff, uint32_t headLen,
+                                        uint32_t m)
+{
+    RegTensor<INPUT_T> uRegHeadA;
+    RegTensor<INPUT_T> uRegHeadB;
+    RegTensor<INPUT_T> uRegTail;
+    RegTensor<T> fHeadA;
+    RegTensor<T> fHeadB;
+    RegTensor<T> fTail;
+    RegTensor<T> gHeadA;
+    RegTensor<T> gHeadB;
+    RegTensor<T> gHead;
+    RegTensor<T> gTail;
+    RegTensor<T> oReg;
+    RegTensor<int32_t> rReg;
+    RegTensor<int32_t> rSub;
+    RegTensor<int32_t> idxTail;
+    MaskReg pregAll = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegHeadA, inUb + headOff);
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegHeadB, inUb + headOff + 64);
+    LoadAlign<INPUT_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(uRegTail, inUb);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fHeadA, uRegHeadA, pregAll);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fHeadB, uRegHeadB, pregAll);
+    MicroAPI::Cast<T, INPUT_T, CAST_TRAIT_SINK_B16_TO_B32>(fTail, uRegTail, pregAll);
+    // 行号与两段的 lane 索引: 头段 lane = r(宽模式 r / r-64), 尾段 lane = r - headLen
+    MicroAPI::Arange<int32_t>(rReg, 0);
+    MicroAPI::Adds<int32_t>(rSub, rReg, -64, pregAll);
+    MicroAPI::Adds<int32_t>(idxTail, rReg, -static_cast<int32_t>(headLen), pregAll);
+    // 头段宽模式: r < 64 取 A 段, 否则取 B 段
+    RegTensor<uint32_t> &rU32 = (RegTensor<uint32_t> &)rReg;
+    RegTensor<uint32_t> &rSubU32 = (RegTensor<uint32_t> &)rSub;
+    MicroAPI::Gather<T>(gHeadA, fHeadA, rU32);
+    MicroAPI::Gather<T>(gHeadB, fHeadB, rSubU32);
+    MaskReg pregHA = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::Compares<int32_t, CMPMODE::LT>(pregHA, rReg, 64, pregAll);
+    MicroAPI::Select<T>(gHead, gHeadA, gHeadB, pregHA);
+    // 头尾拼合: r < headLen 取头段, 否则取尾段(尾索引负值 huge 越界, 被 Select 掩掉)
+    RegTensor<uint32_t> &idxTailU32 = (RegTensor<uint32_t> &)idxTail;
+    MicroAPI::Gather<T>(gTail, fTail, idxTailU32);
+    MaskReg pregHead = CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::Compares<int32_t, CMPMODE::LT>(pregHead, rReg, static_cast<int32_t>(headLen), pregAll);
+    MicroAPI::Select<T>(oReg, gHead, gTail, pregHead);
+    uint32_t sreg = m;
+    MaskReg pregF = UpdateMask<T>(sreg);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb, oReg, pregF);
+}
+
+/*!
+ * \brief sink 注入 dispatcher(V 锁内调用), 全场景直写后即返回。
+ * \param maxUb       [out] softmaxMax 槽位(64 float, 唯一 REG->UB 落点)
+ * \param sinkTmpUb   [in]  INPUT_T 值区(CopyIn 布局: GS1 紧凑 gCount 值 / S1G 4 情况)
+ * \param gs1Start    [in]  本 block 的 GS1 轴起始(相位换算基准)
+ * \param actVecMSize [in]  有效行数 m(<= 64)
+ * \param actS1Size   [in]  GS1 布局的 s1 维块大小
+ * \param gSize       [in]  GQA 组大小
  */
 template <typename T, typename INPUT_T, bool IS_GS1_LAYOUT>
 __aicore__ inline void SinkExpandMaxVf(const LocalTensor<T> &maxUb, const LocalTensor<INPUT_T> &sinkTmpUb,
-                                       const LocalTensor<T> &sinkExpandUb, uint32_t gs1Start, uint32_t actVecMSize,
-                                       uint32_t actS1Size, uint32_t gSize)
+                                       uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t gSize)
 {
     if (actVecMSize == 0) {
         return;
     }
     __ubuf__ T *maxUbPtr = (__ubuf__ T *)maxUb.GetPhyAddr();
     __ubuf__ INPUT_T *inUb = (__ubuf__ INPUT_T *)sinkTmpUb.GetPhyAddr();
-    __ubuf__ T *expandUb = (__ubuf__ T *)sinkExpandUb.GetPhyAddr();
 
     if constexpr (IS_GS1_LAYOUT) {
         uint32_t s0 = gs1Start % actS1Size;
-        SinkExpandGs1VF<T, INPUT_T>(expandUb, inUb, actVecMSize, s0, actS1Size);
-    } else if (gSize == 1U) {
-        // Phase 1 快路: gSize==1, 单值广播直写(CopyIn 沿用旧 4 情况, cache[0] 即该值)
-        SinkBrcVf<T, INPUT_T>(maxUbPtr, inUb, actVecMSize);
-        return; // 快路已直写 maxUb, 跳过旧链的展开+归约
-    } else {
-        uint32_t gStart = gs1Start % gSize;
-        uint32_t s1Start = gs1Start / gSize;
-        uint32_t gs1End = gs1Start + actVecMSize - 1;
-        uint32_t gEnd = gs1End % gSize;
-        uint32_t s1End = gs1End / gSize;
-        if (s1Start == s1End) {
-            // 情况1: 单 s1 行, 区[0..gCount) 连续, idx(r) = r
-            SinkExpandRunVF<T, INPUT_T>(expandUb, inUb, 0, actVecMSize, 0);
-        } else if (s1Start + 1 == s1End && gStart > gEnd) {
-            // 情况2.1: 头段在区[Align(gEnd+1,16) ..), 尾段在区[0 .. gEnd](区带 gap 布局)
-            uint32_t headOff = (gEnd + 1 + 15U) & ~15U;
-            uint32_t headLen = gSize - gStart;
-            SinkExpandRunVF<T, INPUT_T>(expandUb, inUb, 0, headLen, headOff);
-            SinkExpandRunVF<T, INPUT_T>(expandUb, inUb, headLen, gEnd + 1, 0);
-        } else {
-            // 情况2.2/3: 整 gSize 区, idx(r) = (gStart + r) % gSize
-            SinkExpandRotVF<T, INPUT_T>(expandUb, inUb, actVecMSize, gStart, gSize);
-        }
+        SinkGs1DirectVF<T, INPUT_T>(maxUbPtr, inUb, s0, actS1Size, actVecMSize);
+        return;
     }
-    SinkReduceMaxVF<T>(maxUbPtr, expandUb, actVecMSize);
+    if (gSize == 1U) {
+        SinkBrcVF<T, INPUT_T>(maxUbPtr, inUb, actVecMSize);
+        return;
+    }
+    uint32_t gStart = gs1Start % gSize;
+    uint32_t s1Start = gs1Start / gSize;
+    uint32_t gs1End = gs1Start + actVecMSize - 1;
+    uint32_t gEnd = gs1End % gSize;
+    uint32_t s1End = gs1End / gSize;
+    if (s1Start == s1End) {
+        // case1: 单 s1 行, 值区连续
+        SinkContigDirectVF<T, INPUT_T>(maxUbPtr, inUb, actVecMSize);
+        return;
+    }
+    if (s1Start + 1 == s1End && gStart > gEnd) {
+        // case2.1: 头段 [gStart, gSize) 与尾段 [0, gEnd] 不重叠, CopyIn 按 gap 布局分段存放
+        uint32_t headOff = (gEnd + 1 + 15U) & ~15U;
+        uint32_t headLen = gSize - gStart;
+        SinkGapDirectVF<T, INPUT_T>(maxUbPtr, inUb, headOff, headLen, actVecMSize);
+        return;
+    }
+    // case2.2/3: 值区回绕(m 跨多个 g 周期)
+    SinkRotDirectVF<T, INPUT_T>(maxUbPtr, inUb, gStart, gSize, actVecMSize);
 }
 } // namespace FaSinkVfApi
 } // namespace AscendC
