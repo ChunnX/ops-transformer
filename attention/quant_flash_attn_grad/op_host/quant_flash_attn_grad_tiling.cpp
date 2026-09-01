@@ -59,20 +59,18 @@ static ge::graphStatus ParseAttrs(gert::TilingContext *context, const string &op
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *maxSeqlenQ = attrs->GetAttrPointer<int64_t>(MAX_SEQLEN_Q);
-    OP_CHECK_IF(maxSeqlenQ != nullptr && *maxSeqlenQ != -1,
-                OP_LOGE(opName, "maxSeqlenQ not support."), return ge ::GRAPH_FAILED);
+    OP_CHECK_IF(maxSeqlenQ != nullptr && *maxSeqlenQ != -1, OP_LOGE(opName, "maxSeqlenQ not support."),
+                return ge ::GRAPH_FAILED);
     const int64_t *maxSeqlenKV = attrs->GetAttrPointer<int64_t>(MAX_SEQLEN_KV);
-    OP_CHECK_IF(maxSeqlenKV != nullptr && *maxSeqlenKV != -1,
-                OP_LOGE(opName, "maxSeqlenKV not support."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(maxSeqlenKV != nullptr && *maxSeqlenKV != -1, OP_LOGE(opName, "maxSeqlenKV not support."),
+                return ge::GRAPH_FAILED);
     const int64_t *maskMode = attrs->GetAttrPointer<int64_t>(MASK_MODE);
-    OP_CHECK_IF(maskMode != nullptr && *maskMode != 0,
-                OP_LOGE(opName, "maskMode must be 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(maskMode != nullptr && *maskMode != 0, OP_LOGE(opName, "maskMode must be 0."), return ge::GRAPH_FAILED);
     const int64_t *winRight = attrs->GetAttrPointer<int64_t>(WIN_RIGHT);
-    OP_CHECK_IF(winRight != nullptr && *winRight != -1,
-                OP_LOGE(opName, "winRight not support."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(winRight != nullptr && *winRight != -1, OP_LOGE(opName, "winRight not support."),
+                return ge::GRAPH_FAILED);
     const int64_t *winLeft = attrs->GetAttrPointer<int64_t>(WIN_LEFT);
-    OP_CHECK_IF(winLeft != nullptr && *winLeft != -1,
-                OP_LOGE(opName, "winLeft not support."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(winLeft != nullptr && *winLeft != -1, OP_LOGE(opName, "winLeft not support."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

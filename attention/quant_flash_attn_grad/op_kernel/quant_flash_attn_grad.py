@@ -2926,7 +2926,7 @@ def quant_flash_attn_grad(
     # process kernel
     alloc_event_id()
     loop_max = 0
-    loop_max = loop_max + tensor_metadata[1,0]
+    loop_max = loop_max + tensor_metadata[1, 0]
     task_id = 0
 
     init_coordinate_info(const_info, 0, 0, coordinate_infos[0])
