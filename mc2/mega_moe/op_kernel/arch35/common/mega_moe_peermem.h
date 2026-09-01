@@ -44,11 +44,10 @@ constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
 // ============================ 各区尺寸（host / device 共用） ============================
 
-// mask 位区字节数：每条路由 1 bit，位图按 32B 对齐。
+// URMA layered 路径仍使用 mask 槽；MTE WAVE 不再经过该布局。
 HOST_DEVICE int64_t CalcDispatchMaskAlignSizeBy(int64_t numMaxTokensPerRank, int64_t topK)
 {
     int64_t sendTotalNum = numMaxTokensPerRank * topK;
-    // 路由条目数按 256B 对齐后的 int32 元素数（位图每条目 1 bit，故下方 /8 得字节数）。
     int64_t alignedRouteCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)), ALIGN_256) /
                                 static_cast<int64_t>(sizeof(int32_t));
     return Ops::Base::CeilAlign(alignedRouteCount / 8, ALIGN_32);
@@ -60,7 +59,7 @@ HOST_DEVICE int64_t CalcDispatchMaskAlignSize(const MegaMoeTilingData *tilingDat
                                        static_cast<int64_t>(tilingData->topK));
 }
 
-// MTE Wave 的每个 (localExpert, srcRank) 槽直接保存有序 topkIndex。
+// 每个 (localExpert, srcRank) 槽直接保存有序 topkIndex。
 // 同一 token 的 topK expert id 不重复，因此单专家从一张源卡最多接收 numMaxTokensPerRank 个 index。
 HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSizeBy(int64_t numMaxTokensPerRank)
 {
@@ -78,27 +77,16 @@ HOST_DEVICE bool UseMteGroupCombineReady(int64_t topoType, uint8_t groupedMatmul
            (groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL || groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
 }
 
-// MTE Wave 的三个模板统一使用 compact route index。Combine 的 group-ready 协议仍由
-// UseMteGroupCombineReady 独立控制，避免路由格式选择隐式改变 W4 的量化 Combine workspace 布局。
-HOST_DEVICE bool UseCompactRouteIndex(int64_t topoType, uint8_t groupedMatmulMode)
-{
-    bool isW4Mode = groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-                    groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-                    groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
-    return UseMteGroupCombineReady(topoType, groupedMatmulMode) || (topoType == TOPO_TYPE_MTE && isW4Mode);
-}
-
-// mask 接收区总字节数：每个 (localExpert, srcRank) 一个槽，槽 = mask 位区 + 末尾 32B count 区。
-HOST_DEVICE int64_t CalcMaskRecvSize(int64_t maskAlignSize, int64_t moeExpertPerRank, int64_t epWorldSize)
-{
-    int64_t maskSlotSize = maskAlignSize + ALIGN_32;
-    return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
-}
-
 // compact route 接收区不再携带槽尾 count；count 继续使用下方独立连续表。
 HOST_DEVICE int64_t CalcRouteIndexRecvSize(int64_t routeIndexAlignSize, int64_t moeExpertPerRank, int64_t epWorldSize)
 {
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * routeIndexAlignSize, ALIGN_512);
+}
+
+HOST_DEVICE int64_t CalcMaskRecvSize(int64_t maskAlignSize, int64_t moeExpertPerRank, int64_t epWorldSize)
+{
+    int64_t maskSlotSize = maskAlignSize + ALIGN_32;
+    return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
 }
 
 // 独立 raw count 表按 [localExpert][sourceRank] 排列，供接收端一次搬入并做前缀和。
@@ -148,7 +136,6 @@ struct PeermemSizeParams {
     bool topkWeightsPrefetch;
     bool isQuantCombine;
     int64_t topoType;
-    uint8_t groupedMatmulMode;
 };
 
 /*
@@ -159,7 +146,7 @@ struct PeermemSizeParams {
 HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
 {
     int64_t routeRecvSize = 0;
-    if (UseCompactRouteIndex(params.topoType, params.groupedMatmulMode)) {
+    if (params.topoType == TOPO_TYPE_MTE) {
         int64_t routeIndexAlignSize = CalcDispatchRouteIndexAlignSizeBy(params.numMaxTokensPerRank);
         routeRecvSize = CalcRouteIndexRecvSize(routeIndexAlignSize, params.moeExpertPerRank, params.epWorldSize);
     } else {
@@ -194,7 +181,7 @@ struct PeermemInfo {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
-        if (UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode)) {
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
             offset += CalcRouteIndexRecvSize(CalcDispatchRouteIndexAlignSize(tilingData),
                                              static_cast<int64_t>(tilingData->moeExpertPerRank),
                                              static_cast<int64_t>(tilingData->epWorldSize));

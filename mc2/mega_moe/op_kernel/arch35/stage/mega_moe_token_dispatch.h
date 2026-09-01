@@ -59,7 +59,7 @@ __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &pa
     uint64_t quantWinOffset =
         static_cast<uint64_t>(params.peermemInfo.quantTokenScalePtr - params.peermemInfo.rankSyncInWorldPtr);
     return {.maxOutputSize = params.tilingData->maxOutputSize,
-            .bufferConfig = params.tilingData->compactDispatchBufferConfig,
+            .bufferConfig = params.tilingData->dispatchBufferConfig,
             .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
             .quantWinOffset = quantWinOffset,
             .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
