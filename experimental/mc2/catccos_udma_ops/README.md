@@ -329,10 +329,11 @@ bash scripts/run_accuracy.sh --case-id model_case_1 --check-reusable-out
 The SHMEM heap contains only the fixed communication workspace and
 synchronization state. Inputs and outputs of both public operators use ordinary
 NPU memory, so larger model tensors do not increase the SHMEM heap requirement.
-The runtime reserves 640 MiB plus synchronization state for the no-reuse
-GroupedMatMul-AllToAllV profiles. Validation defaults to a 1 GiB heap and
-requires at least 704 MiB including allocator headroom; `UDMA_HEAP_SIZE` can
-override that runtime configuration.
+The runtime reserves a 640 MiB data plane plus a disjoint 4 KiB control plane.
+The two fused directions own separate 2 KiB control slices, so their reusable
+signals cannot alias either communication payloads or each other's signals.
+Validation defaults to a 1 GiB heap and requires at least 704 MiB including
+allocator headroom; `UDMA_HEAP_SIZE` can override that runtime configuration.
 
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)

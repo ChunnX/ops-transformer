@@ -23,6 +23,7 @@
 #include "catlass/matrix_coord.hpp"
 
 #include "catccos/catccos.hpp"
+#include "catccos/dgemm/kernel/udma_workspace_layout.hpp"
 #include "catccos/symm_coord.hpp"
 #include "catccos/layout/dist_matrix.hpp"
 
@@ -52,7 +53,8 @@ template <
     class BlockMmadScheduler_,
     class BlockCommScheduler_,
     uint32_t WORKSPACE_STAGES_,
-    uint64_t SYMMETRIC_DATA_BYTES_ = 1000UL * 1024 * 1024,
+    uint64_t SYMMETRIC_DATA_BYTES_ =
+        OpsTransformer::CatccosUdma::UdmaWorkspaceLayout::kDataBytes,
     bool TARGET_ORDER_STAGING_ = false,
     bool OFFICIAL_UDMA_BLOCK_ = false,
     class OfficialBlockComm_ = void,
@@ -84,6 +86,8 @@ public:
     using BlockMmadScheduler = BlockMmadScheduler_;
     using BlockCommScheduler = BlockCommScheduler_;
     using BlockCommSchedulerParams = typename BlockCommScheduler::Params;
+    using WorkspaceLayout =
+        OpsTransformer::CatccosUdma::UdmaWorkspaceLayout;
 
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     // FFTS exposes flag IDs 0..7. Data staging may have many diagnostic
@@ -214,12 +218,15 @@ public:
         auto layoutB = tla::MakeLayoutFromTag(layoutTagB);
         auto layoutC = tla::MakeLayoutFromTag(layoutTagC);
 
-        uint64_t symmetricOffset = 0;
-        auto gmSymmetric = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += SYMMETRIC_DATA_BYTES;
-        auto syncMmadFinish = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += SYNC_UNIT_SIZE;
-        auto syncCommFinish = args.ptrSymmetric + symmetricOffset;
+        static_assert(
+            SYMMETRIC_DATA_BYTES <= WorkspaceLayout::kDataBytes,
+            "grouped-matmul AllToAllV staging exceeds the data plane");
+
+        auto gmSymmetric = args.ptrSymmetric;
+        auto syncMmadFinish =
+            args.ptrSymmetric + WorkspaceLayout::kGmmA2avSyncMmadOffset;
+        auto syncCommFinish =
+            args.ptrSymmetric + WorkspaceLayout::kGmmA2avSyncCommOffset;
 
         typename BlockComm::TileRemoteCopy::Params tileParams{args.commTileShape};
         BlockCommParams blockCommParams{args.commBlockShape, tileParams};

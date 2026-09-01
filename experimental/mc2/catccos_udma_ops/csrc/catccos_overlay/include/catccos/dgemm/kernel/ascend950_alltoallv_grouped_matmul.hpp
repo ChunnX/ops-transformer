@@ -19,6 +19,7 @@
 #include "catlass/matrix_coord.hpp"
 
 #include "catccos/catccos.hpp"
+#include "catccos/dgemm/kernel/udma_workspace_layout.hpp"
 #include "catccos/dgemm/moe_route_metadata.hpp"
 #include "catccos/layout/dist_matrix.hpp"
 #ifdef ENABLE_TIMER
@@ -131,6 +132,8 @@ public:
     using BlockMmadScheduler = BlockMmadScheduler_;
     using BlockCommScheduler = BlockCommScheduler_;
     using BlockExport = BlockExport_;
+    using WorkspaceLayout =
+        OpsTransformer::CatccosUdma::UdmaWorkspaceLayout;
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
     static constexpr bool USE_UDMA_PEER_SERIAL_SCHEDULE = USE_UDMA_PEER_SERIAL_SCHEDULE_;
     static constexpr bool EXPORT_ALLTOALLV = EXPORT_ALLTOALLV_;
@@ -139,7 +142,8 @@ public:
     static constexpr uint32_t COMPLETION_MODE_GENERATION_AFTER_QUIET = 2;
     static constexpr uint32_t COMPLETION_MODE_STRONG_READY = 3;
     static constexpr uint32_t COMPLETION_MODE_STRONG_READY_CACHE_SAFE = 4;
-    static constexpr uint32_t READY_SLOT_RANKS = 8;
+    static constexpr uint32_t READY_SLOT_RANKS =
+        WorkspaceLayout::kMaxRankSize;
     static_assert(!EXPORT_ALLTOALLV || WORKSPACE_STAGES >= 2,
         "Pipelined AllToAllV export requires at least two staging buffers");
     static_assert(!EXPORT_ALLTOALLV || USE_UDMA_PEER_SERIAL_SCHEDULE,
@@ -251,16 +255,22 @@ public:
         typename BlockComm::TileRemoteCopy::Params tileParams{args.commTileShape};
         BlockCommParams blockCommParams{args.commBlockShape, tileParams};
 
-        constexpr size_t IPC_BUFF_MAX_SIZE = 200 * 1024 * 1024 * sizeof(half);
-        constexpr size_t SYNC_UNIT_SIZE = 4 * sizeof(int64_t);
-        uint64_t symmetricOffset = 0;
-        auto gmSymmetric = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += IPC_BUFF_MAX_SIZE;
-        auto syncMmadFinish = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += SYNC_UNIT_SIZE;
-        auto syncCommFinish = args.ptrSymmetric + symmetricOffset;
-        symmetricOffset += SYNC_UNIT_SIZE;
-        auto syncCommReady = args.ptrSymmetric + symmetricOffset;
+        constexpr uint64_t IPC_BUFF_MAX_SIZE =
+            200UL * 1024 * 1024 * sizeof(half);
+        static_assert(
+            IPC_BUFF_MAX_SIZE <= WorkspaceLayout::kDataBytes,
+            "AllToAllV grouped-matmul staging exceeds the data plane");
+        static_assert(
+            WORKSPACE_STAGES <= WorkspaceLayout::kA2avGmmReadyStages,
+            "AllToAllV grouped-matmul ready slots are undersized");
+
+        auto gmSymmetric = args.ptrSymmetric;
+        auto syncMmadFinish =
+            args.ptrSymmetric + WorkspaceLayout::kA2avGmmSyncMmadOffset;
+        auto syncCommFinish =
+            args.ptrSymmetric + WorkspaceLayout::kA2avGmmSyncCommOffset;
+        auto syncCommReady =
+            args.ptrSymmetric + WorkspaceLayout::kA2avGmmReadyOffset;
 
         return Params(
             problemShape,

@@ -14,14 +14,16 @@
 #include <string>
 #include <unordered_set>
 
+#include "catccos/dgemm/kernel/udma_workspace_layout.hpp"
+
 namespace OpsTransformer::CatccosUdma {
 
 class UdmaRuntime {
 public:
     static constexpr size_t kKernelWorkspaceDataBytes =
-        640UL * 1024 * 1024;
+        UdmaWorkspaceLayout::kDataBytes;
     static constexpr size_t kKernelWorkspaceBytes =
-        kKernelWorkspaceDataBytes + 4096;
+        UdmaWorkspaceLayout::kTotalBytes;
 
     static UdmaRuntime &Instance();
 

@@ -57,11 +57,26 @@ def test_validation_heap_accepts_no_reuse_workspace_with_headroom(monkeypatch):
 
 
 def test_runtime_reserves_no_reuse_workspace():
-    source = (
+    runtime_source = (
         Path(__file__).parents[1]
         / "csrc"
         / "all_to_allv_grouped_mat_mul_udma"
         / "ascend950"
         / "udma_runtime.h"
     ).read_text(encoding="utf-8")
-    assert "640UL * 1024 * 1024" in source
+    layout_source = (
+        Path(__file__).parents[1]
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "udma_workspace_layout.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert '"catccos/dgemm/kernel/udma_workspace_layout.hpp"' in runtime_source
+    assert "UdmaWorkspaceLayout::kDataBytes" in runtime_source
+    assert "UdmaWorkspaceLayout::kTotalBytes" in runtime_source
+    assert "kDataBytes = 640UL * 1024 * 1024" in layout_source
+    assert "kControlBytes = 4096" in layout_source
