@@ -1,0 +1,151 @@
+name: torch.block_attention_residuals
+api: pytorch
+api_type: function_block_attention_residuals_atk
+aclnn_name: aclnnBlockAttentionResiduals
+aclnn_api_type: pyaclnn_block_attention_residuals_atk
+version: v2.1
+generate: block_attention_residuals_constraint
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 5
+      avg_re_ratio: 1.5
+      root_mean_squared_ratio: 1.5
+  perf: not_key
+dtype_numbers: 900
+extra_numbers: 0
+shape_distributions:
+  - [0, 1.0]
+inputs:
+  - name: prefix_sum
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16, fp16, fp32]
+    ranges:
+      valid:
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
+    boundary:
+      has_lower_border: true
+      has_upper_border: false
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
+  - name: block_res
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16, fp16, fp32]
+    ranges:
+      valid:
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
+    boundary:
+      has_lower_border: true
+      has_upper_border: false
+    shapes:
+      dim_numbers:
+        values: [3]
+      dim_values:
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
+  - name: proj_weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16, fp16, fp32]
+    ranges:
+      valid:
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
+    boundary:
+      has_lower_border: true
+      has_upper_border: false
+    shapes:
+      dim_numbers:
+        values: [1, 2]
+      dim_values:
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
+  - name: norm_weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16, fp16, fp32]
+    ranges:
+      valid:
+        values:
+          - [-0.001, 0.001]
+          - [-5, 5]
+        random_types:
+          - name: nd
+            mean: [-100, 100]
+            std: [1, 25]
+        custom_dist_ratio:
+          - [0.1, 0.3, 0.2]
+          - [0.4, 0.0]
+    outlier_values: [0.001, 1000]
+    boundary:
+      has_lower_border: true
+      has_upper_border: false
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
+  - name: valid_block_num
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [1, 100]
+  - name: norm_eps
+    type: attr
+    required: true
+    dtypes:
+      values: [double]
+    ranges:
+      valid:
+        values: [1.0e-5]
+  - name: need_backward
+    type: attr
+    required: true
+    dtypes:
+      values: [attr_bool]
+    ranges:
+      valid:
+        values: [false, true]
