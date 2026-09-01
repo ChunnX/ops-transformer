@@ -40,7 +40,7 @@ repos:
           - "--style=file"
           - "--verbose"
           - "-i"
-        exclude: ^build/|tests/third_party/|_def\.cpp$
+        exclude: ^build/|tests/third_party/|_def\.cpp$|/op_api/aclnn[^/]*\.h$|/op_graph/[^/]*_proto\.h$|/op_host/op_api/aclnn[^/]*\.h$
 
   # Python 代码检查
   - repo: https://gitcode.com/gh_mirrors/ru/ruff-pre-commit
