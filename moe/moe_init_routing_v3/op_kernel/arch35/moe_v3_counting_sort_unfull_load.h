@@ -94,6 +94,7 @@ private:
     int64_t expertStart_;
     int64_t expertEnd_;
     int64_t actualExpertNum_;
+    int64_t expertNum_;
     int64_t rowIdxType_;
     int64_t ep_;
     int64_t filterNeedCoreNum_;
@@ -151,6 +152,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Init(GM_ADDR expertIdx, GM_ADDR
     expertStart_ = tiling->expertStart;
     expertEnd_ = tiling->expertEnd;
     actualExpertNum_ = tiling->actualExpertNum;
+    expertNum_ = tiling->expertNum;
     rowIdxType_ = tiling->rowIdxType;
     filterNeedCoreNum_ = tiling->countingSortParamsOp.filterNeedCoreNum;
     expertTokensNumFlag_ = tiling->expertTokensNumFlag;
@@ -218,11 +220,13 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Init(GM_ADDR expertIdx, GM_ADDR
         expertTokensGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokens);
     }
 
-    // ===== UB layout =====
     int64_t expertCountAlign =
         OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     expertCountLocalOffset_ = 0;
+    // 常驻ub-expertCountLocal
     persistentSize_ = expertCountAlign;
+
+    //Phase A temp
     int64_t phaseASize = 0;
     phaseASize +=
         OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES); // expertIdxLocal
@@ -231,8 +235,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Init(GM_ADDR expertIdx, GM_ADDR
     phaseASize += maskBytes_ * 3; // compareMask0/1 + gatherMask
     phaseASize +=
         OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES); // flatIdxBufferLocal
-    // 无 shortPath：gatheredExpert/gatheredIdx 恒计入（拆分为 GM 路径）
-    phaseASize += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES) * 2;
+    phaseASize += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES) * 2; // gatheredExpert/gatheredIdx
 
     // Phase B temp（totalCount + prefixSum + batchBuf + scatter temp）
     int64_t fixedOverhead = persistentSize_ + 2 * expertCountAlign;
@@ -742,7 +745,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
             DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 
         } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-            int64_t kvTotalElements = (actualExpertNum_ + 1) * 2;
+            int64_t kvTotalElements = (actualExpertNum_ == expertNum_) ? actualExpertNum_ * 2 : (actualExpertNum_ + 1) * 2;
             Duplicate(expertTokensLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
                       static_cast<int32_t>(kvTotalElements * 2));
             SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
