@@ -1017,10 +1017,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
         return; // 分组封顶后该组无对端（本jetty闲置）
     }
 
-    auto multiChannel = static_cast<MultiChannelHandle>(mc2Context_->multiChannelHandle[jettyIndex]);
-    if (multiChannel == 0U) {
+    auto multiChannelValue = mc2Context_->multiChannelHandle[jettyIndex];
+    if (multiChannelValue == 0U) {
         return; // 该组只有本rank，没有需要创建的逻辑对端通道
     }
+    auto multiChannel = static_cast<MultiChannelHandle>(multiChannelValue);
     auto batchHandle = hcomm_.MakeBatchHandle(multiChannel, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES);
 
     uint32_t groupJettyCount = (JETTY_TOTAL + jettyNumGroups_ - 1U - group) / jettyNumGroups_;
