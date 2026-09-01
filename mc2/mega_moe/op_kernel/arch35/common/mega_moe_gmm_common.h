@@ -101,6 +101,8 @@ struct Config {
     using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t{}, uint32_t{}));
     using LayoutCType = decltype(MakeLayoutC{}(uint32_t{}, uint32_t{}));
     using LayoutBiasType = decltype(MakeLayoutBias{}(uint32_t{}, uint32_t{}));
+    using LayoutATrait = Te::GetLayoutTrait<LayoutAType>;
+    using LayoutScaleATrait = Te::GetLayoutTrait<LayoutScaleAType>;
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
     using BlockPrologue =
@@ -333,6 +335,24 @@ struct Config {
         layouts.a = MakeLayoutA{}(config.m, config.k);
         layouts.b = MakeLayoutB{}(config.k, config.n);
         layouts.scaleA = MakeLayoutScaleA{}(config.m, config.scaleK);
+        layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
+        layouts.c = MakeLayoutC{}(config.m, config.n);
+        layouts.bias = MakeLayoutBias{}(1U, config.n);
+        return layouts;
+    }
+
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig &config, const StridedAConfig &aConfig)
+    {
+        LayoutBundle layouts;
+        auto aShape = Te::MakeShape(Te::MakeShape(Te::_1{}, config.m), Te::MakeShape(Te::_1{}, config.k));
+        auto aStride =
+            Te::MakeStride(Te::MakeStride(Te::_0{}, aConfig.rowStrideElements), Te::MakeStride(Te::_0{}, Te::_1{}));
+        layouts.a = Te::MakePatternLayout<LayoutA, LayoutATrait>(aShape, aStride);
+        layouts.b = MakeLayoutB{}(config.k, config.n);
+        auto scaleAShape = Te::MakeShape(Te::MakeShape(Te::_1{}, config.m), Te::MakeShape(Te::_1{}, config.scaleK));
+        auto scaleAStride = Te::MakeStride(Te::MakeStride(Te::_0{}, aConfig.scaleRowStrideElements),
+                                           Te::MakeStride(Te::_0{}, Te::_1{}));
+        layouts.scaleA = Te::MakePatternLayout<LayoutScaleA, LayoutScaleATrait>(scaleAShape, scaleAStride);
         layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
         layouts.c = MakeLayoutC{}(config.m, config.n);
         layouts.bias = MakeLayoutBias{}(1U, config.n);
