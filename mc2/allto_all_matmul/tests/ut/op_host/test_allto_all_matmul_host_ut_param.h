@@ -75,7 +75,8 @@ struct AlltoAllMatmulInferShapeUtParam : public AlltoAllMatmulHostUtParamBase {
     gert::InfershapeContextPara::TensorDescription y = ID_DEFAULT;
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    explicit AlltoAllMatmulInferShapeUtParam(const csv_map &csvMap) : AlltoAllMatmulHostUtParamBase(csvMap)
+    explicit AlltoAllMatmulInferShapeUtParam(const csv_map &csvMap)
+        : AlltoAllMatmulHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
@@ -108,7 +109,8 @@ struct AlltoAllMatmulInferDataTypeUtParam : public AlltoAllMatmulHostUtParamBase
     ge::DataType y = ge::DT_UNDEFINED;
     ge::DataType alltoallout = ge::DT_UNDEFINED;
 
-    explicit AlltoAllMatmulInferDataTypeUtParam(const csv_map &csvMap) : AlltoAllMatmulHostUtParamBase(csvMap)
+    explicit AlltoAllMatmulInferDataTypeUtParam(const csv_map &csvMap)
+        : AlltoAllMatmulHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", x1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", x2));
