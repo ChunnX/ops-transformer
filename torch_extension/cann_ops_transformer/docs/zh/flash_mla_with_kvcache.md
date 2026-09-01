@@ -38,10 +38,10 @@
   MLA前向计算由两阶段[（矩阵乘 + 注意力）]构成：先经低秩KV压缩得到潜向量，再基于潜向量执行缩放点积注意力。注意力部分的计算公式为：
 
   $$
-  Attention(Q, K, V)=Softmax(\frac{QK^T}{\sqrt{d_k}})V
+  O = Softmax(\frac{QK^T}{\sqrt{d_k}})V
   $$
 
-  其中$Q$由$q$（含RoPE）经线性变换得到，$K、V$由共享的$k\_cache$（含RoPE）经线性变换得到，$\sqrt{d_k}$为缩放因子（可通过`softmax_scale`显式覆盖）。
+  其中$Q$由$q$（含RoPE）经线性变换得到，$K$与$V$均由共享的$k\_cache$（含RoPE）经线性变换得到（**MLA 复用单一 KV 缓存，接口不单独传入 $V$**），$\sqrt{d_k}$为缩放因子（可通过`softmax_scale`显式覆盖）。
 
   开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑如下所示：
 
@@ -59,7 +59,7 @@
 
 > [!NOTE]
 >
-> query（q）支持TND、BNSD、BSND三种布局；KV缓存（k_cache）仅支持Paged Attention（PA）分页布局（PA_NZ、PA_BBND、PA_BNBD），不支持连续KV；输出（attn_out）与q保持相同布局，不支持转置。其中B（Batch）表示输入样本批量大小、Q_S表示seqlen_q、Q_N表示heads_q、Q_T表示所有query batch序列长度的累加和、D表示头维（nope部分512，整体576含rope64）。
+> query（q）支持TND、BNSD、BSND三种布局；KV缓存（k_cache）仅支持Paged Attention（PA）分页布局（PA_NZ、PA_BBND、PA_BNBD），不支持连续KV；输出（attn_out）默认与q保持相同布局，TND输入支持NTD输出（转置），其余布局必须与输入一致。其中B（Batch）表示输入样本批量大小、Q_S表示seqlen_q、Q_N表示heads_q、Q_T表示所有query batch序列长度的累加和、D表示头维（nope部分512，整体576含rope64）。
 
 ## 函数原型
 
@@ -140,7 +140,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 | max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式，支持"TND"/"BNSD"/"BSND" | string | - | - |
 | layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持PA分页布局"NZ"/"PA_BBND"/"PA_BNBD" | string | - | - |
-| layout_out | string | 可选 | 定义输出张量的布局格式，必须与layout_q保持一致，不支持转置 | string | - | - |
+| layout_out | string | 可选 | 定义输出张量的布局格式，默认与layout_q保持一致；TND输入支持NTD输出（转置），其余布局必须与layout_q一致 | string | - | - |
 | return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | bool | - | - |
 
 ## 返回值说明
@@ -155,12 +155,12 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| attn_out | Tensor | 必选 | flash_mla_with_kvcache的计算输出，布局与q保持一致（不支持转置） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, D)</li><li>BNSD -> (B, Q_N, Q_S, D)</li><li>BSND -> (B, Q_S, Q_N, D)</li></ul>D=head_dim_v |
+| attn_out | Tensor | 必选 | flash_mla_with_kvcache的计算输出，布局默认与q保持一致；TND输入支持NTD输出（转置，此时shape为(N, T, D)） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, D)</li><li>NTD -> (Q_N, Q_T, D)</li><li>BNSD -> (B, Q_N, Q_S, D)</li><li>BSND -> (B, Q_S, Q_N, D)</li></ul>D=head_dim_v |
 | softmax_lse | Tensor | 可选 | softmax的LSE结果 | float32 | ND | <ul><li>TND -> (Q_N, Q_T)</li><li>BNSD/BSND -> (B, Q_N, Q_S)</li></ul> |
 
 **说明**
 
-- attn_out：输出D维度与`head_dim_v`保持一致（512）；维度排布与layout_q保持一致，不支持转置。
+- attn_out：输出D维度与`head_dim_v`保持一致（512）；维度排布默认与layout_q保持一致，TND输入支持NTD输出（转置）。
 - softmax_lse：return_softmax_lse为True时，layout_q为TND输出shape为(Q_N, Q_T)，layout_q为BNSD/BSND时输出shape为(B, Q_N, Q_S)；return_softmax_lse为False时，则输出shape为[1]的值为0的Tensor。
 
 ## 约束说明
@@ -168,7 +168,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 - 参数cu_seqlens_q、cache_seqlens、seqused_q、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - flash_mla_with_kvcache_metadata和flash_mla_with_kvcache的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - metadata由`flash_mla_with_kvcache_metadata`生成后原样传入`flash_mla_with_kvcache`；用户自建过小的metadata缓冲区将被容量校验拒绝。
-- layout_q支持TND、BNSD、BSND三种布局；layout_out必须与layout_q保持一致，不支持转置（layout_out与layout_q不一致将被校验拒绝）。
+- layout_q支持TND、BNSD、BSND三种布局；layout_out默认为layout_q；TND输入支持NTD输出（转置），其余布局必须与layout_q一致。
 - **KV缓存仅支持Paged Attention（PA）分页布局**：layout_kv仅支持"NZ"（PA_NZ）、"PA_BBND"、"PA_BNBD"，且必须传入`block_table`；不支持连续KV布局，其余布局一律由算子校验拒绝。
 - **q与k_cache的最后维（D）必须为576**（= head_dim_v 512 + rope 64），不允许512宽输入。
 - **head_dim_v必须为512**（nope/value部分宽度，即 k_cache 最后维576减去rope宽度64）；传入其它值将被拒绝。
@@ -257,7 +257,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
             <ul>
                 <li>q、k_cache、attn_out的数据类型需相同</li>
                 <li>q与k_cache的最后维（D）必须相等，且必须为576</li>
-                <li>layout_out必须与layout_q保持一致，不支持转置</li>
+                <li>layout_out默认与layout_q一致；TND输入支持NTD输出（转置），其余布局必须与layout_q一致</li>
                 <li>Layout校验规则见layout匹配关系表</li>
             </ul>
         </td>
@@ -325,13 +325,17 @@ cann_ops_transformer.flash_mla_with_kvcache(
     </thead>
     <tbody>
         <tr>
-            <td>TND</td>
-            <td rowspan="3">
+            <td rowspan="2">TND</td>
+            <td rowspan="4">
             <li>PA_NZ（"NZ"）</li>
             <li>PA_BBND</li>
             <li>PA_BNBD</li>
             </td>
             <td>TND</td>
+            <td>(Q_N, Q_T)</td>
+        </tr>
+        <tr>
+            <td>NTD（转置）</td>
             <td>(Q_N, Q_T)</td>
         </tr>
         <tr>
