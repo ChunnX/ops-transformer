@@ -26,9 +26,9 @@ namespace optiling {
 
 class FiaTilingNonQuant : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuant(gert::TilingContext *context) : FiaTilingBase(context)
-    {
-    }
+    explicit FiaTilingNonQuant(gert::TilingContext *context)
+        : FiaTilingBase(context)
+    {}
     ~FiaTilingNonQuant() override = default;
 
 protected:

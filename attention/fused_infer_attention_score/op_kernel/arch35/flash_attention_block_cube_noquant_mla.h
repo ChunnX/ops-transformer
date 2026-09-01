@@ -30,12 +30,11 @@ TEMPLATES_DEF
 class FABlockCubeNoquantMla {
 public:
     __aicore__ inline FABlockCubeNoquantMla(){};
-    __aicore__ inline void
-    InitCubeBlock(TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                  __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                  const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
-                  BufferManager<BufferType::L1> *l1BuffMgr,
-                  BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *mm12Bmm2AL1BuffersPtr);
+    __aicore__ inline void InitCubeBlock(
+        TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
+        __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+        const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, BufferManager<BufferType::L1> *l1BuffMgr,
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *mm12Bmm2AL1BuffersPtr);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, bool isLast,
                                        ConstInfo<isInfer, hasRope> &constInfo);
@@ -46,9 +45,9 @@ private:
     __aicore__ inline void InitInput(TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                      __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
                                      const FlashAttentionScoreSimplifiedTilingData *__restrict tiling);
-    __aicore__ inline void
-    InitLocalBuffer(BufferManager<BufferType::L1> *l1BuffMgr,
-                    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *mm12Bmm2AL1BuffMgr);
+    __aicore__ inline void InitLocalBuffer(
+        BufferManager<BufferType::L1> *l1BuffMgr,
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> *mm12Bmm2AL1BuffMgr);
     __aicore__ inline int64_t GetQueryRopeOffset(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline int64_t GetKeyRopeOffset(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
 
@@ -113,11 +112,10 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitCubeBlock(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitInput(TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key,
-                                                __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
-                                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                                                const FlashAttentionScoreSimplifiedTilingData *__restrict tiling)
+__aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitInput(
+    TPipe *pipe, __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling)
 {
     this->tilingData = tiling;
     this->tPipe = pipe;
@@ -175,10 +173,9 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitLocalBuffer(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                                  RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam,
-                                                  bool isLast, ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
+    RunParamStr<isInfer> &runParam, bool isLast, ConstInfo<isInfer, hasRope> &constInfo)
 {
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm1B;
@@ -324,8 +321,10 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
         (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
     fixpipeParams.mSize = (runInfo.s1RealSize + 1) >>
                           1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
-                                                                      // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
+    fixpipeParams.srcStride =
+        ((fixpipeParams.mSize + 15) >> 4)
+        << 4; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
+              // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
     fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 //
                                           // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
@@ -340,9 +339,8 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t
-FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetQueryRopeOffset(RunInfo<isInfer> &runInfo,
-                                                         ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline int64_t FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetQueryRopeOffset(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
     // 计算gm上的offset
     int64_t bOffsetRope = 0;
@@ -411,9 +409,9 @@ __aicore__ inline int64_t FABlockCubeNoquantMla<TEMPLATE_ARGS>::GetKeyRopeOffset
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                                  RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm2(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
+    ConstInfo<isInfer, hasRope> &constInfo)
 {
     // 获取 mm2 的左右矩阵
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2AB;
@@ -448,8 +446,10 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncTyp
     fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
     fixpipeParams.mSize =
         s1BaseSize; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
-                                                                      // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
+    fixpipeParams.srcStride =
+        ((fixpipeParams.mSize + 15) >> 4)
+        << 4; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16
+              // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
     fixpipeParams.dstStride =
         (fixpipeParams.nSize + 15) >> 4 << 4; // mmResUb上两行之间的间隔，单位：element。 //
                                               // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
