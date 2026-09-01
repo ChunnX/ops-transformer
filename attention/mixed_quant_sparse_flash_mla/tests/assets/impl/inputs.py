@@ -822,13 +822,21 @@ class MixedQuantSparseFlashMlaInputAdapter:
         pytest_check.check_valid_param(filled)
         if batch_random is None:
             data = pytest_golden.generate_and_save_testdata(
-                filled, save_pt=False, generate_golden=False
+                filled,
+                pytest_golden.RUN_MODE,
+                save_pt=False,
+                generate_golden=False,
+                bench_run_mode=3,
             )
         else:
             batch_random.validate_params(filled)
             with batch_random:
                 data = pytest_golden.generate_and_save_testdata(
-                    filled, save_pt=False, generate_golden=False
+                    filled,
+                    pytest_golden.RUN_MODE,
+                    save_pt=False,
+                    generate_golden=False,
+                    bench_run_mode=3,
                 )
             batch_random.normalize_block_tables(data)
         return data

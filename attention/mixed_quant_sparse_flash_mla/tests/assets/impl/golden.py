@@ -20,6 +20,24 @@ from pathlib import Path
 PYTEST_MODULE_NAME = "mqsmla_pytest_golden"
 PYTEST_MODULE_FILE = "mixed_quant_sparse_flash_mla_golden.py"
 
+try:
+    from ttk.utilities.container_utils import get_global_storage
+except Exception:
+    get_global_storage = None
+
+
+def _get_compare_method():
+    if get_global_storage is not None:
+        try:
+            return getattr(get_global_storage(), "compare_method", None)
+        except Exception:
+            return None
+    return None
+
+
+def compare_method_is_cross_check():
+    return _get_compare_method() == "cross_check"
+
 
 class CaseDataStore:
     """Share one input-to-Golden handoff without framework state."""
@@ -40,6 +58,17 @@ class CaseDataStore:
         for testcase_name, stored in tuple(self.case_data.items()):
             if stored is data:
                 self.case_data.pop(testcase_name, None)
+
+
+def peek_bench(testcase_name):
+    """Take the current cross-check bench and release the cached case data."""
+    data = CASE_DATA.get(testcase_name)
+    if data is None:
+        return None
+    try:
+        return data.get("bench_outputs")
+    finally:
+        CASE_DATA.discard(data)
 
 
 CASE_DATA = CaseDataStore()
@@ -78,9 +107,18 @@ def get_case_data(testcase_name):
 
 
 def materialize_golden(data):
-    if data.get("cpu_output") is None:
-        load_pytest_golden().generate_cpu_golden(data)
-    CASE_DATA.discard(data)
+    compute_bench = compare_method_is_cross_check()
+    if data.get("cpu_output") is None or (
+        compute_bench and data.get("bench_outputs") is None
+    ):
+        load_pytest_golden().generate_cpu_golden(
+            data,
+            data["run_mode"],
+            return_bench=compute_bench,
+            bench_run_mode=data["bench_run_mode"],
+        )
+    if not compute_bench:
+        CASE_DATA.discard(data)
     return data
 
 
