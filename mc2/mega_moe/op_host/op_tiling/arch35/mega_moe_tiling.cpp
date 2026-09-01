@@ -955,30 +955,16 @@ static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData
 
 /*
  * 分两步定下 dispatch 阶段的 UB 分配：
- *   第一步：先按一个保守的 compact index batch 大小起步，把剩下的 UB 全拿去开 ring slot；
- *   第二步：ring 深度定死之后，UB 若还有富余，再反过来把 route batch 撑大，减少总批数。
- * 单个 expert 从一张源卡最多接收 numMaxTokensPerRank 条 index，因此 sendTotalNum 不乘 topK。
+ *   第一步：先按一个保守的 route batch 大小起步，把剩下的 UB 全拿去开 ring slot，slot 越多流水越深；
+ *   第二步：ring 深度定死之后，UB 若还有富余，再反过来把 route batch 撑大，这样总批数更少。
  */
 static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferConfig, uint64_t sendTotalNum,
                                             uint64_t alignedTotalRouteItems, uint32_t fixedBufferBytes,
                                             uint32_t dispatchSlotBytes, uint32_t availableUbBytes)
 {
-    // 第一步：用基准 batch 把 ring 深度定下来；若 UB 不足则按 256 items 逐步缩小 batch。
+    // 第一步：用基准 batch 把 ring 深度定下来。
     bufferConfig.routeItemsPerBatch =
         static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_RECV_ROUTE_ITEMS_PER_BATCH)));
-    while (bufferConfig.routeItemsPerBatch >= static_cast<int32_t>(ALIGN_256)) {
-        uint64_t requiredBytes = static_cast<uint64_t>(fixedBufferBytes) +
-                                 static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) * sizeof(int32_t) +
-                                 static_cast<uint64_t>(MIN_DISPATCH_BUFFER_COUNT) * dispatchSlotBytes;
-        if (requiredBytes <= availableUbBytes) {
-            break;
-        }
-        bufferConfig.routeItemsPerBatch -= static_cast<int32_t>(ALIGN_256);
-    }
-    if (bufferConfig.routeItemsPerBatch < static_cast<int32_t>(ALIGN_256)) {
-        bufferConfig.routeItemsPerBatch = 0;
-        return;
-    }
     bufferConfig.routeBatchCount = static_cast<int32_t>(
         (sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
 
@@ -990,10 +976,7 @@ static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferC
         availableUbBytes > bytesWithoutDispatchSlots ? availableUbBytes - bytesWithoutDispatchSlots : 0U;
     bufferConfig.bufferCount = static_cast<int32_t>(dispatchSlotBudgetBytes / dispatchSlotBytes);
     bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_DISPATCH_BUFFER_COUNT);
-    if (bufferConfig.bufferCount < MIN_DISPATCH_BUFFER_COUNT) {
-        bufferConfig.bufferCount = 0;
-        return;
-    }
+    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_DISPATCH_BUFFER_COUNT);
 
     // 第二步：ring 深度已定，剩余 UB 用来扩 route batch。
     if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
@@ -1046,73 +1029,51 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeSendMaskBufferConfig bufferConfig{};
-    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
-    uint64_t alignedTotalRouteItems = ops::CeilAlign(sendTotalNum, static_cast<uint64_t>(ALIGN_256));
-    // Kernel 的 batch offset 和长度使用 int32；超过该范围时拒绝生成 compact 配置，避免静默截断。
-    if (sendTotalNum == 0U || tilingData->topK == 0U ||
-        sendTotalNum > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
-        return bufferConfig;
-    }
+    // 沿用原发送批网格，只调整每个 ring slot 中路由数据的实际大小。
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
+    uint64_t alignedTotalRouteItems =
+        (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
 
-    // Stage 1：使用基准 batch 确定 compact route ring 深度；UB 不足时按 256 items 缩小 batch。
+    // Stage 1：使用基准 batch 确定 route ring 深度。
     bufferConfig.routeItemsPerBatch =
         static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_SEND_ROUTE_ITEMS_PER_BATCH)));
-    while (bufferConfig.routeItemsPerBatch >= static_cast<int32_t>(ALIGN_256)) {
-        uint64_t routeTensorBytes = static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) * sizeof(int32_t);
-        uint64_t ringSlotBytes = CalcCompactRouteRingSlotBytes(
-            static_cast<uint32_t>(bufferConfig.routeItemsPerBatch), tilingData->topK);
-        uint64_t requiredBytes = static_cast<uint64_t>(fixedBufferBytes) + 2U * routeTensorBytes +
-                                 static_cast<uint64_t>(MIN_SEND_MASK_BUFFER_COUNT) * ringSlotBytes;
-        if (requiredBytes <= availableUbBytes) {
-            break;
-        }
-        bufferConfig.routeItemsPerBatch -= static_cast<int32_t>(ALIGN_256);
-    }
-    if (bufferConfig.routeItemsPerBatch < static_cast<int32_t>(ALIGN_256)) {
-        bufferConfig.routeItemsPerBatch = 0;
-        return bufferConfig;
-    }
-
     bufferConfig.routeBatchCount = static_cast<int32_t>(
-        ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
+        (sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
     bufferConfig.bufferBytes = static_cast<uint32_t>(CalcCompactRouteRingSlotBytes(
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch), tilingData->topK));
 
-    uint32_t routeTensorBytes =
+    uint32_t routeIndexBufferBytes =
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
-    uint32_t bytesWithoutRing = fixedBufferBytes + 2U * routeTensorBytes;
-    uint32_t ringBudgetBytes = availableUbBytes > bytesWithoutRing ? availableUbBytes - bytesWithoutRing : 0U;
-    bufferConfig.bufferCount = static_cast<int32_t>(ringBudgetBytes / bufferConfig.bufferBytes);
+    uint32_t bytesWithoutRouteBuffers = fixedBufferBytes + 2U * routeIndexBufferBytes;
+    uint32_t routeBufferBudgetBytes =
+        availableUbBytes > bytesWithoutRouteBuffers ? availableUbBytes - bytesWithoutRouteBuffers : 0U;
+    bufferConfig.bufferCount = static_cast<int32_t>(routeBufferBudgetBytes / bufferConfig.bufferBytes);
     bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_SEND_MASK_BUFFER_COUNT);
 
-    uint64_t routePushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
-    if (routePushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > routePushCount) {
-        bufferConfig.bufferCount = static_cast<int32_t>(routePushCount);
+    uint64_t maskPushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
+    if (maskPushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > maskPushCount) {
+        bufferConfig.bufferCount = static_cast<int32_t>(maskPushCount);
     }
     bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_SEND_MASK_BUFFER_COUNT);
 
-    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。容量公式只增加 compact index 的占用。
     if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
-        uint64_t expandedRouteItems =
-            availableUbBytes > fixedBufferBytes ?
-                (static_cast<uint64_t>(availableUbBytes) - fixedBufferBytes) / (2U * sizeof(int32_t)) :
-                0U;
+        uint64_t fixedBytesWithRoutePadding =
+            static_cast<uint64_t>(fixedBufferBytes) +
+            static_cast<uint64_t>(bufferConfig.bufferCount) * (ALIGN_32 + 2U * sizeof(int32_t));
+        uint64_t routeItemBudgetBytes =
+            availableUbBytes > fixedBytesWithRoutePadding ? availableUbBytes - fixedBytesWithRoutePadding : 0U;
+        // 两份 route tensor 各占 4B/item；每个 ring slot 占 1bit mask 和约 4/topK B compact index。
+        // 分子、分母同乘 8*topK，避免使用浮点数。
+        uint64_t routeItemByteNumerator =
+            64U * tilingData->topK + static_cast<uint64_t>(bufferConfig.bufferCount) * (tilingData->topK + 32U);
+        uint64_t expandedRouteItems = routeItemBudgetBytes * 8U * tilingData->topK / routeItemByteNumerator;
         expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
         expandedRouteItems = std::min(expandedRouteItems, alignedTotalRouteItems);
-        while (expandedRouteItems > static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)) {
-            uint64_t ringSlotBytes =
-                CalcCompactRouteRingSlotBytes(static_cast<uint32_t>(expandedRouteItems), tilingData->topK);
-            uint64_t requiredBytes = static_cast<uint64_t>(fixedBufferBytes) +
-                                     2U * expandedRouteItems * sizeof(int32_t) +
-                                     static_cast<uint64_t>(bufferConfig.bufferCount) * ringSlotBytes;
-            if (requiredBytes <= availableUbBytes) {
-                break;
-            }
-            expandedRouteItems -= static_cast<uint64_t>(ALIGN_256);
-        }
         if (expandedRouteItems > static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)) {
             bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
-            bufferConfig.routeBatchCount = static_cast<int32_t>(ops::CeilDiv(sendTotalNum, expandedRouteItems));
+            bufferConfig.routeBatchCount = static_cast<int32_t>(
+                (sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
             bufferConfig.bufferBytes = static_cast<uint32_t>(
                 CalcCompactRouteRingSlotBytes(static_cast<uint32_t>(expandedRouteItems), tilingData->topK));
         }
@@ -1390,16 +1351,6 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
     SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
-
-    OP_TILING_CHECK(
-        tilingData->topoType == TOPO_TYPE_MTE &&
-            (tilingData->dispatchBufferConfig.routeItemsPerBatch <= 0 ||
-             tilingData->dispatchBufferConfig.bufferCount < MIN_DISPATCH_BUFFER_COUNT ||
-             tilingData->sendMaskConfigForCoreWithExtraExpert.routeItemsPerBatch <= 0 ||
-             tilingData->sendMaskConfigForCoreWithExtraExpert.bufferCount < MIN_SEND_MASK_BUFFER_COUNT ||
-             tilingData->sendMaskConfigForCoreWithoutExtraExpert.routeItemsPerBatch <= 0 ||
-             tilingData->sendMaskConfigForCoreWithoutExtraExpert.bufferCount < MIN_SEND_MASK_BUFFER_COUNT),
-        OP_LOGE(nodeName, "UB is insufficient for MTE Wave compact route buffers."), return ge::GRAPH_FAILED);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
