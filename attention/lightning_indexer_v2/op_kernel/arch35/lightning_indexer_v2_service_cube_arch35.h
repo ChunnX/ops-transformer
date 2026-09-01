@@ -116,6 +116,7 @@ protected:
     uint64_t queryBufferOffset_ = 0;
     uint64_t l0abBufferOffset_ = 0;
     uint64_t l0cBufferOffset_ = 0;
+    uint64_t keyL0BufferOffset_ = 0;
 
 private:
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
@@ -128,6 +129,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitParams(const Cons
     queryBufferOffset_ = M_BASIC_BLOCK * D_BASIC_BLOCK;
     l0abBufferOffset_ = M_BASIC_BLOCK * D_BASIC_BLOCK_L0;
     l0cBufferOffset_ = M_BASIC_BLOCK * S2_BASIC_BLOCK_L0;
+    keyL0BufferOffset_ = D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
 }
 
 template <typename LIT>
@@ -342,7 +344,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::LoadKeyToL0b(uint64_t
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-    LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
+    LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * keyL0BufferOffset_],
              keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
