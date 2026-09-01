@@ -38,7 +38,7 @@ else()
 endif()
 
 add_executable(ccu_alltoall
-    src/ccu_alltoall_kernel.asc
+    src/alltoall_ccu_kernel_impl.asc
 )
 
 target_include_directories(ccu_alltoall PRIVATE
@@ -49,6 +49,9 @@ target_include_directories(ccu_alltoall PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/include/hccl
     ${ASCEND_CANN_PACKAGE_PATH}/include/hcomm
     ${ASCEND_CANN_PACKAGE_PATH}/include/hcomm/ccu
+    # asc-comm 正式版 host launch 头（ccu_host_launch.h，CANN 9.2.0+ 自带；
+    # 对齐 asc-comm ccu_direct 官方示例 include 布局）
+    ${ASCEND_CANN_PACKAGE_PATH}/asc/include/comm_api/ccu
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/hcomm
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/hcomm/ccu
@@ -86,7 +89,10 @@ target_link_directories(ccu_alltoall PRIVATE
 )
 target_link_libraries(ccu_alltoall PRIVATE
     hcomm
-    asccomm_ccu_dataplane
+    # asc-comm 正式版 CCU host launch 库（CANN 9.2.0+ 自带 libasccomm_ccu.so；
+    # 旧 asc-comm 草稿库名 asccomm_ccu_dataplane 已废弃——正式版见 asc-comm master
+    # 7149d33 "add hostlaunch"，对齐 ccu_direct 官方示例链接配置）
+    asccomm_ccu
     c_sec
     ascendcl
     acl_rt

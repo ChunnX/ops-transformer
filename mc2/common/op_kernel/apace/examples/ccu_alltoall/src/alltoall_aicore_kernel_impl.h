@@ -9,13 +9,14 @@
  */
 
 /*!
- * \file a2a_bridge_kernel.h
+ * \file alltoall_aicore_kernel_impl.h
  * \brief AIC 桥 kernel 的 device 侧组件（阶段1：纯通信，无 Blaze/matmul）
  *
  * 由 ccu_all_gather_matmul 的 matmul_fusion_kernel.h 裁剪而来：
  *   - 删除 MatmulTilingData / MatmulProcess（Blaze MXFP8 matmul，阶段3 再恢复）
  *   - 保留 AIC 侧两步骨架：
- *     步骤 0（block 0）: 逐 round 预写参数桥（每轮 11 槽，槽位语义见 .asc 的 BridgeSlot 枚举）
+ *     步骤 0（block 0）: 逐 round 预写共享内存参数区（"参数桥"，AIC/CCU 间传参的 GM 区域；
+ *                          每轮 11 槽，槽位语义见 .asc 的 BridgeSlot 枚举）
  *                        + 写 wake（eventVa[0]=1）
  *     步骤 1（all blocks）: 循环 commTurn 次轮询 eventVa[r+1]==1（round r done）
  *
@@ -42,7 +43,7 @@
 
 // ============================================================================
 // WriteBridgeSlot — 参数桥槽位写入 helper（槽位语义单一出处：.asc 的 BridgeSlot 枚举）
-// 将 value 写入 round r 第 slot 个 Variable 的 GM 后背地址，绕过 DCache 直写 GM
+// 将 value 写入 round r 第 slot 个 Variable 在 GM 中的地址，绕过 DCache 直写 GM
 // ============================================================================
 __aicore__ inline void WriteBridgeSlot(const CcuMappedAddrs &addrs, uint32_t r,
                                        BridgeSlot slot, uint64_t value)
@@ -52,20 +53,20 @@ __aicore__ inline void WriteBridgeSlot(const CcuMappedAddrs &addrs, uint32_t r,
 }
 
 // ============================================================================
-// A2aBridgeProcess — AIC 侧桥接主逻辑（阶段1 纯通信核心函数）
+// A2aAicoreProcess — AIC 侧桥接主逻辑（阶段1 纯通信核心函数）
 //
 // 整体执行流程（对齐 AG 示例 AicDirectPollProcess，去 matmul）：
 //   步骤 0 (block 0 only): 逐 round 预写 11 槽参数桥到 GM Variable 区，然后写 wake event
 //   步骤 1 (all blocks):   循环 commTurn 次，轮询 eventVa[r+1]==1 等 round r 通信完成
 //
 // ─── 双流时序示意 ───
-//   streamCcu (CCU):    [wake]→ A2A round0 → A2A round1 → ...
+//   streamCcu (CCU):    [wake]→ A2a round0 → A2a round1 → ...
 //                                ↓ev[1]      ↓ev[2]
 //   streamAicore (AIC):  [writeWake]→ poll done0 → poll done1 → ...
 //
 // 阶段1 中 AIC 轮询 done 仅用于验证同步链路（阶段3 在轮询后接 matmul，即成通算流水）。
 // ============================================================================
-__aicore__ inline void A2aBridgeProcess(
+__aicore__ inline void A2aAicoreProcess(
     __gm__ void *sendBuf, __gm__ void *recvBuf,
     CcuMappedAddrs mappedAddrs,
     uint64_t token, uint64_t srcStride,
@@ -133,10 +134,10 @@ __aicore__ inline void A2aBridgeProcess(
     for (uint32_t r = 0; r < commTurn; r++) {
         __gm__ uint64_t *doneAddr = reinterpret_cast<__gm__ uint64_t *>(mappedAddrs.eventVa[r + 1]);
         while (1) {
-            uint64_t waitCke = AscendC::ReadGmByPassDCache(doneAddr);
+            uint64_t doneVal = AscendC::ReadGmByPassDCache(doneAddr);
             AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
             AscendC::Nop<800>();
-            if (waitCke == 1) {
+            if (doneVal == 1) {
                 break;
             }
         }

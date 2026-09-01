@@ -6,7 +6,8 @@
 
 2 卡（可扩展）均匀 AllToAll + CCU 直调（FP16，strideCount 型，commTurn 多轮事件桥）。
 通信全部运行在 `__ccu_host__` CCU kernel 内（streamCcu），AIC 桥 kernel（streamAicore）
-预写参数桥 + wake + 轮询 round done——双流架构与 `../ccu_all_gather_matmul` 同款。
+预写 GM 共享内存参数区（本工程称"参数桥"，术语说明见 docs/CODE_GUIDE.md §2.1）
++ wake + 轮询 round done——双流架构与 `../ccu_all_gather_matmul` 同款。
 
 > 设计文档见 `docs/DESIGN_ANALYSIS.md`（含 CANN `ccu_kernel_all_to_all_mesh1d.h` 代码搬运映射表）。
 > **本工程 Blaze-free**：纯通信阶段不依赖 ops-tensor/Blaze，编译只需 CANN 环境。
@@ -22,13 +23,13 @@ ccu_alltoall/
 ├── scripts/
 │   └── run.sh                  # 一键编译 + 运行（唯一入口脚本）
 └── src/                        # 单翻译单元：.asc 经相对 include 引入其余三个文件
-    ├── ccu_alltoall_kernel.asc # CCU kernel（__ccu_host__）+ AIC 桥 kernel + launch 入口
-    ├── a2a_bridge_kernel.h     # AIC 侧：参数桥预写 + wake + per-round done 轮询
-    ├── host_launcher.h         # Host 编排：A2AContext + PrepareAllToAll
-    └── sample_main.cpp         # Host 入口：溯源编码数据（元素级可区分）+ 断言校验 + 双模式
+    ├── alltoall_ccu_kernel_impl.asc # CCU kernel（__ccu_host__）+ AIC 桥 kernel + launch 入口
+    ├── alltoall_aicore_kernel_impl.h     # AIC 侧：参数区预写 + wake + per-round done 轮询
+    ├── alltoall_host_impl.h         # Host 编排：AllToAllContext + PrepareAllToAll
+    └── main.cpp         # Host 入口：溯源编码数据（元素级可区分）+ 断言校验 + 双模式
 ```
 
-> 注意：CMakeLists 只编译 `src/ccu_alltoall_kernel.asc` 一个源文件——ASC 编译模型下
+> 注意：CMakeLists 只编译 `src/alltoall_ccu_kernel_impl.asc` 一个源文件——ASC 编译模型下
 > host 侧 `.h`/`.cpp` 由 `.asc` 单翻译单元 include 引入（对齐 `../ccu_all_gather_matmul` 结构），
 > 不要拆成独立编译单元。
 
@@ -98,7 +99,18 @@ print("PASS")
 |---|---|---|
 | `--npu-arch` | `dav-3510` | Ascend 950 |
 | `HCCL_OP_EXPANSION_MODE` | `CCU_SCHED` | CCU 调度模式（运行时必须） |
-| 链接库 | `hcomm asccomm_ccu_dataplane c_sec ascendcl acl_rt ascendc_runtime pthread dl` | 无 Blaze 三件套（platform/tiling_api/register） |
+| 链接库 | `hcomm asccomm_ccu c_sec ascendcl acl_rt ascendc_runtime pthread dl` | 无 Blaze 三件套（platform/tiling_api/register） |
+| CANN 版本 | ≥ 9.2.0 | `ccu_host_launch.h` 头 + `libasccomm_ccu.so` 库需 CANN 9.2.0+ 自带（asc-comm 正式版 host launch，见下） |
+
+> **asc-comm 跟随说明（2026-09-01）**：CCU kernel 启动已从 asc-comm 草稿 API
+> （`ccu/ccu_launch_kernel.h` + `asccomm_ccu_dataplane`，仅存在于本地仓草稿 commit `bb45144`）
+> 迁移到 **asc-comm 正式版**（master `7149d33 add hostlaunch`）：
+> - 头文件 `ccu_host_launch.h`（CANN 9.2.0+ 自带于 `asc/include/comm_api/ccu/`，与 asc-comm master 逐字节一致）
+> - 库 `asccomm_ccu`（CANN 9.2.0+ 自带 `libasccomm_ccu.so`）
+> - 调度描述符 3 字段 → 4 字段（新增 `binaryCacheTag`，传 0），`phyDieMask` 由硬编码 `0x01` 改为
+>   `1<<dieId` 动态查询（`HcclRankGraphGetEndpointInfo` 查 `ENDPOINT_ATTR_DIE_ID`）
+> - Variable/Event 分配的 DIE ID 由硬编码 `1` 改为同一动态 `dieId`
+> - 参考实现：asc-comm `examples/ccu/ccu_direct/02_allgather_add`（同为参数桥双流架构）
 
 ## 运行环境要求
 

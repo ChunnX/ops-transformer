@@ -8,7 +8,7 @@
 >
 > **修复记录（2025-08-29）**：
 > - 高：D-1+C-1+E-1 → `BridgeSlot` 枚举 SSOT + `WriteBridgeSlot` helper（AIC 写/CCU 读/host 分配四方按枚举索引，"10 个标量"过时注释随重构消灭）；G-1 → 数据重设计为溯源编码时已同步（见下方状态更新）
-> - 中：B-1 `PrepareAllToAll` 拆为 Validate/Acquire/Alloc/ComputeAndCopy 四个 helper；B-2 `Sample` 拆为 FillSendBuffer/RunA2aOnce/VerifyAndDumpRecv；C-2 差异③注释改为如实描述（独立累加 localSrc）；C-3 位域工具 6 函数归位+逐函数注释恢复；E-2 `A2aGoSize` 结构体贯穿（CalGoSize 返回值/kernel 签名/ctx 字段，4 参数穿透消除）；E2-1 恒假容量检查删除；H-1 退出码透传（Sample→ThreadContext.ret→main 聚合，run.sh 显式 PASS/FAIL）；H-2 usage+try/catch+非法 mode 报错
+> - 中：B-1 `PrepareAllToAll` 拆为 Validate/Acquire/Alloc/ComputeAndCopy 四个 helper；B-2 `Sample` 拆为 GenerateInputData（原名 FillSendBuffer，2025-08-29 用户检视改名）/RunA2aOnce（后更名 InvokeAllToAll）/VerifyAndDumpRecv；C-2 差异③注释改为如实描述（独立累加 localSrc）；C-3 位域工具 6 函数归位+逐函数注释恢复；E-2 `A2aGoSize` 结构体贯穿（CalGoSize 返回值/kernel 签名/ctx 字段，4 参数穿透消除）；E2-1 恒假容量检查删除；H-1 退出码透传（Sample→ThreadContext.ret→main 聚合，run.sh 显式 PASS/FAIL）；H-2 usage+try/catch+非法 mode 报错
 > - 低：A-1 常量重命名 `CCU_MEMSLICES_PER_LOOP`/`CCU_LOCAL_COPY_LOOP_COUNT`+注释；A-2 拼写说明入文件头；A-3 channelIdx/j 统一；A-4 `myRank` 别名；C-4/C-5 注释修正；D-2 依赖前置符号清单；D-3 条件 include 注释归属修正；D-5 Notify 常量挪至使用处；E-3 `GetParallelParamForHost` 删除（与 GetParallelParam 重复）；E-4 `MakeLocalCopyConfig` 单一装配出处；E-5 `ReleaseA2aContext` 与分配配对；E2-4 默认参数单一出处（ThreadContext）；F-1 kernelArg null 防护；F-2 SetBits 语义注释恢复；F-6 `1u<<` 显式转换+溢出说明；H-3 首错打印去重；H-5 sleep 注释说明
 >
 > **状态更新（2025-08-29 数据重设计后）**：应用户要求，输入数据从"整块常量双因子"重设计为
@@ -86,3 +86,54 @@
 1. **BridgeSlot 枚举 SSOT**（D-1+C-1+E-1 一揽子，~60 行）——防未来槽位错位的根治手段
 2. **文档-代码同步**（G-1 + C-2 + C-3 + C-4）
 3. **拆长函数 + FAIL 退出码透传**（B-1/B-2/H-1）——让 run.sh 一键验证真正闭环
+
+
+---
+
+# 第二轮检视记录（2025-08-29 用户驱动：命名与结构）
+
+> 背景：阶段2 精度验证 PASS 后，用户逐条检视代码提出 8 项意见；agent 启动子 agent 全面 review
+> （命名一致性×重构联动完整性专项），报告 19 项问题，全部修复后文件名再统一。**19+8 项全闭环**。
+
+## 用户检视 8 项（全部修复）
+
+| # | 意见 | 修复 |
+|---|---|---|
+| U-1 | Sample 入参 void* 不类型安全 | `ThreadContext &ctx` + `std::ref` 传引用 |
+| U-2 | ThreadContext 字段无含义标注 | 逐字段 [来源+用途] 注释 |
+| U-3 | 变量定义与使用距离远 | 数据面 lambda 收敛 sendBuf/recvBuf 生命周期（声明到使用 <10 行） |
+| U-4 | devCount 命名 | device/devCount → rankId/rankSize 全局统一 |
+| U-5 | FillSendBuffer 名不达意 | → GenerateInputData（+定位注释：测试向量生成器，非通信流程） |
+| U-6 | RunA2aOnce 命名 | → InvokeAllToAll（用户三选一） |
+| U-7 | PrepareAllToAll 混 check/prepare | 拆 ValidateAllToAllParams（含 skip 出参）+ PrepareAllToAll |
+| U-8 | AllToAllCustom/alltoall_bridge_kernel 命名 | → AllToAllKernel / alltoallAicoreKernel + 文件改名 |
+
+## 子 agent review 19 项（18 修复 + 1 保留）
+
+高 1：genRet/fillRet 改名联动漏改（编译级，修复）
+中 8：注释旧名 ValidateA2AParams / README+DESIGN 的 A2AContext / CODE_GUIDE bridge.h 残留 /
+  行号系统性过时（17 函数全量重算）/ alltoallAicoreKernel 命名风格（**保留：用户指定**）/
+  Validate 补 rankSize 范围校验（除零+越界防护）/ ReleaseA2aContext→ReleaseAllToAllContext 对称 /
+  DESIGN §6.5 dstOffset 语义过时
+低 10：步骤编号 1,2,2,3 / waitCke→doneVal / <functional><cstdlib> 显式 include /
+  hcclComm→comm 形参 / 注释图示 A2A→A2a / 参数桥首现补注×2 / 重复空指针预检删除 /
+  host 缓冲失败路径 FreeHost / run.sh 文案+目录树 / PrepareAllToAll 死参数 sendCount 删除
+
+## 术语规范化（用户指示）
+
+- "后背/后背值" → "GM 中的地址/实际地址"（12 处清零）
+- "参数桥" 首现加注 = 共享内存参数区（4 文件；Bridge 符号体系保留：BridgeSlot/WriteBridgeSlot/
+  BRIDGE_SLOT_NUM/AllocBridgeResources）
+- 术语问答沉淀至 CODE_GUIDE §7.5：Event vs Notify vs CKE / 通道数 C(R,2) vs 句柄数 R(R-1)
+
+## 文件名统一（用户方案）
+
+| 原名 | 新名 | 说明 |
+|---|---|---|
+| ccu_alltoall_kernel.asc | alltoall_ccu_kernel_impl.asc | 主文件/单翻译单元入口 |
+| a2a_bridge_kernel.h | alltoall_aicore_kernel_impl.h | AIC 侧 device 组件 |
+| host_launcher.h | alltoall_host_impl.h | host 编排 |
+| sample_main.cpp | main.cpp | 入口 |
+
+三个 impl 按执行域命名（ccu/aicore kernel + host）；git mv 历史保留；
+include/CMake/\file/文档树全量同步；修复一处全局替换误伤（AG 溯源引用）。

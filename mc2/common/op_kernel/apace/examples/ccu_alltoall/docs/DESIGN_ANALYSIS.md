@@ -4,7 +4,8 @@
 > 待推进：阶段2 精度验证（用户 NPU 服务器上板，用例矩阵见 §7）。
 > 基线工程：`../../ccu_all_gather_matmul/`（相对本文件 docs/ 目录；下称 AG 示例）。
 > 已确认决策：① 三阶段推进（阶段1 编码+交付编译 / 阶段2 精度验证 / 阶段3 下一步演进）；
-> ② 均匀 AllToAll（strideCount 型）；③ dtype 默认 **FP16**；④ 参数桥 11 槽；⑤ AIC kernel 保留
+> ② 均匀 AllToAll（strideCount 型）；③ dtype 默认 **FP16**；④ 参数桥 11 槽（"参数桥"=AIC/CCU kernel
+> 间传参的 GM 共享内存参数区，沿自 AG 的称呼，详见 CODE_GUIDE.md §2.1 术语说明）；⑤ AIC kernel 保留
 > per-round done 轮询；⑥ **agent 不在本机/远程执行任何编译动作**，编码完成即通知用户编译；
 > ⑦ **代码策略：直接搬 CANN `ccu_kernel_all_to_all_mesh1d.h` 的骨架 + AG 已上板验证的实现模式，先快速跑通再优化**。
 
@@ -94,8 +95,8 @@ rankId 决定"。CCU 原语集完全够用，差异全部体现在**地址计算
 | Post-sync（NotifyRecord + NotifyWait） | `.asc` L830-835 | 原样复制 |
 | EventRecord/EventWait 屏障 | `.asc` L705-708 | 原样复制 |
 | 双流 + block0 参数桥预写 + wake/直轮询 | `matmul_fusion_kernel.h` | 结构复用，去 Blaze |
-| Host 编排框架 | `host_launcher.h` | 结构复用，字段改 alltoall |
-| 多 rank 框架、precision/perf 双模式 | `sample_main.cpp` | 框架复用，数据/校验重写 |
+| Host 编排框架 | `alltoall_host_impl.h` | 结构复用，字段改 alltoall |
+| 多 rank 框架、precision/perf 双模式 | `main.cpp` | 框架复用，数据/校验重写 |
 | 构建系统 | `CMakeLists.txt`/`run.sh` | 复制改 target，Blaze-free 裁剪 |
 
 ### 2.2 需改写
@@ -164,7 +165,7 @@ GroupCopy / Event / Notify 的调用写法、Loop Entity 重建、post-sync 顺�
 
 | 阶段 | 内容 | 交付物 | 完成标志 | 编译/运行 |
 |---|---|---|---|---|
-| **阶段1：编码** | 全部代码落地 + 静态自查 + 编译指引 | `.asc`/`a2a_bridge_kernel.h`/`host_launcher.h`/`sample_main.cpp`/`CMakeLists.txt`/`run.sh`/`README.md` | 编码完成，飞书通知用户；用户编译报错回传后由 agent 修复直至编译通过 | **agent 不执行编译**；用户在自有服务器编译 |
+| **阶段1：编码** | 全部代码落地 + 静态自查 + 编译指引 | `.asc`/`alltoall_aicore_kernel_impl.h`/`alltoall_host_impl.h`/`main.cpp`/`CMakeLists.txt`/`run.sh`/`README.md` | 编码完成，飞书通知用户；用户编译报错回传后由 agent 修复直至编译通过 | **agent 不执行编译**；用户在自有服务器编译 |
 | **阶段2：精度验证** | 上板跑通 + 语义校验 + 修复迭代 | 运行日志 + 校验结果 + npu_out.bin | precision 模式 PASS（commTurn=1 与 2） | 用户在 NPU 服务器执行，回传结果 |
 | **阶段3：下一步演进** | 通算融合方案（计算侧选型/双流/流水切法） | 演进方案文档 | 方案评审通过 | 无 |
 
@@ -173,9 +174,9 @@ GroupCopy / Event / Notify 的调用写法、Loop Entity 重建、post-sync 顺�
 | 子步骤 | 内容 | 状态 |
 |---|---|---|
 | 1a | 工程骨架：CMakeLists（Blaze-free）+ run.sh + README | ✅ |
-| 1b | `host_launcher.h`：A2AContext + PrepareAllToAll（11 槽、FP16 校验、offsets、CalGoSize、token） | ✅ |
-| 1c | `a2a_bridge_kernel.h`（AIC 参数桥预写 + wake + done 轮询，无 Blaze）+ `ccu_alltoall_kernel.asc`（CCU kernel 全量 + launch） | ✅ |
-| 1d | `sample_main.cpp`：溯源编码数据 + 断言校验 + precision/perf 双模式 | ✅ |
+| 1b | `alltoall_host_impl.h`：AllToAllContext + PrepareAllToAll（11 槽、FP16 校验、offsets、CalGoSize、token） | ✅ |
+| 1c | `alltoall_aicore_kernel_impl.h`（AIC 参数区预写 + wake + done 轮询，无 Blaze；原名 alltoall_aicore_kernel_impl.h，2025-08-29 更名）+ `alltoall_ccu_kernel_impl.asc`（CCU kernel 全量 + launch） | ✅ |
+| 1d | `main.cpp`：溯源编码数据 + 断言校验 + precision/perf 双模式 | ✅ |
 | 1e | 静态自查（符号一致性/include/槽位索引/ASC 语法对齐 AG） | ✅ |
 | 1f | 用户服务器编译验证（两轮报错修复后通过） | ✅ 2025-08-29 |
 
@@ -187,8 +188,8 @@ GroupCopy / Event / Notify 的调用写法、Loop Entity 重建、post-sync 顺�
 
 | # | 报错 | 根因 | 修复 | commit |
 |---|---|---|---|---|
-| C1 | `host_launcher.h:205 cannot initialize return object of type HcclResult with an lvalue of type aclError` | `ACLCHECK` 宏内部 `return ret`（aclError），被错误用于 `HcclResult` 返回函数（重构时误替换 AG 原版的 aclRet 局部变量模式） | `ComputeAndCopyOffsets`/`ReleaseA2aContext`/`RunA2aOnce` 共 11 处改回 `aclRet` 局部变量 + `return HCCL_E_INTERNAL`；审计确认剩余 ACLCHECK 均在 int 返回函数（合法） | `1a80ff575` |
-| C2 | `ld.lld: error: the type of kernel function alltoall_bridge_kernel auto derivate failed, please manually add the function type attribute` | 桥 kernel 函数体仅含 GM 轮询读写 + Nop，无 Cube/Vector 指令，编译器无法自动推导 AIC/AIV 类型（AG 的 matmul kernel 靠 Blaze Cube 指令自动推导，无此问题） | kernel 体首行加 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);`（语法依据：AG phase2 用过同款宏 MIX_AIC_1_1 + CANN broadcast_sch.h 的 AIV_ONLY 先例；枚举全集 AIV_ONLY/AIC_ONLY/MIX_*/AICORE） | `1e013df40` |
+| C1 | `alltoall_host_impl.h:205 cannot initialize return object of type HcclResult with an lvalue of type aclError` | `ACLCHECK` 宏内部 `return ret`（aclError），被错误用于 `HcclResult` 返回函数（重构时误替换 AG 原版的 aclRet 局部变量模式） | `ComputeAndCopyOffsets`/`ReleaseA2aContext`/`RunA2aOnce`（后更名 InvokeAllToAll）共 11 处改回 `aclRet` 局部变量 + `return HCCL_E_INTERNAL`；审计确认剩余 ACLCHECK 均在 int 返回函数（合法） | `1a80ff575` |
+| C2 | `ld.lld: error: the type of kernel function alltoallAicoreKernel auto derivate failed, please manually add the function type attribute` | 桥 kernel 函数体仅含 GM 轮询读写 + Nop，无 Cube/Vector 指令，编译器无法自动推导 AIC/AIV 类型（AG 的 matmul kernel 靠 Blaze Cube 指令自动推导，无此问题） | kernel 体首行加 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);`（语法依据：AG phase2 用过同款宏 MIX_AIC_1_1 + CANN broadcast_sch.h 的 AIV_ONLY 先例；枚举全集 AIV_ONLY/AIC_ONLY/MIX_*/AICORE） | `1e013df40` |
 
 ### 5.3 飞书通知协议（每阶段完成必达）
 
@@ -212,10 +213,10 @@ examples/ccu_alltoall/
 ├── scripts/
 │   └── run.sh                  # source 环境 + CCU_SCHED + cmake + build（用户服务器执行）
 └── src/                        # 单翻译单元：.asc 经相对 include 引入其余三个文件
-    ├── ccu_alltoall_kernel.asc # CCU kernel（__ccu_host__）+ AIC 桥 kernel + launch 入口
-    ├── a2a_bridge_kernel.h     # AIC 侧：参数桥预写 + wake + per-round done 轮询（无 Blaze）
-    ├── host_launcher.h         # A2AContext + PrepareAllToAll
-    └── sample_main.cpp         # FP16 数据准备/校验 + precision/perf 双模式 + main
+    ├── alltoall_ccu_kernel_impl.asc # CCU kernel（__ccu_host__）+ AIC 桥 kernel + launch 入口
+    ├── alltoall_aicore_kernel_impl.h     # AIC 侧：参数区预写 + wake + per-round done 轮询（无 Blaze）
+    ├── alltoall_host_impl.h         # AllToAllContext + PrepareAllToAll
+    └── main.cpp         # FP16 数据准备/校验 + precision/perf 双模式 + main
 ```
 
 ### 6.2 数据模型（FP16 字节流，溯源编码）
@@ -302,7 +303,23 @@ precision 模式：host 读回 recvBuf 逐块断言 + 首错定位（rank/块/�
 
 流水切法候选：A. 块内子段轮转（§6.5 推广，CCU 零改造）/ B. 段内按 rank 轮转。
 计算侧候选：拼接大 A 普通 matmul（Blaze 全复用，CMake 恢复点加回）/ MoE GMM（`hccl_a2av_op.h` 参考）。
-接口预留：A2AContext 双流字段占位；参数桥结构不变。
+接口预留：AllToAllContext 双流字段占位；参数桥结构不变。
+
+### 8.1 未来优化点（记录备查，不落方案——2025-08-29 用户指示）
+
+**本地块零拷贝**：CCU 发现 `j == myRank` 时直接跳过本地搬运，本地块留在 sendBuf 原地，
+下游按"块→地址"映射直读（远端块读 recvBuf、本地块读 sendBuf）。语义上本地数据本来就在
+本卡 GM，搬运只为凑出物理连续的 recvBuf。
+- 收益：每轮省 sliceSize 字节的两跳中转（GM→CCU Buf→GM）+ LoopGroup 调度延迟；
+  约省每轮 1/R 的 CCU 工作量（R=2 时 ~1/3，R=16 时 ~6%）
+- 连带简化：参数桥 11 槽 → 7 槽（goSize 四件套仅服务本地搬运）、CalGoSize/GroupCopy/
+  InitGroupCopyResources 约 250 行设备侧代码可删
+- 代价：recvBuf 契约从"一块连续内存"变"R 块地址表"（下游需地址映射）；
+  阶段1 逐块断言的验证闭环失效（本地块位置为垃圾）
+- 前置条件：与阶段3 计算侧路线强相关——GMM 路线天然支持（每组独立地址），
+  拼接大 A 路线（连续布局刚需）不兼容；高阶先例：CANN allto_allv_quant_grouped_mat_mul
+  的本地 expert 数据即零拷贝直读
+- 参考对话：2025-08-29（用户："CCU 发现是本卡直接略过搬运，下游自己找正确地址"）
 
 ---
 

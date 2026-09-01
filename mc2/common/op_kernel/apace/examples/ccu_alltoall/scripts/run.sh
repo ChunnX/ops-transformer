@@ -5,7 +5,7 @@
 # 目录结构（本脚本位于 scripts/ 下，工程根为其上一级）：
 #   <工程根>/
 #   ├── CMakeLists.txt / README.md
-#   ├── docs/DESIGN_ANALYSIS.md
+#   ├── docs/（DESIGN_ANALYSIS 方案 / CODE_GUIDE 导读 / CODE_REVIEW 检视记录）
 #   ├── scripts/run.sh        ← 本脚本
 #   └── src/                  ← 源码（单翻译单元，CMake 只编译 .asc）
 #
@@ -33,7 +33,7 @@ cmake --build "${PROJECT_DIR}/build" --target ccu_alltoall --parallel 4 || { ech
 
 # ---- 运行（默认 precision 模式：每块 65536 元素 FP16 = 128KB，commTurn=1）----
 # 退出码：全部 rank 校验 PASS → 0；任一 rank FAIL → 非 0（本脚本 set -e 据此闭环）
-echo "=== [2/2] Run (precision, 2 ranks, FP16, 128KB block, commTurn=1) ==="
+echo "=== [2/2] Run (precision, ranks=NPU卡数, FP16, 128KB block, commTurn=1) ==="
 if "${PROJECT_DIR}/build/ccu_alltoall" precision; then
     echo "=== Run PASS ==="
 else

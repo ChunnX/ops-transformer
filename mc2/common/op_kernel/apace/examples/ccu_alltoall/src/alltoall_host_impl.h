@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file host_launcher.h
- * \brief Host 侧编排：PrepareAllToAll / ReleaseA2aContext（阶段1：FP16 单流，纯通信）
+ * \file alltoall_host_impl.h
+ * \brief Host 侧编排：PrepareAllToAll / ReleaseAllToAllContext（阶段1：FP16 单流，纯通信）
  *
  * 由 ccu_all_gather_matmul 的 host_launcher.h 改造而来：
  *   - Variable：commTurn × 11 个（每 round 一组，无 scale 轮——AG 是 (commTurn+1)×10）
@@ -20,7 +20,7 @@
  *
  * ⚠️ 依赖前置符号（由 .asc 在 include 本文件之前定义；调整 .asc 前文顺序时须保证仍在场）：
  *   宏：     HCCLCHECK / CHK_PTR_NULL
- *   常量：   SIZE_TABLE / DIE_ID / MAX_COMMTURN / HCOMM_HOST_TASK_ARG_NUM / CCU_MEMSLICES_PER_LOOP /
+ *   常量：   SIZE_TABLE / MAX_COMMTURN / HCOMM_HOST_TASK_ARG_NUM / CCU_MEMSLICES_PER_LOOP /
  *            CCU_LOCAL_COPY_LOOP_COUNT / CCU_MS_INTERLEAVE / CCU_MS_SIZE
  *   类型：   CcuMappedAddrs / A2aGoSize / CcuKernelArgAllToAllMesh1D / LoopGroupConfig /
  *            AllToAllContext 的字段类型（CcuInsHandle 等 hccl 类型）
@@ -35,7 +35,9 @@
 
 // 编排结果：填充后交给 .asc 中的 launch 函数
 struct AllToAllContext {
-    HCommCcuSchd schd;
+    // asc-comm 正式版调度描述符（4 字段：numBlocks/reserved/phyDieMask/binaryCacheTag，
+    // 旧草稿 HCommCcuSchd 3 字段版已废弃；类型声明见 ccu_host_launch.h）
+    asccomm_ccu_schd schd;
     CcuInsHandle insHandle{0};
     // 单组 kernelArg（管理 commTurn × HCOMM_HOST_TASK_ARG_NUM(11) 个 Variable + commTurn+1 个 Event）
     std::shared_ptr<CcuKernelArgAllToAllMesh1D> kernelArg;
@@ -58,6 +60,10 @@ struct AllToAllContext {
     uint32_t rankId;
     uint32_t rankSize;
     uint32_t commTurn;      // 通信轮数（blockSize 再按 commTurn 均分）
+    // CCU DIE 信息（AcquireCcuChannels 查询所得，替代旧版硬编码 DIE_ID=1：
+    // dieId 用于 Variable/Event 分配，dieMask 用于 schd.phyDieMask）
+    uint32_t dieId{0};
+    uint64_t dieMask{0};
     // goSize（CCU 本地拷贝 loop 参数，CalGoSize(subBytes) 结果；各 round subBytes 相同故全轮共用一组）
     A2aGoSize goSize;
 };
@@ -87,12 +93,37 @@ struct AllToAllContext {
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-// ValidateA2AParams — 参数校验 + 切分尺寸计算（填充 inputSize/blockSize/srcStride/commTurn）
+// ValidateAllToAllParams — 前置检查（check 阶段，不触碰任何 CCU 资源）
+// 职责：指针/参数合法性校验 + rank 信息查询 + 切分尺寸计算（填 ctx 的纯数值字段）。
+// 返回：HCCL_SUCCESS   参数合法，调用方可继续 PrepareAllToAll
+//       HCCL_E_PARA    参数非法（指针空/dtype 错/整除性不满足/commTurn 越界）
+//       特殊：sendCount==0 时返回 HCCL_SUCCESS 且 skip=true（无数据可传，调用方
+//             不应 Prepare 也不应 launch——skip 语义显式返回，不藏在 ctx 状态里）
 // ----------------------------------------------------------------------------
-inline HcclResult ValidateA2AParams(uint64_t sendCount, HcclDataType dataType,
-                                     uint32_t commTurn, uint32_t rankSize, AllToAllContext &ctx)
+inline HcclResult ValidateAllToAllParams(void *sendBuf, void *recvBuf, HcclComm comm,
+                                          uint64_t sendCount, HcclDataType dataType,
+                                          uint32_t commTurn, AllToAllContext &ctx, bool &skip)
 {
-    // 阶段1：dtype 固定 FP16（SIZE_TABLE[HCCL_DATA_TYPE_FP16] = 2 字节）
+    CHK_PTR_NULL(comm);
+    CHK_PTR_NULL(sendBuf);
+    CHK_PTR_NULL(recvBuf);
+    if (sendCount == 0) {
+        skip = true;  // 无数据可传：合法但跳过（显式 skip，取代原"早退 SUCCESS + kernelArg null"的隐式契约）
+        return HCCL_SUCCESS;
+    }
+
+    // rank 信息查询（校验阶段完成，Prepare 不再查询）
+    HCCLCHECK(HcclGetRankId(comm, &ctx.rankId));
+    HCCLCHECK(HcclGetRankSize(comm, &ctx.rankSize));
+
+    // rankSize 范围校验：
+    //   ==0 除零风险；>CCU_MAX_RANK_SIZE(16) 越界 device 侧 channels[16] 数组，
+    //   且 Event 的 uint16 位掩码 (1<<rankSize)-1 依赖 ≤16（此前仅靠 sample 侧守卫间接保证）
+    if (ctx.rankSize == 0 || ctx.rankSize > CCU_MAX_RANK_SIZE) {
+        return HCCL_E_PARA;
+    }
+    const uint32_t rankSize = ctx.rankSize;
+    // dtype 校验：阶段1 固定 FP16（SIZE_TABLE[HCCL_DATA_TYPE_FP16] = 2 字节）
     if (dataType != HCCL_DATA_TYPE_FP16) {
         return HCCL_E_PARA;
     }
@@ -123,11 +154,19 @@ inline HcclResult ValidateA2AParams(uint64_t sendCount, HcclDataType dataType,
 
 // ----------------------------------------------------------------------------
 // AcquireChannelsAndIns — 获取 CCU channels（每远端 rank 一条点到点通道）+ 创建并绑定 CCU 实例
+// 【对齐 asc-comm ccu_direct 官方实现：dieId 由 AcquireCcuChannels 查询端点属性获得，
+//   dieMask = 1<<dieId 供 schd 使用；dieId 越界（>= CCU_DIE_NUM）报参数错】
 // ----------------------------------------------------------------------------
 inline HcclResult AcquireChannelsAndIns(HcclComm comm, uint32_t rankId, uint32_t rankSize,
                                          std::vector<ChannelHandle> &kernelChannels, AllToAllContext &ctx)
 {
-    HCCLCHECK(AcquireCcuChannels(comm, rankId, rankSize, kernelChannels));
+    uint32_t dieId = 0;
+    HCCLCHECK(AcquireCcuChannels(comm, rankId, rankSize, kernelChannels, dieId));
+    if (dieId >= CCU_DIE_NUM) {
+        return HCCL_E_PARA;
+    }
+    ctx.dieId = dieId;
+    ctx.dieMask = 1ULL << dieId;
 
     // 跨 2 个 DIE 创建 CCU 资源池（Variable/Event/Buffer/Loop/Thread）
     CcuInsHandle insHandle{0};
@@ -142,15 +181,17 @@ inline HcclResult AcquireChannelsAndIns(HcclComm comm, uint32_t rankId, uint32_t
 }
 
 // ----------------------------------------------------------------------------
-// AllocBridgeResources — 参数桥 Variable/Event 分配 + kernelArg 构造
+// AllocBridgeResources — 共享内存参数区（"参数桥"，见 .asc BridgeSlot 术语注）Variable/Event 分配 + kernelArg 构造
 // Variable: commTurn × 11 个（配额校验：commTurn=16 时 176 < CCU_DEFAULT_RES_FRACTION_VARIABLE=400）
 // Event:    commTurn + 1 个（1 wake + commTurn 个 round done）
 // ----------------------------------------------------------------------------
 inline HcclResult AllocBridgeResources(AllToAllContext &ctx, const std::vector<ChannelHandle> &kernelChannels)
 {
+    // DIE_ID 由端点属性动态查询（ctx.dieId，见 AcquireChannelsAndIns），替代旧版硬编码
+    const uint8_t ccuDieId = static_cast<uint8_t>(ctx.dieId);
     uint32_t totalVarNum = ctx.commTurn * HCOMM_HOST_TASK_ARG_NUM;
     CcuVariableHandle varHandle{0};
-    HCCLCHECK(HcommCcuVariableAlloc(ctx.insHandle, DIE_ID, totalVarNum, &varHandle));
+    HCCLCHECK(HcommCcuVariableAlloc(ctx.insHandle, ccuDieId, totalVarNum, &varHandle));
     for (uint32_t r = 0; r < ctx.commTurn; r++) {
         for (uint32_t i = 0; i < HCOMM_HOST_TASK_ARG_NUM; i++) {
             HCCLCHECK(HcommCcuVariableGetAddr(varHandle, r * HCOMM_HOST_TASK_ARG_NUM + i,
@@ -160,7 +201,7 @@ inline HcclResult AllocBridgeResources(AllToAllContext &ctx, const std::vector<C
 
     uint32_t totalEventNum = ctx.commTurn + 1;
     CcuEventHandle eventHandle{0};
-    HCCLCHECK(HcommCcuEventAlloc(ctx.insHandle, DIE_ID, totalEventNum, &eventHandle));
+    HCCLCHECK(HcommCcuEventAlloc(ctx.insHandle, ccuDieId, totalEventNum, &eventHandle));
     for (uint32_t i = 0; i < totalEventNum; i++) {
         HCCLCHECK(HcommCcuEventGetAddr(eventHandle, i, &ctx.mappedAddrs.eventVa[i]));
     }
@@ -227,10 +268,10 @@ inline HcclResult ComputeAndCopyOffsets(AllToAllContext &ctx)
 }
 
 // ----------------------------------------------------------------------------
-// ReleaseA2aContext — 释放 CCU 资源（device GM 上的 offset 数组 + CCU 实例）
+// ReleaseAllToAllContext — 释放 CCU 资源（device GM 上的 offset 数组 + CCU 实例）
 // 与 PrepareAllToAll 的分配配对（谁分配谁释放，成对出现在本文件）
 // ----------------------------------------------------------------------------
-inline HcclResult ReleaseA2aContext(AllToAllContext &ctx)
+inline HcclResult ReleaseAllToAllContext(AllToAllContext &ctx)
 {
     aclError aclRet = ACL_SUCCESS;
     if (ctx.d_srcOffsetsAddr) {
@@ -256,51 +297,37 @@ inline HcclResult ReleaseA2aContext(AllToAllContext &ctx)
 }
 
 // ============================================================================
-// PrepareAllToAll — Host 侧 CCU 通信资源编排（不做 kernel launch），每步一个 helper：
-//   1. 获取 rank 信息（rankId/rankSize）
-//   2. ValidateA2AParams       — 参数校验 + 切分尺寸（blockSize/srcStride/sub）
-//   3. AcquireChannelsAndIns   — CCU channels + CCU 实例创建绑定
-//   4. AllocBridgeResources    — 参数桥 Variable/Event 分配 + kernelArg 构造
-//   5. token 获取（CCU 内存访问令牌：CCU 核访问 GM 地址时需携带）
-//   6. ComputeAndCopyOffsets   — goSize + offsets + device 拷贝
-// 释放侧对偶：ReleaseA2aContext（由调用方在双流 sync 后调用）
+// PrepareAllToAll — Host 侧 CCU 通信资源准备（prepare 阶段，不做 kernel launch）
+// 前置条件：ValidateAllToAllParams 已通过（skip=false）——本函数假定参数合法，不再校验。
+// 步骤：
+//   1. AcquireChannelsAndIns   — CCU channels + CCU 实例创建绑定
+//   2. AllocBridgeResources    — 共享内存参数区 Variable/Event 分配 + kernelArg 构造
+//   3. token 获取（CCU 内存访问令牌：CCU 核访问 GM 地址时需携带）
+//   4. ComputeAndCopyOffsets   — goSize + offsets + device 拷贝
+// 释放侧对偶：ReleaseAllToAllContext（由调用方在双流 sync 后调用）
 // ============================================================================
-inline HcclResult PrepareAllToAll(void *sendBuf, void *recvBuf,
-                                  uint64_t sendCount, HcclDataType dataType,
-                                  HcclComm comm, uint32_t commTurn,
-                                  AllToAllContext &ctx)
+inline HcclResult PrepareAllToAll(void *sendBuf,
+                                  HcclComm comm, uint32_t commTurn, AllToAllContext &ctx)
 {
-    CHK_PTR_NULL(comm);
-    CHK_PTR_NULL(sendBuf);
-    CHK_PTR_NULL(recvBuf);
+    // sendBuf 仅用于 token 获取；参数校验与切分尺寸已在 ValidateAllToAllParams 完成
 
-    if (sendCount == 0) {
-        return HCCL_SUCCESS;  // 无数据可传（调用方此时不应 launch kernel）
-    }
-
-    // ---- 1. 获取 rank 信息 ----
-    HCCLCHECK(HcclGetRankId(comm, &ctx.rankId));
-    HCCLCHECK(HcclGetRankSize(comm, &ctx.rankSize));
-
-    // ---- 2. 参数校验 + 切分尺寸 ----
-    HCCLCHECK(ValidateA2AParams(sendCount, dataType, commTurn, ctx.rankSize, ctx));
-
-    // ---- 3. CCU channels + CCU 实例 ----
+    // ---- 1. CCU channels + CCU 实例 ----
     std::vector<ChannelHandle> kernelChannels;
     HCCLCHECK(AcquireChannelsAndIns(comm, ctx.rankId, ctx.rankSize, kernelChannels, ctx));
 
-    // ---- 4. 参数桥 Variable/Event + kernelArg ----
+    // ---- 2. 共享内存参数区 Variable/Event + kernelArg ----
     HCCLCHECK(AllocBridgeResources(ctx, kernelChannels));
 
-    // ---- 5. token ----
+    // ---- 3. token ----
     // 对齐 AG 已验证行为：仅对 sendBuf 获取（远端访问 recvBuf 沿用该令牌机制）
     HCCLCHECK(HcommCcuGetMemToken(reinterpret_cast<uint64_t>(sendBuf), ctx.inputSize, &ctx.token));
 
-    // ---- 6. goSize + offsets + device 拷贝 ----
+    // ---- 4. goSize + offsets + device 拷贝 ----
     HCCLCHECK(ComputeAndCopyOffsets(ctx));
 
-    // HCommCcuSchd：CCU kernel 调度描述符 {核数=1, 保留, 0x01}
-    ctx.schd = {1, 0, 0x01};
+    // asccomm_ccu_schd：CCU kernel 调度描述符 {mission数=1, 保留, dieMask, binaryCacheTag=0}
+    // （dieMask 动态 = 1<<dieId，旧版硬编码 0x01；binaryCacheTag=0 对齐官方示例默认值）
+    ctx.schd = {1, 0, ctx.dieMask, 0};
 
     return HCCL_SUCCESS;
 }
