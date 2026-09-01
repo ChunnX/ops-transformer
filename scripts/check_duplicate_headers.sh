@@ -109,9 +109,10 @@ try_fetch_compare_base() {
   fetch_ref="${fetch_ref#refs/heads/}"
   fetch_ref="${fetch_ref#origin/}"
 
-  echo "[dup-header] Shallow checkout has no usable parent/base; fetching origin/${fetch_ref} ..."
+  # 诊断必须打到 stderr，避免被 $() 吃进 base ref
+  echo "[dup-header] Shallow checkout has no usable parent/base; fetching origin/${fetch_ref} ..." >&2
   if ! git fetch --depth=1 origin "$fetch_ref" 2>/dev/null; then
-    echo "[dup-header] WARNING: git fetch origin/${fetch_ref} failed; cannot distinguish Added vs Modified."
+    echo "[dup-header] WARNING: git fetch origin/${fetch_ref} failed; cannot distinguish Added vs Modified." >&2
     return 1
   fi
   if ! git rev-parse -q --verify FETCH_HEAD >/dev/null 2>&1; then
@@ -247,7 +248,9 @@ if [[ $# -gt 0 ]]; then
     done
     if [[ "$_all_in_head" -eq 1 ]]; then
       _fetched_base="$(try_fetch_compare_base || true)"
-      if [[ -n "${_fetched_base:-}" ]]; then
+      # 只保留最后一行有效 ref，防止异常输出污染
+      _fetched_base="$(printf '%s\n' "${_fetched_base}" | sed '/^$/d' | tail -n 1)"
+      if [[ -n "${_fetched_base}" ]]; then
         COMPARE_BASE="$_fetched_base"
         collect_from_argv_against_base "$COMPARE_BASE"
       fi
