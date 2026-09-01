@@ -359,7 +359,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeL0c(uint64_t s
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
     Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
-         keyL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_], mmadParams);
+         keyL0_[(l0BufIdx_ % L0_BUF_NUM) * keyL0BufferOffset_], mmadParams);
     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
         PipeBarrier<PIPE_M>();
     }
