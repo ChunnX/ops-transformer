@@ -68,7 +68,7 @@ const std::array<const aclTensor *, BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM> BlockAttn
         return {nullptr, nullptr, nullptr};
     }
     const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare, OP_INPUT(blockRes, validBlocks, pseudoQuery),
-                                        OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
+                                        OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(static_cast<float>(eps)));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "BlockAttnResPrepare infer shape failed: ret=%d, blockRes.shape=%s, validBlocks.shape=%s, "
@@ -86,7 +86,7 @@ const std::array<const aclTensor *, BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM> BlockAttn
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(BlockAttnResPrepare, OP_INPUT(blockRes, validBlocks, pseudoQuery),
-                                OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
+                                OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(static_cast<float>(eps)));
     return {numerator, logitMax, expSum};
 }
 
