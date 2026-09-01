@@ -32,6 +32,25 @@
   \text{beta\_output} = \text{sigmoid}(b) = \frac{1}{1 + e^{-b}}
   $$
 
+## 接口说明
+
+该算子提供底层ACLNN接口`aclnnFusedGdnGating`，并通过PyTorch扩展注册为`torch.ops.custom.npu_fused_gdn_gating`。PyTorch入口负责创建输出Tensor并调用底层ACLNN接口。
+
+### PyTorch接口原型
+
+```python
+torch.ops.custom.npu_fused_gdn_gating(
+    A_log: Tensor,      # [num_heads]
+    a: Tensor,          # [batch, num_heads]
+    b: Tensor,          # [batch, num_heads]
+    dt_bias: Tensor,    # [num_heads]
+    beta: float = 1.0,
+    threshold: float = 20.0,
+) -> Tuple[Tensor, Tensor]
+    # g:           [1, batch, num_heads], FLOAT32
+    # beta_output: [1, batch, num_heads], 与a同dtype
+```
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnFusedGdnGatingGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnFusedGdnGating"接口执行计算。
@@ -308,6 +327,32 @@ aclnnStatus aclnnFusedGdnGating(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
+### PyTorch调用示例
+
+```python
+import torch
+import torch_npu
+import custom_ops  # noqa: F401  注册torch.ops.custom.npu_fused_gdn_gating
+
+torch_npu.npu.set_device(0)
+
+num_heads, batch = 8, 4
+# 注意：Atlas 推理系列产品（310P）上 aLog/dtBias 须为 FLOAT16，
+# 即所有输入均为全FLOAT16组合（见约束说明）。
+A_log = torch.randn(num_heads, dtype=torch.float16).npu()
+a = torch.randn(batch, num_heads, dtype=torch.float16).npu()
+b = torch.randn(batch, num_heads, dtype=torch.float16).npu()
+dt_bias = torch.randn(num_heads, dtype=torch.float16).npu()
+
+g, beta_output = torch.ops.custom.npu_fused_gdn_gating(
+    A_log, a, b, dt_bias, beta=1.0, threshold=20.0,
+)
+# g:           [1, batch, num_heads], FLOAT32
+# beta_output: [1, batch, num_heads], FLOAT16
+```
+
+### aclnn调用示例
+
 ```C++
 #include <iostream>
 #include <vector>
@@ -470,3 +515,8 @@ int main() {
   return 0;
 }
 ```
+
+## 相关资源
+
+- PyTorch扩展构建与安装见[torch_ops_extension说明](../torch_ops_extension/README.md)。
+- 更多测试与调用示例见[pytest说明](../tests/pytest/README.md)。
