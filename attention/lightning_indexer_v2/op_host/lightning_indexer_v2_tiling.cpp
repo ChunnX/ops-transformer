@@ -937,6 +937,8 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
 
     if (!keyStridesVec_.empty()) {
         liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+    } else if (liInfo.pageAttentionFlag) {
+        liInfo.keyStride0 = blockSize_ * n2Size_ * headDim_; // PA场景: 连续key fallback
     } else {
         liInfo.keyStride0 = 0; // 非PA无需使用stride
     }
