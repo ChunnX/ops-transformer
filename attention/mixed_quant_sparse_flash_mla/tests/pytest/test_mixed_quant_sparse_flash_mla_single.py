@@ -27,10 +27,7 @@ import utils
 import sys
 import torch_npu
 
-if os.environ.get("MQSMLA_BATCH_CONSISTENCY", "auto") == "on":
-    from mixed_quant_sparse_flash_mla_paramset import BATCH_CONSISTENCY_PARAMS as ENABLED_PARAMS
-else:
-    from mixed_quant_sparse_flash_mla_paramset import ENABLED_PARAMS
+from mixed_quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 
 SMLA_PYTEST_PATH = Path(__file__).resolve().parents[3] / "sparse_flash_mla/tests/pytest"
 if str(SMLA_PYTEST_PATH) not in sys.path:

@@ -25,10 +25,7 @@ from batch_consistency.pytest_support import (
     run_configured_consistency,
 )
 
-if os.environ.get("SMLA_BATCH_CONSISTENCY", "auto") == "on":
-    from sparse_flash_mla_paramset import BATCH_CONSISTENCY_PARAMS as ENABLED_PARAMS
-else:
-    from sparse_flash_mla_paramset import ENABLED_PARAMS
+from sparse_flash_mla_paramset import ENABLED_PARAMS
 
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
 pt_save_path = os.environ.get("SMLA_PT_SAVE_PATH", "data")
