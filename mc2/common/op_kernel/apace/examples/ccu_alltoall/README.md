@@ -1,8 +1,10 @@
-# CCU AllToAll 纯通信验证（阶段1 编译通过 ✅）
+# CCU AllToAll 纯通信验证（阶段2 上板精度 PASS ✅）
 
-> **阶段状态**：阶段1（编码及编译验证）完成——2025-08-29 用户服务器编译通过
+> **阶段状态**：阶段1（编码及编译验证）完成——2026-08-29 用户服务器编译通过
 > （commits：`e255a5121` 工程初始+检视修复 → `1a80ff575` 编译修复1 → `1e013df40` 编译修复2）。
-> 下一步：阶段2 精度验证（NPU 上板，用例矩阵见 `docs/DESIGN_ANALYSIS.md` §7）。
+> **阶段2（NPU 上板精度验证）完成——2026-09-01 标卡4P 服务器 4 rank 全 PASS**
+> （commit `1f888526c` 文件重命名 + 跟随 asc-comm 正式版 host launch API，同 commit 复验编译零警告）。
+> 下一步：阶段3 通算融合（叠 matmul，Blaze 恢复点见文末）。
 
 2 卡（可扩展）均匀 AllToAll + CCU 直调（FP16，strideCount 型，commTurn 多轮事件桥）。
 通信全部运行在 `__ccu_host__` CCU kernel 内（streamCcu），AIC 桥 kernel（streamAicore）
@@ -64,6 +66,65 @@ cmake --build build --target ccu_alltoall --parallel 4
 ./build/ccu_alltoall perf 65536 1 10        # perf 模式：循环 10 次不落地
 ```
 
+## 验证环境与验证方法（2026-09-01 阶段2 实录）
+
+### 验证环境
+
+| 项 | 值 |
+|---|---|
+| 服务器 | 标卡4P（4 卡 Ascend950PR），共享服务器（多开发者共用 NPU） |
+| CANN | `cann-9.2.0`（`~/Ascend/cann` 符号链接指向；**须 ≥ 9.2.0**，ccu_host_launch 依赖） |
+| 环境变量 | `source ~/Ascend/cann/set_env.sh` + `export HCCL_OP_EXPANSION_MODE=CCU_SCHED` |
+| NPU 排队 | **必须走 `qrun` 排队工具**，禁止直接跑（见下） |
+
+### 编译验证方法
+
+```bash
+source ~/Ascend/cann/set_env.sh   # 或在预配环境的 tmux 会话（canon）内执行
+cd <本目录>
+rm -rf build
+cmake -S . -B build
+cmake --build build --target ccu_alltoall --parallel 4
+# 成功标志：Built target ccu_alltoall；工程开 -Werror，零警告才算通过
+```
+
+编译不占 NPU，无需排队。产物仅依赖 CANN 自带 `libhcomm.so` + `libasccomm_ccu.so`
+（`readelf -d build/ccu_alltoall | grep asccomm` 可复核）。
+
+### ⚠️ 精度验证必须走 qrun 排队（共享服务器铁律）
+
+标卡4P 是多开发者共享服务器，**任何占用 NPU 的运行（precision/perf）都必须通过
+`qrun` 排队工具提交**，直接裸跑会与他人任务抢卡冲突。`qrun -h` 可看完整帮助。
+
+**排队的两个坑（2026-09-01 实测）：**
+
+1. **qrun 的执行 shell 不继承你的环境**——它起的是干净 shell，CANN 环境
+   （`set_env.sh`）和 `HCCL_OP_EXPANSION_MODE=CCU_SCHED` 都**必须写进任务命令里**。
+   否则报 `libhccl_alg.so: cannot open shared object file`（缺 CANN 环境）。
+
+2. **管道会让 qrun 误报成功**——命令里用 `... | tee log` 时，qrun 的退出码取的是
+   管道最后一个命令（tee）的，二进制失败也会显示"执行成功"。改用重定向
+   `> log 2>&1`，让退出码真实反映测试结果。
+
+**正确提交姿势（可直接复制）：**
+
+```bash
+qrun -n c00697382_a2a_precision -t 600 \
+  "source /home/c00697382/Ascend/cann/set_env.sh && export HCCL_OP_EXPANSION_MODE=CCU_SCHED && cd <本目录绝对路径> && ./build/ccu_alltoall precision > /tmp/a2a_precision_qrun.log 2>&1"
+# -n 任务名：工号前缀（共享看板归属）；-t 超时秒数（默认 600s）
+# 提交后 qrun 自动排队并执行；结果看 /tmp/a2a_precision_qrun.log
+# 查队列：qrun list    查看板：qrun stats
+```
+
+### 阶段2 验证结果（2026-09-01）
+
+- 用例：precision 默认参数——4 rank，FP16，128KB/块（65536 元素），commTurn=1
+- 结果：**4 个 rank 全部 PASS**（每 rank 262144 元素逐块逐元素断言零错位），
+  `=== ALL RANKS PASS ===`，退出码 0，耗时 1min7s（含排队）
+- 同时验证了 asc-comm 跟随改动的运行时正确性：动态 dieId（`ENDPOINT_ATTR_DIE_ID`
+  查询）→ `phyDieMask`/Variable/Event 分配，4 字段 `asccomm_ccu_schd` 正式版启动路径，
+  CANN 自带 `libasccomm_ccu.so` 端到端跑通
+
 ## 精度校验说明
 
 程序内置 host 侧逐块逐元素断言（无需外部 golden）：
@@ -82,7 +143,7 @@ cmake --build build --target ccu_alltoall --parallel 4
 
 ```python
 import numpy as np
-R = 2  # rank 数
+R = 4  # rank 数（阶段2 实测 4 卡；改卡数时同步修改）
 elems = 65536
 MY_RANK = 0  # 复核哪个 rank 的输出
 t = np.arange(elems)
@@ -140,6 +201,6 @@ print("PASS")
 ## 已知问题 / 风险
 
 - **AIC 桥 kernel 固定 8 核**（Blaze-free 无法查询 platform 核数），阶段3 恢复查询
-- **token 机制对齐 AG 已验证行为**：仅对 sendBuf 获取 token；远端写 recvBuf 沿用该令牌机制
-  （AG 上板验证过同款用法；若阶段2 上板遇到 token 校验问题，优先排查此处）
+- ~~**token 机制**：仅对 sendBuf 获取 token~~（阶段2 已上板验证无问题，4 rank 全 PASS）
 - **CCU kernel 性能不可被 msprof --ai-core 采集**（沿用 AG 实测结论），perf 模式仅作烟囱
+- **共享服务器必须 qrun 排队**（见上"精度验证必须走 qrun 排队"），裸跑抢占会干扰他人任务
