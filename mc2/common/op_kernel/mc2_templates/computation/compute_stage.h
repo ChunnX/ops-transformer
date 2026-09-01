@@ -23,6 +23,5 @@
 #include "./matmul/mc2_mx_quant_matmul.h"
 #endif
 #include "./math/mc2_vec_transpose.h"
-#include "./math/mc2_vec_add_bias.h"
 
 #endif // MC2_COMPUTE_STAGE_H

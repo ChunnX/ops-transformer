@@ -130,11 +130,7 @@ static ge::graphStatus InferDataTypeMinimaxSparseAttentionSplitKv(gert::InferDat
         return ge::GRAPH_FAILED;
     }
     auto dtype = context->GetInputDataType(QUERY_INDEX);
-    if (dtype == ge::DT_FLOAT8_E4M3FN) {
-        context->SetOutputDataType(ATTENTION_OUT_INDEX, ge::DT_BF16);
-    } else {
-        context->SetOutputDataType(ATTENTION_OUT_INDEX, dtype);
-    }
+    context->SetOutputDataType(ATTENTION_OUT_INDEX, dtype);
     context->SetOutputDataType(SOFTMAX_LSE_INDEX, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }

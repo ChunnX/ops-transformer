@@ -33,10 +33,7 @@ ge::graphStatus TilingMoeTokenUnpermuteWithEp(gert::TilingContext *context)
     return UnpermuteWithEpTilingCompute(context, -1, true);
 }
 
-static inline int64_t AlignN(const int64_t x, const int64_t N)
-{
-    return (x + N - 1) & ~(N - 1);
-}
+static inline int64_t AlignN(const int64_t x, const int64_t N) { return (x + N - 1) & ~(N - 1); }
 
 static inline int64_t GetLengthByType(const int32_t dtype)
 {
@@ -59,15 +56,9 @@ static inline int64_t GetLengthByType(const int32_t dtype)
     }
 }
 
-static inline int64_t safeMod(const int64_t a, const int64_t b)
-{
-    return b == 0 ? 0 : a % b;
-}
+static inline int64_t safeMod(const int64_t a, const int64_t b) { return b == 0 ? 0 : a % b; }
 
-static inline int64_t safeDiv(const int64_t a, const int64_t b)
-{
-    return b == 0 ? 0 : a / b;
-}
+static inline int64_t safeDiv(const int64_t a, const int64_t b) { return b == 0 ? 0 : a / b; }
 
 static inline bool isFloatDtype(const int64_t inputDtypeSize)
 {
@@ -110,10 +101,6 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
                 OP_LOGE(nodeName, "permutedTokens or sortedIndices is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape->GetStorageShape().GetDimNum() != 2, OP_LOGE(nodeName, "permutedTokens's shape is not 2D."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tokensShape->GetStorageShape().GetDim(0) == 0 || tokensShape->GetStorageShape().GetDim(1) == 0,
-                OP_LOGE(nodeName, "permutedTokens does not support empty tensor."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(indicesShape->GetStorageShape().GetDim(0) == 0,
-                OP_LOGE(nodeName, "sortedIndices does not support empty tensor."), return ge::GRAPH_FAILED);
 
     if (probsShape != nullptr) {
         int64_t probsDimNum = probsShape->GetStorageShape().GetDimNum();

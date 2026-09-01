@@ -308,7 +308,7 @@ static bool SetLayoutTiling(
             cosDimN = cosShapePerDim[DIM_TWO];
             break;
         default:
-            OP_LOGE(context->GetNodeName(), "The layout only supports BSND, BNSD, SBND");
+            OP_LOGE(context->GetNodeName(), "layout only support BSND, BNSD, SBND.");
             return false;
     }
 
@@ -391,8 +391,7 @@ static bool RopeHalfGradSetTiling(const gert::TilingContext* context, int64_t av
     OP_CHECK_IF(
         halfDimDAlignNum * 2 > alignUbSize || alignUbSize == 0 || calcUbSize == 0,
         OP_LOGE(
-            "RopeHalfGrad", "halfDimDAlignNum * 2 = %lu is too large, aicore does not support it.",
-            halfDimDAlignNum * 2),
+            "RopeHalfGrad", "reserveAlignNum = %lu too large, aicore do not support.", halfDimDAlignNum * 2),
         return false);
 
     uint64_t taskNum = tiling.ropeHalfGradParams.get_cosShapeSize();
@@ -498,8 +497,7 @@ static bool RopeHalfGradInitParamInfo(const gert::TilingContext* context)
         strideInner = GetCeilInt(dimB / cosDimB * dimN / cosDimN * dimD - dimD, dataEachBlock);
         stridePadInner = (dimB / cosDimB * dimN / cosDimN * dimD - dimD / CHUNK_SIZE) * dtypeSize;
     } else {
-        OP_LOGE(context->GetNodeName(),
-                "The layout only supports BSND, BNSD, SBND, got layout = %lu.", tiling.ropeHalfGradParams.get_layout());
+        OP_LOGE(context->GetNodeName(), "layout only support BSND, BNSD, SBND.");
         return false;
     }
 

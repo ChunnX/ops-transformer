@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H
+#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H 
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_H
 
 #pragma once
@@ -835,6 +835,7 @@ public:
         reserved = 0;
     }
 };
+
 
 class PreSfmgParams {
 public:
@@ -1926,6 +1927,7 @@ public:
     }
 };
 
+
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParams {
 public:
     int64_t s1Outer = 0;
@@ -2111,6 +2113,7 @@ public:
     }
 };
 
+
 class BlockNumListParams {
 public:
     int64_t blockStarts[50] = {};
@@ -2161,8 +2164,7 @@ public:
     float scaleValue = 0;
     float keepProb = 0;
     uint32_t layout = 0;
-    uint8_t tndSoftmaxIn = 0;
-    uint8_t preTokensPH[3] = {};
+    uint8_t preTokensPH[4] = {};
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
     uint32_t isSparse = 0;
@@ -2307,15 +2309,6 @@ public:
     void set_layout(uint32_t layout_val)
     {
         this->layout = layout_val;
-    }
-
-    uint8_t get_tndSoftmaxIn() const
-    {
-        return tndSoftmaxIn;
-    }
-    void set_tndSoftmaxIn(uint8_t tndSoftmaxIn_val)
-    {
-        this->tndSoftmaxIn = tndSoftmaxIn_val;
     }
 
     int64_t get_preTokens() const
@@ -2584,7 +2577,6 @@ public:
         scaleValue = 0.0f;
         keepProb = 0.0f;
         layout = 0;
-        tndSoftmaxIn = 0;
         preTokens = 0;
         nextTokens = 0;
         isSparse = 0;
@@ -3229,6 +3221,7 @@ public:
     }
 };
 
+
 class SplitNSplitCoreParams {
 public:
     int64_t totalBatch = 0;
@@ -3302,6 +3295,7 @@ public:
         reserved = 0;
     }
 };
+
 
 class SplitNSingleCoreParams {
 public:
@@ -4359,6 +4353,7 @@ public:
         tailCoreDpseNum = 0;
     }
 };
+
 
 class MLATensorTilingData {
 public:

@@ -229,8 +229,6 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
     int64_t maskRecvSize = CalcMaskRecvSize(maskAlignSize, static_cast<int64_t>(tilingData->moeExpertPerRank),
                                             static_cast<int64_t>(tilingData->epWorldSize));
-    int64_t expertCountRecvSize = CalcExpertCountRecvSize(static_cast<int64_t>(tilingData->moeExpertPerRank),
-                                                          static_cast<int64_t>(tilingData->epWorldSize));
     int64_t tokenScaleBytes =
         CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), 1U, static_cast<int64_t>(tilingData->topK),
                                  tilingData->topkWeightsPrefetch == 1);
@@ -243,12 +241,10 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
     OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", PEERMEM_DATA_OFFSET);
     OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
-    OP_LOGD(nodeName, "expertCountRecvSize: {%ld}\n", expertCountRecvSize);
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            exceptionDumpRegionSize + PEERMEM_DATA_OFFSET + maskRecvSize + expertCountRecvSize + quantTokenScaleSize +
-                combineSendSize);
+            exceptionDumpRegionSize + PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -935,11 +931,13 @@ static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData,
  */
 static uint32_t CalcDispatchFixedBufferBytes(const MegaMoeTilingData *tilingData)
 {
-    // fixedBufferBytes 包含 cumsumInfoTensor_ 和 expertTokenNumsOutTensor_。
+    // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
     uint32_t fixedBufferBytes =
+        static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(ops::CeilAlign(
             static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->moeExpertPerRank * sizeof(int32_t),
             static_cast<uint64_t>(ALIGN_32))) +
+        tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
                                              static_cast<uint64_t>(ALIGN_32)));
     return fixedBufferBytes;
@@ -1182,16 +1180,19 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    // MTE 统一使用 per-expert AIC ready 表；group counter 只服务 layered 量化 Combine。
-    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT ||
+    if (tilingData->combineQuantMode == COMBINE_NO_QUANT && tilingData->topoType != TOPO_TYPE_URMA ||
         tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
     uint64_t logicalCoreCount = tilingData->blockAivNum;
+    bool useAiv1OnlyWaveCombine =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
+        // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
@@ -1205,9 +1206,12 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
+    bool useMteA8W8Wave =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
-    bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
+    bool useGroupSyncCounters =
+        tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
     uint64_t activationFlagSlotsPerExpert = useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : INT_CACHELINE;
@@ -1220,7 +1224,7 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
-    if (useMteWaveCombine) {
+    if (useMteA8W8Wave) {
         flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
     if (useGroupSyncCounters) {

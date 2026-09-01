@@ -17,12 +17,15 @@
 #define MATMUL_ALLTO_ALL_KERNEL_BASE_H
 
 namespace Mc2Kernel {
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType,
-          bool SEP_BIAS = false>
+/**
+ * SchedulerType: 流水线类的数据类型
+ * SchedulerContextType: 流水线类使用的上下文的数据类型
+ * MatmulAlltoAllTilingDataType: tilingdata的数据类型
+ */
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 class MatmulAlltoAllKernelBase {
 public:
-    __aicore__ inline MatmulAlltoAllKernelBase(SchedulerType *pipeLine)
-        : pipeLine_(pipeLine){};
+    __aicore__ inline MatmulAlltoAllKernelBase(SchedulerType *pipeLine) : pipeLine_(pipeLine){};
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR workspaceGM,
                                 MatmulAlltoAllTilingDataType *tilingData, AscendC::TPipe *tPipe);
     __aicore__ inline void Process();
@@ -48,12 +51,11 @@ private:
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
 };
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType, bool SEP_BIAS>
-__aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType,
-                                                SEP_BIAS>::Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y,
-                                                                GM_ADDR workspaceGM,
-                                                                MatmulAlltoAllTilingDataType *tilingData,
-                                                                AscendC::TPipe *tPipe)
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+__aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>
+    ::Init(
+    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR workspaceGM, MatmulAlltoAllTilingDataType *tilingData,
+    AscendC::TPipe *tPipe)
 {
     // 获取tilingdata数据
     tilingData_ = tilingData;
@@ -70,15 +72,11 @@ __aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextT
     // 初始化流水线
     pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
-
-    if constexpr (SEP_BIAS) {
-        pipeLineContext_.addBiasContext->biasAddr = bias_;
-    }
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType, bool SEP_BIAS>
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
 __aicore__ inline void
-MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType, SEP_BIAS>::Process()
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>::Process()
 {
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
     // 启动主块流水
@@ -95,9 +93,10 @@ MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTili
     pipeLine_->End();
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType, bool SEP_BIAS>
-__aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType,
-                                                SEP_BIAS>::ProcessTile(uint32_t taskCnt)
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+__aicore__ inline void
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>
+::ProcessTile(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
     // 复用的中间量
@@ -107,14 +106,7 @@ __aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextT
     pipeLineContext_.computationContext->baseData.aGM = x1_;
     pipeLineContext_.computationContext->baseData.bGM = x2_;
     pipeLineContext_.computationContext->baseData.cGM = tempComputeOutGM_;
-    pipeLineContext_.computationContext->baseData.biasGM = SEP_BIAS ? nullptr : bias_;
-    if constexpr (SEP_BIAS) {
-        pipeLineContext_.addBiasContext->matmulAddr = tempComputeOutGM_;
-        pipeLineContext_.addBiasContext->matmulOffset = tileMMultiRankN * sizeof(DTYPE_Y);
-        pipeLineContext_.addBiasContext->biasOffset = 0;
-        pipeLineContext_.addBiasContext->M = mc2Tiling_.tileM;
-        pipeLineContext_.addBiasContext->N = mc2Tiling_.rankN;
-    }
+    pipeLineContext_.computationContext->baseData.biasGM = bias_;
     pipeLineContext_.computationContext->baseData.aOffset =
         (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankK * sizeof(DTYPE_X1);
     pipeLineContext_.computationContext->baseData.bOffset = (uint64_t)0UL;
@@ -149,9 +141,10 @@ __aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextT
     pipeLine_->Process(taskCnt);
 }
 
-template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType, bool SEP_BIAS>
-__aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType,
-                                                SEP_BIAS>::ProcessTail(uint32_t taskCnt)
+template <typename SchedulerType, typename SchedulerContextType, typename MatmulAlltoAllTilingDataType>
+__aicore__ inline void
+MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextType, MatmulAlltoAllTilingDataType>
+::ProcessTail(uint32_t taskCnt)
 {
     auto &&mc2Tiling_ = tilingData_->matmulAlltoAllTilingInfo;
     // 复用的中间量
@@ -162,15 +155,6 @@ __aicore__ inline void MatmulAlltoAllKernelBase<SchedulerType, SchedulerContextT
     pipeLineContext_.computationContext->baseData.bGM = x2_;
     pipeLineContext_.computationContext->baseData.cGM =
         tempComputeOutGM_ + tileCntMultitileM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-    pipeLineContext_.computationContext->baseData.biasGM = SEP_BIAS ? nullptr : bias_;
-    if constexpr (SEP_BIAS) {
-        pipeLineContext_.addBiasContext->matmulAddr =
-            tempComputeOutGM_ + tileCntMultitileM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-        pipeLineContext_.addBiasContext->matmulOffset = (uint64_t)mc2Tiling_.tailM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-        pipeLineContext_.addBiasContext->biasOffset = 0;
-        pipeLineContext_.addBiasContext->M = mc2Tiling_.tailM;
-        pipeLineContext_.addBiasContext->N = mc2Tiling_.rankN;
-    }
     pipeLineContext_.computationContext->baseData.aOffset =
         (uint64_t)mc2Tiling_.tailM * mc2Tiling_.rankK * sizeof(DTYPE_X1);
     pipeLineContext_.computationContext->baseData.bOffset = (uint64_t)0UL;

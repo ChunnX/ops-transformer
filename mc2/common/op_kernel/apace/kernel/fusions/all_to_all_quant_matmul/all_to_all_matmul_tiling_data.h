@@ -20,12 +20,16 @@
 #include "../../../tiling/quant_matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
+#include "../../../../mc2_tiling_struct.h"
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
     CommTilingData scaleCommTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
+    uint64_t peermemDataSize{0};
+    Mc2Tiling::PeermemLayoutInfo peermemLayout{};
 };
 
 struct CommContext {
@@ -41,5 +45,7 @@ struct hcommAllToAllMatmulTilingData {
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0};
+    uint32_t quantMode{0}; // 0=非量化, 6=MX量化
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
 };
 } // namespace Apace

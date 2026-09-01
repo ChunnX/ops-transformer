@@ -54,7 +54,6 @@ enum class InputIndex : uint32_t {
     ATTENTION_OUT,
     SOFTMAX_MAX,
     SOFTMAX_SUM,
-    SINKS, // oss-sink 输入 [N1] FP32，OPTIONAL
     VALUE,
     ACTUAL_SEQ_Q_LEN,
     ACTUAL_SEQ_KV_LEN,

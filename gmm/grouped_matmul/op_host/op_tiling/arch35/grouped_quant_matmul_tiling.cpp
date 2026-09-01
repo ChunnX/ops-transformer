@@ -403,17 +403,7 @@ bool GroupedQmmTiling::AnalyzeDtype()
     if (scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32) {
         inputParams_.scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scaleDesc->GetStorageFormat()));
         const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ;
-        auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
-        const bool singleScaleNzStorage =
-            scaleStorageShape != nullptr &&
-            scaleStorageShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM &&
-            scaleStorageShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NZ_DIM_NUM;
-        const bool listScaleNzStorage =
-            scaleStorageShape != nullptr &&
-            scaleStorageShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM - 1 &&
-            scaleStorageShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NZ_DIM_NUM - 1;
-        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
-                                   (singleScaleNzStorage || listScaleNzStorage);
+        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
     }
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
@@ -679,7 +669,7 @@ bool GroupedQmmTiling::CheckQuantParams(const gert::StorageShape *xScaleStorageS
     // mx量化校验
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMxQuantMode(xScaleStorageShape, wScaleStorageShape, expectedNSize),
-                    OP_LOGE(inputParams_.opName, "CheckQuantParamsForMxQuantMode failed."), return false);
+                    OP_LOGE(inputParams_.opName, "CheckParamsForMxQuantMode failed."), return false);
     }
 
     return true;
