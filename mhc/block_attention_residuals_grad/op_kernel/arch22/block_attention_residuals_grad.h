@@ -52,9 +52,9 @@ __aicore__ inline int32_t ArgFindPowerTwo(int32_t n)
     return (n + 1) >> 1;
 }
 
-__aicore__ inline float ReduceSumKahan(const LocalTensor<float>& srcLocal, int32_t count);
+__aicore__ inline float ReduceSumKahan(const LocalTensor<float> &srcLocal, int32_t count);
 
-__aicore__ inline void ReduceSumHalfInterval(const LocalTensor<float>& dstLocal, const LocalTensor<float>& srcLocal,
+__aicore__ inline void ReduceSumHalfInterval(const LocalTensor<float> &dstLocal, const LocalTensor<float> &srcLocal,
                                              int32_t count)
 {
     if (likely(count > static_cast<int32_t>(ARG_ELEM_PER_REP_FP32))) {
@@ -71,16 +71,15 @@ __aicore__ inline void ReduceSumHalfInterval(const LocalTensor<float>& dstLocal,
         }
     }
     // 最后对折半后的部分和做 Kahan 补偿求和，减少 FP32 归约舍入。
-    const int32_t reduceCount = (count > static_cast<int32_t>(ARG_ELEM_PER_REP_FP32))
-                                    ? static_cast<int32_t>(ARG_ELEM_PER_REP_FP32)
-                                    : count;
+    const int32_t reduceCount =
+        (count > static_cast<int32_t>(ARG_ELEM_PER_REP_FP32)) ? static_cast<int32_t>(ARG_ELEM_PER_REP_FP32) : count;
     PipeBarrier<PIPE_V>();
     dstLocal.SetValue(0, ReduceSumKahan(srcLocal, reduceCount));
 }
 
 // Kahan 补偿求和：H 较小（count<64）时逐标量累加，减少 FP32 归约的累积舍入。
 // 调用方负责在向量写 src 之后、GetValue 之前做必要的同步。
-__aicore__ inline float ReduceSumKahan(const LocalTensor<float>& srcLocal, int32_t count)
+__aicore__ inline float ReduceSumKahan(const LocalTensor<float> &srcLocal, int32_t count)
 {
     float sum = 0.0f;
     float comp = 0.0f;
@@ -94,32 +93,27 @@ __aicore__ inline float ReduceSumKahan(const LocalTensor<float>& srcLocal, int32
 }
 
 template <typename T>
-__aicore__ inline void KahanSumUpdate(LocalTensor<T>& inputTensor,
-                                      LocalTensor<T> sumTensorList[2],
-                                      const int32_t len,
-                                      int32_t& outPos)
+__aicore__ inline void KahanSumUpdate(LocalTensor<T> &inputTensor, LocalTensor<T> sumTensorList[2], const int32_t len,
+                                      int32_t &outPos)
 {
     LocalTensor<T> sumTensor = sumTensorList[outPos];
     LocalTensor<T> eTensor = sumTensorList[1 - outPos];
-    Sub(inputTensor, inputTensor, eTensor, len);   // y = x - e
-    Add(eTensor, inputTensor, sumTensor, len);     // t = y + s
-    Sub(sumTensor, eTensor, sumTensor, len);       // e = t - s
-    Sub(sumTensor, sumTensor, inputTensor, len);   // e = (t - s) - y
+    Sub(inputTensor, inputTensor, eTensor, len); // y = x - e
+    Add(eTensor, inputTensor, sumTensor, len);   // t = y + s
+    Sub(sumTensor, eTensor, sumTensor, len);     // e = t - s
+    Sub(sumTensor, sumTensor, inputTensor, len); // e = (t - s) - y
     outPos = 1 - outPos;
 }
 
 template <typename T>
 class BlockAttentionResidualsGrad {
 public:
-    __aicore__ inline BlockAttentionResidualsGrad() {};
+    __aicore__ inline BlockAttentionResidualsGrad(){};
 
-    __aicore__ inline void Init(GM_ADDR prefixSum, GM_ADDR blockResidual,
-                                GM_ADDR projWeight, GM_ADDR normWeight,
-                                GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs,
-                                GM_ADDR gradPrefixSum, GM_ADDR gradBlockResidual,
-                                GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
-                                GM_ADDR workspace,
-                                const BlockAttentionResidualsGradTilingData *td);
+    __aicore__ inline void Init(GM_ADDR prefixSum, GM_ADDR blockResidual, GM_ADDR projWeight, GM_ADDR normWeight,
+                                GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs, GM_ADDR gradPrefixSum,
+                                GM_ADDR gradBlockResidual, GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
+                                GM_ADDR workspace, const BlockAttentionResidualsGradTilingData *td);
 
     __aicore__ inline void Process();
 
@@ -138,11 +132,11 @@ private:
 
     TPipe pipe;
 
-    GlobalTensor<T>     prefixSumGm, blockResGm, projWeightGm, normWeightGm;
-    GlobalTensor<T>     gradOutGm;
+    GlobalTensor<T> prefixSumGm, blockResGm, projWeightGm, normWeightGm;
+    GlobalTensor<T> gradOutGm;
     GlobalTensor<float> invRmsGm, probsGm;
-    GlobalTensor<T>     gradPrefixSumGm, gradBlockResGm;
-    GlobalTensor<T>     gradProjWeightGm, gradNormWeightGm;
+    GlobalTensor<T> gradPrefixSumGm, gradBlockResGm;
+    GlobalTensor<T> gradProjWeightGm, gradNormWeightGm;
     GlobalTensor<float> gswWkspGm;
     GlobalTensor<float> wkspAllGm;
 
@@ -152,19 +146,19 @@ private:
     TBuf<TPosition::VECCALC> probsFloatBuf, invrmsFloatBuf, gradProbBuf, gradScoreBuf;
     TBuf<TPosition::VECCALC> reduceDstBuf;
 
-    int64_t  batchSize_, numBlocks_, totalBlocks_, hiddenSize_;
-    int64_t  coreBatchStart_, coreBatchEnd_, coreBatchCount_;
-    int64_t  currentBatch_, coreNum_;
-    int32_t  kahanOutPos_;
+    int64_t batchSize_, numBlocks_, totalBlocks_, hiddenSize_;
+    int64_t coreBatchStart_, coreBatchEnd_, coreBatchCount_;
+    int64_t currentBatch_, coreNum_;
+    int32_t kahanOutPos_;
     uint64_t perCoreWkspBytes_;
-    float    invH_;
+    float invH_;
 
-    event_t  eventMTE2V_;
-    event_t  eventVMTE2_;
-    event_t  eventMTE3MTE2_;
-    event_t  eventVMTE3_;
-    event_t  eventVS_;
-    event_t  eventSV_;
+    event_t eventMTE2V_;
+    event_t eventVMTE2_;
+    event_t eventMTE3MTE2_;
+    event_t eventVMTE3_;
+    event_t eventVS_;
+    event_t eventSV_;
 };
 
 template <typename T>
@@ -173,8 +167,8 @@ __aicore__ inline GlobalTensor<T> BlockAttentionResidualsGrad<T>::VAddr(int64_t 
     if (blk < numBlocks_) {
         // 每个 block 占 hiddenSize_ 个元素，偏移需乘 H
         uint64_t blkOff =
-            (static_cast<uint64_t>(batch) * static_cast<uint64_t>(numBlocks_) +
-             static_cast<uint64_t>(blk)) * static_cast<uint64_t>(hiddenSize_);
+            (static_cast<uint64_t>(batch) * static_cast<uint64_t>(numBlocks_) + static_cast<uint64_t>(blk)) *
+            static_cast<uint64_t>(hiddenSize_);
         return blockResGm[blkOff];
     } else {
         // prefix_sum [B, H]，偏移 batch*H
@@ -185,33 +179,31 @@ __aicore__ inline GlobalTensor<T> BlockAttentionResidualsGrad<T>::VAddr(int64_t 
 template <typename T>
 __aicore__ inline void BlockAttentionResidualsGrad<T>::ParseTiling(const BlockAttentionResidualsGradTilingData *td)
 {
-    batchSize_        = td->batchSize;
-    numBlocks_        = td->numBlocks;
-    totalBlocks_      = td->totalBlocks;
-    hiddenSize_       = td->hiddenSize;
-    coreBatchStart_   = td->coreBatchStart;
-    coreBatchEnd_     = td->coreBatchEnd;
-    coreBatchCount_   = td->coreBatchCount;
-    invH_             = 1.0f / static_cast<float>(hiddenSize_);
-    currentBatch_     = 0;
-    coreNum_          = td->coreNum;
-    kahanOutPos_      = 0;
+    batchSize_ = td->batchSize;
+    numBlocks_ = td->numBlocks;
+    totalBlocks_ = td->totalBlocks;
+    hiddenSize_ = td->hiddenSize;
+    coreBatchStart_ = td->coreBatchStart;
+    coreBatchEnd_ = td->coreBatchEnd;
+    coreBatchCount_ = td->coreBatchCount;
+    invH_ = 1.0f / static_cast<float>(hiddenSize_);
+    currentBatch_ = 0;
+    coreNum_ = td->coreNum;
+    kahanOutPos_ = 0;
     perCoreWkspBytes_ = td->perCoreWkspBytes;
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGrad<T>::Init(
-    GM_ADDR prefixSum, GM_ADDR blockResidual,
-    GM_ADDR projWeight, GM_ADDR normWeight,
-    GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs,
-    GM_ADDR gradPrefixSum, GM_ADDR gradBlockResidual,
-    GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
-    GM_ADDR workspace,
-    const BlockAttentionResidualsGradTilingData *td)
+__aicore__ inline void BlockAttentionResidualsGrad<T>::Init(GM_ADDR prefixSum, GM_ADDR blockResidual,
+                                                            GM_ADDR projWeight, GM_ADDR normWeight, GM_ADDR gradOutput,
+                                                            GM_ADDR invRms, GM_ADDR probs, GM_ADDR gradPrefixSum,
+                                                            GM_ADDR gradBlockResidual, GM_ADDR gradProjWeight,
+                                                            GM_ADDR gradNormWeight, GM_ADDR workspace,
+                                                            const BlockAttentionResidualsGradTilingData *td)
 {
     ParseTiling(td);
 
-    __gm__ float* userWksp = (__gm__ float*)AscendC::GetUserWorkspace(workspace);
+    __gm__ float *userWksp = (__gm__ float *)AscendC::GetUserWorkspace(workspace);
 
     // per-core batch range is computed in kernel, not host tiling
     int64_t blockIdx = static_cast<int64_t>(AscendC::GetBlockIdx());
@@ -226,30 +218,29 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::Init(
     }
     coreBatchCount_ = coreBatchEnd_ - coreBatchStart_;
 
-    uint64_t B  = static_cast<uint64_t>(batchSize_);
-    uint64_t N  = static_cast<uint64_t>(numBlocks_);
-    uint64_t H  = static_cast<uint64_t>(hiddenSize_);
+    uint64_t B = static_cast<uint64_t>(batchSize_);
+    uint64_t N = static_cast<uint64_t>(numBlocks_);
+    uint64_t H = static_cast<uint64_t>(hiddenSize_);
     uint64_t N1 = static_cast<uint64_t>(totalBlocks_);
 
-    prefixSumGm.SetGlobalBuffer((__gm__ T*)prefixSum,  B * H);
-    blockResGm.SetGlobalBuffer((__gm__ T*)blockResidual, B * N * H);
-    projWeightGm.SetGlobalBuffer((__gm__ T*)projWeight, H);
-    normWeightGm.SetGlobalBuffer((__gm__ T*)normWeight, H);
-    gradOutGm.SetGlobalBuffer((__gm__ T*)gradOutput, B * H);
-    invRmsGm.SetGlobalBuffer((__gm__ float*)invRms, B * N1);
-    probsGm.SetGlobalBuffer((__gm__ float*)probs, B * N1);
-    gradPrefixSumGm.SetGlobalBuffer((__gm__ T*)gradPrefixSum, B * H);
-    gradBlockResGm.SetGlobalBuffer((__gm__ T*)gradBlockResidual, B * N * H);
-    gradProjWeightGm.SetGlobalBuffer((__gm__ T*)gradProjWeight, H);
-    gradNormWeightGm.SetGlobalBuffer((__gm__ T*)gradNormWeight, H);
+    prefixSumGm.SetGlobalBuffer((__gm__ T *)prefixSum, B * H);
+    blockResGm.SetGlobalBuffer((__gm__ T *)blockResidual, B * N * H);
+    projWeightGm.SetGlobalBuffer((__gm__ T *)projWeight, H);
+    normWeightGm.SetGlobalBuffer((__gm__ T *)normWeight, H);
+    gradOutGm.SetGlobalBuffer((__gm__ T *)gradOutput, B * H);
+    invRmsGm.SetGlobalBuffer((__gm__ float *)invRms, B * N1);
+    probsGm.SetGlobalBuffer((__gm__ float *)probs, B * N1);
+    gradPrefixSumGm.SetGlobalBuffer((__gm__ T *)gradPrefixSum, B * H);
+    gradBlockResGm.SetGlobalBuffer((__gm__ T *)gradBlockResidual, B * N * H);
+    gradProjWeightGm.SetGlobalBuffer((__gm__ T *)gradProjWeight, H);
+    gradNormWeightGm.SetGlobalBuffer((__gm__ T *)gradNormWeight, H);
     uint64_t wkspOff = perCoreWkspBytes_ * static_cast<uint64_t>(blockIdx);
-    gswWkspGm.SetGlobalBuffer(
-        userWksp + (wkspOff / sizeof(float)), H);
+    gswWkspGm.SetGlobalBuffer(userWksp + (wkspOff / sizeof(float)), H);
 
     uint64_t totalWkspBytes = td->perCoreWkspBytes * static_cast<uint64_t>(td->coreNum);
     wkspAllGm.SetGlobalBuffer(userWksp, totalWkspBytes / sizeof(float));
 
-    uint32_t HU  = static_cast<uint32_t>(H);
+    uint32_t HU = static_cast<uint32_t>(H);
     uint32_t N1U = static_cast<uint32_t>(N1);
 
     // H 轴 buffer 至少预留 64 个元素，保证 64-lane 的 WholeReduceSum 不越界。
@@ -258,18 +249,18 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::Init(
     uint32_t n1AlignedFloats = n1FloatBytes / sizeof(float);
     // floatBuf2 在 SoftmaxBackwardN1 中按 N1 长度使用，容量不能小于 N1。
     const uint32_t maxBufFloats = (hBufElements > n1AlignedFloats) ? hBufElements : n1AlignedFloats;
-    pipe.InitBuffer(scoreWeightBuf,    hBufElements * sizeof(float));
-    pipe.InitBuffer(halfBuf,           hBufElements * sizeof(T));
-    pipe.InitBuffer(floatBuf0,         hBufElements * sizeof(float));
-    pipe.InitBuffer(floatBuf1,         hBufElements * sizeof(float));
-    pipe.InitBuffer(floatBuf2,         maxBufFloats * sizeof(float));
-    pipe.InitBuffer(gswAccBuf,         hBufElements * sizeof(float));
-    pipe.InitBuffer(gswCmpBuf,         hBufElements * sizeof(float));
+    pipe.InitBuffer(scoreWeightBuf, hBufElements * sizeof(float));
+    pipe.InitBuffer(halfBuf, hBufElements * sizeof(T));
+    pipe.InitBuffer(floatBuf0, hBufElements * sizeof(float));
+    pipe.InitBuffer(floatBuf1, hBufElements * sizeof(float));
+    pipe.InitBuffer(floatBuf2, maxBufFloats * sizeof(float));
+    pipe.InitBuffer(gswAccBuf, hBufElements * sizeof(float));
+    pipe.InitBuffer(gswCmpBuf, hBufElements * sizeof(float));
     pipe.InitBuffer(probsFloatBuf, n1FloatBytes);
     pipe.InitBuffer(invrmsFloatBuf, n1FloatBytes);
-    pipe.InitBuffer(gradProbBuf,       n1FloatBytes);
-    pipe.InitBuffer(gradScoreBuf,      n1FloatBytes);
-    pipe.InitBuffer(reduceDstBuf,      32U);   // ReduceSumHalfInterval 的独立 dst（1 个 float）
+    pipe.InitBuffer(gradProbBuf, n1FloatBytes);
+    pipe.InitBuffer(gradScoreBuf, n1FloatBytes);
+    pipe.InitBuffer(reduceDstBuf, 32U); // ReduceSumHalfInterval 的独立 dst（1 个 float）
 }
 
 template <typename T>
@@ -277,8 +268,8 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::InitScoreWeight()
 {
     uint32_t H = static_cast<uint32_t>(hiddenSize_);
 
-    LocalTensor<float> sw     = scoreWeightBuf.Get<float>();
-    LocalTensor<T>     nh     = halfBuf.Get<T>();
+    LocalTensor<float> sw = scoreWeightBuf.Get<float>();
+    LocalTensor<T> nh = halfBuf.Get<T>();
 
     DataCopyExtParams cp(1, H * sizeof(T), 0, 0, 0);
     DataCopyPad(nh, normWeightGm, cp, {false, 0U, 0U, 0U});
@@ -292,7 +283,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::InitScoreWeight()
     SetFlag<HardEvent::V_MTE2>(eventVMTE2_);
     WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
 
-    LocalTensor<T>     ph = halfBuf.Get<T>();
+    LocalTensor<T> ph = halfBuf.Get<T>();
     LocalTensor<float> pf = floatBuf0.Get<float>();
 
     DataCopyPad(ph, projWeightGm, cp, {false, 0U, 0U, 0U});
@@ -311,13 +302,13 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::InitScoreWeight()
 template <typename T>
 __aicore__ inline void BlockAttentionResidualsGrad<T>::CopyInToken(int64_t batch)
 {
-    uint32_t H   = static_cast<uint32_t>(hiddenSize_);
+    uint32_t H = static_cast<uint32_t>(hiddenSize_);
     uint32_t N1U = static_cast<uint32_t>(totalBlocks_);
 
     uint64_t gmOff = static_cast<uint64_t>(batch) * totalBlocks_;
 
-    LocalTensor<T>     hb  = halfBuf.Get<T>();
-    LocalTensor<float> pf  = probsFloatBuf.Get<float>();
+    LocalTensor<T> hb = halfBuf.Get<T>();
+    LocalTensor<float> pf = probsFloatBuf.Get<float>();
     LocalTensor<float> irf = invrmsFloatBuf.Get<float>();
 
     DataCopyExtParams cpH(1, H * sizeof(T), 0, 0, 0);
@@ -343,14 +334,13 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::LoadGradOutAndV(int64_t b
 {
     uint32_t H = static_cast<uint32_t>(hiddenSize_);
 
-    LocalTensor<T>     hb  = halfBuf.Get<T>();
+    LocalTensor<T> hb = halfBuf.Get<T>();
     LocalTensor<float> fb0 = floatBuf0.Get<float>();
     LocalTensor<float> fb1 = floatBuf1.Get<float>();
 
     DataCopyExtParams cp(1, H * sizeof(T), 0, 0, 0);
 
-    DataCopyPad(hb, gradOutGm[static_cast<uint64_t>(currentBatch_) * hiddenSize_],
-                cp, {false, 0U, 0U, 0U});
+    DataCopyPad(hb, gradOutGm[static_cast<uint64_t>(currentBatch_) * hiddenSize_], cp, {false, 0U, 0U, 0U});
     SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
     WaitFlag<HardEvent::MTE2_V>(eventMTE2V_);
     if constexpr (std::is_same<T, float>::value) {
@@ -374,26 +364,26 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::LoadGradOutAndV(int64_t b
 template <typename T>
 __aicore__ inline void BlockAttentionResidualsGrad<T>::PrecomputeGradProbs(int64_t batch)
 {
-    uint32_t H   = static_cast<uint32_t>(hiddenSize_);
+    uint32_t H = static_cast<uint32_t>(hiddenSize_);
     uint32_t N1U = static_cast<uint32_t>(totalBlocks_);
 
     LocalTensor<float> fb0 = floatBuf0.Get<float>();
     LocalTensor<float> fb1 = floatBuf1.Get<float>();
     LocalTensor<float> fb2 = floatBuf2.Get<float>();
-    LocalTensor<T>     hb  = halfBuf.Get<T>();
-    LocalTensor<float> gp  = gradProbBuf.Get<float>();
+    LocalTensor<T> hb = halfBuf.Get<T>();
+    LocalTensor<float> gp = gradProbBuf.Get<float>();
 
     // grad_out was copied to hb in CopyInToken.
     uint32_t n1AlignedFloats = (N1U * sizeof(float) + 31U) / 32U * 32U / sizeof(float);
     Duplicate(gp, 0.0f, static_cast<int32_t>(n1AlignedFloats));
-    SetFlag<HardEvent::V_S>(eventVS_);   // Duplicate -> scalar SetValue
+    SetFlag<HardEvent::V_S>(eventVS_); // Duplicate -> scalar SetValue
     WaitFlag<HardEvent::V_S>(eventVS_);
     if constexpr (std::is_same<T, float>::value) {
         Adds(fb0, hb, 0.0f, H);
     } else {
         Cast(fb0, hb, RoundMode::CAST_NONE, H);
     }
-    SetFlag<HardEvent::V_MTE2>(eventVMTE2_);   // V has consumed hb; MTE2 may overwrite it.
+    SetFlag<HardEvent::V_MTE2>(eventVMTE2_); // V has consumed hb; MTE2 may overwrite it.
     WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
 
     for (uint32_t bb = 0; bb < N1U; bb++) {
@@ -406,11 +396,11 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::PrecomputeGradProbs(int64
         } else {
             Cast(fb1, hb, RoundMode::CAST_NONE, H);
         }
-        SetFlag<HardEvent::V_MTE2>(eventVMTE2_);   // V has consumed hb; MTE2 may overwrite it.
+        SetFlag<HardEvent::V_MTE2>(eventVMTE2_); // V has consumed hb; MTE2 may overwrite it.
         WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
 
         Mul(fb2, fb1, fb0, H);
-        SetFlag<HardEvent::V_S>(eventVS_);   // vector -> scalar
+        SetFlag<HardEvent::V_S>(eventVS_); // vector -> scalar
         WaitFlag<HardEvent::V_S>(eventVS_);
         float gpVal;
         if (H < ARG_ELEM_PER_REP_FP32) {
@@ -425,7 +415,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::PrecomputeGradProbs(int64
         }
         gp.SetValue(bb, gpVal);
     }
-    SetFlag<HardEvent::S_V>(eventSV_);   // Scalar writes to gp are visible to vector.
+    SetFlag<HardEvent::S_V>(eventSV_); // Scalar writes to gp are visible to vector.
 }
 
 template <typename T>
@@ -434,24 +424,24 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::SoftmaxBackwardN1()
     uint32_t N1 = static_cast<uint32_t>(totalBlocks_);
 
     LocalTensor<float> probsF = probsFloatBuf.Get<float>();
-    LocalTensor<float> gp     = gradProbBuf.Get<float>();
-    LocalTensor<float> gs     = gradScoreBuf.Get<float>();
-    LocalTensor<float> tmp    = floatBuf2.Get<float>();
+    LocalTensor<float> gp = gradProbBuf.Get<float>();
+    LocalTensor<float> gs = gradScoreBuf.Get<float>();
+    LocalTensor<float> tmp = floatBuf2.Get<float>();
 
-    WaitFlag<HardEvent::S_V>(eventSV_);   // Wait for scalar writes to gp.
+    WaitFlag<HardEvent::S_V>(eventSV_); // Wait for scalar writes to gp.
     uint32_t n1AlignedFloats = (N1 * sizeof(float) + 31U) / 32U * 32U / sizeof(float);
     Duplicate(gs, 0.0f, static_cast<int32_t>(n1AlignedFloats));
     Duplicate(tmp, 0.0f, static_cast<int32_t>(n1AlignedFloats));
     Mul(tmp, probsF, gp, N1);
     // ReduceSumHalfInterval 对 tmp 原地折叠，N1>64 时折叠后不能再作为 p*gp 复用。
     ReduceSumHalfInterval(reduceDstBuf.Get<float>(), tmp, static_cast<int32_t>(N1));
-    SetFlag<HardEvent::V_S>(eventVS_);   // ReduceSum -> GetValue
+    SetFlag<HardEvent::V_S>(eventVS_); // ReduceSum -> GetValue
     WaitFlag<HardEvent::V_S>(eventVS_);
     float scalar = reduceDstBuf.Get<float>().GetValue(0);
 
     // Match aten::_softmax_backward_data: p*dp - p*sum(p*dp).
     Muls(gs, probsF, scalar, N1);
-    Mul(tmp, probsF, gp, N1);   // 重新计算 p*dp，避免使用被折叠的 tmp
+    Mul(tmp, probsF, gp, N1); // 重新计算 p*dp，避免使用被折叠的 tmp
     Sub(tmp, tmp, gs, N1);
     Adds(gs, tmp, 0.0f, N1);
 }
@@ -459,24 +449,24 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::SoftmaxBackwardN1()
 template <typename T>
 __aicore__ inline void BlockAttentionResidualsGrad<T>::ComputeGradV(int64_t blk)
 {
-    uint32_t H    = static_cast<uint32_t>(hiddenSize_);
+    uint32_t H = static_cast<uint32_t>(hiddenSize_);
     uint32_t blkU = static_cast<uint32_t>(blk);
 
-    LocalTensor<float> sw     = scoreWeightBuf.Get<float>();
-    LocalTensor<float> fb0    = floatBuf0.Get<float>();
-    LocalTensor<float> fb1    = floatBuf1.Get<float>();
-    LocalTensor<float> fb2    = floatBuf2.Get<float>();
-    LocalTensor<float> gswA   = gswAccBuf.Get<float>();
-    LocalTensor<float> gswC   = gswCmpBuf.Get<float>();
+    LocalTensor<float> sw = scoreWeightBuf.Get<float>();
+    LocalTensor<float> fb0 = floatBuf0.Get<float>();
+    LocalTensor<float> fb1 = floatBuf1.Get<float>();
+    LocalTensor<float> fb2 = floatBuf2.Get<float>();
+    LocalTensor<float> gswA = gswAccBuf.Get<float>();
+    LocalTensor<float> gswC = gswCmpBuf.Get<float>();
     LocalTensor<float> probsF = probsFloatBuf.Get<float>();
-    LocalTensor<float> invrF  = invrmsFloatBuf.Get<float>();
-    LocalTensor<float> gs     = gradScoreBuf.Get<float>();
+    LocalTensor<float> invrF = invrmsFloatBuf.Get<float>();
+    LocalTensor<float> gs = gradScoreBuf.Get<float>();
 
     // Load grad_output and v[batch, blk, :]
     LoadGradOutAndV(blk);
 
     // grad_v_from_out = grad_out * probs[blk]
-    SetFlag<HardEvent::V_S>(eventVS_);   // Vector writes are visible before scalar GetValue.
+    SetFlag<HardEvent::V_S>(eventVS_); // Vector writes are visible before scalar GetValue.
     WaitFlag<HardEvent::V_S>(eventVS_);
     float probBlk = probsF.GetValue(blkU);
     Muls(fb2, fb0, probBlk, H);
@@ -492,7 +482,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::ComputeGradV(int64_t blk)
     // grad_inv_rms = sum((gradScore * score_weight) * v), matching the reference.
     Muls(fb0, sw, gsBlk, H);
     Mul(fb0, fb0, fb1, H);
-    SetFlag<HardEvent::V_S>(eventVS_);   // vector -> scalar
+    SetFlag<HardEvent::V_S>(eventVS_); // vector -> scalar
     WaitFlag<HardEvent::V_S>(eventVS_);
     float gradInvRms;
     if (H < ARG_ELEM_PER_REP_FP32) {
@@ -531,9 +521,9 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::CopyOutToken(int64_t blk,
     uint32_t H = static_cast<uint32_t>(hiddenSize_);
 
     LocalTensor<float> fb2 = floatBuf2.Get<float>();
-    LocalTensor<T>     hb  = halfBuf.Get<T>();
+    LocalTensor<T> hb = halfBuf.Get<T>();
 
-    PipeBarrier<PIPE_V>();   // Cast must not read fb2 before vector writes complete.
+    PipeBarrier<PIPE_V>(); // Cast must not read fb2 before vector writes complete.
     if constexpr (std::is_same<T, half>::value) {
         Cast(hb, fb2, RoundMode::CAST_RINT, H);
     } else if constexpr (std::is_same<T, float>::value) {
@@ -541,13 +531,12 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::CopyOutToken(int64_t blk,
     } else {
         Cast(hb, fb2, RoundMode::CAST_RINT, H);
     }
-    SetFlag<HardEvent::V_MTE3>(eventVMTE3_);   // Cast writes hb; MTE3 may read it.
+    SetFlag<HardEvent::V_MTE3>(eventVMTE3_); // Cast writes hb; MTE3 may read it.
     WaitFlag<HardEvent::V_MTE3>(eventVMTE3_);
 
     DataCopyExtParams cp(1, H * sizeof(T), 0, 0, 0);
     if (blk < numBlocks_) {
-        uint64_t gmOff =
-            (static_cast<uint64_t>(batch) * numBlocks_ + static_cast<uint64_t>(blk)) * hiddenSize_;
+        uint64_t gmOff = (static_cast<uint64_t>(batch) * numBlocks_ + static_cast<uint64_t>(blk)) * hiddenSize_;
         DataCopyPad(gradBlockResGm[gmOff], hb, cp);
     } else {
         uint64_t gmOff = static_cast<uint64_t>(batch) * hiddenSize_;
@@ -562,7 +551,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::WriteGradScoreWeight()
 {
     uint32_t H = static_cast<uint32_t>(hiddenSize_);
     DataCopyExtParams cp(1, H * sizeof(float), 0, 0, 0);
-    SetFlag<HardEvent::V_MTE3>(eventVMTE3_);   // Kahan accumulation is complete; MTE3 may read it.
+    SetFlag<HardEvent::V_MTE3>(eventVMTE3_); // Kahan accumulation is complete; MTE3 may read it.
     WaitFlag<HardEvent::V_MTE3>(eventVMTE3_);
     if (kahanOutPos_ == 0) {
         DataCopyPad(gswWkspGm, gswAccBuf.Get<float>(), cp);
@@ -581,11 +570,11 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::ReduceAndWriteWeights()
     uint32_t H = static_cast<uint32_t>(hiddenSize_);
 
     LocalTensor<float> total = floatBuf0.Get<float>();
-    LocalTensor<float> temp  = floatBuf1.Get<float>();
-    LocalTensor<float> out   = floatBuf2.Get<float>();
-    LocalTensor<T>     hb    = halfBuf.Get<T>();
-    LocalTensor<float> gswA  = gswAccBuf.Get<float>();
-    LocalTensor<float> gswC  = gswCmpBuf.Get<float>();
+    LocalTensor<float> temp = floatBuf1.Get<float>();
+    LocalTensor<float> out = floatBuf2.Get<float>();
+    LocalTensor<T> hb = halfBuf.Get<T>();
+    LocalTensor<float> gswA = gswAccBuf.Get<float>();
+    LocalTensor<float> gswC = gswCmpBuf.Get<float>();
 
     DataCopyExtParams cpF(1, H * sizeof(float), 0, 0, 0);
     DataCopyExtParams cpT(1, H * sizeof(T), 0, 0, 0);
@@ -604,7 +593,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::ReduceAndWriteWeights()
         SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
         WaitFlag<HardEvent::MTE2_V>(eventMTE2V_);
         KahanSumUpdate(temp, sumCmp, static_cast<int32_t>(H), kahanPos);
-        SetFlag<HardEvent::V_MTE2>(eventVMTE2_);   // Kahan has consumed temp; MTE2 may overwrite it.
+        SetFlag<HardEvent::V_MTE2>(eventVMTE2_); // Kahan has consumed temp; MTE2 may overwrite it.
         WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
     }
     // 偶数次更新后最终和仍在 gswA，奇数次在 gswC
@@ -632,7 +621,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::ReduceAndWriteWeights()
     } else {
         Cast(hb, out, RoundMode::CAST_RINT, H);
     }
-    SetFlag<HardEvent::V_MTE3>(eventVMTE3_);   // Cast writes hb; MTE3 may read it.
+    SetFlag<HardEvent::V_MTE3>(eventVMTE3_); // Cast writes hb; MTE3 may read it.
     WaitFlag<HardEvent::V_MTE3>(eventVMTE3_);
     DataCopyPad(gradNormWeightGm, hb, cpT);
     // 上一段 MTE3 读 hb 必须先完成，下一段 MTE2 才能覆写同一 halfBuf，否则输出被污染
@@ -656,7 +645,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::ReduceAndWriteWeights()
     } else {
         Cast(hb, out, RoundMode::CAST_RINT, H);
     }
-    SetFlag<HardEvent::V_MTE3>(eventVMTE3_);   // Cast writes hb; MTE3 may read it.
+    SetFlag<HardEvent::V_MTE3>(eventVMTE3_); // Cast writes hb; MTE3 may read it.
     WaitFlag<HardEvent::V_MTE3>(eventVMTE3_);
     DataCopyPad(gradProjWeightGm, hb, cpT);
 }
@@ -668,8 +657,8 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::Process()
     eventVMTE2_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
     eventMTE3MTE2_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
     eventVMTE3_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-    eventVS_    = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    eventSV_    = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    eventSV_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
 
     InitScoreWeight();
     {

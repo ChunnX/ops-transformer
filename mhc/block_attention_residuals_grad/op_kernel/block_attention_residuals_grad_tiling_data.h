@@ -12,19 +12,19 @@
 #ifndef _BLOCK_ATTENTION_RESIDUALS_GRAD_TILING_DATA_KERNEL_H_
 #define _BLOCK_ATTENTION_RESIDUALS_GRAD_TILING_DATA_KERNEL_H_
 struct BlockAttentionResidualsGradTilingData {
-    int64_t  batchSize;               // B
-    int64_t  numBlocks;               // N
-    int64_t  totalBlocks;             // N+1
-    int64_t  hiddenSize;              // H
-    int64_t  hiddenTileSize;          // H tile used by SPLIT_H
-    int64_t  hiddenTileNum;
-    int64_t  coreBatchStart;
-    int64_t  coreBatchEnd;
-    int64_t  coreBatchCount;
-    uint64_t gradScoreWeightWkspOff;  // this core's workspace byte offset
-    int64_t  coreNum;                 // total AIV cores
-    uint64_t perCoreWkspBytes;        // stride between cores' workspace regions (bytes)
-    uint64_t gradScoresWkspOff;       // workspace offset of saved grad_scores [B, N+1]
-    uint64_t varianceScaleWkspOff;    // workspace offset of saved variance_scale [B, N+1]
+    int64_t batchSize;      // B
+    int64_t numBlocks;      // N
+    int64_t totalBlocks;    // N+1
+    int64_t hiddenSize;     // H
+    int64_t hiddenTileSize; // H tile used by SPLIT_H
+    int64_t hiddenTileNum;
+    int64_t coreBatchStart;
+    int64_t coreBatchEnd;
+    int64_t coreBatchCount;
+    uint64_t gradScoreWeightWkspOff; // this core's workspace byte offset
+    int64_t coreNum;                 // total AIV cores
+    uint64_t perCoreWkspBytes;       // stride between cores' workspace regions (bytes)
+    uint64_t gradScoresWkspOff;      // workspace offset of saved grad_scores [B, N+1]
+    uint64_t varianceScaleWkspOff;   // workspace offset of saved variance_scale [B, N+1]
 };
 #endif

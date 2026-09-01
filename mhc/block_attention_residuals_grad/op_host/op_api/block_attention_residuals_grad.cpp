@@ -21,44 +21,33 @@ namespace l0op {
 
 OP_TYPE_REGISTER(BlockAttentionResidualsGrad);
 
-const aclTensor *BlockAttentionResidualsGrad(
-    const aclTensor *partial_block,
-    const aclTensor *block_res,
-    const aclTensor *proj_weight,
-    const aclTensor *norm_weight,
-    const aclTensor *grad_hidden_states,
-    const aclTensor *inv_norm,
-    const aclTensor *probs,
-    int64_t valid_block_nums,
-    aclTensor *grad_partial_block,
-    aclTensor *grad_block_res,
-    aclTensor *grad_proj_weight,
-    aclTensor *grad_norm_weight,
-    aclOpExecutor *executor)
+const aclTensor *BlockAttentionResidualsGrad(const aclTensor *partial_block, const aclTensor *block_res,
+                                             const aclTensor *proj_weight, const aclTensor *norm_weight,
+                                             const aclTensor *grad_hidden_states, const aclTensor *inv_norm,
+                                             const aclTensor *probs, int64_t valid_block_nums,
+                                             aclTensor *grad_partial_block, aclTensor *grad_block_res,
+                                             aclTensor *grad_proj_weight, aclTensor *grad_norm_weight,
+                                             aclOpExecutor *executor)
 {
-    L0_DFX(BlockAttentionResidualsGrad,
-        partial_block, block_res, proj_weight, norm_weight,
-        grad_hidden_states, inv_norm, probs, valid_block_nums,
-        grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight);
+    L0_DFX(BlockAttentionResidualsGrad, partial_block, block_res, proj_weight, norm_weight, grad_hidden_states,
+           inv_norm, probs, valid_block_nums, grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight);
 
-    auto ret = INFER_SHAPE(BlockAttentionResidualsGrad,
+    auto ret = INFER_SHAPE(
+        BlockAttentionResidualsGrad,
         OP_INPUT(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs),
-        OP_OUTPUT(grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight),
-        OP_ATTR(valid_block_nums));
+        OP_OUTPUT(grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight), OP_ATTR(valid_block_nums));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_STATIC_WORKSPACE_INVALID,
-            "BlockAttentionResidualsGrad INFER_SHAPE failed.");
+        OP_LOGE(ACLNN_ERR_INNER_STATIC_WORKSPACE_INVALID, "BlockAttentionResidualsGrad INFER_SHAPE failed.");
         return nullptr;
     }
 
-    auto launcherRet = ADD_TO_LAUNCHER_LIST_AICORE(BlockAttentionResidualsGrad,
-        OP_INPUT(partial_block, block_res, proj_weight, norm_weight,
-                 grad_hidden_states, inv_norm, probs),
-        OP_OUTPUT(grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight),
-        OP_ATTR(valid_block_nums));
+    auto launcherRet = ADD_TO_LAUNCHER_LIST_AICORE(
+        BlockAttentionResidualsGrad,
+        OP_INPUT(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs),
+        OP_OUTPUT(grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight), OP_ATTR(valid_block_nums));
     if (launcherRet != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_STATIC_WORKSPACE_INVALID,
-            "BlockAttentionResidualsGrad ADD_TO_LAUNCHER_LIST_AICORE failed.");
+                "BlockAttentionResidualsGrad ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return nullptr;
     }
 

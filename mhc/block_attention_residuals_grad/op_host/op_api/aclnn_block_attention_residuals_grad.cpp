@@ -26,17 +26,14 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnBlockAttentionResidualsGradGetWorkspaceSize(
-    const aclTensor *partial_block, const aclTensor *block_res,
-    const aclTensor *proj_weight, const aclTensor *norm_weight,
-    const aclTensor *grad_hidden_states, const aclTensor *inv_norm,
-    const aclTensor *probs,
-    int64_t validBlockNums,
-    const aclTensor *grad_partial_block, const aclTensor *grad_block_res,
-    const aclTensor *grad_proj_weight, const aclTensor *grad_norm_weight,
+    const aclTensor *partial_block, const aclTensor *block_res, const aclTensor *proj_weight,
+    const aclTensor *norm_weight, const aclTensor *grad_hidden_states, const aclTensor *inv_norm,
+    const aclTensor *probs, int64_t validBlockNums, const aclTensor *grad_partial_block,
+    const aclTensor *grad_block_res, const aclTensor *grad_proj_weight, const aclTensor *grad_norm_weight,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-
-    L2_DFX_PHASE_1(aclnnBlockAttentionResidualsGrad,
+    L2_DFX_PHASE_1(
+        aclnnBlockAttentionResidualsGrad,
         DFX_IN(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs, validBlockNums),
         DFX_OUT(grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight));
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -59,13 +56,9 @@ aclnnStatus aclnnBlockAttentionResidualsGradGetWorkspaceSize(
     CHECK_RET(probs_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto output = l0op::BlockAttentionResidualsGrad(
-        partialBlock_, blockRes_, projWeight_, normWeight_,
-        gradHiddenState_, invNorm_, probs_, validBlockNums,
-        const_cast<aclTensor*>(grad_partial_block),
-        const_cast<aclTensor*>(grad_block_res),
-        const_cast<aclTensor*>(grad_proj_weight),
-        const_cast<aclTensor*>(grad_norm_weight),
-        uniqueExecutor.get());
+        partialBlock_, blockRes_, projWeight_, normWeight_, gradHiddenState_, invNorm_, probs_, validBlockNums,
+        const_cast<aclTensor *>(grad_partial_block), const_cast<aclTensor *>(grad_block_res),
+        const_cast<aclTensor *>(grad_proj_weight), const_cast<aclTensor *>(grad_norm_weight), uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -74,8 +67,8 @@ aclnnStatus aclnnBlockAttentionResidualsGradGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnBlockAttentionResidualsGrad(void *workspace, uint64_t workspaceSize,
-                           aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnBlockAttentionResidualsGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                             aclrtStream stream)
 {
     auto ret = CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
     if (ret != 0) {

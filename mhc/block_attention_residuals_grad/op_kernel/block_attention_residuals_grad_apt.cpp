@@ -24,47 +24,27 @@ using namespace AscendC;
 using namespace NsBlockAttentionResidualsGrad;
 
 template <uint32_t hMode>
-__global__ __aicore__ void block_attention_residuals_grad(
-    GM_ADDR partial_block, GM_ADDR block_res, GM_ADDR proj_weight, GM_ADDR norm_weight,
-    GM_ADDR grad_hidden_states, GM_ADDR inv_norm, GM_ADDR probs,
-    GM_ADDR grad_partial_block, GM_ADDR grad_block_res, GM_ADDR grad_proj_weight,
-    GM_ADDR grad_norm_weight, GM_ADDR workspace, GM_ADDR tiling)
+__global__ __aicore__ void block_attention_residuals_grad(GM_ADDR partial_block, GM_ADDR block_res, GM_ADDR proj_weight,
+                                                          GM_ADDR norm_weight, GM_ADDR grad_hidden_states,
+                                                          GM_ADDR inv_norm, GM_ADDR probs, GM_ADDR grad_partial_block,
+                                                          GM_ADDR grad_block_res, GM_ADDR grad_proj_weight,
+                                                          GM_ADDR grad_norm_weight, GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(BlockAttentionResidualsGradTilingData);
     GET_TILING_DATA_WITH_STRUCT(BlockAttentionResidualsGradTilingData, tilingData, tiling);
 
     if constexpr (hMode == TPL_H_MODE_FULL) {
-        if (GetBlockIdx() == 0) {
-            AscendC::printf("[BARG_APT_ENTRY] FULL_H H=%lld K=%lld tile=%lld\n",
-                            static_cast<long long>(tilingData.hiddenSize),
-                            static_cast<long long>(tilingData.totalBlocks),
-                            static_cast<long long>(tilingData.hiddenTileSize));
-        }
-    } else {
-        if (GetBlockIdx() == 0) {
-            AscendC::printf("[BARG_APT_ENTRY] SPLIT_H H=%lld K=%lld tile=%lld\n",
-                            static_cast<long long>(tilingData.hiddenSize),
-                            static_cast<long long>(tilingData.totalBlocks),
-                            static_cast<long long>(tilingData.hiddenTileSize));
-        }
-    }
-
-    if constexpr (hMode == TPL_H_MODE_FULL) {
         TPipe pipe;
         BlockAttentionResidualsGradRegbase<DTYPE_PARTIAL_BLOCK> op(&pipe, &tilingData);
-        op.Init(partial_block, block_res, proj_weight, norm_weight,
-                grad_hidden_states, inv_norm, probs,
-                grad_partial_block, grad_block_res,
-                grad_proj_weight, grad_norm_weight, workspace);
+        op.Init(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs,
+                grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight, workspace);
         op.Process();
     } else if constexpr (hMode == TPL_H_MODE_SPLIT) {
         // A5 SPLIT_H 与 A2/A3 保持同一三阶段数学流程：
         // 完整 H 归约生成 meta -> 分 tile 写 gradV/权重部分和 -> 跨核归约。
         BlockAttentionResidualsGradA5SplitH<DTYPE_PARTIAL_BLOCK> op;
-        op.Init(partial_block, block_res, proj_weight, norm_weight,
-                grad_hidden_states, inv_norm, probs,
-                grad_partial_block, grad_block_res,
-                grad_proj_weight, grad_norm_weight, workspace, &tilingData);
+        op.Init(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs,
+                grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight, workspace, &tilingData);
         op.Process();
     }
 }

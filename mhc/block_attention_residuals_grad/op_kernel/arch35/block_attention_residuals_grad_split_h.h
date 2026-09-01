@@ -32,20 +32,17 @@ using namespace AscendC;
 template <typename T>
 class BlockAttentionResidualsGradA5SplitH {
 public:
-    __aicore__ inline void Init(GM_ADDR partialBlock, GM_ADDR blockRes,
-                                GM_ADDR projWeight, GM_ADDR normWeight,
-                                GM_ADDR gradHiddenState, GM_ADDR invNorm, GM_ADDR probs,
-                                GM_ADDR gradPartialBlock, GM_ADDR gradBlockRes,
-                                GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
-                                GM_ADDR workspace, const BlockAttentionResidualsGradTilingData *td);
+    __aicore__ inline void Init(GM_ADDR partialBlock, GM_ADDR blockRes, GM_ADDR projWeight, GM_ADDR normWeight,
+                                GM_ADDR gradHiddenState, GM_ADDR invNorm, GM_ADDR probs, GM_ADDR gradPartialBlock,
+                                GM_ADDR gradBlockRes, GM_ADDR gradProjWeight, GM_ADDR gradNormWeight, GM_ADDR workspace,
+                                const BlockAttentionResidualsGradTilingData *td);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline GlobalTensor<T> GetV(int64_t block, int64_t batch) const;
     __aicore__ inline void LoadTensorTile(const GlobalTensor<T> &src, uint64_t offset, uint32_t length,
                                           const LocalTensor<float> &dst);
-    __aicore__ inline void LoadGradHiddenTile(uint64_t offset, uint32_t length,
-                                              const LocalTensor<float> &dst);
+    __aicore__ inline void LoadGradHiddenTile(uint64_t offset, uint32_t length, const LocalTensor<float> &dst);
     __aicore__ inline void LoadMeta(const GlobalTensor<float> &src, uint64_t offset, uint32_t length,
                                     const LocalTensor<float> &dst);
     __aicore__ inline void StoreGradV(int64_t block, int64_t batch, uint32_t hStart, uint32_t length,
@@ -110,8 +107,9 @@ __aicore__ inline GlobalTensor<T> BlockAttentionResidualsGradA5SplitH<T>::GetV(i
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadTensorTile(
-    const GlobalTensor<T> &src, uint64_t offset, uint32_t length, const LocalTensor<float> &dst)
+__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadTensorTile(const GlobalTensor<T> &src,
+                                                                              uint64_t offset, uint32_t length,
+                                                                              const LocalTensor<float> &dst)
 {
     // inQue 保留 RegBase FULL_H 的双缓冲布局，每次只搬入一个连续 H tile。
     // DeQue 已负责 MTE2->V 同步，FULL_H 的 CopyInRowSync 采用同一写法。
@@ -131,8 +129,8 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadTensorTile(
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadGradHiddenTile(
-    uint64_t offset, uint32_t length, const LocalTensor<float> &dst)
+__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadGradHiddenTile(uint64_t offset, uint32_t length,
+                                                                                  const LocalTensor<float> &dst)
 {
     LocalTensor<T> input = gradHiddenStateQue_.AllocTensor<T>();
     DataCopyExtParams copyParams(1, length * sizeof(T), 0, 0, 0);
@@ -149,8 +147,8 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadGradHiddenTil
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadMeta(
-    const GlobalTensor<float> &src, uint64_t offset, uint32_t length, const LocalTensor<float> &dst)
+__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadMeta(const GlobalTensor<float> &src, uint64_t offset,
+                                                                        uint32_t length, const LocalTensor<float> &dst)
 {
     // K=N+1 轴元数据保持完整搬入 UB，尾部通过 DataCopyPad 补齐到 32 字节。
     DataCopyExtParams copyParams(1, length * sizeof(float), 0, 0, 0);
@@ -162,8 +160,9 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadMeta(
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::StoreGradV(
-    int64_t block, int64_t batch, uint32_t hStart, uint32_t length, const LocalTensor<float> &src)
+__aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::StoreGradV(int64_t block, int64_t batch, uint32_t hStart,
+                                                                          uint32_t length,
+                                                                          const LocalTensor<float> &src)
 {
     // FP32 计算结果转换回输入类型，并按 V 的来源分别写入两个梯度输出。
     LocalTensor<T> output = outQue_.AllocTensor<T>();
@@ -196,10 +195,9 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::StoreGradV(
 
 template <typename T>
 __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::Init(
-    GM_ADDR partialBlock, GM_ADDR blockRes, GM_ADDR projWeight, GM_ADDR normWeight,
-    GM_ADDR gradHiddenState, GM_ADDR invNorm, GM_ADDR probs, GM_ADDR gradPartialBlock,
-    GM_ADDR gradBlockRes, GM_ADDR gradProjWeight, GM_ADDR gradNormWeight, GM_ADDR workspace,
-    const BlockAttentionResidualsGradTilingData *td)
+    GM_ADDR partialBlock, GM_ADDR blockRes, GM_ADDR projWeight, GM_ADDR normWeight, GM_ADDR gradHiddenState,
+    GM_ADDR invNorm, GM_ADDR probs, GM_ADDR gradPartialBlock, GM_ADDR gradBlockRes, GM_ADDR gradProjWeight,
+    GM_ADDR gradNormWeight, GM_ADDR workspace, const BlockAttentionResidualsGradTilingData *td)
 {
     batchSize_ = td->batchSize;
     numBlocks_ = td->numBlocks;
@@ -209,12 +207,6 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::Init(
     coreNum_ = td->coreNum;
     perCoreWkspBytes_ = td->perCoreWkspBytes;
     invH_ = 1.0f / static_cast<float>(hiddenSize_);
-
-    if (GetBlockIdx() == 0) {
-        AscendC::printf("[BARG_SPLIT_H] H=%lld K=%lld tile=%lld cores=%lld\n",
-                        static_cast<long long>(hiddenSize_), static_cast<long long>(totalBlocks_),
-                        static_cast<long long>(hiddenTileSize_), static_cast<long long>(coreNum_));
-    }
 
     // 多核沿 B 轴均分任务，余数 Token 依次分配给前 remainder 个核。
     int64_t blockIdx = static_cast<int64_t>(GetBlockIdx());
@@ -254,14 +246,12 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::Init(
     allWeightWkspGm_.SetGlobalBuffer(userWorkspace,
                                      perCoreWkspBytes_ * static_cast<uint64_t>(coreNum_) / sizeof(float));
     gradScoresWkspGm_.SetGlobalBuffer(userWorkspace + td->gradScoresWkspOff / sizeof(float), B * K);
-    varianceScaleWkspGm_.SetGlobalBuffer(
-        userWorkspace + td->varianceScaleWkspOff / sizeof(float), B * K);
+    varianceScaleWkspGm_.SetGlobalBuffer(userWorkspace + td->varianceScaleWkspOff / sizeof(float), B * K);
 
     uint32_t tile = static_cast<uint32_t>(hiddenTileSize_);
     constexpr uint32_t arch35UbAlignBytes = 256U;
-    uint32_t metaBytes =
-        (static_cast<uint32_t>(totalBlocks_) * sizeof(float) + arch35UbAlignBytes - 1U) /
-        arch35UbAlignBytes * arch35UbAlignBytes;
+    uint32_t metaBytes = (static_cast<uint32_t>(totalBlocks_) * sizeof(float) + arch35UbAlignBytes - 1U) /
+                         arch35UbAlignBytes * arch35UbAlignBytes;
     // A5 H 相关 Buffer 按 hiddenTileSize_ 分配；K 相关 Buffer 完整驻留 UB，
     // 并与 Host 侧 CalcArch35HiddenTileSize 保持相同的 256B 对齐模型。
     pipe_.InitBuffer(inQue_, 2, tile * sizeof(T));
@@ -450,9 +440,8 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeGradVAndWe
                 PipeBarrier<PIPE_V>();
 
                 // gradScoreWeight += V * scoreScale，A5 RegBase 使用固定 sum/cmp 角色的 Kahan 累加。
-                RegBase::KahanFusedMulAddDual(
-                    weightAcc, weightCmp, v,
-                    scalar[3U * RegBase::GRAD_ELEM_PER_BLK_FP32], length);
+                RegBase::KahanFusedMulAddDual(weightAcc, weightCmp, v, scalar[3U * RegBase::GRAD_ELEM_PER_BLK_FP32],
+                                              length);
                 PipeBarrier<PIPE_V>();
                 StoreGradV(block, batch, hStart, length, gradV);
             }
@@ -460,8 +449,7 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeGradVAndWe
 
         // 每个核写入独立 Workspace 区域，等待阶段三进行跨核求和。
         LocalTensor<float> weightResult = wkspOutQue_.AllocTensor<float>();
-        const uint32_t repeatTimes =
-            (length + RegBase::kVlFp32 - 1U) / RegBase::kVlFp32;
+        const uint32_t repeatTimes = (length + RegBase::kVlFp32 - 1U) / RegBase::kVlFp32;
         AscendC::Copy(weightResult, weightAcc, RegBase::kVlFp32, repeatTimes, {1, 1, 8, 8});
         wkspOutQue_.EnQue(weightResult);
         weightResult = wkspOutQue_.DeQue<float>();
@@ -560,13 +548,13 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::Process()
     eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     eventSV_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
 
-    ComputeAndSaveGradMeta();            // 阶段一：完整 H 归约并保存 gradScore、varianceScale。
-    ComputeGradVAndWeightPartials();     // 阶段二：计算 gradV 和每核权重梯度部分和。
+    ComputeAndSaveGradMeta();        // 阶段一：完整 H 归约并保存 gradScore、varianceScale。
+    ComputeGradVAndWeightPartials(); // 阶段二：计算 gradV 和每核权重梯度部分和。
     // 所有核必须完成 Workspace 写入后，核 0 才能读取并执行最终归约。
     SyncAll();
-    ReduceAndWriteWeights();             // 阶段三：核 0 跨核归约并写出权重梯度。
+    ReduceAndWriteWeights(); // 阶段三：核 0 跨核归约并写出权重梯度。
 }
 
-}  // namespace NsBlockAttentionResidualsGrad
+} // namespace NsBlockAttentionResidualsGrad
 
-#endif  // BLOCK_ATTENTION_RESIDUALS_GRAD_ARCH35_SPLIT_H_H
+#endif // BLOCK_ATTENTION_RESIDUALS_GRAD_ARCH35_SPLIT_H_H

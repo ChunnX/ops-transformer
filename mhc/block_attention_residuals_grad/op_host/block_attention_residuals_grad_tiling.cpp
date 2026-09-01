@@ -43,12 +43,9 @@ static uint64_t CalcArch22FullHUbBytes(int64_t H, int64_t totalBlocks, uint32_t 
 // A2/A3 SPLIT_H 比 FULL_H 多两个 K 轴 Kahan 补偿 Buffer。
 static uint64_t CalcArch22SplitHUbBytes(int64_t hiddenTileSize, int64_t totalBlocks, uint32_t dtypeBytes)
 {
-    const uint64_t hFloatBytes =
-        AlignUp(static_cast<uint64_t>(hiddenTileSize) * sizeof(float), ALIGN_32B);
-    const uint64_t hInputBytes =
-        AlignUp(static_cast<uint64_t>(hiddenTileSize) * dtypeBytes, ALIGN_32B);
-    const uint64_t metaBytes =
-        AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_32B);
+    const uint64_t hFloatBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * sizeof(float), ALIGN_32B);
+    const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * dtypeBytes, ALIGN_32B);
+    const uint64_t metaBytes = AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_32B);
     return 6UL * hFloatBytes + hInputBytes + 6UL * metaBytes + ALIGN_32B;
 }
 
@@ -110,12 +107,9 @@ static int64_t CalcArch22HiddenTileSize(uint64_t ubSize, int64_t H, int64_t tota
 // 4 个输入 Buffer、6 个 K 轴 FP32 Buffer + 标量槽。
 static uint64_t CalcArch35SplitHUbBytes(int64_t hiddenTileSize, int64_t totalBlocks, uint32_t dtypeBytes)
 {
-    const uint64_t hFloatBytes =
-        AlignUp(static_cast<uint64_t>(hiddenTileSize) * sizeof(float), ALIGN_256B);
-    const uint64_t hInputBytes =
-        AlignUp(static_cast<uint64_t>(hiddenTileSize) * dtypeBytes, ALIGN_256B);
-    const uint64_t metaBytes =
-        AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_256B);
+    const uint64_t hFloatBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * sizeof(float), ALIGN_256B);
+    const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * dtypeBytes, ALIGN_256B);
+    const uint64_t metaBytes = AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_256B);
     constexpr uint64_t scalarBytes = 6UL * 8UL * sizeof(float);
     return 7UL * hFloatBytes + 4UL * hInputBytes + 6UL * metaBytes + scalarBytes;
 }
@@ -139,8 +133,7 @@ static int64_t CalcArch35HiddenTileSize(uint64_t ubSize, int64_t H, int64_t tota
     const int64_t alignElements = static_cast<int64_t>(ALIGN_256B / dtypeBytes);
     int64_t maxTile = static_cast<int64_t>((availableUb - fixedBytes) / bytesPerH);
     maxTile = maxTile / alignElements * alignElements;
-    while (maxTile > 0 &&
-           CalcArch35SplitHUbBytes(maxTile, totalBlocks, dtypeBytes) > availableUb) {
+    while (maxTile > 0 && CalcArch35SplitHUbBytes(maxTile, totalBlocks, dtypeBytes) > availableUb) {
         maxTile -= alignElements;
     }
     if (maxTile <= 0) {
@@ -161,8 +154,8 @@ struct HiddenTilingResult {
 };
 
 // 架构差异集中在这一个函数中。TilingFunc 只消费最终计算结果。
-static HiddenTilingResult CalcHiddenTiling(const gert::TilingContext *ctx, uint64_t ub,
-                                           int64_t H, int64_t totalBlocks, uint32_t dtypeBytes)
+static HiddenTilingResult CalcHiddenTiling(const gert::TilingContext *ctx, uint64_t ub, int64_t H, int64_t totalBlocks,
+                                           uint32_t dtypeBytes)
 {
     const uint64_t availableUb = ub > UB_RESERVE_BYTES ? ub - UB_RESERVE_BYTES : 0;
     HiddenTilingResult result{};
@@ -186,31 +179,35 @@ static HiddenTilingResult CalcHiddenTiling(const gert::TilingContext *ctx, uint6
     return result;
 }
 
-static void PrintInfo(gert::TilingContext *ctx, BlockAttentionResidualsGradTilingData& td) {
-    OP_LOGD(ctx, " B=%ld N=%ld N1=%ld H=%ld hTile=%ld hTileNum=%ld cores=%ld perWksp=%lu "
-                 "gradScoresOff=%lu varianceScaleOff=%lu",
-            td.get_batchSize(), td.get_numBlocks(), td.get_totalBlocks(), td.get_hiddenSize(),
-            td.get_hiddenTileSize(), td.get_hiddenTileNum(), td.get_coreNum(), td.get_perCoreWkspBytes(),
-            td.get_gradScoresWkspOff(), td.get_varianceScaleWkspOff());
+static void PrintInfo(gert::TilingContext *ctx, BlockAttentionResidualsGradTilingData &td)
+{
+    OP_LOGD(ctx,
+            " B=%ld N=%ld N1=%ld H=%ld hTile=%ld hTileNum=%ld cores=%ld perWksp=%lu "
+            "gradScoresOff=%lu varianceScaleOff=%lu",
+            td.get_batchSize(), td.get_numBlocks(), td.get_totalBlocks(), td.get_hiddenSize(), td.get_hiddenTileSize(),
+            td.get_hiddenTileNum(), td.get_coreNum(), td.get_perCoreWkspBytes(), td.get_gradScoresWkspOff(),
+            td.get_varianceScaleWkspOff());
 }
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ub, uint32_t& coreNum) {
+static ge::graphStatus GetPlatformInfo(gert::TilingContext *ctx, uint64_t &ub, uint32_t &coreNum)
+{
     auto ci = ctx->GetCompileInfo<BlockAttentionResidualsGradCompileInfo>();
     coreNum = ci->coreNum;
     ub = ci->ubSize;
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus Check(gert::TilingContext* ctx) {
+static ge::graphStatus Check(gert::TilingContext *ctx)
+{
     auto ps = EnsureNotScalar(ctx->GetInputShape(0)->GetStorageShape());
     auto br = EnsureNotScalar(ctx->GetInputShape(1)->GetStorageShape());
     OP_CHECK_IF(ps.GetDimNum() != 2, OP_LOGE(ctx, "partial_block must be 2D"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(br.GetDimNum() != 3, OP_LOGE(ctx, "block_res must be 3D"), return ge::GRAPH_FAILED);
 
-    int64_t B  = ps.GetDim(0);
-    int64_t H  = ps.GetDim(1);
+    int64_t B = ps.GetDim(0);
+    int64_t H = ps.GetDim(1);
     int64_t Bb = br.GetDim(0);
-    int64_t N  = br.GetDim(1);
+    int64_t N = br.GetDim(1);
     int64_t Hb = br.GetDim(2);
     OP_CHECK_IF(B <= 0 || N < 0 || H <= 0, OP_LOGE(ctx, "B and H must be positive and N must be non-negative"),
                 return ge::GRAPH_FAILED);
@@ -234,7 +231,7 @@ static uint32_t GetSupportedDtypeBytes(ge::DataType dataType)
     }
 }
 
-static ge::graphStatus DoTiling(gert::TilingContext* ctx, int64_t B, int64_t N, int64_t H, uint32_t coreNum,
+static ge::graphStatus DoTiling(gert::TilingContext *ctx, int64_t B, int64_t N, int64_t H, uint32_t coreNum,
                                 int64_t hiddenTileSize, bool splitH)
 {
     // number of blocks (including the prefix-sum block)
@@ -257,8 +254,8 @@ static ge::graphStatus DoTiling(gert::TilingContext* ctx, int64_t B, int64_t N, 
     td.set_gradScoreWeightWkspOff(0);
     td.set_coreNum(static_cast<int64_t>(coreNum));
     td.set_perCoreWkspBytes(perWksp);
-    const uint64_t metaWkspBytes = AlignUp(
-        static_cast<uint64_t>(B) * static_cast<uint64_t>(N1) * sizeof(float), ALIGN_512B);
+    const uint64_t metaWkspBytes =
+        AlignUp(static_cast<uint64_t>(B) * static_cast<uint64_t>(N1) * sizeof(float), ALIGN_512B);
     const uint64_t gradScoresWkspOff = splitH ? perWksp * static_cast<uint64_t>(coreNum) : 0UL;
     td.set_gradScoresWkspOff(gradScoresWkspOff);
     td.set_varianceScaleWkspOff(splitH ? gradScoresWkspOff + metaWkspBytes : 0UL);
@@ -273,7 +270,8 @@ static ge::graphStatus DoTiling(gert::TilingContext* ctx, int64_t B, int64_t N, 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CalcWorkspaceSize(gert::TilingContext* ctx, bool splitH) {
+static ge::graphStatus CalcWorkspaceSize(gert::TilingContext *ctx, bool splitH)
+{
     int64_t H = EnsureNotScalar(ctx->GetInputShape(0)->GetStorageShape()).GetDim(1);
     int64_t B = EnsureNotScalar(ctx->GetInputShape(0)->GetStorageShape()).GetDim(0);
     int64_t N = EnsureNotScalar(ctx->GetInputShape(1)->GetStorageShape()).GetDim(1);
@@ -285,8 +283,8 @@ static ge::graphStatus CalcWorkspaceSize(gert::TilingContext* ctx, bool splitH) 
     OP_CHECK_NULL_WITH_CONTEXT(ctx, ws);
     uint64_t userWorkspaceSize = per * static_cast<uint64_t>(ci->coreNum);
     if (splitH) {
-        const uint64_t metaWkspBytes = AlignUp(
-            static_cast<uint64_t>(B) * static_cast<uint64_t>(N + 1) * sizeof(float), ALIGN_512B);
+        const uint64_t metaWkspBytes =
+            AlignUp(static_cast<uint64_t>(B) * static_cast<uint64_t>(N + 1) * sizeof(float), ALIGN_512B);
         // 分别保存 gradScore[B, K] 和 varianceScale[B, K]。
         userWorkspaceSize += 2UL * metaWkspBytes;
     }
@@ -294,13 +292,13 @@ static ge::graphStatus CalcWorkspaceSize(gert::TilingContext* ctx, bool splitH) 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext* ctx) {
+static ge::graphStatus TilingFunc(gert::TilingContext *ctx)
+{
     uint64_t ub = 0;
     uint32_t coreNum = 0;
-    OP_CHECK_IF(GetPlatformInfo(ctx, ub, coreNum) != ge::GRAPH_SUCCESS,
-                OP_LOGE(ctx, "get platform info failed"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(Check(ctx) != ge::GRAPH_SUCCESS,
-                OP_LOGE(ctx, "check shape failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetPlatformInfo(ctx, ub, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(ctx, "get platform info failed"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(Check(ctx) != ge::GRAPH_SUCCESS, OP_LOGE(ctx, "check shape failed"), return ge::GRAPH_FAILED);
 
     auto inputDesc = ctx->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(ctx, inputDesc);
@@ -314,25 +312,26 @@ static ge::graphStatus TilingFunc(gert::TilingContext* ctx) {
     const int64_t totalBlocks = br.GetDim(1) + 1;
     const uint64_t availableUb = ub > UB_RESERVE_BYTES ? ub - UB_RESERVE_BYTES : 0;
     const HiddenTilingResult hiddenTiling = CalcHiddenTiling(ctx, ub, H, totalBlocks, dtypeBytes);
-    OP_CHECK_IF(hiddenTiling.hiddenTileSize <= 0,
-                OP_LOGE(ctx, "failed to calculate a valid H tile"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(hiddenTiling.hiddenTileSize <= 0, OP_LOGE(ctx, "failed to calculate a valid H tile"),
+                return ge::GRAPH_FAILED);
 
-    const uint64_t tilingKey = hiddenTiling.splitH ? GET_TPL_TILING_KEY(TPL_H_MODE_SPLIT)
-                                                   : GET_TPL_TILING_KEY(TPL_H_MODE_FULL);
+    const uint64_t tilingKey =
+        hiddenTiling.splitH ? GET_TPL_TILING_KEY(TPL_H_MODE_SPLIT) : GET_TPL_TILING_KEY(TPL_H_MODE_FULL);
     ctx->SetTilingKey(tilingKey);
     OP_LOGD(ctx, "tiling path: path=%s arch=%s H=%ld K=%ld dtypeBytes=%u requiredFull=%lu available=%lu hTile=%ld",
-            hiddenTiling.splitH ? "SPLIT_H" : "FULL_H", hiddenTiling.archName, H, totalBlocks,
-            dtypeBytes, hiddenTiling.requiredFull, availableUb, hiddenTiling.hiddenTileSize);
+            hiddenTiling.splitH ? "SPLIT_H" : "FULL_H", hiddenTiling.archName, H, totalBlocks, dtypeBytes,
+            hiddenTiling.requiredFull, availableUb, hiddenTiling.hiddenTileSize);
 
-    OP_CHECK_IF(DoTiling(ctx, ps.GetDim(0), br.GetDim(1), H, coreNum,
-                         hiddenTiling.hiddenTileSize, hiddenTiling.splitH) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(DoTiling(ctx, ps.GetDim(0), br.GetDim(1), H, coreNum, hiddenTiling.hiddenTileSize,
+                         hiddenTiling.splitH) != ge::GRAPH_SUCCESS,
                 OP_LOGE(ctx, "tiling failed"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CalcWorkspaceSize(ctx, hiddenTiling.splitH) != ge::GRAPH_SUCCESS,
-                OP_LOGE(ctx, "workspace failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalcWorkspaceSize(ctx, hiddenTiling.splitH) != ge::GRAPH_SUCCESS, OP_LOGE(ctx, "workspace failed"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus Parse(gert::TilingParseContext* ctx) {
+static ge::graphStatus Parse(gert::TilingParseContext *ctx)
+{
     auto ci = ctx->GetCompiledInfo<BlockAttentionResidualsGradCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(ctx, ci);
 
@@ -347,5 +346,7 @@ static ge::graphStatus Parse(gert::TilingParseContext* ctx) {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(BlockAttentionResidualsGrad).Tiling(TilingFunc).TilingParse<BlockAttentionResidualsGradCompileInfo>(Parse);
-}
+IMPL_OP_OPTILING(BlockAttentionResidualsGrad)
+    .Tiling(TilingFunc)
+    .TilingParse<BlockAttentionResidualsGradCompileInfo>(Parse);
+} // namespace optiling

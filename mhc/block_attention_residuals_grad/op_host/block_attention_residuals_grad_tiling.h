@@ -14,22 +14,25 @@
 #include "register/tilingdata_base.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(BlockAttentionResidualsGradTilingData)
-    TILING_DATA_FIELD_DEF(int64_t,  batchSize);
-    TILING_DATA_FIELD_DEF(int64_t,  numBlocks);
-    TILING_DATA_FIELD_DEF(int64_t,  totalBlocks);
-    TILING_DATA_FIELD_DEF(int64_t,  hiddenSize);
-    TILING_DATA_FIELD_DEF(int64_t,  hiddenTileSize);
-    TILING_DATA_FIELD_DEF(int64_t,  hiddenTileNum);
-    TILING_DATA_FIELD_DEF(int64_t,  coreBatchStart);
-    TILING_DATA_FIELD_DEF(int64_t,  coreBatchEnd);
-    TILING_DATA_FIELD_DEF(int64_t,  coreBatchCount);
-    TILING_DATA_FIELD_DEF(uint64_t, gradScoreWeightWkspOff);
-    TILING_DATA_FIELD_DEF(int64_t,  coreNum);
-    TILING_DATA_FIELD_DEF(uint64_t, perCoreWkspBytes);
-    TILING_DATA_FIELD_DEF(uint64_t, gradScoresWkspOff);
-    TILING_DATA_FIELD_DEF(uint64_t, varianceScaleWkspOff);
+TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, totalBlocks);
+TILING_DATA_FIELD_DEF(int64_t, hiddenSize);
+TILING_DATA_FIELD_DEF(int64_t, hiddenTileSize);
+TILING_DATA_FIELD_DEF(int64_t, hiddenTileNum);
+TILING_DATA_FIELD_DEF(int64_t, coreBatchStart);
+TILING_DATA_FIELD_DEF(int64_t, coreBatchEnd);
+TILING_DATA_FIELD_DEF(int64_t, coreBatchCount);
+TILING_DATA_FIELD_DEF(uint64_t, gradScoreWeightWkspOff);
+TILING_DATA_FIELD_DEF(int64_t, coreNum);
+TILING_DATA_FIELD_DEF(uint64_t, perCoreWkspBytes);
+TILING_DATA_FIELD_DEF(uint64_t, gradScoresWkspOff);
+TILING_DATA_FIELD_DEF(uint64_t, varianceScaleWkspOff);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(BlockAttentionResidualsGrad, BlockAttentionResidualsGradTilingData);
-}
-struct BlockAttentionResidualsGradCompileInfo { uint64_t ubSize = 0; uint32_t coreNum = 0; };
+} // namespace optiling
+struct BlockAttentionResidualsGradCompileInfo {
+    uint64_t ubSize = 0;
+    uint32_t coreNum = 0;
+};
 #endif

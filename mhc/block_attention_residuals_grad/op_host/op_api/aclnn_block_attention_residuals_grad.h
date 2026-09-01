@@ -19,18 +19,14 @@ extern "C" {
 #endif
 
 ACLNN_API aclnnStatus aclnnBlockAttentionResidualsGradGetWorkspaceSize(
-    const aclTensor *partial_block, const aclTensor *block_res,
-    const aclTensor *proj_weight, const aclTensor *norm_weight,
-    const aclTensor *grad_hidden_states, const aclTensor *inv_norm,
-    const aclTensor *probs,
-    int64_t validBlockNums,
-    const aclTensor *grad_partial_block, const aclTensor *grad_block_res,
-    const aclTensor *grad_proj_weight, const aclTensor *grad_norm_weight,
+    const aclTensor *partial_block, const aclTensor *block_res, const aclTensor *proj_weight,
+    const aclTensor *norm_weight, const aclTensor *grad_hidden_states, const aclTensor *inv_norm,
+    const aclTensor *probs, int64_t validBlockNums, const aclTensor *grad_partial_block,
+    const aclTensor *grad_block_res, const aclTensor *grad_proj_weight, const aclTensor *grad_norm_weight,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
-ACLNN_API aclnnStatus aclnnBlockAttentionResidualsGrad(
-    void *workspace, uint64_t workspaceSize,
-    aclOpExecutor *executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnBlockAttentionResidualsGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                       aclrtStream stream);
 
 #ifdef __cplusplus
 }

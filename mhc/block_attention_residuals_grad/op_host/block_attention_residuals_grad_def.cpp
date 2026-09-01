@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "register/op_def_registry.h"
 
 namespace ops {
 class BlockAttentionResidualsGrad : public OpDef {
 public:
-    explicit BlockAttentionResidualsGrad(const char* name) : OpDef(name)
+    explicit BlockAttentionResidualsGrad(const char *name)
+        : OpDef(name)
     {
         this->Input("partial_block")
             .ParamType(REQUIRED)
@@ -81,7 +81,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "block_attention_residuals_grad");    // Matches the kernel entry file name.
+            .ExtendCfgInfo("opFile.value", "block_attention_residuals_grad"); // Matches the kernel entry file name.
         this->AICore().AddConfig("ascend910b", aicoreConfigA2);
         this->AICore().AddConfig("ascend910_93", aicoreConfigA2);
 
@@ -98,4 +98,4 @@ public:
 };
 
 OP_ADD(BlockAttentionResidualsGrad);
-}
+} // namespace ops

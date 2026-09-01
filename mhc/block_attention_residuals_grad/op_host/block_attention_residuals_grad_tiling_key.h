@@ -18,15 +18,13 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-#define TPL_H_MODE_FULL   0
-#define TPL_H_MODE_SPLIT  1
+#define TPL_H_MODE_FULL 0
+#define TPL_H_MODE_SPLIT 1
 
 ASCENDC_TPL_ARGS_DECL(BlockAttentionResidualsGrad,
-    ASCENDC_TPL_UINT_DECL(hMode, 2, ASCENDC_TPL_UI_LIST, TPL_H_MODE_FULL, TPL_H_MODE_SPLIT)
-);
+                      ASCENDC_TPL_UINT_DECL(hMode, 2, ASCENDC_TPL_UI_LIST, TPL_H_MODE_FULL, TPL_H_MODE_SPLIT));
 
-ASCENDC_TPL_SEL(
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(hMode, ASCENDC_TPL_UI_LIST, TPL_H_MODE_FULL, TPL_H_MODE_SPLIT)));
+ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(hMode, ASCENDC_TPL_UI_LIST, TPL_H_MODE_FULL,
+                                                          TPL_H_MODE_SPLIT)));
 
 #endif

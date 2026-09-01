@@ -14,20 +14,13 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor *BlockAttentionResidualsGrad(
-    const aclTensor *partial_block,
-    const aclTensor *block_res,
-    const aclTensor *proj_weight,
-    const aclTensor *norm_weight,
-    const aclTensor *grad_hidden_states,
-    const aclTensor *inv_norm,
-    const aclTensor *probs,
-    int64_t valid_block_nums,
-    aclTensor *grad_partial_block,
-    aclTensor *grad_block_res,
-    aclTensor *grad_proj_weight,
-    aclTensor *grad_norm_weight,
-    aclOpExecutor *executor);
+const aclTensor *BlockAttentionResidualsGrad(const aclTensor *partial_block, const aclTensor *block_res,
+                                             const aclTensor *proj_weight, const aclTensor *norm_weight,
+                                             const aclTensor *grad_hidden_states, const aclTensor *inv_norm,
+                                             const aclTensor *probs, int64_t valid_block_nums,
+                                             aclTensor *grad_partial_block, aclTensor *grad_block_res,
+                                             aclTensor *grad_proj_weight, aclTensor *grad_norm_weight,
+                                             aclOpExecutor *executor);
 }
 
 #endif // OP_API_INC_LEVEL0_BLOCK_ATTENTION_RESIDUALS_GRAD_H_

@@ -27,12 +27,10 @@ namespace NsBlockAttentionResidualsGrad {
 template <typename T>
 class BlockAttentionResidualsGradSplitH {
 public:
-    __aicore__ inline void Init(GM_ADDR partialBlock, GM_ADDR blockRes,
-                                GM_ADDR projWeight, GM_ADDR normWeight,
-                                GM_ADDR gradHiddenState, GM_ADDR invNorm, GM_ADDR probs,
-                                GM_ADDR gradPartialBlock, GM_ADDR gradBlockRes,
-                                GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
-                                GM_ADDR workspace, const BlockAttentionResidualsGradTilingData *td);
+    __aicore__ inline void Init(GM_ADDR partialBlock, GM_ADDR blockRes, GM_ADDR projWeight, GM_ADDR normWeight,
+                                GM_ADDR gradHiddenState, GM_ADDR invNorm, GM_ADDR probs, GM_ADDR gradPartialBlock,
+                                GM_ADDR gradBlockRes, GM_ADDR gradProjWeight, GM_ADDR gradNormWeight, GM_ADDR workspace,
+                                const BlockAttentionResidualsGradTilingData *td);
     __aicore__ inline void Process();
 
 private:
@@ -96,8 +94,9 @@ __aicore__ inline GlobalTensor<T> BlockAttentionResidualsGradSplitH<T>::GetV(int
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradSplitH<T>::LoadTensorTile(
-    const GlobalTensor<T> &src, uint64_t offset, uint32_t length, const LocalTensor<float> &dst)
+__aicore__ inline void BlockAttentionResidualsGradSplitH<T>::LoadTensorTile(const GlobalTensor<T> &src, uint64_t offset,
+                                                                            uint32_t length,
+                                                                            const LocalTensor<float> &dst)
 {
     // 每次只搬入一个连续 H tile，并统一转换为 FP32 参与后续计算。
     LocalTensor<T> input = inputBuf_.Get<T>();
@@ -116,8 +115,8 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::LoadTensorTile(
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradSplitH<T>::LoadMeta(
-    const GlobalTensor<float> &src, uint64_t offset, uint32_t length, const LocalTensor<float> &dst)
+__aicore__ inline void BlockAttentionResidualsGradSplitH<T>::LoadMeta(const GlobalTensor<float> &src, uint64_t offset,
+                                                                      uint32_t length, const LocalTensor<float> &dst)
 {
     // K=N+1 轴元数据保持完整搬入 UB，尾部通过 DataCopyPad 补齐到 32 字节。
     DataCopyExtParams copyParams(1, length * sizeof(float), 0, 0, 0);
@@ -129,8 +128,8 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::LoadMeta(
 }
 
 template <typename T>
-__aicore__ inline void BlockAttentionResidualsGradSplitH<T>::StoreGradV(
-    int64_t block, int64_t batch, uint32_t hStart, uint32_t length, const LocalTensor<float> &src)
+__aicore__ inline void BlockAttentionResidualsGradSplitH<T>::StoreGradV(int64_t block, int64_t batch, uint32_t hStart,
+                                                                        uint32_t length, const LocalTensor<float> &src)
 {
     // FP32 计算结果转换回输入类型，并按 V 的来源分别写入两个梯度输出。
     LocalTensor<T> output = inputBuf_.Get<T>();
@@ -163,10 +162,9 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::StoreGradV(
 
 template <typename T>
 __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::Init(
-    GM_ADDR partialBlock, GM_ADDR blockRes, GM_ADDR projWeight, GM_ADDR normWeight,
-    GM_ADDR gradHiddenState, GM_ADDR invNorm, GM_ADDR probs, GM_ADDR gradPartialBlock,
-    GM_ADDR gradBlockRes, GM_ADDR gradProjWeight, GM_ADDR gradNormWeight, GM_ADDR workspace,
-    const BlockAttentionResidualsGradTilingData *td)
+    GM_ADDR partialBlock, GM_ADDR blockRes, GM_ADDR projWeight, GM_ADDR normWeight, GM_ADDR gradHiddenState,
+    GM_ADDR invNorm, GM_ADDR probs, GM_ADDR gradPartialBlock, GM_ADDR gradBlockRes, GM_ADDR gradProjWeight,
+    GM_ADDR gradNormWeight, GM_ADDR workspace, const BlockAttentionResidualsGradTilingData *td)
 {
     batchSize_ = td->batchSize;
     numBlocks_ = td->numBlocks;
@@ -215,8 +213,7 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::Init(
     allWeightWkspGm_.SetGlobalBuffer(userWorkspace,
                                      perCoreWkspBytes_ * static_cast<uint64_t>(coreNum_) / sizeof(float));
     gradScoresWkspGm_.SetGlobalBuffer(userWorkspace + td->gradScoresWkspOff / sizeof(float), B * K);
-    varianceScaleWkspGm_.SetGlobalBuffer(
-        userWorkspace + td->varianceScaleWkspOff / sizeof(float), B * K);
+    varianceScaleWkspGm_.SetGlobalBuffer(userWorkspace + td->varianceScaleWkspOff / sizeof(float), B * K);
 
     uint32_t tile = static_cast<uint32_t>(hiddenTileSize_);
     uint32_t metaBytes = (static_cast<uint32_t>(totalBlocks_) * sizeof(float) + 31U) / 32U * 32U;
@@ -268,8 +265,7 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::ComputeAndSaveGradM
                 length = static_cast<uint32_t>(hiddenTileSize_);
             }
             InitScoreWeightTile(hStart, length);
-            LoadTensorTile(gradHiddenStateGm_, static_cast<uint64_t>(batch) * hiddenSize_ + hStart,
-                           length, gradHidden);
+            LoadTensorTile(gradHiddenStateGm_, static_cast<uint64_t>(batch) * hiddenSize_ + hStart, length, gradHidden);
             for (uint32_t block = 0; block < K; ++block) {
                 LoadTensorTile(GetV(block, batch), hStart, length, v);
 
@@ -299,14 +295,14 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::ComputeAndSaveGradM
 
         SetFlag<HardEvent::S_V>(eventSV_);
         WaitFlag<HardEvent::S_V>(eventSV_);
-        Mul(gradScore, probs, gradProb, K);   // p * dp
+        Mul(gradScore, probs, gradProb, K); // p * dp
         // ReduceSumHalfInterval 对 gradScore 原地折叠，K>64 时折叠后不能作为 p*dp 复用。
         ReduceSumHalfInterval(reduceDstBuf_.Get<float>(), gradScore, static_cast<int32_t>(K));
         SetFlag<HardEvent::V_S>(eventVS_);
         WaitFlag<HardEvent::V_S>(eventVS_);
         float dot = reduceDstBuf_.Get<float>().GetValue(0);
         // Match aten::_softmax_backward_data: p*dp - p*sum(p*dp).
-        Mul(gradScore, probs, gradProb, K);   // 重新计算 p*dp，避免使用被折叠的 gradScore
+        Mul(gradScore, probs, gradProb, K); // 重新计算 p*dp，避免使用被折叠的 gradScore
         Muls(probs, probs, dot, K);
         Sub(gradScore, gradScore, probs, K);
 
@@ -382,8 +378,8 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::ComputeGradVAndWeig
             LoadMeta(varianceScaleWkspGm_, metaOffset, K, varianceScale);
 
             for (uint32_t block = 0; block < K; ++block) {
-                LoadTensorTile(gradHiddenStateGm_, static_cast<uint64_t>(batch) * hiddenSize_ + hStart,
-                               length, gradHidden);
+                LoadTensorTile(gradHiddenStateGm_, static_cast<uint64_t>(batch) * hiddenSize_ + hStart, length,
+                               gradHidden);
                 LoadTensorTile(GetV(block, batch), hStart, length, v);
 
                 SetFlag<HardEvent::V_S>(eventVS_);
@@ -515,13 +511,13 @@ __aicore__ inline void BlockAttentionResidualsGradSplitH<T>::Process()
     eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     eventSV_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
 
-    ComputeAndSaveGradMeta();            // 阶段一：完整 H 归约并保存 gradScore、varianceScale。
-    ComputeGradVAndWeightPartials();     // 阶段二：计算 gradV 和每核权重梯度部分和。
+    ComputeAndSaveGradMeta();        // 阶段一：完整 H 归约并保存 gradScore、varianceScale。
+    ComputeGradVAndWeightPartials(); // 阶段二：计算 gradV 和每核权重梯度部分和。
     // 所有核必须完成 Workspace 写入后，核 0 才能读取并执行最终归约。
     SyncAll();
-    ReduceAndWriteWeights();             // 阶段三：核 0 跨核归约并写出权重梯度。
+    ReduceAndWriteWeights(); // 阶段三：核 0 跨核归约并写出权重梯度。
 }
 
-}  // namespace NsBlockAttentionResidualsGrad
+} // namespace NsBlockAttentionResidualsGrad
 
-#endif  // BLOCK_ATTENTION_RESIDUALS_GRAD_SPLIT_H_SINGLE_PASS_BACKUP_H
+#endif // BLOCK_ATTENTION_RESIDUALS_GRAD_SPLIT_H_SINGLE_PASS_BACKUP_H

@@ -36,13 +36,16 @@ constexpr uint32_t GRAD_SCALAR_SLOTS = 6;
 template <typename D_IN>
 class BlockAttentionResidualsGradRegbase {
 public:
-    __aicore__ inline BlockAttentionResidualsGradRegbase(TPipe *pipe, const BlockAttentionResidualsGradTilingData *tiling)
-        : pipe_(pipe), tiling_(tiling) {}
+    __aicore__ inline BlockAttentionResidualsGradRegbase(TPipe *pipe,
+                                                         const BlockAttentionResidualsGradTilingData *tiling)
+        : pipe_(pipe),
+          tiling_(tiling)
+    {}
 
     __aicore__ inline void Init(GM_ADDR prefixSum, GM_ADDR blockResidual, GM_ADDR projWeight, GM_ADDR normWeight,
-                                GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs,
-                                GM_ADDR gradPrefixSum, GM_ADDR gradBlockResidual,
-                                GM_ADDR gradProjWeight, GM_ADDR gradNormWeight, GM_ADDR workspace);
+                                GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs, GM_ADDR gradPrefixSum,
+                                GM_ADDR gradBlockResidual, GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
+                                GM_ADDR workspace);
 
     __aicore__ inline void Process();
 
@@ -153,11 +156,12 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::InitBuffers()
 }
 
 template <typename D_IN>
-__aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Init(
-    GM_ADDR prefixSum, GM_ADDR blockResidual, GM_ADDR projWeight, GM_ADDR normWeight,
-    GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs,
-    GM_ADDR gradPrefixSum, GM_ADDR gradBlockResidual,
-    GM_ADDR gradProjWeight, GM_ADDR gradNormWeight, GM_ADDR workspace)
+__aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Init(GM_ADDR prefixSum, GM_ADDR blockResidual,
+                                                                      GM_ADDR projWeight, GM_ADDR normWeight,
+                                                                      GM_ADDR gradOutput, GM_ADDR invRms, GM_ADDR probs,
+                                                                      GM_ADDR gradPrefixSum, GM_ADDR gradBlockResidual,
+                                                                      GM_ADDR gradProjWeight, GM_ADDR gradNormWeight,
+                                                                      GM_ADDR workspace)
 {
     batchSize_ = static_cast<uint32_t>(tiling_->batchSize);
     numBlocks_ = static_cast<uint32_t>(tiling_->numBlocks);
@@ -182,8 +186,8 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Init(
     }
 
     // hiddenSize_向上对齐到16的倍数
-    hiddenSizeAlignBf16_ = (hiddenSize_ + GRAD_ELEM_PER_BLK_BF16 - 1U) / GRAD_ELEM_PER_BLK_BF16 *
-                           GRAD_ELEM_PER_BLK_BF16;
+    hiddenSizeAlignBf16_ =
+        (hiddenSize_ + GRAD_ELEM_PER_BLK_BF16 - 1U) / GRAD_ELEM_PER_BLK_BF16 * GRAD_ELEM_PER_BLK_BF16;
     hiddenSizeAlignFp32_ = RegBase::CeilDivU32(hiddenSize_, RegBase::kVlFp32) * RegBase::kVlFp32;
     metaAlign_ = RegBase::CeilDivU32(blockCount_, RegBase::kVlFp32) * RegBase::kVlFp32;
 
@@ -203,11 +207,6 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Init(
     uint64_t wkspOff = perCoreWkspBytes_ * static_cast<uint64_t>(blockIdx_);
     gswWkspGm_.SetGlobalBuffer(userWksp + wkspOff / sizeof(float), hiddenSize_);
     wkspAllGm_.SetGlobalBuffer(userWksp, perCoreWkspBytes_ * static_cast<uint64_t>(coreNum_) / sizeof(float));
-
-    if (GetBlockIdx() == 0U) {
-        AscendC::printf("[BARG_FULL_H] H=%u N=%u K=%u cores=%u\n", hiddenSize_, numBlocks_,
-                        blockCount_, coreNum_);
-    }
 
     InitBuffers();
     LoadScoreWeight();
@@ -240,7 +239,7 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::LoadScoreWeight
 
 template <typename D_IN>
 __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::CopyInRowEnqueue(const GlobalTensor<D_IN> &srcGm,
-                                                                       uint64_t srcOffset)
+                                                                                  uint64_t srcOffset)
 {
     LocalTensor<D_IN> inLocal = inQue_.AllocTensor<D_IN>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
@@ -250,8 +249,8 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::CopyInRowEnqueu
 }
 
 template <typename D_IN>
-__aicore__ inline LocalTensor<D_IN> BlockAttentionResidualsGradRegbase<D_IN>::CopyInRowSync(const GlobalTensor<D_IN> &srcGm,
-                                                                                 uint64_t srcOffset)
+__aicore__ inline LocalTensor<D_IN> BlockAttentionResidualsGradRegbase<D_IN>::CopyInRowSync(
+    const GlobalTensor<D_IN> &srcGm, uint64_t srcOffset)
 {
     LocalTensor<D_IN> inLocal = inQue_.AllocTensor<D_IN>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
@@ -268,7 +267,8 @@ __aicore__ inline const GlobalTensor<D_IN> &BlockAttentionResidualsGradRegbase<D
 }
 
 template <typename D_IN>
-__aicore__ inline uint64_t BlockAttentionResidualsGradRegbase<D_IN>::GetLogicRowOffset(uint32_t tokenIdx, uint32_t n) const
+__aicore__ inline uint64_t BlockAttentionResidualsGradRegbase<D_IN>::GetLogicRowOffset(uint32_t tokenIdx,
+                                                                                       uint32_t n) const
 {
     if (n < numBlocks_) {
         const uint64_t blockBase = static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_;
@@ -294,8 +294,8 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::LoadToken(uint3
     gradOutQue_.FreeTensor(goLocal);
 
     DataCopyExtParams n1Params{1, static_cast<uint32_t>(blockCount_ * sizeof(float)), 0, 0, 0};
-    DataCopyPadExtParams<float> padRight{true, 0, static_cast<uint8_t>(RegBase::RoundUpFp32(blockCount_) -
-                                                                        blockCount_), 0};
+    DataCopyPadExtParams<float> padRight{true, 0, static_cast<uint8_t>(RegBase::RoundUpFp32(blockCount_) - blockCount_),
+                                         0};
     LocalTensor<float> pLocal = probsInQue_.AllocTensor<float>();
     DataCopyPad(pLocal, probsGm_[static_cast<uint64_t>(tokenIdx) * blockCount_], n1Params, padRight);
     probsInQue_.EnQue(pLocal);
@@ -377,8 +377,8 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
         scalarLocal_[3U * RegBase::GRAD_ELEM_PER_BLK_FP32], 1);
     Mul(scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], scalarLocal_[2U * RegBase::GRAD_ELEM_PER_BLK_FP32],
         scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], 1);
-    Muls(scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32],
-         -invH_, 1);
+    Muls(scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], -invH_,
+         1);
     PipeBarrier<PIPE_V>();
 
     // 融合计算 gradV：out + k + var
@@ -386,8 +386,8 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
                          scalarLocal_[1U * RegBase::GRAD_ELEM_PER_BLK_FP32], hiddenSize_);
     PipeBarrier<PIPE_V>();
 
-    RegBase::KahanFusedMulAddDual(gswAcc_, gswCmp_, vRow_,
-                                  scalarLocal_[4U * RegBase::GRAD_ELEM_PER_BLK_FP32], hiddenSize_);
+    RegBase::KahanFusedMulAddDual(gswAcc_, gswCmp_, vRow_, scalarLocal_[4U * RegBase::GRAD_ELEM_PER_BLK_FP32],
+                                  hiddenSize_);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
@@ -402,8 +402,8 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
     outLocal = outQue_.DeQue<D_IN>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
     if (blk < numBlocks_) {
-        const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_ +
-                                  static_cast<uint64_t>(blk) * hiddenSize_;
+        const uint64_t gmOffset =
+            static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_ + static_cast<uint64_t>(blk) * hiddenSize_;
         DataCopyPad(gradBlockResGm_[gmOffset], outLocal, copyParams);
     } else {
         DataCopyPad(gradPrefixSumGm_[static_cast<uint64_t>(tokenIdx) * hiddenSize_], outLocal, copyParams);

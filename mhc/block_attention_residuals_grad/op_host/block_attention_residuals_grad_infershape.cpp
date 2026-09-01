@@ -8,27 +8,24 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "register/op_impl_registry.h"
 #include "log/log.h"
 
 using namespace ge;
 
 namespace ops {
-static bool CheckShapeBlockAttentionResidualsGrad(gert::InferShapeContext* context,
-                                       int64_t& B, int64_t& N, int64_t& H)
+static bool CheckShapeBlockAttentionResidualsGrad(gert::InferShapeContext *context, int64_t &B, int64_t &N, int64_t &H)
 {
-    const gert::Shape* psShape = context->GetInputShape(0);
-    const gert::Shape* brShape = context->GetInputShape(1);
-    const gert::Shape* pwShape = context->GetInputShape(2);
-    const gert::Shape* nwShape = context->GetInputShape(3);
-    const gert::Shape* gradHiddenStateShape = context->GetInputShape(4);
-    const gert::Shape* irShape = context->GetInputShape(5);
-    const gert::Shape* pbShape = context->GetInputShape(6);
+    const gert::Shape *psShape = context->GetInputShape(0);
+    const gert::Shape *brShape = context->GetInputShape(1);
+    const gert::Shape *pwShape = context->GetInputShape(2);
+    const gert::Shape *nwShape = context->GetInputShape(3);
+    const gert::Shape *gradHiddenStateShape = context->GetInputShape(4);
+    const gert::Shape *irShape = context->GetInputShape(5);
+    const gert::Shape *pbShape = context->GetInputShape(6);
 
-    if (psShape->GetDimNum() != 2 || brShape->GetDimNum() != 3 ||
-        pwShape->GetDimNum() != 2 || nwShape->GetDimNum() != 1 ||
-        gradHiddenStateShape->GetDimNum() != 2 || irShape->GetDimNum() != 2 ||
+    if (psShape->GetDimNum() != 2 || brShape->GetDimNum() != 3 || pwShape->GetDimNum() != 2 ||
+        nwShape->GetDimNum() != 1 || gradHiddenStateShape->GetDimNum() != 2 || irShape->GetDimNum() != 2 ||
         pbShape->GetDimNum() != 2) {
         return false;
     }
@@ -37,12 +34,12 @@ static bool CheckShapeBlockAttentionResidualsGrad(gert::InferShapeContext* conte
     H = psShape->GetDim(1);
     N = brShape->GetDim(1);
 
-    if (brShape->GetDim(0) != B || gradHiddenStateShape->GetDim(0) != B ||
-        irShape->GetDim(0) != B || pbShape->GetDim(0) != B) {
+    if (brShape->GetDim(0) != B || gradHiddenStateShape->GetDim(0) != B || irShape->GetDim(0) != B ||
+        pbShape->GetDim(0) != B) {
         return false;
     }
-    if (brShape->GetDim(2) != H || pwShape->GetDim(0) != 1 || pwShape->GetDim(1) != H ||
-        nwShape->GetDim(0) != H || gradHiddenStateShape->GetDim(1) != H) {
+    if (brShape->GetDim(2) != H || pwShape->GetDim(0) != 1 || pwShape->GetDim(1) != H || nwShape->GetDim(0) != H ||
+        gradHiddenStateShape->GetDim(1) != H) {
         return false;
     }
     if (irShape->GetDim(1) != N + 1 || pbShape->GetDim(1) != N + 1) {
@@ -52,7 +49,7 @@ static bool CheckShapeBlockAttentionResidualsGrad(gert::InferShapeContext* conte
     return true;
 }
 
-static ge::graphStatus InferShapeBlockAttentionResidualsGrad(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeBlockAttentionResidualsGrad(gert::InferShapeContext *context)
 {
     int64_t B = 0, N = 0, H = 0;
     if (!CheckShapeBlockAttentionResidualsGrad(context, B, N, H)) {
@@ -82,7 +79,7 @@ static ge::graphStatus InferShapeBlockAttentionResidualsGrad(gert::InferShapeCon
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeBlockAttentionResidualsGrad(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeBlockAttentionResidualsGrad(gert::InferDataTypeContext *context)
 {
     const auto invNormDtype = context->GetInputDataType(5);
     const auto probsDtype = context->GetInputDataType(6);
@@ -104,4 +101,4 @@ static ge::graphStatus InferDataTypeBlockAttentionResidualsGrad(gert::InferDataT
 IMPL_OP_INFERSHAPE(BlockAttentionResidualsGrad)
     .InferShape(InferShapeBlockAttentionResidualsGrad)
     .InferDataType(InferDataTypeBlockAttentionResidualsGrad);
-}
+} // namespace ops

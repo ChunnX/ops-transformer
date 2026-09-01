@@ -125,7 +125,7 @@ constexpr uint32_t REDUCE_TREE_WIDTH = 8;
 
 /*! 8-way blocked tree accumulation for dot products. */
 __aicore__ inline void ReduceMulSumTree(const LocalTensor<float> &dstScalar, const LocalTensor<float> &src0,
-                                    const LocalTensor<float> &src1, uint32_t elemCount)
+                                        const LocalTensor<float> &src1, uint32_t elemCount)
 {
     __local_mem__ float *aAddr = (__local_mem__ float *)src0.GetPhyAddr();
     __local_mem__ float *bAddr = (__local_mem__ float *)src1.GetPhyAddr();
@@ -153,14 +153,30 @@ __aicore__ inline void ReduceMulSumTree(const LocalTensor<float> &dstScalar, con
             Mul(prod, a, b, mask);
             ReduceSum(part, prod, mask);
             switch (i % REDUCE_TREE_WIDTH) {
-                case 0: Add(acc0, acc0, part, maskAll); break;
-                case 1: Add(acc1, acc1, part, maskAll); break;
-                case 2: Add(acc2, acc2, part, maskAll); break;
-                case 3: Add(acc3, acc3, part, maskAll); break;
-                case 4: Add(acc4, acc4, part, maskAll); break;
-                case 5: Add(acc5, acc5, part, maskAll); break;
-                case 6: Add(acc6, acc6, part, maskAll); break;
-                default: Add(acc7, acc7, part, maskAll); break;
+                case 0:
+                    Add(acc0, acc0, part, maskAll);
+                    break;
+                case 1:
+                    Add(acc1, acc1, part, maskAll);
+                    break;
+                case 2:
+                    Add(acc2, acc2, part, maskAll);
+                    break;
+                case 3:
+                    Add(acc3, acc3, part, maskAll);
+                    break;
+                case 4:
+                    Add(acc4, acc4, part, maskAll);
+                    break;
+                case 5:
+                    Add(acc5, acc5, part, maskAll);
+                    break;
+                case 6:
+                    Add(acc6, acc6, part, maskAll);
+                    break;
+                default:
+                    Add(acc7, acc7, part, maskAll);
+                    break;
             }
         }
         Add(acc0, acc0, acc4, maskAll);
@@ -186,16 +202,15 @@ __aicore__ inline void ReduceMulSum(const LocalTensor<float> &dstScalar, const L
  * sumTensorList[outPos] holds the running sum and the other slot the
  * compensation; roles swap after each update (same scheme as arch22).
  */
-__aicore__ inline void KahanSumUpdate(LocalTensor<float> &inputTensor,
-                                      LocalTensor<float> sumTensorList[2],
-                                      int32_t len, int32_t &outPos)
+__aicore__ inline void KahanSumUpdate(LocalTensor<float> &inputTensor, LocalTensor<float> sumTensorList[2], int32_t len,
+                                      int32_t &outPos)
 {
     LocalTensor<float> sumTensor = sumTensorList[outPos];
     LocalTensor<float> eTensor = sumTensorList[1 - outPos];
-    AscendC::Sub(inputTensor, inputTensor, eTensor, len);   // y = x - e
-    AscendC::Add(eTensor, inputTensor, sumTensor, len);     // t = y + s
-    AscendC::Sub(sumTensor, eTensor, sumTensor, len);       // e = t - s
-    AscendC::Sub(sumTensor, sumTensor, inputTensor, len);   // e = (t - s) - y
+    AscendC::Sub(inputTensor, inputTensor, eTensor, len); // y = x - e
+    AscendC::Add(eTensor, inputTensor, sumTensor, len);   // t = y + s
+    AscendC::Sub(sumTensor, eTensor, sumTensor, len);     // e = t - s
+    AscendC::Sub(sumTensor, sumTensor, inputTensor, len); // e = (t - s) - y
     outPos = 1 - outPos;
 }
 
