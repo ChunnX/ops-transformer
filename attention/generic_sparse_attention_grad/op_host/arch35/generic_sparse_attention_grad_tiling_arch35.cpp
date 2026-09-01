@@ -25,6 +25,8 @@ namespace GSAG_ARC35 {
 
 static constexpr int64_t HEAD_DIM = 128;
 static constexpr int64_t BASE_M = 128;
+static constexpr int64_t MAX_HEAD_NUM = 128;
+static constexpr uint32_t SUPPORTED_MASK_TYPE = 1;
 
 int64_t AlignTo(int64_t x, int64_t align)
 {
@@ -69,6 +71,18 @@ protected:
         }
         if (isPackedGqa_ != 1) {
             OP_LOGE(context_->GetNodeName(), "only support is_packed_gqa == 1.");
+            return false;
+        }
+        if (qHeadNum_ <= 0 || qHeadNum_ > MAX_HEAD_NUM) {
+            OP_LOGE(context_->GetNodeName(), "qHeadNum=%ld must be in [1, %ld].", qHeadNum_, MAX_HEAD_NUM);
+            return false;
+        }
+        if (kvHeadNum_ <= 0 || kvHeadNum_ > MAX_HEAD_NUM) {
+            OP_LOGE(context_->GetNodeName(), "kvHeadNum=%ld must be in [1, %ld].", kvHeadNum_, MAX_HEAD_NUM);
+            return false;
+        }
+        if (maskType_ != SUPPORTED_MASK_TYPE) {
+            OP_LOGE(context_->GetNodeName(), "only support mask_type == %u, got %u.", SUPPORTED_MASK_TYPE, maskType_);
             return false;
         }
         return true;

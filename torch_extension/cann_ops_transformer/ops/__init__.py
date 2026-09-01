@@ -118,6 +118,7 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "generic_sparse_attention_grad": "attention.generic_sparse_attention_grad",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
@@ -166,7 +167,3 @@ if __name__ == "cann_ops_transformer.ops":
             _sys.modules["cann_ops_transformer.ops.%s" % _old_name] = _new_mod
         except (ImportError, RuntimeError, AttributeError) as _e:
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
-
-
-# Centralized operators not yet migrated to distributed structure
-from .generic_sparse_attention_grad import generic_sparse_attention_grad

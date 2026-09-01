@@ -39,7 +39,7 @@
 | q_input_layout / kv_input_layout | 属性 | TND / BNSD / BSND，须一致 |
 | mask_type / softmax_precision | 属性 | 传递给主算子 |
 | window_size_left / window_size_right | 属性 | 当前须为 -1 |
-| metadata | 输出 | int64，shape `[4096]` |
+| metadata | 输出 | int64，shape `[metaSize]`，metaSize = 80 + B × N1 × J × 4 |
 
 ## Metadata 布局
 
@@ -61,6 +61,8 @@
 
 - `aclnnGenericSparseAttentionGradMetadataGetWorkspaceSize`
 - `aclnnGenericSparseAttentionGradMetadata`
+
+详细接口说明见 [docs/aclnnGenericSparseAttentionGradMetadata.md](docs/aclnnGenericSparseAttentionGradMetadata.md)。
 
 ## 目录结构
 

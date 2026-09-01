@@ -297,7 +297,7 @@ public:
         s1_process_ = runTimeInfo.s1Len;
         s1_process_align_ = runTimeInfo.s1LenAlign;
         s2_process_align_ = runTimeInfo.s2LenAlign;
-        // Match Cube dualDstCtl=1 / BSAG: each AIV owns mAlign/2 (pad rows may be empty).
+        // Match Cube dualDstCtl=1 / each AIV owns mAlign/2 (pad rows may be empty).
         half_s1_process_align_ = s1_process_align_ / 2;
         if (v_sub_core_idx_ == 0) {
             half_s1_process_real_ =
@@ -427,7 +427,6 @@ public:
         }
     }
 
-
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                           const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
@@ -456,7 +455,7 @@ public:
         WAIT_FLAG(S, V, EVENT_ID1);
         PipeBarrier<PIPE_V>();
         // Softmax on real rows only; pad [real, align) to 0 so CastND2NZ/DataCopy
-        // can use half_s1_process_align_ (must match NZ fractal / BSAG).
+        // can use half_s1_process_align_ (must match NZ fractal).
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                       (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_real_, s2_process_align_);
         if (half_s1_process_real_ < half_s1_process_align_) {
@@ -534,7 +533,7 @@ public:
     }
 
     /**
-     * SFAG-style ScatterAdd for dQ_sel: Cube Fixpiped [mAlign,D] to GM scratch;
+     * ScatterAdd for dQ_sel: Cube Fixpiped [mAlign,D] to GM scratch;
      * AIV0/AIV1 each take half of real rows, batch rows GM->UB, then AtomicAdd to dq.
      * Event chain: MTE3<->MTE2 (UB reuse) + MTE2<->MTE3 (load->atomic).
      */
@@ -696,7 +695,7 @@ private:
         LocalTensor<float> dy_out_tensor = sftg_ping_pong_idx ? dy_out_ping_ : dy_out_pong_;
         LocalTensor<float> attention_out_tensor = sftg_ping_pong_idx ? attention_out_ping_ : attention_out_pong_;
         LocalTensor<float> sftg_front_tensor = sftg_ping_pong_idx ? sftg_front_ping_ : sftg_front_pong_;
-        uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
+        uint32_t process_size = info.max_process_size;
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
             src_stride = q_head_num_ * head_dim_;

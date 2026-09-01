@@ -27,12 +27,6 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 endif()
 
-# Device printf is compiled out unless ASCENDC_DUMP!=0.
-add_ops_compile_options(
-        OP_NAME GenericSparseAttentionGrad
-        OPTIONS -DASCENDC_DUMP=1
-)
-
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
             OP_NAME GenericSparseAttentionGrad

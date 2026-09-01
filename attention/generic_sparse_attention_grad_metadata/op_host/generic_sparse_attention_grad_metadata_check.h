@@ -34,10 +34,13 @@ inline bool IsTensorExist(const aclTensor *tensor)
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0);
 }
 
+static constexpr int64_t GSAG_MAX_HEAD_NUM = 128;
+static constexpr int64_t GSAG_SUPPORTED_MASK_TYPE = 1;
+
 aclnnStatus CheckSingleParam(int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t numQHeads, int64_t numKvHeads,
                              int64_t headDim, int64_t blockShapeX, int64_t blockShapeY, int64_t isPackedGQA,
-                             const char *layoutQ, const char *layoutKv, int64_t winLeft, int64_t winRight,
-                             uint32_t aicCoreNum, uint32_t aivCoreNum)
+                             const char *layoutQ, const char *layoutKv, int64_t maskType, int64_t winLeft,
+                             int64_t winRight, uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
     if (maxQSeqlen < 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GSAG_ACLNN_OP_NAME, "max_q_seqlen", std::to_string(maxQSeqlen),
@@ -49,20 +52,24 @@ aclnnStatus CheckSingleParam(int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t nu
                                               "The value of max_kv_seqlen must be greater than or equal to 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (numQHeads <= 0) {
+    if (numQHeads <= 0 || numQHeads > GSAG_MAX_HEAD_NUM) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GSAG_ACLNN_OP_NAME, "num_q_heads", std::to_string(numQHeads),
-                                              "The value of num_q_heads must be greater than 0");
+                                              "The value of num_q_heads must be in [1, 128]");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (numKvHeads <= 0) {
+    if (numKvHeads <= 0 || numKvHeads > GSAG_MAX_HEAD_NUM) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GSAG_ACLNN_OP_NAME, "num_kv_heads", std::to_string(numKvHeads),
-                                              "The value of num_kv_heads must be greater than 0");
+                                              "The value of num_kv_heads must be in [1, 128]");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (numQHeads % numKvHeads != 0) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GSAG_ACLNN_OP_NAME, "num_q_heads, num_kv_heads",
                                                std::to_string(numQHeads) + ", " + std::to_string(numKvHeads),
                                                "num_q_heads must be divisible by num_kv_heads");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (maskType != GSAG_SUPPORTED_MASK_TYPE) {
+        OP_LOGE_FOR_INVALID_VALUE(GSAG_ACLNN_OP_NAME, "mask_type", std::to_string(maskType), "1");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (headDim != 128) {
@@ -256,12 +263,12 @@ static aclnnStatus ParamsCheck(const aclTensor *rsvdBlockIdx, const aclTensor *r
 {
     (void)sequsedQOptional;
     (void)sequsedKvOptional;
-    (void)maskType;
     (void)softmaxPrecision;
     (void)socVersion;
 
     if (CheckSingleParam(maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY,
-                         isPackedGQA, layoutQ, layoutKv, winLeft, winRight, aicCoreNum, aivCoreNum) != ACLNN_SUCCESS) {
+                         isPackedGQA, layoutQ, layoutKv, maskType, winLeft, winRight, aicCoreNum,
+                         aivCoreNum) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (CheckExistence(rsvdBlockIdx, rsvdBlockCount, cuSeqLengthsQOptional, cuSeqLengthsKvOptional, layoutQ, layoutKv,
