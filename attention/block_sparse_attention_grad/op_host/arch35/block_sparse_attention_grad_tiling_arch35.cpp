@@ -13,9 +13,16 @@
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
+#include <cmath>
 
 namespace optiling {
 namespace BSA_ARC35 {
+
+constexpr int32_t MAX_BATCH_SIZE = 20000;
+constexpr int32_t MAX_TOKEN_COUNT = 1024 * 1024;
+constexpr int32_t MAX_HEAD_NUM = 256;
+constexpr int32_t SUPPORTED_HEAD_DIM = 128;
+constexpr int32_t MIN_BLOCK_SHAPE = 16;
 
 int64_t AlignTo(int64_t x, int64_t align)
 {
@@ -41,22 +48,31 @@ bool IsSameShape(Args... shapes)
 }
 
 ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vector<int32_t> &k_shape,
-                           const std::vector<int32_t> &v_shape, const int32_t q_group, gert::TilingContext *context)
+                           const std::vector<int32_t> &v_shape, const bool isTnd, gert::TilingContext *context)
 {
     /* function: 根据固定格式传入shape检查输入是否符合要求
      * shape：[b, n, s, d]
      */
-    if (!IsSameShape(q_shape[0], k_shape[0], v_shape[0])) {
+    if (q_shape[0] <= 0 || q_shape[0] > MAX_BATCH_SIZE) {
+        OP_LOGE(context->GetNodeName(), "batch size must be in [1, 20000], but got %d.", q_shape[0]);
+        return ge::GRAPH_FAILED;
+    } else if (!IsSameShape(q_shape[0], k_shape[0], v_shape[0])) {
         OP_LOGE(context->GetNodeName(), "q_batch must be same as k_batch and v_batch.");
         return ge::GRAPH_FAILED;
-    } else if (!IsSameShape(q_shape[1], k_shape[1] * q_group, v_shape[1] * q_group)) {
-        OP_LOGE(context->GetNodeName(), "q_group * kv_head_num must same as q_head_num.");
+    } else if (q_shape[1] <= 0 || q_shape[1] > MAX_HEAD_NUM || k_shape[1] <= 0 ||
+               q_shape[1] % k_shape[1] != 0 || k_shape[1] != v_shape[1]) {
+        OP_LOGE(context->GetNodeName(),
+                "NQ must be in [1, 256], NKV must be positive, key/value heads must match, and NQ must be divisible by NKV.");
         return ge::GRAPH_FAILED;
-    } else if (!IsSameShape(q_shape[2], k_shape[2], v_shape[2])) {
-        OP_LOGE(context->GetNodeName(), "q_seq_len must be same as k_seq_len and v_seq_len.");
+    } else if (q_shape[2] <= 0 || k_shape[2] <= 0 || k_shape[2] != v_shape[2] ||
+               (isTnd && (q_shape[2] > MAX_TOKEN_COUNT || k_shape[2] > MAX_TOKEN_COUNT)) ||
+               (!isTnd && (q_shape[2] > MAX_TOKEN_COUNT / q_shape[0] ||
+                           k_shape[2] > MAX_TOKEN_COUNT / q_shape[0]))) {
+        OP_LOGE(context->GetNodeName(),
+                "Q/KV sequence lengths must be positive, K/V lengths must match, and total Q/KV tokens must not exceed 1048576.");
         return ge::GRAPH_FAILED;
-    } else if (!IsSameShape(q_shape[3], k_shape[3], v_shape[3])) {
-        OP_LOGE(context->GetNodeName(), "q_head_dim must be same as k_head_dim and v_head_dim.");
+    } else if (!IsSameShape(q_shape[3], k_shape[3], v_shape[3], SUPPORTED_HEAD_DIM)) {
+        OP_LOGE(context->GetNodeName(), "q/k/v head dimension must all be 128.");
         return ge::GRAPH_FAILED;
     }
 
@@ -83,14 +99,16 @@ protected:
             return false;
         }
 
-        if (head_dim_ != 128) {
+        if (head_dim_ != SUPPORTED_HEAD_DIM) {
             OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support head_dim 128.");
             return false;
         }
 
-        if (blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
+        if (blockShapeX_ < MIN_BLOCK_SHAPE || blockShapeY_ < MIN_BLOCK_SHAPE ||
+            blockShapeX_ > MAX_TOKEN_COUNT || blockShapeY_ > MAX_TOKEN_COUNT ||
+            blockShapeX_ % MIN_BLOCK_SHAPE != 0 || blockShapeY_ % MIN_BLOCK_SHAPE != 0) {
             OP_LOGE(context_->GetNodeName(),
-                    "BlockSparseAttentionGrad only supports blockShapeX and blockShapeY that are multiples of 16.");
+                    "BlockSparseAttentionGrad requires blockShapeX/Y in [16, 1048576] and multiples of 16.");
             return false;
         }
 
@@ -102,16 +120,50 @@ protected:
         int32_t q_batch_num, q_group, q_head_num, q_seq_len, q_head_dim;
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
+        auto attrs = context_->GetAttrs();
+        if (attrs == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "Attrs is nullptr.");
+            return ge::GRAPH_FAILED;
+        }
         auto qInputDesc = context_->GetInputDesc(1);
+        auto kInputDesc = context_->GetInputDesc(2);
+        auto vInputDesc = context_->GetInputDesc(3);
+        auto doutInputDesc = context_->GetInputDesc(0);
+        auto outInputDesc = context_->GetInputDesc(4);
+        auto lseInputDesc = context_->GetInputDesc(5);
         const gert::StorageShape *queryShape = context_->GetInputShape(1);
         const gert::StorageShape *keyShape = context_->GetInputShape(2);
         const gert::StorageShape *valueShape = context_->GetInputShape(3);
-        const char *qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
-        const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
-        const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
+        const gert::StorageShape *doutShape = context_->GetInputShape(0);
+        const gert::StorageShape *attentionOutShape = context_->GetInputShape(4);
+        const gert::StorageShape *softmaxLseShape = context_->GetInputShape(5);
+        const gert::StorageShape *blockSparseMaskShape = context_->GetInputShape(6);
+        const char *qInputLayout = attrs->GetAttrPointer<char>(0);
+        const char *kvInputLayout = attrs->GetAttrPointer<char>(1);
+        const int64_t *numKeyValueHeads = attrs->GetAttrPointer<int64_t>(2);
+        const int64_t *maskType = attrs->GetAttrPointer<int64_t>(3);
+        const float *softmaxScalePtr = attrs->GetAttrPointer<float>(4);
+        const int64_t *preTokens = attrs->GetAttrPointer<int64_t>(5);
+        const int64_t *nextTokens = attrs->GetAttrPointer<int64_t>(6);
+        if (qInputLayout == nullptr || kvInputLayout == nullptr || numKeyValueHeads == nullptr || maskType == nullptr ||
+            softmaxScalePtr == nullptr || preTokens == nullptr || nextTokens == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "Required attrs must not be nullptr.");
+            return ge::GRAPH_FAILED;
+        }
+        if (*maskType != 0 || *preTokens != 2147483647 || *nextTokens != 2147483647 ||
+            !std::isfinite(*softmaxScalePtr)) {
+            OP_LOGE(context_->GetNodeName(),
+                    "maskType must be 0, preTokens/nextTokens must be 2147483647, and scaleValue must be finite.");
+            return ge::GRAPH_FAILED;
+        }
+        const float softmaxScale = *softmaxScalePtr;
         auto blockShapeOptional = context_->GetInputTensor(8);
         if (blockShapeOptional == nullptr) {
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
+            return ge::GRAPH_FAILED;
+        }
+        if (blockShapeOptional->GetShapeSize() != 2) {
+            OP_LOGE(context_->GetNodeName(), "Block shape must contain exactly two elements.");
             return ge::GRAPH_FAILED;
         }
         const int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
@@ -119,12 +171,26 @@ protected:
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
+        if (blockShapeList[0] < MIN_BLOCK_SHAPE || blockShapeList[1] < MIN_BLOCK_SHAPE ||
+            blockShapeList[0] > MAX_TOKEN_COUNT || blockShapeList[1] > MAX_TOKEN_COUNT ||
+            blockShapeList[0] % MIN_BLOCK_SHAPE != 0 || blockShapeList[1] % MIN_BLOCK_SHAPE != 0) {
+            OP_LOGE(context_->GetNodeName(), "Block shape values must be in [16, 1048576] and multiples of 16.");
+            return ge::GRAPH_FAILED;
+        }
 
-        if (qInputDesc == nullptr) {
-            OP_LOGE(context_->GetNodeName(), "Query inputDesc is null");
+        if (qInputDesc == nullptr || kInputDesc == nullptr || vInputDesc == nullptr || doutInputDesc == nullptr ||
+            outInputDesc == nullptr || lseInputDesc == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "Required inputDesc is null");
             return ge::GRAPH_FAILED;
         } else {
             dataType_ = qInputDesc->GetDataType();
+        }
+        if ((dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) ||
+            kInputDesc->GetDataType() != dataType_ || vInputDesc->GetDataType() != dataType_ ||
+            doutInputDesc->GetDataType() != dataType_ || outInputDesc->GetDataType() != dataType_ ||
+            lseInputDesc->GetDataType() != ge::DT_FLOAT) {
+            OP_LOGE(context_->GetNodeName(), "Q/K/V/dout/attentionOut dtypes must match and softmaxLse must be FLOAT32.");
+            return ge::GRAPH_FAILED;
         }
 
         if (strcmp(qInputLayout, kvInputLayout) != 0) {
@@ -132,15 +198,23 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
-        if (queryShape == nullptr || keyShape == nullptr || valueShape == nullptr) {
-            OP_LOGE(context_->GetNodeName(), "queryShape or keyShape or valueShape is nullptr.");
+        if (queryShape == nullptr || keyShape == nullptr || valueShape == nullptr || doutShape == nullptr ||
+            attentionOutShape == nullptr || softmaxLseShape == nullptr || blockSparseMaskShape == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "Required input shape is nullptr.");
+            return ge::GRAPH_FAILED;
+        }
+        if (blockSparseMaskShape->GetOriginShape().GetDimNum() != 4) {
+            OP_LOGE(context_->GetNodeName(), "blockSparseMask must be 4 dimensional.");
             return ge::GRAPH_FAILED;
         }
 
         if (strcmp(qInputLayout, BSND_STR) == 0) {
             // BSND layout
-            if (queryShape->GetOriginShape().GetDimNum() != 4) {
-                OP_LOGE(context_->GetNodeName(), "The shape of query must be 4 dimension.");
+            if (queryShape->GetOriginShape().GetDimNum() != 4 || keyShape->GetOriginShape().GetDimNum() != 4 ||
+                valueShape->GetOriginShape().GetDimNum() != 4 || doutShape->GetOriginShape().GetDimNum() != 4 ||
+                attentionOutShape->GetOriginShape().GetDimNum() != 4 ||
+                softmaxLseShape->GetOriginShape().GetDimNum() != 4) {
+                OP_LOGE(context_->GetNodeName(), "BSND tensors must be 4 dimensional.");
                 return ge::GRAPH_FAILED;
             }
             // query
@@ -158,11 +232,13 @@ protected:
             v_seq_len = valueShape->GetStorageShape().GetDim(1);
             v_head_num = valueShape->GetStorageShape().GetDim(2);
             v_head_dim = valueShape->GetStorageShape().GetDim(3);
-            q_group = q_head_num / k_head_num;
         } else if (strcmp(qInputLayout, BNSD_STR) == 0) {
             // BNSD layout
-            if (queryShape->GetOriginShape().GetDimNum() != 4) {
-                OP_LOGE(context_->GetNodeName(), "The shape of query must be 4 dimension.");
+            if (queryShape->GetOriginShape().GetDimNum() != 4 || keyShape->GetOriginShape().GetDimNum() != 4 ||
+                valueShape->GetOriginShape().GetDimNum() != 4 || doutShape->GetOriginShape().GetDimNum() != 4 ||
+                attentionOutShape->GetOriginShape().GetDimNum() != 4 ||
+                softmaxLseShape->GetOriginShape().GetDimNum() != 4) {
+                OP_LOGE(context_->GetNodeName(), "BNSD tensors must be 4 dimensional.");
                 return ge::GRAPH_FAILED;
             }
             // query
@@ -180,11 +256,13 @@ protected:
             v_head_num = valueShape->GetStorageShape().GetDim(1);
             v_seq_len = valueShape->GetStorageShape().GetDim(2);
             v_head_dim = valueShape->GetStorageShape().GetDim(3);
-            q_group = q_head_num / k_head_num;
         } else if (strcmp(qInputLayout, TND_STR) == 0) {
             // TND layout
-            if (queryShape->GetOriginShape().GetDimNum() != 3) {
-                OP_LOGE(context_->GetNodeName(), "The shape of query must be 3 dimension.");
+            if (queryShape->GetOriginShape().GetDimNum() != 3 || keyShape->GetOriginShape().GetDimNum() != 3 ||
+                valueShape->GetOriginShape().GetDimNum() != 3 || doutShape->GetOriginShape().GetDimNum() != 3 ||
+                attentionOutShape->GetOriginShape().GetDimNum() != 3 ||
+                softmaxLseShape->GetOriginShape().GetDimNum() != 3) {
+                OP_LOGE(context_->GetNodeName(), "TND tensors must be 3 dimensional.");
                 return ge::GRAPH_FAILED;
             }
             auto actualSeqLengths = context_->GetOptionalInputTensor(9);
@@ -197,6 +275,10 @@ protected:
             q_batch_num = static_cast<uint32_t>(actualSeqLengths->GetShapeSize());
             k_batch_num = static_cast<uint32_t>(actualKVSeqLengths->GetShapeSize());
             v_batch_num = k_batch_num;
+            if (q_batch_num != k_batch_num || q_batch_num <= 0 || q_batch_num > MAX_BATCH_SIZE) {
+                OP_LOGE(context_->GetNodeName(), "TND actualSeqLengths Q/KV sizes must match and be in [1, 20000].");
+                return ge::GRAPH_FAILED;
+            }
             // query
             q_seq_len = queryShape->GetStorageShape().GetDim(0);
             q_head_num = queryShape->GetStorageShape().GetDim(1);
@@ -212,6 +294,35 @@ protected:
             q_group = q_head_num / k_head_num;
         } else {
             OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSND or BNSD or TND.");
+            return ge::GRAPH_FAILED;
+        }
+
+        if (k_head_num <= 0 || q_head_num <= 0 || q_head_num % k_head_num != 0) {
+            OP_LOGE(context_->GetNodeName(), "NKV must be positive and NQ must be divisible by NKV.");
+            return ge::GRAPH_FAILED;
+        }
+        q_group = q_head_num / k_head_num;
+        if (*numKeyValueHeads != k_head_num) {
+            OP_LOGE(context_->GetNodeName(), "numKeyValueHeads must equal the key/value N dimension.");
+            return ge::GRAPH_FAILED;
+        }
+
+        const auto &qStorage = queryShape->GetStorageShape();
+        const auto &doutStorage = doutShape->GetStorageShape();
+        const auto &outStorage = attentionOutShape->GetStorageShape();
+        for (size_t i = 0; i < qStorage.GetDimNum(); ++i) {
+            if (qStorage.GetDim(i) != doutStorage.GetDim(i) || qStorage.GetDim(i) != outStorage.GetDim(i)) {
+                OP_LOGE(context_->GetNodeName(), "dout and attentionOut shapes must equal query shape.");
+                return ge::GRAPH_FAILED;
+            }
+        }
+        const auto &lseStorage = softmaxLseShape->GetStorageShape();
+        if ((strcmp(qInputLayout, TND_STR) == 0 &&
+             (lseStorage.GetDim(0) != q_seq_len || lseStorage.GetDim(1) != q_head_num || lseStorage.GetDim(2) != 1)) ||
+            (strcmp(qInputLayout, TND_STR) != 0 &&
+             (lseStorage.GetDim(0) != q_batch_num || lseStorage.GetDim(1) != q_head_num ||
+              lseStorage.GetDim(2) != q_seq_len || lseStorage.GetDim(3) != 1))) {
+            OP_LOGE(context_->GetNodeName(), "softmaxLse must be [TQ,NQ,1] for TND or [B,NQ,SQ,1] otherwise.");
             return ge::GRAPH_FAILED;
         }
 
@@ -236,7 +347,8 @@ protected:
 
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
                           {k_batch_num, k_head_num, k_seq_len, k_head_dim},
-                          {v_batch_num, v_head_num, v_seq_len, v_head_dim}, q_group, context_);
+                          {v_batch_num, v_head_num, v_seq_len, v_head_dim}, strcmp(qInputLayout, TND_STR) == 0,
+                          context_);
     }
 
     ge::graphStatus GetPlatformInfo() override
@@ -286,15 +398,15 @@ protected:
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
         if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
-            dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
+            dq_size = static_cast<uint64_t>(batch_num_) * q_seq_len_ * q_head_num_ * head_dim_;
+            dk_size = static_cast<uint64_t>(batch_num_) * kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
-            sftg_size = batch_num_ * q_head_num_ * q_seq_len_ * 8;
+            sftg_size = static_cast<uint64_t>(batch_num_) * q_head_num_ * q_seq_len_ * 8;
         } else if (strcmp(layout_, TND_STR) == 0) {
-            dq_size = q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = kv_seq_len_ * kv_head_num_ * head_dim_;
+            dq_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * head_dim_;
+            dk_size = static_cast<uint64_t>(kv_seq_len_) * kv_head_num_ * head_dim_;
             dv_size = dk_size;
-            sftg_size = q_seq_len_ * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
+            sftg_size = static_cast<uint64_t>(q_seq_len_) * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {
             OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
             return ge::GRAPH_FAILED;
