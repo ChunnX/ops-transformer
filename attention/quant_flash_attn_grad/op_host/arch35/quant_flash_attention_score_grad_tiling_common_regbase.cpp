@@ -29,20 +29,18 @@ ge::graphStatus CheckSoftmaxLseShape(gert::TilingContext *context, int64_t b, in
     }
     auto softmaxLseShapeDim = softmaxLseShape->GetStorageShape().GetDimNum();
     if (softmaxLseShapeDim != 3) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                                 "softmaxLse",
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad", "softmaxLse",
                                                  std::to_string(softmaxLseShapeDim).c_str(),
                                                  "The shape dim of softmaxLse must be 3");
         return ge::GRAPH_FAILED;
     }
-    auto dim0 = softmaxLseShape->GetStorageShape().GetDim(0);  // b
-    auto dim1 = softmaxLseShape->GetStorageShape().GetDim(1);  // n1
-    auto dim2 = softmaxLseShape->GetStorageShape().GetDim(2);  // s1
-    std::string reasonMsg = "The shape of softmaxLse must be [" + std::to_string(b) + "," + std::to_string(n1) +
-                            "," + std::to_string(s1) + "]";
+    auto dim0 = softmaxLseShape->GetStorageShape().GetDim(0); // b
+    auto dim1 = softmaxLseShape->GetStorageShape().GetDim(1); // n1
+    auto dim2 = softmaxLseShape->GetStorageShape().GetDim(2); // s1
+    std::string reasonMsg = "The shape of softmaxLse must be [" + std::to_string(b) + "," + std::to_string(n1) + "," +
+                            std::to_string(s1) + "]";
     OP_CHECK_IF((dim0 != b || dim1 != n1 || dim2 != s1),
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                                       "softmaxLse",
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("QuantFlashAttentionScoreGrad", "softmaxLse",
                                                        Ops::Base::ToString(softmaxLseShape->GetStorageShape()).c_str(),
                                                        reasonMsg.c_str()),
                 return ge::GRAPH_FAILED);
@@ -165,70 +163,58 @@ ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const F
         int64_t deqScaleDyDimNum = deqScaleDyStorageShape.GetDimNum();
         if (deqScaleQDimNum == 1) {
             int64_t deqScaleQDim0 = deqScaleQStorageShape.GetDim(INPUT_DIM_0);
-            OP_CHECK_IF((deqScaleQDim0 != 1),
-                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                            "QuantFlashAttentionScoreGrad",
-                            "deqScaleQ",
-                            Ops::Base::ToString(deqScaleQStorageShape).c_str(),
-                            "When the dType of query is HIFLOAT8, the shape of deqScaleQ must be [1]"),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                (deqScaleQDim0 != 1),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    "QuantFlashAttentionScoreGrad", "deqScaleQ", Ops::Base::ToString(deqScaleQStorageShape).c_str(),
+                    "When the dType of query is HIFLOAT8, the shape of deqScaleQ must be [1]"),
+                return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                "QuantFlashAttentionScoreGrad",
-                "deqScaleQ",
-                Ops::Base::ToString(deqScaleQStorageShape).c_str(),
+                "QuantFlashAttentionScoreGrad", "deqScaleQ", Ops::Base::ToString(deqScaleQStorageShape).c_str(),
                 "When the dType of query is HIFLOAT8, the shape of deqScaleQ must be [1]");
             return ge::GRAPH_FAILED;
         }
-         
+
         if (deqScaleKDimNum == 1) {
             int64_t deqScaleKDim0 = deqScaleKStorageShape.GetDim(INPUT_DIM_0);
-            OP_CHECK_IF((deqScaleKDim0 != 1),
-                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                            "QuantFlashAttentionScoreGrad",
-                            "deqScaleK",
-                            Ops::Base::ToString(deqScaleKStorageShape).c_str(),
-                            "When the dType of query is HIFLOAT8, the shape of deqScaleK must be [1]"),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                (deqScaleKDim0 != 1),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    "QuantFlashAttentionScoreGrad", "deqScaleK", Ops::Base::ToString(deqScaleKStorageShape).c_str(),
+                    "When the dType of query is HIFLOAT8, the shape of deqScaleK must be [1]"),
+                return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                "QuantFlashAttentionScoreGrad",
-                "deqScaleK",
-                Ops::Base::ToString(deqScaleKStorageShape).c_str(),
+                "QuantFlashAttentionScoreGrad", "deqScaleK", Ops::Base::ToString(deqScaleKStorageShape).c_str(),
                 "When the dType of query is HIFLOAT8, the shape of deqScaleK must be [1]");
             return ge::GRAPH_FAILED;
         }
         if (deqScaleVDimNum == 1) {
             int64_t deqScaleVDim0 = deqScaleVStorageShape.GetDim(INPUT_DIM_0);
-            OP_CHECK_IF((deqScaleVDim0 != 1),
-                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                            "QuantFlashAttentionScoreGrad",
-                            "deqScaleV",
-                            Ops::Base::ToString(deqScaleVStorageShape).c_str(),
-                            "When the dType of query is HIFLOAT8, the shape of deqScaleV must be [1]"),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                (deqScaleVDim0 != 1),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    "QuantFlashAttentionScoreGrad", "deqScaleV", Ops::Base::ToString(deqScaleVStorageShape).c_str(),
+                    "When the dType of query is HIFLOAT8, the shape of deqScaleV must be [1]"),
+                return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                "QuantFlashAttentionScoreGrad",
-                "deqScaleV",
-                Ops::Base::ToString(deqScaleVStorageShape).c_str(),
+                "QuantFlashAttentionScoreGrad", "deqScaleV", Ops::Base::ToString(deqScaleVStorageShape).c_str(),
                 "When the dType of query is HIFLOAT8, the shape of deqScaleV must be [1]");
             return ge::GRAPH_FAILED;
         }
         if (deqScaleDyDimNum == 1) {
             int64_t deqScaleDyDim0 = deqScaleDyStorageShape.GetDim(INPUT_DIM_0);
-            OP_CHECK_IF((deqScaleDyDim0 != 1),
-                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                            "QuantFlashAttentionScoreGrad",
-                            "deqScaleDy",
-                            Ops::Base::ToString(deqScaleDyStorageShape).c_str(),
-                            "When the dType of query is HIFLOAT8, the shape of deqScaleDy must be [1]"),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                (deqScaleDyDim0 != 1),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    "QuantFlashAttentionScoreGrad", "deqScaleDy", Ops::Base::ToString(deqScaleDyStorageShape).c_str(),
+                    "When the dType of query is HIFLOAT8, the shape of deqScaleDy must be [1]"),
+                return ge::GRAPH_FAILED);
         } else {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                "QuantFlashAttentionScoreGrad",
-                "deqScaleDy",
-                Ops::Base::ToString(deqScaleDyStorageShape).c_str(),
+                "QuantFlashAttentionScoreGrad", "deqScaleDy", Ops::Base::ToString(deqScaleDyStorageShape).c_str(),
                 "When the dType of query is HIFLOAT8, the shape of deqScaleDy must be [1]");
             return ge::GRAPH_FAILED;
         }
@@ -822,14 +808,12 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
         auto valueShapeDim = valueShape->GetStorageShape().GetDimNum();
         constexpr int64_t EXPECTED_DIM_NUM = 4;
         if (attentionInShapeDim != EXPECTED_DIM_NUM || queryShapeDim != EXPECTED_DIM_NUM ||
-            dyShapeDim != EXPECTED_DIM_NUM || keyShapeDim != EXPECTED_DIM_NUM ||
-            valueShapeDim != EXPECTED_DIM_NUM) {
+            dyShapeDim != EXPECTED_DIM_NUM || keyShapeDim != EXPECTED_DIM_NUM || valueShapeDim != EXPECTED_DIM_NUM) {
             std::string dimMsg = "{" + std::to_string(attentionInShapeDim) + ", " + std::to_string(queryShapeDim) +
-                                  ", " + std::to_string(dyShapeDim) + ", " + std::to_string(keyShapeDim) +
-                                  ", " + std::to_string(valueShapeDim) + "}";
+                                 ", " + std::to_string(dyShapeDim) + ", " + std::to_string(keyShapeDim) + ", " +
+                                 std::to_string(valueShapeDim) + "}";
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                                     "query, keyIn, value, dy, attentionIn",
-                                                     dimMsg.c_str(),
+                                                     "query, keyIn, value, dy, attentionIn", dimMsg.c_str(),
                                                      "The shape dim of query, keyIn, value, dy, attentionIn "
                                                      "must be 4");
             return ge::GRAPH_FAILED;
@@ -925,41 +909,35 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
         // 校验attnMask的shape必须为[2048, 2048]
         auto attnMaskShapeDim = attnMaskShape->GetStorageShape().GetDimNum();
         if (attnMaskShapeDim != ATTEN_MASK_DIM_LENGTH_2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                                     "attnMask",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad", "attnMask",
                                                      std::to_string(attnMaskShapeDim).c_str(),
                                                      "The shape dim of attnMask must be 2");
             return ge::GRAPH_FAILED;
         }
         auto attnMaskDim0 = attnMaskShape->GetStorageShape().GetDim(0);
         auto attnMaskDim1 = attnMaskShape->GetStorageShape().GetDim(1);
-        std::string attnMaskShapeMsg =
-            std::to_string(attnMaskDim0) + ", " + std::to_string(attnMaskDim1);
-        std::string attnMaskReasonMsg = "The shape of attnMask must be [" +
-                                        std::to_string(ATTEN_MASK_COMPRESS_LIMIT) + ", " +
-                                        std::to_string(ATTEN_MASK_COMPRESS_LIMIT) + "]";
+        std::string attnMaskShapeMsg = std::to_string(attnMaskDim0) + ", " + std::to_string(attnMaskDim1);
+        std::string attnMaskReasonMsg = "The shape of attnMask must be [" + std::to_string(ATTEN_MASK_COMPRESS_LIMIT) +
+                                        ", " + std::to_string(ATTEN_MASK_COMPRESS_LIMIT) + "]";
         OP_CHECK_IF((attnMaskDim0 != static_cast<int64_t>(ATTEN_MASK_COMPRESS_LIMIT) ||
                      attnMaskDim1 != static_cast<int64_t>(ATTEN_MASK_COMPRESS_LIMIT)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                                            "attnMask",
-                                                            attnMaskShapeMsg.c_str(),
-                                                            attnMaskReasonMsg.c_str()),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("QuantFlashAttentionScoreGrad", "attnMask",
+                                                           attnMaskShapeMsg.c_str(), attnMaskReasonMsg.c_str()),
                     return ge::GRAPH_FAILED);
     }
     // 校验sparseMode与attnMask的匹配关系
     // sparseMode为0(NO_MASK)时，attnMask必须为空
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) && attnMaskShape != nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                              "sparseMode",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("QuantFlashAttentionScoreGrad", "sparseMode",
                                               std::to_string(fBaseParams.sparseMode).c_str(),
                                               "when sparseMode is 0(NO_MASK), attnMask must be empty");
         return ge::GRAPH_FAILED;
     }
     // sparseMode为3(RIGHT_DOWN_CAUSAL)或4(BAND)时，attnMask不能为空
     if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
-         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) && attnMaskShape == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("QuantFlashAttentionScoreGrad",
-                                              "sparseMode",
+         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) &&
+        attnMaskShape == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("QuantFlashAttentionScoreGrad", "sparseMode",
                                               std::to_string(fBaseParams.sparseMode).c_str(),
                                               "when sparseMode is 3(RIGHT_DOWN_CAUSAL) or 4(BAND), "
                                               "attnMask must not be empty");
