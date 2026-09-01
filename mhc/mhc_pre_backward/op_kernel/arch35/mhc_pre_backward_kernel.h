@@ -1658,6 +1658,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
     vecOutQueue1_.FreeTensor(bf16OutputBuf_);
 }
 
+template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3()
 {
     ProcessV3AlphaGrad();
