@@ -33,7 +33,6 @@
     block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
     initial_state_idx: 不开APC:None,开APC:[batch]
     activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
     run_mode:（无作用）
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
@@ -58,12 +57,11 @@
     block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
     initial_state_idx: 不开APC:None,开APC:[batch]
     activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
     run_mode:（无作用）
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]
     ```
 
     其中cu_seq_len为batch内所有变长序列拼接后的总长度。
@@ -84,12 +82,11 @@
     block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
     initial_state_idx: 不开APC:None,开APC:[batch]
     activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
     run_mode:（无作用）
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]
     ```
 
     其中state_len必须大于所有batch中最大的token个数加1。
@@ -110,13 +107,11 @@
     block_idx_last_scheduled_token: 不开APC:None,开APC:[batch]
     initial_state_idx: 不开APC:None,开APC:[batch]
     activation_mode:（无作用）
-    pad_slot_id: 默认值 -1
     run_mode:（无作用）
-    max_query_len:默认值 -1
     residual_connection: 不做残差: 0,做残差：1
     block_size: 典型值128/256
     conv_mode：Qwen3-Next模式: 0, Pangu V2: 1
-    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]，默认值7
+    max_draft_tokens: 投机个数（multiTokenNum），取值范围[0, 16]
     ```
 
 - 计算公式：
@@ -435,7 +430,7 @@
       <td>max_draft_tokens（int64_t）</td>
       <td>属性</td>
       <td>最大投机个数。</td>
-      <td><ul><li>取值范围[0, 16]，默认为7。</li></ul></td>
+      <td><ul><li>取值范围[0, 16]。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -496,7 +491,7 @@
   - num_computed_tokens中每个元素取值大于等于0。
   - cache_indices的取值范围为[0, conv_states.dim[0]-1],且值均不能相等（除非等于pad_slot_id）。
   - max_query_len = batch中的最大seq_len。
-  - max_draft_tokens的取值范围为[0, 16]，默认值为7。
+  - max_draft_tokens的取值范围为[0, 16]。
   - Pangu V2 模式（conv_mode = 1）下，num_computed_tokens不能为 None。
   - 算子入参与中间计算结果，在对应数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。
   - 算子输入不支持有±inf和nan的情况。
