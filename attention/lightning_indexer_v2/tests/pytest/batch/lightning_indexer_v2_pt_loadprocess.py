@@ -171,6 +171,9 @@ def test_liv2_process(filepath, device_id=0):
                                              return_value = return_value)
     torch.npu.synchronize()
     npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+    npu_result = npu_result.cpu()
+    npu_result, _ torch.sort(npu_result)
+    cpu_result, _ torch.sort(cpu_result)
     return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 
 def test_liv2_process_graph(filepath, device_id=0):

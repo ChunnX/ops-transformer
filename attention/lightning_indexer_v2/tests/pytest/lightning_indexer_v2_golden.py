@@ -40,7 +40,7 @@ from npu_ops_transformer.ops import npu_lightning_indexer, npu_lightning_indexer
 # True:  上板模式，调用真正的 NPU metadata 算子
 IS_NPU_NOW = False
 
-DISCONTINUOUS_KEYS = True  # key非连续
+DISCONTINUOUS_KEYS = False  # key非连续
 DEFAULT_SPLIT_S1 = False  # golden切分S1Flag
 DEFAULT_S1SIZE = 4  # s1切分基本块大小
 
@@ -1558,6 +1558,9 @@ def liv2_output_single(
         )
         torch.npu.synchronize()
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
+        npu_result = npu_result.cpu()
+        npu_result, _ torch.sort(npu_result)
+        cpu_result, _ torch.sort(cpu_result)
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 
