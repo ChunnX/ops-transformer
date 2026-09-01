@@ -64,9 +64,8 @@ cd build_out
 
 ### 2. torch 扩展包构建与安装
 
-使用 torch 接口前必做。torch_extension 采用分布式算子注册：构建时通过环境变量
-选择要打包的算子集合，**未选中的算子不会进入安装包**（`from cann_ops_transformer.ops
-import <算子>` 将失败）。
+使用 torch 接口前必做。torch_extension 采用分布式算子注册：构建时通过 `--ops`
+选择要打包的算子集合，**未选中的算子不会进入安装包**。
 
 ```bash
 # 前置：加载 CANN 环境
@@ -75,19 +74,18 @@ source ${CANN_DIR}/cann/set_env.sh
 # 清理 torch 扩展缓存（~ 为当前用户 home，需与安装/运行 torch 的用户一致，避免加载过期编译产物）
 rm -rf ~/.cache/torch_extensions/*
 
-# 安装（TORCH_EXTENSION_OPS 指定算子集合，逗号分隔）
-cd torch_extension
-TORCH_EXTENSION_OPS=flash_attn,flash_attn_metadata python3 -m pip install . --no-build-isolation --no-deps
+# 构建 torch 扩展 whl（在仓根目录执行，whl 输出至 build_out/）
+bash build.sh --torch_extension --ops=flash_attn,flash_attn_metadata
+
+# 安装
+python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```
 
-**环境变量说明**：
+**包名规则**（导入路径与包名一致，与旧版全量包名不同）：
 
-- **`TORCH_EXTENSION_OPS`**（推荐设置）：要打包的算子列表（逗号分隔），如
-  `flash_attn,flash_attn_metadata`。设置后仅收集所选算子的 torch_extension 模块，
-  构建更快、依赖更少。
-- **`TORCH_EXTENSION_VENDOR`**：设置 `TORCH_EXTENSION_OPS` 时生效，决定安装包名后缀，
-  默认 `custom`，即包名为 `cann_ops_transformer_custom`；不设置
-  `TORCH_EXTENSION_OPS` 时构建全量包，包名为 `cann_ops_transformer`。
+- 指定 `--ops` 时：包名带 vendor 后缀，默认 `cann_ops_transformer_custom`；
+  可用 `--vendor_name=name` 指定为 `cann_ops_transformer_name`。
+- 不指定 `--ops` 时：构建全量包，包名为 `cann_ops_transformer`。
 
 **安装后验证**（包名按上文规则，选装时为 `cann_ops_transformer_custom`）：
 
@@ -97,14 +95,12 @@ python3 -c "from cann_ops_transformer_custom.ops import flash_attn, flash_attn_m
 
 **注意事项**：
 
-- 一个 torch_extension 的 `__all__` 可导出多个公共算子（如 flash_attn 同时导出
-  `flash_attn_metadata`），两者都需列入 `TORCH_EXTENSION_OPS` 的引用验证，但
-  entry point 按目录算子注册，多导出算子经同一模块的 `__all__` 展开加载。
-- **避免 `-e`（editable）安装**：editable 模式不执行构建期算子模块收集，
+- `flash_attn` 与 `flash_attn_metadata` 必须同时列入 `--ops`（调用 `flash_attn` 前需先用
+  `flash_attn_metadata` 生成 metadata）。
+- **避免 `pip install -e`（editable）安装**：editable 模式不执行构建期算子模块收集，
   `ops/<category>/<op>/` 目录不会生成，导入将失败。
 - 接口文档路径（含参数与调用示例）：
-  [flash_attn.md](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)，
-  按安装包名对应目录取用。
+  [flash_attn.md](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)。
 
 ### 3. 接口调用
 
@@ -115,7 +111,7 @@ python3 -c "from cann_ops_transformer_custom.ops import flash_attn, flash_attn_m
 导入路径与安装包名一致（按步骤 2 的 `TORCH_EXTENSION_VENDOR` 规则）：
 
 ```python
-# 选装包（TORCH_EXTENSION_OPS 设置时，默认 vendor=custom）
+# 选装包（--ops 指定时，默认 vendor=custom）
 from cann_ops_transformer_custom.ops import flash_attn, flash_attn_metadata
 
 # 全量包（未设置 TORCH_EXTENSION_OPS）
