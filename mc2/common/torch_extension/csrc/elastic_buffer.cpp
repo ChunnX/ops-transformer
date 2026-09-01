@@ -60,9 +60,8 @@ constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
 constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
-// 打桩：32个物理Jetty；每个Jetty通过MultiChannelHandle服务一个对端组。
+// 打桩：32个物理Jetty；每个Jetty通过MultiChannelHandle连接所有远端。
 constexpr uint32_t MOE_JETTY_TOTAL = 32U;
-constexpr uint32_t MOE_PEERS_PER_JETTY = 4U;
 constexpr uint32_t MOE_JETTY_CHANNEL_NOTIFY_NUM = 3U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
@@ -730,7 +729,7 @@ private:
         }
     }
 
-    // 每个物理Jetty绑定一个对端组。组内逻辑通道共享该Jetty的SQ/CQ，kernel通过GetHandleRef选择对端。
+    // 每个物理Jetty连接所有远端。所有逻辑通道共享该Jetty的SQ/CQ，kernel通过GetHandleRef选择对端。
     void GetSharedJettyHandles(const HcclComm &commHandle, const std::string &contextTag, uint32_t rankDim,
                                uint32_t srcRankId, const CommProtocol &protocol, MoeCommContext &context)
     {
@@ -738,29 +737,13 @@ private:
         TORCH_CHECK(protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP,
                     "16P shared-Jetty validation requires COMM_PROTOCOL_UBC_CTP, got ",
                     static_cast<int>(protocol));
-        TORCH_CHECK(rankDim <= MOE_JETTY_TOTAL * MOE_PEERS_PER_JETTY,
-                    "shared-Jetty validation supports at most ", MOE_JETTY_TOTAL * MOE_PEERS_PER_JETTY,
-                    " ranks, got ", rankDim);
-
         uint32_t netLayerNum = 0;
         uint32_t *netLayerList = nullptr;
         GetNetLayers(commHandle, netLayerList, netLayerNum);
         TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
 
-        uint32_t groupNum = static_cast<uint32_t>(CeilDiv(rankDim, MOE_PEERS_PER_JETTY));
+        uint32_t channelNum = rankDim - 1U;
         for (uint32_t jetty = 0; jetty < MOE_JETTY_TOTAL; ++jetty) {
-            uint32_t group = jetty % groupNum;
-            uint32_t groupStart = group * MOE_PEERS_PER_JETTY;
-            uint32_t groupEnd = std::min(groupStart + MOE_PEERS_PER_JETTY, rankDim);
-            uint32_t channelNum = groupEnd - groupStart;
-            if (srcRankId >= groupStart && srcRankId < groupEnd) {
-                --channelNum;
-            }
-            if (channelNum == 0U) {
-                context.multiChannelHandle[jetty] = 0U;
-                continue;
-            }
-
             std::vector<HcclChannelDesc> channelDesc(channelNum);
             auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL shared channel init failed, jetty=", jetty,
@@ -769,7 +752,7 @@ private:
             uint32_t channelIndex = 0U;
             EndpointDesc localEndpoint{};
             bool hasLocalEndpoint = false;
-            for (uint32_t peer = groupStart; peer < groupEnd; ++peer) {
+            for (uint32_t peer = 0U; peer < rankDim; ++peer) {
                 if (peer == srcRankId) {
                     continue;
                 }

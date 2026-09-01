@@ -73,9 +73,8 @@ static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 8192U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
-// 打桩：多jetty切片性能验证专用常量（与dispatch侧JETTY_*/PEERS_PER_JETTY保持一致，改时两侧同步）
+// 打桩：多jetty切片性能验证专用常量（与dispatch侧JETTY_TOTAL保持一致）
 constexpr uint32_t JETTY_TOTAL = 32U; // 打桩：jetty总数固定32（win槽位区每rank按32槽预留）
-constexpr uint32_t PEERS_PER_JETTY = 4U; // 打桩：每个jetty参与的对端数；对端连续分组，组内对端的bs均摊到组内全部jetty
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -249,15 +248,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
-    // 按拥有Jetty最多的组分配等待UB，覆盖32不能被组数整除的场景。
-    uint32_t stubNumGroups = (epWorldSize_ + PEERS_PER_JETTY - 1U) / PEERS_PER_JETTY;
-    if (stubNumGroups > JETTY_TOTAL) {
-        stubNumGroups = JETTY_TOTAL;
-    }
-    if (stubNumGroups == 0U) {
-        stubNumGroups = 1U;
-    }
-    totalNotifyCnt_ = epWorldSize_ * ((JETTY_TOTAL + stubNumGroups - 1U) / stubNumGroups);
+    // 每个远端rank都会收到全部Jetty的flag，单个等待任务最多处理JETTY_TOTAL个槽位。
+    totalNotifyCnt_ = JETTY_TOTAL;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
@@ -373,26 +365,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 }
 
 // 打桩：WaitDispatchStub — 多核分摊+批量等待：每个远端srcRank一个等待项，SplitToCore均摊到各核；
-// 同srcRank的jettiesPerGroup个flag槽间距恰为numGroups*512B（jetty=组+k*组数），一次DataCopy批量搬入
-// （块间隔numGroups*16-1个32B块）+ ReduceSum判满（每块首int32=1，和==jettiesPerGroup即全部就位），
+// 同srcRank的JETTY_TOTAL个flag槽按512B间距排布，一次DataCopy批量搬入并ReduceSum判满，
 // 等满后一次DataCopy批量清零；MTE3_MTE2确保清零落盘后再读下一个rank。本卡flag无需等待
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::WaitDispatchStub()
 {
-    // 与dispatch Init同公式派生分组
-    uint32_t numGroups = (epWorldSize_ + PEERS_PER_JETTY - 1U) / PEERS_PER_JETTY;
-    if (numGroups > JETTY_TOTAL) {
-        numGroups = JETTY_TOTAL;
-    }
-    if (numGroups == 0U) {
-        numGroups = 1U;
-    }
-    uint32_t recvGroup = epRankId_ / PEERS_PER_JETTY;
-    if (recvGroup >= numGroups) {
-        recvGroup = numGroups - 1U;
-    }
-    uint32_t jettiesPerGroup = (JETTY_TOTAL + numGroups - 1U - recvGroup) / numGroups;
-
     // 多核分摊：每个远端srcRank一个等待项
     uint32_t remoteRankCnt = epWorldSize_ - 1U;
     uint32_t waitStart, waitEnd, waitNum;
@@ -406,27 +383,24 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     LocalTensor<float> ubWaitStatusFp32 = ubWaitStatus_.template ReinterpretCast<float>();
     LocalTensor<float> ubWaitSumFp32 = ubWaitSum_.template ReinterpretCast<float>();
     uint32_t mask = 1;
-    int32_t commpareFlag = static_cast<int32_t>(jettiesPerGroup);
-    // 同srcRank相邻flag槽间距=numGroups*512B；块单位(32B)间隔=numGroups*16-1
-    DataCopyParams statusCopyParams = {static_cast<uint16_t>(jettiesPerGroup), 1U,
-                                       static_cast<uint16_t>(numGroups * 16U - 1U), 0U};
-    DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(jettiesPerGroup), 1U, 0U,
-                                            static_cast<uint16_t>(numGroups * 16U - 1U)};
+    int32_t commpareFlag = static_cast<int32_t>(JETTY_TOTAL);
+    // 同srcRank相邻flag槽间距=512B；块单位(32B)间隔=15。
+    DataCopyParams statusCopyParams = {static_cast<uint16_t>(JETTY_TOTAL), 1U, 15U, 0U};
+    DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(JETTY_TOTAL), 1U, 0U, 15U};
 
     for (uint32_t idx = waitStart; idx < waitEnd; ++idx) {
         uint32_t srcRankId = idx < epRankId_ ? idx : idx + 1U;
         statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            localSlotStateWinAddr_ + static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN * JETTY_TOTAL +
-            static_cast<uint64_t>(recvGroup) * WIN_ADDR_ALIGN));
+            localSlotStateWinAddr_ + static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN * JETTY_TOTAL));
         int32_t sumOfFlag = -1;
         while (sumOfFlag != commpareFlag) {
             DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
-            ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, jettiesPerGroup, 1);
+            ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, JETTY_TOTAL, 1);
             SyncFunc<AscendC::HardEvent::V_S>();
             sumOfFlag = ubWaitSum_.GetValue(0);
         }
-        Duplicate<int32_t>(ubWaitStatus_, 0, jettiesPerGroup * UB_ALIGN / sizeof(int32_t));
+        Duplicate<int32_t>(ubWaitStatus_, 0, JETTY_TOTAL * UB_ALIGN / sizeof(int32_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
         if (idx + 1U < waitEnd) {
