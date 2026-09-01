@@ -167,6 +167,7 @@ int runQuantMatmulReduceScatter(int rankNum, int rankId, int m, int k, int n,
     // 子问题 tiling: m=headMSize, 用于 T>1 per-tile head tile
     if (tileCnt > 1) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> subTilingEngine;
+        subTilingEngine.EnableBaseMHalving(true);  // 块数<2×核数时 baseM 减半, 提升负载均衡(同 allto_all_matmul_v2)
         subTilingEngine.GetTilingData(headMSize, n, k, false, true, tilingData.subMmTilingData);
         // tail tile tiling: m=rankSize*tailMSize (tailMSize 已保证 16 对齐)
         if (tailTileCnt > 0 && tailMSize > 0) {
