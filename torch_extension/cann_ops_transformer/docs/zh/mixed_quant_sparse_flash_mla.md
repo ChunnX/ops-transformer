@@ -186,7 +186,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | tensor | 必选 | 表示公式中的q | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
-| quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode为1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。 | int32 | - | -
+| quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode为1时，量化KV依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，量化KV依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。各量化模式均支持使用UINT8、FLOAT8_E4M3FN作为单字节存储视图，底层字节内容保持不变。 | int32 | - | -
 | ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
 | cmp_kv | tensor | 可选 | 表示压缩量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
@@ -206,7 +206,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 | metadata | tensor | 可选 | 表示mixed_quant_sparse_flash_mla_metadata生成的分核信息 | int32 | ND | <ul><li>(1024,)</li></ul>
 | rope_head_dim | int | 可选 | 表示rope头的维度。默认值为64 | int32 | - | -
 | softmax_scale | float | 可选 | 表示可显式设置缩放因子。默认值为1.0 | float32 | - | -
-| cmp_ratio | int | 可选 | 表示cmp_kv相对于压缩前KV长度的压缩倍率，可恢复cmp侧mask使用的压缩前KV长度。默认值为1 | int32 | - | -
+| cmp_ratio | int | 可选 | 表示cmp_kv相对于压缩前KV长度的压缩倍率，可恢复cmp侧mask使用的压缩前KV长度。默认值为1，取值范围1-128。| int32 | - | -
 | ori_mask_mode | int | 可选 | 表示q和ori_kv计算的mask模式。0：No mask。3：rightDownCausal模式。4：sliding window模式。默认值为0 | int32 | - | -
 | cmp_mask_mode | int | 可选 | 表示q和cmp_kv计算的mask模式。0：No mask。3：rightDownCausal模式。默认值为0 | int32 | - | -
 | ori_win_left | int | 可选 | 表示q和ori_kv计算中q对历史token计算的数量，-1表示无穷大，即全部参与运算。默认值为-1 | int32 | - | -
@@ -238,7 +238,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
   - mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
   - 当ori_mask_mode/cmp_mask_mode为0时，ori_kv_k/cmp_kv_k需要大于等于ori_topk_length/cmp_topk_length的最大值。
-  - cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio。
+  - cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio，即cmp_residual_kv[i] < cmp_ratio。
   - attention_out：tensor类型，公式中的输出，数据类型支持bfloat16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
   - return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
   - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
@@ -490,7 +490,6 @@ metadata校验
             </td>
             <td>
                 <ul>
-                     <li>只有ori_kv稀疏场景下，cmp_mask_mode为0和ori_mask_mode必须为0</li>
                      <li>SWA场景下，ori_mask_mode为0、3、4</li>
                  </ul>
              </td>
@@ -513,10 +512,7 @@ metadata校验
              </td>
              <td>
                    <ul>
-                               <li>当ori_kv/cmp_kv/cmp_sparse_indices/ori_sparse_indices传入时，cmp_mask_mode为0和ori_mask_mode必须为0</li>
-                              <li>当cmp_kv不传时，ori_mask_mode为3、4</li>
-                              <li>当ori_mask_mode为3时，cmp_mask_mode必须为3</li>
-                              <li>当ori_mask_mode为4时，cmp_mask_mode必须为3</li>
+                              <li>cmpKvOptional未传入时，cmpMaskMode必须为0 </li>
                      </ul>
             </td>
         </tr>
@@ -736,9 +732,7 @@ metadata校验
                     <li>当cmp_mask_mode=3且cmp_ratio!=1时，必传</li>
                 </ul>
             </td>
-            <td>
-                <td>无</td>
-            </td>
+            <td>无</td>
             <td>无</td>
         </tr>
         <tr>

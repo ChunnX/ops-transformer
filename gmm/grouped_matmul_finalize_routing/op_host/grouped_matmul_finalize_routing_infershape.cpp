@@ -403,17 +403,17 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT8_E8M0),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of scale is wrong.Supported type:FLOAT8_E8M0"),
+                                      "The MXFP4/MXFP8 InputDataType of scale is wrong. Supported type: FLOAT8_E8M0"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(groupListOptionIndex) != ge::DT_INT64),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of groupList is wrong.Supported type:INT64"),
+                                      "The MXFP4/MXFP8 InputDataType of groupList is wrong. Supported type: INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(rowIndexOptionIndex) != ge::DT_INT64),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of rowIndex is wrong.Supported type:INT64"),
+                                      "The MXFP4/MXFP8 InputDataType of rowIndex is wrong. Supported type: INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             !IsSupportMxLogitDtype(context->GetOptionalInputDataType(logitOptionIndex), outputDtype),
@@ -422,7 +422,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
                     OPS_REPORT_CUBE_INNER_ERR(
                         context->GetNodeName(),
-                        "The MXFP4/MXFP8 InputDataType of pertokenscale is wrong.Supported type:FLOAT8_E8M0"),
+                        "The MXFP4/MXFP8 InputDataType of pertokenscale is wrong. Supported type: FLOAT8_E8M0"),
                     return ge::GRAPH_FAILED);
     }
 
