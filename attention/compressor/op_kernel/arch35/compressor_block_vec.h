@@ -109,6 +109,9 @@ protected:
                                              const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
                                              uint32_t dStartIdx, uint32_t globalSeqIdx, uint32_t dDealSize);
     __aicore__ inline void SoftmaxDN(const LocalTensor<T> &scoreLocal, uint32_t tcDealSize, uint32_t dDealSize);
+    __aicore__ inline void PadAlign(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
+                                    const Vec1SliceInfo &sliceInfo, uint32_t dBaseOffset, uint32_t dDealSize,
+                                    uint32_t dBaseSize);
     __aicore__ inline void KvMulReduceScore(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                             const LocalTensor<T> &dstLocal, uint32_t tcDealSize, uint32_t dDealSize);
     __aicore__ inline void CopyOutMidResToOutput(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
@@ -717,6 +720,46 @@ __aicore__ inline void CompressorBlockVector<COMP>::SoftmaxDN(const LocalTensor<
 {
     uint32_t ReduceSize = coff_ * cmpRatio_;
     FaVectorApi::SoftmaxDnVF<T>(scoreLocal, scoreLocal, dDealSize, ReduceSize, tcDealSize, SOFTMAX_MIN_NUM, dDealSize);
+}
+
+template <typename COMP>
+
+__aicore__ inline void CompressorBlockVector<COMP>::PadAlign(const LocalTensor<T> &dstLocal,
+                                                             const LocalTensor<T> &srcLocal,
+                                                             const Vec1SliceInfo &sliceInfo, uint32_t dBaseOffset,
+                                                             uint32_t dDealSize, uint32_t dBaseSize)
+{
+    // Ub data layout after overlap when r = 4 and coff = 2:
+    //  Tc0_seq01: |--- --D_L--- -|------D_R-----|
+    //  Tc0_seq02: |--- --D_L--- -|------D_R-----|
+    //  Tc0_seq03: |--- --D_L--- -|------D_R-----|
+    //  Tc0_seq04: |--- --D_L--- -|------D_R-----|
+    //  Tc1_seq01: |--- --D_L--- -|------D_R-----|
+    //  Tc1_seq02: |--- --D_L--- -|------D_R-----|
+    //  Tc1_seq03: |--- --D_L--- -|------D_R-----|
+    //  Tc1_seq04: |--- --D_L--- -|------D_R-----|
+    uint32_t srcSingleRowElemNum = dBaseSize * this->coff_;
+    uint32_t copyRowCount = sliceInfo.compressTcSize * this->cmpRatio_ - sliceInfo.headHolderSeqCnt;
+    uint32_t copyColCount = dDealSize;
+    uint32_t srcSingleRowCount = srcSingleRowElemNum;
+    uint32_t dstSingleRowCount = dDealSize * this->coff_; // left和right在seq方向是交错存储的
+    uint64_t srcLocalOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum + dBaseOffset;
+
+    uint64_t dstUbOffset = sliceInfo.compressoredScCnt * this->cmpRatio_ * dstSingleRowCount;
+    if constexpr (COMP::coff == COFF::OVERLAP) {
+        // 左侧
+        uint64_t preSrcLocalOffset = srcLocalOffset;
+        uint64_t preDstUbOffset = dstUbOffset + (sliceInfo.headHolderSeqCnt + this->cmpRatio_) * dstSingleRowCount;
+        this->DataCopyAlignUbToUb(dstLocal[preDstUbOffset], srcLocal[preSrcLocalOffset],
+                            copyRowCount - min(copyRowCount, this->cmpRatio_), copyColCount, srcSingleRowCount,
+                            dstSingleRowCount);
+        dstUbOffset += dDealSize;
+        srcLocalOffset += dBaseSize;
+    }
+    // 右侧
+    dstUbOffset += sliceInfo.headHolderSeqCnt * dstSingleRowCount;
+    this->DataCopyAlignUbToUb(dstLocal[dstUbOffset], srcLocal[srcLocalOffset], copyRowCount, copyColCount, srcSingleRowCount,
+                        dstSingleRowCount);
 }
 
 template <typename COMP>
