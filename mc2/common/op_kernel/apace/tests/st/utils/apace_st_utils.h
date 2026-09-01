@@ -24,7 +24,6 @@
 #define INFO_LOG(fmt, args...) \
     do { \
         fprintf(stdout, "[INFO] " fmt "\n", ##args); \
-        fprintf(stdout, "[INFO] %s:%d " fmt "\n", __FILE__, __LINE__, ##args); \
         fflush(stdout); \
     } while (0)
 #define WARNING_LOG(fmt, args...) \
