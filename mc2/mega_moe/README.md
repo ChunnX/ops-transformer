@@ -838,21 +838,21 @@
   <tr>
    <td>weight1Interleave</td>
    <td>可选属性</td>
-   <td>weight1交错布局参数。0表示连续gate/up布局，非0表示交错布局；取值范围为[0, weight1最后一维/2]，交错布局仅用于A8W8 GMM1。默认值为0。</td>
+   <td>weight1交错参数。预留参数，默认值为0。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>topoType</td>
    <td>可选属性</td>
-   <td>通信拓扑类型，由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。URMA使用Layered Expert-Wave流水。默认值为0。</td>
+   <td>通信拓扑类型，由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。默认值为0。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>rankNumPerServer</td>
    <td>可选属性</td>
-   <td>每台server上的rank数量；URMA模式下取值至少为1且必须整除epWorldSize，MTE模式不使用该参数。默认值为2。</td>
+   <td>每台server上的rank数量，最少为2。默认值为2。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -886,7 +886,7 @@
   - 参数表格中的部分参数、部分数据类型暂未对外提供，为预留或内部实现使用。接口参数的介绍及其约束在接口文档[MegaMoE算子接口文档](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)中详细说明。
 
 - **参数一致性约束**：
-  - 调用算子过程中使用的`moeExpertNum`、`maxRecvTokenNum`、`dispatchQuantMode`、`dispatchQuantOutDtype`、`numMaxTokensPerRank`、`topoType`、`rankNumPerServer`、`topkWeightsType`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - 调用算子过程中使用的`moeExpertNum`、`maxRecvTokenNum`、`dispatchQuantMode`、`dispatchQuantOutDtype`、`numMaxTokensPerRank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
   - 所有卡的`epWorldSize`、`cclBufferSize`参数取值需保持一致。
@@ -924,11 +924,8 @@
     - `weight1`的Linear1输出维必须等于2 × `intermediateHidden`，`weight2`的输入维必须等于`intermediateHidden`。
     - `localMoeExpertNum` = `moeExpertNum` / `epWorldSize`；`sharedExpertNumPerRank` = `sharedWeight1`.dim0（未启用共享专家时为0）；`expertPerRank` = `sharedExpertNumPerRank` + `localMoeExpertNum`。
     - `sharedExpertNumPerRank`范围 [0, 4]。
-    - `weight1Interleave`取值范围为[0, `weight1`最后一维/2]；非0时仅支持A8W8，Layered URMA与MTE Wave使用同一编译期布局选择。
-    - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑；URMA 路径使用 Layered Expert-Wave 流水。
-    - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启；MTE和URMA均支持。
-    - URMA模式下，`numMaxTokensPerRank`取0时由接口按本卡`BS`设置；显式设置时必须等于本卡`BS`。
-    - `cclBufferSize`需覆盖异常信息和全卡软同步预留空间、mask与expert count接收空间、拓扑对应的dispatch记录区（URMA为各Server relay data和ready flag）以及combine发送空间。
+    - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。	 
+    - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。当前暂不支持URMA通信方式。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
     - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - `topkWeights`数据类型仅支持BF16或FP32。
