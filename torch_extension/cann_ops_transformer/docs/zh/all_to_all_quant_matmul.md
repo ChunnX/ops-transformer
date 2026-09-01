@@ -82,7 +82,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 | 参数名             | 参数类型     | 可选/必选 | 描述                                                                                                                           | 数据类型                                       | 维度(shape)                       |
 | ------------------ | ------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | --------------------------------- |
 | `x1`             | Tensor       | 必选      | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），实际传入的K轴大小为`H/2`，需配合`x1_dtype=296`（`torch.float4_e2m1`）。 | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | `(BS, H)`                       |
-| `x2`             | Tensor       | 必选      | 右矩阵，对应公式中X2。MXFP4场景以uint8打包存储，实际传入的K轴大小为`H*rankSize/2`，需配合`x2_dtype=296`（`torch.float4_e2m1`）。                  | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | `(H*rankSize, N)`               |
+| `x2`             | Tensor       | 必选      | 右矩阵，对应公式中X2，需以转置视图（非连续tensor）传入，即先构造`(N, H*rankSize)`再`.t()`。MXFP4场景以uint8打包存储，实际传入的K轴大小为`H*rankSize/2`，需配合`x2_dtype=296`（`torch.float4_e2m1`）。                  | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | `(H*rankSize, N)`（转置视图）               |
 | `group`          | ProcessGroup | 必选      | torch.distributed通信域，用于All-to-All通信。                                                                                  | -                                              | -                                 |
 | `bias`           | Tensor       | 可选      | 偏置项，矩阵乘后累加，默认值为`None`。                                                                                       | `torch.float32`                              | `(N,)`                          |
 | `x1_scale`       | Tensor       | 可选      | `x1`的MX量化scale，默认值为`None`。                                                                                        | `torch.float8_e8m0fnu`                       | `(BS, ceil(H / 64), 2)`         |
@@ -128,14 +128,19 @@ cann_ops_transformer.all_to_all_quant_matmul(
 
   ```python
   import math
+  import os
   import torch
   import torch_npu
   import cann_ops_transformer
   import torch.distributed as dist
 
-  # 初始化多卡通信域
+  # 绑定本rank对应的设备（多进程必须，否则所有rank默认使用device 0）
+  local_rank = int(os.environ["LOCAL_RANK"])
+  torch_npu.npu.set_device(local_rank)
+
+  # 初始化多卡通信域，使用默认通信域
   dist.init_process_group(backend="hccl")
-  group = dist.new_group()
+  group = dist.group.WORLD
   world_size = dist.get_world_size()
 
   BS = 128
@@ -143,7 +148,9 @@ cann_ops_transformer.all_to_all_quant_matmul(
   N = 64
 
   x1 = torch.randn(BS, H).to(torch.float8_e4m3fn).npu()
-  x2 = torch.randn(H * world_size, N).to(torch.float8_e4m3fn).npu()
+  # x2 需以转置视图（非连续tensor）传入：先构造 (N, K_total)（K_total = H * world_size），
+  # 再 .t() 得到 (K_total, N) 的转置视图。算子按 transpose_x2 语义处理。
+  x2 = torch.randn(N, H * world_size).to(torch.float8_e4m3fn).npu().t()
   x1_scale = torch.randint(0, 256, (BS, math.ceil(H / 64), 2), dtype=torch.uint8).npu().view(torch.float8_e8m0fnu)
   x2_scale = torch.randint(0, 256, (N, math.ceil(H * world_size / 64), 2), dtype=torch.uint8).npu().view(torch.float8_e8m0fnu)
 
@@ -164,3 +171,5 @@ cann_ops_transformer.all_to_all_quant_matmul(
       precision_mode=0,
   )
   ```
+
+  上述示例可通过 `torchrun --standalone --nproc_per_node=2 example.py` 启动。
