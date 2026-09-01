@@ -2757,28 +2757,28 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_fail_atten_mas
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_fail_tnd_sparse5)
 {
-    int64_t actual_seq_qlist[3] = {32, 64, 96};
-    int64_t actual_seq_kvlist[3] = {32, 64, 96};
-    int64_t prefix_list[3] = {8, 8, 8};
+    int64_t actual_seq_qlist[4] = {128, 384, 768, 974};
+    int64_t actual_seq_kvlist[4] = {128, 384, 768, 974};
+    int64_t prefix_list[4] = {8, 8, 8, 8};
     auto compileInfo = MakeA5CompileInfo();
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
         {
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{64, 64}, {64, 64}}, ge::DT_UINT8, ge::FORMAT_ND},
-            {{{96, 2, 8}, {96, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{96, 2, 8}, {96, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{974, 2, 8}, {974, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{974, 2, 8}, {974, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, prefix_list},
-            {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
-            {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, prefix_list},
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -2790,9 +2790,9 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_fail_tnd_spars
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{96, 2, 64}, {96, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
