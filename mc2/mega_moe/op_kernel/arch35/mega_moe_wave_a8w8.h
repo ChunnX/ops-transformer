@@ -821,26 +821,24 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                     // 首轮由调度层规划完整 WAVE；Dispatch 执行层只消费明确的 [begin, end) 范围。
                     ExpertTokenRange dispatchRange{};
                     uint32_t dispatchWaveMGroupCount = 0U;
-                    if (PlanRemainingWaveTokenRange<GMM1_TILE_M>(
-                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
-                            mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange)) {
-                        DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
-                            params_, g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
-                    }
+                    PlanRemainingWaveTokenRange<GMM1_TILE_M>(
+                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
+                        mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+                    DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
+                        g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
                     waveEndPosition = dispatchPosition;
                 }
                 // 保持一 wave lookahead：首轮准备 W0/W1，稳态在 Combine Wn 前准备 W(n+1)。
                 if (waveEndPosition.expertIdx < moeExpertPerRank_) {
                     ExpertTokenRange dispatchRange{};
                     uint32_t dispatchWaveMGroupCount = 0U;
-                    if (PlanRemainingWaveTokenRange<GMM1_TILE_M>(
-                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
-                            mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange)) {
-                        DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
-                            params_, g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
-                    }
+                    PlanRemainingWaveTokenRange<GMM1_TILE_M>(
+                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
+                        mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+                    DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
+                        g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
                     preparedWaveEndPosition = dispatchPosition;
                     hasPreparedWave = true;
                 } else {

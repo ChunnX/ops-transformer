@@ -138,14 +138,13 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         if (GetSubBlockIdx() == 1U) {
             ExpertTokenRange firstDispatchRange{};
             uint32_t firstDispatchWaveMGroupCount = 0U;
-            if (PlanRemainingWaveTokenRange<GMM1_TILE_M>(
-                    params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
-                    mGroupsPerWave_, firstDispatchWaveMGroupCount, dispatchPosition, firstDispatchRange)) {
-                // count-table 准备刚完成，UB prefix 仍有效；首 WAVE 无需从 GM 备份重复恢复。
-                DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                    tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
-                    g_winRankAddr_, tokenDispatchScratch_, firstDispatchRange);
-            }
+            PlanRemainingWaveTokenRange<GMM1_TILE_M>(
+                params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
+                mGroupsPerWave_, firstDispatchWaveMGroupCount, dispatchPosition, firstDispatchRange);
+            // count-table 准备刚完成，UB prefix 仍有效；首 WAVE 无需从 GM 备份重复恢复。
+            DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
+                g_winRankAddr_, tokenDispatchScratch_, firstDispatchRange);
         }
     }
 

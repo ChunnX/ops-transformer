@@ -497,10 +497,13 @@ __aicore__ inline bool PlanNextExpertTokenRangeInWave(
  * A8W8 的每轮 Dispatch 和 W4 的启动 Dispatch 使用该规划方式；实际搬运统一交给 DispatchTokenRange。
  */
 template <uint32_t TileM>
-__aicore__ inline bool PlanRemainingWaveTokenRange(
+__aicore__ inline void PlanRemainingWaveTokenRange(
     GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
     uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
 {
+    // 没有有效 token 时保留一个显式空范围，由 DispatchTokenRange 统一判断并返回。
+    range.begin = position;
+    range.end = position;
     bool hasTokenRange = false;
     ExpertTokenRange expertRange{};
     while (PlanNextExpertTokenRangeInWave<TileM>(expertTokenCountWorkspace, countWorkspace, expertCount,
@@ -512,7 +515,6 @@ __aicore__ inline bool PlanRemainingWaveTokenRange(
         }
         range.end = expertRange.end;
     }
-    return hasTokenRange;
 }
 
 // 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。
