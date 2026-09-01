@@ -13,6 +13,34 @@
 #include "aclnn_common.h"
 
 namespace op_api {
+namespace {
+constexpr int64_t METADATA_SIZE = 1024;
+}
+
+at::Tensor GenericBlockSparseAttentionMetadata(
+    const at::Tensor &sparseBlockIdx, const at::Tensor &sparseBlockCount, const c10::optional<at::Tensor> &cuSeqLengths,
+    const c10::optional<at::Tensor> &cuSeqLengthsKv, const c10::optional<at::Tensor> &seqUsedQ,
+    const c10::optional<at::Tensor> &seqUsedKv, int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_t numQHeads,
+    int64_t numKvHeads, int64_t headDim, at::IntArrayRef blockShape, int64_t isPackedGQA, c10::string_view qInputLayout,
+    c10::string_view kvInputLayout, int64_t maskType, int64_t quantType, int64_t softmaxPrecision,
+    int64_t windowSizeLeft, int64_t windowSizeRight)
+{
+    at::Tensor metadata{nullptr};
+    {
+        const c10::OptionalDeviceGuard deviceGuard(sparseBlockIdx.device());
+        metadata = at::empty({METADATA_SIZE}, sparseBlockIdx.options().dtype(at::kInt));
+    }
+    std::string qInputLayoutStr(qInputLayout);
+    std::string kvInputLayoutStr(kvInputLayout);
+    char *qInputLayoutPtr = const_cast<char *>(qInputLayoutStr.c_str());
+    char *kvInputLayoutPtr = const_cast<char *>(kvInputLayoutStr.c_str());
+
+    ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparseBlockIdx, sparseBlockCount, cuSeqLengths, cuSeqLengthsKv,
+              seqUsedQ, seqUsedKv, maxQSeqLen, maxKvSeqLen, numQHeads, numKvHeads, headDim, blockShape, isPackedGQA,
+              qInputLayoutPtr, kvInputLayoutPtr, maskType, quantType, softmaxPrecision, windowSizeLeft, windowSizeRight,
+              metadata);
+    return metadata;
+}
 
 std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &sparseBlockIdx,
@@ -76,5 +104,7 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    m.def("generic_block_sparse_attention_metadata", &op_api::GenericBlockSparseAttentionMetadata,
+          "generic_block_sparse_attention_metadata");
     m.def("generic_block_sparse_attention", &op_api::GenericBlockSparseAttention, "generic_block_sparse_attention");
 }
