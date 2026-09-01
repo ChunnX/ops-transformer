@@ -113,7 +113,7 @@ ge::graphStatus CalcMoeEpWindowLayoutStub(const MoeEpWindowLayoutParams &params,
     layout.cntWinStateOffset = MOE_EP_FIXED_PREFIX_BYTES;
     layout.cntWinStateSize = epWorldSize * MOE_EP_WIN_ALIGN; // 打桩：仅保留count通知位，去掉expert count区
     layout.slotWinStateOffset = layout.cntWinStateOffset + layout.cntWinStateSize;
-    layout.dispatchSlotStateSize = epWorldSize * 8 * MOE_EP_WIN_ALIGN; // 打桩 每个对端卡预留8个状态位空间
+    layout.dispatchSlotStateSize = epWorldSize * 32 * MOE_EP_WIN_ALIGN; // 打桩 每对端预留32个512B状态位（单jetty只用槽0，多jetty版见multi_channel）
 
     // 打桩：dispatch数据区按每源rank预留nmt个slot，槽位间距在kernel侧用hAlign512
     const uint64_t hiddenAlign512 = AlignMoeEpWin(params.hidden * MOE_EP_MAX_OUT_DTYPE_SIZE);

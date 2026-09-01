@@ -85,9 +85,11 @@ constexpr uint32_t SLOT_NOTIFY_STRIDE = 64U;
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 256U;
 constexpr uint32_t HCOMM_WRITE_NOTIFY_TASK_BYTES = 64U;
 constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_WRITE_NOTIFY_TASK_BYTES;
-constexpr bool RING_STUB_MODE = false; // 打桩：环形拓扑开关，true=给后RING_NUM张卡发
-constexpr uint32_t RING_NUM = 2; // 打桩：给后几张卡发
-constexpr uint32_t JETTY_CNT = 1U;   // 打桩 通信使用jetty个数  取1-8
+constexpr uint32_t JETTY_TOTAL = 32U; // 打桩：jetty总数固定32，每个jetty可发往所有卡
+constexpr uint32_t PEERS_PER_JETTY = 4U; // 打桩：每个jetty参与的对端数；对端按连续段分组(每组PEERS_PER_JETTY个)，
+                                         // 组内每个对端的bs再均摊到该组分到的全部jetty并发发送
+                                         // 例：EP=8,PEERS_PER_JETTY=4 → 2组，偶数jetty发0-3卡，奇数jetty发4-7卡，
+                                         //     每对端由16个jetty并发，bs分16片
 constexpr struct UrmaWqeEntry DATA_CFG = {
     .odr      = 5,
     .fence    = 1,
@@ -132,8 +134,9 @@ private:
     __aicore__ inline void SendPhase();
     __aicore__ inline void GetSlotStartNum();
     __aicore__ inline void SendTokenToRemote(); // 打桩：仅通信发送token
+    __aicore__ inline uint32_t GetSliceJettyIndex(uint32_t dstRankId, uint32_t sliceIdx); // 打桩：(对端,bs切片)→jetty映射
     __aicore__ inline bool GetCoreAssignment(uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
-                                             uint32_t &coreIndexInGroup, uint32_t &groupSize); // 打桩：多channel分核
+                                             uint32_t &coreIndexInGroup, uint32_t &groupSize); // 打桩：按SplitToCore均摊对端(cnt栅栏用)
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
 
@@ -212,6 +215,8 @@ private:
     uint32_t endRankId_{0};
     uint32_t rankNumPerCore_{0};
     uint32_t channelsPerRank_{1}; // 打桩：每rank通道数
+    uint32_t jettyNumGroups_{1}; // 打桩：对端分组数 = min(Ceil(EP/PEERS_PER_JETTY), 32)
+    uint32_t jettyPerGroup_{1};  // 打桩：每组jetty数 = 32/jettyNumGroups_，即每个对端并发发送的jetty数
     uint32_t copyRankStart_{0};   // 打桩：本核负责的起始rank
     uint32_t copyRankNum_{0};     // 打桩：本核负责的rank数
     uint32_t channelIndex_{0};   // 打桩：本核使用的通道号
@@ -276,6 +281,15 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank_ = 1; // 打桩：非法channel数回退为1
     }
+    // 打桩：jetty分组派生——对端按连续PEERS_PER_JETTY个一组，组数封顶32；每组分32/组数个jetty
+    jettyNumGroups_ = (epWorldSize_ + PEERS_PER_JETTY - 1U) / PEERS_PER_JETTY;
+    if (jettyNumGroups_ > JETTY_TOTAL) {
+        jettyNumGroups_ = JETTY_TOTAL;
+    }
+    if (jettyNumGroups_ == 0U) {
+        jettyNumGroups_ = 1U;
+    }
+    jettyPerGroup_ = JETTY_TOTAL / jettyNumGroups_;
     moeExpertNum_ = info.cfg.numExperts;
     moeExpertNumPerRank_ = info.cfg.numLocalExperts;
     axisMaxBS_ = info.cfg.numMaxTokensPerRank;
@@ -666,7 +680,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
                              static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN;
 
         if (dstRankId != epRankId_) {
-            uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelIndex_);
+            uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, GetSliceJettyIndex(dstRankId, 0));
             // 打桩：直接写512B(前32B为1)到对端cnt槽位，内容即flag
             hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, payloadStashWinAddr_,
                                                                WIN_ADDR_ALIGN);
@@ -956,90 +970,80 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
     }
 }
 
-// 打桩：GetCoreAssignment — 按channelsPerRank将AIV分组，每组负责一个rank，组内core对应channel
+// 打桩：GetSliceJettyIndex — (对端, bs切片)→jetty映射。对端按连续PEERS_PER_JETTY个分组；
+// jetty j 服务组 (j % jettyNumGroups_)，承担该组每个对端的第 (j / jettyNumGroups_) 片bs。
+// 例：EP=8,PPJ=4 → numGroups=2：偶数jetty发组0(0-3卡)，奇数jetty发组1(4-7卡)，每对端16个jetty并发
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline uint32_t MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSliceJettyIndex(uint32_t dstRankId,
+                                                                                            uint32_t sliceIdx)
+{
+    uint32_t group = dstRankId / PEERS_PER_JETTY;
+    if (group >= jettyNumGroups_) {
+        group = jettyNumGroups_ - 1U; // 分组数封顶后多出的对端并入最后一组
+    }
+    uint32_t jettyIndex = group + sliceIdx * jettyNumGroups_;
+    return jettyIndex >= JETTY_TOTAL ? JETTY_TOTAL - 1U : jettyIndex; // 兜底防越界
+}
+
+// 打桩：GetCoreAssignment — 多对端分核：按SplitToCore(EP, aivNum_)均摊对端，每核串行负责copyRankNum个对端，
+// 每个对端经GetJettyIndex映射到所属jetty发送；对端集合在jetty间划分，互不重叠且覆盖全部EP
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssignment(
     uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
     uint32_t &coreIndexInGroup, uint32_t &groupSize)
 {
-    uint32_t maxChannelAivNum = epWorldSize_ * JETTY_CNT;
-    uint32_t activeAivNum = aivNum_ > maxChannelAivNum ? maxChannelAivNum : aivNum_;
-    if (aivId_ >= activeAivNum) {
+    if (startRankId_ >= epWorldSize_) {
         return false;
     }
-
-    bool splitRankChannels = channelsPerRank_ > 1 && activeAivNum >= epWorldSize_;
+    channelIndex = 0;
+    copyRankNum = rankNumPerCore_;
+    copyRankStart = startRankId_;
     coreIndexInGroup = 0;
     groupSize = 1;
-    if (splitRankChannels) {
-        uint32_t baseGroupSize = activeAivNum / epWorldSize_;
-        uint32_t remainder = activeAivNum % epWorldSize_;
-        uint32_t accumulated = 0;
-        uint32_t targetRank = epWorldSize_;
-        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-            uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
-            if (aivId_ < accumulated + currentGroupSize) {
-                targetRank = rank;
-                groupSize = currentGroupSize;
-                coreIndexInGroup = aivId_ - accumulated;
-                break;
-            }
-            accumulated += currentGroupSize;
-        }
-        if (targetRank >= epWorldSize_ || groupSize == 0) {
-            return false;
-        }
-        channelIndex = coreIndexInGroup;
-        copyRankNum = 1;
-        copyRankStart = targetRank;
-    } else {
-        channelIndex = 0;
-        copyRankNum = rankNumPerCore_;
-        copyRankStart = startRankId_;
-    }
     return true;
 }
 
-// 打桩：SendTokenToRemote — 批量数据WQE直写对端win数据区 + 每channel一个512B槽位flag（win状态区按最大范围预留，实际用多少发多少）
+// 打桩：SendTokenToRemote — jetty绑定核模型：核aivId持有jetty(aivId%JETTY_TOTAL)，该jetty服务对端组
+// (jetty%numGroups)内每个对端（共PEERS_PER_JETTY个），每对端发第(jetty/numGroups)片bs（Ceil(bs/每组jetty数)个token）。
+// 即每个核往多个对端发，一个对端由组内全部jetty并发服务。每片一个batch+一个512B槽位flag
+// （在对端槽位区r*512*JETTY_TOTAL + jettyIdx*512处，按jetty错开）
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenToRemote()
 {
-    if (!coreAssigned_) {
-        return;
+    if (aivId_ >= JETTY_TOTAL) {
+        return; // jetty与核一一绑定，超出32的核不参与发送
     }
-    for (uint32_t dstRankId = copyRankStart_; dstRankId < copyRankStart_ + copyRankNum_; ++dstRankId) {
-        // 打桩：RING_STUB_MODE—仅给后RING_NUM张卡发，其余跳过
-        if (RING_STUB_MODE) {
-            uint32_t offset = (dstRankId + epWorldSize_ - epRankId_) % epWorldSize_;
-            if (offset == 0 || offset > RING_NUM) {
-                continue;
-            }
-        }
-        // 打桩：每个(srcRank, channel)一个512B槽位flag，rank间距 = 512*jettyCnt
-        GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
-                             static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN * JETTY_CNT;
-        notifyAddr += channelIndex_ * WIN_ADDR_ALIGN;
-        if (unlikely(dstRankId == epRankId_)) {
-            GlobalTensor<uint64_t> statusGMTensor;
-            statusGMTensor.SetGlobalBuffer((__gm__ uint64_t *)(notifyAddr));
-            statusGMTensor.SetValue(0, 1);
-            DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                statusGMTensor);
-            continue;
-        }
+    uint32_t jettyIndex = aivId_; // 本核绑定的jetty（aivId<32即jetty号）
+    uint32_t group = jettyIndex % jettyNumGroups_; // 该jetty服务的对端组
+    uint32_t sliceIdx = jettyIndex / jettyNumGroups_; // 本jetty承担组内对端的bs片号
+    uint32_t groupStart = group * PEERS_PER_JETTY; // 组内对端起始（分组封顶时末组可能不足PEERS_PER_JETTY）
+    uint32_t groupEnd = (group + 1U) * PEERS_PER_JETTY;
+    if (groupEnd > epWorldSize_) {
+        groupEnd = epWorldSize_;
+    }
+    if (groupStart >= epWorldSize_) {
+        return; // 分组封顶后该组无对端（本jetty闲置）
+    }
 
-        uint32_t sendTokenNum = axisBS_; // 打桩：每个对端卡发送token数为bs
-        uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, channelIndex_);
-        uint32_t tokensPerChannel = Ceil(sendTokenNum, groupSize_);
-        uint32_t tokenStart = coreIndexInGroup_ * tokensPerChannel;
-        if (tokenStart >= sendTokenNum) {
-            // 本channel无token也要发flag，保证该channel槽位被置位
+    uint32_t tokensPerJetty = Ceil(axisBS_, jettyPerGroup_);
+    for (uint32_t dstRankId = groupStart; dstRankId < groupEnd; ++dstRankId) {
+        if (dstRankId == epRankId_) {
+            continue; // 本卡flag无需发送，epilogue不等待本卡
+        }
+        // 打桩：每片一个512B槽位flag，rank区间距=512*JETTY_TOTAL，rank区内按jetty错开
+        GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
+                             static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN * JETTY_TOTAL +
+                             static_cast<uint64_t>(jettyIndex) * WIN_ADDR_ALIGN;
+        uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId, jettyIndex);
+
+        uint32_t tokenStart = sliceIdx * tokensPerJetty;
+        if (tokenStart >= axisBS_) {
+            // 本片无token也要发flag，保证该jetty槽位被置位
             hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, NOTIFY_CFG>(commHandle, notifyAddr, payloadStashWinAddr_,
                                                                  WIN_ADDR_ALIGN);
             continue;
         }
-        uint32_t tokenCnt = (tokenStart + tokensPerChannel > sendTokenNum) ? (sendTokenNum - tokenStart)
-                                                                           : tokensPerChannel;
+        uint32_t tokenCnt = (tokenStart + tokensPerJetty > axisBS_) ? (axisBS_ - tokenStart) : tokensPerJetty;
         uint32_t processed = 0;
         uint32_t commCnt = 0;
         uint64_t addrOffset = static_cast<uint64_t>(tokenStart) * hAlign512_;
@@ -1058,7 +1062,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
             localSrcAddr += hAlign512_;
             remoteWinAddr += hAlign512_;
         }
-        // 末尾flag：fence保证在数据WQE之后生效，接收侧等到flag即数据全部就位
+        // 末尾flag：fence保证在数据WQE之后生效，接收侧等到flag即该片数据全部就位
         hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, payloadStashWinAddr_, WIN_ADDR_ALIGN);
         hcomm_.BatchCommit(batchHandle);
     }
