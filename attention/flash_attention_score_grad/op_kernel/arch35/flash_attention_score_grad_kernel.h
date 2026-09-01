@@ -667,47 +667,49 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
         if (taskId > 0 && lastTwoLoopCount <= 1) {
             if ASCEND_IS_AIV {
+                FagRunInfo &vecRunInfo = runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES];
                 LocalTensor<CALC_TYPE> mm1ResTensor =
-                    this->mm1ResBuf[runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES].commonRunInfo.taskIdMod2]
-                        .template Get<CALC_TYPE>();
+                    this->mm1ResBuf[vecRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                 LocalTensor<CALC_TYPE> mm2ResTensor =
-                    this->mm2ResBuf[runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES].commonRunInfo.taskIdMod2]
-                        .template Get<CALC_TYPE>();
+                    this->mm2ResBuf[vecRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                 // wait mm2 result
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C2_TO_V2_FLAG[(taskId + 1) & 1]);
-                this->vecBlock.ProcessVec2(
-                    mm2ResTensor, this->constInfo,
-                    runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES]); // v2: pse + attenMask + simpleSoftmax
+                this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo,
+                                           vecRunInfo); // v2: pse + attenMask + simpleSoftmax
                 // wait mm1 result
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
                 if (unlikely(this->constInfo.isSink && !IS_DROP)) {
-                    this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo,
-                                                  runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES]);
+                    this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, vecRunInfo);
                 }
 
                 // ------------------------ dv dependency --------------------------
-                if (taskId >= NUM_TWO) {
-                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C5_TO_V4_FLAG); // p must wait dv write l0a over
+                const uint8_t l1BufferIdx = vecRunInfo.commonRunInfo.taskIdMod2;
+                // The first two vector tasks fill different L1 buffers. Wait only when the same buffer is reused.
+                if (vecRunInfo.commonRunInfo.taskId >= NUM_TWO) {
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(
+                        SYNC_UB2L1_P_DB_FLAG[l1BufferIdx]); // p must wait dv mte1 copy over
                 }
                 MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
                 MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
                 this->vecBlock.ProcessVec4(pL1Buffer, mm2ResTensor, this->constInfo,
-                                           runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES]); // v4: cast + nd2nz
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG); // dv must wait p copy completely
+                                           vecRunInfo); // v4: cast + nd2nz
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(
+                    SYNC_UB2L1_P_DB_FLAG[l1BufferIdx]); // dv must wait p copy completely
 
                 // ------------------------ dqk dependency --------------------------
-                if (taskId >= NUM_TWO) {
-                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG); // ds must wait dqk write l0a over
+                if (vecRunInfo.commonRunInfo.taskId >= NUM_TWO) {
+                    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(
+                        SYNC_UB2L1_DS_DB_FLAG[l1BufferIdx]); // ds must wait dqk mte1 copy over
                 }
                 this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
-                                           runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES]); // v3: dropout + cast + nd2nz
+                                           vecRunInfo); // v3: dropout + cast + nd2nz
                 if (unlikely(this->constInfo.isSink && IS_DROP)) {
-                    this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo,
-                                                  runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES]);
+                    this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, vecRunInfo);
                 }
                 CrossCoreSetFlag<SYNC_MODE, PIPE_V>(SYNC_V2_TO_C1_FLAG[taskId & 1]);
                 CrossCoreSetFlag<SYNC_MODE, PIPE_V>(SYNC_V2_TO_C2_FLAG[taskId & 1]);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG); // dqk must wait ds copy completely
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(
+                    SYNC_UB2L1_DS_DB_FLAG[l1BufferIdx]); // dqk must wait ds copy completely
             }
         }
         if (taskId > 1) {
@@ -716,10 +718,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                 LocalTensor<CALC_TYPE> mm2ResTensor =
                     this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+                const uint8_t l1BufferIdx = prevRunInfo.commonRunInfo.taskIdMod2;
 
                 // wait p in ub copy to l1
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V4_TO_C5_FLAG);
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V4_TO_C5_FLAG);
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_UB2L1_P_DB_FLAG[l1BufferIdx]);
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_UB2L1_P_DB_FLAG[l1BufferIdx]);
 
                 MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
                 MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
@@ -727,11 +730,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 // compute dv
                 this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
                     this->dvWorkSpaceGm, pL1Buffer, this->constInfo, prevRunInfo); // c5
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);        // v4 must wait dv mte1 copy over
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(
+                    SYNC_UB2L1_P_DB_FLAG[l1BufferIdx]); // v4 must wait dv mte1 copy over
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_UB2L1_P_DB_FLAG[l1BufferIdx]);
                 // wait ds in ub copy to l1
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V3_TO_C3_FLAG);
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V3_TO_C3_FLAG);
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_UB2L1_DS_DB_FLAG[l1BufferIdx]);
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_UB2L1_DS_DB_FLAG[l1BufferIdx]);
                 // compute dq
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(this->dqWorkSpaceGm,
                                                                                             dSL1Buffer, this->constInfo,
@@ -740,8 +744,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(this->dkWorkSpaceGm,
                                                                                             dSL1Buffer, this->constInfo,
                                                                                             prevRunInfo); // c4
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG); // v3 must wait dqk mte1 copy over
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(
+                    SYNC_UB2L1_DS_DB_FLAG[l1BufferIdx]); // v3 must wait dqk mte1 copy over
+                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_UB2L1_DS_DB_FLAG[l1BufferIdx]);
             }
         }
         if (isLastTwoLoop) {

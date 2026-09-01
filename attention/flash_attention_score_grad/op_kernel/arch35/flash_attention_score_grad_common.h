@@ -44,6 +44,11 @@ constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
 // for small D preload 2 times
 constexpr uint8_t SYNC_V2_TO_C1_FLAG[2] = {10, 11};
 constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {12, 13};
+// dS/P use double-buffered L1 in the small-D preload path. Each physical buffer
+// owns one event for the vector-to-cube ready signal and the cube-to-vector release signal.
+// The original ready/release IDs become slot 0/1 only in this mutually exclusive path.
+constexpr uint8_t SYNC_UB2L1_DS_DB_FLAG[2] = {SYNC_V3_TO_C3_FLAG, SYNC_C4_TO_V3_FLAG};
+constexpr uint8_t SYNC_UB2L1_P_DB_FLAG[2] = {SYNC_V4_TO_C5_FLAG, SYNC_C5_TO_V4_FLAG};
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
