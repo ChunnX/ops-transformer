@@ -56,6 +56,11 @@ struct GMMSetOutputParams {
     size_t numX;
 };
 
+static inline std::string ToString(const std::int64_t value)
+{
+    return std::to_string(value);
+}
+
 static ge::graphStatus CheckSplitItem(int64_t splitItem)
 {
     if (splitItem == GMM_X_Y_SEPARATED || splitItem == GMM_NO_SEPARATED || splitItem == GMM_X_SEPARATED ||
@@ -484,7 +489,7 @@ static graphStatus CheckDimNumAndPerGroupNum(const gert::InferShapeContext *cont
             int64_t perGroupNum = tensorShape->GetDim(tensorDimNum - 2); // 2: the last 2-th index
             OP_CHECK_IF(!(perGroupNum > 0 && weightKDimValue % perGroupNum == 0),
                         OP_LOGE(context->GetNodeName(),
-                                "perGroupNum must be larger than 0, and can evenly divided "
+                                "perGroupNum must be larger than 0, and can be evenly divided "
                                 "by K[%ld] in A16W4-pergroup case, but now perGroupNum is %ld.",
                                 weightKDimValue, perGroupNum),
                         return GRAPH_FAILED);
@@ -545,7 +550,7 @@ static ge::graphStatus CheckOptionalTensorList(gert::InferShapeContext *context,
         OP_CHECK_IF(static_cast<size_t>(tensor0Shape->GetDim(0)) != groupNum,
                     OP_LOGE(context->GetNodeName(),
                             "%s batch size[%ld] should be "
-                            "euqal with groupList length[%lu].",
+                            "equal with groupList length[%lu].",
                             tensorType.c_str(), tensor0Shape->GetDim(0), groupNum),
                     return GRAPH_FAILED);
         // tensor's N axis size should equal with weight's N axis.
@@ -628,9 +633,10 @@ static ge::graphStatus CheckGroupedMatmulQuant(gert::InferShapeContext *context,
                                                const GMMParamsInfo &paramsInfo)
 {
     OP_CHECK_IF(paramsInfo.platform == PlatformID::ASCEND310P,
-                OP_LOGE(context->GetNodeName(), "quant cases do not support on Ascend310P."), return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "quant cases are not supported on Ascend310P."), return GRAPH_FAILED);
     OP_CHECK_IF(gmmAttrs.groupType == GMM_SPLIT_K,
-                OP_LOGE(context->GetNodeName(), "quant cases do not support splited axis is K."), return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "quant cases do not support split along the K axis."),
+                return GRAPH_FAILED);
     OP_CHECK_IF(!IsTensorListNullOrEmpty(context, GMM_INDEX_IN_OFFSET),
                 OP_LOGE(context->GetNodeName(), "offset must be nullptr in quant, but now is not nullptr."),
                 return GRAPH_FAILED);
@@ -679,7 +685,7 @@ static bool isA8W4AsymmetricQuant(const gert::InferShapeContext *context)
 static ge::graphStatus CheckA8W4AsymQuantParams(gert::InferShapeContext *context, const GMMParamsInfo &paramsInfo)
 {
     OP_CHECK_IF(paramsInfo.platform == PlatformID::ASCEND310P,
-                OP_LOGE(context->GetNodeName(), "quant cases do not support on Ascend310P."), return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "quant cases are not supported on Ascend310P."), return GRAPH_FAILED);
     auto xShape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     auto weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
@@ -734,7 +740,7 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(const gert::InferSha
                                            context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0), antiquantScale0Shape);
     OP_CHECK_IF(gmmAttrs.transposeWeight && pergroupSize % 2 != 0, // 2: a factor
                 OP_LOGE(context->GetNodeName(),
-                        "pergroupSize should be even when weight is transposed"
+                        "pergroupSize should be even when weight is transposed "
                         "in A16W4-pergroup case, but now is %ld",
                         pergroupSize),
                 return GRAPH_FAILED);
@@ -766,7 +772,7 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(const gert::InferSha
             int64_t pergroupSizeOfOffset = GetPergroupSize(gmmAttrs, isSingleWeight, wShape, antiquantOffsetShape);
             OP_CHECK_IF(pergroupSizeOfOffset != pergroupSize,
                         OP_LOGE(context->GetNodeName(),
-                                "antiquantOffset[%zu]'s pergroup size[%ld]"
+                                "antiquantOffset[%zu]'s pergroup size[%ld] "
                                 "is not the required value[%ld]",
                                 i, pergroupSizeOfOffset, pergroupSize),
                         return GRAPH_FAILED);
@@ -779,9 +785,10 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantForShape(gert::InferShapeConte
                                                            const GMMParamsInfo &paramsInfo)
 {
     OP_CHECK_IF(paramsInfo.platform == PlatformID::ASCEND310P,
-                OP_LOGE(context->GetNodeName(), "antiquant cases do not support on Ascend310P."), return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "antiquant cases are not supported on Ascend310P."),
+                return GRAPH_FAILED);
     OP_CHECK_IF(gmmAttrs.groupType == GMM_SPLIT_K,
-                OP_LOGE(context->GetNodeName(), "antiquant cases do not support splited axis is K."),
+                OP_LOGE(context->GetNodeName(), "antiquant cases do not support split along the K axis."),
                 return GRAPH_FAILED);
     OP_CHECK_IF(IsTensorListNullOrEmpty(context, GMM_INDEX_IN_ANTIQUANT_SCALE),
                 OP_LOGE(context->GetNodeName(),
@@ -1039,8 +1046,8 @@ static ge::graphStatus CheckCaseNoSplit(gert::InferShapeContext *context, bool t
         int64_t xKDimValue = xShape->GetDim(xDimNum - 1); // x always is not transposed
         if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
             OP_CHECK_IF(xKDimValue > GMM_MAX_INNER_AXIS,
-                        OP_LOGE(context->GetNodeName(), "x[%lu] dim %lu value %ld should less or equal to %ld.", i,
-                                xDimNum - 1, xKDimValue, GMM_MAX_INNER_AXIS),
+                        OP_LOGE(context->GetNodeName(), "x[%lu] dim %lu value %ld should be less than or equal to %ld.",
+                                i, xDimNum - 1, xKDimValue, GMM_MAX_INNER_AXIS),
                         return GRAPH_FAILED);
         }
         if (weightSize > 1UL) {
@@ -1062,8 +1069,8 @@ static ge::graphStatus CheckCaseNoSplit(gert::InferShapeContext *context, bool t
         // if weight is not transposed, check N aisx; otherwise, check K axis, which can be skiped
         if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
             OP_CHECK_IF(!transposeWeight && weightNDimValue > GMM_MAX_INNER_AXIS,
-                        OP_LOGE(context->GetNodeName(), "w[%zu] dim %zu value %ld should less or equal to %ld.", i,
-                                wNDimIdx, weightNDimValue, GMM_MAX_INNER_AXIS),
+                        OP_LOGE(context->GetNodeName(), "w[%zu] dim %zu value %ld should be less than or equal to %ld.",
+                                i, wNDimIdx, weightNDimValue, GMM_MAX_INNER_AXIS),
                         return GRAPH_FAILED);
         }
     }
@@ -1083,7 +1090,7 @@ static ge::graphStatus CheckInnerAxisOfTensorList(const gert::InferShapeContext 
         if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
             OP_CHECK_IF(innerAxisValue > GMM_MAX_INNER_AXIS,
                         OP_LOGE(context->GetNodeName(),
-                                "Dim %ld value of %zu-th shape should less or equal to %ld, "
+                                "Dim %ld value of %zu-th shape should be less than or equal to %ld, "
                                 "but now is %ld.",
                                 innerAxisDimId, i, GMM_MAX_INNER_AXIS, innerAxisValue),
                         return GRAPH_FAILED);
@@ -1116,7 +1123,7 @@ static ge::graphStatus CheckShapeSameLengthTensorList(gert::InferShapeContext *c
             if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0) &&
                 innerAxisValue > GMM_MAX_INNER_AXIS) {
                 OP_LOGW(context->GetNodeName(),
-                        "Dim %lu value of %s[%lu] should less or equal to %ld,"
+                        "Dim %lu value of %s[%lu] should be less than or equal to %ld,"
                         "but now is %ld.",
                         dimIds[0], tensorType[0].c_str(), i, GMM_MAX_INNER_AXIS, innerAxisValue);
             }
@@ -1130,7 +1137,7 @@ static ge::graphStatus CheckShapeSameLengthTensorList(gert::InferShapeContext *c
         int64_t dimValue2 = shape->GetDim(dimIds[1]);
         if (dimValue1 != dimValue2) {
             OP_LOGW(context->GetNodeName(),
-                    "Dim %lu value of %s[%lu] should be equal with dim %lu value of %s[%lu],"
+                    "Dim %lu value of %s[%lu] should be equal to dim %lu value of %s[%lu],"
                     "but now is %ld and %ld respectively.",
                     dimIds[0], tensorType[0].c_str(), i, dimIds[1], tensorType[1].c_str(), i, dimValue1, dimValue2);
         }
@@ -1163,11 +1170,11 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext *c
     if (tensorType[2] == "true" && innerAxisdimId > -1) {
         int64_t dimValue = singleTensor0->GetDim(innerAxisdimId);
         if (!(ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0)) {
-            OP_CHECK_IF(
-                dimValue > GMM_MAX_INNER_AXIS,
-                OP_LOGE(context->GetNodeName(), "Dim %ld value of %s[0] should less or equal to %ld, but now is %ld.",
-                        innerAxisdimId, tensorType[1].c_str(), GMM_MAX_INNER_AXIS, dimValue),
-                return GRAPH_FAILED);
+            OP_CHECK_IF(dimValue > GMM_MAX_INNER_AXIS,
+                        OP_LOGE(context->GetNodeName(),
+                                "Dim %ld value of %s[0] should be less than or equal to %ld, but now is %ld.",
+                                innerAxisdimId, tensorType[1].c_str(), GMM_MAX_INNER_AXIS, dimValue),
+                        return GRAPH_FAILED);
         }
     }
     const gert::Shape *longTensor;
@@ -1181,7 +1188,7 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext *c
         int64_t dimValueLong = longTensor->GetDim(dimIds[0]);
         OP_CHECK_IF(dimValueLong != dimValueSingle,
                     OP_LOGE(context->GetNodeName(),
-                            "Dim %lu value of %s[%lu] %ld should be equal with dim %lu value of %s[0] %ld.", dimIds[0],
+                            "Dim %lu value of %s[%lu] %ld should be equal to dim %lu value of %s[0] %ld.", dimIds[0],
                             tensorType[0].c_str(), i, dimValueLong, dimIds[1], tensorType[1].c_str(), dimValueSingle),
                     return GRAPH_FAILED);
     }
@@ -1202,7 +1209,7 @@ static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext 
     int64_t groupListSize = groupTensorOptionalShape->GetDim(0);
     OP_CHECK_IF(groupListSize > GMM_MAX_GROUP_LIST_SIZE_TENSOR,
                 OP_LOGE(context->GetNodeName(),
-                        "When groupList type is tenosr, size of groupList %ld should be less than or equal to %ld.",
+                        "When groupList type is tensor, size of groupList %ld should be less than or equal to %ld.",
                         groupListSize, GMM_MAX_GROUP_LIST_SIZE_TENSOR),
                 return GRAPH_FAILED);
     OP_CHECK_IF(!((groupListSize == groupNum && groupNum > 1) || groupNum == 1),

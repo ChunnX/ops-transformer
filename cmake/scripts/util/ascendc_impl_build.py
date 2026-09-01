@@ -206,6 +206,7 @@ def {}({}, kernel_name="{}"{}):
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
         tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "catlass", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
     options.append("-I" + tikcpp_path)
@@ -1012,7 +1013,10 @@ if __name__ == "__main__":
     if args.opsinfo_dir:
         ops_infos.extend(get_ops_info_files(args.opsinfo_dir))
         if not ops_infos:
-            raise OpFileNotExistsError(args.opsinfo_dir)
+            print(
+                f"No aic-*-ops-info.ini found in {args.opsinfo_dir}, skip adapt py generation."
+            )
+            sys.exit(0)
     else:
         ops_infos.append(args.argv[1])
     COMPUTE_UNIT = args.compute_unit
