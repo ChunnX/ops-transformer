@@ -21,7 +21,8 @@ import ops_transformer_catccos_udma as udma
 
 try:
     from .accuracy_worker import (
-        _grouped_mat_mul_all_to_allv_golden,
+        _grouped_mat_mul_all_to_allv_golden_with_local,
+        _grouped_mat_mul_all_to_allv_producer_trace_golden,
         _grouped_mat_mul_all_to_allv_segments,
         _make_tensor,
         _rank_route_values,
@@ -38,7 +39,8 @@ try:
     from .memory_safety import compare_fingerprints, sampled_fingerprint
 except ImportError:  # Direct torchrun execution.
     from accuracy_worker import (
-        _grouped_mat_mul_all_to_allv_golden,
+        _grouped_mat_mul_all_to_allv_golden_with_local,
+        _grouped_mat_mul_all_to_allv_producer_trace_golden,
         _grouped_mat_mul_all_to_allv_segments,
         _make_tensor,
         _rank_route_values,
@@ -57,15 +59,32 @@ except ImportError:  # Direct torchrun execution.
 
 DIAGNOSTIC_TENSOR_WORDS = 131072
 DIAGNOSTIC_HEADER_WORDS = 32
-DIAGNOSTIC_RECORD_WORDS = 16
+DIAGNOSTIC_RECORD_WORDS = 24
 DIAGNOSTIC_MAGIC = 0x474D4D4132415631
-DIAGNOSTIC_VERSION = 1
+DIAGNOSTIC_VERSION = 2
 DIAGNOSTIC_MODE_IDS = {
     "baseline": 1,
     "producer_barrier": 2,
     "full_barrier": 3,
     "full_barrier_mte3": 4,
     "full_barrier_official_block": 5,
+    "pre_get_delay_medium": 6,
+    "post_quiet_delay_short": 7,
+    "post_quiet_delay_medium": 7,
+    "post_quiet_delay_long": 7,
+    "no_reuse_trace": 8,
+}
+DIAGNOSTIC_DELAY_CYCLES = {
+    "baseline": 0,
+    "producer_barrier": 0,
+    "full_barrier": 0,
+    "full_barrier_mte3": 0,
+    "full_barrier_official_block": 0,
+    "pre_get_delay_medium": 20_000,
+    "post_quiet_delay_short": 2_000,
+    "post_quiet_delay_medium": 20_000,
+    "post_quiet_delay_long": 200_000,
+    "no_reuse_trace": 0,
 }
 
 
@@ -124,10 +143,23 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
                 words[2], DIAGNOSTIC_MODE_IDS[expected_mode]
             )
         )
+    expected_delay = DIAGNOSTIC_DELAY_CYCLES[expected_mode]
+    if words[20] != expected_delay:
+        raise RuntimeError(
+            "diagnostic delay mismatch: device={} host={}".format(
+                words[20], expected_delay
+            )
+        )
     if words[4] != world_size:
         raise RuntimeError(
             "diagnostic world size mismatch: device={} host={}".format(
                 words[4], world_size
+            )
+        )
+    if words[14] != DIAGNOSTIC_RECORD_WORDS:
+        raise RuntimeError(
+            "diagnostic record ABI mismatch: device={} host={}".format(
+                words[14], DIAGNOSTIC_RECORD_WORDS
             )
         )
     record_count = words[15]
@@ -162,6 +194,14 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
             "recycle_barrier": bool(values[11]),
             "stage_released": bool(values[12]),
             "official_block_remote_copy": bool(values[13]),
+            "delay_cycles": values[14],
+            "delay_placement": {
+                0: "none", 1: "pre_get", 2: "post_quiet",
+            }.get(values[15], "unknown"),
+            "stage_byte_offset": values[16],
+            "stage_payload_bytes": values[17],
+            "producer_trace_row_offset": values[18],
+            "producer_trace_copy_status": values[19],
         })
     cq_failures = [
         {
@@ -172,6 +212,17 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
         }
         for item in records
         if item["has_input"] and item["quiet_status"] != 0
+    ]
+    trace_copy_failures = [
+        {
+            "status": item["producer_trace_copy_status"],
+            "comm_index": item["comm_index"],
+            "destination_rank": item["source_rank"],
+        }
+        for item in records
+        if expected_mode == "no_reuse_trace"
+        and item["stage_payload_bytes"] != 0
+        and item["producer_trace_copy_status"] != 0
     ]
     return {
         "header": {
@@ -192,9 +243,15 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
             "record_words": words[14],
             "record_count": record_count,
             "overflow": bool(words[16]),
+            "symmetric_base_address": "0x{:x}".format(words[17]),
+            "producer_trace_address": "0x{:x}".format(words[18]),
+            "producer_trace_rows": words[19],
+            "delay_cycles": words[20],
+            "no_reuse_comm_loops_over_capacity": words[21],
         },
         "records": records,
         "cq_failures": cq_failures,
+        "producer_trace_copy_failures": trace_copy_failures,
     }
 
 
@@ -294,6 +351,9 @@ def main():
         raise ValueError("--launches-per-mode must be positive")
     if args.fingerprint_elements <= 0 or args.comparison_chunk_elements <= 0:
         raise ValueError("fingerprint and comparison chunk sizes must be positive")
+    unknown_modes = sorted(set(args.mode) - set(DIAGNOSTIC_MODE_IDS))
+    if unknown_modes:
+        raise ValueError("unknown diagnostic modes: {}".format(unknown_modes))
 
     cases = read_resolved_cases(args.resolved_case)
     if len(cases) != 1:
@@ -333,6 +393,15 @@ def main():
             })
         init_method = udma_init_method_from_env()
         heap_size = validation_udma_heap_size()
+        if "no_reuse_trace" in args.mode:
+            no_reuse_minimum_heap = 704 * 1024 * 1024
+            if heap_size < no_reuse_minimum_heap:
+                raise RuntimeError(
+                    "no_reuse_trace requires UDMA_HEAP_SIZE >= {} bytes "
+                    "(640 MiB staging plus signal/headroom); got {}".format(
+                        no_reuse_minimum_heap, heap_size
+                    )
+                )
         udma.init_udma_group(
             rank=rank,
             world_size=world_size,
@@ -399,13 +468,34 @@ def main():
                 "completed_modes": [],
             })
         golden_started = time.monotonic()
-        expected = _grouped_mat_mul_all_to_allv_golden(
-            x, weight, route_matrix, rank, world_size, expert_num
+        needs_producer_trace = "no_reuse_trace" in args.mode
+        expected, local_gmm_expected = (
+            _grouped_mat_mul_all_to_allv_golden_with_local(
+                x, weight, route_matrix, rank, world_size, expert_num,
+                include_local=needs_producer_trace,
+            )
         )
+        producer_trace_expected = None
+        producer_trace_segments = None
+        if needs_producer_trace:
+            producer_trace_expected, producer_trace_segments = (
+                _grouped_mat_mul_all_to_allv_producer_trace_golden(
+                    local_gmm_expected, route_matrix, rank, world_size,
+                    expert_num,
+                )
+            )
+            del local_gmm_expected
         torch_npu.npu.synchronize()
         golden_seconds = time.monotonic() - golden_started
         golden_fingerprint = sampled_fingerprint(
             expected, max_elements=args.fingerprint_elements
+        )
+        producer_trace_golden_fingerprint = (
+            sampled_fingerprint(
+                producer_trace_expected,
+                max_elements=args.fingerprint_elements,
+            )
+            if producer_trace_expected is not None else None
         )
         golden_reference = expected.detach().clone()
         torch_npu.npu.synchronize()
@@ -413,6 +503,8 @@ def main():
             "case_id": case["id"],
             "rank": rank,
             "fingerprint": golden_fingerprint,
+            "producer_trace_fingerprint":
+                producer_trace_golden_fingerprint,
         })
         prelaunch_input_validation = {
             name: _reuse_check(
@@ -446,9 +538,15 @@ def main():
                 "local_tokens_per_expert": _tensor_metadata(local_table),
                 "global_tokens_per_local_expert": _tensor_metadata(global_table),
                 "golden": _tensor_metadata(expected),
+                "producer_trace_golden": (
+                    _tensor_metadata(producer_trace_expected)
+                    if producer_trace_expected is not None else None
+                ),
             },
             "input_fingerprints": fingerprints_before,
             "golden_fingerprint": golden_fingerprint,
+            "producer_trace_golden_fingerprint":
+                producer_trace_golden_fingerprint,
             "prelaunch_input_validation": prelaunch_input_validation,
             "prelaunch_validation_passed": prelaunch_validation_passed,
             "mode_order": args.mode,
@@ -494,6 +592,7 @@ def main():
         mode_group_results = []
         for mode in args.mode:
             diagnostic_mode = DIAGNOSTIC_MODE_IDS[mode]
+            delay_cycles = DIAGNOSTIC_DELAY_CYCLES[mode]
             torch_npu.npu.synchronize()
             dist.barrier()
             if rank == 0:
@@ -517,6 +616,15 @@ def main():
                     dtype=torch.int64,
                     device=device,
                 )
+                if mode == "no_reuse_trace":
+                    producer_trace = torch.empty_like(
+                        producer_trace_expected
+                    )
+                    producer_trace.fill_(float("nan"))
+                else:
+                    producer_trace = torch.empty(
+                        (0, n), dtype=torch.bfloat16, device=device
+                    )
                 torch_npu.npu.synchronize()
                 # Every rank starts the kernel only after all diagnostic
                 # outputs contain NaNs. This keeps Host-side report cost from
@@ -528,7 +636,8 @@ def main():
                     ._grouped_mat_mul_all_to_allv_diagnostic(
                         x, weight, local_table, global_table,
                         world_size, expert_num, diagnostic_out,
-                        diagnostic_status, diagnostic_mode,
+                        diagnostic_status, producer_trace,
+                        diagnostic_mode, delay_cycles,
                     )
                 )
                 torch_npu.npu.synchronize()
@@ -543,6 +652,12 @@ def main():
                     diagnostic_status, mode, world_size
                 )
                 cq_failures = diagnostic_report["cq_failures"]
+                trace_copy_failures = diagnostic_report[
+                    "producer_trace_copy_failures"
+                ]
+                no_reuse_capacity_valid = not diagnostic_report["header"][
+                    "no_reuse_comm_loops_over_capacity"
+                ]
                 report = analyze_accuracy_on_device(
                     actual, expected, segments,
                     topk=case["accuracy"]["topk"],
@@ -586,6 +701,29 @@ def main():
                     report["failure_reasons"].append(
                         "FAIL_OUTPUT_ALIAS_CONTRACT"
                     )
+                producer_report = None
+                if mode == "no_reuse_trace":
+                    producer_report = analyze_accuracy_on_device(
+                        producer_trace, producer_trace_expected,
+                        producer_trace_segments,
+                        topk=case["accuracy"]["topk"],
+                        chunk_elements=args.comparison_chunk_elements,
+                        include_breakdown=True,
+                    )
+                    producer_report.update({
+                        "case_id": case["id"],
+                        "rank": rank,
+                        "mode": mode,
+                        "launch_index": launch_index,
+                        "route_axis_role": (
+                            "source_rank field denotes destination_rank for "
+                            "producer staging"
+                        ),
+                        "copy_failures": trace_copy_failures,
+                        "workspace_capacity_valid":
+                            no_reuse_capacity_valid,
+                        "producer_trace": _tensor_metadata(producer_trace),
+                    })
                 report.update({
                     "case_id": case["id"],
                     "rank": rank,
@@ -596,6 +734,14 @@ def main():
                     "golden_id": golden_id,
                     "cq_failures": cq_failures,
                     "cq_status_passed": not cq_failures,
+                    "delay_cycles": delay_cycles,
+                    "producer_trace_passed": (
+                        producer_report["passed"]
+                        if producer_report is not None else None
+                    ),
+                    "producer_trace_copy_failures": trace_copy_failures,
+                    "no_reuse_workspace_capacity_valid":
+                        no_reuse_capacity_valid,
                     "output": _tensor_metadata(actual),
                     "output_isolation": {
                         "allocation": "caller_provided_per_launch",
@@ -625,12 +771,63 @@ def main():
                     actual=actual if detailed_failure else None,
                     expected=expected if detailed_failure else None,
                 )
+                if producer_report is not None:
+                    producer_dir = launch_dir / "producer_trace"
+                    _write_report(
+                        producer_dir, producer_report,
+                        actual=(
+                            producer_trace
+                            if not producer_report["passed"] else None
+                        ),
+                        expected=(
+                            producer_trace_expected
+                            if not producer_report["passed"] else None
+                        ),
+                    )
+                    write_json(producer_dir / "layout.json", {
+                        "symmetric_base_address": diagnostic_report[
+                            "header"
+                        ]["symmetric_base_address"],
+                        "producer_trace_address": diagnostic_report[
+                            "header"
+                        ]["producer_trace_address"],
+                        "workspace_stages": diagnostic_report[
+                            "header"
+                        ]["workspace_stages"],
+                        "stage_rows": diagnostic_report[
+                            "header"
+                        ]["stage_rows"],
+                        "records": [{
+                            "comm_index": item["comm_index"],
+                            "destination_rank": item["source_rank"],
+                            "stage_index": item["stage_index"],
+                            "stage_byte_offset": item[
+                                "stage_byte_offset"
+                            ],
+                            "stage_payload_bytes": item[
+                                "stage_payload_bytes"
+                            ],
+                            "trace_row_offset": item[
+                                "producer_trace_row_offset"
+                            ],
+                            "trace_copy_status": item[
+                                "producer_trace_copy_status"
+                            ],
+                        } for item in diagnostic_report["records"]],
+                    })
                 launch_results.append({
                     "launch_index": launch_index,
+                    "final_output_passed": report["passed"],
                     "passed": (
                         report["passed"]
                         and resident_tensors_unchanged
                         and output_aliases_prefilled_buffer
+                        and not trace_copy_failures
+                        and no_reuse_capacity_valid
+                        and (
+                            producer_report is None or
+                            producer_report["passed"]
+                        )
                     ),
                     "matched_ratio": report["matched_ratio"],
                     "hard_limit_violation_count":
@@ -640,11 +837,20 @@ def main():
                     "resident_tensors_unchanged":
                         resident_tensors_unchanged,
                     "cq_failures": cq_failures,
+                    "delay_cycles": delay_cycles,
+                    "producer_trace_passed": (
+                        producer_report["passed"]
+                        if producer_report is not None else None
+                    ),
+                    "producer_trace_report": (
+                        str(launch_dir / "producer_trace" / "report.json")
+                        if producer_report is not None else None
+                    ),
                     "diagnostic": str(launch_dir / "diagnostic.json"),
                     "diagnostic_header": diagnostic_report["header"],
                     "report": str(launch_dir / "report.json"),
                 })
-                del actual, diagnostic_out, diagnostic_status
+                del actual, diagnostic_out, diagnostic_status, producer_trace
                 gc.collect()
                 # Reporting and failure breakdowns take different time on
                 # different ranks. Align them before the next launch.
@@ -696,6 +902,19 @@ def main():
                     len(launch["cq_failures"])
                     for item in gathered_modes
                     for launch in item["launches"]
+                ),
+                "final_output_passed": all(
+                    launch["final_output_passed"]
+                    for item in gathered_modes
+                    for launch in item["launches"]
+                ),
+                "producer_trace_passed": (
+                    all(
+                        launch["producer_trace_passed"] is True
+                        for item in gathered_modes
+                        for launch in item["launches"]
+                    )
+                    if mode == "no_reuse_trace" else None
                 ),
             }
             if rank == 0:

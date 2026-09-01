@@ -36,6 +36,9 @@ enum GroupedMatmulAllToAllVDiagnosticMode : uint32_t {
     GMM_A2AV_DIAGNOSTIC_FULL_BARRIER = 3,
     GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 = 4,
     GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK = 5,
+    GMM_A2AV_DIAGNOSTIC_PRE_GET_DELAY = 6,
+    GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY = 7,
+    GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE = 8,
 };
 
 template <
@@ -78,6 +81,10 @@ public:
     using BlockCommSchedulerParams = typename BlockCommScheduler::Params;
 
     static constexpr uint32_t WORKSPACE_STAGES = WORKSPACE_STAGES_;
+    // FFTS exposes flag IDs 0..7. Data staging may have many diagnostic
+    // stages, but the sequential AIC/AIV handshake only needs two flag IDs.
+    static constexpr uint32_t SYNC_FLAG_STAGES =
+        WORKSPACE_STAGES < 2 ? WORKSPACE_STAGES : 2;
     static constexpr uint64_t SYMMETRIC_DATA_BYTES = SYMMETRIC_DATA_BYTES_;
     static constexpr bool TARGET_ORDER_STAGING = TARGET_ORDER_STAGING_;
     static constexpr bool OFFICIAL_UDMA_BLOCK = OFFICIAL_UDMA_BLOCK_;
@@ -89,9 +96,11 @@ public:
     // each communication AIV writes a unique [round, source] record and Host
     // parses it only after stream synchronization.
     static constexpr uint32_t DIAGNOSTIC_HEADER_WORDS = 32;
-    static constexpr uint32_t DIAGNOSTIC_RECORD_WORDS = 16;
+    // Keep every record cache-line aligned. The first 20 words are payload;
+    // four trailing words prevent different AIVs from sharing a cache line.
+    static constexpr uint32_t DIAGNOSTIC_RECORD_WORDS = 24;
     static constexpr uint64_t DIAGNOSTIC_MAGIC = 0x474d4d4132415631ULL;
-    static constexpr uint64_t DIAGNOSTIC_VERSION = 1;
+    static constexpr uint64_t DIAGNOSTIC_VERSION = 2;
 
     using MoeConstraints = typename BlockMmadScheduler::MoeConstraints;
 
@@ -111,6 +120,9 @@ public:
         GM_ADDR ptrDiagnostic;
         uint32_t diagnosticWords;
         uint32_t diagnosticMode;
+        GM_ADDR ptrProducerTrace;
+        uint32_t producerTraceRows;
+        uint32_t delayCycles;
         BlockCommParams blockCommParams;
         BlockCommSchedulerParams blockCommSchedulerParams;
 
@@ -126,7 +138,8 @@ public:
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
             GM_ADDR ptrDiagnostic_, uint32_t diagnosticWords_,
-            uint32_t diagnosticMode_,
+            uint32_t diagnosticMode_, GM_ADDR ptrProducerTrace_,
+            uint32_t producerTraceRows_, uint32_t delayCycles_,
             BlockCommParams const &blockCommParams_,
             BlockCommSchedulerParams const &blockCommSchedulerParams_
         ) : problemShape(problemShape_), commInterval(commInterval_),
@@ -137,6 +150,8 @@ public:
             ptrSymmetric(ptrSymmetric_), syncMmadFinish(syncMmadFinish_), syncCommFinish(syncCommFinish_),
             ptrDiagnostic(ptrDiagnostic_), diagnosticWords(diagnosticWords_),
             diagnosticMode(diagnosticMode_),
+            ptrProducerTrace(ptrProducerTrace_),
+            producerTraceRows(producerTraceRows_), delayCycles(delayCycles_),
             blockCommParams(blockCommParams_),
             blockCommSchedulerParams(blockCommSchedulerParams_)
         {
@@ -170,6 +185,9 @@ public:
         GM_ADDR ptrDiagnostic{nullptr};
         uint32_t diagnosticWords{0};
         uint32_t diagnosticMode{GMM_A2AV_DIAGNOSTIC_PRODUCTION};
+        GM_ADDR ptrProducerTrace{nullptr};
+        uint32_t producerTraceRows{0};
+        uint32_t delayCycles{0};
     };
 
     static Params ToUnderlyingArguments(Arguments const &args, uint8_t *workspace = nullptr)
@@ -208,6 +226,7 @@ public:
             args.ptrC, layoutC,
             gmSymmetric, syncMmadFinish, syncCommFinish,
             args.ptrDiagnostic, args.diagnosticWords, args.diagnosticMode,
+            args.ptrProducerTrace, args.producerTraceRows, args.delayCycles,
             blockCommParams,
             blockCommSchedulerParams
         );
@@ -216,7 +235,7 @@ public:
     CATLASS_DEVICE
     GroupedMatmulAllToAllVTla()
     {
-        for (uint32_t stageIdx = 0; stageIdx < WORKSPACE_STAGES; ++stageIdx) {
+        for (uint32_t stageIdx = 0; stageIdx < SYNC_FLAG_STAGES; ++stageIdx) {
             flagAicFinishStore[stageIdx] = Catlass::Arch::CrossCoreFlag(stageIdx);
             flagAivFinishComm[stageIdx] = Catlass::Arch::CrossCoreFlag(stageIdx);
         }
@@ -262,10 +281,11 @@ public:
         for (uint32_t commIdx = 0; commIdx < scheduler.GetCommLoops(); ++commIdx) {
             scheduler.UpdateCommContext(commIdx);
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
             auto const &gmSymmetric = gmSymmetricList[stageIdx];
 
             if (commIdx >= WORKSPACE_STAGES) {
-                Catlass::Arch::CrossCoreWaitFlag(flagAivFinishComm[stageIdx]);
+                Catlass::Arch::CrossCoreWaitFlag(flagAivFinishComm[flagIdx]);
             }
 
             auto tensorSymmetric = tla::MakeTensor(gmSymmetric, layoutSymmetric, Catlass::Arch::PositionGM{});
@@ -304,7 +324,7 @@ public:
                 blockMmad.SynchronizeBlock();
             }
 
-            Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[stageIdx]);
+            Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[flagIdx]);
         }
         }
     }
@@ -378,11 +398,12 @@ public:
 #endif
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
 
             scheduler.UpdateCommContext(commIdx);
             receiveAccum += scheduler.GetActualReceiveAccum();
 
-            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
+            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[flagIdx]);
             // Balanced-route synchronization experiment: every rank must have
             // the same commLoops and enter these per-round barriers equally.
             aclshmemx_barrier_all_vec();
@@ -451,7 +472,7 @@ public:
                 commIdx < commLoops - WORKSPACE_STAGES) {
                 // Pair with the producer barrier before any rank reuses stage.
                 aclshmemx_barrier_all_vec();
-                Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComm[stageIdx]);
+                Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(flagAivFinishComm[flagIdx]);
             }
         }
         }
@@ -462,15 +483,42 @@ private:
     static constexpr bool UsesProducerBarrier(uint32_t mode)
     {
         return mode == GMM_A2AV_DIAGNOSTIC_PRODUCTION ||
-            mode >= GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER;
+            mode == GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER ||
+            mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER ||
+            mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 ||
+            mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK ||
+            mode == GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE;
     }
 
     CATLASS_HOST_DEVICE
     static constexpr bool UsesRecycleBarrier(uint32_t mode)
     {
         return mode == GMM_A2AV_DIAGNOSTIC_PRODUCTION ||
-            mode >= GMM_A2AV_DIAGNOSTIC_FULL_BARRIER;
+            mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER ||
+            mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 ||
+            mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK;
     }
+
+    CATLASS_HOST_DEVICE
+    static constexpr bool UsesNoReuseTrace(uint32_t mode)
+    {
+        return mode == GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE;
+    }
+
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+    CATLASS_DEVICE
+    static void DiagnosticDelay(uint32_t cycles)
+    {
+        if (cycles == 0) {
+            return;
+        }
+        int64_t begin = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - begin <
+               static_cast<int64_t>(cycles)) {
+            __asm__ __volatile__("");
+        }
+    }
+#endif
 
     CATLASS_DEVICE
     static void StoreDiagnosticWord(
@@ -513,7 +561,18 @@ private:
         StoreDiagnosticWord(params, 14, DIAGNOSTIC_RECORD_WORDS);
         StoreDiagnosticWord(
             params, 15,
-            static_cast<uint64_t>(commLoops) * rankSize);
+            UsesNoReuseTrace(params.diagnosticMode) &&
+                    commLoops > WORKSPACE_STAGES
+                ? 0
+                : static_cast<uint64_t>(commLoops) * rankSize);
+        StoreDiagnosticWord(
+            params, 17,
+            reinterpret_cast<uint64_t>(params.ptrSymmetric));
+        StoreDiagnosticWord(
+            params, 18,
+            reinterpret_cast<uint64_t>(params.ptrProducerTrace));
+        StoreDiagnosticWord(params, 19, params.producerTraceRows);
+        StoreDiagnosticWord(params, 20, params.delayCycles);
     }
 
     CATLASS_DEVICE
@@ -527,7 +586,8 @@ private:
     CATLASS_DEVICE
     static void RecordTargetOrderComm(
         Params const &params, uint32_t commIdx, uint32_t rankSize,
-        uint32_t srcRankIdx, uint32_t stageIdx, bool hasInput,
+        uint32_t srcRankIdx, uint32_t stageIdx, uint32_t stageRows,
+        bool hasInput,
         uint32_t actualRows, uint32_t outputRowOffset,
         uint32_t quietStatus, bool completionPublished)
     {
@@ -562,6 +622,40 @@ private:
             UsesRecycleBarrier(params.diagnosticMode) ? 1 : 0);
         StoreDiagnosticWord(
             params, base + 13, OFFICIAL_UDMA_BLOCK ? 1 : 0);
+        StoreDiagnosticWord(params, base + 14, params.delayCycles);
+        uint32_t delayPlacement = 0;
+        if (params.diagnosticMode == GMM_A2AV_DIAGNOSTIC_PRE_GET_DELAY) {
+            delayPlacement = 1;
+        } else if (
+            params.diagnosticMode == GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY) {
+            delayPlacement = 2;
+        }
+        StoreDiagnosticWord(params, base + 15, delayPlacement);
+        uint64_t stageByteOffset =
+            (static_cast<uint64_t>(stageIdx) * rankSize +
+             params.problemShape.rankIdx()) * stageRows *
+            params.problemShape.n() * sizeof(ElementC);
+        StoreDiagnosticWord(params, base + 16, stageByteOffset);
+    }
+
+    CATLASS_DEVICE
+    static void RecordProducerTraceCopy(
+        Params const &params, uint32_t commIdx, uint32_t rankSize,
+        uint32_t destinationRank, uint64_t stageByteOffset,
+        uint32_t actualRows, uint32_t traceRowOffset, uint32_t copyStatus)
+    {
+        if (params.ptrDiagnostic == nullptr) {
+            return;
+        }
+        uint32_t base = DiagnosticRecordBase(
+            commIdx, rankSize, destinationRank);
+        StoreDiagnosticWord(params, base + 16, stageByteOffset);
+        StoreDiagnosticWord(
+            params, base + 17,
+            static_cast<uint64_t>(actualRows) *
+                params.problemShape.n() * sizeof(ElementC));
+        StoreDiagnosticWord(params, base + 18, traceRowOffset);
+        StoreDiagnosticWord(params, base + 19, copyStatus);
     }
 
     CATLASS_DEVICE
@@ -613,6 +707,7 @@ private:
                     commIdx, rankSize, srcRankIdx);
                 FlushDiagnosticCacheLine(params, base);
                 FlushDiagnosticCacheLine(params, base + 8);
+                FlushDiagnosticCacheLine(params, base + 16);
             }
         }
     }
@@ -670,11 +765,18 @@ private:
         }
 
         uint32_t commLoops = scheduler.GetCommLoops();
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+        if (UsesNoReuseTrace(params.diagnosticMode) &&
+            commLoops > WORKSPACE_STAGES) {
+            return;
+        }
+#endif
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             scheduler.UpdateCommContext(commIdx);
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
             if (commIdx >= WORKSPACE_STAGES) {
-                Catlass::Arch::CrossCoreWaitFlag(flagAivFinishComm[stageIdx]);
+                Catlass::Arch::CrossCoreWaitFlag(flagAivFinishComm[flagIdx]);
             }
 
             auto tensorSymmetric = tla::MakeTensor(
@@ -746,13 +848,95 @@ private:
             if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
                 blockMmad.SynchronizeBlock();
             }
-            Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[stageIdx]);
+            Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[flagIdx]);
             if constexpr (OFFICIAL_UDMA_BLOCK) {
                 selfConsumedRows += scheduler.GetActualRows(
                     params.problemShape.rankIdx());
             }
         }
     }
+
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+    template <class ActiveBlockComm>
+    CATLASS_DEVICE
+    static void CopyNoReuseProducerTrace(
+        Params const &params, ActiveBlockComm &blockRemoteCopy,
+        uint32_t rankSize, uint32_t rankIdx, uint32_t destinationRank,
+        uint32_t groupsPerCommInRank, uint32_t stageRows, bool isCommCore)
+    {
+        if (!isCommCore || params.ptrProducerTrace == nullptr ||
+            params.producerTraceRows == 0) {
+            return;
+        }
+
+        GemmCoord blockShape{L1_TILE_M, L1_TILE_N, L1_TILE_K};
+        BlockMmadScheduler producerScheduler{
+            params.problemShape, groupsPerCommInRank,
+            blockShape.GetCoordMN()};
+        uint32_t commLoops = producerScheduler.GetCommLoops();
+        if (commLoops > WORKSPACE_STAGES) {
+            // The Host report treats this marker as an invalid no-reuse run.
+            StoreDiagnosticWord(params, 21, commLoops);
+            return;
+        }
+
+        uint32_t destinationBase = 0;
+        for (uint32_t dst = 0; dst < destinationRank; ++dst) {
+            for (uint32_t expert = 0;
+                 expert < params.problemShape.localExpertNum(); ++expert) {
+                destinationBase +=
+                    params.problemShape.globalTokensPerLocalExpert(dst, expert);
+            }
+        }
+
+        auto ptrSymmetric = reinterpret_cast<__gm__ ElementC *>(
+            params.ptrSymmetric);
+        AscendC::GlobalTensor<ElementC> gmTrace;
+        gmTrace.SetGlobalBuffer(
+            reinterpret_cast<__gm__ ElementC *>(params.ptrProducerTrace));
+        auto layoutSymmetric = Catlass::layout::RowMajor(
+            stageRows, params.problemShape.n());
+        auto layoutTrace = Catlass::layout::RowMajor(
+            params.producerTraceRows, params.problemShape.n());
+
+        uint32_t consumedRows = 0;
+        for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
+            producerScheduler.UpdateCommContext(commIdx);
+            uint32_t actualRows =
+                producerScheduler.GetActualRows(destinationRank);
+            uint64_t stageElementOffset =
+                (static_cast<uint64_t>(commIdx) * rankSize +
+                 destinationRank) * stageRows * params.problemShape.n();
+            uint64_t stageByteOffset =
+                stageElementOffset * sizeof(ElementC);
+            uint32_t traceRowOffset = destinationBase + consumedRows;
+            uint32_t copyStatus = actualRows == 0 ? 0xffffffffU : 0U;
+            if (actualRows != 0) {
+                AscendC::GlobalTensor<ElementC> gmStage;
+                gmStage.SetGlobalBuffer(ptrSymmetric + stageElementOffset);
+                MatrixCoord actualShape{
+                    actualRows, params.problemShape.n()};
+                auto layoutBlockSrc =
+                    layoutSymmetric.GetTileLayout(actualShape);
+                MatrixCoord traceOffset{traceRowOffset, 0};
+                auto gmBlockDst =
+                    gmTrace[layoutTrace.GetOffset(traceOffset)];
+                auto layoutBlockDst =
+                    layoutTrace.GetTileLayout(actualShape);
+                blockRemoteCopy.InitBlockLoop();
+                blockRemoteCopy(
+                    gmStage, layoutBlockSrc, gmBlockDst, layoutBlockDst,
+                    actualShape, rankIdx);
+                copyStatus =
+                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
+            }
+            RecordProducerTraceCopy(
+                params, commIdx, rankSize, destinationRank,
+                stageByteOffset, actualRows, traceRowOffset, copyStatus);
+            consumedRows += actualRows;
+        }
+    }
+#endif
 
     CATLASS_DEVICE
     void RunTargetOrderAiv(Params const &params)
@@ -830,16 +1014,27 @@ private:
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
         RecordTargetOrderHeader(
             params, rankIdx, rankSize, commLoops, stageRows, isSyncCore);
+        if (UsesNoReuseTrace(params.diagnosticMode) &&
+            commLoops > WORKSPACE_STAGES) {
+            if (isSyncCore) {
+                StoreDiagnosticWord(params, 21, commLoops);
+            }
+            FlushTargetOrderDiagnostic(
+                params, rankSize, srcRankIdx, 0,
+                isSyncCore, isCommCore);
+            return;
+        }
 #endif
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
         bool quietFailureReported = false;
 #endif
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
             scheduler.UpdateCommContext(commIdx);
             receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
 
-            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[stageIdx]);
+            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[flagIdx]);
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
             if (UsesProducerBarrier(params.diagnosticMode)) {
                 // Validation barrier modes require balanced routes: every
@@ -867,6 +1062,12 @@ private:
             if (isCommCore && hasInput) {
                 aclshmem_signal_wait_until(
                     syncMmadFinish, ACLSHMEM_CMP_EQ, commIdx + 1);
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+                if (params.diagnosticMode ==
+                    GMM_A2AV_DIAGNOSTIC_PRE_GET_DELAY) {
+                    DiagnosticDelay(params.delayCycles);
+                }
+#endif
 
                 MatrixCoord actualShape{actualRows, params.problemShape.n()};
                 auto const &gmBlockSrc = gmSymmetricList[stageIdx];
@@ -897,6 +1098,12 @@ private:
                 }
 
                 if (quietStatus == 0) {
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+                    if (params.diagnosticMode ==
+                        GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY) {
+                        DiagnosticDelay(params.delayCycles);
+                    }
+#endif
                     aclshmem_fence();
                     aclshmemx_signal_op(
                         syncCommFinish, 1,
@@ -919,7 +1126,7 @@ private:
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
             if (isCommCore) {
                 RecordTargetOrderComm(
-                    params, commIdx, rankSize, srcRankIdx, stageIdx,
+                    params, commIdx, rankSize, srcRankIdx, stageIdx, stageRows,
                     hasInput, actualRows, outputRowOffset, quietStatus,
                     completionPublished);
             }
@@ -943,7 +1150,7 @@ private:
                 aclshmemx_barrier_all_vec();
 #endif
                 Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
-                    flagAivFinishComm[stageIdx]);
+                    flagAivFinishComm[flagIdx]);
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
                 if (isCommCore) {
                     RecordTargetOrderStageReleased(
@@ -953,14 +1160,25 @@ private:
             }
         }
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+        if (UsesNoReuseTrace(params.diagnosticMode)) {
+            // No destination may inspect producer staging until every rank has
+            // completed all GETs. Since every commIdx owns a distinct stage,
+            // no per-round recycle flag is emitted in this mode.
+            aclshmemx_barrier_all_vec();
+            if constexpr (!OFFICIAL_UDMA_BLOCK) {
+                CopyNoReuseProducerTrace(
+                    params, blockRemoteCopy, rankSize, rankIdx, srcRankIdx,
+                    groupsPerCommInRank, stageRows, isCommCore);
+            }
+        }
         FlushTargetOrderDiagnostic(
             params, rankSize, srcRankIdx, commLoops,
             isSyncCore, isCommCore);
 #endif
     }
 
-    Catlass::Arch::CrossCoreFlag flagAicFinishStore[WORKSPACE_STAGES];
-    Catlass::Arch::CrossCoreFlag flagAivFinishComm[WORKSPACE_STAGES];
+    Catlass::Arch::CrossCoreFlag flagAicFinishStore[SYNC_FLAG_STAGES];
+    Catlass::Arch::CrossCoreFlag flagAivFinishComm[SYNC_FLAG_STAGES];
     Catlass::Arch::Resource<ArchTag> resource;
 };
 

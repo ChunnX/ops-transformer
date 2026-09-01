@@ -345,8 +345,9 @@ total, finite and sampled element counts plus `quantiles_approximate`. Mean and
 maximum remain exact full-tensor reductions.
 
 For the balanced GroupedMatMul-AllToAllV synchronization failure, run the
-single-process-lifetime A/B/C/D/E matrix. It generates each Rank's input and CPU
-Golden once, then reuses the same resident tensors for every mode and launch:
+single-process-lifetime no-reuse/delay matrix. It generates each Rank's input,
+final-output Golden and local-GMM producer Golden once, then reuses the same
+resident tensors for every mode and launch:
 
 ```bash
 bash scripts/run_gmm_a2av_root_cause.sh \
@@ -360,25 +361,33 @@ bash scripts/run_gmm_a2av_root_cause.sh \
 `torchrun`; it automatically sets
 `CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1`. When building manually, set the same
 environment variable before `scripts/build_wheel.sh`; the validation-only raw
-operator is compiled out of ordinary delivery Wheels. The matrix compares
-the original local-`SyncAll` protocol, producer-only SHMEM barrier, paired
-producer/recycle barriers, paired barriers with official-style PIPE_MTE3 WQE
-publication, and paired barriers using the unmodified CatCCOS official
-`BlockRemoteCopy` call (per-call `TPipe/TBuf`, UDMA GET and internal void
-`quiet`). Barrier modes require `route: balanced` because every Rank
-must execute identical communication-loop counts. The safer modes run first
-and the original baseline runs last.
+operator is compiled out of ordinary delivery Wheels. The default matrix runs:
+
+- `no_reuse_trace`: a dedicated 19-stage kernel gives every `commIdx` an
+  independent symmetric stage, disables per-round recycle, waits once at the
+  end, and copies the retained producer staging into a regular NPU tensor;
+- `pre_get_delay_medium`: 20,000 cycles after producer-ready wait and before
+  GET;
+- `post_quiet_delay_{short,medium,long}`: 2,000/20,000/200,000 cycles after
+  checked quiet and before completion publication;
+- `baseline`: the original two-stage local-`SyncAll` diagnostic protocol.
+
+Use repeated `--mode <name>` options to select a subset. Barrier modes require
+`route: balanced` because every Rank must execute identical communication-loop
+counts. Delays are diagnostics, not delivery fixes.
 
 Every launch allocates a 1 MiB regular NPU diagnostic tensor. Device AIVs write
 per-round/source records containing actual rows, output offset, GET bytes, CQ
-status, completion publication, barrier selection and stage release. After
+status, completion publication, delay placement, stage address/range and trace
+copy status. After
 stream synchronization Host writes these records to
 `rank_<N>/modes/<mode>/launch_<I>/diagnostic.json`. Device printf is not used,
-so the experiment does not reserve the AscendC printf buffer. `summary.json`
-classifies producer visibility, premature stage reuse, PIPE_S topology
-sensitivity, a custom UDMA GET/deferred-quiet difference from the official
-block, or CQ/transport failure. Input and Golden reuse identities are recorded
-in `reuse_manifest.json`.
+so the experiment does not reserve the AscendC printf buffer. For no-reuse,
+`producer_trace/report.json`, breakdown CSVs, optional failure rows, and
+`producer_trace/layout.json` distinguish a bad local GMM/staging payload from a
+bad GET/final output. `summary.json` classifies producer visibility,
+quiet-to-recycle timing, cyclic stage reuse, or CQ/transport failure. Input and
+Golden reuse identities are recorded in `reuse_manifest.json`.
 
 Performance is collected from exported `msprof` `op_summary` rows, following
 the official [`--task-time` collection definition](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/Profiling/atlasprofiling_16_0011.html),

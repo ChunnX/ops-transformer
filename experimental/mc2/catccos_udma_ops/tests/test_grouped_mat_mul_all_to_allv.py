@@ -229,10 +229,15 @@ def test_get_cq_failure_is_detected_before_completion_is_published():
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
 
-    assert kernel.count("FinalizeBlockLoopWithStatus()") == 2
+    matches = list(re.finditer("FinalizeBlockLoopWithStatus\\(\\)", kernel))
+    completion_matches = [
+        match for match in matches
+        if "copyStatus" not in kernel[max(0, match.start() - 120):match.start()]
+    ]
+    assert len(completion_matches) == 2
     assert kernel.count("if (quietStatus == 0)") == 2
     assert kernel.count("GET CQ failure") == 2
-    for match in re.finditer("FinalizeBlockLoopWithStatus\\(\\)", kernel):
+    for match in completion_matches:
         completion = kernel.index("ACLSHMEM_SIGNAL_ADD", match.end())
         success_guard = kernel.rfind("if (quietStatus == 0)", match.end(), completion)
         assert success_guard >= match.end()

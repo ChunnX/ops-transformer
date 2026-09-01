@@ -173,6 +173,17 @@ def _all_to_allv_golden(x, route_matrix, rank, world_size, expert_num):
 def _grouped_mat_mul_all_to_allv_golden(
     x, weight, route_matrix, rank, world_size, expert_num
 ):
+    expected, _ = _grouped_mat_mul_all_to_allv_golden_with_local(
+        x, weight, route_matrix, rank, world_size, expert_num,
+        include_local=False,
+    )
+    return expected
+
+
+def _grouped_mat_mul_all_to_allv_golden_with_local(
+    x, weight, route_matrix, rank, world_size, expert_num, *,
+    include_local=True,
+):
     """Compute local GMM in FP32, then route its pieces through CPU Gloo."""
     x_cpu = x.detach().float().cpu()
     weight_cpu = weight.detach().float().cpu()
@@ -222,7 +233,59 @@ def _grouped_mat_mul_all_to_allv_golden(
             pieces.append(expert_output[start:start + counts[rank]])
             expert_offset += sum(counts)
     expected = torch.cat(pieces, dim=0)
-    return expected.to(dtype=torch.bfloat16, device=x.device)
+    local_result = (
+        local_output.to(dtype=torch.bfloat16, device=x.device)
+        if include_local else None
+    )
+    return expected.to(dtype=torch.bfloat16, device=x.device), local_result
+
+
+def _grouped_mat_mul_all_to_allv_producer_trace_golden(
+    local_output, route_matrix, rank, world_size, expert_num
+):
+    """Repack local GMM output into destination-major staging order."""
+    local_experts = expert_num // world_size
+    expert_bases = []
+    offset = 0
+    for local_expert in range(local_experts):
+        global_expert = rank * local_experts + local_expert
+        expert_bases.append(offset)
+        offset += sum(
+            route_matrix[source][global_expert]
+            for source in range(world_size)
+        )
+    if offset != local_output.shape[0]:
+        raise RuntimeError("local GMM rows do not match producer trace routes")
+
+    pieces = []
+    segments = []
+    trace_offset = 0
+    for destination_rank in range(world_size):
+        for local_expert in range(local_experts):
+            global_expert = rank * local_experts + local_expert
+            counts = [
+                route_matrix[source][global_expert]
+                for source in range(world_size)
+            ]
+            rows = int(counts[destination_rank])
+            start = expert_bases[local_expert] + sum(
+                counts[:destination_rank]
+            )
+            pieces.append(local_output[start:start + rows])
+            segments.append({
+                "local_expert": local_expert,
+                "global_expert": global_expert,
+                # The generic precision reporter groups this field. In a
+                # producer trace it denotes the destination, not the source.
+                "source_rank": destination_rank,
+                "destination_rank": destination_rank,
+                "row_start": trace_offset,
+                "row_end": trace_offset + rows,
+                "rows": rows,
+            })
+            trace_offset += rows
+    trace = torch.cat(pieces, dim=0)
+    return trace, segments
 
 
 def _grouped_mat_mul_all_to_allv_segments(

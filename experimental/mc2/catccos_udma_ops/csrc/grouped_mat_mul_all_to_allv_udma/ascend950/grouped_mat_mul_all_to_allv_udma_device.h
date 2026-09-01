@@ -36,7 +36,10 @@ namespace OpsTransformer::CatccosUdma {
 
 template <class ElementA, class LayoutA, class ElementB, class LayoutB,
           class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0,
-          bool UseMte3Udma = false, bool UseOfficialUdmaBlock = false>
+          bool UseMte3Udma = false, bool UseOfficialUdmaBlock = false,
+          uint32_t WorkspaceStages = 2,
+          uint64_t SymmetricDataBytes =
+              200UL * 1024 * 1024 * sizeof(uint16_t)>
 struct GroupedMatMulAllToAllVUdmaConfig {
     using ArchTag = Catlass::Arch::Ascend950;
     static constexpr uint32_t kM0 = M0;
@@ -55,8 +58,8 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using MoeConstraints = Catccos::DGemm::MoeConstraints<1, 8, 32>;
     static constexpr bool kIsDynamic = true;
     static constexpr uint32_t kUbStages = 2;
-    static constexpr uint32_t kWorkspaceStages = 2;
-    static constexpr uint64_t kSymmetricDataBytes = 200UL * 1024 * 1024 * sizeof(uint16_t);
+    static constexpr uint32_t kWorkspaceStages = WorkspaceStages;
+    static constexpr uint64_t kSymmetricDataBytes = SymmetricDataBytes;
     using BlockMmadScheduler =
         Catccos::DGemm::Block::BlockMmadSchedulerGmmAllToAllVTargetOrder<MoeConstraints>;
     using BlockCommScheduler =
@@ -142,6 +145,30 @@ using GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         256, 128, 256, false, true>;
+
+// Validation-only no-reuse variants. The target model case has 19
+// communication rounds, so every commIdx owns a distinct symmetric stage.
+// The 640 MiB data area accommodates
+// 19 * 8 ranks * 896 rows * 2048 BF16 columns (532 MiB) with headroom.
+static constexpr uint32_t kNoReuseWorkspaceStages = 19;
+static constexpr uint64_t kNoReuseSymmetricDataBytes =
+    640UL * 1024 * 1024;
+
+using GroupedMatMulAllToAllVUdmaNoReuseConfig =
+    GroupedMatMulAllToAllVUdmaConfig<
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        128, 256, 256, false, false,
+        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes>;
+
+using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
+    GroupedMatMulAllToAllVUdmaConfig<
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        bfloat16_t, Catlass::layout::RowMajor,
+        256, 128, 256, false, false,
+        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes>;
 
 } // namespace OpsTransformer::CatccosUdma
 

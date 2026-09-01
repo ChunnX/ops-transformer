@@ -48,10 +48,11 @@ DEFAULT_CASES = HERE / "cases" / "grouped_mat_mul_all_to_allv.yaml"
 # Safe modes run first. The original protocol runs last so a possible hang
 # cannot discard the discriminating results or force regeneration of Golden.
 DIAGNOSTIC_MODES = (
-    "full_barrier",
-    "full_barrier_mte3",
-    "producer_barrier",
-    "full_barrier_official_block",
+    "no_reuse_trace",
+    "pre_get_delay_medium",
+    "post_quiet_delay_short",
+    "post_quiet_delay_medium",
+    "post_quiet_delay_long",
     "baseline",
 )
 
@@ -90,11 +91,54 @@ MODE_DESCRIPTIONS = {
             "TPipe/TBuf and internal void quiet"
         ),
     },
+    "pre_get_delay_medium": {
+        "label": "pre-20k",
+        "producer_sync": "original local AscendC::SyncAll",
+        "stage_recycle_sync": "original local AscendC::SyncAll",
+        "udma_wqe_path": "PIPE_S",
+        "delay_placement": "after producer-ready wait, before UDMA GET",
+        "delay_cycles": 20_000,
+    },
+    "post_quiet_delay_short": {
+        "label": "post-2k",
+        "producer_sync": "original local AscendC::SyncAll",
+        "stage_recycle_sync": "original local AscendC::SyncAll",
+        "udma_wqe_path": "PIPE_S",
+        "delay_placement": "after checked quiet, before completion signal",
+        "delay_cycles": 2_000,
+    },
+    "post_quiet_delay_medium": {
+        "label": "post-20k",
+        "producer_sync": "original local AscendC::SyncAll",
+        "stage_recycle_sync": "original local AscendC::SyncAll",
+        "udma_wqe_path": "PIPE_S",
+        "delay_placement": "after checked quiet, before completion signal",
+        "delay_cycles": 20_000,
+    },
+    "post_quiet_delay_long": {
+        "label": "post-200k",
+        "producer_sync": "original local AscendC::SyncAll",
+        "stage_recycle_sync": "original local AscendC::SyncAll",
+        "udma_wqe_path": "PIPE_S",
+        "delay_placement": "after checked quiet, before completion signal",
+        "delay_cycles": 200_000,
+    },
+    "no_reuse_trace": {
+        "label": "no-reuse",
+        "producer_sync": "per-round SHMEM all-PE barrier",
+        "stage_recycle_sync": "disabled; one stage per commIdx",
+        "udma_wqe_path": "checked PIPE_S GET",
+        "workspace_stages": 19,
+        "producer_trace": (
+            "destination-major local producer staging copied after a final "
+            "all-PE barrier and compared with local FP32 GMM Golden"
+        ),
+    },
 }
 
 
 def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None):
-    """Classify the A/B/C/D/E matrix, including a baseline timeout."""
+    """Classify no-reuse/delay and legacy matrices, including timeouts."""
     by_mode = {item["mode"]: item for item in mode_results}
     cq_modes = [
         item["mode"] for item in mode_results
@@ -151,6 +195,87 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
             "next_action": (
                 "Increase --launches-per-mode or rerun on the failing server; "
                 "the shared input and Golden contract was verified."
+            ),
+        }
+
+    no_reuse_result = by_mode.get("no_reuse_trace")
+    if no_reuse_result and no_reuse_result.get(
+        "producer_trace_passed"
+    ) is False:
+        return {
+            "classification": "producer_gmm_or_staging_payload_failure",
+            "conclusive": True,
+            "evidence_modes": ["no_reuse_trace"],
+            "next_action": (
+                "Inspect producer_trace/report.json by destination/expert; "
+                "the retained local staging already differs before UDMA GET."
+            ),
+        }
+    if (
+        no_reuse_result and
+        no_reuse_result.get("producer_trace_passed") is True and
+        no_reuse_result.get("final_output_passed") is False
+    ):
+        return {
+            "classification": "udma_get_address_visibility_or_output_failure",
+            "conclusive": True,
+            "evidence_modes": ["no_reuse_trace"],
+            "next_action": (
+                "Producer staging is correct without reuse but the final "
+                "AllToAllV output is not. Inspect CQ, stage offsets and GET "
+                "destination ranges in diagnostic.json/layout.json."
+            ),
+        }
+
+    no_reuse = passed("no_reuse_trace")
+    pre_get = passed("pre_get_delay_medium")
+    post_modes = [
+        mode for mode in (
+            "post_quiet_delay_short",
+            "post_quiet_delay_medium",
+            "post_quiet_delay_long",
+        ) if passed(mode)
+    ]
+    if no_reuse:
+        if post_modes:
+            return {
+                "classification": "quiet_to_stage_recycle_timing_window",
+                "conclusive": True,
+                "evidence_modes": ["no_reuse_trace"] + post_modes,
+                "next_action": (
+                    "Replace delay with generation-scoped consumer completion; "
+                    "do not release a stage until every destination's checked "
+                    "GET has deterministically completed."
+                ),
+            }
+        return {
+            "classification": "cyclic_stage_reuse_or_recycle_protocol",
+            "conclusive": True,
+            "evidence_modes": ["no_reuse_trace"],
+            "next_action": (
+                "The producer staging and final output pass without reuse. "
+                "Fix stage generation/consumer ownership or evaluate the "
+                "independent-staging delivery tradeoff."
+            ),
+        }
+    if pre_get and not post_modes:
+        return {
+            "classification": "producer_payload_visibility_window",
+            "conclusive": True,
+            "evidence_modes": ["pre_get_delay_medium"],
+            "next_action": (
+                "Replace the delay with a producer release/consumer acquire "
+                "edge before UDMA GET."
+            ),
+        }
+    if post_modes and not pre_get:
+        return {
+            "classification": "get_completion_to_recycle_window",
+            "conclusive": True,
+            "evidence_modes": post_modes,
+            "next_action": (
+                "Replace the delay with deterministic checked completion and "
+                "destination-scoped stage release."
             ),
         }
 
@@ -353,6 +478,13 @@ def main():
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--output-dir")
     parser.add_argument("--launches-per-mode", type=int, default=3)
+    parser.add_argument(
+        "--mode", action="append", choices=tuple(MODE_DESCRIPTIONS),
+        help=(
+            "run only the selected mode(s); repeat the option to build a "
+            "custom matrix (default: no-reuse + delay matrix + baseline)"
+        ),
+    )
     parser.add_argument("--mode-timeout-seconds", type=float, default=600.0)
     parser.add_argument(
         "--preparation-timeout-seconds", type=float, default=7200.0
@@ -386,6 +518,7 @@ def main():
     if len(selected) != 1:
         raise ValueError("select exactly one case")
     case = selected[0]
+    selected_modes = tuple(args.mode or DIAGNOSTIC_MODES)
     if case["operator"] != "grouped_mat_mul_all_to_allv":
         raise ValueError("this matrix supports grouped_mat_mul_all_to_allv only")
     if case["route"] != "balanced":
@@ -432,7 +565,7 @@ def main():
         "--fingerprint-elements", str(args.fingerprint_elements),
         "--comparison-chunk-elements", str(args.comparison_chunk_elements),
     ]
-    for mode in DIAGNOSTIC_MODES:
+    for mode in selected_modes:
         command.extend(["--mode", mode])
 
     log_roots = runtime_log_roots(
@@ -443,7 +576,7 @@ def main():
     log_snapshot = snapshot_runtime_logs(log_roots)
     plan = {
         "case": case,
-        "mode_order": list(DIAGNOSTIC_MODES),
+        "mode_order": list(selected_modes),
         "mode_descriptions": MODE_DESCRIPTIONS,
         "launches_per_mode": args.launches_per_mode,
         "single_torchrun": True,
@@ -458,7 +591,10 @@ def main():
         "mutation_validation": (
             "full-tensor exact reference clones plus sampled SHA-256"
         ),
-        "baseline_runs_last": True,
+        "baseline_runs_last": (
+            "baseline" not in selected_modes or
+            selected_modes[-1] == "baseline"
+        ),
         "mode_timeout_seconds": args.mode_timeout_seconds,
         "preparation_timeout_seconds": args.preparation_timeout_seconds,
         "command": command,

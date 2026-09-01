@@ -5,6 +5,9 @@ from pathlib import Path
 import torch
 
 from validation.device_precision import analyze_accuracy_on_device
+from validation.accuracy_worker import (
+    _grouped_mat_mul_all_to_allv_producer_trace_golden,
+)
 from validation.precision import analyze_accuracy
 from validation.run_gmm_a2av_root_cause import (
     DIAGNOSTIC_MODES,
@@ -26,10 +29,11 @@ def _results(**overrides):
 
 def test_safe_modes_run_before_the_original_baseline():
     assert DIAGNOSTIC_MODES == (
-        "full_barrier",
-        "full_barrier_mte3",
-        "producer_barrier",
-        "full_barrier_official_block",
+        "no_reuse_trace",
+        "pre_get_delay_medium",
+        "post_quiet_delay_short",
+        "post_quiet_delay_medium",
+        "post_quiet_delay_long",
         "baseline",
     )
 
@@ -40,40 +44,38 @@ def test_baseline_pass_means_the_failure_did_not_reproduce():
     assert not decision["conclusive"]
 
 
-def test_producer_barrier_isolates_producer_visibility():
-    decision = classify_results(_results(producer_barrier=True))
+def test_no_reuse_pass_isolates_cyclic_stage_protocol():
+    decision = classify_results(_results(no_reuse_trace=True))
     assert decision["classification"] == (
-        "producer_staging_visibility_or_ready_order"
+        "cyclic_stage_reuse_or_recycle_protocol"
     )
     assert decision["conclusive"]
 
 
-def test_full_barrier_isolates_stage_recycle():
-    decision = classify_results(_results(full_barrier=True))
-    assert decision["classification"] == "premature_symmetric_stage_recycle"
+def test_post_quiet_delay_isolates_completion_to_recycle_window():
+    decision = classify_results(_results(post_quiet_delay_medium=True))
+    assert decision["classification"] == "get_completion_to_recycle_window"
     assert decision["conclusive"]
 
 
-def test_mte3_only_pass_isolates_pipe_s_publication():
-    decision = classify_results(_results(full_barrier_mte3=True))
-    assert decision["classification"] == (
-        "pipe_s_wqe_publication_topology_sensitivity"
-    )
+def test_pre_get_delay_isolates_producer_visibility_window():
+    decision = classify_results(_results(pre_get_delay_medium=True))
+    assert decision["classification"] == "producer_payload_visibility_window"
     assert decision["conclusive"]
 
 
-def test_official_block_only_pass_isolates_custom_udma_get_path():
+def test_no_reuse_and_delay_pass_isolate_timing_window():
     decision = classify_results(_results(
-        full_barrier_official_block=True
+        no_reuse_trace=True, post_quiet_delay_long=True
     ))
     assert decision["classification"] == (
-        "custom_udma_get_or_deferred_quiet_path"
+        "quiet_to_stage_recycle_timing_window"
     )
     assert decision["conclusive"]
 
 
 def test_cq_status_overrides_accuracy_results():
-    results = _results(full_barrier=True)
+    results = _results(no_reuse_trace=True)
     results[0]["cq_failure_count"] = 1
     decision = classify_results(results)
     assert decision["classification"] == "udma_get_cq_or_transport_failure"
@@ -81,17 +83,17 @@ def test_cq_status_overrides_accuracy_results():
 
 
 def test_baseline_timeout_can_use_already_completed_safe_modes():
-    results = _results(producer_barrier=True)[:-1]
+    results = _results(no_reuse_trace=True)[:-1]
     decision = classify_results(results, timed_out_mode="baseline")
     assert decision["classification"] == (
-        "producer_staging_visibility_or_ready_order"
+        "cyclic_stage_reuse_or_recycle_protocol"
     )
     assert decision["conclusive"]
 
 
 def test_strengthened_mode_timeout_is_not_overclassified():
     decision = classify_results(
-        _results()[:1], timed_out_mode="full_barrier"
+        _results()[:1], timed_out_mode="no_reuse_trace"
     )
     assert decision["classification"] == "diagnostic_protocol_timeout"
     assert not decision["conclusive"]
@@ -104,9 +106,9 @@ def test_worker_generates_inputs_and_golden_once_before_mode_loop():
     loop = worker.index("for mode in args.mode:")
     assert worker.index("x = _make_tensor(") < loop
     assert worker.index(
-        "expected = _grouped_mat_mul_all_to_allv_golden("
+        "_grouped_mat_mul_all_to_allv_golden_with_local("
     ) < loop
-    assert worker.count("_grouped_mat_mul_all_to_allv_golden(") == 1
+    assert worker.count("_grouped_mat_mul_all_to_allv_golden_with_local(") == 1
     assert '"input_generation_count": 1' in worker
     assert '"golden_generation_count": 1' in worker
 
@@ -180,12 +182,12 @@ def test_runner_uses_one_persistent_torchrun_and_one_optional_build():
     assert runner.count('"torch.distributed.run"') == 1
     assert '"single_torchrun": True' in runner
     assert '"golden_generation_count_per_rank": 1' in runner
-    assert '"baseline_runs_last": True' in runner
+    assert "selected_modes[-1] == \"baseline\"" in runner
     assert '"--build-install", action="store_true"' in runner
     assert 'build_environment["CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE"] = "1"' in runner
 
 
-def test_kernel_exposes_the_five_disjoint_runtime_modes():
+def test_kernel_exposes_no_reuse_and_delay_runtime_modes():
     kernel = (
         PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" /
         "catccos" / "dgemm" / "kernel" /
@@ -199,12 +201,17 @@ def test_kernel_exposes_the_five_disjoint_runtime_modes():
         "GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK = 5"
         in kernel
     )
+    assert "GMM_A2AV_DIAGNOSTIC_PRE_GET_DELAY = 6" in kernel
+    assert "GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY = 7" in kernel
+    assert "GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE = 8" in kernel
     assert "UsesProducerBarrier(params.diagnosticMode)" in kernel
     assert "UsesRecycleBarrier(params.diagnosticMode)" in kernel
     assert "AscendC::SyncAll<true>()" in kernel
     assert "aclshmemx_barrier_all_vec()" in kernel
     assert "ptrDiagnostic" in kernel
     assert "RecordTargetOrderComm(" in kernel
+    assert "DiagnosticDelay(params.delayCycles)" in kernel
+    assert "CopyNoReuseProducerTrace(" in kernel
 
 
 def test_host_registers_private_diagnostic_op_and_mte3_variants():
@@ -230,10 +237,28 @@ def test_host_registers_private_diagnostic_op_and_mte3_variants():
         "GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig"
         in host
     )
+    assert "GroupedMatMulAllToAllVUdmaNoReuseConfig" in host
+    assert "GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig" in host
     assert "TileRemoteCopyUdma2DWithScratch" in device
     scratch = tile[tile.index("class TileRemoteCopyUdma2DWithScratch"):]
     assert "static constexpr bool DEFER_QUIET = true" in scratch
     assert "uint32_t FinalizeWithStatus" in scratch
+
+
+def test_producer_trace_golden_is_destination_major():
+    # rank 0 owns two local experts. Their ordinary GMM output is
+    # [expert0(dst0,dst1), expert1(dst0,dst1)]. Producer trace is repacked as
+    # [dst0(expert0,expert1), dst1(expert0,expert1)].
+    route = [
+        [1, 2, 0, 0],
+        [3, 1, 0, 0],
+    ]
+    local = torch.arange(7, dtype=torch.bfloat16).reshape(7, 1)
+    trace, segments = _grouped_mat_mul_all_to_allv_producer_trace_golden(
+        local, route, rank=0, world_size=2, expert_num=4
+    )
+    assert trace.flatten().tolist() == [0, 4, 5, 1, 2, 3, 6]
+    assert [item["destination_rank"] for item in segments] == [0, 0, 1, 1]
 
 
 def test_official_block_mode_uses_the_exact_official_call_pattern():
