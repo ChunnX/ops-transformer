@@ -66,6 +66,7 @@ def qsmla(testcase_files):
         test_data, os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto")
     )
     if consistency_config is not None:
+
         def consistency_executor(data):
             if is_run_graph:
                 values = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
@@ -89,7 +90,9 @@ def qsmla(testcase_files):
         print(summary, flush=True)
         fulfill_percent = consistency_fulfill_percent(report)
         result = "PASS" if report["pass"] else "FAILED"
-        utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
+        utils.save_result(
+            test_data["params"], result, fulfill_percent, Path(result_path)
+        )
         if not report["relations"]:
             pytest.skip(f"batch consistency has no applicable relation: {report}")
         if not report["pass"]:

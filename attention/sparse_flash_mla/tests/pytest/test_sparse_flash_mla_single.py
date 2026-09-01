@@ -93,15 +93,15 @@ def test_example(param_combinations):
         result, fulfill_percent = result_compare_method.check_result(
             input_data["cpu_output"], npu_result
         )
-        main_failed = (result == "Failed")
+        main_failed = result == "Failed"
 
         if test_data.get("return_softmax_lse", False):
             lse_result, lse_percent = result_compare_method.check_result(
                 input_data["softmax_lse"], softmax_lse
             )
-            lse_failed = (lse_result == "Failed")
+            lse_failed = lse_result == "Failed"
             fulfill_percent = min(fulfill_percent, lse_percent)
-        
+
         # 只要任意一项失败，整体标记Failed
         if main_failed or lse_failed:
             result = "Failed"

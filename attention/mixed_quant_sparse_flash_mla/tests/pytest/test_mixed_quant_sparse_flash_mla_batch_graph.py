@@ -88,6 +88,7 @@ def mqsmla_aclgraph(testcase_files):
         test_data, os.environ.get("MQSMLA_BATCH_CONSISTENCY", "auto")
     )
     if consistency_config is not None:
+
         def consistency_executor(data):
             values = (
                 mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_graph(
@@ -107,7 +108,9 @@ def mqsmla_aclgraph(testcase_files):
         print(summary, flush=True)
         fulfill_percent = consistency_fulfill_percent(report)
         result = "Pass" if report["pass"] else "Failed"
-        utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
+        utils.save_result(
+            test_data["params"], result, fulfill_percent, Path(result_path)
+        )
         if not report["relations"]:
             pytest.skip(f"batch consistency has no applicable relation: {report}")
         if not report["pass"]:

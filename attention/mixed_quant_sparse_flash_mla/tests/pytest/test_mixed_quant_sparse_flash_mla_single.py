@@ -167,10 +167,8 @@ def mqsmla(param_combinations):
             test_data["cpu_lse"] = test_data["cpu_lse"].transpose(0, 1).contiguous()
 
         def consistency_executor(data):
-            values = (
-                mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
-                    data, device_id=device_id
-                )
+            values = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
+                data, device_id=device_id
             )
             return RunResult(values[0], values[3])
 

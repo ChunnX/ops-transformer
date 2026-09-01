@@ -34,7 +34,9 @@ class TransformSemanticGuard:
     """Checks position-sensitive mask invariants before consistency execution."""
 
     @staticmethod
-    def validate_token_selection(input_data: Dict[str, Any], selections: Sequence[Sequence[int]]) -> None:
+    def validate_token_selection(
+        input_data: Dict[str, Any], selections: Sequence[Sequence[int]]
+    ) -> None:
         adapter = CaseAdapter(input_data)
         tensors = adapter.tensors
         ori_mode = tensors.get("ori_mask_mode", 0)
@@ -67,17 +69,25 @@ class ActualInputSemanticOracle:
         if left.shape != right.shape or left.dtype != right.dtype:
             return False
         left_bytes = left.detach().to("cpu").contiguous().reshape(-1).view(torch.uint8)
-        right_bytes = right.detach().to("cpu").contiguous().reshape(-1).view(torch.uint8)
+        right_bytes = (
+            right.detach().to("cpu").contiguous().reshape(-1).view(torch.uint8)
+        )
         return torch.equal(left_bytes, right_bytes)
 
     @classmethod
     def _values_equal(cls, left: Any, right: Any) -> bool:
         if torch.is_tensor(left) or torch.is_tensor(right):
-            return torch.is_tensor(left) and torch.is_tensor(right) and cls._tensor_bits_equal(left, right)
+            return (
+                torch.is_tensor(left)
+                and torch.is_tensor(right)
+                and cls._tensor_bits_equal(left, right)
+            )
         return left == right
 
     @classmethod
-    def _validate_shared_parameters(cls, baseline: CaseAdapter, derived: CaseAdapter) -> None:
+    def _validate_shared_parameters(
+        cls, baseline: CaseAdapter, derived: CaseAdapter
+    ) -> None:
         """Reject a relation when a scalar API choice changes its semantics."""
         tensor_names = (
             "softmax_scale",
@@ -104,17 +114,23 @@ class ActualInputSemanticOracle:
             if not cls._values_equal(
                 baseline.get_metadata(name), derived.get_metadata(name)
             ):
-                raise InvalidTransformError(f"metadata {name} changed across independent cases")
+                raise InvalidTransformError(
+                    f"metadata {name} changed across independent cases"
+                )
         for name in ("ori_topk", "cmp_topk", "has_ori_kv", "has_cmp_kv"):
             if not cls._values_equal(
                 baseline.metadata.get(name), derived.metadata.get(name)
             ):
-                raise InvalidTransformError(f"metadata {name} changed across independent cases")
+                raise InvalidTransformError(
+                    f"metadata {name} changed across independent cases"
+                )
         if not cls._values_equal(
             baseline.params.get("return_softmax_lse"),
             derived.params.get("return_softmax_lse"),
         ):
-            raise InvalidTransformError("return_softmax_lse changed across independent cases")
+            raise InvalidTransformError(
+                "return_softmax_lse changed across independent cases"
+            )
 
     @staticmethod
     def _lengths(input_data: Dict[str, Any], prefix: str) -> List[int]:
@@ -147,7 +163,9 @@ class ActualInputSemanticOracle:
         return tensor[batch, token]
 
     @classmethod
-    def _logical_kv(cls, input_data: Dict[str, Any], prefix: str, batch: int) -> Optional[torch.Tensor]:
+    def _logical_kv(
+        cls, input_data: Dict[str, Any], prefix: str, batch: int
+    ) -> Optional[torch.Tensor]:
         adapter = CaseAdapter(input_data)
         tensors = adapter.tensors
         kv = tensors.get(f"{prefix}_kv")
@@ -159,7 +177,7 @@ class ActualInputSemanticOracle:
             return kv[batch, :length]
         if layout == "TND":
             cu = tensors[f"cu_seqlens_{prefix}_kv"].to("cpu", torch.int64).tolist()
-            return kv[cu[batch]:cu[batch] + length]
+            return kv[cu[batch] : cu[batch] + length]
 
         table = tensors.get(f"{prefix}_block_table")
         if table is None:
@@ -177,7 +195,9 @@ class ActualInputSemanticOracle:
         return torch.cat(pieces, dim=0)[:length]
 
     @classmethod
-    def _windows(cls, input_data: Dict[str, Any], batch: int, token: int) -> Dict[str, Tuple[int, int]]:
+    def _windows(
+        cls, input_data: Dict[str, Any], batch: int, token: int
+    ) -> Dict[str, Tuple[int, int]]:
         adapter = CaseAdapter(input_data)
         tensors = adapter.tensors
         q_length = schema.get_q_lengths(input_data, valid_only=True)[batch]
@@ -199,21 +219,31 @@ class ActualInputSemanticOracle:
         elif ori_mode == 4:
             threshold = ori_length - q_length + token + 1
             start = 0 if win_left == -1 else max(threshold - win_left - 1, 0)
-            end = ori_length if win_right == -1 else min(max(threshold + win_right, 0), ori_length)
+            end = (
+                ori_length
+                if win_right == -1
+                else min(max(threshold + win_right, 0), ori_length)
+            )
             ori_window = (max(start, 0), end)
         else:
-            raise InvalidTransformError(f"Unsupported ori_mask_mode={ori_mode} in semantic oracle")
+            raise InvalidTransformError(
+                f"Unsupported ori_mask_mode={ori_mode} in semantic oracle"
+            )
 
         if tensors.get("cmp_kv") is None:
             cmp_window = (0, 0)
         else:
-            ratio = int(tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1)
+            ratio = int(
+                tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1
+            )
             if cmp_mode == 0:
                 end = min(cmp_length, ori_length // ratio)
             elif cmp_mode == 3:
                 end = min(cmp_length, (ori_length - q_length + token + 1) // ratio)
             else:
-                raise InvalidTransformError(f"Unsupported cmp_mask_mode={cmp_mode} in semantic oracle")
+                raise InvalidTransformError(
+                    f"Unsupported cmp_mask_mode={cmp_mode} in semantic oracle"
+                )
             cmp_window = (0, max(end, 0))
         return {"ori": ori_window, "cmp": cmp_window}
 
@@ -325,7 +355,9 @@ class BatchCaseTransformer:
         return cloned
 
     @staticmethod
-    def _cu_tensor(values: List[int], reference: Optional[torch.Tensor]) -> torch.Tensor:
+    def _cu_tensor(
+        values: List[int], reference: Optional[torch.Tensor]
+    ) -> torch.Tensor:
         if reference is None:
             return torch.tensor(values, dtype=torch.int32)
         return torch.tensor(values, dtype=reference.dtype, device=reference.device)
@@ -350,7 +382,9 @@ class BatchCaseTransformer:
         return layouts.select_bsnd(kv, batch_ids), None, None
 
     @staticmethod
-    def _build_origins(batch_ids: Sequence[int], q_lengths: Sequence[int]) -> List[TokenOrigin]:
+    def _build_origins(
+        batch_ids: Sequence[int], q_lengths: Sequence[int]
+    ) -> List[TokenOrigin]:
         origins = []
         for new_batch, old_batch in enumerate(batch_ids):
             origins.extend(
@@ -359,7 +393,9 @@ class BatchCaseTransformer:
             )
         return origins
 
-    def _select_q(self, batch_ids: List[int]) -> Tuple[torch.Tensor, Optional[List[int]]]:
+    def _select_q(
+        self, batch_ids: List[int]
+    ) -> Tuple[torch.Tensor, Optional[List[int]]]:
         if self.layout_q == "BSND":
             return layouts.select_bsnd(self.tensors["q"], batch_ids), None
         cu_q = self.tensors.get("cu_seqlens_q")
@@ -374,7 +410,9 @@ class BatchCaseTransformer:
             return None
         if self.layout_q == "BSND":
             return layouts.select_bsnd(tensor, batch_ids)
-        selected, _ = layouts.select_tnd(tensor, self.tensors["cu_seqlens_q"], batch_ids)
+        selected, _ = layouts.select_tnd(
+            tensor, self.tensors["cu_seqlens_q"], batch_ids
+        )
         return selected
 
     def select_batches(self, batch_ids: List[int]) -> Dict[str, Any]:
@@ -412,7 +450,9 @@ class BatchCaseTransformer:
 
         for sparse_name in ("ori_sparse_indices", "cmp_sparse_indices"):
             if self.tensors.get(sparse_name) is not None:
-                tensors[sparse_name] = self._select_q_aligned_tensor(self.tensors[sparse_name], batch_ids)
+                tensors[sparse_name] = self._select_q_aligned_tensor(
+                    self.tensors[sparse_name], batch_ids
+                )
 
         if self.layout_q == "TND" and new_cu_q is not None:
             cu_tensor = self._cu_tensor(new_cu_q, original_cu_q)
@@ -427,7 +467,12 @@ class BatchCaseTransformer:
             metadata["cu_seqlens_q"] = cu_tensor
             params["cu_seqlens_q"] = cu_values
 
-        for field_name in ("seqused_q", "seqused_ori_kv", "seqused_cmp_kv", "cmp_residual_kv"):
+        for field_name in (
+            "seqused_q",
+            "seqused_ori_kv",
+            "seqused_cmp_kv",
+            "cmp_residual_kv",
+        ):
             value = self.tensors.get(field_name)
             if value is not None:
                 selected = layouts.select_per_batch_vec(value, batch_ids)
@@ -462,7 +507,9 @@ class BatchCaseTransformer:
         tensors = adapter.tensors
         q = tensors["q"]
         q_lengths = schema.get_q_lengths(adapter.input_data)
-        new_t1 = int(q.shape[0]) if self.layout_q == "TND" else int(q.shape[0] * q.shape[1])
+        new_t1 = (
+            int(q.shape[0]) if self.layout_q == "TND" else int(q.shape[0] * q.shape[1])
+        )
         ori_lengths = adapter.get_kv_lengths("ori")
         cmp_lengths = adapter.get_kv_lengths("cmp")
         new_t2 = sum(ori_lengths) if tensors.get("ori_kv") is not None else None
@@ -479,14 +526,18 @@ class BatchCaseTransformer:
         adapter.metadata["max_seqlen_ori_kv"] = max_ori
         adapter.metadata["max_seqlen_cmp_kv"] = max_cmp
 
-    def reorder(self, order: Optional[List[int]], seed: Optional[int]) -> ConsistencyCase:
+    def reorder(
+        self, order: Optional[List[int]], seed: Optional[int]
+    ) -> ConsistencyCase:
         batch_size = self.adapter.get_batch_size()
         if batch_size < 2:
             raise ValueError(f"Mode 1 requires B >= 2, got B={batch_size}")
         if order is None:
             order = generate_non_identity_permutation(batch_size, seed)
         elif sorted(order) != list(range(batch_size)):
-            raise ValueError(f"order must be a permutation of [0..{batch_size - 1}], got {order}")
+            raise ValueError(
+                f"order must be a permutation of [0..{batch_size - 1}], got {order}"
+            )
 
         new_data = self.select_batches(order)
         physical_q_lengths = schema.get_q_lengths(new_data)
@@ -519,7 +570,9 @@ class BatchCaseTransformer:
         if batch_size < 2:
             raise ValueError(f"Mode 2 requires B >= 2, got B={batch_size}")
         if groups is None:
-            groups = generate_split_groups(batch_size, num_groups, seed, randomize=randomize)
+            groups = generate_split_groups(
+                batch_size, num_groups, seed, randomize=randomize
+            )
         self._validate_groups(groups, batch_size)
         flattened = [batch for group in groups for batch in group]
         complete_partition = sorted(flattened) == list(range(batch_size))
@@ -559,9 +612,13 @@ class BatchCaseTransformer:
         seen = set()
         for index, group in enumerate(groups):
             if not group:
-                raise ValueError(f"groups[{index}] is empty; empty groups are not allowed")
+                raise ValueError(
+                    f"groups[{index}] is empty; empty groups are not allowed"
+                )
             if len(set(group)) != len(group):
-                raise ValueError(f"groups[{index}] contains duplicate batch ids: {group}")
+                raise ValueError(
+                    f"groups[{index}] contains duplicate batch ids: {group}"
+                )
             for batch in group:
                 if batch < 0 or batch >= batch_size:
                     raise ValueError(f"batch id {batch} is outside [0, {batch_size})")
@@ -583,10 +640,14 @@ class BatchCaseTransformer:
         if len(set(batch_ids)) != len(batch_ids):
             raise ValueError(f"batch_ids contains duplicates: {batch_ids}")
         if any(batch < 0 or batch >= batch_size for batch in batch_ids):
-            raise ValueError(f"batch_ids must be within [0, {batch_size}), got {batch_ids}")
+            raise ValueError(
+                f"batch_ids must be within [0, {batch_size}), got {batch_ids}"
+            )
         original_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if token_ids_by_batch is None:
-            empty_batches = [batch for batch in batch_ids if original_lengths[batch] == 0]
+            empty_batches = [
+                batch for batch in batch_ids if original_lengths[batch] == 0
+            ]
             if empty_batches:
                 raise InvalidTransformError(
                     f"Mode 3 has no valid Q token in batches {empty_batches}"
@@ -600,9 +661,15 @@ class BatchCaseTransformer:
             if not token_ids:
                 raise ValueError(f"batch {old_batch} has an empty token selection")
             if len(set(token_ids)) != len(token_ids):
-                raise ValueError(f"batch {old_batch} token selection contains duplicates")
-            if any(token < 0 or token >= original_lengths[old_batch] for token in token_ids):
-                raise ValueError(f"batch {old_batch} token selection {token_ids} is out of range")
+                raise ValueError(
+                    f"batch {old_batch} token selection contains duplicates"
+                )
+            if any(
+                token < 0 or token >= original_lengths[old_batch] for token in token_ids
+            ):
+                raise ValueError(
+                    f"batch {old_batch} token selection {token_ids} is out of range"
+                )
             selections.append(list(token_ids))
 
         if validate_semantics:
@@ -664,21 +731,31 @@ class BatchCaseTransformer:
         )
         return torch.cat([tensor, padding], dim=axis).contiguous()
 
-    def _resize_query_prefix(self, input_data: Dict[str, Any], target_length: int) -> None:
+    def _resize_query_prefix(
+        self, input_data: Dict[str, Any], target_length: int
+    ) -> None:
         if target_length < 1:
-            raise InvalidTransformError("A derived query must contain at least one token")
+            raise InvalidTransformError(
+                "A derived query must contain at least one token"
+            )
         adapter = CaseAdapter(input_data)
         tensors = adapter.tensors
         if adapter.get_batch_size() != 1:
-            raise InvalidTransformError("Query prefix resizing currently requires one selected batch")
+            raise InvalidTransformError(
+                "Query prefix resizing currently requires one selected batch"
+            )
         if self.layout_q == "BSND":
             tensors["q"] = self._resize_tensor_axis(tensors["q"], 1, target_length)
             for name in ("ori_sparse_indices", "cmp_sparse_indices"):
                 if tensors.get(name) is not None:
-                    tensors[name] = self._resize_tensor_axis(tensors[name], 1, target_length, -1)
+                    tensors[name] = self._resize_tensor_axis(
+                        tensors[name], 1, target_length, -1
+                    )
             for name in ("ori_topk_length", "cmp_topk_length"):
                 if tensors.get(name) is not None:
-                    tensors[name] = self._resize_tensor_axis(tensors[name], 1, target_length)
+                    tensors[name] = self._resize_tensor_axis(
+                        tensors[name], 1, target_length
+                    )
         else:
             for name in (
                 "q",
@@ -690,14 +767,19 @@ class BatchCaseTransformer:
                 tensor = tensors.get(name)
                 if tensor is not None:
                     fill_value = -1 if "sparse_indices" in name else 0
-                    tensors[name] = self._resize_tensor_axis(tensor, 0, target_length, fill_value)
+                    tensors[name] = self._resize_tensor_axis(
+                        tensor, 0, target_length, fill_value
+                    )
         adapter.sync_query_aligned_fields()
         self._sync_token_lengths(adapter, [list(range(target_length))])
         self._sync_derived_fields(adapter)
 
     @staticmethod
     def _set_vector(
-        adapter: CaseAdapter, name: str, values: List[int], reference: Optional[torch.Tensor]
+        adapter: CaseAdapter,
+        name: str,
+        values: List[int],
+        reference: Optional[torch.Tensor],
     ) -> torch.Tensor:
         tensor = torch.tensor(
             values,
@@ -718,22 +800,31 @@ class BatchCaseTransformer:
         kv = tensors.get(kv_name)
         if kv is None:
             if any(lengths):
-                raise InvalidTransformError(f"Cannot assign non-zero lengths without {kv_name}")
+                raise InvalidTransformError(
+                    f"Cannot assign non-zero lengths without {kv_name}"
+                )
             return
-        if len(lengths) != adapter.get_batch_size() or any(length < 0 for length in lengths):
+        if len(lengths) != adapter.get_batch_size() or any(
+            length < 0 for length in lengths
+        ):
             raise InvalidTransformError(f"Invalid {prefix}_kv lengths: {lengths}")
 
         layout = adapter.get_layout_kv()
         if layout == "BSND":
             target = max(lengths, default=0)
-            tensors[kv_name] = self._resize_tensor_axis(kv, 1, max(target, int(kv.shape[1])))
+            tensors[kv_name] = self._resize_tensor_axis(
+                kv, 1, max(target, int(kv.shape[1]))
+            )
         elif layout == "TND":
             cu_name = f"cu_seqlens_{prefix}_kv"
             cu = tensors.get(cu_name)
             if cu is None:
                 raise InvalidTransformError(f"TND {kv_name} requires {cu_name}")
             segments = layouts.split_tnd(kv, cu)
-            resized = [self._resize_tensor_axis(segment, 0, length) for segment, length in zip(segments, lengths)]
+            resized = [
+                self._resize_tensor_axis(segment, 0, length)
+                for segment, length in zip(segments, lengths)
+            ]
             joined, new_cu = layouts.concat_tnd_segments(resized)
             tensors[kv_name] = joined
             cu_tensor = self._cu_tensor(new_cu, cu)
@@ -773,7 +864,9 @@ class BatchCaseTransformer:
 
         self._set_kv_lengths(input_data, "ori", [new_ori_length])
         if has_cmp:
-            ratio = int(tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1)
+            ratio = int(
+                tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1
+            )
             cmp_length, residual = divmod(new_ori_length, ratio)
             self._set_kv_lengths(input_data, "cmp", [cmp_length])
             reference = tensors.get("cmp_residual_kv")
@@ -788,19 +881,27 @@ class BatchCaseTransformer:
             self.tensors.get("cmp_kv") is not None and cmp_mode in (3, 4)
         )
 
-    def token_partition(self, batch_id: int, split_sizes: Sequence[int]) -> List[ConsistencyCase]:
+    def token_partition(
+        self, batch_id: int, split_sizes: Sequence[int]
+    ) -> List[ConsistencyCase]:
         """Mode 3: split one batch into explicit, complete token-range calls."""
         valid_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if batch_id < 0 or batch_id >= len(valid_lengths):
-            raise ValueError(f"batch_id {batch_id} is outside [0, {len(valid_lengths)})")
+            raise ValueError(
+                f"batch_id {batch_id} is outside [0, {len(valid_lengths)})"
+            )
         if len(split_sizes) < 2 or any(size <= 0 for size in split_sizes):
-            raise ValueError("Mode 3 split_sizes must contain at least two positive values")
+            raise ValueError(
+                "Mode 3 split_sizes must contain at least two positive values"
+            )
         old_q_length = valid_lengths[batch_id]
         if sum(split_sizes) != old_q_length:
             raise ValueError(
                 f"Mode 3 split sizes {list(split_sizes)} sum to {sum(split_sizes)}, expected {old_q_length}"
             )
-        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[batch_id]
+        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[
+            batch_id
+        ]
 
         cases = []
         start = 0
@@ -817,7 +918,9 @@ class BatchCaseTransformer:
                 raise InvalidTransformError(
                     f"Mode 3 part [{start},{end}) requires a negative aligned KV length"
                 )
-            self._align_position_sensitive_context(case.input_data, batch_id, new_ori_length)
+            self._align_position_sensitive_context(
+                case.input_data, batch_id, new_ori_length
+            )
             mapping = [(batch_id, token, 0, token - start) for token in selected]
             oracle = ActualInputSemanticOracle.validate_mapped_tokens(
                 self.input_data, case.input_data, mapping
@@ -845,7 +948,9 @@ class BatchCaseTransformer:
         """Mode 4: change Q shape while comparing an unchanged common prefix."""
         valid_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if batch_id < 0 or batch_id >= len(valid_lengths):
-            raise ValueError(f"batch_id {batch_id} is outside [0, {len(valid_lengths)})")
+            raise ValueError(
+                f"batch_id {batch_id} is outside [0, {len(valid_lengths)})"
+            )
         old_q_length = valid_lengths[batch_id]
         if common_tokens < 1 or common_tokens > old_q_length:
             raise ValueError(f"common_tokens must be within [1, {old_q_length}]")
@@ -855,7 +960,9 @@ class BatchCaseTransformer:
 
         new_data = self.select_batches([batch_id])
         self._resize_query_prefix(new_data, target_length)
-        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[batch_id]
+        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[
+            batch_id
+        ]
         new_ori_length = (
             old_ori_length + target_length - old_q_length
             if self._has_position_sensitive_context()
@@ -866,7 +973,9 @@ class BatchCaseTransformer:
         self._align_position_sensitive_context(new_data, batch_id, new_ori_length)
 
         mapping = [(batch_id, token, 0, token) for token in range(common_tokens)]
-        oracle = ActualInputSemanticOracle.validate_mapped_tokens(self.input_data, new_data, mapping)
+        oracle = ActualInputSemanticOracle.validate_mapped_tokens(
+            self.input_data, new_data, mapping
+        )
         baseline_extra = old_q_length - common_tokens
         return ConsistencyCase(
             name=(
@@ -874,7 +983,9 @@ class BatchCaseTransformer:
                 f"extra_{baseline_extra}_to_{derived_extra_tokens}"
             ),
             input_data=new_data,
-            output_origins=[TokenOrigin(batch_id, token) for token in range(common_tokens)],
+            output_origins=[
+                TokenOrigin(batch_id, token) for token in range(common_tokens)
+            ],
             transform_meta={
                 "mode": 4,
                 "mode_name": "shape-change",
@@ -900,16 +1011,27 @@ class BatchCaseTransformer:
         generator.manual_seed(seed)
         if query.dtype == torch.bool:
             return torch.randint(
-                0, 2, query.shape, dtype=torch.int64, device=query.device, generator=generator
+                0,
+                2,
+                query.shape,
+                dtype=torch.int64,
+                device=query.device,
+                generator=generator,
             ).bool()
         if query.dtype.is_floating_point:
             values = torch.rand(
-                query.shape, dtype=torch.float32, device=query.device, generator=generator
+                query.shape,
+                dtype=torch.float32,
+                device=query.device,
+                generator=generator,
             )
             return (values * 2 - 1).to(query.dtype)
         if query.dtype.is_complex:
             values = torch.rand(
-                query.shape, dtype=torch.float32, device=query.device, generator=generator
+                query.shape,
+                dtype=torch.float32,
+                device=query.device,
+                generator=generator,
             )
             return torch.complex(values * 2 - 1, values * 2 - 1).to(query.dtype)
         return torch.randint(
@@ -927,7 +1049,9 @@ class BatchCaseTransformer:
         """Change non-target Q tokens while keeping one token and all KV context fixed."""
         valid_lengths = schema.get_q_lengths(self.input_data, valid_only=True)
         if batch_id < 0 or batch_id >= len(valid_lengths):
-            raise ValueError(f"batch_id {batch_id} is outside [0, {len(valid_lengths)})")
+            raise ValueError(
+                f"batch_id {batch_id} is outside [0, {len(valid_lengths)})"
+            )
         if token_id < 0 or token_id >= valid_lengths[batch_id]:
             raise ValueError(
                 f"token_id {token_id} is outside [0, {valid_lengths[batch_id]}) for batch {batch_id}"
@@ -956,7 +1080,9 @@ class BatchCaseTransformer:
             q[target] = self.tensors["q"][target]
         new_adapter.tensors["q"] = q.contiguous()
         if ActualInputSemanticOracle._tensor_bits_equal(q, self.tensors["q"]):
-            raise InvalidTransformError("token-isolation did not change any non-target Q token")
+            raise InvalidTransformError(
+                "token-isolation did not change any non-target Q token"
+            )
         new_data["cpu_output"] = None
         if "softmax_lse" in new_data:
             new_data["softmax_lse"] = None
@@ -989,7 +1115,9 @@ class BatchCaseTransformer:
         self, tensors: Dict[str, Any], batch_ids: List[int], selections: List[List[int]]
     ) -> None:
         if self.layout_q == "BSND":
-            tensors["q"] = self._select_bsnd_token_tensor(self.tensors["q"], batch_ids, selections, 1, 0)
+            tensors["q"] = self._select_bsnd_token_tensor(
+                self.tensors["q"], batch_ids, selections, 1, 0
+            )
             for sparse_name in ("ori_sparse_indices", "cmp_sparse_indices"):
                 if self.tensors.get(sparse_name) is not None:
                     tensors[sparse_name] = self._select_bsnd_token_tensor(
@@ -1003,14 +1131,24 @@ class BatchCaseTransformer:
             return
 
         cu_q = self.tensors["cu_seqlens_q"].to("cpu", torch.int64).tolist()
-        for field_name in ("q", "ori_sparse_indices", "cmp_sparse_indices", "ori_topk_length", "cmp_topk_length"):
+        for field_name in (
+            "q",
+            "ori_sparse_indices",
+            "cmp_sparse_indices",
+            "ori_topk_length",
+            "cmp_topk_length",
+        ):
             source = self.tensors.get(field_name)
             if source is None:
                 continue
             pieces = []
             for old_batch, selected in zip(batch_ids, selections):
                 offset = cu_q[old_batch]
-                index = torch.tensor([offset + token for token in selected], dtype=torch.long, device=source.device)
+                index = torch.tensor(
+                    [offset + token for token in selected],
+                    dtype=torch.long,
+                    device=source.device,
+                )
                 pieces.append(source.index_select(0, index))
             tensors[field_name] = torch.cat(pieces, dim=0).contiguous()
 
@@ -1028,14 +1166,18 @@ class BatchCaseTransformer:
         shape[token_dim] = max_tokens
         result = torch.full(shape, fill_value, dtype=tensor.dtype, device=tensor.device)
         for new_batch, (old_batch, selected) in enumerate(zip(batch_ids, selections)):
-            source_index = torch.tensor(selected, dtype=torch.long, device=tensor.device)
+            source_index = torch.tensor(
+                selected, dtype=torch.long, device=tensor.device
+            )
             source = tensor[old_batch].index_select(token_dim - 1, source_index)
             target_slices = [new_batch] + [slice(None)] * (tensor.dim() - 1)
             target_slices[token_dim] = slice(0, len(selected))
             result[tuple(target_slices)] = source
         return result.contiguous()
 
-    def _sync_token_lengths(self, adapter: CaseAdapter, selections: List[List[int]]) -> None:
+    def _sync_token_lengths(
+        self, adapter: CaseAdapter, selections: List[List[int]]
+    ) -> None:
         tensors = adapter.tensors
         metadata = adapter.metadata
         params = adapter.params
@@ -1064,7 +1206,9 @@ class BatchCaseTransformer:
             params["cu_seqlens_q"] = cu_values
 
 
-def generate_non_identity_permutation(batch_size: int, seed: Optional[int] = None) -> List[int]:
+def generate_non_identity_permutation(
+    batch_size: int, seed: Optional[int] = None
+) -> List[int]:
     if batch_size < 2:
         raise ValueError(f"Mode 1 requires B >= 2, got B={batch_size}")
     rng = random.Random(seed)
@@ -1089,7 +1233,9 @@ def generate_split_groups(
     if num_groups is None:
         num_groups = random.Random(seed).randint(2, batch_size) if randomize else 2
     if num_groups < 2 or num_groups > batch_size:
-        raise ValueError(f"num_groups must satisfy 2 <= num_groups <= B ({batch_size}), got {num_groups}")
+        raise ValueError(
+            f"num_groups must satisfy 2 <= num_groups <= B ({batch_size}), got {num_groups}"
+        )
 
     indices = list(range(batch_size))
     if randomize:
@@ -1099,12 +1245,14 @@ def generate_split_groups(
     offset = 0
     for group_index in range(num_groups):
         size = base_size + (1 if group_index < remainder else 0)
-        groups.append(indices[offset:offset + size])
+        groups.append(indices[offset : offset + size])
         offset += size
     return groups
 
 
-def groups_from_split_sizes(batch_size: int, split_sizes: Sequence[int]) -> List[List[int]]:
+def groups_from_split_sizes(
+    batch_size: int, split_sizes: Sequence[int]
+) -> List[List[int]]:
     """Convert explicit acceptance sizes such as B=8 -> 3+5 into batch ids."""
     if len(split_sizes) < 2 or any(size <= 0 for size in split_sizes):
         raise ValueError("split_sizes must contain at least two positive values")
@@ -1121,7 +1269,9 @@ def groups_from_split_sizes(batch_size: int, split_sizes: Sequence[int]) -> List
 
 
 def transform_mode1_reorder(
-    input_data: Dict[str, Any], order: Optional[List[int]] = None, seed: Optional[int] = None
+    input_data: Dict[str, Any],
+    order: Optional[List[int]] = None,
+    seed: Optional[int] = None,
 ) -> ConsistencyCase:
     return BatchCaseTransformer(input_data).reorder(order, seed)
 
@@ -1142,7 +1292,9 @@ def transform_mode3_token_split(
     batch_ids: Optional[List[int]] = None,
     validate_semantics: bool = True,
 ) -> ConsistencyCase:
-    return BatchCaseTransformer(input_data).token_select(token_ids_by_batch, batch_ids, validate_semantics)
+    return BatchCaseTransformer(input_data).token_select(
+        token_ids_by_batch, batch_ids, validate_semantics
+    )
 
 
 def transform_mode3_token_partition(

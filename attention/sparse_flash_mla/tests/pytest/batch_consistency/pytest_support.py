@@ -108,7 +108,9 @@ def parse_shape_change(value: str) -> Tuple[int, int]:
     try:
         values = [int(item.strip()) for item in value.split(",") if item.strip()]
     except ValueError as error:
-        raise ValueError("shape change must be common_tokens,derived_extra_tokens") from error
+        raise ValueError(
+            "shape change must be common_tokens,derived_extra_tokens"
+        ) from error
     if len(values) != 2 or values[0] <= 0 or values[1] < 0:
         raise ValueError(
             "shape change requires positive common_tokens and non-negative derived_extra_tokens"
@@ -140,7 +142,9 @@ def collect_case_matrix(prefix: str, default_dir: str) -> List[Tuple[str, str]]:
         single_case = os.environ.get("QSAS_TESTCASE_PATH", "").strip()
     if single_case:
         if not Path(single_case).is_file():
-            raise ValueError(f"CONFIG_ERROR: consistency case does not exist: {single_case}")
+            raise ValueError(
+                f"CONFIG_ERROR: consistency case does not exist: {single_case}"
+            )
         paths = [single_case]
     else:
         case_dir_value = os.environ.get(f"{prefix}_PT_DIR", "")
@@ -148,7 +152,9 @@ def collect_case_matrix(prefix: str, default_dir: str) -> List[Tuple[str, str]]:
             case_dir_value = os.environ.get("SMLA_PT_LOAD_PATH", "")
         case_dir = Path(case_dir_value or default_dir)
         if not case_dir.is_dir():
-            raise ValueError(f"CONFIG_ERROR: consistency PT directory does not exist: {case_dir}")
+            raise ValueError(
+                f"CONFIG_ERROR: consistency PT directory does not exist: {case_dir}"
+            )
         paths = [str(path) for path in sorted(case_dir.glob("*.pt"))]
         if not paths:
             raise ValueError(f"CONFIG_ERROR: no .pt cases found in {case_dir}")
@@ -164,7 +170,9 @@ def relation_manifest_path(prefix: str) -> Optional[Path]:
 def read_relation_manifest(manifest_path: Path, operator: str) -> List[Dict[str, Any]]:
     """Read a strict, opt-in mapping; no testcase-name or shape inference is allowed."""
     if not manifest_path.is_file():
-        raise ValueError(f"CONFIG_ERROR: relation manifest does not exist: {manifest_path}")
+        raise ValueError(
+            f"CONFIG_ERROR: relation manifest does not exist: {manifest_path}"
+        )
     try:
         with manifest_path.open("r", encoding="utf-8") as source:
             manifest = json.load(source)
@@ -186,7 +194,9 @@ def read_relation_manifest(manifest_path: Path, operator: str) -> List[Dict[str,
         )
     relations = manifest.get("relations")
     if not isinstance(relations, list) or not relations:
-        raise ValueError("CONFIG_ERROR: relation manifest relations must be a non-empty list")
+        raise ValueError(
+            "CONFIG_ERROR: relation manifest relations must be a non-empty list"
+        )
 
     relation_ids = set()
     parsed = []
@@ -195,7 +205,9 @@ def read_relation_manifest(manifest_path: Path, operator: str) -> List[Dict[str,
             raise ValueError(f"CONFIG_ERROR: relations[{index}] must be an object")
         relation_id = relation.get("id")
         if not isinstance(relation_id, str) or not relation_id.strip():
-            raise ValueError(f"CONFIG_ERROR: relations[{index}].id must be a non-empty string")
+            raise ValueError(
+                f"CONFIG_ERROR: relations[{index}].id must be a non-empty string"
+            )
         if relation_id in relation_ids:
             raise ValueError(f"CONFIG_ERROR: duplicate relation id {relation_id!r}")
         relation_ids.add(relation_id)
@@ -216,7 +228,9 @@ def read_relation_manifest(manifest_path: Path, operator: str) -> List[Dict[str,
 
         mappings = relation.get("mappings")
         if not isinstance(mappings, list) or not mappings:
-            raise ValueError(f"CONFIG_ERROR: relation {relation_id!r} must have non-empty mappings")
+            raise ValueError(
+                f"CONFIG_ERROR: relation {relation_id!r} must have non-empty mappings"
+            )
         parsed_mappings = []
         baseline_coordinates = set()
         derived_coordinates = set()
@@ -232,7 +246,10 @@ def read_relation_manifest(manifest_path: Path, operator: str) -> List[Dict[str,
                 and isinstance(derived, list)
                 and len(baseline) == 2
                 and len(derived) == 2
-                and all(isinstance(value, int) and not isinstance(value, bool) for value in baseline + derived)
+                and all(
+                    isinstance(value, int) and not isinstance(value, bool)
+                    for value in baseline + derived
+                )
             ):
                 raise ValueError(
                     "CONFIG_ERROR: relation "
@@ -262,7 +279,9 @@ def read_relation_manifest(manifest_path: Path, operator: str) -> List[Dict[str,
     return parsed
 
 
-def collect_independent_relation_matrix(prefix: str, operator: str) -> List[Dict[str, Any]]:
+def collect_independent_relation_matrix(
+    prefix: str, operator: str
+) -> List[Dict[str, Any]]:
     """Collect only mappings explicitly named by the operator-owned manifest."""
     if os.environ.get(f"{prefix}_CONSISTENCY_TEST", "0") != "1":
         return []
@@ -299,7 +318,11 @@ def run_selected_mode(
     if mode == "split":
         batch_size = CaseAdapter(data).get_batch_size()
         configured = os.environ.get(f"{prefix}_CONSISTENCY_BATCH_SPLIT", "").strip()
-        sizes = parse_int_list(configured, "batch split") if configured else balanced_split(batch_size)
+        sizes = (
+            parse_int_list(configured, "batch split")
+            if configured
+            else balanced_split(batch_size)
+        )
         if not sizes:
             pytest.skip("NOT_APPLICABLE: split requires at least two batches")
         return runner.run_mode2(data, groups_from_split_sizes(batch_size, sizes), seed)
@@ -311,9 +334,15 @@ def run_selected_mode(
     token_count = valid_lengths[batch_id]
     if mode == "token-split":
         configured = os.environ.get(f"{prefix}_CONSISTENCY_TOKEN_SPLIT", "").strip()
-        sizes = parse_int_list(configured, "token split") if configured else balanced_split(token_count)
+        sizes = (
+            parse_int_list(configured, "token split")
+            if configured
+            else balanced_split(token_count)
+        )
         if not sizes:
-            pytest.skip("NOT_APPLICABLE: token-split requires at least two valid Q tokens")
+            pytest.skip(
+                "NOT_APPLICABLE: token-split requires at least two valid Q tokens"
+            )
         return runner.run_mode3(data, batch_id, sizes)
 
     if mode == "token-isolation":
@@ -374,9 +403,7 @@ def run_configured_consistency(
         )
     else:
         try:
-            token_cases = transform_mode3_token_partition(
-                data, mode_batch, token_split
-            )
+            token_cases = transform_mode3_token_partition(data, mode_batch, token_split)
         except InvalidTransformError as error:
             skipped["token-split"] = f"NOT_APPLICABLE: {error}"
         else:
@@ -430,7 +457,9 @@ def format_consistency_summary(report: Mapping[str, Any]) -> str:
 
     rows = []
     baseline = report.get("baseline_precision", {})
-    rows.append(("baseline", status(baseline.get("pass")), "-", precision_detail(baseline)))
+    rows.append(
+        ("baseline", status(baseline.get("pass")), "-", precision_detail(baseline))
+    )
     for relation in report.get("relations", []):
         rows.append(
             (
@@ -446,12 +475,17 @@ def format_consistency_summary(report: Mapping[str, Any]) -> str:
             short_reason = f"{short_reason[:93]}..."
         rows.append((str(mode), "SKIPPED", "-", short_reason))
 
-    widths = [max(len(header), *(len(row[index]) for row in rows)) for index, header in enumerate(
-        ("MODE", "STATUS", "CONSISTENCY", "PRECISION / REASON")
-    )]
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(
+            ("MODE", "STATUS", "CONSISTENCY", "PRECISION / REASON")
+        )
+    ]
     header = "  ".join(
         value.ljust(widths[index])
-        for index, value in enumerate(("MODE", "STATUS", "CONSISTENCY", "PRECISION / REASON"))
+        for index, value in enumerate(
+            ("MODE", "STATUS", "CONSISTENCY", "PRECISION / REASON")
+        )
     )
     separator = "  ".join("-" * width for width in widths)
     body = [
@@ -460,7 +494,14 @@ def format_consistency_summary(report: Mapping[str, Any]) -> str:
     ]
     overall = status(report.get("pass"))
     return "\n".join(
-        ["\n========== BATCH CONSISTENCY SUMMARY ==========", header, separator, *body, f"OVERALL: {overall}", "================================================"]
+        [
+            "\n========== BATCH CONSISTENCY SUMMARY ==========",
+            header,
+            separator,
+            *body,
+            f"OVERALL: {overall}",
+            "================================================",
+        ]
     )
 
 
@@ -501,8 +542,12 @@ def run_independent_pytest_case(
     set_device: Callable[[], None],
 ) -> None:
     """Execute an explicit cross-PT relation through the normal operator path."""
-    baseline_data = torch.load(relation["baseline_pt"], map_location="cpu", weights_only=False)
-    derived_data = torch.load(relation["derived_pt"], map_location="cpu", weights_only=False)
+    baseline_data = torch.load(
+        relation["baseline_pt"], map_location="cpu", weights_only=False
+    )
+    derived_data = torch.load(
+        relation["derived_pt"], map_location="cpu", weights_only=False
+    )
     baseline_operator = CaseAdapter(baseline_data).name
     derived_operator = CaseAdapter(derived_data).name
     if baseline_operator != operator or derived_operator != operator:

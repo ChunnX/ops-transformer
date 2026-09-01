@@ -107,7 +107,9 @@ def test_sparse_flash_mla(testcase_files):
         print(summary, flush=True)
         fulfill_percent = consistency_fulfill_percent(report)
         final_result = "Passed" if report["pass"] else "Failed"
-        utils.save_result(final_result, fulfill_percent, test_data["params"], result_path)
+        utils.save_result(
+            final_result, fulfill_percent, test_data["params"], result_path
+        )
         if not report["relations"]:
             pytest.skip(f"batch consistency has no applicable relation: {report}")
         if not report["pass"]:
