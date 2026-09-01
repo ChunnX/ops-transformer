@@ -317,8 +317,7 @@ def parse_cycle_shots(stderr_log):
     return shots
 
 def parse_cycle_shots_bid(stderr_log):
-    """解析 scan_replay.py 多拍 dump (带 block_id): {shot_id: {bid: (T0, T1, T2)}}
-    段2 (T0-kick) 需按 block_id 将 ffts pmu_start (kick) 与该核 T0 配对"""
+    """解析 scan_replay.py 多拍 dump (带 block_id): {shot_id: {bid: (T0, T1, T2)}}"""
     shots = {}
     if not os.path.exists(stderr_log):
         return shots
@@ -329,35 +328,54 @@ def parse_cycle_shots_bid(stderr_log):
                 int(m.group(3)), int(m.group(4)), int(m.group(5)))
     return shots
 
-def seg2_stats(prof_dir, freq):
-    """段2 (T0 - Taicore_kick_start) 每核统计:
-    每个 ffts pmu_start(=该核 kick) 按 block_id 前向匹配该核最近的 T0,
-    全部有效配对取 min/mean/max (核间有快有慢; 池化所有拍, pmu 滚动采样)
-    窗口 2us: back-to-back launch 间隔 ≈ TaskDur(>2us), 窗口内前向匹配必属同拍"""
+def seg2_match(prof_dir, freq):
+    """段2 (T0 - Taicore_kick_start) dispatch 分组时间邻近配对:
+    ffts_profile.data 无核 id 字段 (f[7]>>16 恒 0, f[2] 为环形缓冲槽位非核 id),
+    且 blocks dump 的 shot 分组含 D2H 回读错位的跨拍 T0, 不能按 shot 聚类
+    (gmm Cube 核间错峰达 3~29k cyc, 1.5us 簇只收 8/28 核)。
+    正确分组: T0 按其前向匹配的 dispatch 归组 (同拍 = 同 dispatch),
+    每个 pmu_start(=某核 kick) ① 前向匹配所属 dispatch ② 组内最近 T0
+    ③ 2us 窗口 (back-to-back launch 间隔 ≈ TaskDur>2us, 窗口内必同拍)。
+    返回 [(kick, t0, diff_cyc)]"""
     pmu = parse_ffts_pmu(prof_dir)
+    disp = parse_stars_dispatches(prof_dir)
     shots = parse_cycle_shots_bid(f"{prof_dir}.stderr.log")
-    if not pmu or not shots:
-        return None
-    pmu_by_bid = {}
-    for r in pmu:
-        if r["pmu_start"] > 0:
-            pmu_by_bid.setdefault(r["block_id"], []).append(r["pmu_start"])
-    for v in pmu_by_bid.values():
-        v.sort()
-    win = int(2 * freq)
-    vals = []
+    if not pmu or not disp or not shots:
+        return []
+    # T0 按前向匹配的 dispatch 归组 (真拍分组, 免疫 D2H 跨拍脏 T0)
+    by_disp = {}
     for sid in shots:
         for bid, (t0, _, _) in shots[sid].items():
-            lst = pmu_by_bid.get(bid)
-            if not lst:
-                continue
-            i = bisect.bisect_right(lst, t0) - 1
+            i = bisect.bisect_right(disp, t0) - 1
             if i >= 0:
-                d = t0 - lst[i]
-                if 0 < d <= win:
-                    vals.append(d / freq)
-    if not vals:
+                by_disp.setdefault(disp[i], []).append(t0)
+    if not by_disp:
+        return []
+    disps = sorted(by_disp)
+    for v in by_disp.values():
+        v.sort()
+    pmu_starts = sorted(r["pmu_start"] for r in pmu if r["pmu_start"] > 0)
+    win = int(2 * freq)
+    pairs = []
+    for ps in pmu_starts:
+        j = bisect.bisect_right(disps, ps) - 1
+        if j < 0:
+            continue
+        t0s = by_disp[disps[j]]
+        k = bisect.bisect_right(t0s, ps)
+        if k < len(t0s):
+            d = t0s[k] - ps
+            if 0 < d <= win:
+                pairs.append((ps, t0s[k], d))
+    return pairs
+
+def seg2_stats(prof_dir, freq):
+    """段2 (T0 - Taicore_kick_start) 统计: 时间邻近配对取 min/mean/max
+    (核间有快有慢; pmu 滚动采样, 每拍仅部分核有 pmu 记录)"""
+    pairs = seg2_match(prof_dir, freq)
+    if not pairs:
         return None
+    vals = [d / freq for _, _, d in pairs]
     return {"n": len(vals), "min": min(vals),
             "mean": statistics.mean(vals), "max": max(vals)}
 
@@ -386,34 +404,20 @@ def dump_intermediates(prof_dir, tag, freq):
     if disp and pmu:
         with open(os.path.join(output_dir, f'seg1_pairs_{tag}.csv'), 'w', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['block', 'dispatch_syscnt', 'pmu_start_kick', 'kick-stars_cyc', 'kick-stars_us'])
+            w.writerow(['dispatch_syscnt', 'pmu_start_kick', 'kick-stars_cyc', 'kick-stars_us'])
             for r in pmu:
                 j = bisect.bisect_right(disp, r["pmu_start"]) - 1
                 if j >= 0:
                     d = r["pmu_start"] - disp[j]
                     if 0 < d <= d_hi:
-                        w.writerow([r["block_id"], disp[j], r["pmu_start"], d, round(d / freq, 6)])
+                        w.writerow([disp[j], r["pmu_start"], d, round(d / freq, 6)])
     if pmu and shots:
-        pmu_by_bid = {}
-        for r in pmu:
-            if r["pmu_start"] > 0:
-                pmu_by_bid.setdefault(r["block_id"], []).append(r["pmu_start"])
-        for v in pmu_by_bid.values():
-            v.sort()
-        win = int(2 * freq)
+        pairs = seg2_match(prof_dir, freq)
         with open(os.path.join(output_dir, f'seg2_pairs_{tag}.csv'), 'w', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['shot', 'block', 'pmu_start_kick', 'T0', 'T0-kick_cyc', 'T0-kick_us'])
-            for sid in shots:
-                for bid, (t0, _, _) in shots[sid].items():
-                    lst = pmu_by_bid.get(bid)
-                    if not lst:
-                        continue
-                    i = bisect.bisect_right(lst, t0) - 1
-                    if i >= 0:
-                        d = t0 - lst[i]
-                        if 0 < d <= win:
-                            w.writerow([sid, bid, lst[i], t0, d, round(d / freq, 6)])
+            w.writerow(['pmu_start_kick', 'T0', 'T0-kick_cyc', 'T0-kick_us'])
+            for ps, t0, d in pairs:
+                w.writerow([ps, t0, d, round(d / freq, 6)])
 
 def three_metrics(prof_dir, op, freq):
     """T0-stars / T1-T0 / T1-stars / T2-stars 四指标 (kernel 打点 + STARS 联合)
@@ -730,7 +734,7 @@ def print_op_result(op, typ, cores, r, m, fm, s2):
         print(seg_line("段1 调度开销", "kick-stars", None, None, None))
     if s2:
         print(seg_line("段2 硬件头", "T0-kick", s2['min'], s2['mean'], s2['max'],
-                       f"  (n={s2['n']}, ffts 滚动采样)"))
+                       f"  (n={s2['n']} dispatch分组配对, ffts 滚动采样)"))
     else:
         print(seg_line("段2 硬件头", "T0-kick", None, None, None, "  (无 ffts pmu 配对)"))
     print(seg_line("段3 软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'),
