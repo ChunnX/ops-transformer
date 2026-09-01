@@ -46,16 +46,7 @@ enum RegionTag {
     TAIL
 };
 
-// 默认通信等待策略：等价于改造前的 CrossCoreWaitFlag 直调行为，
-// 使既有调用方（如 urma 路径）无需显式传入 CommPolicy 即可保持原语义。
-struct DefaultCommWaitPolicy {
-    __aicore__ inline void WaitTile(uint32_t tileIdx)
-    {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
-    }
-};
-
-template <typename AType, typename BType, typename CType, typename CommPolicy = DefaultCommWaitPolicy>
+template <typename AType, typename BType, typename CType, typename CommPolicy>
 class AllGatherQbmmMxKernel {
 public:
     __aicore__ inline AllGatherQbmmMxKernel() {}
@@ -156,8 +147,14 @@ public:
     };
 
     __aicore__ inline void Run(const Params &params);
-    __aicore__ inline void operator()(const Params &params) { Run(params); }
-    __aicore__ inline CommPolicy &GetCommPolicy() { return commPolicy_; }
+    __aicore__ inline void operator()(const Params &params)
+    {
+        Run(params);
+    }
+    __aicore__ inline CommPolicy &GetCommPolicy()
+    {
+        return commPolicy_;
+    }
 
 private:
     __aicore__ inline void Init(const Params &params);
