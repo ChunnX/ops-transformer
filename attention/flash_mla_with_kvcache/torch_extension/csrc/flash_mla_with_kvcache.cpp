@@ -134,9 +134,11 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
             attentionOutSize = {tSize, nSize, headDimV};
         } else if (layoutOut == "BNSD") {
             attentionOutSize = {bSize, nSize, sSize, headDimV};
+        } else if (layoutOut == "NTD") {
+            // TND→NTD 转置输出 (N, T, D)
+            attentionOutSize = {nSize, tSize, headDimV};
         } else {
-            // BSND（out == layout_q，D7）：输出 (B, S, N, D)。旧 NTD 输出约定已淘汰，
-            // checker 已拒绝 layout_out != layout_q（NTD 无对应 query 布局）。
+            // BSND（out == layout_q，D7）：输出 (B, S, N, D)
             attentionOutSize = {bSize, sSize, nSize, headDimV};
         }
         softmaxLse = at::empty(softmaxOutSize, q.options().dtype(at::kFloat));
