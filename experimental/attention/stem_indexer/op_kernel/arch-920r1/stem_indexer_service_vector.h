@@ -248,7 +248,7 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize,
                                                            int32_t value)
 {
-    uint64_t aivCoreNum = AIV_CORE_NUM;
+    uint64_t aivCoreNum = constInfo_.usedCoreNum;
     uint64_t coreIdx = static_cast<uint64_t>(blockId_);
     uint64_t singleCoreSize =
         SICommon::Align((totalSize + aivCoreNum - 1U) / aivCoreNum, static_cast<uint64_t>(OUTPUT_INIT_ALIGN_ELEMS));
