@@ -142,6 +142,9 @@ private:
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
+    // 去全核同步档位: prep/MoE 完成计数目标(每 launch 同步递增, 免清零)
+    int32_t prepDoneTarget_ = 0;
+    int32_t moeDoneTarget_ = 0;
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
     uint16_t gmm2PingPongIdx_ = 0;
@@ -911,9 +914,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // Dispatch 的全部专家先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
     ProcessMoeExpertStages();
 
+    /*
+     * 去全核同步③: MoE 后的全核集合改为完成计数发布, 各核即时前进;
+     * 旧集合承担的「第二次全卡同步声明前本卡 combine 全完成」语义移交声明前置等待④。
+     */
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
+        moeDoneTarget_ = SyncSplitPublish(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_,
+                                          MegaMoeImpl::SYNC_SPLIT_MOE_FIELD);
     }
 
     if (sharedExpertNum_ > 0) {
@@ -945,13 +953,34 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             PipeBarrier<PIPE_ALL>();
         }
     }
-    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
+    /*
+     * 去全核同步①: 输入准备后的全核集合改为完成计数——各 AIV 排空本核流水后发布并等待
+     * 本卡计数(条件与旧语义等价), AIC 用私有槽自增取目标; 无 AIC/AIV 全体到场的集合点。
+     */
+    if constexpr (g_coreType == AIV) {
+        PipeBarrier<PIPE_ALL>();
+        prepDoneTarget_ = SyncSplitPublish(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_,
+                                           MegaMoeImpl::SYNC_SPLIT_PREP_FIELD);
+        SyncSplitWaitAll(params_.peermemInfo.rankSyncInWorldPtr, blockAivNum_, MegaMoeImpl::SYNC_SPLIT_PREP_FIELD,
+                         prepDoneTarget_);
+    } else {
+        prepDoneTarget_ = SyncSplitPublish(params_.peermemInfo.rankSyncInWorldPtr, blockAivNum_ + blockIdx_,
+                                           MegaMoeImpl::SYNC_SPLIT_PREP_FIELD);
+        SyncSplitWaitAll(params_.peermemInfo.rankSyncInWorldPtr, blockAivNum_, MegaMoeImpl::SYNC_SPLIT_PREP_FIELD,
+                         prepDoneTarget_);
+    }
 
     ProcessGmmPipeline();
 
     // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+        /*
+         * ④(③的正确性配套): 第二次全卡同步前先等本卡全部 AIV 的 MoE 完成计数
+         * (语义与旧全核集合等价); 同步函数本体与跨卡协议不动。
+         */
+        SyncSplitWaitAll(params_.peermemInfo.rankSyncInWorldPtr, blockAivNum_, MegaMoeImpl::SYNC_SPLIT_MOE_FIELD,
+                         moeDoneTarget_);
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
