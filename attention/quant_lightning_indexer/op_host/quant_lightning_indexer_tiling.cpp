@@ -1255,7 +1255,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     // from the head's last trunk range (off-by-one-trunk in tail segmentation/offset),
     // deep in shared LITopk internals. Direct path is proven master-equivalent.
     bool ldOpen = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) && (tilingInfo->s2Size >= 2048) &&
-                  (tilingInfo->tSize <= 64);
+                  (tilingInfo->tSize <= 64);  // v2LD: decode-only (prefill LD deadlocks on multi-task, WIP)
     uint32_t ldCores = qliLdSplitCoreNum < aicNum ? qliLdSplitCoreNum : aicNum;
     tilingData_.set_isLDOpen(ldOpen ? 1U : 0U);
     tilingData_.set_ldSplitCoreNum(ldCores);
