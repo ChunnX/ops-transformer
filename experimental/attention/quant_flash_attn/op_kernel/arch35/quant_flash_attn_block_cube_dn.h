@@ -790,7 +790,10 @@ private:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((actS2Size + 15) / 16) * 16;
         fixpipeParams.dstStride = 512 / sizeof(half); // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.quantPre = QuantMode_t::F322F16;
+        // softmax scale 随路乘: L0C fp32结果 * deqScalar(softmax_scale) 后再转fp16,
+        // Vec1 softmax 不再对 mm1Res 逐元素 Muls(dScale), 数据与 group max 均已处于 scale 后的域
+        fixpipeParams.quantPre = QuantMode_t::QF322F16_PRE;
+        fixpipeParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t *>(&constInfo.scaleValue));
         fixpipeParams.dualDstCtl = 0; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.subBlockId = info.loop % 2;
 

@@ -25,9 +25,10 @@ using namespace AscendC;
 using namespace Reg;
 
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S1Base = 128>
-__simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
-    __ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max, __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb,
-    const T dScale, uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
+__simd_vf__ inline void
+softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
+                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb,
+                                                  uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
@@ -82,7 +83,8 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
         Max(curr_group_max, curr_group_max, src_c2, preg_all_16bit);
     }
 
-    Muls(curr_group_max, curr_group_max, dScale, preg_all_16bit);
+    // softmax scale 已由 FixpipeMm1 的 QF322F16_PRE deqScalar 随路乘入 mm1Res,
+    // 数据与 max 均处于 scale 后的域, 此处不再 Muls(dScale)
     Muls(curr_group_max, curr_group_max, INV_LN2, preg_all_16bit);
     Truncate<T, RoundMode::CAST_FLOOR>(curr_group_max, curr_group_max, preg_all_16bit);
     Max(group_gmax, group_gmax, curr_group_max, preg_all_16bit);
@@ -116,11 +118,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
             LoadAlign(src_c1, s + (rowOffset_cur * S1Base + 1 * S1Base) * 2);
             LoadAlign(src_c2, s + (rowOffset_cur * S1Base + 2 * S1Base) * 2);
             LoadAlign(src_c3, s + (rowOffset_cur * S1Base + 3 * S1Base) * 2);
-
-            Muls(src_c0, src_c0, dScale, preg_all_16bit);
-            Muls(src_c1, src_c1, dScale, preg_all_16bit);
-            Muls(src_c2, src_c2, dScale, preg_all_16bit);
-            Muls(src_c3, src_c3, dScale, preg_all_16bit);
 
             Sub(src_c0, src_c0, curr_group_max, preg_all_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_all_16bit);
@@ -183,11 +180,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
             LoadAlign(src_c2, s + (rowOffset_cur * S1Base + 2 * S1Base) * 2);
             LoadAlign(src_c3, s + (rowOffset_cur * S1Base + 3 * S1Base) * 2);
 
-            Muls(src_c0, src_c0, dScale, preg_all_16bit);
-            Muls(src_c1, src_c1, dScale, preg_all_16bit);
-            Muls(src_c2, src_c2, dScale, preg_all_16bit);
-            Muls(src_c3, src_c3, dScale, preg_all_16bit);
-
             Sub(src_c0, src_c0, curr_group_max, preg_all_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_all_16bit);
             Sub(src_c2, src_c2, curr_group_max, preg_all_16bit);
@@ -231,7 +223,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
         StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(global_max, group_gmax, preg_invalid_max);
 
         // 下一块最大值归一化
-        Muls(next_group_max, next_group_max, dScale, preg_valid_max);
         Muls(next_group_max, next_group_max, INV_LN2, preg_valid_max);
         Truncate<T, RoundMode::CAST_FLOOR>(next_group_max, next_group_max, preg_valid_max);
         Max(group_gmax, group_gmax, next_group_max, preg_valid_max);
@@ -252,10 +243,11 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
 }
 
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S1Base = 128>
-__aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &local_group_max,
-    const LocalTensor<T> &global_max, const LocalTensor<uint8_t> &indexesBuf, const T scale, uint16_t S2BaseAlign32,
-    uint16_t S2BaseAlign64)
+__aicore__ inline void
+SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
+                                              const LocalTensor<T> &local_group_max, const LocalTensor<T> &global_max,
+                                              const LocalTensor<uint8_t> &indexesBuf,
+                                              uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -264,7 +256,7 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_align_qs128_kvs32_multi_vf<clear_gmax, T, T2, hasAtten, S1Base>(
-        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale, S2BaseAlign32, S2BaseAlign64);
+        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, S2BaseAlign32, S2BaseAlign64);
 }
 
 } // namespace Mxfp4Api
