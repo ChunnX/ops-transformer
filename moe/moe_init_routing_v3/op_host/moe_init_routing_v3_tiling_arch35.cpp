@@ -210,7 +210,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::GetCountingSortWorkspaceSize()
     if (countingSortMode_ == 1) {
         csWorkspace = filterNeedCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t));
         csWorkspace += filterNeedCoreNum * pairsPerCore * static_cast<int64_t>(sizeof(int32_t));
-    } else {
+    } else if (countingSortMode_ == 2){
         int64_t pairsBase = tilingDataPtr_->countingSortParamsOp.pairsWsOffset;
         csWorkspace = (pairsBase + filterNeedCoreNum * pairsPerCore +
                         filterNeedCoreNum * expertCountStride) * static_cast<int64_t>(sizeof(int32_t));
@@ -1979,13 +1979,10 @@ void MoeInitRoutingV3TilingArch35::ComputeCountingSortMode()
                         dropPadMode_ == DROP_PAD_MODE_DROPLESS && actualExpertNum <= NUM_32 && expandDtypeValid;
     if (fullLoadCond) {
         ComputeArch35CountingSortFullLoadTiling();
-        // 回读实际模式：Compute 内部 UB 校验失败会置 0（进入非全载的判断）
         countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
-    }
-    if (countingSortMode_ == 0) {
+    } else{
         int64_t xDataSize = n_ * cols_ * inputXDtypeSize_;
         if (xDataSize * NUM_TWO >= totalUbSize_ * NUM_THREE) {
-            // 串行 UB 仍不足则置 0 回退分阶段路径
             ComputeArch35CountingSortCutOriginTiling();
         }
     }
