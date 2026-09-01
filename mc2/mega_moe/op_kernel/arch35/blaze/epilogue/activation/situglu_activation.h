@@ -56,7 +56,7 @@ struct SituGluParams {
     float invAlpha;
 };
 
-template <typename InputType, bool FuseTopkWeight, bool IsLinear>
+template <typename InputType, bool TopkWeightsPrefetch, bool IsLinear>
 __aicore__ inline void RunSiTUGLU(const GatedActivationTileContext<InputType> &context, const SituGluParams &params)
 {
     const float tanhC1 = -0.333327681f;
@@ -106,7 +106,7 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationTileContext<InputType> &c
         AscendC::Reg::Duplicate(c2Reg, tanhC2);
 
         for (uint16_t rowIndex = 0; rowIndex < rowLoopCount; rowIndex++) {
-            if constexpr (FuseTopkWeight) {
+            if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
                     weightReg, context.topkWeights + rowIndex * INT32_PER_256B + WEIGHT_INDEX);
             }
@@ -144,7 +144,7 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationTileContext<InputType> &c
                 } else {
                     AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, upFp32Reg, fullMask);
                 }
-                if constexpr (FuseTopkWeight) {
+                if constexpr (TopkWeightsPrefetch) {
                     AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, fullMask);
                 }
                 AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(outputReg, outputFp32Reg, fullMask);
@@ -190,7 +190,7 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationTileContext<InputType> &c
                 } else {
                     AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, upFp32Reg, tailComputeMask);
                 }
-                if constexpr (FuseTopkWeight) {
+                if constexpr (TopkWeightsPrefetch) {
                     AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, tailComputeMask);
                 }
                 AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(outputReg, outputFp32Reg, tailComputeMask);
