@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use it except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -18,10 +18,10 @@
  * 接收 apace 自有的 hcommAllGatherMatmulTilingData（不依赖外部算子 tiling 结构）。
  * 算子接入时由 host 侧负责从算子 tiling 填充到 hcommAllGatherMatmulTilingData。
  *
- * 与 UDMA 版本 (all_gather_mx_matmul_udma_impl.h) 的核心差异：
+ * 与 URMA 版本 (all_gather_mx_matmul_urma_impl.h) 的核心差异：
  * 1. 通信方式：HCCL AllGather<true>（AIC 核内）替代 UDMA CollectiveComm（AIV 跨核）
  * 2. 执行模型：AIC-only（全 C 核，无 AIV 参与通信）
- * 3. CommPolicy：HcommCommWaitPolicy（hccl_.Wait）替代 UdmaCommWaitPolicy（CrossCoreWaitFlag）
+ * 3. CommPolicy：HcommCommWaitPolicy（hccl_.Wait）替代 UrmaCommWaitPolicy（CrossCoreWaitFlag）
  * 4. Kernel 复用：AllGatherQbmmMxKernel<..., HcommCommWaitPolicy>，计算逻辑完全不变
  *
  * Init():
@@ -181,8 +181,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::Init(
-    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR gatherOut,
-    GM_ADDR workspaceGM)
+    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM)
 {
     aGM_ = aGM;
     aScaleGM_ = aScaleGM;
@@ -199,8 +198,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-    commState_.hccl_.SetCcTilingV2(
-        static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
+    commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
