@@ -30,6 +30,7 @@ from batch_consistency.config import resolve_consistency_config  # noqa: E402
 from batch_consistency.model import RunResult  # noqa: E402
 from batch_consistency.pytest_support import (  # noqa: E402
     consistency_fulfill_percent,
+    format_consistency_summary,
     run_configured_consistency,
 )
 
@@ -102,14 +103,15 @@ def mqsmla_aclgraph(testcase_files):
             result_compare_method.check_result,
             lambda: torch_npu.npu.set_device(device_id),
         )
-        print("batch consistency report:", report)
+        summary = format_consistency_summary(report)
+        print(summary, flush=True)
         fulfill_percent = consistency_fulfill_percent(report)
         result = "Pass" if report["pass"] else "Failed"
         utils.save_result(test_data["params"], result, fulfill_percent, Path(result_path))
         if not report["relations"]:
             pytest.skip(f"batch consistency has no applicable relation: {report}")
         if not report["pass"]:
-            pytest.fail(f"batch consistency failed: {report}")
+            pytest.fail(summary)
         return
     npu_error_msg = None
     try:

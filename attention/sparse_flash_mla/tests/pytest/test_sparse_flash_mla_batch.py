@@ -19,6 +19,7 @@ from batch_consistency.config import resolve_consistency_config
 from batch_consistency.model import RunResult
 from batch_consistency.pytest_support import (
     consistency_fulfill_percent,
+    format_consistency_summary,
     run_configured_consistency,
 )
 import pytest
@@ -102,14 +103,15 @@ def test_sparse_flash_mla(testcase_files):
             result_compare_method.check_result,
             lambda: torch_npu.npu.set_device(0),
         )
-        print("batch consistency report:", report)
+        summary = format_consistency_summary(report)
+        print(summary, flush=True)
         fulfill_percent = consistency_fulfill_percent(report)
         final_result = "Passed" if report["pass"] else "Failed"
         utils.save_result(final_result, fulfill_percent, test_data["params"], result_path)
         if not report["relations"]:
             pytest.skip(f"batch consistency has no applicable relation: {report}")
         if not report["pass"]:
-            pytest.fail(f"batch consistency failed: {report}")
+            pytest.fail(summary)
         return
     npu_result = None
     try:

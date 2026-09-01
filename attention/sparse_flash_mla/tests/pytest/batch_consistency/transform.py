@@ -188,14 +188,19 @@ class ActualInputSemanticOracle:
         cmp_mode = int(tensors.get("cmp_mask_mode") or 0)
         win_left_value = tensors.get("ori_win_left")
         win_left = int(-1 if win_left_value is None else win_left_value)
-        win_right = int(tensors.get("ori_win_right") or 0)
+        win_right_value = tensors.get("ori_win_right")
+        win_right = int(-1 if win_right_value is None else win_right_value)
 
         if ori_mode == 0:
             ori_window = (0, ori_length)
-        elif ori_mode in (3, 4):
+        elif ori_mode == 3:
             threshold = ori_length - q_length + token + 1
-            start = 0 if ori_mode == 3 or win_left == -1 else max(threshold - win_left - 1, 0)
-            ori_window = (max(start, 0), min(max(threshold + win_right, 0), ori_length))
+            ori_window = (0, min(max(threshold, 0), ori_length))
+        elif ori_mode == 4:
+            threshold = ori_length - q_length + token + 1
+            start = 0 if win_left == -1 else max(threshold - win_left - 1, 0)
+            end = ori_length if win_right == -1 else min(max(threshold + win_right, 0), ori_length)
+            ori_window = (max(start, 0), end)
         else:
             raise InvalidTransformError(f"Unsupported ori_mask_mode={ori_mode} in semantic oracle")
 

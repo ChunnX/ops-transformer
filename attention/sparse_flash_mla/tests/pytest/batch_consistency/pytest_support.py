@@ -416,6 +416,58 @@ def consistency_fulfill_percent(report: Mapping[str, Any]) -> float:
     return min(values) if values else 0.0
 
 
+def format_consistency_summary(report: Mapping[str, Any]) -> str:
+    """Format an at-a-glance PASS/FAILED/SKIPPED summary for all modes."""
+
+    def status(value: Any) -> str:
+        return "PASS" if value is True else "FAILED"
+
+    def precision_detail(precision: Mapping[str, Any]) -> str:
+        output = precision.get("output", {})
+        percent = output.get("fulfill_percent")
+        suffix = "" if percent is None else f" ({float(percent):.2f}%)"
+        return f"{status(precision.get('pass'))}{suffix}"
+
+    rows = []
+    baseline = report.get("baseline_precision", {})
+    rows.append(("baseline", status(baseline.get("pass")), "-", precision_detail(baseline)))
+    for relation in report.get("relations", []):
+        rows.append(
+            (
+                str(relation.get("case", "unknown")),
+                status(relation.get("pass")),
+                status(relation.get("batch_consistency", {}).get("pass")),
+                precision_detail(relation.get("precision", {})),
+            )
+        )
+    for mode, reason in report.get("skipped_modes", {}).items():
+        short_reason = str(reason).removeprefix("NOT_APPLICABLE: ")
+        if len(short_reason) > 96:
+            short_reason = f"{short_reason[:93]}..."
+        rows.append((str(mode), "SKIPPED", "-", short_reason))
+
+    widths = [max(len(header), *(len(row[index]) for row in rows)) for index, header in enumerate(
+        ("MODE", "STATUS", "CONSISTENCY", "PRECISION / REASON")
+    )]
+    header = "  ".join(
+        value.ljust(widths[index])
+        for index, value in enumerate(("MODE", "STATUS", "CONSISTENCY", "PRECISION / REASON"))
+    )
+    separator = "  ".join("-" * width for width in widths)
+    body = [
+        "  ".join(value.ljust(widths[index]) for index, value in enumerate(row))
+        for row in rows
+    ]
+    overall = status(report.get("pass"))
+    return "\n".join(
+        ["\n========== BATCH CONSISTENCY SUMMARY ==========", header, separator, *body, f"OVERALL: {overall}", "================================================"]
+    )
+
+
+def print_consistency_summary(report: Mapping[str, Any]) -> None:
+    print(format_consistency_summary(report), flush=True)
+
+
 def run_pytest_case(
     case_path: str,
     mode: str,
