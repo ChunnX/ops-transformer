@@ -12,3 +12,6 @@ npu_qfa中的调用会调用quant_flash_attn_golden.py中的golden，比如npu_g
      "torch.ops.cann_ops_transformer.quant_flash_attn": "QuantFlashAttnSpec",
  }
 QuantFlashAttnSpec类中要添加npu_preprocess函数，供ttk接口调用
+
+4、schemas
+{'': cann_ops_transformer::quant_flash_attn(Tensor q, Tensor k, Tensor v, Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, Tensor? block_table=None, Tensor? p_scale=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None, Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, float softmax_scale=1., int mask_mode=0, int win_left=-1, int win_right=-1, int max_seqlen_q=-1, int max_seqlen_kv=-1, str layout_q="BSND", str layout_q_descale="BSND", str layout_kv="BSND", str layout_out="BSND", bool return_softmax_lse=False) -> (Tensor, Tensor)}
