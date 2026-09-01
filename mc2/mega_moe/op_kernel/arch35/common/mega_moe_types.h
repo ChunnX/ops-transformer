@@ -70,6 +70,12 @@ struct GMMAddrInfo {
     __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
+// A/ScaleA 按逻辑元素记录相邻行起始地址的跨度。
+struct StridedAConfig {
+    uint32_t rowStrideElements;
+    uint32_t scaleRowStrideElements;
+};
+
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {
     uint32_t rankId;
@@ -206,10 +212,11 @@ struct MoeStageCommonConfig {
     uint32_t gmm1OutputDim;
 };
 
-// GMM1/GMM2 共用的运行时执行信息；矩阵 dtype/format 由 kernel 模板参数确定。
+// GMM 运行时执行信息；inputLayout 描述需要显式行跨度的 A/ScaleA 输入。
 struct GmmExecutionConfig {
     BlockJobContext blockJob;
     bool isPerExpertWeightTensor;
+    StridedAConfig inputLayout;
 };
 
 // 各流水阶段在同步 workspace 中为每个专家预留的 slot 数量。

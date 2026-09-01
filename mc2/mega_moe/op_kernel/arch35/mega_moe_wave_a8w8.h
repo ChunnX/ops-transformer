@@ -32,7 +32,6 @@
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
 #include "stage/mega_moe_workspace_reset.h"
-#include "stage/mega_moe_shared_expert_input.h"
 #include "stage/mega_moe_token_dispatch.h"
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
@@ -83,9 +82,12 @@ private:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
     __aicore__ inline void InitExpertTokenCountExportBuffers();
+    template <typename... LayoutArgs>
     __aicore__ inline void RunSharedExpertGmm1Activation(const GMMAddrInfo &gmmAddrInfo,
                                                          const ProblemShape &problemShape,
-                                                         Gmm1RuntimeState &runtimeState, uint32_t sharedExpertIdx);
+                                                         const GmmExecutionConfig &gmmConfig,
+                                                         Gmm1RuntimeState &runtimeState, uint32_t sharedExpertIdx,
+                                                         const LayoutArgs &...layoutArgs);
     __aicore__ inline void RunSharedExpertGmm2(const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
                                                uint32_t &startBlockIdx);
     __aicore__ inline void ProcessSharedExpertGmm1();
@@ -161,7 +163,6 @@ private:
     LocalTensor<int32_t> resetTensor_;
     QuantProcessScratch<typename MoeQuantConfig::QuantStorageType> quantProcessScratch_;
     QuantProcessScratch<typename SharedQuantConfig::QuantStorageType> sharedQuantScratch_;
-    SharedInputSplitScratch<typename MoeQuantConfig::QuantStorageType> sharedInputSplitScratch_;
     SendMaskScratch sendMaskScratch_;
     TokenDispatchScratch<typename MoeQuantConfig::QuantStorageType> tokenDispatchScratch_;
     ExpertTokenCountExportScratch expertTokenCountExportScratch_;
@@ -506,10 +507,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
     quantProcessScratch_.xInTensor1 =
         LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
     if (sharedExpertNum_ > 0U) {
-        if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
-            sharedInputSplitScratch_.copyBuffer0 = quantProcessScratch_.xOutTensor0;
-            sharedInputSplitScratch_.copyBuffer1 = quantProcessScratch_.xOutTensor1;
-        } else {
+        if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
             sharedQuantScratch_.mxTempTensor = quantProcessScratch_.mxTempTensor;
             sharedQuantScratch_.xOutTensor0 = LocalTensor<typename SharedQuantConfig::QuantStorageType>(
                 TPosition::VECCALC, xOutTensorAddr1,
@@ -556,17 +554,18 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
 // 可选共享专家流程：依次执行共享专家 GMM1 与 SwiGLU，并在结束后重置 GMM 调度状态。
 // ===============================================================
 template <TemplateMegaMoeA8W8WaveTypeClass>
+template <typename... LayoutArgs>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::RunSharedExpertGmm1Activation(
-    const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape, Gmm1RuntimeState &runtimeState,
-    uint32_t sharedExpertIdx)
+    const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape, const GmmExecutionConfig &gmmConfig,
+    Gmm1RuntimeState &runtimeState, uint32_t sharedExpertIdx, const LayoutArgs &...layoutArgs)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig_.tokenNum;
     if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
         RunGmm1A8W4<typename SharedQuantConfig::QuantOutType, SharedWeightType, bfloat16_t,
                     typename SharedQuantConfig::QuantScaleType, typename SharedQuantConfig::QuantScaleType, GMM1_TILE_M,
                     L1_TILE_M_256, false, true, true>(sharedEpilogueOp_, params_, problemShape, gmmAddrInfo,
-                                                      runtimeState.startBlockIdx, gmTileSequence_,
-                                                      gmmExecutionConfig_.blockJob, expertBeforeCnt, sharedExpertIdx);
+                                                      runtimeState.startBlockIdx, gmTileSequence_, gmmConfig.blockJob,
+                                                      expertBeforeCnt, sharedExpertIdx, layoutArgs...);
     } else {
         constexpr bool isWeightNz = SharedWeight1Format == FORMAT_FRACTAL_NZ;
         RunGmm1Generic<typename SharedQuantConfig::QuantOutType, typename SharedQuantConfig::ActivationQuantOutType,
@@ -574,8 +573,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::RunShar
                        typename SharedQuantConfig::QuantScaleType, isWeightNz, GMM1_TILE_M, L1_TILE_M_256, false, true,
                        GMM1_INTERLEAVED, true>(sharedEpilogueOp_, params_, problemShape, gmmAddrInfo,
                                                runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
-                                               gmmExecutionConfig_.blockJob, expertBeforeCnt, sharedExpertIdx,
-                                               runtimeState.pingpongIdx, nullptr, true);
+                                               gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx,
+                                               runtimeState.pingpongIdx, nullptr, true, layoutArgs...);
     }
 }
 
@@ -604,15 +603,35 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
     GMMAddrInfo gmmAddrInfo{};
+    if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
+        // MoE 量化记录按 token 交织存放 [data | scale | optional topk]。shared GMM1 直接建立两个
+        // 带行跨度的视图，避免先将 data/scale 拆分到连续 workspace。
+        gmmAddrInfo.aGlobal = params_.peermemInfo.quantTokenScalePtr;
+        gmmAddrInfo.aScaleGlobal = params_.peermemInfo.quantTokenScalePtr + quantProcessConfig_.quantTokenAlignBytes;
+    } else {
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertInputDataPtr;
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertInputScalePtr;
+    }
     int32_t vecSetSyncCom = 0;
     Gmm1RuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
+    GmmExecutionConfig sharedGmmConfig = gmmExecutionConfig_;
+    if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
+        sharedGmmConfig.inputLayout = {
+            quantProcessConfig_.quantTokenScaleAlignBytes * MoeQuantConfig::A_ELEMS_PER_BYTE,
+            quantProcessConfig_.quantTokenScaleAlignBytes / sizeof(typename MoeQuantConfig::QuantScaleType)};
+    }
     constexpr bool isA8W4 = SharedQuantConfig::AXW_MODE == AxWMode::A8W4;
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<SharedWeightType, typename SharedQuantConfig::ActivationQuantOutType,
                                            typename SharedQuantConfig::QuantScaleType, isA8W4>(
-            commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
+            commonConfig_, sharedGmmConfig, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
             gmmAddrInfo, sharedExpertIdx);
-        RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, runtimeState, sharedExpertIdx);
+        if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
+            RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, sharedGmmConfig, runtimeState, sharedExpertIdx,
+                                          sharedGmmConfig.inputLayout);
+        } else {
+            RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, sharedGmmConfig, runtimeState, sharedExpertIdx);
+        }
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0;
@@ -961,11 +980,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                         TopkWeightsType, TopkWeightsPrefetch>(aivJob_, commonConfig_, params_, quantProcessConfig_,
                                                               moeQuantOutput, quantProcessScratch_);
     if (sharedExpertNum_ > 0) {
-        if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
-            SplitMoeQuantForSharedInput<typename MoeQuantConfig::QuantStorageType,
-                                        typename MoeQuantConfig::QuantScaleType, MoeQuantConfig::A_ELEMS_PER_BYTE>(
-                aivJob_, commonConfig_, params_, quantProcessConfig_, sharedInputSplitScratch_);
-        } else {
+        if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
             using SharedQuantStorageType = typename SharedQuantConfig::QuantStorageType;
             using SharedQuantScaleType = typename SharedQuantConfig::QuantScaleType;
             SeparatedQuantOutput<SharedQuantStorageType, SharedQuantScaleType> sharedQuantOutput;
