@@ -34,18 +34,18 @@ class SparseFlashMlaGrad {
 public:
     __aicore__ inline SparseFlashMlaGrad(){};
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, 
+                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices,
                                    GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
                                    GM_ADDR seqused_q, GM_ADDR seqused_ori_kv, GM_ADDR seqused_cmp_kv,
                                    GM_ADDR cmp_residual_kv,
-                                   GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, 
+                                   GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks,
                                    GM_ADDR cmp_softmax_l1_norm,
                                    GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
 
 private:
-    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, 
-                                const GM_ADDR cu_seqlens_q, 
-                                const GM_ADDR cu_seqlens_ori_kv, 
+    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData,
+                                const GM_ADDR cu_seqlens_q,
+                                const GM_ADDR cu_seqlens_ori_kv,
                                 const GM_ADDR cu_seqlens_cmp_kv,
                                 const GM_ADDR seqused_q,
                                 const GM_ADDR seqused_ori_kv,
@@ -163,8 +163,8 @@ private:
 
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__restrict tilingData,
-                                                           const GM_ADDR cu_seqlens_q, 
-                                                           const GM_ADDR cu_seqlens_ori_kv, 
+                                                           const GM_ADDR cu_seqlens_q,
+                                                           const GM_ADDR cu_seqlens_ori_kv,
                                                            const GM_ADDR cu_seqlens_cmp_kv,
                                                            const GM_ADDR seqused_q,
                                                            const GM_ADDR seqused_ori_kv,
@@ -398,7 +398,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
         runInfo[mmPingPongIdx].curS3 = usedS3;
     }
     runInfo[mmPingPongIdx].isOri = loop < oriS2Loop;
-    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk : 
+    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk :
                                                        cmpKeyGmOffset + blkCntOffset * dimN2 * dimDqk;
     runInfo[mmPingPongIdx].task = task;
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
@@ -408,7 +408,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     runInfo[mmPingPongIdx].mm12GmOffset = mm12GmOffset;
     runInfo[mmPingPongIdx].mm345GmOffset = mm345GmOffset;
     runInfo[mmPingPongIdx].dqOutGmOffset = queryGmOffset;
-    runInfo[mmPingPongIdx].actualSelCntOffset = runInfo[mmPingPongIdx].isOri ? 
+    runInfo[mmPingPongIdx].actualSelCntOffset = runInfo[mmPingPongIdx].isOri ?
                                                 (blkCntOffset + selectedCountOffset <= oriSelectedCount ? selectedCountOffset : oriSelectedCount - blkCntOffset) :
                                                 (blkCntOffset + selectedCountOffset <= cmpSelectedCount ? selectedCountOffset : cmpSelectedCount - blkCntOffset);
     runInfo[mmPingPongIdx].lastBlockSize = 1;
@@ -437,7 +437,6 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::SaveLastInfo()
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateUsedSeqLen(int64_t batchIdx)
 {
-    // 与 arch35 一致：三个 seqused 各自可选，未传入时退回物理槽位长度
     usedS1 = curS1;
     usedS2 = curS2;
     usedS3 = curS3;
@@ -489,7 +488,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
         while (t1Idx >= curT1) {
             curT1 = ((__gm__ int32_t *)cu_seqlens_q)[++bIdx];
         }
-        
+
         t1Offset = ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
         t2Offset = ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIdx - 1];
         curS1 = ((__gm__ int32_t *)cu_seqlens_q)[bIdx] - ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
