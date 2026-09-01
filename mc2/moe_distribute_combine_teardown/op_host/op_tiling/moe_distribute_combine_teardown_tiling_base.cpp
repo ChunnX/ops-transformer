@@ -820,11 +820,23 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckHcclBuffsize()
 void MoeDistributeCombineTeardownTilingBase::SetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint32_t blockDim = 1U;
+    uint32_t platformAiv = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+
+    uint32_t aivNum = tilingData_->moeDistributeCombineTeardownInfo.epWorldSize;
+    const uint32_t bs = tilingData_->moeDistributeCombineTeardownInfo.bs;
+    if (bs > aivNum) {
+        aivNum = bs;
+    }
+    if (aivNum < 1U) {
+        aivNum = 1U;
+    }
+    if (aivNum > platformAiv) {
+        aivNum = platformAiv;
+    }
+
+    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context_->SetBlockDim(blockDim);
     context_->SetAicpuBlockDim(AICPUNUM);
     tilingData_->moeDistributeCombineTeardownInfo.totalUbSize = ubSize;

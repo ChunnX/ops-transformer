@@ -103,7 +103,10 @@ private:
     __aicore__ inline void SetStatus();
     __aicore__ inline void QuantInit();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt_, uint32_t curUseAivNum, uint32_t &startTokenId_,
-                                       uint32_t &endTokenId_, uint32_t &sendTokenNum_, bool isFront = true);
+                                       uint32_t &endTokenId_, uint32_t &sendTokenNum_, bool isFront = true,
+                                       int32_t overrideCoreId = -1);
+    __aicore__ inline void CalEpCommRange(uint32_t &startRankId, uint32_t &endRankId, uint32_t &sendRankNum);
+    __aicore__ inline bool IsEpCommCore();
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
 
     __aicore__ inline uint32_t MIN(uint32_t x1, uint32_t x2)
@@ -222,6 +225,7 @@ private:
     uint64_t recvWinBlockNum_; // 接收Win区块数
     uint64_t remain_ub_space{0};
     bool isSendShared_{false};
+    bool commBufInited_{false};
     bool isInputActiveMaskFlag_ = false;
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl;
     DataCopyExtParams expandXCopyParams_;
@@ -519,12 +523,20 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CalToken
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum,
-    bool isFront)
+    bool isFront, int32_t overrideCoreId)
 {
+    if (curUseAivNum == 0U) {
+        startTokenId = curSendCnt;
+        endTokenId = curSendCnt;
+        sendTokenNum = 0U;
+        return;
+    }
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
     sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
     uint32_t newAivId;
-    if (isFront) {
+    if (overrideCoreId >= 0) {
+        newAivId = static_cast<uint32_t>(overrideCoreId);
+    } else if (isFront) {
         newAivId = aivId_;
     } else {
         newAivId = aivId_ - moeUsedAivNum_; // 由于是后面的核作为发送的共享专家，因此需要换算
@@ -833,6 +845,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::InitComm
     tpipe_->Reset();
     uint32_t statusBufCntAlign = Ceil(recvWinBlockNum_, 8) * 8; // 8 = UB_ALIGN / sizeof(int32_t)
     tpipe_->InitBuffer(statusBuf_, statusBufCntAlign * UB_ALIGN);
+    statusTensor_ = statusBuf_.Get<int32_t>();
     uint32_t sqInfoSize = Ceil(sizeof(HcclAiRMAWQ), UB_ALIGN) * UB_ALIGN;
     uint32_t cqInfoSize = Ceil(sizeof(HcclAiRMACQ), UB_ALIGN) * UB_ALIGN;
     remain_ub_space = (totalUbSize_ - statusBufCntAlign * UB_ALIGN - sqInfoSize - cqInfoSize - 6 * UB_ALIGN -
@@ -972,25 +985,49 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CalEpCommRange(uint32_t &startRankId,
+                                                                                       uint32_t &endRankId,
+                                                                                       uint32_t &sendRankNum)
 {
     // 按卡分核，并与 combine_setup 保持同一旋转规则，保证同一 hcommHandle/jetty 始终由同一 AIV 维护
     uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
-    uint32_t sendRankNum = epWorldSize_ / aivNum_;
+    sendRankNum = epWorldSize_ / aivNum_;
     uint32_t remainderRankNum = epWorldSize_ % aivNum_;
-    uint32_t startRankId = sendRankNum * coreIdxNew;
+    startRankId = sendRankNum * coreIdxNew;
     if (coreIdxNew < remainderRankNum) {
         ++sendRankNum;
         startRankId += coreIdxNew;
     } else {
         startRankId += remainderRankNum;
     }
-    uint32_t endRankId = startRankId + sendRankNum;
+    endRankId = startRankId + sendRankNum;
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline bool MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::IsEpCommCore()
+{
+    uint32_t startRankId = 0;
+    uint32_t endRankId = 0;
+    uint32_t sendRankNum = 0;
+    CalEpCommRange(startRankId, endRankId, sendRankNum);
+    return sendRankNum > 0U && startRankId < epWorldSize_;
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
+{
+    uint32_t startRankId = 0;
+    uint32_t endRankId = 0;
+    uint32_t sendRankNum = 0;
+    CalEpCommRange(startRankId, endRankId, sendRankNum);
     // 空闲核跳过 hcomm.Init / TPipe::Reset：通信并行度上限是 epWorldSize
     if (sendRankNum == 0 || startRankId >= epWorldSize_) {
         return;
     }
-    InitCommBuffer();
+    if (!commBufInited_) {
+        InitCommBuffer();
+        commBufInited_ = true;
+    }
 
     GlobalTensor<int32_t> windowExpGMTensor;
     windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET));
@@ -1070,9 +1107,37 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        if (aivId_ >= aivNum_) {
+            SyncAll<true>();
+            return;
+        }
         TokenScatter();
-        AlltoAllDispatch();
-        SetStatus();
+        // aivNum > ep 且无共享专家时：通信核不做量化，token 改分到计算核；
+        // 通信核先写 status 再 Init，与其他核的量化重叠。aivNum == ep 时所有核都要量化。
+        const bool overlapCommCompute = (sharedExpertRankNum_ == 0U) && (aivNum_ > epWorldSize_);
+        if (overlapCommCompute && !isSendShared_) {
+            uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
+            if (coreIdxNew < epWorldSize_) {
+                startTokenId_ = curSendCnt_;
+                endTokenId_ = curSendCnt_;
+                sendTokenNum_ = 0U;
+            } else {
+                uint32_t computeAivNum = aivNum_ - epWorldSize_;
+                uint32_t computeIdx = coreIdxNew - epWorldSize_;
+                SplitToCore(curSendCnt_, computeAivNum, startTokenId_, endTokenId_, sendTokenNum_, true,
+                            static_cast<int32_t>(computeIdx));
+            }
+        }
+        if (overlapCommCompute && IsEpCommCore() && !isSendShared_) {
+            expertIdsActCnt_ = activeMaskBsCnt_ * axisK_;
+            SetStatus();
+            PipeBarrier<PIPE_ALL>();
+            InitCommBuffer();
+            commBufInited_ = true;
+        } else {
+            AlltoAllDispatch();
+            SetStatus();
+        }
         SyncAll<true>();
         Communication();
     }

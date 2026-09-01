@@ -145,6 +145,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(
     moeDistributeCombineSetupInfo_ = &(tilingData->moeDistributeCombineSetupInfo);
     mc2Context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ = mc2Context_->epRankId;
+    if (aivId_ >= moeDistributeCombineSetupInfo_->aivNum) {
+        return;
+    }
 
     quantExpandXGM_ = quantExpandX;
 
@@ -381,6 +384,9 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        if (aivId_ >= moeDistributeCombineSetupInfo_->aivNum) {
+            return;
+        }
         // 空闲核不参与通信，但仍要走到下面的 SyncAll，否则其他核会等不到它
         if (startRankId_ < moeDistributeCombineSetupInfo_->epWorldSize) {
             BuffInit();

@@ -831,18 +831,45 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::SetWorkspace()
 void MoeDistributeDispatchSetupTilingBase::SetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint32_t blockDim = 1U;
+    uint32_t platformAiv = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+
+    const uint32_t epWorldSize = tilingData_->moeDistributeDispatchSetupInfo.epWorldSize;
+    const uint32_t bs = tilingData_->moeDistributeDispatchSetupInfo.bs;
+    const uint32_t k = tilingData_->moeDistributeDispatchSetupInfo.k;
+    const uint32_t moeExpertNum = tilingData_->moeDistributeDispatchSetupInfo.moeExpertNum;
+    const uint32_t sharedExpertRankNum = tilingData_->moeDistributeDispatchSetupInfo.sharedExpertRankNum;
+    constexpr uint32_t tokenPerAiv = 16U;
+    const uint32_t tokenNum = bs * k;
+    const uint32_t computeNeed = (tokenPerAiv == 0U) ? tokenNum : ((tokenNum + tokenPerAiv - 1U) / tokenPerAiv);
+    const uint32_t totalExpertNum = sharedExpertRankNum + moeExpertNum;
+    const uint32_t waitNeed = (totalExpertNum + 7U) / 8U;
+    uint32_t aivNum = epWorldSize;
+    if (computeNeed > aivNum) {
+        aivNum = computeNeed;
+    }
+    if (waitNeed > aivNum) {
+        aivNum = waitNeed;
+    }
+    if (aivNum < 1U) {
+        aivNum = 1U;
+    }
+    if (aivNum > platformAiv) {
+        aivNum = platformAiv;
+    }
+
+    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context_->SetBlockDim(blockDim);
     context_->SetAicpuBlockDim(AICPUNUM);
     tilingData_->moeDistributeDispatchSetupInfo.totalUbSize = ubSize;
     tilingData_->moeDistributeDispatchSetupInfo.aivNum = aivNum;
     context_->SetScheduleMode(1); // 设置为batch mode模式，所有核同时启动
     OP_LOGD(nodeName_, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
-    uint32_t sdmaUsedStreamPerCore = LOCAL_STREAM_MAX_NUM / aivNum;
+    uint32_t sdmaUsedStreamPerCore = (aivNum == 0U) ? 1U : (LOCAL_STREAM_MAX_NUM / aivNum);
+    if (sdmaUsedStreamPerCore < 1U) {
+        sdmaUsedStreamPerCore = 1U;
+    }
     tilingData_->moeDistributeDispatchSetupInfo.sdmaUsedStreamPerCore = sdmaUsedStreamPerCore;
 }
 

@@ -189,6 +189,9 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     aivNum_ = tilingData->moeDistributeDispatchTeardownInfo.aivNum;
+    if (aivId_ >= aivNum_) {
+        return;
+    }
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     mc2Context_ = (__gm__ Mc2MoeContext *)context;
     // 与 setup/combine 保持一致，统一从 Mc2MoeContext 取 epRankId，避免 tiling 与 context 不一致导致等/清错 buffer
@@ -608,6 +611,10 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        if (aivId_ >= aivNum_) {
+            SyncAll<true>();
+            return;
+        }
         WaitDispatch();
         FlipDataState();
         SyncAll<true>();
