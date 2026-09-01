@@ -49,7 +49,7 @@ struct BlockAttnResUpdateParams {
     const aclTensor *numerator{nullptr};
     const aclTensor *logitMax{nullptr};
     const aclTensor *expSum{nullptr};
-    double eps{0.0};
+    double eps{1e-6};
     aclTensor *h{nullptr};
 };
 
