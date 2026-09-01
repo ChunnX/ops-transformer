@@ -475,10 +475,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0Main()
     float alphaComb = alphaGm_.GetValue(2);
     LocalTensor<P> sumBuf = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
     globalUbOffset_ += MhcPreBackwardUtils::CeilAlign(uint32_t(fusionSize_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
-    LocalTensor<P> biasSumBuf = fp32TBuf_.GetWithOffset<P>(fusionSize_, globalUbOffset_);
-    globalUbOffset_ += MhcPreBackwardUtils::CeilAlign(uint32_t(fusionSize_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
+    // offset 0位于V0/V1动态缓冲前的既有保留区，复用后不增加TBuf占用。
+    LocalTensor<P> biasSumBuf = fp32TBuf_.GetWithOffset<P>(fusionSize_, 0);
     ProcessV0MainLoop(vecRunTimes, alphaPre, alphaPost, alphaComb, sumBuf, biasSumBuf);
-    ProcessV0MainBiasOutput(biasSumBuf, GetBlockIdx());
+    if (vecRunTimes > 1) {
+        ProcessV0MainBiasOutput(biasSumBuf, GetBlockIdx());
+    }
     ProcessV0MainAlphaReduce(sumBuf, GetBlockIdx());
 }
 
@@ -507,17 +509,21 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainBiasOutput(LocalTensor<P> &biasSumBuf,
                                                                            uint32_t coreId)
 {
-    // 每个向量核只在全部BS分块完成后写回一次，删除分块间的GM原子累加。
-    SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
-    WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+    // 首块已按原路径写GM，此处把其余BS分块的UB累加结果一次性原子补加。
+    LocalTensor<P> biasOutBuf = vecOutQueue1_.AllocTensor<P>();
+    Adds(biasOutBuf, biasSumBuf, ZERO, fusionSize_);
+    vecOutQueue1_.EnQue(biasOutBuf);
+    biasOutBuf = vecOutQueue1_.DeQue<P>();
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = fusionSize_ * sizeof(P);
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
-    DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], biasSumBuf, dataCopyParams);
-    // 等待本次bias写回结束后再复用EVENT_ID2，避免与后续alpha写回事件覆盖。
+    SetAtomicAdd<float>();
+    DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], biasOutBuf, dataCopyParams);
     PipeBarrier<PIPE_MTE3>();
+    SetAtomicNone();
+    vecOutQueue1_.FreeTensor(biasOutBuf);
 }
 
 template <class T, class P>
@@ -780,7 +786,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     dataCopyPadParams.isPad = false;
 
     AscendC::LocalTensor<P> invRmsGradUb = vecOutQueueSmall_.AllocTensor<P>();
-    if (vecRuntimesId == 0) {
+    if (vecRuntimesId == 1) {
         if (N_ == 8) {
             VFDoV1ProcessBiasGradForN8((__ubuf__ P *)biasSumBuf.GetPhyAddr(),
                                        (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
@@ -799,8 +805,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
         }
         vecOutQueue1_.EnQue(biasChunkBuf);
         LocalTensor<P> biasChunkOutBuf = vecOutQueue1_.DeQue<P>();
-        Add(biasSumBuf, biasSumBuf, biasChunkOutBuf, fusionSize_);
-        PipeBarrier<PIPE_V>();
+        if (vecRuntimesId == 0) {
+            uint32_t coreId = GetBlockIdx();
+            dataCopyParams.blockLen = fusionSize_ * sizeof(P);
+            DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], biasChunkOutBuf, dataCopyParams);
+            PipeBarrier<PIPE_MTE3>();
+        } else {
+            Add(biasSumBuf, biasSumBuf, biasChunkOutBuf, fusionSize_);
+            PipeBarrier<PIPE_V>();
+        }
         vecOutQueue1_.FreeTensor(biasChunkOutBuf);
     }
 
