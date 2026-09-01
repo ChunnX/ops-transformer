@@ -48,8 +48,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulSwigluQuant
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码。
  */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnGroupedMatmulSwigluQuant(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnGroupedMatmulSwigluQuant(void *workspace,
+                                                                                 uint64_t workspaceSize,
+                                                                                 aclOpExecutor *executor,
+                                                                                 aclrtStream stream);
 
 #ifdef __cplusplus
 }
