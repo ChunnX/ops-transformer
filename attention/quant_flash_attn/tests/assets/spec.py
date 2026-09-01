@@ -40,12 +40,20 @@ npu_preprocess_module = load_impl_module("npu_preprocess")
 # 不能在运行时按 case 的 quant_mode 切换。因此用 dispatcher 函数包装:
 #   - quant_mode=1 → MXFP8 路径 (cpu_qfa_mxfp8 / generate_qfa_mxfp8_inputs)
 #   - quant_mode=6 → GQA FP8 路径 (cpu_qfa_gqa_fp8 / generate_qfa_gqa_fp8_inputs)
-# Spec 类的 golden/customize_inputs 绑定 dispatcher, 运行时按 kwargs 派发。
+# Spec 类的 golden/customize_inputs 绑定 dispatcher, 运行时按 quant_mode
+# (schema 第 7 个位置参数, 即 args[6]) 派发。
 # ==============================================================================
 
 
+def _get_quant_mode(args, kwargs):
+    qm = kwargs.get("quant_mode")
+    if qm is None and len(args) >= 7:
+        qm = args[6]
+    return qm if qm is not None else 1
+
+
 def _golden_dispatch(*args, **kwargs):
-    qm = kwargs.get("quant_mode", 1)
+    qm = _get_quant_mode(args, kwargs)
     if qm == 6:
         return golden_module.cpu_qfa_gqa_fp8(*args, **kwargs)
     if qm == 0:
@@ -54,7 +62,7 @@ def _golden_dispatch(*args, **kwargs):
 
 
 def _inputs_dispatch(*args, **kwargs):
-    qm = kwargs.get("quant_mode", 1)
+    qm = _get_quant_mode(args, kwargs)
     if qm == 6:
         return inputs_module.generate_qfa_gqa_fp8_inputs(*args, **kwargs)
     if qm == 0:

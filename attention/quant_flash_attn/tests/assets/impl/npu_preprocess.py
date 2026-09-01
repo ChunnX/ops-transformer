@@ -96,34 +96,48 @@ def run(
     q,
     k,
     v,
-    q_descale=None,
-    k_descale=None,
-    v_descale=None,
-    block_table=None,
-    p_scale=None,
-    cu_seqlens_q=None,
-    cu_seqlens_kv=None,
-    seqused_q=None,
-    seqused_kv=None,
-    sinks=None,
-    attn_mask=None,
-    metadata=None,
-    *,
-    quant_mode=1,
+    q_descale,
+    k_descale,
+    v_descale,
+    quant_mode,
+    block_table,
+    p_scale,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    seqused_q,
+    seqused_kv,
+    sinks,
+    attn_mask,
+    metadata,
+    softmax_scale,
+    mask_mode,
+    win_left,
+    win_right,
+    max_seqlen_q,
+    max_seqlen_kv,
+    layout_q,
+    layout_q_descale,
+    layout_kv,
+    layout_out,
+    return_softmax_lse,
     **kwargs,
 ):
     """Generate and copy metadata for a main QuantFlashAttn invocation.
 
-    位置参数为 15 个 tensor slot, 顺序与
-    cann_ops_transformer::quant_flash_attn schema 的 Tensor 参数一致
-    (block_table 在 p_scale 之前); quant_mode 等标量属性由 TTK 以 kwargs 传入。
+    位置参数对齐 cann_ops_transformer::quant_flash_attn schema 的 27 个参数
+    (q/k/v/q_descale/k_descale/v_descale/quant_mode/block_table/p_scale/
+    cu_seqlens_q/cu_seqlens_kv/seqused_q/seqused_kv/sinks/attn_mask/metadata/
+    softmax_scale/mask_mode/win_left/win_right/max_seqlen_q/max_seqlen_kv/
+    layout_q/layout_q_descale/layout_kv/layout_out/return_softmax_lse);
+    N_q/N_kv/D/batch_size 等非 schema 属性由 TTK 以 kwargs 传入。
     """
     del v, q_descale, k_descale, block_table, p_scale, sinks, attn_mask
+    del softmax_scale, return_softmax_lse
     if metadata is None:
         raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
 
-    layout_q = str(get_attribute(kwargs, "layout_q", "BSND"))
-    layout_kv = str(get_attribute(kwargs, "layout_kv", "BSND"))
+    layout_q = str(layout_q)
+    layout_kv = str(layout_kv)
     is_tnd_q = layout_q == "TND"
     is_tnd_kv = layout_kv == "TND"
 
@@ -163,15 +177,15 @@ def run(
         "seqused_kv": seqused_kv,
         "v_descale": v_descale,
         "batch_size": None if is_tnd_q else batch_size,
-        "max_seqlen_q": get_attribute(kwargs, "max_seqlen_q", -1),
-        "max_seqlen_kv": get_attribute(kwargs, "max_seqlen_kv", -1),
-        "mask_mode": int(get_attribute(kwargs, "mask_mode", 0)),
-        "win_left": int(get_attribute(kwargs, "win_left", -1)),
-        "win_right": int(get_attribute(kwargs, "win_right", -1)),
+        "max_seqlen_q": int(max_seqlen_q),
+        "max_seqlen_kv": int(max_seqlen_kv),
+        "mask_mode": int(mask_mode),
+        "win_left": int(win_left),
+        "win_right": int(win_right),
         "layout_q": layout_q,
-        "layout_q_descale": str(get_attribute(kwargs, "layout_q_descale", "BSND")),
+        "layout_q_descale": str(layout_q_descale),
         "layout_kv": layout_kv,
-        "layout_out": str(get_attribute(kwargs, "layout_out", "BSND")),
+        "layout_out": str(layout_out),
     }
 
     testcase_name = kwargs.get("testcase_name")

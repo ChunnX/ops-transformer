@@ -63,8 +63,8 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
 
     入参对齐 15 位置 tensor (与 CSV tensor_view_shapes / schema Tensor 参数顺序一致,
     block_table 在 p_scale 之前):
-      0 q .. 7 p_scale, 8 cu_seqlens_q_t, 9 cu_seqlens_kv_t, 10 seqused_q_t,
-      11 seqused_kv_t, 12 sinks_t, 13 attn_mask_t, 14 metadata_t。
+      0 q .. 7 p_scale, 8 cu_seqlens_q, 9 cu_seqlens_kv, 10 seqused_q,
+      11 seqused_kv, 12 sinks, 13 attn_mask, 14 metadata。
 
     forward() (capture 之内) 只调:
       torch.ops.cann_ops_transformer.quant_flash_attn(self.q, ..., metadata=self.metadata, ...)
@@ -75,18 +75,18 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        dequant_scale_q: torch.Tensor,
-        dequant_scale_k: torch.Tensor,
-        dequant_scale_v: torch.Tensor,
+        q_descale: torch.Tensor,
+        k_descale: torch.Tensor,
+        v_descale: torch.Tensor,
         block_table: torch.Tensor,
         p_scale: torch.Tensor,
-        cu_seqlens_q_t: torch.Tensor,
-        cu_seqlens_kv_t: torch.Tensor,
-        seqused_q_t: torch.Tensor,
-        seqused_kv_t: torch.Tensor,
-        sinks_t: torch.Tensor,
-        attn_mask_t: torch.Tensor,
-        metadata_t: torch.Tensor,
+        cu_seqlens_q: torch.Tensor,
+        cu_seqlens_kv: torch.Tensor,
+        seqused_q: torch.Tensor,
+        seqused_kv: torch.Tensor,
+        sinks: torch.Tensor,
+        attn_mask: torch.Tensor,
+        metadata: torch.Tensor,
         *,
         batch_size: int,
         N_q: int,
@@ -136,10 +136,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 return default
             return t.detach().cpu().tolist() if t.numel() > 0 else default
 
-        cu_seqlens_q_list = _tolist_t(cu_seqlens_q_t, [0])
-        cu_seqlens_kv_list = _tolist_t(cu_seqlens_kv_t, [0])
-        seqused_q_list = _tolist_t(seqused_q_t)
-        seqused_kv_list = _tolist_t(seqused_kv_t)
+        cu_seqlens_q_list = _tolist_t(cu_seqlens_q, [0])
+        cu_seqlens_kv_list = _tolist_t(cu_seqlens_kv, [0])
+        seqused_q_list = _tolist_t(seqused_q)
+        seqused_kv_list = _tolist_t(seqused_kv)
 
         # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
         # B: 从 cu_seqlens_q 推导的正整数, 供 prepare_npu_inputs 生成 BNSD 张量。
@@ -155,7 +155,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             )
         )
 
-        attn_mask_shape = tuple(attn_mask_t.shape) if attn_mask_t is not None else None
+        attn_mask_shape = tuple(attn_mask.shape) if attn_mask is not None else None
 
         # ---- 2. 注入 golden 全局变量 (prepare_npu_inputs 依赖) ----
         _apply_golden_globals(
@@ -205,9 +205,9 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         q_fp8 = q
         k_fp8 = k
         v_fp8 = v
-        dequant_scale_q_cpu = dequant_scale_q
-        dequant_scale_k_cpu = dequant_scale_k
-        dequant_scale_v_cpu = dequant_scale_v
+        dequant_scale_q_cpu = q_descale
+        dequant_scale_k_cpu = k_descale
+        dequant_scale_v_cpu = v_descale
         p_scale_cpu = p_scale
         block_table_cpu = block_table
 
@@ -297,10 +297,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 return None
             return torch.tensor(list(lst), dtype=torch.int32).npu()
 
-        cu_seqlens_q_t = _as_npu(cu_seqlens_q_t, cu_seqlens_q_list)
-        cu_seqlens_kv_t = _as_npu(cu_seqlens_kv_t, cu_seqlens_kv_list)
-        seqused_q_t = _as_npu(seqused_q_t, seqused_q_list)
-        seqused_kv_t = _as_npu(seqused_kv_t, seqused_kv_list)
+        cu_seqlens_q = _as_npu(cu_seqlens_q, cu_seqlens_q_list)
+        cu_seqlens_kv = _as_npu(cu_seqlens_kv, cu_seqlens_kv_list)
+        seqused_q = _as_npu(seqused_q, seqused_q_list)
+        seqused_kv = _as_npu(seqused_kv, seqused_kv_list)
 
         torch.npu.synchronize()
 
@@ -315,10 +315,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             int(inputs["kv_n"]),
             int(D),
             int(quant_mode),
-            cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
-            cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
-            seqused_q=seqused_q_t,
-            seqused_kv=seqused_kv_t,
+            cu_seqlens_q=cu_seqlens_q if is_tnd_q else None,
+            cu_seqlens_kv=cu_seqlens_kv if is_tnd_kv else None,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
             v_descale=inputs["dequant_scale_v"],
             batch_size=batch_size if not is_tnd_q else None,
             mask_mode=int(inputs["sparse_mode"]),
@@ -343,10 +343,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         self.quant_mode = int(quant_mode)
         self.block_table = inputs["block_table"]
         self.p_scale = inputs["p_scale"]
-        self.cu_seqlens_q = cu_seqlens_q_t if is_tnd_q else None
-        self.cu_seqlens_kv = cu_seqlens_kv_t if is_tnd_kv else None
-        self.seqused_q = seqused_q_t
-        self.seqused_kv = seqused_kv_t
+        self.cu_seqlens_q = cu_seqlens_q if is_tnd_q else None
+        self.cu_seqlens_kv = cu_seqlens_kv if is_tnd_kv else None
+        self.seqused_q = seqused_q
+        self.seqused_kv = seqused_kv
         self.attn_mask = inputs["mask"]
         self.softmax_scale = inputs["softmax_scale"]
         self.mask_mode = int(inputs["sparse_mode"])
