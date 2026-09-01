@@ -66,6 +66,8 @@ option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS
     "Compile device-side printf diagnostics (never enable for performance delivery)" OFF)
 option(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
     "Compile the validation-only GMM-AllToAllV A/B/C/D root-cause matrix" OFF)
+option(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER
+    "Use the all-PE producer barrier in the production no-reuse GMM-AllToAllV kernel" ON)
 set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "")
 if(CATCCOS_UDMA_MSSANITIZER)
     # Ascend 950 does not support --cce-enable-sanitizer/--sanitizer. Those
@@ -95,6 +97,17 @@ if(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE)
         "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1")
     message(WARNING
         "Enable validation-only GMM-AllToAllV root-cause kernels; do not use this Wheel for performance delivery")
+endif()
+set(CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG
+    "-DCATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0")
+if(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER)
+    set(CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG
+        "-DCATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=1")
+    message(STATUS
+        "GMM-AllToAllV delivery synchronization: no-reuse with producer full barrier")
+else()
+    message(WARNING
+        "GMM-AllToAllV delivery synchronization: no-reuse without producer full barrier; validate precision on the target topology before delivery")
 endif()
 if(NOT NPU_SOC_VERSION STREQUAL "ascend950")
     message(FATAL_ERROR "CatCCOS UDMA operators currently support only NPU_SOC_VERSION=ascend950")

@@ -93,9 +93,11 @@ void UdmaRuntime::PoisonWorkspace(uint8_t byteValue)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     EnsureInitialized();
-    // A previous fused launch may still use the symmetric data stages.  Do not
-    // let the diagnostic memset race it.  The final 4096 bytes contain kernel
-    // synchronization state and are intentionally excluded from poisoning.
+    // A previous fused launch may still use the symmetric data stages. Do not
+    // let the diagnostic memset race it. The final 4096 bytes contain the
+    // no-reuse kernel's synchronization state and are excluded. General
+    // kernels may place their reusable flags below that offset; their launch
+    // protocol collectively resets those flags before consuming them.
     if (lastStream_ != nullptr) {
         const aclError syncStatus = aclrtSynchronizeStream(lastStream_);
         TORCH_CHECK(syncStatus == ACL_SUCCESS,

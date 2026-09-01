@@ -49,3 +49,19 @@ def test_explicit_heap_rejects_insufficient_capacity(monkeypatch):
     monkeypatch.setenv("UDMA_HEAP_SIZE", str(400 << 20))
     with pytest.raises(RuntimeError, match="too small"):
         common.validation_udma_heap_size()
+
+
+def test_validation_heap_accepts_no_reuse_workspace_with_headroom(monkeypatch):
+    monkeypatch.setenv("UDMA_HEAP_SIZE", str(704 << 20))
+    assert common.validation_udma_heap_size() == 704 << 20
+
+
+def test_runtime_reserves_no_reuse_workspace():
+    source = (
+        Path(__file__).parents[1]
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "udma_runtime.h"
+    ).read_text(encoding="utf-8")
+    assert "640UL * 1024 * 1024" in source

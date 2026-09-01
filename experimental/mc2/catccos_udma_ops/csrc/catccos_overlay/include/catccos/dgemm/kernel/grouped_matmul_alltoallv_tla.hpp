@@ -14,6 +14,10 @@
 #define CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE 0
 #endif
 
+#ifndef CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER
+#define CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER 1
+#endif
+
 #include "catlass/arch/resource.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
@@ -51,7 +55,8 @@ template <
     uint64_t SYMMETRIC_DATA_BYTES_ = 1000UL * 1024 * 1024,
     bool TARGET_ORDER_STAGING_ = false,
     bool OFFICIAL_UDMA_BLOCK_ = false,
-    class OfficialBlockComm_ = void
+    class OfficialBlockComm_ = void,
+    bool NO_REUSE_STAGING_ = false
 >
 class GroupedMatmulAllToAllVTla {
 public:
@@ -88,6 +93,9 @@ public:
     static constexpr uint64_t SYMMETRIC_DATA_BYTES = SYMMETRIC_DATA_BYTES_;
     static constexpr bool TARGET_ORDER_STAGING = TARGET_ORDER_STAGING_;
     static constexpr bool OFFICIAL_UDMA_BLOCK = OFFICIAL_UDMA_BLOCK_;
+    static constexpr bool NO_REUSE_STAGING = NO_REUSE_STAGING_;
+    static constexpr bool PRODUCER_FULL_BARRIER =
+        CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER != 0;
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
@@ -482,7 +490,8 @@ private:
     CATLASS_HOST_DEVICE
     static constexpr bool UsesProducerBarrier(uint32_t mode)
     {
-        return mode == GMM_A2AV_DIAGNOSTIC_PRODUCTION ||
+        return (mode == GMM_A2AV_DIAGNOSTIC_PRODUCTION &&
+                PRODUCER_FULL_BARRIER) ||
             mode == GMM_A2AV_DIAGNOSTIC_PRODUCER_BARRIER ||
             mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER ||
             mode == GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3 ||
@@ -765,8 +774,13 @@ private:
         }
 
         uint32_t commLoops = scheduler.GetCommLoops();
+        if constexpr (NO_REUSE_STAGING) {
+            if (commLoops > WORKSPACE_STAGES) {
+                return;
+            }
+        }
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-        if (UsesNoReuseTrace(params.diagnosticMode) &&
+        if (!NO_REUSE_STAGING && UsesNoReuseTrace(params.diagnosticMode) &&
             commLoops > WORKSPACE_STAGES) {
             return;
         }
@@ -775,8 +789,11 @@ private:
             scheduler.UpdateCommContext(commIdx);
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
-            if (commIdx >= WORKSPACE_STAGES) {
-                Catlass::Arch::CrossCoreWaitFlag(flagAivFinishComm[flagIdx]);
+            if constexpr (!NO_REUSE_STAGING) {
+                if (commIdx >= WORKSPACE_STAGES) {
+                    Catlass::Arch::CrossCoreWaitFlag(
+                        flagAivFinishComm[flagIdx]);
+                }
             }
 
             auto tensorSymmetric = tla::MakeTensor(
@@ -1025,28 +1042,51 @@ private:
             return;
         }
 #endif
+        if constexpr (NO_REUSE_STAGING) {
+            if (commLoops > WORKSPACE_STAGES) {
+                return;
+            }
+        }
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
         bool quietFailureReported = false;
 #endif
-        for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
+        uint32_t commRounds = commLoops;
+        if constexpr (NO_REUSE_STAGING && PRODUCER_FULL_BARRIER) {
+            // Every PE executes the same number of collective barriers even
+            // when its route has fewer active rounds. Inactive rounds only
+            // participate in the rendezvous and never touch scheduler state.
+            commRounds = WORKSPACE_STAGES;
+        }
+        for (uint32_t commIdx = 0; commIdx < commRounds; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
-            scheduler.UpdateCommContext(commIdx);
-            receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
-
-            Catlass::Arch::CrossCoreWaitFlag(flagAicFinishStore[flagIdx]);
+            bool activeRound = commIdx < commLoops;
+            if (activeRound) {
+                scheduler.UpdateCommContext(commIdx);
+                receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
+                Catlass::Arch::CrossCoreWaitFlag(
+                    flagAicFinishStore[flagIdx]);
+            }
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
             if (UsesProducerBarrier(params.diagnosticMode)) {
-                // Validation barrier modes require balanced routes: every
-                // rank must execute the same number of communication rounds.
                 aclshmemx_barrier_all_vec();
             } else {
                 // Original protocol: only this rank's active AIVs rendezvous.
                 AscendC::SyncAll<true>();
             }
 #else
-            aclshmemx_barrier_all_vec();
+            if constexpr (PRODUCER_FULL_BARRIER) {
+                aclshmemx_barrier_all_vec();
+            } else {
+                // Lower-overhead delivery variant. PIPE_FIX establishes the
+                // AIC-to-AIV handoff; this local rendezvous completes before
+                // the sync core publishes producer readiness to remote PEs.
+                AscendC::SyncAll<true>();
+            }
 #endif
+            if (!activeRound) {
+                continue;
+            }
             if (isSyncCore) {
                 aclshmemx_signal_op(
                     syncMmadFinish, commIdx + 1, ACLSHMEM_SIGNAL_SET, rankIdx);
@@ -1137,26 +1177,28 @@ private:
                     syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
             }
 
-            if (commIdx + WORKSPACE_STAGES < commLoops) {
+            if constexpr (!NO_REUSE_STAGING) {
+                if (commIdx + WORKSPACE_STAGES < commLoops) {
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-                if (UsesRecycleBarrier(params.diagnosticMode)) {
-                    // All ranks leave the balanced-route GET phase before the
-                    // symmetric stage is released back to AIC.
-                    aclshmemx_barrier_all_vec();
-                } else {
-                    AscendC::SyncAll<true>();
-                }
+                    if (UsesRecycleBarrier(params.diagnosticMode)) {
+                        // All ranks leave the balanced-route GET phase before
+                        // the symmetric stage is released back to AIC.
+                        aclshmemx_barrier_all_vec();
+                    } else {
+                        AscendC::SyncAll<true>();
+                    }
 #else
-                aclshmemx_barrier_all_vec();
+                    aclshmemx_barrier_all_vec();
 #endif
-                Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
-                    flagAivFinishComm[flagIdx]);
+                    Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(
+                        flagAivFinishComm[flagIdx]);
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-                if (isCommCore) {
-                    RecordTargetOrderStageReleased(
-                        params, commIdx, rankSize, srcRankIdx);
-                }
+                    if (isCommCore) {
+                        RecordTargetOrderStageReleased(
+                            params, commIdx, rankSize, srcRankIdx);
+                    }
 #endif
+                }
             }
         }
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE

@@ -3,7 +3,7 @@
 `run_memory_safety.sh` 在普通精度测试之外启用四层诊断：
 
 1. 每个 case 开始前清空 PyTorch NPU 缓存，并将当前进程可分配 HBM（默认保留 2 GiB）写成 BF16 NaN；释放后不执行 `empty_cache`，让后续 tensor 复用这些脏块。
-2. 每次 kernel launch 前，将约 400 MiB SHMEM 数据 workspace 写成 `0xFF`。末尾 4096 字节同步区不被修改。
+2. 每次 kernel launch 前，将约 640 MiB SHMEM workspace 写成 `0xFF`。末尾 4096 字节的 no-reuse 同步区不被修改；通用 kernel 位于较低地址的复用状态会在下一次 launch 开头由全卡协议重新清零。
 3. `x`、`weight` 两侧放置 NaN red zone；route 和可复用输出两侧放置精确 canary。可复用输出 payload 每次 launch 前写成 NaN，从而同时发现越界写和未完整写。
 4. 检查输入非有限值、输入抽样指纹变化、每个输出的 NaN/Inf 计数及首批坐标，并额外运行 host-list route 路径。
 

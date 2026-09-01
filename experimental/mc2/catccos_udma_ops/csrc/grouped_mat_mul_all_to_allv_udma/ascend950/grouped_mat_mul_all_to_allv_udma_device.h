@@ -39,7 +39,8 @@ template <class ElementA, class LayoutA, class ElementB, class LayoutB,
           bool UseMte3Udma = false, bool UseOfficialUdmaBlock = false,
           uint32_t WorkspaceStages = 2,
           uint64_t SymmetricDataBytes =
-              200UL * 1024 * 1024 * sizeof(uint16_t)>
+              200UL * 1024 * 1024 * sizeof(uint16_t),
+          bool NoReuseStaging = false>
 struct GroupedMatMulAllToAllVUdmaConfig {
     using ArchTag = Catlass::Arch::Ascend950;
     static constexpr uint32_t kM0 = M0;
@@ -99,7 +100,7 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using Kernel = Catccos::DGemm::Kernel::GroupedMatmulAllToAllVTla<
         ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler,
         BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes, true,
-        UseOfficialUdmaBlock, OfficialBlockComm>;
+        UseOfficialUdmaBlock, OfficialBlockComm, NoReuseStaging>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 
@@ -146,8 +147,8 @@ using GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         256, 128, 256, false, true>;
 
-// Validation-only no-reuse variants. The target model case has 19
-// communication rounds, so every commIdx owns a distinct symmetric stage.
+// Delivery and validation no-reuse variants. The target model cases have at
+// most 19 communication rounds, so every commIdx owns a distinct stage.
 // The 640 MiB data area accommodates
 // 19 * 8 ranks * 896 rows * 2048 BF16 columns (532 MiB) with headroom.
 static constexpr uint32_t kNoReuseWorkspaceStages = 19;
@@ -160,7 +161,7 @@ using GroupedMatMulAllToAllVUdmaNoReuseConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         128, 256, 256, false, false,
-        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes>;
+        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes, true>;
 
 using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
     GroupedMatMulAllToAllVUdmaConfig<
@@ -168,7 +169,7 @@ using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         256, 128, 256, false, false,
-        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes>;
+        kNoReuseWorkspaceStages, kNoReuseSymmetricDataBytes, true>;
 
 } // namespace OpsTransformer::CatccosUdma
 

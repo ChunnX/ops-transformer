@@ -19,7 +19,7 @@ namespace OpsTransformer::CatccosUdma {
 class UdmaRuntime {
 public:
     static constexpr size_t kKernelWorkspaceDataBytes =
-        200UL * 1024 * 1024 * sizeof(uint16_t);
+        640UL * 1024 * 1024;
     static constexpr size_t kKernelWorkspaceBytes =
         kKernelWorkspaceDataBytes + 4096;
 

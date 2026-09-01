@@ -47,6 +47,65 @@ def test_kernel_configuration_matches_bf16_udma_get_example():
     assert "200UL * 1024 * 1024 * sizeof(uint16_t)" in source
 
 
+def test_business_profiles_use_compile_time_no_reuse_delivery_kernel():
+    host = (ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma.cpp").read_text(
+        encoding="utf-8"
+    )
+    device = (
+        ASCEND950_ROOT / "grouped_mat_mul_all_to_allv_udma_device.h"
+    ).read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert "const bool useNoReuseDelivery" in host
+    assert "worldSize == 8 && expertNum == 256 && n64 == 2048" in host
+    assert "(k64 == 1024 || k64 == 512)" in host
+    assert "useNoReuseKernel" in host
+    assert "GroupedMatMulAllToAllVUdmaNoReuseConfig" in host
+    assert "kNoReuseWorkspaceStages = 19" in device
+    assert "kNoReuseSymmetricDataBytes" in device
+    assert "640UL * 1024 * 1024" in device
+    assert "NoReuseStaging = false" in device
+    assert "kNoReuseSymmetricDataBytes, true" in device
+    assert "static constexpr bool NO_REUSE_STAGING" in kernel
+    assert "if constexpr (!NO_REUSE_STAGING)" in kernel
+
+
+def test_delivery_producer_sync_is_selected_at_build_time():
+    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    device_cmake = (
+        ASCEND950_ROOT / "CMakeLists.txt"
+    ).read_text(encoding="utf-8")
+    setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+
+    assert "option(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER" in root_cmake
+    assert "CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG" in root_cmake
+    assert "CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG" in device_cmake
+    assert '"CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER", "1"' in setup_source
+    assert "static constexpr bool PRODUCER_FULL_BARRIER" in kernel
+    assert "if constexpr (NO_REUSE_STAGING && PRODUCER_FULL_BARRIER)" in kernel
+    assert "if constexpr (PRODUCER_FULL_BARRIER)" in kernel
+    assert "AscendC::SyncAll<true>();" in kernel
+
+
 def test_kernel_applies_upstream_non_comm_core_deadlock_fix():
     source = (
         PROJECT_ROOT
@@ -284,6 +343,5 @@ def test_balanced_route_experiment_runtime_selects_local_or_global_sync():
 
     assert "UsesProducerBarrier(params.diagnosticMode)" in kernel
     assert "UsesRecycleBarrier(params.diagnosticMode)" in kernel
-    assert kernel.count("AscendC::SyncAll<true>();") == 2
-    assert "Validation barrier modes require balanced routes" in kernel
+    assert kernel.count("AscendC::SyncAll<true>();") == 3
     assert "Original protocol: only this rank's active AIVs" in kernel

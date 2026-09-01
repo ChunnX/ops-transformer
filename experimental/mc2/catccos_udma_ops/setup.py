@@ -53,8 +53,8 @@ def find_cmake():
     return cmake
 
 
-def cmake_boolean_from_env(name):
-    value = os.environ.get(name, "0").strip().lower()
+def cmake_boolean_from_env(name, default="0"):
+    value = os.environ.get(name, default).strip().lower()
     if value in _TRUE_ENV_VALUES:
         return "ON"
     if value in _FALSE_ENV_VALUES:
@@ -117,6 +117,11 @@ class CMakeBuild(Command):
             "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE={}".format(
                 cmake_boolean_from_env(
                     "CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE"
+                )
+            ),
+            "-DCATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER={}".format(
+                cmake_boolean_from_env(
+                    "CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER", "1"
                 )
             ),
         ]

@@ -39,6 +39,30 @@ bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
+The two EP8/256-expert GroupedMatMul-AllToAllV delivery profiles
+(`K=1024/512`, `N=2048`) use 19 independent symmetric staging slots and do not
+recycle a slot within one launch. Choose the producer synchronization protocol
+when building the Wheel:
+
+```bash
+# Recommended/default: no reuse plus an all-PE producer barrier.
+CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=1 \
+  bash scripts/build_wheel.sh
+
+# Experimental lower-overhead version: PIPE_FIX + local SyncAll + signal.
+CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0 \
+  bash scripts/build_wheel.sh
+```
+
+The choice is compiled into the device kernel; there is no runtime branch or
+public API difference. The second variant must pass repeated accuracy tests on
+the target topology before delivery. Both variants compile out root-cause
+records, producer-trace copies, diagnostic delays and device printf unless the
+corresponding diagnostic build switches are explicitly enabled. Other shapes
+retain the general two-stage kernel. The no-reuse profiles support at most 19
+communication rounds; their current delivery target is the balanced
+`M=131072` business case.
+
 `build_wheel.sh` removes only this subproject's previous `build`, `dist`,
 `egg-info`, staged extension, and staged runtime libraries before rebuilding.
 It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
@@ -305,8 +329,10 @@ bash scripts/run_accuracy.sh --case-id model_case_1 --check-reusable-out
 The SHMEM heap contains only the fixed communication workspace and
 synchronization state. Inputs and outputs of both public operators use ordinary
 NPU memory, so larger model tensors do not increase the SHMEM heap requirement.
-Validation defaults to a 1 GiB heap; `UDMA_HEAP_SIZE` can override that runtime
-configuration when the internal workspace layout changes.
+The runtime reserves 640 MiB plus synchronization state for the no-reuse
+GroupedMatMul-AllToAllV profiles. Validation defaults to a 1 GiB heap and
+requires at least 704 MiB including allocator headroom; `UDMA_HEAP_SIZE` can
+override that runtime configuration.
 
 Pass/fail follows the
 [opbase experimental precision standard](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md)

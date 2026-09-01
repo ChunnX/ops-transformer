@@ -333,9 +333,19 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const uint64_t stageRows = groupsPerCommInRank * tiling.m0;
     const bool useNoReuseTrace = diagnosticMode ==
         Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE;
-    const uint32_t selectedWorkspaceStages = useNoReuseTrace
+    // The no-reuse delivery kernel is currently tuned and sized for the two
+    // EP8/256-expert business profiles. Selection intentionally excludes M:
+    // under an imbalanced route, local M can differ by rank while every PE
+    // must launch an ABI-identical collective kernel.
+    const bool useNoReuseDelivery =
+        diagnosticMode ==
+            Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRODUCTION &&
+        worldSize == 8 && expertNum == 256 && n64 == 2048 &&
+        (k64 == 1024 || k64 == 512);
+    const bool useNoReuseKernel = useNoReuseTrace || useNoReuseDelivery;
+    const uint32_t selectedWorkspaceStages = useNoReuseKernel
         ? kNoReuseWorkspaceStages : kWorkspaceStages;
-    const uint64_t selectedSymmetricDataBytes = useNoReuseTrace
+    const uint64_t selectedSymmetricDataBytes = useNoReuseKernel
         ? kNoReuseSymmetricDataBytes
         : GroupedMatMulAllToAllVUdmaDefaultConfig::kSymmetricDataBytes;
     const uint64_t requiredWorkspaceBytes =
@@ -456,10 +466,10 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
         Catccos::DGemm::Kernel::
             GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK;
     if (tiling.kernelVariant == KernelVariant::kM0_256 &&
-        useNoReuseTrace) {
+        useNoReuseKernel) {
         launchWithConfig(
             TypeTag<GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig>{});
-    } else if (useNoReuseTrace) {
+    } else if (useNoReuseKernel) {
         launchWithConfig(
             TypeTag<GroupedMatMulAllToAllVUdmaNoReuseConfig>{});
     } else if (tiling.kernelVariant == KernelVariant::kM0_256 &&
@@ -482,7 +492,14 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultConfig>{});
     }
 #else
-    if (tiling.kernelVariant == KernelVariant::kM0_256) {
+    if (tiling.kernelVariant == KernelVariant::kM0_256 &&
+        useNoReuseKernel) {
+        launchWithConfig(
+            TypeTag<GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig>{});
+    } else if (useNoReuseKernel) {
+        launchWithConfig(
+            TypeTag<GroupedMatMulAllToAllVUdmaNoReuseConfig>{});
+    } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>{});
     } else {
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultConfig>{});

@@ -107,10 +107,11 @@ def get_udma_config() -> UdmaConfig:
 def poison_udma_workspace_for_testing(byte_value: int = 0xFF) -> None:
     """Fill the symmetric kernel data workspace with a diagnostic byte pattern.
 
-    ``0xFF`` represents a NaN for every BF16 lane.  This deliberately excludes
-    the workspace's synchronization flags.  It is a validation-only operation,
-    must be called collectively before a fused launch, and adds a full stream
-    synchronization plus a roughly 400-MiB device memset.
+    ``0xFF`` represents a NaN for every BF16 lane. This excludes the no-reuse
+    workspace's trailing synchronization area; general kernels reset any
+    lower-offset reusable flags collectively at launch. It is a validation-only
+    operation, must be called collectively before a fused launch, and adds a
+    full stream synchronization plus a roughly 640-MiB device memset.
     """
     if _anchor is None:
         raise RuntimeError("UDMA is not initialized; call init_udma_group() first")
