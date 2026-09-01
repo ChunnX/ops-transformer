@@ -42,16 +42,23 @@ public:
     /// Constructor
     HOST_DEVICE
     ColumnMajor(Index rows = 0, Index cols = 0)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(LongIndex(1), LongIndex(rows))) {}
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(LongIndex(1), LongIndex(rows)))
+    {}
 
     /// Constructor
     HOST_DEVICE
     ColumnMajor(Index rows, Index cols, LongIndex ldm)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(LongIndex(1), ldm)) {}
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(LongIndex(1), ldm))
+    {}
 
     /// Ctor
     HOST_DEVICE
-    ColumnMajor(Shape shape, Stride stride) : shape_(shape), stride_(stride) {}
+    ColumnMajor(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
+    {}
 
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
@@ -136,6 +143,6 @@ private:
     Stride stride_;
 };
 
-}  // namespace NpuArch::layout
+} // namespace NpuArch::layout
 
-#endif  // FUSED_MATRIX_COL_MAJOR_HPP
+#endif // FUSED_MATRIX_COL_MAJOR_HPP

@@ -17,7 +17,8 @@ extern "C" {
 #endif
 
 /**
- * @brief The first interface of aclnnFusedInferAttentionScoreV4 calculates the workspace size based on the specific calculation process.
+ * @brief The first interface of aclnnFusedInferAttentionScoreV4 calculates the workspace size based on the specific
+ * calculation process.
  * @domain aclnn_ops_infer
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
@@ -31,13 +32,13 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     const aclTensor *keyAntiquantScaleOptional, const aclTensor *keyAntiquantOffsetOptional,
     const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
     const aclTensor *keySharedPrefixOptional, const aclTensor *valueSharedPrefixOptional,
-    const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional, 
+    const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
     const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional,
-    const aclTensor *dequantScaleQueryOptional, const aclTensor *learnableSinkOptional, int64_t numHeads, double scaleValue, int64_t preTokens,
-    int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
-    int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode,
-    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *dequantScaleQueryOptional, const aclTensor *learnableSinkOptional, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, const aclTensor *attentionOut,
+    const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief The second interface of aclnnFusedInferAttentionScoreV4 is used to perform calculations.
@@ -46,7 +47,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
                                                                                    uint64_t workspaceSize,
                                                                                    aclOpExecutor *executor,
                                                                                    const aclrtStream stream);
-
 
 #ifdef __cplusplus
 }

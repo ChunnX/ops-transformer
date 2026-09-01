@@ -49,11 +49,12 @@ public:
     HOST_DEVICE
     PaddingRowMajor(Index orgRows = 0, Index orgCols = 0, Index blockRows = 0, Index blockCols = 0)
         : orgShape_(MakeCoord(orgRows, orgCols)),
-          shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows),
-              blockCols, NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
+          shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows), blockCols,
+                           NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
           stride_(MakeCoord((LongIndex)blockCols,
-              (LongIndex)blockRows * (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgCols, blockCols),
-              (LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols)) {}
+                            (LongIndex)blockRows * (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgCols, blockCols),
+                            (LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols))
+    {}
 
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
@@ -62,10 +63,8 @@ public:
     {
         LongIndex blockRows = (LongIndex)shape_[0];
         LongIndex blockCols = (LongIndex)shape_[2];
-        return (LongIndex)coord.row() / blockRows * stride_[1]
-            + (LongIndex)coord.column() / blockCols * stride_[3]
-            + (LongIndex)coord.row() % blockRows * stride_[0]
-            + (LongIndex)coord.column() % blockCols;
+        return (LongIndex)coord.row() / blockRows * stride_[1] + (LongIndex)coord.column() / blockCols * stride_[3] +
+               (LongIndex)coord.row() % blockRows * stride_[0] + (LongIndex)coord.column() % blockCols;
     }
 
     HOST_DEVICE
@@ -190,10 +189,11 @@ public:
     HOST_DEVICE
     PaddingColumnMajor(Index orgRows = 0, Index orgCols = 0, Index blockRows = 0, Index blockCols = 0)
         : orgShape_(MakeCoord(orgRows, orgCols)),
-          shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows),
-              blockCols, NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
+          shape_(MakeCoord(blockRows, NpuArch::Detail::Alignment::CeilDiv(orgRows, blockRows), blockCols,
+                           NpuArch::Detail::Alignment::CeilDiv(orgCols, blockCols))),
           stride_(MakeCoord((LongIndex)1, (LongIndex)blockRows * (LongIndex)blockCols, (LongIndex)blockRows,
-              (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgRows, blockRows) * (LongIndex)blockCols)) {}
+                            (LongIndex)NpuArch::Detail::Alignment::RoundUp(orgRows, blockRows) * (LongIndex)blockCols))
+    {}
 
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
@@ -202,10 +202,8 @@ public:
     {
         LongIndex blockRows = (LongIndex)shape_[0];
         LongIndex blockCols = (LongIndex)shape_[2];
-        return (LongIndex)coord.row() / blockRows * stride_[1]
-            + (LongIndex)coord.column() / blockCols * stride_[3]
-            + (LongIndex)coord.row() % blockRows
-            + (LongIndex)coord.column() % blockCols * stride_[2];
+        return (LongIndex)coord.row() / blockRows * stride_[1] + (LongIndex)coord.column() / blockCols * stride_[3] +
+               (LongIndex)coord.row() % blockRows + (LongIndex)coord.column() % blockCols * stride_[2];
     }
 
     HOST_DEVICE
@@ -299,6 +297,6 @@ private:
     Stride stride_;
 };
 
-}  // namespace NpuArch::layout
+} // namespace NpuArch::layout
 
-#endif  // FUSED_MATRIX_PADDING_HPP
+#endif // FUSED_MATRIX_PADDING_HPP

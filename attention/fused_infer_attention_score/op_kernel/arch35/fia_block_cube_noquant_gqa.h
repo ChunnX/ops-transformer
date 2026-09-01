@@ -130,7 +130,8 @@ public:
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
-    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
