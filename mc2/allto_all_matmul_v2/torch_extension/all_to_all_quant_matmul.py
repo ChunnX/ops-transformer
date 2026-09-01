@@ -81,7 +81,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             )
             bs = x1.size(0)
             h = x1.size(1)
-            n = x2.size(1)
+            n = x2.size(0)  # x2 布局为 (N, K_total)，与算子 tiling 校验一致
             local_bs = bs // world_size
             out_dtype = torch.float32
             if y_dtype is not None:
