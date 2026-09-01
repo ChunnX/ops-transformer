@@ -37,7 +37,6 @@ constexpr uint32_t QBSA_K_SCALE_BYTES = sizeof(float);
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_BATCH = 1U;
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S1_SIZE = 2048U;
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
-constexpr uint32_t QBSA_MXFP8_P_SCALE_SHAPE_SIZE = 1U;
 constexpr uint32_t QBSA_MXFP8_VALUE_SCALE_LAST_DIM = 2U;
 
 uint32_t GetAicCoreNum(gert::TilingContext *context)
@@ -68,7 +67,9 @@ QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t bl
 
 } // namespace
 
-QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context) : context_(context) {}
+QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context)
+    : context_(context)
+{}
 
 void QuantBlockSparseAttnTiling::FillPaParams()
 {
@@ -120,6 +121,12 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_fromFused(0);      // 融合算子标记，稀疏算子固定设为 0
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
+    uint32_t fp8PScaleShapeSize = 0U;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        fp8PScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
+    }
+    inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
 }
 
 void QuantBlockSparseAttnTiling::FillMultiCoreParams()
@@ -238,7 +245,19 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     scaleParams.keyScaleDSize = keyScaleDSize;
     scaleParams.valueScaleBlockSize = valueScaleBlockSize;
     scaleParams.valueScaleDSize = valueScaleDSize;
-    scaleParams.pScaleShapeSize = QBSA_MXFP8_P_SCALE_SHAPE_SIZE;
+    uint32_t pScaleShapeSize = 0U;
+    uint8_t pScaleDtype = MX_PSCALE_DTYPE_E8M0;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        pScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
+        if (pScaleShapeSize > 0U && info.opParamInfo.pScale.desc != nullptr) {
+            if (info.opParamInfo.pScale.desc->GetDataType() == ge::DT_FLOAT) {
+                pScaleDtype = MX_PSCALE_DTYPE_FP32;
+            }
+        }
+    }
+    scaleParams.pScaleShapeSize = pScaleShapeSize;
+    scaleParams.pScaleDtype = pScaleDtype;
     scaleParams.queryQuantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
     scaleParams.keyAntiquantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
     scaleParams.valueAntiquantMode = QBSA_MXFP8_PER_CHANNEL_GROUP_MODE;
@@ -265,7 +284,10 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
     }
 }
 
-void QuantBlockSparseAttnTiling::CalcWorkspaceSize() { workspaceSize_ = 0; }
+void QuantBlockSparseAttnTiling::CalcWorkspaceSize()
+{
+    workspaceSize_ = 0;
+}
 
 void QuantBlockSparseAttnTiling::PrintAllTilingData()
 {
@@ -424,7 +446,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::SaveTilingData()
         if (rawTilingData->GetCapacity() < dataSize) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "tilingDataCapacity", std::to_string(rawTilingData->GetCapacity()),
-                "must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
+                "Must be at least " + std::to_string(dataSize) + " for MXFP8 full-quant tiling data");
             return ge::GRAPH_FAILED;
         }
         std::memcpy(rawTilingData->GetData(), &mxTilingData_, dataSize);
@@ -450,7 +472,7 @@ ge::graphStatus QuantBlockSparseAttnTiling::DoOpTiling(QuantBlockSparseAttnTilin
     if (totalTaskNum_ == 0U || totalTaskNum_ > std::numeric_limits<uint32_t>::max()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "bSize * n1Size * gS1OuterSize", std::to_string(totalTaskNum_),
-            "total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
+            "Total task num must be in range [1, " + std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
         return ge::GRAPH_FAILED;
     }
 

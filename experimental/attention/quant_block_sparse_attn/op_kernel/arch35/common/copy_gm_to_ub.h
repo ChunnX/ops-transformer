@@ -38,7 +38,7 @@ private:
     {
         int64_t byteOffset1 = 0;
         int64_t byteOffset2 = 0;
-        if constexpr (GM_FORMAT == QBSALayout::PA_BNSD) {
+        if constexpr (GM_FORMAT == QBSALayout::PA_BNBD) {
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = 1;
 
@@ -53,6 +53,7 @@ private:
             }
             if (runInfo.sparseBlkIdx2 >= 0 && runInfo.s2SparseBlk2RealSize > 0) {
                 GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
+                dataCopyParams.blockLen = runInfo.s2SparseBlk2RealSize * sizeof(float);
                 DataCopyPad(dstTensor[constInfo.kvSparseBlockSize], srcTensor[byteOffset2], dataCopyParams,
                             dataCopyPadParams);
             }

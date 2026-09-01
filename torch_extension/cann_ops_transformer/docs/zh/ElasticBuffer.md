@@ -42,6 +42,7 @@ class ElasticBuffer:
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         with_grad: bool = False,
+        explicitly_destroy: bool = False,
     )
 
     def engram_write(self, storage: torch.Tensor) -> None
@@ -104,11 +105,11 @@ class ElasticBuffer:
 
 | 属性 | 类型 | shape | 说明 |
 |------|------|-------|------|
-| `perm` | `Tensor` | `(T,)` int32 | 桶排列序索引，反向按此重排梯度 |
-| `send_counts` | `Tensor` | `(W*8,)` int32 | 每rank发送的index数量（填充至32字节对齐，前W个元素有效），反向a2a的send量 |
-| `recv_counts` | `Tensor` | `(W,)` int32 | 每rank接收的index数量，反向a2a的recv量 |
-| `recv_local_entry` | `Tensor` | `(R_max,)` int32 | 接收到的local entry索引，反向按此scatter-add |
-| `num_recv` | `Tensor` | `(1,)` int32 | 实际接收行数R |
+| `perm` | `Tensor` | `(num_tokens,)` int32 | 桶排列序索引，反向按此重排梯度 |
+| `send_counts` | `Tensor` | `(world_size*8,)` int32 | 每rank发送的index数量（填充至32字节对齐，前`world_size`个元素有效），反向a2a的send量 |
+| `recv_counts` | `Tensor` | `(world_size,)` int32 | 每rank接收的index数量，反向a2a的recv量 |
+| `recv_local_entry` | `Tensor` | `(R_max,)` int32 | 前向a2a交换收到的全局索引，前 `num_recv` 个元素有效，其中 `R_max = num_max_tokens_per_rank × world_size` |
+| `num_recv` | `Tensor` | `(1,)` int32 | 实际接收的全局索引数量 `num_recv`，其中`num_recv ≤ R_max` |
 
 ## 成员函数说明
 
@@ -125,6 +126,7 @@ class ElasticBuffer:
 - **hidden** (`int`)：可选参数，hidden size隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取topK个专家。
 - **with_grad** (`bool`)：可选参数，是否开启训练。默认为 `False`（推理）。设为 `True` 时，前向 [engram_fetch](#engram_fetch) 会额外保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），并可通过 [engram_fetch_grad](#engram_fetch_grad) 执行反向。
+- **explicitly_destroy** (`bool`)：可选参数，是否需要显式调用 [destroy](#destroy) 释放资源。默认为 `False`，实例被垃圾回收时会自动调用 `destroy` 释放资源；设为 `True` 时，调用方需要显式调用 `destroy` 释放资源。推荐设置为 `True` 并在使用结束后手动调用 `destroy` 释放资源，以确保资源释放时机确定。
 
 **输出**：无返回值，构造ElasticBuffer实例。
 
@@ -184,6 +186,26 @@ $$fetched[i] = EngramTable[rank\_id][local\_idx]$$
 $EngramTable[rank\_id][local\_idx]$ 表示其中第 $local\_idx$ 个条目。
 - $fetched[i]$：输出张量中第 $i$ 个token对应的Engram数据，$i \in [0, num\_tokens)$，$num\_tokens$ 为 `indices` 的长度。
 
+**训练**（`with_grad=True`）的索引映射与推理一致（见上述 $rank\_id$、$local\_idx$ 公式），区别在于通过all-to-all通信完成跨rank数据抓取，并保存反向上下文 [EngramFetchCtx](#engramfetchctx)。前向过程为：
+
+1. 桶排序：按 $rank\_id_i = \lfloor indices[i] / num\_entries \rfloor$ 对 `indices` 分桶，记录桶排列序 $perm$ 与每rank发送量 $send\_counts$：
+
+$$send\_counts[r] = |\{\,i \mid rank\_id_i = r\,\}|, \quad r \in [0, world\_size)$$
+
+2. a2a交换indices：各rank将排序后的indices（全局索引）发送到目标rank，接收其他rank请求的全局索引，得到 $recv\_local\_entry$（均为映射到本rank的全局索引，即 `global_idx / num_entries == rank_id`）、$recv\_counts$，接收总量 $num\_recv = \sum_{r=0}^{world\_size-1} recv\_counts[r]$。
+
+3. 本地gather：将 $recv\_local\_entry$ 中的全局索引按 $local\_idx = recv\_local\_entry[j] \bmod num\_entries$ 转换后，从本地 $EngramTable[rank\_id]$ 读取：
+
+$$local\_data[j] = EngramTable[rank\_id][recv\_local\_entry[j] \bmod num\_entries], \quad j \in [0, num\_recv)$$
+
+4. a2a交换data：将 $local\_data$ 沿原请求路径送回，得到 $recv\_data[i]$，$i \in [0, num\_tokens)$。
+
+5. 还原：按 $perm$ 重排回原始token顺序：
+
+$$fetched[perm[i]] = recv\_data[i], \quad i \in [0, num\_tokens)$$
+
+6. 保存反向上下文 $fetch\_ctx$（即 [EngramFetchCtx](#engramfetchctx)），包含 $perm$、$send\_counts$、$recv\_counts$、$recv\_local\_entry$、$num\_recv$ 五个字段，供反向 [engram_fetch_grad](#engram_fetch_grad) 使用。
+
 **函数原型**：
 
 ```python
@@ -211,6 +233,28 @@ ElasticBuffer.engram_fetch(indices) -> Callable
 
 **功能**：训练反向接口，需与训练模式的 [engram_fetch](#engram_fetch) 配套使用。根据前向保存的 [EngramFetchCtx](#engramfetchctx)，将 `grad_fetched` 沿前向路径反向交换并按local entry稀疏累加，产出稀疏梯度用于优化器更新。
 
+**计算公式**：
+
+反向沿前向路径逆序执行，$fetch\_ctx$ 各字段（$perm$、$send\_counts$、$recv\_counts$、$recv\_local\_entry$、$num\_recv$）均来自前向 [engram_fetch](#engram_fetch) 训练模式返回的 [EngramFetchCtx](#engramfetchctx)。依次为：
+
+1. Unsort：按 $perm$ 将 $grad\_fetched$ 重排回桶排序顺序：
+
+$$grad\_sorted[i] = grad\_fetched[perm[i]], \quad i \in [0, num\_tokens)$$
+
+2. 反向a2a交换：将 $grad\_sorted$ 通过a2a反向交换（$send\_counts$ 为send量，$recv\_counts$ 为recv量），各rank收到对应 $recv\_local\_entry$ 的梯度：
+
+$$grad\_recv[j] \leftrightarrow recv\_local\_entry[j], \quad j \in [0, num\_recv)$$
+
+3. Unique：对 $recv\_local\_entry$ 按 $local\_idx = recv\_local\_entry[j] \bmod num\_entries$ 转换后去重，得到本rank local entry索引集合：
+
+$$unique\_local\_entry = \text{unique}(\{\,recv\_local\_entry[j] \bmod num\_entries \mid j \in [0, num\_recv)\,\})$$
+
+4. ScatterAdd：对每个unique entry，按FP32累加所有映射到该entry的梯度后转回输出dtype：
+
+$$grad\_unique[k] = \text{Cast}_{dtype}\!\left(\sum_{\substack{j \in [0,num\_recv) \\ recv\_local\_entry[j] \bmod num\_entries = unique\_local\_entry[k]}} \text{Cast}_{fp32}(grad\_recv[j])\right)$$
+
+其中 $K$ 为去重后的local entry数量（运行时决定，输出前 $K$ 行有效），$num\_tokens$ 为 `indices` 的长度，$num\_entries$ 为 [engram_write](#engram_write) 时各rank写入的条目数。`grad_unique` 与 `unique_local_entry` 可直接用于优化器稀疏更新。
+
 **函数原型**：
 
 ```python
@@ -224,8 +268,8 @@ ElasticBuffer.engram_fetch_grad(grad_fetched, fetch_ctx) -> (Tensor, Tensor)
 
 **输出说明**：
 
-- **grad_unique** (`Tensor`)：NPU tensor，shape为 `(K, hidden)`，数据类型与 `grad_fetched` 相同（kernel内部按FP32累加后转回输出dtype），数据格式为 $ND$。其中 `K` 为去重后的local entry数量（运行时决定），前 `K` 行有效。
-- **unique_local_entry** (`Tensor`)：NPU tensor，shape为 `(K,)`，数据类型为 `int32`，数据格式为 $ND$。表示 `grad_unique` 每行对应的local entry索引，用于优化器按索引更新 `storage[unique_local_entry] -= lr × grad_unique`。
+- **grad_unique** (`Tensor`)：NPU tensor，shape为 `(K, hidden)`，数据类型与 `grad_fetched` 相同（内部按FP32累加后转回输出dtype），数据格式为 $ND$。其中 `K` 为去重后的local entry数量（运行时决定），前 `K` 行有效。
+- **unique_local_entry** (`Tensor`)：NPU tensor，shape为 `(K,)`，数据类型为 `int32`，数据格式为 $ND$。表示 `grad_unique` 每行对应的local entry索引。
 
 ### barrier
 
@@ -305,7 +349,7 @@ ElasticBuffer.dispatch(
     num_max_tokens_per_rank=None,
     expert_alignment=None,
     do_cpu_sync=None,
-) -> (Tensor, Tensor, Tensor, EPHandle)
+) -> (Tensor | Tuple[Tensor, Tensor], Tensor | None, Tensor | None, EPHandle)
 ```
 
 **输入参数**：
@@ -315,10 +359,10 @@ ElasticBuffer.dispatch(
 - **topk_idx** (`Tensor`)：可选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2 维张量，shape为 `(BS, K)`，数据类型支持 `int32`，数据格式为 $ND$。张量里value取值范围为 `[0, num_experts)`。非cached模式下为必选参数，cached模式下必须为 `None`。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重。要求为2 维张量，shape为 `(BS, K)`，数据类型支持 `float32`，数据格式为 $ND$。非cached模式下为可选参数，cached模式下必须为 `None`。
 - **handle** (`EPHandle`)：可选参数，表示上一次dispatch返回的handle对象，用于cached模式。传入handle时，`topk_idx` 和 `topk_weights` 必须为 `None`，`do_cpu_sync` 必须为 `False`。默认为 `None`，即非cached模式。
-- **num_experts** (`int`)：可选参数，MoE专家总数量。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。非cached模式下为必选参数；cached模式下必须为 `None`。
-- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。
-- **expert_alignment** (`int`)：可选参数，表示专家对齐数。非cached模式默认值为1；cached模式使用 `handle` 中的值。
-- **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式必须为 `False`。
+- **num_experts** (`int`)：可选参数，MoE专家总数量。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。非cached模式下为必选参数；cached模式下使用 `handle` 中的值，传入参数被忽略。
+- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。cached模式下使用 `handle` 中的值，传入参数被忽略。
+- **expert_alignment** (`int`)：可选参数，表示专家对齐数。当前仅支持取值1；cached模式使用 `handle` 中的值。
+- **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式下不能为 `True`。
 
 **输出说明**：
 
@@ -360,7 +404,7 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 
 **输入参数**：
 
-- **x** (`Tensor`)：必选参数，表示经过专家计算后的token数据，即 [dispatch](#dispatch) 输出的 `recv_x` 经过专家网络处理后的结果。要求为2 维张量，shape为 `(A, H)`，数据类型仅支持 `bfloat16`，数据格式为 $ND$。
+- **x** (`Tensor`)：必选参数，表示经过专家计算后的token数据，即 [dispatch](#dispatch) 输出的 `recv_x` 经过专家网络处理后的结果。要求为2 维张量，shape为 `(A, H)`，数据类型支持 `bfloat16`、`float16`，数据格式为 $ND$。
 - **handle** (`EPHandle`)：必选参数，表示 [dispatch](#dispatch) 返回的handle对象，包含slot索引、接收元数据等信息。handle的属性参见 [dispatch](#dispatch) 输出说明。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1 维张量，shape为 `(A,)`，数据类型支持 `float32`，数据格式为 $ND$，对应 [dispatch](#dispatch) 的 `recv_topk_weights` 输出。若不提供，则进行纯累加combine，输出 `combined_topk_weights` 为 `None`。
@@ -368,7 +412,7 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 
 **输出说明**：
 
-- **combined_x** (`Tensor`)：表示combine后的token数据，还原为原始序列顺序。要求为2 维张量，shape为 `(BS, H)`，数据类型为 `bfloat16`，数据格式为 $ND$，不支持非连续的Tensor。
+- **combined_x** (`Tensor`)：表示combine后的token数据，还原为原始序列顺序。要求为2 维张量，shape为 `(BS, H)`，数据类型与 `x` 一致（`bfloat16` 或 `float16`），数据格式为 $ND$，不支持非连续的Tensor。
 - **combined_topk_weights** (`Tensor | None`)：表示combine后的topK专家权重。当 `topk_weights` 输入不为 `None` 时，要求为2 维张量，shape为 `(BS, K)`，数据类型为 `float32`，数据格式为 $ND$；当 `topk_weights` 输入为 `None` 时，返回 `None`。
 
 ### get_moe_ep_ccl_buffer_size（静态方法）
@@ -383,9 +427,9 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 **输入参数**：
 
-- **world_size** (`int`)：必选参数，表示EP通信域的大小（即参与EP通信的卡数）。取值范围 `[2, 768]`。
+- **world_size** (`int`)：必选参数，表示EP通信域的大小（即参与EP通信的卡数）。取值范围 `[2, 1024]`。
 - **num_max_tokens_per_rank** (`int`)：必选参数，表示每张卡上的最大token数量上限。
-- **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。取值范围 `[1024, 8192]`。
+- **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。取值范围 `(0, 8192]`。
 - **num_experts** (`int`)：必选参数，MoE专家总数量，取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。
 - **topk** (`int`)：必选参数，表示选取topK个专家，取值范围 `[1, 32]`。
 
@@ -397,41 +441,58 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 ```text
 local_experts_num = num_experts // world_size
-state_buffer_size =
-    world_size * Align512(local_experts_num * 4)
-    + 2 * world_size * 512
-    + num_max_tokens_per_rank * topk * 512
-    + world_size * 512
+
+dispatch_count_size = world_size * Align512(local_experts_num * 4)
+dispatch_notify_count = Align15000(num_max_tokens_per_rank) // 15000
+dispatch_notify_size = world_size * 512 * (1 + dispatch_notify_count)
+combine_state_size = num_max_tokens_per_rank * topk * 512 + world_size * 512
+state_buffer_size = dispatch_count_size + dispatch_notify_size + combine_state_size
 
 metadata_bytes = Align32(topk * 4)
 hidden_align = Align32(hidden * 2)
 dispatch_per_slot_bytes = Align512(hidden_align + metadata_bytes * 2 + 32)
 combine_per_slot_bytes = Align512(hidden_align + 32)
 
-dispatch_recv_buffer_size =
-    world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
-combine_recv_buffer_size =
-    num_max_tokens_per_rank * topk * combine_per_slot_bytes
+dispatch_recv_buffer_size = world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
+combine_recv_buffer_size = num_max_tokens_per_rank * topk * combine_per_slot_bytes
 dispatch_send_buffer_size = dispatch_recv_buffer_size
-
-minimum_buffer_size =
+direct_minimum_buffer_size =
     state_buffer_size
     + dispatch_recv_buffer_size
     + combine_recv_buffer_size
     + dispatch_send_buffer_size
+
+combine_buffer_size = num_max_tokens_per_rank * topk * combine_per_slot_bytes
+对 world_size 的每个因子 rnps（1 ≤ rnps ≤ world_size 且 world_size % rnps == 0）：
+    scaleout_rank_count = world_size // rnps
+    scaleout_per_slot_bytes = Align512(dispatch_per_slot_bytes + topk * 4)
+    scaleout_recv_data_size = scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
+    scaleout_recv_status_size = scaleout_rank_count * num_max_tokens_per_rank * 512
+    payload_stash_size = num_max_tokens_per_rank * scaleout_per_slot_bytes
+    dispatch_buffer_size(rnps) =
+        scaleout_recv_data_size
+        + dispatch_recv_buffer_size
+        + scaleout_recv_status_size
+        + payload_stash_size
+hybrid_minimum_buffer_size =
+    state_buffer_size
+    + max(dispatch_buffer_size(rnps))
+    + combine_buffer_size
+
+minimum_buffer_size = max(direct_minimum_buffer_size, hybrid_minimum_buffer_size)
 
 ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
 ```
 
 其中 `AlignX(value) = ((value + X - 1) / X) * X`，公式中的 `/` 表示整除。
 
-通信窗口依次存放状态区、Dispatch接收区、Combine接收区和Dispatch发送区。Dispatch发送区与接收区均按
+由于运行时无法获知实际 scaleout 拓扑，hybrid 路径对 `world_size` 的所有合法因子 `rnps`（即 `rank_num_per_server`）枚举取最大值，按最大合法布局预留内存。通信窗口在 direct 拓扑下依次存放状态区、Dispatch接收区、Combine接收区和Dispatch发送区；hybrid 拓扑下布局为状态区、Scaleout Dispatch区、Combine区。Dispatch发送区与接收区均按
 `dispatch_per_slot_bytes` 的最大2字节hidden规格预留；kernel实际读写和通信仍使用当前数据类型对应的
 `per_slot_bytes`。Combine发送数据在Combine算子的workspace中暂存，不计入HCCL通信窗口大小。
 
 ### destroy
 
-**功能**：释放ElasticBuffer资源，包括host pinned内存、Engram运行时资源和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。
+**功能**：释放ElasticBuffer资源，包括host pinned内存、Engram运行时资源和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`（默认）时，实例被垃圾回收时会自动调用本方法；当 `explicitly_destroy=True` 时，需要由调用方显式调用。
 
 **输入参数**：无参数。
 
@@ -484,11 +545,11 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
   - `A`：表示本卡接收的最大token数量，`A = ep_world_size * num_max_tokens_per_rank * MIN(K, num_local_experts)`。
   - `H`：表示hidden size隐藏层大小。取值范围为 `(0, 8192]`。
   - `BS`：表示batch sequence size，即本卡的token数量。
-  - `K`：表示选取topK个专家，取值范围为 `1 ≤ K ≤ 32`。
-  - `num_local_experts`：表示本卡专家数量，`num_local_experts = num_experts / ep_world_size`，应满足 `0 < num_local_experts * ep_world_size ≤ 2048`。
+  - `K`：表示选取topK个专家，取值范围为 `1 ≤ K ≤ min(32, num_experts)`。
+  - `num_local_experts`：表示本卡专家数量，`num_local_experts = num_experts / ep_world_size`，其中 `num_experts` 取值范围为 `[2, 2048]` 且须被 `ep_world_size` 整除，即满足 `0 < num_local_experts * ep_world_size ≤ 2048`。
 
 - **HCCL通信域缓存区大小**：
-  - 调用 [dispatch](#dispatch) 或 [combine](#combine) 前需检查 `HCCL_BUFFSIZE` 环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
+  - 调用 [dispatch](#dispatch) 或 [combine](#combine) 前需检查 `HCCL_BUFFSIZE` 环境变量取值是否合理，该环境变量配置单个通信域的 buffer 大小（单位MB，实际物理分配为 2 倍），不配置时默认为200MB。
   - 通信域缓存区大小可通过调用 [get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法) 计算。
   - 计算得到的 `ccl_buffer_size` 需通过环境变量 `HCCL_BUFFSIZE` 设置，每个通信域独占一组 `2 * HCCL_BUFFSIZE` 大小的内存。
 
@@ -550,7 +611,7 @@ def run_elastic_buffer(queue, rank, world_size, storage, indices):
     )
     print(f"[INFO] device_{rank} num_cpu_bytes={num_cpu_bytes}")
 
-    buffer = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes)
+    buffer = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes, explicitly_destroy=True)
 
     print(f"[INFO] device_{rank} run engram_write")
     buffer.engram_write(storage)
@@ -661,6 +722,7 @@ def train_worker(rank):
         num_cpu_bytes=num_cpu_bytes,
         num_max_tokens_per_rank=num_tokens,
         with_grad=True,
+        explicitly_destroy=True,
     )
 
     # ==================== 写入 storage ====================
@@ -736,6 +798,7 @@ def run_dispatch_combine(rank):
         num_max_tokens_per_rank=num_max_tokens_per_rank,
         hidden=hidden,
         num_topk=top_k,
+        explicitly_destroy=True,
     )
 
     num_tokens = 64

@@ -21,6 +21,9 @@ generates:
   - aclnn_chunk_gated_delta_rule_rdv.csv (aclnn mode)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 import importlib.util
 import sys
@@ -102,6 +105,19 @@ def _ranges_tuple_str(ranges):
     return _tuple_str(parts)
 
 
+def _contig_stride(shape):
+    """Row-major contiguous strides for a shape (same convention as numpy/torch)."""
+    if shape is None:
+        return None
+    dims = list(shape)
+    if not dims:
+        return ()
+    strides = [1] * len(dims)
+    for i in range(len(dims) - 2, -1, -1):
+        strides[i] = strides[i + 1] * dims[i + 1]
+    return tuple(strides)
+
+
 def _build_e2e_row(name, B, seqlen, Nk, Nv, Dk, Dv, has_g, scale, dt, sdt, is_contig):
     T = B * seqlen if isinstance(seqlen, int) else sum(seqlen)
 
@@ -139,9 +155,9 @@ def _build_e2e_row(name, B, seqlen, Nk, Nv, Dk, Dv, has_g, scale, dt, sdt, is_co
     else:
         state_storage = (B, Nv, Dv + 1, Dk)
         state_stride = (Nv * (Dv + 1) * Dk, (Dv + 1) * Dk, Dk, 1)
-        storage_shapes = [None for _ in shapes]
+        storage_shapes = [s for s in shapes]
         storage_shapes[4] = state_storage
-        strides = [None for _ in shapes]
+        strides = [_contig_stride(s) for s in shapes]
         strides[4] = state_stride
         offsets = ["0"] * len(shapes)
         ts = _tuple_str(storage_shapes)
@@ -209,9 +225,9 @@ def _build_aclnn_row(name, B, seqlen, Nk, Nv, Dk, Dv, has_g, scale, dt, sdt, is_
     else:
         state_storage = (B, Nv, Dv + 1, Dk)
         state_stride = (Nv * (Dv + 1) * Dk, (Dv + 1) * Dk, Dk, 1)
-        storage_shapes = [None for _ in shapes]
+        storage_shapes = [s for s in shapes]
         storage_shapes[4] = state_storage
-        strides = [None for _ in shapes]
+        strides = [_contig_stride(s) for s in shapes]
         strides[4] = state_stride
         offsets = ["0"] * len(shapes)
         ts = _tuple_str(storage_shapes)
@@ -248,7 +264,7 @@ def main():
 
     rdv_path = Path(args.rdv_file).resolve()
     if not rdv_path.exists():
-        print(f"ERROR: rdv file not found: {rdv_path}")
+        logger.error(f"ERROR: rdv file not found: {rdv_path}")
         sys.exit(1)
 
     mod = _load_rdv_module(rdv_path)
@@ -295,9 +311,9 @@ def main():
     e2e_csv.write_text("\n".join(e2e_lines) + "\n", encoding="utf-8")
     aclnn_csv.write_text("\n".join(aclnn_lines) + "\n", encoding="utf-8")
 
-    print(f"Generated {len(cases)} cases:")
-    print(f"  e2e:   {e2e_csv}")
-    print(f"  aclnn: {aclnn_csv}")
+    logger.info(f"Generated {len(cases)} cases:")
+    logger.info(f"  e2e:   {e2e_csv}")
+    logger.info(f"  aclnn: {aclnn_csv}")
 
 
 if __name__ == "__main__":

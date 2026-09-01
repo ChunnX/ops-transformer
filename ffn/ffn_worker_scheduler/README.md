@@ -1,4 +1,4 @@
-# FfnWorkScheduler
+# FfnWorkerScheduler
 
 ## 产品支持情况
 
@@ -86,8 +86,9 @@
 - 计算公式：
 
 1. 初始化，根据入参ScheduleContext中的session_num和sync_group_size计算分组个数。
-1. 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
-2. 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
+
+ - 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
+ - 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
 
      $$
      \text{Initialize:} \quad\text{group\_num} = \frac{\text{session\_num}}{\text{sync\_group\_size}}
@@ -102,9 +103,6 @@ $$
 $$
 
 ## 参数说明
-
-- **参数说明：**
-
   <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
   <col style="width: 146px">
   <col style="width: 135px">
@@ -118,7 +116,7 @@ $$
   <thead>
     <tr>
       <th>参数名</th>
-      <th>输入/输出</th>
+      <th>输入/输出/属性</th>
       <th>描述</th>
       <th>使用说明</th>
       <th>数据类型</th>
@@ -128,8 +126,8 @@ $$
     </tr></thead>
   <tbody>
     <tr>
-      <td>scheduleContextRef</td>
-      <td>输入/输出</td>
+      <td>schedule_context</td>
+      <td>输入</td>
       <td>FFN侧接收的待处理数据，表示ScheduleContext信息，详细结构参见调用示例</td>
       <td>不支持空tensor。</td>
       <td>INT8</td>
@@ -138,41 +136,31 @@ $$
       <td>×</td>
     </tr>
     <tr>
-      <td>syncGroupSize</td>
-      <td>输入</td>
+      <td>schedule_context</td>
+      <td>输出</td>
+      <td>处理后的ScheduleContext信息，shape、dtype和format与输入一致。</td>
+      <td>-</td>
+      <td>INT8</td>
+      <td>ND</td>
+      <td>1维，shape为(1024)</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>sync_group_size</td>
+      <td>属性</td>
       <td>每个同步组处理的session个数。</td>
-      <td>取值范围为(0，session_num]，session_num表示待处理数据的最大会话数，即调用示例中结构体ScheduleContext中CommonArea域的session_num字段。</td>
-      <td>INT32</td>
+      <td>取值范围为(0，session_num]，session_num表示待处理数据的最大会话数。</td>
+      <td>Int</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>executeMode</td>
-      <td>输入</td>
+      <td>execute_mode</td>
+      <td>属性</td>
       <td>执行模式。</td>
       <td>只支持模式0，表示执行完一次退出。</td>
-      <td>INT32</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
+      <td>Int</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

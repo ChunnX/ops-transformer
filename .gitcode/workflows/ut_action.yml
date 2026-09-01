@@ -22,7 +22,6 @@ jobs:
         uses: checkout
         with:
           ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
-          token: ${{ secrets.GIT_TOKEN }}
       -
         name: download
         uses: obs-download
@@ -58,7 +57,6 @@ jobs:
           workspace: ${{ steps.process_checkout.outputs.path }}
           ut_type: ops-transformer
           target_branch: ${{ env.TARGET_BRANCH }}
-          git_token: ${{ secrets.GIT_TOKEN }}
       -
         name: upload
         uses: obs-upload
@@ -71,6 +69,6 @@ jobs:
             ${{ steps.process_checkout.outputs.path }}/coverage_*.info
           object-prefix: ${{ env.obs_path }}/
     if: "${{ default() }}"
-    runs-on: [dedicate-hosted, x64, xlarge]
+    runs-on: ["self-hosted", "arch=x64", "spec=xlarge"]
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}

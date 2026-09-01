@@ -92,9 +92,9 @@ class PytestV2TopKComparator:
         return {
             "pass": passed,
             "precision": float(precision),
-            "error_info": None if passed else (
-                f"pytest LightningIndexerV2 {stage} returned {status!r}"
-            ),
+            "error_info": None
+            if passed
+            else (f"pytest LightningIndexerV2 {stage} returned {status!r}"),
         }
 
     def compare(self, *outputs, compare_data=None):
@@ -109,11 +109,15 @@ class PytestV2TopKComparator:
         params = compare_data.get("params")
         topk_value = compare_data.get("topk_value")
         if params is None or topk_value is None:
-            raise ValueError("LightningIndexerV2 pytest compare data lacks params or topk_value")
+            raise ValueError(
+                "LightningIndexerV2 pytest compare data lacks params or topk_value"
+            )
         half = len(outputs) // 2
         npu_outputs = outputs[:half]
         golden_outputs = outputs[half:]
-        if tuple(getattr(npu_outputs[0], "shape", ())) != tuple(getattr(golden_outputs[0], "shape", ())):
+        if tuple(getattr(npu_outputs[0], "shape", ())) != tuple(
+            getattr(golden_outputs[0], "shape", ())
+        ):
             return {
                 "pass": False,
                 "precision": "shape_mismatch",
@@ -132,7 +136,9 @@ class PytestV2TopKComparator:
             }
         npu_values = npu_outputs[1] if half > 1 else torch.empty(0)
         golden_values = golden_outputs[1] if half > 1 else torch.empty(0)
-        if return_value and tuple(getattr(npu_values, "shape", ())) != tuple(getattr(golden_values, "shape", ())):
+        if return_value and tuple(getattr(npu_values, "shape", ())) != tuple(
+            getattr(golden_values, "shape", ())
+        ):
             return {
                 "pass": False,
                 "precision": "shape_mismatch",
@@ -149,7 +155,6 @@ class PytestV2TopKComparator:
             npu_values, _ = npu_values.sort(dim=-1, descending=True)
         output_idx_offset = self.to_torch(compare_data.get("output_idx_offset"))
         golden_values_for_index = golden_values.detach().cpu().float().numpy()
-        npu_values_for_index = npu_values.detach().cpu().float().numpy()
         module = self.load_module()
         index_result = module.check_result(
             self.to_torch(golden_outputs[0]),
@@ -158,7 +163,7 @@ class PytestV2TopKComparator:
             output_idx_offset,
             params,
             golden_values_for_index,
-            npu_values_for_index,
+            npu_values,
         )
         results = [self.result_dict(index_result, "index compare")]
         if return_value:
@@ -169,9 +174,48 @@ class PytestV2TopKComparator:
         return results
 
 
+def load_batch_comparator():
+    name = "indexer_ttk_batch_consistency"
+    path = Path(__file__).with_name("batch_consistency.py")
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot create import spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 COMPARATOR = PytestV2TopKComparator()
 
 
-def compare(*outputs, compare_data=None):
+def compare(
+    *outputs,
+    compare_data=None,
+    batch_consistency_id=None,
+    batch_axis=None,
+    batch_slice_info=None,
+    batch_seed=None,
+    compare_context=None,
+):
     """Compare V2 TopK outputs with the canonical pytest policy."""
-    return COMPARATOR.compare(*outputs, compare_data=compare_data)
+    results = COMPARATOR.compare(*outputs, compare_data=compare_data)
+    if not isinstance(results, list) or not all(result["pass"] for result in results):
+        return results
+    batch_result = (
+        load_batch_comparator()
+        .IndexerBatchOutputComparator("LI_V2")
+        .compare(
+            outputs[0],
+            batch_consistency_id,
+            batch_axis,
+            batch_slice_info,
+            batch_seed,
+            compare_context,
+        )
+    )
+    if batch_result is not None:
+        results.append(batch_result)
+    return results

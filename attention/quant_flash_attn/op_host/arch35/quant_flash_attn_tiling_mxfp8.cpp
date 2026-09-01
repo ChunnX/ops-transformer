@@ -15,6 +15,7 @@
 
 #include "quant_flash_attn_tiling_mxfp8.h"
 #include "../quant_flash_attn_tiling.h"
+#include "../qfa_adjust_sinner_souter.h"
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -118,8 +119,10 @@ void QuantFlashAttnTilingImpl::InitImplParam()
 
 void QuantFlashAttnTilingImpl::SplitPolicy()
 {
-    sOuterFactor_ = SOUTER_64;
-    sInnerFactor_ = SINNER_512;
+    qfa_tiling_util::AdjustSinnerAndSouter(qfaInfo_->vHeadDim, qfaInfo_->maxSeqQ, qfaInfo_->maxSeqKv,
+                                           static_cast<int32_t>(qfaInfo_->maskMode), qfaInfo_->winLeft,
+                                           qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
+                                           static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
 }
@@ -133,6 +136,8 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dSize <= DSIZE_64) {
         dSize = DSIZE_64;
+    } else if (dSize <= 72) {
+        dSize = DSIZE_72;
     } else if (dSize <= DSIZE_128) {
         dSize = DSIZE_128;
     } else if (dSize <= DSIZE_256) {
@@ -145,6 +150,8 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (dVsize <= DSIZE_64) {
         dVsize = DSIZE_64;
+    } else if (dVsize <= 72) {
+        dVsize = DSIZE_72;
     } else if (dVsize <= DSIZE_128) {
         dVsize = DSIZE_128;
     } else if (dVsize <= DSIZE_256) {
@@ -155,8 +162,12 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
 
     if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_72 && dVsize == DSIZE_72) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned72_DVAligned72;
     } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256;
     } else {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }
@@ -305,7 +316,6 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
         !(cuSeqLenKVFlag_ && qfaInfo_->kvLayout == QfaLayout::TND);
     tilingData_.baseTiling.quantFlashAttnBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.quantFlashAttnBaseParams.outputLayout = static_cast<uint32_t>(qfaInfo_->outLayout);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
 
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = qfaInfo_->winLeft;
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = qfaInfo_->winRight;
@@ -321,29 +331,21 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
         maxBlockNumPerBatch = qfaInfo_->maxBlockNumPerBatch;
     }
     tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
-}
-
-bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
-{
-    if (seqUsedQFlag_ || seqUsedKvFlag_) {
-        return true;
+    if (qfaInfo_->hasStride) {
+        tilingData_.baseTiling.quantFlashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
+        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.bnStride = qfaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.keyStrides.n2Stride = qfaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.bnStride = qfaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.valueStrides.n2Stride = qfaInfo_->valueStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.bnStride =
+            qfaInfo_->kDescaleStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.kDescaleStrides.n2Stride =
+            qfaInfo_->kDescaleStrides->GetStride(1);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.bnStride =
+            qfaInfo_->vDescaleStrides->GetStride(0);
+        tilingData_.baseTiling.quantFlashAttnBaseParams.vDescaleStrides.n2Stride =
+            qfaInfo_->vDescaleStrides->GetStride(1);
     }
-    if (qfaInfo_->qLayout == QfaLayout::TND && qfaInfo_->kvLayout == QfaLayout::TND) {
-        return qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
-        return false;
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
-        return qfaInfo_->s1Size > qfaInfo_->s2Size;
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::SLIDING_WINDOW)) {
-        if (qfaInfo_->winRight == -1) {
-            return false;
-        }
-        return (qfaInfo_->s1Size - qfaInfo_->s2Size) > qfaInfo_->winRight;
-    }
-    return false;
 }
 
 ge::graphStatus QuantFlashAttnTilingImpl::SetTilingData(QuantFlashAttnTilingData &tilingData)
@@ -382,7 +384,6 @@ void QuantFlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(qfaInfo_->opName, "isSoftMaxLseEnable:%d", params.isSoftMaxLseEnable);
     OP_LOGD(qfaInfo_->opName, "coreNum:%d", params.coreNum);
     OP_LOGD(qfaInfo_->opName, "outputLayout:%d", params.outputLayout);
-    OP_LOGD(qfaInfo_->opName, "needInitOutput:%d", params.needInitOutput);
 
     OP_LOGD(qfaInfo_->opName, "maskMode:%d", maskParams.sparseMode);
     OP_LOGD(qfaInfo_->opName, "winLefts:%d", maskParams.winLefts);

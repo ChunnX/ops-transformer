@@ -37,7 +37,6 @@ jobs:
         uses: checkout
         with:
           ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
-          token: ${{ secrets.GIT_TOKEN }}
       -
         name: download
         uses: obs-download
@@ -78,7 +77,7 @@ jobs:
             echo "Renamed: $f -> ${{ inputs.package_name }}"
             break
           done
-      - 
+      -
         name: api-check
         identifier: api-check
         if: ${{ inputs.task_name == 'Compile_Ascend_X86_ubuntu24' && env.TARGET_BRANCH == 'master' }}
@@ -110,8 +109,8 @@ jobs:
           object-prefix: ${{ env.obs_path }}/
     if: "${{ default() }}"
     runs-on:
-      - dedicate-hosted
-      - ${{ inputs.arch }}
-      - ${{ inputs.spec }}
+      - self-hosted
+      - arch=${{ inputs.arch }}
+      - spec=${{ inputs.spec }}
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}

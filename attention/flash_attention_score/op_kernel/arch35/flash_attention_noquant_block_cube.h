@@ -20,20 +20,20 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/CopyInL1.h"
-#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/attn_copy_gm_to_l1.h"
 
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #else
 #include "../../common/arch35/util_regbase.h"
 #include "../../common/offset_calculator.h"
 #include "../../common/matmul.h"
 #include "../../common/FixpipeOut.h"
 #include "../../common/CopyInL1.h"
-#include "../../common/memcopy/copy_gm_to_l1.h"
+#include "../../common/memcopy/attn_copy_gm_to_l1.h"
 
-#include "../../common/arch35/infer_flash_attention_comm.h"
-#include "../../common/arch35/flash_attention_score_common_regbase.h"
+#include "../../common/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;

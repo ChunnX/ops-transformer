@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file comm_channel_builder.h
@@ -17,36 +17,46 @@
 
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <string>
 #include "acl/acl.h"
 #include "acl/acl_rt.h"
 #include "hccl/hccl.h"
 #include "hccl/hccl_res.h"
-#include "apace/block/aiv_comm/collective_comm_context.h"
+#include "apace/core/aiv_comm/collective_comm_context.h"
 
 constexpr uint8_t BUILDER_COMM_ENGINE_AIV = 4;
 constexpr uint32_t BUILDER_CHANNEL_NOTIFY_NUM = 3U;
 
-#define ASC_CHECK(call) do { \
-    if (!(call)) { \
-        return false; \
-    } \
-} while (0)
+#define ASC_CHECK(call) \
+    do { \
+        if (!(call)) { \
+            return false; \
+        } \
+    } while (0)
 
 enum class ChannelMode {
     URMA,
     UBMEM
 };
 
-template <ChannelMode Mode> struct CommCtxTrait;
-template <> struct CommCtxTrait<ChannelMode::URMA>  { using type = Apace::AivComm::CommUdmaContext; };
-template <> struct CommCtxTrait<ChannelMode::UBMEM> { using type = Apace::AivComm::CommUbmemContext; };
+template <ChannelMode Mode>
+struct CommCtxTrait;
+template <>
+struct CommCtxTrait<ChannelMode::URMA> {
+    using type = Apace::AivComm::CommUdmaContext;
+};
+template <>
+struct CommCtxTrait<ChannelMode::UBMEM> {
+    using type = Apace::AivComm::CommUbmemContext;
+};
 
-template <ChannelMode DataChannelMode = ChannelMode::URMA,
-          ChannelMode BarrierChannelMode = ChannelMode::UBMEM>
+template <ChannelMode DataChannelMode = ChannelMode::URMA, ChannelMode BarrierChannelMode = ChannelMode::UBMEM>
 class CommChannelBuilder {
 public:
-    explicit CommChannelBuilder(HcclComm comm) : comm_(comm) {}
+    explicit CommChannelBuilder(HcclComm comm)
+        : comm_(comm)
+    {}
 
     /*!
      * \brief 初始化 rankId 和 rankNum（使用 HcclGetRankId/HcclGetRankSize）
@@ -54,20 +64,30 @@ public:
      */
     bool Init()
     {
-        if (HcclGetRankId(comm_, &rankId_) != HCCL_SUCCESS) { return false; }
-        if (HcclGetRankSize(comm_, &rankNum_) != HCCL_SUCCESS) { return false; }
+        if (HcclGetRankId(comm_, &rankId_) != HCCL_SUCCESS) {
+            return false;
+        }
+        if (HcclGetRankSize(comm_, &rankNum_) != HCCL_SUCCESS) {
+            return false;
+        }
         return true;
     }
 
     /*!
      * \brief 获取 rankId
      */
-    uint32_t GetRankId() const { return rankId_; }
+    uint32_t GetRankId() const
+    {
+        return rankId_;
+    }
 
     /*!
      * \brief 获取 rankNum
      */
-    uint32_t GetRankSize() const { return rankNum_; }
+    uint32_t GetRankSize() const
+    {
+        return rankNum_;
+    }
 
     /*!
      * \brief 使用 HCCL 内置 buffer + 建链，填充外部 context 对应字段
@@ -77,14 +97,12 @@ public:
      * \param [out] remoteAddrs  context 中远端地址数组字段
      * \return true 成功, false 失败
      */
-    bool AllocRegAndBuildChannels(
-        ChannelMode mode, const char* memTag,
-        uint64_t* channels, uint64_t* remoteAddrs)
+    bool AllocRegAndBuildChannels(ChannelMode mode, const char *memTag, uint64_t *channels, uint64_t *remoteAddrs)
     {
-        ::CommProtocol protocol = (mode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
-                                                           : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
+        ::CommProtocol protocol =
+            (mode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
 
-        void* buf = nullptr;
+        void *buf = nullptr;
         uint64_t hcclBufSize = 0;
         if (HcclGetHcclBuffer(comm_, &buf, &hcclBufSize) != ::HCCL_SUCCESS || buf == nullptr) {
             return false;
@@ -110,14 +128,14 @@ public:
      *       rankId/rankSize 赋值及 channel 建立仅在新建路径中执行。
      *       调用方应在本函数返回后对 rank 间做一次 barrier，确保所有 channel 握手完成。
      */
-    void* CreateDeviceContext(void* hostCtx, uint64_t ctxSize, const char* ctxTag,
-                              typename CommCtxTrait<DataChannelMode>::type* dataCtx,
-                              typename CommCtxTrait<BarrierChannelMode>::type* barrierCtx = nullptr)
+    void *CreateDeviceContext(void *hostCtx, uint64_t ctxSize, const char *ctxTag,
+                              typename CommCtxTrait<DataChannelMode>::type *dataCtx,
+                              typename CommCtxTrait<BarrierChannelMode>::type *barrierCtx = nullptr)
     {
         constexpr uint64_t BARRIER_BUF_SIZE = 2UL * 1024 * 1024;
         uint64_t totalSize = (barrierCtx != nullptr) ? ctxSize + BARRIER_BUF_SIZE : ctxSize;
 
-        void* devCtx = nullptr;
+        void *devCtx = nullptr;
         CommEngine engine = static_cast<CommEngine>(BUILDER_COMM_ENGINE_AIV);
         uint64_t existingSize = 0;
         if (HcclEngineCtxGet(comm_, ctxTag, engine, &devCtx, &existingSize) == HCCL_SUCCESS) {
@@ -138,20 +156,18 @@ public:
         dataCtx->rankId = rankId_;
         dataCtx->rankSize = rankNum_;
         std::string dataBufTag = std::string(ctxTag) + "dataBuf";
-        uint64_t* channelHandles = nullptr;
+        uint64_t *channelHandles = nullptr;
         if constexpr (DataChannelMode == ChannelMode::URMA) {
             channelHandles = dataCtx->channelHandles;
         }
-        if (!AllocRegAndBuildChannels(DataChannelMode, dataBufTag.c_str(),
-                                      channelHandles, dataCtx->commBufferAddrs)) {
+        if (!AllocRegAndBuildChannels(DataChannelMode, dataBufTag.c_str(), channelHandles, dataCtx->commBufferAddrs)) {
             return nullptr;
         }
 
         if (barrierCtx != nullptr) {
             barrierCtx->rankId = rankId_;
             barrierCtx->rankSize = rankNum_;
-            void* barrierBuf = reinterpret_cast<void*>(
-                reinterpret_cast<uintptr_t>(devCtx) + ctxSize);
+            void *barrierBuf = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(devCtx) + ctxSize);
             CommMem regMem = {};
             regMem.type = COMM_MEM_TYPE_DEVICE;
             regMem.addr = barrierBuf;
@@ -163,11 +179,9 @@ public:
             }
             barrierCtx->commBufferAddrs[barrierCtx->rankId] = reinterpret_cast<uint64_t>(barrierBuf);
             if (!BuildChannels(BarrierChannelMode, false,
-                               (BarrierChannelMode == ChannelMode::URMA)
-                                   ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP
-                                   : ::CommProtocol::COMM_PROTOCOL_UB_MEM,
-                               memHandle, syncBufTag.c_str(),
-                               nullptr, barrierCtx->commBufferAddrs)) {
+                               (BarrierChannelMode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP :
+                                                                           ::CommProtocol::COMM_PROTOCOL_UB_MEM,
+                               memHandle, syncBufTag.c_str(), nullptr, barrierCtx->commBufferAddrs)) {
                 return nullptr;
             }
         }
@@ -179,29 +193,67 @@ public:
     }
 
 private:
+    // 跨超节点/跨 server 场景下，HCCL 拓扑存在多个 net layer（层内 rank 可达、层间不可达）。
+    // 对每个 peer 找到存在目标协议 link 的 layer，构建 rank->layer 映射；单层拓扑留空映射（用 netLayers[0]）。
+    void BuildLayerMap(::CommProtocol protocol, const uint32_t *layers, uint32_t layerNum,
+                       std::map<uint32_t, uint32_t> &layerMap)
+    {
+        for (uint32_t li = 0U; li < layerNum; ++li) {
+            uint32_t *rankList = nullptr;
+            uint32_t rankCnt = 0;
+            if (HcclRankGraphGetRanksByLayer(comm_, layers[li], &rankList, &rankCnt) != ::HCCL_SUCCESS) {
+                continue;
+            }
+            for (uint32_t ri = 0U; ri < rankCnt; ++ri) {
+                uint32_t peer = rankList[ri];
+                if (peer == rankId_ || layerMap.count(peer) != 0U) {
+                    continue;
+                }
+                CommLink *links = nullptr;
+                uint32_t linkNum = 0;
+                if (HcclRankGraphGetLinks(comm_, layers[li], rankId_, peer, &links, &linkNum) != ::HCCL_SUCCESS ||
+                    linkNum == 0 || links == nullptr) {
+                    continue;
+                }
+                for (uint32_t k = 0U; k < linkNum; ++k) {
+                    if (links[k].linkAttr.linkProtocol == protocol) {
+                        layerMap[peer] = layers[li];
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
-    bool BuildChannels(ChannelMode mode, bool useHcclBuf,
-                       ::CommProtocol protocol, HcclMemHandle memHandle,
-                       const char* memTag, uint64_t* channels, uint64_t* remoteAddrs)
+    bool BuildChannels(ChannelMode mode, bool useHcclBuf, ::CommProtocol protocol, HcclMemHandle memHandle,
+                       const char *memTag, uint64_t *channels, uint64_t *remoteAddrs)
     {
         uint32_t *netLayers = nullptr;
         uint32_t netLayerNum = 0;
         if (HcclRankGraphGetLayers(comm_, &netLayers, &netLayerNum) != ::HCCL_SUCCESS || netLayerNum == 0) {
             return false;
         }
-        uint32_t layerId = netLayers[0];
+        uint32_t defaultLayerId = netLayers[0];
+
+        // 多层拓扑（跨 server/超节点）：按目的 rank 选可达 link 所在的层，避免对跨 server peer 用错层导致 linkNum==0
+        std::map<uint32_t, uint32_t> layerMap;
+        if (netLayerNum > 1U) {
+            BuildLayerMap(protocol, netLayers, netLayerNum, layerMap);
+        }
 
         for (uint32_t peer = 0; peer < rankNum_; peer++) {
-            if (peer == rankId_) { continue; }
+            if (peer == rankId_) {
+                continue;
+            }
+
+            uint32_t layerId = (netLayerNum > 1U && layerMap.count(peer) != 0U) ? layerMap[peer] : defaultLayerId;
 
             ChannelHandle channel = 0;
             uint64_t remoteAddr = 0;
             if (useHcclBuf) {
-                ASC_CHECK(AcquireChannelAndRemoteMemHcclBuf(layerId, protocol,
-                                                            peer, channel, remoteAddr));
+                ASC_CHECK(AcquireChannelAndRemoteMemHcclBuf(layerId, protocol, peer, channel, remoteAddr));
             } else {
-                ASC_CHECK(AcquireChannelAndRemoteMem(layerId, protocol, memHandle, memTag,
-                                                         peer, channel, remoteAddr));
+                ASC_CHECK(AcquireChannelAndRemoteMem(layerId, protocol, memHandle, memTag, peer, channel, remoteAddr));
             }
             if (channels != nullptr) {
                 channels[peer] = static_cast<uint64_t>(channel);
@@ -211,10 +263,8 @@ private:
         return true;
     }
 
-    bool AcquireChannelAndRemoteMem(uint32_t layerId, ::CommProtocol protocol,
-                                        HcclMemHandle memHandle, const char* memTag,
-                                        uint32_t peer,
-                                        ChannelHandle& channel, uint64_t& remoteAddr)
+    bool AcquireChannelAndRemoteMem(uint32_t layerId, ::CommProtocol protocol, HcclMemHandle memHandle,
+                                    const char *memTag, uint32_t peer, ChannelHandle &channel, uint64_t &remoteAddr)
     {
         channel = 0;
         remoteAddr = 0;
@@ -224,8 +274,8 @@ private:
         uint32_t memNum = 0;
         CommMem *remoteMems = nullptr;
         char **memTags = nullptr;
-        if (HcclChannelGetRemoteMems(comm_, channel, &memNum, &remoteMems, &memTags) != ::HCCL_SUCCESS ||
-            memNum == 0 || remoteMems == nullptr) {
+        if (HcclChannelGetRemoteMems(comm_, channel, &memNum, &remoteMems, &memTags) != ::HCCL_SUCCESS || memNum == 0 ||
+            remoteMems == nullptr) {
             return false;
         }
 
@@ -242,9 +292,8 @@ private:
         return remoteAddr != 0;
     }
 
-    bool AcquireChannelAndRemoteMemHcclBuf(uint32_t layerId, ::CommProtocol protocol,
-                                           uint32_t peer,
-                                           ChannelHandle& channel, uint64_t& remoteAddr)
+    bool AcquireChannelAndRemoteMemHcclBuf(uint32_t layerId, ::CommProtocol protocol, uint32_t peer,
+                                           ChannelHandle &channel, uint64_t &remoteAddr)
     {
         channel = 0;
         remoteAddr = 0;
@@ -262,16 +311,15 @@ private:
         return true;
     }
 
-    bool AcquireChannel(uint32_t layerId, ::CommProtocol protocol,
-                        uint32_t peer, ChannelHandle& channel,
+    bool AcquireChannel(uint32_t layerId, ::CommProtocol protocol, uint32_t peer, ChannelHandle &channel,
                         HcclMemHandle memHandle = nullptr)
     {
         channel = 0;
 
         CommLink *links = nullptr;
         uint32_t linkNum = 0;
-        if (HcclRankGraphGetLinks(comm_, layerId, rankId_, peer, &links, &linkNum) != ::HCCL_SUCCESS ||
-            linkNum == 0 || links == nullptr) {
+        if (HcclRankGraphGetLinks(comm_, layerId, rankId_, peer, &links, &linkNum) != ::HCCL_SUCCESS || linkNum == 0 ||
+            links == nullptr) {
             return false;
         }
 
@@ -299,7 +347,8 @@ private:
         }
 
         if (HcclChannelAcquire(comm_, static_cast<CommEngine>(BUILDER_COMM_ENGINE_AIV), &channelDesc, 1, &channel) !=
-            ::HCCL_SUCCESS || channel == 0) {
+                ::HCCL_SUCCESS ||
+            channel == 0) {
             return false;
         }
 

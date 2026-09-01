@@ -236,7 +236,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedQOptional</td>
                 <td>可选输入</td>
                 <td>表示每个batch实际使用的q长度。</td>
-                <td>长度为B。</td>
+                <td>长度为B。每个值必须大于等于0，且不能超过对应batch的q分配长度；允许多个batch取0，但不支持所有batch均为0。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -246,7 +246,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedKOptional</td>
                 <td>可选输入</td>
                 <td>表示每个batch实际使用的k长度。</td>
-                <td>长度为B。</td>
+                <td>长度为B。每个值必须大于等于0，且不能超过对应batch的k分配长度。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -264,9 +264,9 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
             <tr>
                 <td>metadataOptional</td>
-                <td>可选输入</td>
+                <td>输入</td>
                 <td>由aclnnSparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>传入后kernel将使用metadata中的分核切分。</td>
+                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>layoutK</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>maskMode</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>cmpRatio</td>
@@ -310,7 +310,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>dq</td>
@@ -357,28 +357,24 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>输出</td>
                 <td>返回用户需要在Device侧申请的workspace大小。</td>
                 <td>-</td>
-                <td>UINT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>executor</td>
                 <td>输出</td>
                 <td>op执行器，包含算子计算流程。</td>
                 <td>-</td>
-                <td>aclOpExecutor*</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
         </tbody>
     </table>
 
-<!-- npu="A3,910b" id7 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
-
-<!-- end id7 -->
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
@@ -465,22 +461,15 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-
-    <!-- npu="A3,910b" id8 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
-    <!-- end id8 -->
-    <!-- npu="950" id9 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
-    <!-- end id9 -->
-
+  - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
   - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
   - 参数sparseIndices、cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
   - layoutQ和layoutK当前支持BSND和TND。
   - 当layoutQ为TND时，需要传入cuSeqLensQOptional；当layoutK为TND时，需要传入cuSeqLensKOptional。
-  - sparseIndices中有效位置必须位于当前batch的key序列范围内；无效位置使用-1填充。
+  - seqUsedQOptional、seqUsedKOptional存在时，每个值必须位于对应batch的分配长度范围内；BSND的分配长度分别为S1、S2，TND的分配长度为对应cuSeqLens相邻元素之差。
+  - sparseIndices中有效位置必须位于当前batch的有效key序列范围内；传入seqUsedKOptional时以seqUsedKOptional对应值为上界，无效位置使用-1填充。
   - attnSoftmaxL1Norm的无效top-k位置建议置零，并与sparseIndices的有效位置保持一致。
 
     <table style="undefined;table-layout: fixed; width: 942px">
@@ -708,7 +697,7 @@ int main() {
   const int64_t headDim = 128;
   const int64_t topk = 512;
   const int64_t maskMode = 3;
-  const int64_t cmpRatio = 4;
+  const int64_t cmpRatio = 1;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};

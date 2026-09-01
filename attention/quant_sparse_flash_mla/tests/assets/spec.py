@@ -41,24 +41,41 @@ def load_impl_module(stem):
     return module
 
 
+npu_preprocess_module = load_impl_module("npu_preprocess")
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
+metadata_inputs_module = load_impl_module("metadata_inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class QuantSparseFlashMlaSpec:
     golden = golden_module.cpu_quant_sparse_flash_mla
     customize_inputs = inputs_module.generate_quant_sparse_flash_mla_inputs
+    npu_preprocess = npu_preprocess_module.run
     tolerance = {
         "bfloat16": {"standard": "stat_rel_err"},
         "float16": {"standard": "stat_rel_err"},
     }
 
     compare = staticmethod(compare_module.compare)
-    torch_graph = graph_module.QuantSparseFlashMlaAclGraph
+
+
+class AclnnQuantSparseFlashMlaSpec(QuantSparseFlashMlaSpec):
+    golden = golden_module.cpu_aclnn_quant_sparse_flash_mla
+    customize_inputs = inputs_module.generate_aclnn_quant_sparse_flash_mla_inputs
+    npu_preprocess = npu_preprocess_module.run_aclnn
+
+
+class QuantSparseFlashMlaMetadataSpec:
+    customize_inputs = (
+        metadata_inputs_module.generate_quant_sparse_flash_mla_metadata_inputs
+    )
 
 
 __spec__ = {
-    "qsmla_ttk_ops.quant_sparse_flash_mla_ttk": "QuantSparseFlashMlaSpec",
+    "torch.ops.cann_ops_transformer.quant_sparse_flash_mla": "QuantSparseFlashMlaSpec",
+    "torch.ops.cann_ops_transformer.quant_sparse_flash_mla_metadata": (
+        "QuantSparseFlashMlaMetadataSpec"
+    ),
+    "aclnnQuantSparseFlashMla": "AclnnQuantSparseFlashMlaSpec",
 }

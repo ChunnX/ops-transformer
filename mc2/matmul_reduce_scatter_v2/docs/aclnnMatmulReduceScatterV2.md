@@ -445,7 +445,6 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 输出为2维，其shape为\(m/rank\_size, n\), rank\_size为卡数。
     - 不支持空tensor。
     - x1和x2的数据类型需要保持一致。
-    - bias数据类型与x1关联：当x1和x2数据类型为FLOAT16时，bias数据类型必须为FLOAT16；当x1和x2数据类型为BFLOAT16时，bias数据类型必须为BFLOAT16；当x1和x2数据类型为INT8时，bias数据类型必须为FLOAT。
     - 支持2、4、8卡。
 
 <!-- end id15 -->
@@ -477,7 +476,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     #define LOG_PRINT(message, ...)         \
         do {                                \
             printf(message, ##__VA_ARGS__); \
-        } while(0)
+        } while (0)
 
     constexpr int DEV_NUM = 2;
 
@@ -501,7 +500,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i +1] * strides[i + 1];
+            strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
             shape.data(), shape.size(), *deviceAddr);
@@ -721,7 +720,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     #define LOG_PRINT(message, ...)         \
         do {                                \
             printf(message, ##__VA_ARGS__); \
-        } while(0)
+        } while (0)
 
     constexpr int DEV_NUM = 2;
     constexpr const char *COMM_MODE = "ccu";
@@ -746,7 +745,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i +1] * strides[i + 1];
+            strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
             shape.data(), shape.size(), *deviceAddr);

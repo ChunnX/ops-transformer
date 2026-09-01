@@ -15,6 +15,7 @@ import os
 import sys
 from typing import List, Optional
 
+import numpy as np
 import torch
 
 _ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,13 +29,79 @@ logger = logging.getLogger(__name__)
 __input__ = {"e2e": {"qfa_mxfp4_wrapper.npu_qfa_mxfp4": "generate_qfa_mxfp4_inputs"}}
 
 
-def get_cached_inputs():
-    """wrapper 调用前从这里取 customize_inputs 生成的真实数据."""
-    return getattr(golden_mod, "_cached_data", None)
+# 环境变量 QFA_PASS_THROUGH=1 时跳过 golden_mod.generate_data() (含 _resolve_s /
+# transpose_qscale / rearrange_by_layout / v_descale.view 等所有会报错的步骤),
+# CSV 框架分配的 tensor 槽位保持原样透传给 wrapper, 由 wrapper 的 _PASS_THROUGH 分支
+# 或 op_host checker 处理. 用于异常用例测试 (s=0 / kv shape 不一致 / D 不支持 /
+# descale 维度异常 / seq 缺失 等), 在 CSV 配异常 shape + 设本开关即可.
+_PASS_THROUGH = os.environ.get("QFA_PASS_THROUGH", "").lower() in ("1", "true", "yes")
+
+
+def _apply_golden_globals(attrs):
+    for k, v in attrs.items():
+        setattr(golden_mod, k, v)
+
+
+def _inplace_write(dst, src_torch, slot_name):
+    if dst is None:
+        raise ValueError(f"[INPUTS] {slot_name}: dst is None, CSV 未分配该张量槽位")
+    if hasattr(dst, "numpy"):  # torch tensor
+        dst_t = dst
+        if tuple(dst_t.shape) != tuple(src_torch.shape):
+            logger.warning(
+                "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+                slot_name,
+                tuple(dst_t.shape),
+                tuple(src_torch.shape),
+            )
+            adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_t.shape)
+            if dst_t.dtype == adapted.dtype:
+                dst_t[...] = adapted
+            else:
+                dst_t[...] = adapted.to(dst_t.dtype)
+            return
+        if dst_t.dtype == src_torch.dtype:
+            dst_t[...] = src_torch
+        elif dst_t.dtype == torch.uint8 and src_torch.dtype == torch.uint8:
+            dst_t[...] = src_torch
+        else:
+            dst_t[...] = src_torch.to(dst_t.dtype)
+        return
+    # numpy array
+    dst_np = np.asarray(dst)
+    if tuple(dst_np.shape) != tuple(src_torch.shape):
+        logger.warning(
+            "[INPUTS] %s shape mismatch: CSV %s != computed %s, 按 CSV shape 适配",
+            slot_name,
+            tuple(dst_np.shape),
+            tuple(src_torch.shape),
+        )
+        adapted = golden_mod._adapt_tensor_to_shape(src_torch, dst_np.shape)
+        src_np = (
+            adapted.numpy() if adapted.device.type == "cpu" else adapted.cpu().numpy()
+        )
+        if src_np.dtype != dst_np.dtype:
+            src_np = (
+                src_np.view(dst_np.dtype)
+                if src_np.dtype.itemsize == dst_np.dtype.itemsize
+                else src_np.astype(dst_np.dtype)
+            )
+        dst_np[...] = src_np
+        return
+    src_np = (
+        src_torch.numpy() if src_torch.device.type == "cpu" else src_torch.cpu().numpy()
+    )
+    if src_np.dtype != dst_np.dtype:
+        src_np = (
+            src_np.view(dst_np.dtype)
+            if src_np.dtype.itemsize == dst_np.dtype.itemsize
+            else src_np.astype(dst_np.dtype)
+        )
+    dst_np[...] = src_np
 
 
 def generate_qfa_mxfp4_inputs(
-    # ========== Tensor inputs (TTK 占位) ==========
+    # ========== Tensor inputs (CSV 框架分配, 原位写入) ==========
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -100,13 +167,11 @@ def generate_qfa_mxfp4_inputs(
     cu_seqlens_q_dtype: str = None,
     cu_seqlens_kv_dtype: str = None,
     softmax_lse_dtype: str = None,
+    # metadata 伪 tensor 入参 (对齐 run_main 签名, PASS_THROUGH 时按表格构造)
+    metadata_shape: List[int] = None,
+    metadata_dtype: str = None,
     **kwargs,
 ):
-    """生成 BNSD FP32 Q/K/V -> MXFP4 量化 -> 缓存到 golden_mod._cached_data.
-
-    TTK 调用本函数后忽略返回值, wrapper/golden 从 golden_mod._cached_data 取真实数据.
-    参数签名须与 npu_qfa_mxfp4 wrapper 保持一致 (TTK 按 wrapper 签名透传位置参数).
-    """
     # 注入 golden 全局变量 (generate_data 读这些配置)
     _apply_golden_globals(
         {
@@ -139,13 +204,12 @@ def generate_qfa_mxfp4_inputs(
             "DATA_RANGE_Q": data_range_q,
             "DATA_RANGE_K": data_range_k,
             "DATA_RANGE_V": data_range_v,
-            "ACT_SEQ_LENS_Q": list(act_seq_lens_q),
-            "ACT_SEQ_LENS_KV": list(act_seq_lens_kv),
+            "ACT_SEQ_LENS_Q": list(act_seq_lens_q) if act_seq_lens_q else [],
+            "ACT_SEQ_LENS_KV": list(act_seq_lens_kv) if act_seq_lens_kv else [],
             "MAX_SEQLEN_Q": max_seqlen_q,
             "MAX_SEQLEN_KV": max_seqlen_kv,
             "CU_SEQLENS_Q": list(cu_seqlens_q) if cu_seqlens_q else [],
             "CU_SEQLENS_KV": list(cu_seqlens_kv) if cu_seqlens_kv else [],
-            # 可选 tensor 入参 (shape 为空 -> golden 传 None)
             "BLOCK_TABLE_SHAPE": list(block_table_shape) if block_table_shape else [],
             "BLOCK_TABLE_DTYPE": block_table_dtype,
             "P_SCALE_VALUE": p_scale_value,
@@ -158,7 +222,6 @@ def generate_qfa_mxfp4_inputs(
             "ATTN_MASK_SHAPE": list(attn_mask_shape) if attn_mask_shape else [],
             "ATTN_MASK_DTYPE": attn_mask_dtype,
             "ATTN_MASK_DATARANGE": attn_mask_datarange,
-            # dtype 透传 (表格不传 -> None, golden 侧用默认值)
             "Q_DESCALE_DTYPE": q_descale_dtype,
             "K_DESCALE_DTYPE": k_descale_dtype,
             "V_DESCALE_DTYPE": v_descale_dtype,
@@ -167,22 +230,58 @@ def generate_qfa_mxfp4_inputs(
             "CU_SEQLENS_Q_DTYPE": cu_seqlens_q_dtype,
             "CU_SEQLENS_KV_DTYPE": cu_seqlens_kv_dtype,
             "SOFTMAX_LSE_DTYPE": softmax_lse_dtype,
+            "METADATA_SHAPE": list(metadata_shape) if metadata_shape else [],
+            "METADATA_DTYPE": metadata_dtype,
         }
     )
 
-    # 调 golden_mod.generate_data 生成真实 MXFP4 数据 (同时缓存 BNSD 形式给 CPU golden)
-    data_dict = golden_mod.generate_data()
-    golden_mod._cached_data = data_dict
+    # 数据准备分两种模式:
+    #   1) QFA_PASS_THROUGH=1: 跳过 generate_data, CSV 框架分配的 tensor 槽位保持原样
+    #      (随机/零初始化) 透传给 wrapper, 由 wrapper 的 _PASS_THROUGH 分支拼 fallback
+    #      data_dict 喂 NPU 算子, op_host 拦截非法输入. 用于异常用例.
+    #   2) 都不设: 走 generate_data 完整流程; 任意异常也跳过原位写 (CSV tensor 保持原样),
+    #      由 wrapper 的 try/except 兜底回退到 fallback data_dict.
+    if _PASS_THROUGH:
+        logger.info(
+            "[INPUTS] QFA_PASS_THROUGH=1, 跳过 generate_data, CSV tensor 保持原样透传给 wrapper"
+        )
+        return
+
+    golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
+    try:
+        data_dict = golden_mod.generate_data()
+    except Exception as e:
+        logger.warning(
+            "[INPUTS] generate_data 失败: %s, CSV tensor 保持原样透传给 wrapper",
+            str(e),
+        )
+        return
+    finally:
+        golden_mod._clear_physical_s_override()
+
+    # 原位写 CSV 框架分配的张量 (q/k/v/q_descale/k_descale/v_descale)
+    _inplace_write(q, data_dict["q"], "q (slot 0)")
+    _inplace_write(k, data_dict["k"], "k (slot 1)")
+    _inplace_write(v, data_dict["v"], "v (slot 2)")
+    _inplace_write(q_descale, data_dict["q_descale"], "q_descale (slot 3)")
+    _inplace_write(k_descale, data_dict["k_descale"], "k_descale (slot 4)")
+    _inplace_write(v_descale, data_dict["v_descale"], "v_descale (slot 5)")
+
+    # block_table: CSV 分配了 int32 张量槽位; generate_data 里 continue KV 模式下为 None
+    bt_src = data_dict.get("block_table")
+    if block_table is not None:
+        if bt_src is not None:
+            _inplace_write(block_table, bt_src.to(torch.int32), "block_table (slot 6)")
+        else:
+            # continue KV: block_table 槽位填 0 (算子内部不使用)
+            block_table[...] = 0
+
     logger.info(
-        "[INPUTS] 已缓存 MXFP4 数据到 golden_mod._cached_data, q=%s, k=%s, v=%s",
-        data_dict["q"].shape,
-        data_dict["k"].shape,
-        data_dict["v"].shape,
+        "[INPUTS] in-place wrote MXFP4 q/k/v (q=%s), e8m0 descale (dq=%s, dk=%s, dv=%s), "
+        "block_table (pa=%s)",
+        tuple(q.shape),
+        tuple(q_descale.shape),
+        tuple(k_descale.shape),
+        tuple(v_descale.shape),
+        bt_src is not None,
     )
-    # 无返回值 (符合 TTK 约定)
-
-
-def _apply_golden_globals(attrs):
-    """把 case attributes 注入 golden 模块全局变量."""
-    for k, v in attrs.items():
-        setattr(golden_mod, k, v)

@@ -30,6 +30,11 @@ struct TilingRequiredParaInfo {
     const gert::StorageShape *shape;
 };
 
+struct TilingOptionalParaInfo {
+    const gert::CompileTimeTensorDesc *desc;
+    const gert::Tensor *tensor;
+};
+
 constexpr uint32_t QFLAT_INDEX = 0;
 constexpr uint32_t KFLAT_INDEX = 1;
 constexpr uint32_t VBIAS_INDEX = 2;
@@ -63,6 +68,7 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t STEM_BLOCK_SIZE_LIMIT = 128;
 constexpr uint32_t STEM_STRIDE_LIMIT = 16;
 constexpr uint32_t HEAD_DIM_LIMIT = 2048;
+constexpr uint32_t BATCH_SIZE_LIMIT = 65536U;
 constexpr uint32_t INITIAL_BLOCKS_LIMIT = 4;
 constexpr uint32_t WINDOW_SIZE_LIMIT = 4;
 constexpr uint64_t STEM_INDEXER_METADATA_HEADER_ELEMS = 16U;
@@ -75,7 +81,7 @@ constexpr uint32_t Q_HEAD_NUM_64 = 64;
 constexpr uint32_t KV_HEAD_NUM_2 = 2;
 constexpr uint32_t KV_HEAD_NUM_4 = 4;
 constexpr uint32_t KV_HEAD_NUM_8 = 8;
-constexpr uint32_t STEM_M_BASE_SIZE = 96;
+constexpr uint32_t STEM_M_BASE_SIZE = 64;
 constexpr uint32_t STEM_S2_BASE_SIZE = 256;
 constexpr float ALPHA_MIN = 0.0f;
 constexpr float ALPHA_MAX = 1.0f;
@@ -90,10 +96,9 @@ constexpr int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
 constexpr uint64_t CalcStemIndexerMetadataCapacity(uint64_t batchSize, uint64_t kvHeadNum)
 {
     uint64_t maxSectionNum = batchSize * kvHeadNum;
-    uint64_t requiredElems =
-        STEM_INDEXER_METADATA_HEADER_ELEMS +
-        maxSectionNum * (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
-            STEM_INDEXER_METADATA_CORE_STRIDE;
+    uint64_t requiredElems = STEM_INDEXER_METADATA_HEADER_ELEMS +
+                             maxSectionNum * (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
+                                 STEM_INDEXER_METADATA_CORE_STRIDE;
     return (requiredElems + STEM_INDEXER_METADATA_ALIGN_ELEMS - 1U) / STEM_INDEXER_METADATA_ALIGN_ELEMS *
            STEM_INDEXER_METADATA_ALIGN_ELEMS;
 }
@@ -120,6 +125,7 @@ TILING_DATA_FIELD_DEF(float, kBlockNumRateMedium)
 TILING_DATA_FIELD_DEF(uint32_t, kBlockNumBiasMedium)
 TILING_DATA_FIELD_DEF(float, kBlockNumRateLarge)
 TILING_DATA_FIELD_DEF(uint32_t, kBlockNumBiasLarge)
+TILING_DATA_FIELD_DEF(uint32_t, useKvSeqLensAsNumPrompt)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(StemIndexer, StemIndexerTilingData)
 
@@ -131,8 +137,8 @@ struct StemIndexerParaInfo {
     TilingRequiredParaInfo vbias = {nullptr, nullptr};
     TilingRequiredParaInfo qSeqLens = {nullptr, nullptr};
     TilingRequiredParaInfo kvSeqLens = {nullptr, nullptr};
-    TilingRequiredParaInfo numPromptTokens = {nullptr, nullptr};
-    TilingRequiredParaInfo metadata = {nullptr, nullptr};
+    TilingOptionalParaInfo numPromptTokens = {nullptr, nullptr};
+    TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo sparseIndicesOut = {nullptr, nullptr};
     TilingRequiredParaInfo sparseSeqLenOut = {nullptr, nullptr};
 
@@ -162,6 +168,7 @@ public:
     uint32_t maxQb = 0;
     uint32_t maxKb = 0;
     uint32_t headDim = 0;
+    bool useKvSeqLensAsNumPrompt = false;
     bool causal = true;
     uint32_t stemBlockSize = STEM_BLOCK_SIZE_LIMIT;
     uint32_t stemStride = STEM_STRIDE_LIMIT;
@@ -181,9 +188,9 @@ public:
 
 class StemIndexerInfoParser {
 public:
-    explicit StemIndexerInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit StemIndexerInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~StemIndexerInfoParser() = default;
 
     ge::graphStatus GetOpName();
@@ -201,9 +208,9 @@ public:
     void GenerateInfo(StemIndexerTilingInfo &stemInfo);
 
 private:
-    bool IsFloatEqual(float lhs, float rhs) const;
-    bool IsSupportedQHeadNum(uint32_t qHeadNum) const;
-    bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
+    __attribute__((noinline)) bool IsFloatEqual(float lhs, float rhs) const;
+    __attribute__((noinline)) bool IsSupportedQHeadNum(uint32_t qHeadNum) const;
+    __attribute__((noinline)) bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
 
 private:
     gert::TilingContext *context_ = nullptr;
@@ -218,6 +225,7 @@ private:
     uint32_t maxQb_ = 0;
     uint32_t maxKb_ = 0;
     uint32_t headDim_ = 0;
+    bool useKvSeqLensAsNumPrompt_ = false;
     ge::DataType inputQType_ = ge::DT_BF16;
     ge::DataType inputKType_ = ge::DT_BF16;
     ge::DataType vbiasType_ = ge::DT_FLOAT;
@@ -228,9 +236,9 @@ private:
 
 class StemIndexerTiling {
 public:
-    explicit StemIndexerTiling(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit StemIndexerTiling(gert::TilingContext *context)
+        : context_(context)
+    {}
     ge::graphStatus DoTiling(const StemIndexerTilingInfo *tilingInfo);
 
 private:

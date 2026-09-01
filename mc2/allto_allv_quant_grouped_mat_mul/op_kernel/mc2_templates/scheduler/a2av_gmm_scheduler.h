@@ -88,6 +88,10 @@ public:
     {
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
+            if ASCEND_IS_AIC {
+                AscendC::CrossCoreSetFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
+                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIC_BARRIER, PIPE_S>(SYNC_FLAG_ID_AIC_BARRIER);
+            }
         }
         ProcessCommRoundMode();
         this->End();
@@ -135,7 +139,7 @@ private:
 #endif
                 computeOp.Process(start, actualExpertNum);
                 AscendC::CrossCoreSetFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
-                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
+                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIC_BARRIER, PIPE_S>(SYNC_FLAG_ID_AIC_BARRIER);
             }
         }
     }

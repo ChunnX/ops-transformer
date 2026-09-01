@@ -16,6 +16,8 @@
 #ifndef MOE_EP_COMBINE_TILING_H
 #define MOE_EP_COMBINE_TILING_H
 
+#include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
+
 struct MoeEpCommonTilingData {
     uint32_t epWorldSize;
     uint32_t epRankId;
@@ -32,12 +34,9 @@ struct MoeEpCommonTilingData {
 
 struct MoeEpCombineInfo {
     MoeEpCommonTilingData cfg;
+    MoeEpDumpMetadata dumpMetadata;
     uint32_t hasTopkWeights = 0;
     uint32_t aivNum = 0;
-    uint32_t networkMode = 0;
-    uint32_t rankSizePerServer = 1;
-    uint32_t numScaleoutRanks = 1;
-    uint32_t scaleoutSlotAlignedBytes = 0;
     uint64_t totalWinSizeEp = 0;
     uint64_t totalUbSize = 0;
     uint64_t sendDataWorkspaceSizePerRank = 0; // N * K * actual perSlotBytes

@@ -23,7 +23,8 @@ std::string QfaLayoutToSerialString(QfaLayout layout)
     const std::map<QfaLayout, std::string> layout2Str = {
         {QfaLayout::BSND, "BSND"},       {QfaLayout::BNSD, "BNSD"},       {QfaLayout::TND, "TND"},
         {QfaLayout::PA_BBND, "PA_BBND"}, {QfaLayout::PA_BNBD, "PA_BNBD"}, {QfaLayout::PA_NZ, "PA_NZ"},
-        {QfaLayout::LSE_BNS, "LSE_BNS"}, {QfaLayout::LSE_NT, "LSE_NT"},   {QfaLayout::N2TGD, "N2TGD"}};
+        {QfaLayout::LSE_BNS, "LSE_BNS"}, {QfaLayout::LSE_NT, "LSE_NT"},   {QfaLayout::N2TGD, "N2TGD"},
+        {QfaLayout::NTD, "NTD"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
@@ -31,7 +32,7 @@ std::string QfaLayoutToSerialString(QfaLayout layout)
     return "UNKNOWN";
 }
 
-static const std::string QFA_AXIS_SERIAL_STRINGS[] = {"B", "S", "N", "D", "H", "T", "D1",
+static const std::string QFA_AXIS_SERIAL_STRINGS[] = {"B",  "S",  "N",  "D",  "H",  "T",    "D1",
                                                       "D0", "S1", "S2", "Bn", "Bs", "CONST"};
 
 std::string QfaAxisToSerialString(QfaAxis axis)
@@ -45,7 +46,10 @@ std::string QfaQuantModeToSerialString(QfaQuantMode qfaQuantMode)
 {
     const std::map<QfaQuantMode, std::string> quantMode2Str = {
         {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-         "A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"}};
+         "A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"},
+        {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
+         "A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32"},
+        {QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32, "A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32"}};
 
     if (quantMode2Str.find(qfaQuantMode) != quantMode2Str.end()) {
         return quantMode2Str.at(qfaQuantMode);

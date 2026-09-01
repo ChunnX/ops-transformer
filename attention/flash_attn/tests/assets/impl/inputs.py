@@ -71,6 +71,15 @@ def _fill_attn_mask(attn_mask, mask_mode, win_left=-1, win_right=-1):
     attn_mask.copy_(mask.to(dtype=attn_mask.dtype, device=attn_mask.device))
 
 
+def zero_metadata(metadata):
+    if metadata is None:
+        return
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata[...] = 0
+
+
 def customize_inputs(
     q,
     k,
@@ -104,8 +113,24 @@ def customize_inputs(
     """
     block_size = kwargs.get("block_size")
 
+    # 小整数张量(cu_seqlens/seqused)的值经 *_values attr 传入(避免与
+    # TTK match_overload 的输入计数冲突), 必须先于 block_table 填充,
+    # 否则 _fill_block_table 会读到随机值导致分页表错误
+    for name, tensor in (
+        ("cu_seqlens_q", cu_seqlens_q),
+        ("cu_seqlens_kv", cu_seqlens_kv),
+        ("seqused_q", seqused_q),
+        ("seqused_kv", seqused_kv),
+    ):
+        values = kwargs.get(f"{name}_values")
+        if tensor is not None and values is not None:
+            t = torch.tensor(list(values), dtype=tensor.dtype)
+            tensor.copy_(t.to(device=tensor.device))
+
     if torch.is_tensor(block_table):
         _fill_block_table(block_table, seqused_kv, block_size)
 
     if mask_mode in (3, 4):
         _fill_attn_mask(attn_mask, mask_mode, win_left, win_right)
+
+    zero_metadata(metadata)
