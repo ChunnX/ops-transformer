@@ -2163,5 +2163,5 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_inner_precise_2_withou
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     const uint64_t tilingKey = static_cast<uint64_t>(tilingInfo.tilingKey);
     EXPECT_EQ((tilingKey >> 2) & 0x3, 2);  // ImplMode
-    EXPECT_EQ((tilingKey >> 56) & 0x1, 0); // HasAtten
+    EXPECT_EQ((tilingKey >> 56) & 0x1, 1); // Reuse the HasAtten kernel; tiling data still records no real mask.
 }

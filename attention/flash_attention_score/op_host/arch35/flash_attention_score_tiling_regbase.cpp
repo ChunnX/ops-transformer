@@ -864,6 +864,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInputDimNumLimit(cons
 
 bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
 {
+    inputParamsRegbase_->set_attenMaskS2Size(0);
     auto attenMaskInput = context_->GetOptionalInputDesc(ATTENTION_MASK_INPUT_INDEX);
     auto attenMaskShape = context_->GetOptionalInputShape(ATTENTION_MASK_INPUT_INDEX);
     if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0) {
@@ -1191,9 +1192,10 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
                return ge::GRAPH_FAILED);
     SetSparseTilingInfo(sparseType);
     inputParamsRegbase_->set_implMode(static_cast<uint8_t>(implMode));
-    const bool supportInvalidLineModeWithoutMask =
-        inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16;
-    implMode = ((hasAttenMask || supportInvalidLineModeWithoutMask) && inputDtypeBytes != DATA_TYPE_FP32)
+    const bool enableInvalidLineModeWithoutMask =
+        implMode == ImplMode::AA_INVALID_LINE_HIGH_PRECISION &&
+        (inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16);
+    implMode = ((hasAttenMask || enableInvalidLineModeWithoutMask) && inputDtypeBytes != DATA_TYPE_FP32)
                    ? implMode
                    : ImplMode::AA_HIGH_PRECISION;
     if (!isSparseValidSizeAligned) {
