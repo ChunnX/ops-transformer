@@ -22,6 +22,11 @@
 #else
 #include "kernel_operator.h"
 #endif
+#if __has_include("../../../../common/quantize_functions.h")
+#include "../../../../common/quantize_functions.h"
+#else
+#include "../../../../../common/op_kernel/quantize_functions.h"
+#endif
 #include "../../common/mega_moe_constants.h"
 #include "../../common/mega_moe_utils.h"
 #include "activation/activation_common.h"
@@ -30,7 +35,6 @@
 #include "activation/swigluoai_activation.h"
 #include "block_epilogue_ub_layout.h"
 #include "quant/mx_quant_common.h"
-#include "quant/mx_quant_compute_scale.h"
 #include "quant/mxfp4_quant.h"
 #include "quant/mxfp8_quant.h"
 
@@ -356,12 +360,9 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
     const uint32_t scaleCount = dataCount / ONE_BLK_SIZE;
     const uint16_t dataLoopCount = static_cast<uint16_t>((dataCount + MxQuant::DATA_ELEMENT_COUNT_PER_LOOP - 1) /
                                                          MxQuant::DATA_ELEMENT_COUNT_PER_LOOP);
-    const uint16_t scaleLoopCount = static_cast<uint16_t>((scaleCount + MxQuant::SCALE_ELEMENT_COUNT_PER_VECTOR - 1) /
-                                                          MxQuant::SCALE_ELEMENT_COUNT_PER_VECTOR);
 
-    MxQuant::ComputeGroupMaxExp(ubPointers.activationOutput, ubPointers.maxExp, dataCount, dataLoopCount);
-    MxQuant::ComputeMxScale<DataTypeOut>(ubPointers.maxExp, ubPointers.quantScale, ubPointers.reciprocalScale,
-                                         scaleCount, scaleLoopCount);
+    Quant::ComputeMaxExp<bfloat16_t>(ubPointers.activationOutput, ubPointers.maxExp, dataCount);
+    Quant::ComputeScale<DataTypeOut>(ubPointers.maxExp, ubPointers.quantScale, ubPointers.reciprocalScale, scaleCount);
     if constexpr (IsSameType<DataTypeOut, fp8_e4m3fn_t>::value || IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         MxQuant::QuantizeMxFp8Data<DataTypeOut>(ubPointers.activationOutput, ubPointers.reciprocalScale,
                                                 ubPointers.quantOutput, dataCount, dataLoopCount);
