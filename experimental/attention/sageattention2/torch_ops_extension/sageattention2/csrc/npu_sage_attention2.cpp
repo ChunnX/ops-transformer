@@ -5,7 +5,7 @@
 
 #include <tuple>
 #include <torch/library.h>
-#include "../../../../quant_block_sparse_attn/torch_ops_extension/custom_ops/csrc/ops_common.h"
+#include "ops_common.h"
 
 namespace sageattention2 {
 using namespace at_npu::native;

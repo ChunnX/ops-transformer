@@ -14,18 +14,6 @@ from torch_npu.utils.cpp_extension import NpuExtension
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 TORCH_NPU_PATH = os.path.dirname(os.path.abspath(torch_npu.__file__))
 sources = glob.glob(os.path.join(BASE_DIR, "sageattention2", "csrc", "*.cpp"))
-# Reuse the repository's common aclnn dynamic-loader implementation. The header is included directly by the
-# SageAttention2 wrapper; compiling this source supplies its loader symbols.
-sources.append(os.path.join(
-    BASE_DIR,
-    "..",
-    "..",
-    "quant_block_sparse_attn",
-    "torch_ops_extension",
-    "custom_ops",
-    "csrc",
-    "ops_common.cpp",
-))
 
 # torch_npu 2.7 exposes the PyTorch float8 scalar types even when it is paired
 # with a CANN 9.0 ACL header that predates the corresponding aclDataType names.
