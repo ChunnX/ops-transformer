@@ -86,7 +86,8 @@ struct AllGatherMatmulV2TilingUtParam : public AllGatherMatmulV2HostUtParamBase 
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    explicit AllGatherMatmulV2TilingUtParam(const csv_map &csvMap) : AllGatherMatmulV2HostUtParamBase(csvMap)
+    explicit AllGatherMatmulV2TilingUtParam(const csv_map &csvMap)
+        : AllGatherMatmulV2HostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));

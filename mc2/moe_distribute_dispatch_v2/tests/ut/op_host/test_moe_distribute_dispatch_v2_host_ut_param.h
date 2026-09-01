@@ -90,7 +90,8 @@ struct MoeDistributeDispatchV2TilingUtParam : public MoeDistributeDispatchV2Host
     uint64_t ranksize;
     uint64_t expectTilingKey;
 
-    MoeDistributeDispatchV2TilingUtParam(const csv_map &csvMap) : MoeDistributeDispatchV2HostUtParamBase(csvMap)
+    MoeDistributeDispatchV2TilingUtParam(const csv_map &csvMap)
+        : MoeDistributeDispatchV2HostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x_shape", "x_dtype", "x_format", x));
         this->inputInstance.emplace_back(

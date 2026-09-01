@@ -61,7 +61,8 @@ struct AllGatherMatmulTilingUtParam : public AllGatherMatmulHostUtParamBase {
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    AllGatherMatmulTilingUtParam(const csv_map &csvMap) : AllGatherMatmulHostUtParamBase(csvMap)
+    AllGatherMatmulTilingUtParam(const csv_map &csvMap)
+        : AllGatherMatmulHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
@@ -91,7 +92,8 @@ struct AllGatherMatmulInferShapeUtParam : public AllGatherMatmulHostUtParamBase 
     gert::InfershapeContextPara::TensorDescription gather_out = ID_DEFAULT;
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    AllGatherMatmulInferShapeUtParam(const csv_map &csvMap) : AllGatherMatmulHostUtParamBase(csvMap)
+    AllGatherMatmulInferShapeUtParam(const csv_map &csvMap)
+        : AllGatherMatmulHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
@@ -113,7 +115,8 @@ struct AllGatherMatmulInferDataTypeUtParam : public AllGatherMatmulHostUtParamBa
     ge::DataType y = ge::DT_UNDEFINED;
     ge::DataType gather_out = ge::DT_UNDEFINED;
 
-    AllGatherMatmulInferDataTypeUtParam(const csv_map &csvMap) : AllGatherMatmulHostUtParamBase(csvMap)
+    AllGatherMatmulInferDataTypeUtParam(const csv_map &csvMap)
+        : AllGatherMatmulHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", x1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", x2));

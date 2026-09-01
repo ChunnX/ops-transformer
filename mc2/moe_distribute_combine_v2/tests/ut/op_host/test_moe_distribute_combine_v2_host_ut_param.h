@@ -96,7 +96,8 @@ struct MoeDistributeCombineV2TilingUtParam : public MoeDistributeCombineV2HostUt
     uint64_t ranksize;
     uint64_t expectTilingKey;
 
-    MoeDistributeCombineV2TilingUtParam(const csv_map &csvMap) : MoeDistributeCombineV2HostUtParamBase(csvMap)
+    MoeDistributeCombineV2TilingUtParam(const csv_map &csvMap)
+        : MoeDistributeCombineV2HostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "expand_x_shape", "expand_x_dtype", "expand_x_format", expand_x));
