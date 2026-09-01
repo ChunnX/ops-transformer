@@ -72,6 +72,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     TILING_KEY_IS(1001311000000001212);
     TILING_KEY_IS(1001311000000021212);
     TILING_KEY_IS(1002122000000021012);
+    TILING_KEY_IS(1001121000000021012);
     TILING_KEY_IS(1000000000000000090);
     #if TILING_KEY_VAR == 1002312000040001212
         // BNSD layout HighPerformance, No mask, No pse, 常量化, D128, useDn
@@ -98,6 +99,11 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         INVOKE_PFA_GENERAL_OP_IMPL_REGBASE_V2_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferRegbaseV2, half, half, int8_t, ImplModeEnum::AA_HIGH_PERFORMANCE,
             LayOutTypeEnum::LAYOUT_BNSD, S1TemplateType::Aligned64, S2TemplateType::Aligned256,
             DTemplateType::Aligned128, DTemplateType::Aligned128, PseTypeEnum::PSE_NONE_TYPE, false, false, false, true, false, false);
+    #elif TILING_KEY_VAR == 1001121000000021012
+        // BNSD layout HighPerformance, No mask, No pse, 常量化, D64, S1Base=64, S2Base=256, int8输出
+        INVOKE_PFA_GENERAL_OP_IMPL_REGBASE_V2_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferRegbaseV2, half, half, int8_t, ImplModeEnum::AA_HIGH_PERFORMANCE,
+            LayOutTypeEnum::LAYOUT_BNSD, S1TemplateType::Aligned64, S2TemplateType::Aligned256,
+            DTemplateType::Aligned64, DTemplateType::Aligned64, PseTypeEnum::PSE_NONE_TYPE, false, false, false, true, false, false);
     #elif TILING_KEY_VAR == 1000000000000000090
         INVOKE_PFA_DUMMY();
     #endif
