@@ -11,7 +11,7 @@
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -46,6 +46,12 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
+  <!-- npu="910b" id12 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持`aiv`和`ai_cpu`。
+  <!-- end id12 -->
+  <!-- npu="A3" id13 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持`aiv`和`ai_cpu`。
+  <!-- end id13 -->
   <!-- npu="950" id7 -->
   - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 
@@ -186,7 +192,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
         <td>commMode(char*)</td>
         <td>输入</td>
         <td>指定当前通信类型。</td>
-        <td>支持输入"ai_cpu"和"ccu"。</td>
+        <td><term>Atlas A2系列产品</term>支持输入"aiv"和"ai_cpu"；<br><term>Atlas A3系列产品</term>支持输入"aiv"和"ai_cpu"；<br><term>Ascend 950DT</term>支持输入"ai_cpu"和"ccu"。</td>
         <td>STRING</td>
         <td>-</td>
         <td>-</td>
@@ -196,7 +202,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
         <td>epWorldSize（int64_t）</td>
         <td>输入</td>
         <td>ep通信域的大小。</td>
-        <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950DT</term>支持2、4、8、16、32、64。</td>
+        <td><term>Atlas A2系列产品</term>在commMode为"aiv"时支持2、4、8；<br><term>Atlas A3系列产品</term>在commMode为"aiv"时支持2、4、8、16、32、64、128；<br><term>Ascend 950DT</term>支持2、4、8、16、32、64。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -380,8 +386,11 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 
 - 通信引擎约束：
 
+  <!-- npu="910b" id14 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持AIV和AICPU通信；AIV模式的epWorldSize支持2、4、8。
+  <!-- end id14 -->
   <!-- npu="A3" id8 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AIV和AICPU通信；AIV模式的epWorldSize支持2、4、8、16、32、64、128。
   <!-- end id8 -->
   <!-- npu="950" id9 -->
   - <term>Ascend 950DT</term>：支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
