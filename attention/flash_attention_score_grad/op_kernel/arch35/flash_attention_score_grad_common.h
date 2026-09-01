@@ -30,35 +30,10 @@ using AscendC::Cast;
 using AscendC::RoundMode;
 
 namespace commondef {
-constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
-constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
-constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
-constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
-constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
-constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
-constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
-constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
-constexpr uint8_t SYNC_DETER_FIX_FLAG = 10;
-constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
-constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
-// for small D preload 2 times
-constexpr uint8_t SYNC_V2_TO_C1_FLAG[2] = {10, 11};
-constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {12, 13};
-
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
 constexpr uint8_t DK_IDX = 1;
 constexpr uint8_t DV_IDX = 2;
-
-// quant flag
-constexpr uint8_t SYNC_COMPUTE_DKV_FLAG = 2;
-constexpr uint8_t SYNC_TRANSFER_DKV_FLAG = 3;
-constexpr uint8_t SYNC_TRANSFER_DQ_FLAG = 4;
-constexpr uint8_t SYNC_UB2L1_P_FLAG = 9;
-constexpr uint8_t SYNC_UB2L1_DS_FLAG = 10;
-constexpr uint8_t SYNC_PDS_TO_DKV_FLAG = 8;
-constexpr uint8_t SYNC_PDS_TO_DQ_FLAG = 7;
-constexpr uint8_t SYNC_DETER_FLAG = 11;
 
 // 最小Swizzle块数量
 constexpr uint32_t MIN_SWIZZLE_S1 = 16384;
@@ -137,6 +112,70 @@ constexpr uint8_t DETER_OLD = 1;
 constexpr uint8_t DETER_DENSE = 2;
 constexpr uint8_t DETER_CAUSAL = 3;
 constexpr uint8_t DETER_BAND = 4;
+
+template <bool IS_PRELOAD_TWO_TIMES, bool IS_OLD_DETER, bool IS_NEW_DETER, bool IS_NEW_DETER_BN2S2>
+struct FagCrossCoreEventId;
+
+template <>
+struct FagCrossCoreEventId<false, false, false, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
+    static constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
+    static constexpr uint8_t SYNC_MM_RES_REUSE_FLAG = 10;
+};
+
+template <>
+struct FagCrossCoreEventId<true, false, false, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_UB2L1_DS_FLAG[2] = {4, 5};
+    static constexpr uint8_t SYNC_UB2L1_P_FLAG[2] = {6, 7};
+    static constexpr uint8_t SYNC_V2_TO_C1_FLAG[2] = {8, 9};
+    static constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {10, 11};
+};
+
+template <>
+struct FagCrossCoreEventId<false, true, false, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C4_TO_V6_FLAG = 6;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 7;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 8;
+    static constexpr uint8_t SYNC_MM_RES_REUSE_FLAG = 9;
+};
+
+template <>
+struct FagCrossCoreEventId<false, false, true, true> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
+    static constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
+    static constexpr uint8_t SYNC_DETER_ROUND_FLAG = 10;
+};
+
+template <>
+struct FagCrossCoreEventId<false, false, true, false> {
+    static constexpr uint8_t SYNC_C1_TO_V2_FLAG[2] = {0, 1};
+    static constexpr uint8_t SYNC_C2_TO_V2_FLAG[2] = {2, 3};
+    static constexpr uint8_t SYNC_V3_TO_C3_FLAG = 4;
+    static constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
+    static constexpr uint8_t SYNC_C4_TO_V3_FLAG = 6;
+    static constexpr uint8_t SYNC_C5_TO_V4_FLAG = 7;
+    static constexpr uint8_t SYNC_DQ_DETER_FIX_FLAG = 8;
+    static constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 9;
+    static constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 10;
+};
 
 constexpr uint16_t ALIGN_OFFSET_16 = 15;
 constexpr uint16_t ALIGN_OFFSET_32 = 31;
