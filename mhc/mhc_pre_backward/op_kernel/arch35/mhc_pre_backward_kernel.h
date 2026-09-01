@@ -1194,10 +1194,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
             // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
             MicroAPI::LoadAlign(gammaReg, gammaInAddr);
         }
-        uint32_t maskLen = copySizeND;
-        MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(maskLen);
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
             // copySizeND最大为64，一个向量指令即可处理整行，无需额外的VF分块循环。
+            uint32_t lenND = copySizeND;
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(lenND);
             uint32_t offset = tIdx * copySizeND;
 
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInB16Reg, bf16InputAddr + offset);
