@@ -14,6 +14,7 @@
  */
 #include "fused_gdn_gating_tiling.h"
 #include "fused_gdn_gating_tiling_utils.h"
+#include "err/ops_err.h"
 #include "register/op_impl_registry.h"
 #include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -102,6 +103,8 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
         const float *thresholdAttr = attrs->GetAttrPointer<float>(1);
         if (thresholdAttr != nullptr) { threshold = *thresholdAttr; }
     }
+    OP_LOGI(context->GetNodeName(), "FusedGdnGating tiling attrs: beta=%f threshold=%f attrsPtr=%s",
+            beta, threshold, attrs == nullptr ? "null" : "ok");
 
     // 5. 获取统一的 Tiling 数据结构（host/kernel 共享同一份 plain struct，布局天然一致）
     auto *td = context->GetTilingData<FusedGdnGating::FusedGdnGatingTilingData>();
