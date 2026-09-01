@@ -94,6 +94,7 @@ private:
     int64_t expertStart_;
     int64_t expertEnd_;
     int64_t actualExpertNum_;
+    int64_t expertNum_;
     int64_t rowIdxType_;
     int64_t ep_;
     int64_t filterNeedCoreNum_;
@@ -151,6 +152,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Init(GM_ADDR expertIdx, GM_ADDR
     expertStart_ = tiling->expertStart;
     expertEnd_ = tiling->expertEnd;
     actualExpertNum_ = tiling->actualExpertNum;
+    expertNum_ = tiling->expertNum;
     rowIdxType_ = tiling->rowIdxType;
     filterNeedCoreNum_ = tiling->countingSortParamsOp.filterNeedCoreNum;
     expertTokensNumFlag_ = tiling->expertTokensNumFlag;
@@ -742,7 +744,7 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
             DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 
         } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-            int64_t kvTotalElements = (actualExpertNum_ + 1) * 2;
+            int64_t kvTotalElements = (actualExpertNum_ == expertNum_) ? actualExpertNum_ * 2 : (actualExpertNum_ + 1) * 2;
             Duplicate(expertTokensLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
                       static_cast<int32_t>(kvTotalElements * 2));
             SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);

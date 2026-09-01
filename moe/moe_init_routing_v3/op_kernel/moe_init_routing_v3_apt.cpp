@@ -431,11 +431,14 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     sortPipe.Destroy();
 
     // 2.TokensCount阶段，计算输出expertTokensCountOrCumsum
-    TPipe histogramPipe;
-    ExpertTokensCount countOp;
-    countOp.Init(expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &histogramPipe);
-    countOp.Process();
-    histogramPipe.Destroy();
+    if(!isCsCutOriginGather && isCsCutOriginScatter && isCsCutOriginDropPad)
+    {
+        TPipe histogramPipe;
+        ExpertTokensCount countOp;
+        countOp.Init(expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &histogramPipe);
+        countOp.Process();
+        histogramPipe.Destroy();
+    }
 
     // 3.若rowIdxType=0(Gather)，映射计算输出expandedRowIdx；否则该输出在阶段1就被写出
     // GATHER模式：直接调用RowIdxGather生成expandedRowIdx

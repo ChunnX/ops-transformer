@@ -198,16 +198,15 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::GetWorkspaceSize()
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetCountingSortWorkspaceSize()
 {
     // CountingSort 性能模板的 workspace：核间专家计数归约表 + 过滤 pairs 表。
-    //   mode 1（FullLoad 单类）：offset0 = pairs，offset1 = expertCount（均从 ws 起始）
-    //   mode 2（CutOrigin 拆分）：offset0 = 头部 meta 区（sortedRowIdx / expertTotalCount / expertIdxValue /
-    //       expandedExpertIdx，供 Stage3/Stage5 按硬编码偏移消费），pairs/expertCount 后移到 pairsWsOffset 之后
+    //  FullLoad 单类：offset0 = pairs，offset1 = expertCount（均从 ws 起始）
+    //  CutOrigin 拆分：offset0 = sortedRowIdx / expertTotalCount / expertIdxValue / expandedExpertIdx，pairs/expertCount 后移到 pairsWsOffset 之后
     int64_t filterNeedCoreNum = tilingDataPtr_->countingSortParamsOp.filterNeedCoreNum;
     int64_t expertCountStride = tilingDataPtr_->countingSortParamsOp.expertCountStride;
-    // pairs 区：pairsPerCore = CeilAlign(max(filterPerCoreTokens, lastCoreTokens)*k_, CS_ONE_BLOCK_ELEMENT) * 2
     int64_t filterPerCoreTokens = tilingDataPtr_->countingSortParamsOp.filterPerCoreTokens;
     int64_t lastCoreTokens = tilingDataPtr_->countingSortParamsOp.lastCoreTokens;
     int64_t maxCoreEntries = std::max(filterPerCoreTokens, lastCoreTokens) * tilingDataPtr_->k;
     int64_t pairsPerCore = Ops::Base::CeilAlign(maxCoreEntries, CS_ONE_BLOCK_ELEMENT) * NUM_TWO;
+
     int64_t csWorkspace = 0;
     if (countingSortMode_ == 1) {
         csWorkspace = filterNeedCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t));
@@ -1942,24 +1941,20 @@ bool MoeInitRoutingV3TilingArch35::IsCountingSortApplicable()
     if (expertNum_ > MAX_EXPERT_NUM) {
         return false;
     }
-    // 量化模式白名单：CS kernel 仅有非量化/静态量化两套模板，其余量化模式无对应 CS 模板
     if (quantMode_ != QUANT_MODE_UNQUANT && quantMode_ != QUANT_MODE_STATIC) {
         return false;
     }
     int64_t actualExpertNum = expertEnd_ - expertStart_;
 
     if (actualExpertNum <= 0 || actualExpertNum > CS_MAX_ACTUAL_EXPERT_NUM) {
-        // expertIdx 值域必须能映射到 uint8（actualExpertNum ≤ 256）
         return false;
     }
 
-    // dropless 时要求 actualExpertNum*2 <= expertNum（实际专家数不超过一半，计数排序才有收益）
     if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
-        // if (actualExpertNum * NUM_TWO > expertNum_) {
-        //     return false;
-        // }
-    } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) { // 非全载模板
-        // dropPad 时 n >= 512
+        if (actualExpertNum * NUM_TWO > expertNum_) {
+            return false;
+        }
+    } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         if (n_ < HALF_MAX_EXPERT_NUM) {
             return false;
         }
@@ -1985,18 +1980,14 @@ void MoeInitRoutingV3TilingArch35::ComputeCountingSortMode()
                         dropPadMode_ == DROP_PAD_MODE_DROPLESS && actualExpertNum <= NUM_32 && expandDtypeValid;
     if (fullLoadCond) {
         ComputeArch35CountingSortFullLoadTiling();
-        // 回读实际模式：Compute 内部 UB 校验失败会置 0（需降级模板2）
+        // 回读实际模式：Compute 内部 UB 校验失败会置 0（进入非全载的判断）
         countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
     }
     if (countingSortMode_ == 0) {
-        // 模板2（CutOrigin，非全载）准入条件：xdata 总大小 >= 1.5 倍 UB 总大小才进入非全载模板。
-        // xdata 过小时 UB 足以容纳或更宜走全载/原分阶段路径，无需非全载切 chunk 处理；
-        // 不满足则保持 countingSortMode=0，回退原分阶段路径。
         int64_t xDataSize = n_ * cols_ * inputXDtypeSize_;
         if (xDataSize * NUM_TWO >= totalUbSize_ * NUM_THREE) {
             // 串行 UB 仍不足则置 0 回退分阶段路径
             ComputeArch35CountingSortCutOriginTiling();
-            countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
         }
     }
     countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
@@ -2168,24 +2159,17 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, CS_ONE_BLOCK_ELEMENT);
 
     int64_t chunkAligned = Ops::Base::CeilAlign(CS_FILTER_CHUNK_SIZE, CS_ONE_BLOCK_ELEMENT);
-    // 持久区：expertCountLocal（Phase A→B 存活）+ shortPath gathered 双区（coreEntries<=2048 && ep_==1）
+    // 持久区：仅 expertCountLocal（Phase A→B 存活）；kernel 无 shortPath（gathered 恒计入 Phase A）
     int64_t persistentSize = Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)),
                                                   UB_BLOCK_SIZE);
-    if (coreEntries <= 2048 && ep_ == 1) {
-        persistentSize += Ops::Base::CeilAlign(2048 * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    }
     // Phase A：chunked filtering（expertIdxLocal + expertIdxFp32Local + 3 mask + flatIdxBuffer + gatheredExpert/gatheredIdx）
     int64_t phaseASize = Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
     int64_t maskBytesA = Ops::Base::CeilAlign(
         Ops::Base::CeilDiv(chunkAligned, static_cast<int64_t>(8)), static_cast<int64_t>(sizeof(int8_t)));
     phaseASize += maskBytesA * NUM_THREE;
+    // 无 shortPath：flatIdxBuffer + gatheredExpert/gatheredIdx 恒计入（与 kernel MoeV3CutOriginPhaseAB 对齐）
     phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
-    if (coreEntries > 2048 || ep_ == 0) {
-        // 非 shortPath 时 gatheredExpert/gatheredIdx 计入 Phase A（kernel 同条件分支）
-        phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)),
-                                           UB_BLOCK_SIZE);
-    }
     // Phase B：batchBuf 按 kernel 公式（196608 预算）封顶，仅校验总量
     int64_t expertCountAlign =
         Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
