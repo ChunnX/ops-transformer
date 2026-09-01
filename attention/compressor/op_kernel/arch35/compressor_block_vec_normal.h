@@ -172,7 +172,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLap(
         this->SaveToWorkSpace(srcLocal, nextCacheTcGm, sliceInfo, loopInfo, dStartIdx, dDealSize);
     }
     if (sliceInfo.compressTcSize > 0) {
-        this->PadAlign(dstLocal, srcLocal, sliceInfo, dStartIdx, dDealSize, dDealSize);
+        this->PadAlign(dstLocal, srcLocal, sliceInfo, 0, dDealSize, dDealSize);
         if constexpr (COMP::coff == COFF::OVERLAP) {
             GlobalTensor<T> curCacheTcGm = cacheTcGm[info.c1v1DbIdx * this->cmpRatio_ * this->constInfo_.headDim];
             this->LoadFromWorkSpace(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx, globalSeqIdx,
