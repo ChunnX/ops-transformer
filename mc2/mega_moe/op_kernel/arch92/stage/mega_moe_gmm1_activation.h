@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_stage_debug.h"
 
 namespace MegaMoeImpl {
 
@@ -216,9 +217,53 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
+        bool debugFirstExpertRow =
+            gmmAddrInfo.debugRankId == 0U && expertIdx == 0U &&
+            gmmAddrInfo.gmm1OutGlobal == params.workspaceInfo.gmm1MmadResPtr &&
+            mLoc == 0U && nLoc == 0U && kLoc == 0U;
+        if (debugFirstExpertRow) {
+            auto gateB = workSet.gmB.Slice(
+                Te::MakeCoord(kLoc, nLoc),
+                Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto gateScaleB = workSet.gmScaleB.Slice(
+                Te::MakeCoord(0, nLoc),
+                Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+            auto upB = workSet.gmB.Slice(
+                Te::MakeCoord(kLoc, nLoc + config.outputN),
+                Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto upScaleB = workSet.gmScaleB.Slice(
+                Te::MakeCoord(0, nLoc + config.outputN),
+                Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+            StageDebug::LogGmm1DependencyHashes(
+                reinterpret_cast<GM_ADDR>(gmBlockA.Data().Get()),
+                reinterpret_cast<GM_ADDR>(gmBlockScaleA.Data().Get()),
+                reinterpret_cast<GM_ADDR>(gateB.Data().Get()),
+                reinterpret_cast<GM_ADDR>(gateScaleB.Data().Get()),
+                reinterpret_cast<GM_ADDR>(upB.Data().Get()),
+                reinterpret_cast<GM_ADDR>(upScaleB.Data().Get()),
+                config.k, config.scaleK, gmmAddrInfo.debugRankId, expertIdx);
+        }
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
             kLoc, gmBlockA, gmBlockScaleA);
+        if (debugFirstExpertRow) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            auto gateOutput = workSet.gmC.Slice(
+                Te::MakeCoord(mLoc, nLoc),
+                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto upOutput = workSet.gmC.Slice(
+                Te::MakeCoord(mLoc, nLoc + config.outputN),
+                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            StageDebug::LogBf16(
+                StageDebug::GMM1_GATE_OUTPUT_MARKER,
+                reinterpret_cast<GM_ADDR>(gateOutput.Data().Get()),
+                gmmAddrInfo.debugRankId, expertIdx, 0U);
+            StageDebug::LogBf16(
+                StageDebug::GMM1_UP_OUTPUT_MARKER,
+                reinterpret_cast<GM_ADDR>(upOutput.Data().Get()),
+                gmmAddrInfo.debugRankId, expertIdx, 0U);
+        }
         if constexpr (TopkWeightsPrefetch) {
             NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         } else {

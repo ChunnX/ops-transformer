@@ -603,7 +603,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         if (debugFirstExpertRow) {
-            StageDebug::LogGmm2WeightDependencyHashes(
+            StageDebug::LogGmm2DependencyHashes(
+                reinterpret_cast<GM_ADDR>(gmBlockA.Data().Get()),
+                reinterpret_cast<GM_ADDR>(gmBlockScaleA.Data().Get()),
                 reinterpret_cast<GM_ADDR>(gmBlockB.Data().Get()),
                 reinterpret_cast<GM_ADDR>(gmBlockScaleB.Data().Get()),
                 config.k, config.scaleK,

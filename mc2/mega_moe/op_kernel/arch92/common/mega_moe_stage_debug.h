@@ -19,13 +19,17 @@ using namespace AscendC;
 
 namespace StageDebug {
 
+constexpr unsigned long GMM1_GATE_OUTPUT_MARKER = 910002UL;
+constexpr unsigned long GMM1_UP_OUTPUT_MARKER = 910003UL;
 constexpr unsigned long GMM2_OUTPUT_MARKER = 910004UL;
 constexpr unsigned long GMM2_DEPENDENCY_HASH_MARKER = 910010UL;
+constexpr unsigned long GMM1_DEPENDENCY_HASH_MARKER = 910011UL;
 constexpr unsigned long UINT_BIAS = 1000000UL;
 constexpr uint32_t DATA_SAMPLE_COUNT = 20U;
 constexpr uint32_t BF16_FORMAT = 0U;
 constexpr uint32_t HASH_FORMAT = 7U;
-constexpr uint32_t HASH_OUTPUT_COLUMNS = DATA_SAMPLE_COUNT;
+constexpr uint32_t GMM1_HASH_OUTPUT_COLUMNS = 4U;
+constexpr uint32_t GMM2_HASH_OUTPUT_COLUMNS = DATA_SAMPLE_COUNT;
 constexpr uint32_t HASH_OFFSET_BASIS = 2166136261U;
 constexpr uint32_t HASH_PRIME = 16777619U;
 
@@ -40,7 +44,7 @@ __aicore__ inline void LogHeader(unsigned long marker, uint32_t format, uint32_t
     set_cond(UINT_BIAS + static_cast<unsigned long>(rowIdx));
 }
 
-// Hash only the complete dependency slice for output row 0, columns [0, 20).
+// Hash complete dependency rows with one 32-bit scalar GM read per word.
 // Every row width is 4-byte aligned, so each loop body performs one scalar GM read.
 __aicore__ inline uint32_t HashWordRows(GM_ADDR address, uint32_t rowCount,
                                         uint32_t rowBytes, uint32_t rowStrideBytes)
@@ -58,15 +62,36 @@ __aicore__ inline uint32_t HashWordRows(GM_ADDR address, uint32_t rowCount,
     return hash;
 }
 
-__aicore__ inline void LogGmm2WeightDependencyHashes(
-    GM_ADDR bAddress, GM_ADDR scaleBAddress, uint32_t k, uint32_t scaleK,
+__aicore__ inline void LogGmm1DependencyHashes(
+    GM_ADDR aAddress, GM_ADDR scaleAAddress, GM_ADDR gateBAddress, GM_ADDR gateScaleBAddress,
+    GM_ADDR upBAddress, GM_ADDR upScaleBAddress, uint32_t k, uint32_t scaleK,
     uint32_t rankIdx, uint32_t expertIdx)
 {
-    LogHeader(GMM2_DEPENDENCY_HASH_MARKER, HASH_FORMAT, rankIdx, expertIdx, 0U);
-    // DNExt/ScaleBDN store B physically as [N, K] and ScaleB as [N, scaleK].
-    set_cond(static_cast<unsigned long>(HashWordRows(bAddress, HASH_OUTPUT_COLUMNS, k, k)));
+    LogHeader(GMM1_DEPENDENCY_HASH_MARKER, HASH_FORMAT, rankIdx, expertIdx, 0U);
+    set_cond(static_cast<unsigned long>(HashWordRows(aAddress, 1U, k, k)));
+    set_cond(static_cast<unsigned long>(HashWordRows(scaleAAddress, 1U, scaleK, scaleK)));
     set_cond(static_cast<unsigned long>(
-        HashWordRows(scaleBAddress, HASH_OUTPUT_COLUMNS, scaleK, scaleK)));
+        HashWordRows(gateBAddress, GMM1_HASH_OUTPUT_COLUMNS, k, k)));
+    set_cond(static_cast<unsigned long>(
+        HashWordRows(gateScaleBAddress, GMM1_HASH_OUTPUT_COLUMNS, scaleK, scaleK)));
+    set_cond(static_cast<unsigned long>(
+        HashWordRows(upBAddress, GMM1_HASH_OUTPUT_COLUMNS, k, k)));
+    set_cond(static_cast<unsigned long>(
+        HashWordRows(upScaleBAddress, GMM1_HASH_OUTPUT_COLUMNS, scaleK, scaleK)));
+}
+
+__aicore__ inline void LogGmm2DependencyHashes(
+    GM_ADDR aAddress, GM_ADDR scaleAAddress, GM_ADDR bAddress, GM_ADDR scaleBAddress,
+    uint32_t k, uint32_t scaleK, uint32_t rankIdx, uint32_t expertIdx)
+{
+    LogHeader(GMM2_DEPENDENCY_HASH_MARKER, HASH_FORMAT, rankIdx, expertIdx, 0U);
+    set_cond(static_cast<unsigned long>(HashWordRows(aAddress, 1U, k, k)));
+    set_cond(static_cast<unsigned long>(HashWordRows(scaleAAddress, 1U, scaleK, scaleK)));
+    // DNExt/ScaleBDN store B physically as [N, K] and ScaleB as [N, scaleK].
+    set_cond(static_cast<unsigned long>(
+        HashWordRows(bAddress, GMM2_HASH_OUTPUT_COLUMNS, k, k)));
+    set_cond(static_cast<unsigned long>(
+        HashWordRows(scaleBAddress, GMM2_HASH_OUTPUT_COLUMNS, scaleK, scaleK)));
 }
 
 __aicore__ inline void LogRawBf16(GM_ADDR address, uint32_t elementOffset, uint32_t count)

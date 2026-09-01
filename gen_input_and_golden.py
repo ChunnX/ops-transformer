@@ -1732,18 +1732,67 @@ class GenInputAndGolden():
             hash_value = ((hash_value ^ int(word)) * 16777619) & 0xFFFFFFFF
         return hash_value
 
-    def print_gmm2_weight_dependency_hashes(self, weight_storage, weight_scale_storage):
-        k = self.n // 2
-        output_columns = 20
+    def _weight_dependency_slice(
+        self, weight_storage, weight_scale_storage, column_start, column_count, k
+    ):
         weight = np.asarray(weight_storage)
         weight_scale = np.asarray(weight_scale_storage)
         if self.transpose_weight:
-            weight_block = weight[0, :output_columns, :k]
-            weight_scale_block = weight_scale[0, :output_columns].reshape(output_columns, -1)
+            weight_block = weight[
+                0, column_start:column_start + column_count, :k
+            ]
+            weight_scale_block = weight_scale[
+                0, column_start:column_start + column_count
+            ].reshape(column_count, -1)
         else:
-            weight_block = weight[0, :k, :output_columns]
-            weight_scale_block = weight_scale[0, :, :output_columns]
+            weight_block = weight[
+                0, :k, column_start:column_start + column_count
+            ]
+            weight_scale_block = weight_scale[
+                0, :, column_start:column_start + column_count
+            ]
+        return weight_block, weight_scale_block
+
+    def print_gmm1_dependency_hashes(
+        self, input_storage, input_scale_storage, weight_storage, weight_scale_storage
+    ):
+        k = self.h
+        scale_k = ((k + 31) // 32) * 2
+        output_n = self.n // 2
+        hash_columns = 4
+        input_row = np.asarray(input_storage)[0:1, :k]
+        input_scale_row = np.asarray(input_scale_storage)[0:1, :scale_k]
+        gate_weight, gate_scale = self._weight_dependency_slice(
+            weight_storage, weight_scale_storage, 0, hash_columns, k
+        )
+        up_weight, up_scale = self._weight_dependency_slice(
+            weight_storage, weight_scale_storage, output_n, hash_columns, k
+        )
         hashes = {
+            "a_row0": self._word_hash(input_row),
+            "scale_a_row0": self._word_hash(input_scale_row),
+            "b_gate_n0_3_k_all": self._word_hash(gate_weight),
+            "scale_b_gate_n0_3_k_all": self._word_hash(gate_scale),
+            "b_up_n0_3_k_all": self._word_hash(up_weight),
+            "scale_b_up_n0_3_k_all": self._word_hash(up_scale),
+        }
+        formatted = {name: f"0x{value:08x}" for name, value in hashes.items()}
+        print(f"[golden 910011] gmm1_dependency_hashes: {formatted}")
+
+    def print_gmm2_dependency_hashes(
+        self, input_storage, input_scale_storage, weight_storage, weight_scale_storage
+    ):
+        k = self.n // 2
+        scale_k = ((k + 31) // 32) * 2
+        output_columns = 20
+        input_row = np.asarray(input_storage)[0:1, :k]
+        input_scale_row = np.asarray(input_scale_storage)[0:1, :scale_k]
+        weight_block, weight_scale_block = self._weight_dependency_slice(
+            weight_storage, weight_scale_storage, 0, output_columns, k
+        )
+        hashes = {
+            "a_row0": self._word_hash(input_row),
+            "scale_a_row0": self._word_hash(input_scale_row),
             "b_n0_19_k_all": self._word_hash(weight_block),
             "scale_b_n0_19_k_all": self._word_hash(weight_scale_block),
         }
@@ -2299,6 +2348,11 @@ class GenInputAndGolden():
         else:
             stage_times["active_expert"] = 1
             stage_start = time.perf_counter()
+            if global_expert_idx == 0:
+                self.print_gmm1_dependency_hashes(
+                    x_value, self.a_scale_list[global_expert_idx],
+                    w1_npu, weight_scale1_npu
+                )
             output1 = qbmm_mx_golden_calculate(
                 [x_value],
                 [weight1[0]],
@@ -2308,6 +2362,13 @@ class GenInputAndGolden():
                 expert_workers=1,
             )[0]
             output1 = output1.to(torch.bfloat16).to(torch.float32)
+            if global_expert_idx == 0:
+                self.print_golden_debug_values(
+                    910002, "gmm1_gate", output1[0, :self.n // 2], 20
+                )
+                self.print_golden_debug_values(
+                    910003, "gmm1_up", output1[0, self.n // 2:], 20
+                )
             stage_times["gmm1"] = time.perf_counter() - stage_start
 
             stage_start = time.perf_counter()
@@ -2345,7 +2406,9 @@ class GenInputAndGolden():
 
             stage_start = time.perf_counter()
             if global_expert_idx == 0:
-                self.print_gmm2_weight_dependency_hashes(w2_npu, weight_scale2_npu)
+                self.print_gmm2_dependency_hashes(
+                    quant_output, per_token_scale, w2_npu, weight_scale2_npu
+                )
             output2 = qbmm_mx_golden_calculate(
                 [quant_output],
                 [weight2[0]],
@@ -2853,6 +2916,11 @@ class GenInputAndGolden():
             x_list = self.a_reordered_list[start:end]
             x_scale_list = self.a_scale_list[start:end]
             debug_expert_zero = start == 0 and len(x_list) > 0 and x_list[0].shape[0] > 0
+            if debug_expert_zero:
+                self.print_gmm1_dependency_hashes(
+                    x_list[0], x_scale_list[0],
+                    w1_npu[0:1], weight_scale1_npu_cpu[0:1]
+                )
             output1 = qbmm_mx_golden_calculate(
                 x_list, weight1_list, weight1_scale_list, x_scale_list,
                 batch_matmul=self.golden_batch_matmul,
@@ -2870,6 +2938,13 @@ class GenInputAndGolden():
                 output2 = [torch.empty(0, self.h, dtype=torch.float32) for _ in range(cur_expert_num)]
             else:
                 output1[0] = output1[0].to(torch.bfloat16).to(torch.float32)
+                if debug_expert_zero:
+                    self.print_golden_debug_values(
+                        910002, "gmm1_gate", output1[0][0, :self.n // 2], 20
+                    )
+                    self.print_golden_debug_values(
+                        910003, "gmm1_up", output1[0][0, self.n // 2:], 20
+                    )
                 swiglu_out = apply_golden_activation(
                     output1[0],
                     self.activation_type,
@@ -2906,8 +2981,10 @@ class GenInputAndGolden():
                 )
                 perTokenScale_input = transpose_last_two_dim(perTokenScale_input, x_transpose_flag)
                 if debug_expert_zero:
-                    self.print_gmm2_weight_dependency_hashes(
-                        w2_npu[0:1], weight_scale2_npu_cpu[0:1])
+                    self.print_gmm2_dependency_hashes(
+                        quant_output, perTokenScale_input,
+                        w2_npu[0:1], weight_scale2_npu_cpu[0:1]
+                    )
                 del output1, swiglu_out
                 quant_output = [quant_output[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)]
                 quant_scale_output = [

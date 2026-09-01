@@ -34,13 +34,28 @@ CONFIG_FIELDS = (
     "k_loc",
 )
 STAGE_SPECS = {
+    910002: ("GMM1_GATE_OUTPUT", "bf16"),
+    910003: ("GMM1_UP_OUTPUT", "bf16"),
     910004: ("GMM2_OUTPUT", "bf16"),
-    910010: ("GMM2_WEIGHT_PHYSICAL_HASHES", "hashes"),
+    910010: ("GMM2_DEPENDENCY_HASHES", "gmm2_hashes"),
+    910011: ("GMM1_DEPENDENCY_HASHES", "gmm1_hashes"),
 }
-HASH_FIELDS = (
-    "b_n0_19_k_all",
-    "scale_b_n0_19_k_all",
-)
+HASH_FIELDS = {
+    "gmm1_hashes": (
+        "a_row0",
+        "scale_a_row0",
+        "b_gate_n0_3_k_all",
+        "scale_b_gate_n0_3_k_all",
+        "b_up_n0_3_k_all",
+        "scale_b_up_n0_3_k_all",
+    ),
+    "gmm2_hashes": (
+        "a_row0",
+        "scale_a_row0",
+        "b_n0_19_k_all",
+        "scale_b_n0_19_k_all",
+    ),
+}
 
 
 def decode_uint(raw):
@@ -100,8 +115,8 @@ def payload_count(kind):
         return DATA_COUNT
     if kind == "config":
         return len(CONFIG_FIELDS)
-    if kind == "hashes":
-        return len(HASH_FIELDS)
+    if kind in HASH_FIELDS:
+        return len(HASH_FIELDS[kind])
     raise ValueError(f"unsupported stage kind: {kind}")
 
 
@@ -198,9 +213,13 @@ def print_record(record):
         print_value_table("up", payload[DATA_COUNT:], decode_bf16, 4)
     elif record["kind"] == "bf16":
         print_value_table("data", payload, decode_bf16, 4)
-    elif record["kind"] == "hashes":
-        print("\nphysical DNExt dependencies for output row 0, columns [0, 20):")
-        for field, value in zip(HASH_FIELDS, payload):
+    elif record["kind"] in HASH_FIELDS:
+        column_count = 4 if record["kind"] == "gmm1_hashes" else 20
+        print(
+            f"\ncomplete BlockMmad dependencies for output row 0, "
+            f"columns [0, {column_count}):"
+        )
+        for field, value in zip(HASH_FIELDS[record["kind"]], payload):
             print(f"{field:24s}: 0x{value:08x}")
     else:
         print_config(payload)
@@ -216,7 +235,7 @@ def print_missing(records):
     if missing:
         print(f"\nWARNING: missing records: {', '.join(missing)}")
     else:
-        print("\nGMM2 BlockMmad boundary records were captured.")
+        print("\nGMM1/GMM2 BlockMmad boundary records were captured.")
 
 
 def main():
