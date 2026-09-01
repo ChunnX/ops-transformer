@@ -348,36 +348,27 @@ public:
     __aicore__ inline void IterateBmm1(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         uint32_t mm1ResUbBufId = runInfo.loop % UB_MM1_RES_BUFCNT;
+        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
         uint32_t c1v1CrossCoreSyncIdx = CROSSCORE_BMM1_0 + mm1ResUbBufId;
         LocalTensor<MM_T> mm1ResUbTensor =
             ubMm1ResBuffers_[mm1ResUbBufId * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
 
-        // c1v1 反向：AIV0/AIV1 消费完上一轮 mm1Res 槽后才能 FIXPIPE 覆写（表 2）
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
 
-        IterateBmm1L0Split(mm1ResUbTensor, runInfo);
-
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
-    }
-
-    __aicore__ inline void IterateBmm1L0Split(LocalTensor<MM_T> &mm1ResUbTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
-    {
-        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_.template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
             CopyQueryAndRopeTile(qL1Tensor, runInfo);
             Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
-            Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0); // 数据就绪，交棒 MTE1 消费
+            Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0);
         }
 
         LocalTensor<KV_T> kvpL1Tensor = l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
-        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId); // 等待本槽上一轮 MatmulN 释放（MTE1_MTE2 语义）
+        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
         CopyKeyAndRopeTile(kvpL1Tensor, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
-        Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvpL1BufId); // 交棒 MTE1（K 消费 + 后续 bmm2 V/P 消费）
+        Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvpL1BufId);
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
@@ -389,17 +380,18 @@ public:
                 qL1Tensor, kvpL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, mmParam);
 
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-            Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_); // M 写完 → FIX 可消费
+            Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
             FixpipeMm1(mm1ResUbTensor, l0CSubTensor, runInfo);
             Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
-        // KV/P 槽 MTE1 锁保持至 bmm2 的 MatmulN 消费完后释放（= 旧 SetFlag<MTE1_MTE2> 语义）
-        // 见 IterateBmm2 尾部 Mutex::Unlock<PIPE_MTE1>
 
         if (unlikely(runInfo.isLastS2Loop)) {
-            Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0); // S1G 内最后一个 S2 循环后释放 Q
+            Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0);
         }
+
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
     }
 
     template <typename DST_TENSOR_T>
@@ -427,21 +419,11 @@ public:
         LocalTensor<MM_T> mm2ResUbTensor =
             ubMm2ResBuffers_[mm2ResUbBufId * UB_MM2_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
 
-        // v1c2：等待 AIV0/AIV1 完成本槽 P 的 L1 写入；c2v2：等待 AIV0/AIV1 消费完 mm2Res 槽
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
 
-        IterateBmm2L0Split(mm2ResUbTensor, runInfo);
-
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
-    }
-
-    __aicore__ inline void IterateBmm2L0Split(LocalTensor<MM_T> &mm2ResUbTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
-    {
-        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
@@ -452,7 +434,6 @@ public:
 
             LocalTensor<KV_T> kvpL1Tensor =
                 l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
-            // A = P（本槽 rope 段，AIV vec1 写入，v1c2 旗标门控）；B = V（本槽 nope 段，即 K）
             MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
                 kvpL1Tensor[s2BaseSize * VDsize], kvpL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
 
@@ -462,8 +443,10 @@ public:
             Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
-        // 本槽 MTE1 消费（MatmulN）完成 → 释放槽，下一轮 bmm1 可覆写（= 旧 SetFlag<MTE1_MTE2>）
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvpL1BufId);
+
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
     }
 }; // FlashMlaWithKvcacheNoQuantMlaBlockCube
 
