@@ -28,7 +28,9 @@ import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__golden__ = {"e2e": {"qfa_wrapper.npu_qfa": "cpu_qfa_mxfp8"}}
+__golden__ = {
+    "e2e": {"torch.ops.cann_ops_transformer.quant_flash_attn": "cpu_qfa_mxfp8"}
+}
 
 
 # ==============================================================================
