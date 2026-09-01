@@ -798,7 +798,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName)
 {
-    if ((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
+    // 先判空再strlen/strcmp，避免commAlg未配置(空指针)时解引用崩溃
+    if ((commAlgPtr != nullptr) && (strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
         (strcmp(commAlgPtr, "fullmesh_v2") != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)) {
         OP_LOGE_WITH_INVALID_ATTR(nodeName, "comm_alg", commAlgPtr,
                                   "\"hierarchy\", \"fullmesh_v1\" or \"fullmesh_v2\"");

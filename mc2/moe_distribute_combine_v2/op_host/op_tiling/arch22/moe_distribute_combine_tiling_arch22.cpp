@@ -109,9 +109,9 @@ static ge::graphStatus MoeDistributeCombineCheckCommAlg(const gert::TilingContex
 
     OP_LOGI(K_INNER_DEBUG, "commAlg is %s", commAlg);
 
-    if (strcmp(commAlg, "fullmesh") == 0) {
+    if (commAlg != nullptr && strcmp(commAlg, "fullmesh") == 0) {
         return ge::GRAPH_SUCCESS;
-    } else if (strcmp(commAlg, "hierarchy") == 0) {
+    } else if (commAlg != nullptr && strcmp(commAlg, "hierarchy") == 0) {
         isLayered = true;
         return ge::GRAPH_SUCCESS;
     } else {

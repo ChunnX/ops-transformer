@@ -671,7 +671,9 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(config.attrEpRankIdIndex);
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int64_t>(config.attrCommAlgIndex));
     int64_t epWorldSize = *epWorldSizePtr;
-    isLayered = strcmp(commAlgPtr, "hierarchy") == 0; // isLayered赋值
+
+    // 先判空再strcmp，避免commAlg未配置(空指针)时解引用崩溃
+    isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0); // isLayered赋值
     std::string socVersion = mc2tiling::GetSocVersion(context);
     int64_t maxEpworldsize = 0;
     if (socVersion == "Ascend950") {
@@ -715,7 +717,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(cons
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrExpertTokenNumsTypeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     if (config.isMc2Context) {
-        if (strcmp(commAlgPtr, "hierarchy") == 0) {
+        // 先判空再strcmp，避免commAlg未配置(空指针)时解引用崩溃
+        if (commAlgPtr != nullptr && strcmp(commAlgPtr, "hierarchy") == 0) {
             std::string reason = "hierarchy does not support mc2 context mode";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "comm_alg", commAlgPtr, reason.c_str());
             return ge::GRAPH_FAILED;
