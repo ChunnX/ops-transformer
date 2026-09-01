@@ -98,7 +98,7 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FaTilingInfo &fa
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfa)
+ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     if (!faInfo.pageAttentionFlag) {
         OP_CHECK_IF(faInfo.keyNonContigDim != -1,
