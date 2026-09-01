@@ -9,7 +9,7 @@
  */
 /*!
  * \file all_gather_qbmm_mx_kernel.h
- * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor。
+ * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor
  */
 
 #pragma once
@@ -31,7 +31,7 @@
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 
-namespace AllGatherQuantMatmulImpl {
+namespace Apace {
 
 using namespace AscendC;
 
@@ -597,10 +597,4 @@ AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::ResolveTileCtx(int64_t m
     return ctx;
 }
 
-} // namespace AllGatherQuantMatmulImpl
-
-// 向后兼容别名：kernel 类已迁移至 AllGatherQuantMatmulImpl 命名空间，
-// 通过别名使 Apace 命名空间内的既有引用方（urma 路径等）无需修改即可继续使用。
-namespace Apace {
-using AllGatherQuantMatmulImpl::AllGatherQbmmMxKernel;
-}
+} // namespace Apace
