@@ -10,8 +10,8 @@
 
 /*!
  * \file flash_mla_with_kvcache_kernel.h
- * \brief arch35 flash_mla_with_kvcache MLA kernel（由 fia_kernel_noquant_mla.h 复制改名；
- *        metadata 消费改为 flash_attn AICPU 多 section 布局，与 flash_attn 同构）
+ * \brief arch35 flash_mla_with_kvcache MLA kernel；
+ *        metadata 消费为 AICPU 多 section 布局。
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_KERNEL_H_
@@ -58,7 +58,7 @@ public:
 
     // ---- CV buffers：已静态化至各 block（cube/vec InitBuffers 内表 1 布局），kernel 不再持有 buffer manager ----
 
-    // 多 section AICPU metadata（flash_attn 布局）：
+    // 多 section AICPU metadata：
     // 字节布局 = [16-word header][sectionNum*aic*16 (FA)][sectionNum*aiv*16 (FD)]，FA/FD 区分别绑定 GM tensor。
     // 每 section 的 aic/aiv 核数从 header 保留位自描述读取（producer 写硬件实际值，如 950PR 为 28/56），
     // 不再使用编译期常量，避免与 producer 布局错位。
@@ -68,10 +68,9 @@ public:
     uint32_t metaAicCoreNum_ = 0U;
     uint32_t metaAivCoreNum_ = 0U;
     FlashMlaWithKvcacheFdParamsX fdParams_ = {};
-    // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：（producer
-    // 旧名：flash_mla_metadata，历史原因保留） AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 /
-    // HEAD_METADATA_STRIDE=16， producer 侧 static_assert 已就位于
-    // flash_mla_metadata.h（本注释不再复制断言，避免漂移）。（producer 旧名：flash_mla_metadata，历史原因保留）
+    // 与 producer（flash_mla_metadata 改名克隆）的核 strides 一致：AICPU 侧 FA_METADATA_STRIDE=16 /
+    // FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，producer 侧 static_assert 已就位于
+    // flash_mla_metadata.h（本注释不再复制断言，避免漂移）。（旧名：flash_mla_metadata，历史原因保留）
     static_assert(
         FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
         "flash_mla_with_kvcache: metadata per-core stride must be 16 to match flash_mla_metadata AICPU layout");
@@ -81,7 +80,6 @@ public:
 
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData_;
     // 静态 tensor 模型：block 内自持静态 buffer + Mutex/cross-core 显式同步
-    // （与 flash_attn Init 15 参风格一致，入口不进 buffer/pipe 细节）
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
@@ -119,7 +117,7 @@ public:
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
         metaAicCoreNum_ = ((__gm__ uint32_t *)metadata)[FLASH_MLA_METADATA_AIC_NUM_INDEX];
         metaAivCoreNum_ = ((__gm__ uint32_t *)metadata)[FLASH_MLA_METADATA_AIV_NUM_INDEX];
-        // FA 区从 header 后开始（与 flash_attn 同构，参见 flash_attn_kernel_nd.h metadata 消费段）
+        // FA 区从 header 后开始（参见 metadata 消费段）
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
                                       metaAicCoreNum_ * FLASH_ATTN_METADATA_SIZE * sectionNum_);
         fdMetaDataGm_.SetGlobalBuffer(
@@ -218,7 +216,7 @@ public:
         constInfo_.kRopeStrides.n2Stride = flashMlaWithKvcacheBaseParams.kRopeStrides.n2Stride;
     }
 
-    // 0 基、16 字段/核、无 CORE_ENABLE（flash_attn_kernel_nd.h:206-214 镜像）
+    // 0 基、16 字段/核、无 CORE_ENABLE
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         return FLASH_ATTN_METADATA_SIZE * metaAicCoreNum_ * sectionIdx + 16U * coreIdx + metaIdx;
@@ -249,7 +247,7 @@ public:
             GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
 
-    // 单 section FD 参数读取；FD 核活跃 = mLen > 0（无 CORE_ENABLE 字段，flash_attn_kernel_nd.h:610-611）
+    // 单 section FD 参数读取；FD 核活跃 = mLen > 0（无 CORE_ENABLE 字段）
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
     {
         fdParams_.mLen = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
@@ -642,7 +640,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        // 编排镜像 flash_attn_kernel_nd.h:626-652：AIV 先 InitBuffers→InitCrossCoreSync→AllocEventID；
+        // AIV 先 InitBuffers→InitCrossCoreSync→AllocEventID；
         // AIC 先 InitCrossCoreSync→InitBuffers→AllocEventID
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             if ASCEND_IS_AIV {
@@ -656,7 +654,7 @@ public:
             }
         }
 
-        // 多 section 流水：逐 section 读 AICPU metadata 并执行 FA/FD（镜像 flash_attn_kernel_nd.h:637-644）
+        // 多 section 流水：逐 section 读 AICPU metadata 并执行 FA/FD
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
                 FlashAttention(sectionIdx);

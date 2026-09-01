@@ -11,8 +11,7 @@
 /*!
  * \file flash_mla_with_kvcache.cpp
  * \brief flash_mla_with_kvcache Kernel 唯一入口；按 tiling key 编译期推导模板参数，
- *        分发 FlashAttentionNoQuantMlaKernel（由 fia_kernel_noquant_mla.h 复制改名）。
- *        结构完全对齐 flash_attn.cpp：单层 __global__，四模板参数
+ *        分发 FlashAttentionNoQuantMlaKernel。单层 __global__，四模板参数
  *        (InOutLayoutType, KvLayoutType, HasAttenMask, Config) 直接解析 q 布局与
  *        模板块大小，无中间分发层；无 isFd（FD 能力恒实例化，运行时由 metadata
  *        各 section mLen>0 驱动）。q 支持 BSND/BNSD/TND 三布局，TND→NTD 输出转置
@@ -40,7 +39,7 @@ using namespace optiling;
 
 using namespace AscendC;
 
-// ============ 入口 layout 推导（flash_attn.cpp 同款：if-constexpr 直接映射，无表查找）============
+// ============ 入口 layout 推导（if-constexpr 直接映射，无表查找）============
 // InOutLayoutType → q 布局（TND_NTD 输入仍为 TND q 布局）
 template <uint8_t inOutLayoutType>
 __aicore__ inline constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT GetQueryLayoutMla()
@@ -101,7 +100,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // DT_BF16/DT_FLOAT16 为 device 头树 basic_api/kernel_type.h 定义的预处理宏
-    // （kernel_operator.h 传递 include），直接宏比较对齐 flash_attn.cpp；编译宏名
+    // （kernel_operator.h 传递 include）；编译宏名
     // ORIG_DTYPE_{Q,K_CACHE,ATTN_OUT} 由 asc_opc 按输入名派生（fia 内部名
     // ORIG_DTYPE_QUERY/KEY/ATTENTION_OUT 未被定义 → 恒走 bf16 分支，勿用）。
 #if (ORIG_DTYPE_Q == DT_BF16)
@@ -113,7 +112,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
 #endif
 
     fa_base_matmul::idCounterNum = 0;
-    // —— 编译期解析 tiling key（flash_attn.cpp 同款：ConfigValue[config] 查模板块大小）——
+    // —— 编译期解析 tiling key（ConfigValue[config] 查模板块大小）——
     constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = GetQueryLayoutMla<inOutLayoutType>();
     constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = GetOutLayoutMla<inOutLayoutType>();
     constexpr GmFormat kvGmFormat = GetKvLayoutMla<inOutLayoutType, KvLayoutType>();
@@ -128,8 +127,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     GET_TILING_DATA_MEMBER(optiling::FlashMlaWithKvcacheTilingData, baseTiling, baseTilingIn, tiling);
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
 
-    // —— 模板参数聚合（FAType 式，镜像 flash_attn utils/flash_attn_type.h；
-    // cube/vec/fd 参数集不一致 → 各建聚合类型，见 utils/flash_mla_with_kvcache_type.h）——
+    // —— 模板参数聚合（cube/vec/fd 参数集不一致 → 各建聚合类型，见 utils/flash_mla_with_kvcache_type.h）——
     using FA_T_Cube = FlashAttnKernel::FATypeCube<INPUT_T, float, qLayout, s1TemplateType, s2TemplateType,
                                                   dTemplateType, dVTemplateType, KvLayoutType>;
     using FA_T_Vec =
@@ -139,7 +137,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     using FA_T_Fd = FlashAttnKernel::FATypeFd<INPUT_T, float, OUT_T, qLayout, outLayout, s1TemplateType, s2TemplateType,
                                               dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
 
-    // 编译期 core-type 选型（与 flash_attn.cpp 的 #ifdef __DAV_C310_CUBE__ 同构）：该宏由 950
+    // 编译期 core-type 选型：#ifdef __DAV_C310_CUBE__ 由 950
     // 编译在 AIC TU 定义、AIV TU 不定义（mla 编译产物实测确认），语义与
     // g_coreType==AscendC::AIC/AIV 等价 —— AIC 核取 cube 实块 + vec 哑块（FD 槽复用哑块），
     // AIV 核反之取 vec 实块 + cube 哑块。
@@ -158,7 +156,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     // 无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
     // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义）。
     // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
-    // 静态 tensor 模型：block 内自管 buffer（与 flash_attn Init 15 参风格一致，入口仅接地址）
+    // 静态 tensor 模型：block 内自管 buffer，入口仅接地址
     op.Init(query, kCache, attnMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user,
             metadata, tilingData);
     op.Process();

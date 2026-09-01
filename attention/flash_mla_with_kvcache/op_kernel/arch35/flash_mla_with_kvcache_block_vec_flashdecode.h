@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn_block_vec_flashdecode.h
+ * \file flash_mla_with_kvcache_block_vec_flashdecode.h
  * \brief
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_FLASHDECODE_H
@@ -170,8 +170,7 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            // 对齐 flash_attn_block_vec_flashdecode.h:175-228：跳过 bmm1/bmm2 CV 区后
-            // 放置 FD 业务区，空间上避免跨 section 时 AIC 的 FA 写 mm2Res 与 FD 使用冲突。
+            // 跳过 bmm1/bmm2 CV 区后放置 FD 业务区，空间上避免跨 section 时 AIC 的 FA 写 mm2Res 与 FD 使用冲突。
             constexpr uint32_t BASE = mBaseSize * (dVBaseSize + s2BaseSize) * sizeof(T);
             constexpr uint32_t STRIDE_6K = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144
             fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, BASE, STRIDE_6K).template ReinterpretCast<T>();

@@ -10,8 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache_type.h
- * \brief flash_mla_with_kvcache 编译期模板参数聚合类型（镜像 flash_attn 的
- *        utils/flash_attn_type.h FAType 组织模式，语义命名保留 MLA 语境）。
+ * \brief flash_mla_with_kvcache 编译期模板参数聚合类型。
  *        cube/vec/fd 三类 block 参数集不一致（vec 多 OUTPUT_T/outLayout/hasMask，
  *        cube 无 mask/out 概念），故分别为每类建聚合类型；无 isFd——FD block 与 vec
  *        块的 FD 能力均恒实例化（FD 运行时由 metadata mLen>0 决定），FATypeFd 不含
@@ -36,8 +35,7 @@ namespace FlashAttnKernel {
 
 // ---------------------------------------------------------------------------
 // 布局/格式推导 helper（源自 fork common/op_kernel/memcopy/{gm_format,mem_format}.h，
-// 上游已删除上述共享头并改为"每算子族本地携带"惯例——参考 flash_attn_type.h:33/49/101、
-// fused_infer_attention_score arch35 memory_copy_arch35_fused_infer.h:28/38/134）
+// 上游已删除上述共享头并改为"每算子族本地携带"惯例）
 // ---------------------------------------------------------------------------
 template <FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
@@ -136,8 +134,8 @@ struct FATypeCube {
 };
 
 // Vec block 参数聚合（11 参：INPUT_T、T、OUTPUT_T、layout、outLayout、s1、s2、d、dv、
-// hasMask、KvLayoutType）。flashDecode 成员恒 true（FD 能力恒实例化，对齐 flash_attn 的
-// FAType——FA 亦无 FLASH_DECODE 参数；FD 是否执行由运行时 metadata mLen>0 决定）。
+// hasMask、KvLayoutType）。flashDecode 成员恒 true（FD 能力恒实例化，无编译期开关；
+// FD 是否执行由运行时 metadata mLen>0 决定）。
 template <typename INPUT_T, typename T, typename OUTPUT_T,
           FLASH_MLA_WITH_KVCACHE_LAYOUT LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
           FLASH_MLA_WITH_KVCACHE_LAYOUT OUT_LAYOUT = FLASH_MLA_WITH_KVCACHE_LAYOUT::NONE,
@@ -185,11 +183,10 @@ struct FATypeFd {
     static constexpr bool pageAttention = (KvLayoutType > 0);
 };
 
-// kernel 持有的 seq-lens 解析工具（镜像 flash_attn utils/flash_attn_type.h:134-155 SeqLensTool
-// 的"kernel 持有工具、block 构造收引用"组织方式）。与 FA 的关键差异（Oracle 约束）：
-// 1) 保留 q 侧 seqused_q==nullptr 双分支——FA 的 SeqLensTool 无 null-seqused 概念，直接移植
-//    会错误合并空指针分支并改变 seqused=NULL/0 槽位边角语义；
-// 2) q 侧 ACCUM 带首零头（WITH_ZERO_HEAD=true，flash_attn cu_seqlens 约定）；
+// kernel 持有的 seq-lens 解析工具。与 FA 的关键差异（Oracle 约束）：
+// 1) 保留 q 侧 seqused_q==nullptr 双分支——直接移植会错误合并空指针分支并改变
+//    seqused=NULL/0 槽位边角语义；
+// 2) q 侧 ACCUM 带首零头（WITH_ZERO_HEAD=true，cu_seqlens 约定）；
 // 3) kv 侧 BY_BATCH（cache_seqlens 非累加）。
 // seq-lens 为 INT32 接口，ACTLEN_T=uint32_t；cu_seqlens_q [b+1] / seqused_q [b] / cache_seqlens [b]。
 template <ActualSeqLensMode Q_MODE, ActualSeqLensMode KV_MODE>

@@ -255,8 +255,8 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float>
 
 // flash_mla_with_kvcache LSE 输出契约为 (N,T) 头主序（learnings LSE 定论：aclnn/l0/csrc/python/golden 四点一致）。
 // FIA 派生的 DataCopySoftmaxLseTNDArch35 / DataCopySoftmaxLseNTDArch35 均为 token 主序（FIA 原生 {t,n,1}），
-// 与 flash_mla_with_kvcache (N,T) 输出不符 —— flash_attn 用 DataCopySoftmaxLseTNDtoNTArch35 做 TND→(N,T) 转置写出，
-// 本函数为该范式的 flash_mla_with_kvcache 移植（bN2Offset 基址由调用方给到 head 块起址，本函数负责写入连续 (N,T)）。
+// 与 flash_mla_with_kvcache (N,T) 输出不符 —— 本函数做 TND→(N,T) 转置写出
+// （bN2Offset 基址由调用方给到 head 块起址，本函数负责写入连续 (N,T)）。
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                        uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
