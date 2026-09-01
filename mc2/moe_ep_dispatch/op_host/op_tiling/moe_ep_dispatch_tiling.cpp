@@ -148,8 +148,12 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
         (xDim0 <= 0) || (xDim0 > numMaxTokensPerRank),
         OP_LOGE(nodeName, "x dim0 is invalid, should be in [1, %ld], but got %ld.", numMaxTokensPerRank, xDim0),
         return false);
-    OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > H_MAX),
-                    OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1),
+    // 打桩：放开hidden最大值限制，不再校验H_MAX
+    // OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > H_MAX),
+    //                 OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1),
+    //                 return false);
+    OP_TILING_CHECK(xDim1 <= 0,
+                    OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be positive, but got %ld.", xDim1),
                     return false);
     OP_TILING_CHECK(
         xDim0 != topkDim0,
@@ -776,7 +780,10 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
         info.cfg.epWorldSize, info.cfg.numLocalExperts, info.cfg.numMaxTokensPerRank, info.cfg.topK,
         info.cfg.hidden,      info.networkMode,         info.hybrid.rankNumPerServer, info.hybrid.serverNum};
     MoeEpWindowLayout layout{};
-    OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    // 打桩：切换为性能验证专用窗口布局
+    // OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    //                 OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CalcMoeEpWindowLayoutStub(params, layout) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check Moe EP window capacity failed."), return ge::GRAPH_FAILED);
@@ -896,7 +903,8 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "Set workspace failed."), return ge::GRAPH_FAILED);
 
     uint64_t tilingKey =
-        CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.isMxQuant, info.networkMode);
+        // 打桩：强制走DIRECT路径，hybrid kernel未打桩
+        CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.isMxQuant, NETWORK_DIRECT);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     PrintTilingDataInfo(nodeName, info);

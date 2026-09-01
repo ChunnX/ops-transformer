@@ -94,6 +94,49 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CalcMoeEpWindowLayoutStub(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout)
+{
+    // 打桩布局（仅dispatch链路，无combine/payload）：
+    //   前缀(metadata+diag) | cnt状态位(EP*512B) | dispatch槽位状态(EP*AlignWin(nmt*64)) | dispatch数据区(EP*nmt*hAlign512)
+    constexpr uint64_t SLOT_NOTIFY_STRIDE = 64UL;
+    std::memset(&layout, 0, sizeof(layout));
+    layout.dispatchNotifyCount = 1U; // 打桩：固定为1
+
+    layout.metadataOffset = 0UL;
+    layout.metadataSize = MOE_EP_DUMP_METADATA_BYTES;
+    layout.perCoreDiagOffset = layout.metadataSize;
+    layout.perCoreDiagSize = MOE_EP_PER_CORE_DIAG_BYTES;
+
+    const uint64_t epWorldSize = params.epWorldSize;
+    const uint64_t nmt = params.nmt;
+
+    layout.cntWinStateOffset = MOE_EP_FIXED_PREFIX_BYTES;
+    layout.cntWinStateSize = epWorldSize * MOE_EP_WIN_ALIGN; // 打桩：仅保留count通知位，去掉expert count区
+    layout.slotWinStateOffset = layout.cntWinStateOffset + layout.cntWinStateSize;
+    layout.dispatchSlotStateSize = epWorldSize * 8 * MOE_EP_WIN_ALIGN; // 打桩 每个对端卡预留8个状态位空间
+
+    // 打桩：dispatch数据区按每源rank预留nmt个slot，槽位间距在kernel侧用hAlign512
+    const uint64_t hiddenAlign512 = AlignMoeEpWin(params.hidden * MOE_EP_MAX_OUT_DTYPE_SIZE);
+    layout.winDataOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
+    layout.dispatchReservedPerSlotBytes = hiddenAlign512;
+    layout.scaleoutReservedPerSlotBytes = hiddenAlign512;
+    layout.combineReservedPerSlotBytes = hiddenAlign512;
+    layout.dispatchRecvDataSize = epWorldSize * nmt * hiddenAlign512;
+    // 打桩：无combine数据区/payload区；combine相关offset收拢到数据区尾部，防止误用越窗
+    layout.combineDataWinOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
+    layout.combineStateWinOffset = layout.combineDataWinOffset;
+    layout.combineStateWinSize = 0UL;
+    layout.combineDataSize = 0UL;
+    layout.scaleoutRecvDataOffset = 0UL;
+    layout.scaleoutRecvDataSize = 0UL;
+    layout.scaleoutRecvStatusOffset = 0UL;
+    layout.scaleoutRecvStatusSize = 0UL;
+    layout.payloadStashWinOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
+    layout.payloadStashWinSize = MOE_EP_WIN_ALIGN;
+    layout.requiredBytes = layout.payloadStashWinOffset + MOE_EP_WIN_ALIGN;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char *nodeName)
 {
     if (requiredBytes > cclBufferSize) {
