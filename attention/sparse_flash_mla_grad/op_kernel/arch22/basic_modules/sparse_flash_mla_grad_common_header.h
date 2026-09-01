@@ -36,12 +36,14 @@ constexpr static uint64_t MAX_CORE_NUM = 24;
 // common struct
 /////////////////////////////////////////////////////
 
-template <class TILING_CLASS, typename T1, const bool IS_BSND = false, const uint32_t MODE = SMLAG_SCFA_MODE, typename... Args>
+template <class TILING_CLASS, typename T1, const bool IS_BSND = false, const uint32_t MODE = SMLAG_SCFA_MODE,
+          const bool HAS_SEQUSED = false, typename... Args>
 struct SMLAG_TYPE {
     using tiling_class = TILING_CLASS;
     using t1 = T1;
     static constexpr bool is_bsnd = IS_BSND;
     static constexpr uint32_t mode = MODE;
+    static constexpr bool has_seqused = HAS_SEQUSED;
 };
 
 struct RunInfo {
