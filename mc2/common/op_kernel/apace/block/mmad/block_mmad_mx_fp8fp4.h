@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#include "../policy/dispatch_policy_mega_moe.h"
+#include "apace/block/policy/dispatch_policy.h"
 #include "blaze/gemm/tile/tile_trait.h"
 #include "kernel_basic_intf.h"
 #include "blaze/gemm/block/block_mmad.h"
