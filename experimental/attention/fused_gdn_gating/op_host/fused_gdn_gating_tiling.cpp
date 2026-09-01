@@ -103,11 +103,14 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
         if (thresholdAttr != nullptr) { threshold = *thresholdAttr; }
     }
 
-    // 5. 初始化统一的 Tiling 数据结构
-    FusedGdnGatingTilingData td{};
-    td.set_numHeads(static_cast<uint32_t>(numHeads));
-    td.set_beta(beta);
-    td.set_threshold(threshold);
+    // 5. 获取统一的 Tiling 数据结构（host/kernel 共享同一份 plain struct，布局天然一致）
+    auto *td = context->GetTilingData<FusedGdnGating::FusedGdnGatingTilingData>();
+    if (td == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
+    td->numHeads = static_cast<uint32_t>(numHeads);
+    td->beta = beta;
+    td->threshold = threshold;
 
     uint32_t blockDim = 1;
     uint64_t tilingKey = 0;
@@ -161,11 +164,11 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
         float inv_beta = (std::abs(beta) < 1e-6f) ? std::numeric_limits<float>::infinity() : (1.0f / beta);
 
         // 填充 310P 专属字段
-        td.set_usedCoreNum(usedCores);
-        td.set_alignedLength(elementsPerCore);
-        td.set_tailLength(tailElements);
-        td.set_tileRows(tileElements);
-        td.set_inv_beta(inv_beta);
+        td->usedCoreNum = usedCores;
+        td->alignedLength = elementsPerCore;
+        td->tailLength = tailElements;
+        td->tileRows = tileElements;
+        td->inv_beta = inv_beta;
 
         blockDim = usedCores;
         tilingKey = TILING_KEY_310P_DEFAULT; // 对应 Kernel 层的 200000 路由
@@ -230,21 +233,12 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
         bool useBulkDma = bulkDmaBatchOk && FusedGdnGating::CanUseBulkDma(numHeadsU32, rowsPerIter);
 
         // 填充 910/910B 专属字段
-        td.set_numBatches(numBatchesU32);
-        td.set_rowsPerIter(rowsPerIter);
-        td.set_useBulkDma(useBulkDma ? 1u : 0u);
+        td->numBatches = numBatchesU32;
+        td->rowsPerIter = rowsPerIter;
+        td->useBulkDma = useBulkDma ? 1u : 0u;
     }
 
-    // 6. 将 Tiling 结构体序列化并下发给 Device 端
-    const size_t tilingSize = td.GetDataSize();
-    auto *rawTilingData = context->GetRawTilingData();
-    if (rawTilingData == nullptr || rawTilingData->GetCapacity() < tilingSize) {
-        return ge::GRAPH_FAILED;
-    }
-
-    td.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
-    rawTilingData->SetDataSize(tilingSize);
-
+    // 6. Tiling 数据已通过 GetTilingData 指针直接写入，无需手动序列化
     context->SetBlockDim(blockDim);
     context->SetTilingKey(tilingKey);
 
