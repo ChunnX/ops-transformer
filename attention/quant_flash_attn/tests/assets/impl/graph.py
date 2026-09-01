@@ -61,8 +61,9 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
       5. quant_flash_attn_metadata 构建 (capture 之前, metadata 是 int32 tensor)
       6. 所有运行时入参存为 self. 属性, forward 直接读
 
-    入参对齐 15 位置 tensor (与 CSV tensor_view_shapes / qfa_wrapper 一致):
-      0 q .. 7 block_table, 8 cu_seqlens_q_t, 9 cu_seqlens_kv_t, 10 seqused_q_t,
+    入参对齐 15 位置 tensor (与 CSV tensor_view_shapes / schema Tensor 参数顺序一致,
+    block_table 在 p_scale 之前):
+      0 q .. 7 p_scale, 8 cu_seqlens_q_t, 9 cu_seqlens_kv_t, 10 seqused_q_t,
       11 seqused_kv_t, 12 sinks_t, 13 attn_mask_t, 14 metadata_t。
 
     forward() (capture 之内) 只调:
@@ -77,8 +78,8 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         dequant_scale_q: torch.Tensor,
         dequant_scale_k: torch.Tensor,
         dequant_scale_v: torch.Tensor,
-        p_scale: torch.Tensor,
         block_table: torch.Tensor,
+        p_scale: torch.Tensor,
         cu_seqlens_q_t: torch.Tensor,
         cu_seqlens_kv_t: torch.Tensor,
         seqused_q_t: torch.Tensor,

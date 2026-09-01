@@ -334,8 +334,8 @@ def cpu_qfa_mxfp8(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
     block_table: torch.Tensor,
+    p_scale: torch.Tensor,
     cu_seqlens_q_t: torch.Tensor,
     cu_seqlens_kv_t: torch.Tensor,
     seqused_q_t: torch.Tensor,
@@ -655,8 +655,8 @@ def cpu_qfa_gqa_fp8(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
     block_table: torch.Tensor,
+    p_scale: torch.Tensor,
     cu_seqlens_q_t: torch.Tensor,
     cu_seqlens_kv_t: torch.Tensor,
     seqused_q_t: torch.Tensor,
@@ -691,7 +691,7 @@ def cpu_qfa_gqa_fp8(
     """GQA FP8 CPU golden (quant_mode=6, 仅 PA)
 
     前 8 个入参 slot (0 q, 1 k, 2 v, 3 dequant_scale_q, 4 dequant_scale_k,
-    5 dequant_scale_v, 6 p_scale, 7 block_table) 由 inputs.py 写入真实值;
+    5 dequant_scale_v, 6 block_table, 7 p_scale) 由 inputs.py 写入真实值;
     后 7 个 tensor 参数 (cu_seqlens_q_t .. metadata_t, slot 8-14) 中，
     cu_seqlens/seqused 的真实值由 inputs.py 写入，本函数从 _t 读回 list 使用。
       q: NTD [N,T,D] FP8
@@ -854,8 +854,8 @@ def cpu_qfa_hif8(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
     block_table: torch.Tensor,
+    p_scale: torch.Tensor,
     cu_seqlens_q_t: torch.Tensor,
     cu_seqlens_kv_t: torch.Tensor,
     seqused_q_t: torch.Tensor,

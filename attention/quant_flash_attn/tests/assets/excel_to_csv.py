@@ -24,15 +24,16 @@
   按表头语义名查列索引（_Columns + _norm_name + _HEADER_ALIASES），不再用写死的
   COL 列字母表，对列顺序变化稳健。
 
-tensor 顺序（共 15 个，与 wrapper 签名位置参数对齐）：
+tensor 顺序（共 15 个，与 cann_ops_transformer::quant_flash_attn schema 的
+Tensor 参数顺序对齐）：
   0  q               q_shape / q_dtype / q_datarange
   1  k               k_shape / k_dtype / k_datarange
   2  v               v_shape / v_dtype / v_datarange
   3  q_descale       q_descale_shape / q_descale_dtype / q_descale_datarange
   4  k_descale       k_descale_shape / k_descale_dtype / k_descale_datarange
   5  v_descale       v_descale_shape / v_descale_dtype / v_descale_datarange
-  6  p_scale         p_scale_shape / p_scale_dtype / p_scale_datarange（标量）
-  7  block_table     block_table_shape / block_table_dtype / block_table_datarange
+  6  block_table     block_table_shape / block_table_dtype / block_table_datarange
+  7  p_scale         p_scale_shape / p_scale_dtype / p_scale_datarange（标量）
   8  cu_seqlens_q    cu_seqlens_q_shape / cu_seqlens_q_dtype / cu_seqlens_q_datarange
   9  cu_seqlens_kv   cu_seqlens_kv_shape / cu_seqlens_kv_dtype / cu_seqlens_kv_datarange
   10 seqused_q       seqused_q_shape / seqused_q_dtype / seqused_q_datarange
@@ -134,8 +135,8 @@ _TENSOR_SPECS = [
     ("q_descale_shape", "q_descale_dtype", "q_descale_datarange", "float8_e8m0", False),
     ("k_descale_shape", "k_descale_dtype", "k_descale_datarange", "float8_e8m0", False),
     ("v_descale_shape", "v_descale_dtype", "v_descale_datarange", "float8_e8m0", False),
-    ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     ("block_table_shape", "block_table_dtype", "block_table_datarange", "int32", False),
+    ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     (
         "cu_seqlens_q_shape",
         "cu_seqlens_q_dtype",
@@ -453,7 +454,11 @@ def _build_attributes(row, cols):
     _set("layout_q_descale", _strip_or_none(row.get(cols.get("layout_q_descale"))))
     _set("layout_kv", _strip_or_none(row.get(cols.get("layout_kv"))))
     _set("layout_out", _strip_or_none(row.get(cols.get("layout_out"))))
-    _set("enable_lse", _bool_to_int(row.get(cols.get("return_softmax_lse"))))
+    # return_softmax_lse: schema bool 参数 (主算子 param plan 需要);
+    # enable_lse: 同值副本, 供 golden/inputs/graph 钩子沿用旧名读取。
+    _lse = _bool_to_int(row.get(cols.get("return_softmax_lse")))
+    _set("return_softmax_lse", _lse)
+    _set("enable_lse", _lse)
     _set("N_q", _str_to_int(row.get(cols.get("num_heads_q"))))
     _set("N_kv", _str_to_int(row.get(cols.get("num_heads_kv"))))
     _set("D", _str_to_int(row.get(cols.get("head_dim"))))

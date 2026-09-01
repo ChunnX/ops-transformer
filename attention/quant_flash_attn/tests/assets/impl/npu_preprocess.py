@@ -99,8 +99,6 @@ def run(
     q_descale=None,
     k_descale=None,
     v_descale=None,
-    quant_mode=1,
-    *,
     block_table=None,
     p_scale=None,
     cu_seqlens_q=None,
@@ -110,9 +108,16 @@ def run(
     sinks=None,
     attn_mask=None,
     metadata=None,
+    *,
+    quant_mode=1,
     **kwargs,
 ):
-    """Generate and copy metadata for a main QuantFlashAttn invocation."""
+    """Generate and copy metadata for a main QuantFlashAttn invocation.
+
+    位置参数为 15 个 tensor slot, 顺序与
+    cann_ops_transformer::quant_flash_attn schema 的 Tensor 参数一致
+    (block_table 在 p_scale 之前); quant_mode 等标量属性由 TTK 以 kwargs 传入。
+    """
     del v, q_descale, k_descale, block_table, p_scale, sinks, attn_mask
     if metadata is None:
         raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
