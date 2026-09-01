@@ -19,7 +19,7 @@
 import logging
 import os
 import sys
-from typing import List, Optional
+from typing import List
 
 import torch
 import torch_npu
@@ -77,7 +77,6 @@ def run_metadata(
     cu_seqlens_kv: List[int],
     seqused_q: List[int],
     seqused_kv: List[int],
-    head_dim_v: Optional[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -130,7 +129,6 @@ def run_metadata(
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
-            "HEAD_DIM_V": head_dim_v,
             "CU_SEQLENS_Q": cu_seqlens_q_list,
             "CU_SEQLENS_KV": cu_seqlens_kv_list,
             "SEQUSED_Q": list(seqused_q) if seqused_q is not None else None,
@@ -305,7 +303,7 @@ def run_metadata(
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            head_dim_v=head_dim_v,
+            v_descale=inputs["dequant_scale_v"],
             batch_size=batch_size,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
