@@ -10,6 +10,7 @@ from validation.model_dump_analysis import (
     LoadedTensor,
     _build_artifact,
     _canonical_key,
+    _infer_phase,
     _infer_tensor_name,
     build_timeline,
     compare_tensors,
@@ -28,6 +29,7 @@ def _artifact(side: str, key: str, io_kind: str, tensor_name: str) -> Artifact:
         path=Path(key + ".pt"),
         rank=0,
         sequence=7,
+        phase="numbered_call",
         op="all_to_allv_grouped_mat_mul",
         io_kind=io_kind,
         tensor_name=tensor_name,
@@ -134,6 +136,132 @@ def test_dump_dir_is_a_standalone_cli_layout():
     assert args.dump_dir == Path("/tmp/model_dump")
     assert args.fused_root is None
     assert args.reference_root is None
+
+
+def test_numbered_forward_and_backward_call_directories_are_distinct_phases():
+    strip = ("udma",)
+    expected = {
+        "first_call_00000": (0, "numbered_call"),
+        "first_call_forward": (0, "forward"),
+        "first_call_backward": (0, "backward"),
+    }
+    invocations = set()
+    for directory, (sequence, phase) in expected.items():
+        relative = (
+            "rank_00000/mc2_udma/{}/"
+            "hidden_states_before_a2a_gemm.pt"
+        ).format(directory)
+        artifact = _build_artifact("fused", relative, Path(relative), strip)
+        assert artifact.sequence == sequence
+        assert artifact.phase == phase
+        assert _infer_phase(relative) == phase
+        invocations.add(artifact.invocation)
+    assert len(invocations) == 3
+
+
+def test_operator_named_backward_call_directories_are_distinct_invocations():
+    strip = ("udma",)
+    expected = {
+        "first_call_00000": ("numbered_call", "unknown"),
+        "first_call_a2avgmm_backward": (
+            "backward",
+            "all_to_allv_grouped_mat_mul",
+        ),
+        "first-call-gmma2av-bwd": (
+            "backward",
+            "grouped_mat_mul_all_to_allv",
+        ),
+    }
+    invocations = set()
+    for directory, (phase, expected_op) in expected.items():
+        relative = "rank_00000/mc2_udma/{}/hidden_states_before.pt".format(
+            directory
+        )
+        artifact = _build_artifact("fused", relative, Path(relative), strip)
+        assert artifact.sequence == 0
+        assert artifact.phase == phase
+        assert artifact.op == expected_op
+        invocations.add(artifact.invocation)
+    assert len(invocations) == 3
+
+    # The directory is authoritative when a generic/misleading boundary name
+    # happens to contain the opposite operator spelling.
+    relative = (
+        "rank_00000/mc2_udma/first_call_gmma2av_backward/"
+        "hidden_states_before_a2a_gemm.pt"
+    )
+    artifact = _build_artifact("fused", relative, Path(relative), strip)
+    assert artifact.op == "grouped_mat_mul_all_to_allv"
+
+
+def test_nested_backward_directories_pair_between_mc2_and_mc2_udma():
+    strip = ("udma",)
+    directories = (
+        "first_call_00000",
+        "first_call_a2av_gmm_backward",
+        "first_call_gemm_a2a_backward",
+    )
+    fused_artifacts = []
+    reference_artifacts = []
+    for directory in directories:
+        filename = "hidden_states_before_a2a_gemm.pt"
+        fused_relative = "rank_00000/mc2_udma/{}/{}".format(
+            directory, filename
+        )
+        reference_relative = "rank_00000/mc2/{}/{}".format(
+            directory, filename
+        )
+        fused_artifacts.append(
+            _build_artifact(
+                "fused", fused_relative, Path(fused_relative), strip
+            )
+        )
+        reference_artifacts.append(
+            _build_artifact(
+                "reference",
+                reference_relative,
+                Path(reference_relative),
+                strip,
+            )
+        )
+
+    pairs, fused_only, reference_only = pair_artifacts(
+        fused_artifacts, reference_artifacts
+    )
+    assert len(pairs) == 3
+    assert not fused_only
+    assert not reference_only
+
+
+def test_operator_named_backward_directories_without_call_token():
+    strip = ("udma",)
+    expected = {
+        "first_all2all_grouped_matmul_backward_000000": (
+            "all_to_allv_grouped_mat_mul"
+        ),
+        "first_grouped_matmul_all2all_backward_000000": (
+            "grouped_mat_mul_all_to_allv"
+        ),
+    }
+    invocations = set()
+    for directory, expected_op in expected.items():
+        relative = "rank_00000/mc2_udma/{}/hidden_states.pt".format(
+            directory
+        )
+        artifact = _build_artifact("fused", relative, Path(relative), strip)
+        assert artifact.sequence == 0
+        assert artifact.phase == "backward"
+        assert artifact.op == expected_op
+        invocations.add(artifact.invocation)
+    assert len(invocations) == 2
+
+
+def test_phase_inference_ignores_tensor_filename_phase_words():
+    relative = (
+        "rank_00000/mc2_udma/first_call_00000/"
+        "hidden_states_after_backward.pt"
+    )
+    assert _infer_phase(relative) == "numbered_call"
 
 
 def test_comparison_distinguishes_new_nan_from_inherited_nan():

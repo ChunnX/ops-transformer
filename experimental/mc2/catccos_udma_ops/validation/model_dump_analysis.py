@@ -48,6 +48,17 @@ SEQUENCE_RE = re.compile(
     r"(?:call|invoke|invocation|sequence|seq|order|dump|step|launch|iter(?:ation)?)"
     r"[_-]?(?P<sequence>[0-9]+)"
 )
+ORDINAL_CALL_RE = re.compile(
+    r"(?:^|[/_-])(?P<ordinal>first|second|third|fourth|fifth)[_-]call"
+    r"(?:[/_-]|$)"
+)
+ORDINAL_CALL_INDEX = {
+    "first": 0,
+    "second": 1,
+    "third": 2,
+    "fourth": 3,
+    "fifth": 4,
+}
 DEFAULT_STRIP_TOKENS = (
     "udma",
     "fused",
@@ -65,6 +76,12 @@ OP_PIPELINE_ORDER = {
     "all_to_allv_grouped_mat_mul": 0,
     "grouped_mat_mul_all_to_allv": 1,
     "unknown": 2,
+}
+PHASE_ORDER = {
+    "numbered_call": 0,
+    "forward": 1,
+    "backward": 2,
+    "unspecified": 3,
 }
 
 OP_ALIASES = (
@@ -127,6 +144,7 @@ class Artifact:
     path: Path
     rank: Optional[int]
     sequence: Optional[int]
+    phase: str
     op: str
     io_kind: str
     tensor_name: str
@@ -421,6 +439,19 @@ def _normalize_op(text: str) -> str:
     return "unknown"
 
 
+def _infer_op(text: str) -> str:
+    normalized = text.lower().replace("\\", "/")
+    # An operator name embedded in a call-directory is stronger evidence than
+    # a tensor filename. This matters for paths such as
+    # ``first_call_gmma2av_backward/hidden_states_before_a2a_gemm.pt``.
+    for component in normalized.split("/"):
+        if re.search(r"(?:^|[_-])call(?:[_-]|$)", component):
+            op = _normalize_op(component)
+            if op != "unknown":
+                return op
+    return _normalize_op(normalized)
+
+
 def _infer_io_kind(text: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     tokens = normalized.split("_")
@@ -465,6 +496,9 @@ def _infer_sequence(text: str) -> tuple[Optional[int], str]:
     match = SEQUENCE_RE.search(lowered)
     if match:
         return int(match.group("sequence")), "explicit"
+    ordinal_match = ORDINAL_CALL_RE.search(lowered)
+    if ordinal_match:
+        return ORDINAL_CALL_INDEX[ordinal_match.group("ordinal")], "ordinal_call"
     number_matches = list(re.finditer(r"(?<![a-z])([0-9]+)(?![a-z])", lowered))
     rank_match = RANK_RE.search(lowered)
     for number_match in reversed(number_matches):
@@ -477,6 +511,37 @@ def _infer_sequence(text: str) -> tuple[Optional[int], str]:
             continue
         return int(number_match.group(1)), "numeric_filename"
     return None, "lexical_only"
+
+
+def _infer_phase(text: str) -> str:
+    lowered = text.lower().replace("\\", "/")
+    # Inspect only directory components that describe a call or an operator.
+    # Tensor filenames may contain unrelated phase words and must not change
+    # invocation grouping. Descriptive tokens are allowed between ``call`` and
+    # the phase, and ``call`` itself is optional when the operator is explicit,
+    # for example ``first_all2all_grouped_matmul_backward_000000``.
+    components = [component for component in lowered.split("/") if component]
+    if components and re.search(
+        r"\.(?:pt|pth|bin)(?:\.part\.[0-9]+)?$", components[-1]
+    ):
+        components = components[:-1]
+    phase_components = [
+        component
+        for component in components
+        if re.search(r"(?:^|[_-])call(?:[_-]|$)", component)
+        or _normalize_op(component) != "unknown"
+    ]
+    for component in phase_components:
+        tokens = {
+            token for token in re.split(r"[^a-z0-9]+", component) if token
+        }
+        if tokens.intersection({"backward", "backwards", "back", "bwd"}):
+            return "backward"
+        if tokens.intersection({"forward", "forwards", "fwd"}):
+            return "forward"
+    if SEQUENCE_RE.search(lowered):
+        return "numbered_call"
+    return "unspecified"
 
 
 def _infer_tensor_name(text: str, io_kind: str) -> str:
@@ -530,12 +595,15 @@ def _build_artifact(
     )
     if row.get("sequence") is not None:
         confidence = "manifest"
-    op = str(row.get("op") or _normalize_op(text))
+    phase = str(row.get("phase") or _infer_phase(text))
+    op = str(row.get("op") or _infer_op(text))
     io_kind = str(row.get("io") or row.get("io_kind") or _infer_io_kind(text))
     tensor_name = str(row.get("tensor") or _infer_tensor_name(text, io_kind))
     invocation = str(
         row.get("invocation")
-        or "rank={}|sequence={}|op={}".format(rank, sequence, op)
+        or "rank={}|sequence={}|phase={}|op={}".format(
+            rank, sequence, phase, op
+        )
     )
     if row.get("pair_key"):
         key = str(row["pair_key"])
@@ -550,6 +618,7 @@ def _build_artifact(
         path=path,
         rank=rank,
         sequence=sequence,
+        phase=phase,
         op=op,
         io_kind=io_kind,
         tensor_name=tensor_name,
@@ -1175,6 +1244,7 @@ def build_timeline(comparisons: Sequence[Mapping[str, Any]]) -> list[dict[str, A
                 "invocation": invocation,
                 "rank": first.get("rank"),
                 "sequence": first.get("sequence"),
+                "phase": first.get("phase"),
                 "op": first.get("op"),
                 "order_confidence": first.get("order_confidence"),
                 "input_tensor_count": len(inputs),
@@ -1203,6 +1273,7 @@ def build_timeline(comparisons: Sequence[Mapping[str, Any]]) -> list[dict[str, A
         key=lambda row: (
             row["sequence"] is None,
             row["sequence"] if row["sequence"] is not None else sys.maxsize,
+            PHASE_ORDER.get(str(row.get("phase")), 3),
             OP_PIPELINE_ORDER.get(str(row["op"]), 2),
             row["rank"] if row["rank"] is not None else sys.maxsize,
             _natural_key(str(row["invocation"])),
@@ -1310,6 +1381,8 @@ def derive_diagnosis(
             int(row["rank"])
             for row in timeline
             if row.get("sequence") == first.get("sequence")
+            and row.get("phase") == first.get("phase")
+            and row.get("op") == first.get("op")
             and row.get("classification") in issue_classes
             and row.get("rank") is not None
         }
@@ -1340,9 +1413,10 @@ def _format_markdown(
     ]
     if first:
         lines.append(
-            "First reported divergence: sequence `{}`, rank `{}`, operator `{}`, "
+            "First reported divergence: sequence `{}`, phase `{}`, rank `{}`, operator `{}`, "
             "classification `{}`.".format(
                 first.get("sequence"),
+                first.get("phase"),
                 first.get("rank"),
                 first.get("op"),
                 first.get("classification"),
@@ -1365,15 +1439,16 @@ def _format_markdown(
             "",
             "## Timeline (first 200 invocations)",
             "",
-            "| sequence | rank | op | classification | inputs exact | "
+            "| sequence | phase | rank | op | classification | inputs exact | "
             "new nonfinite | bad tensors |",
-            "|---:|---:|---|---|---|---:|---|",
+            "|---:|---|---:|---|---|---|---:|---|",
         ]
     )
     for row in timeline[:200]:
         lines.append(
-            "| {} | {} | {} | {} | {} | {} | {} |".format(
+            "| {} | {} | {} | {} | {} | {} | {} | {} |".format(
                 row.get("sequence"),
+                row.get("phase"),
                 row.get("rank"),
                 row.get("op"),
                 row.get("classification"),
@@ -1596,6 +1671,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "pair_key": fused_artifact.key,
                     "rank": fused_artifact.rank,
                     "sequence": fused_artifact.sequence,
+                    "phase": fused_artifact.phase,
                     "op": fused_artifact.op,
                     "io_kind": fused_artifact.io_kind,
                     "tensor_name": fused_artifact.tensor_name,
@@ -1651,6 +1727,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "comparison_key": row["comparison_key"],
             "rank": row["rank"],
             "sequence": row["sequence"],
+            "phase": row["phase"],
             "op": row["op"],
             "io_kind": row["io_kind"],
             "tensor_name": row["tensor_name"],

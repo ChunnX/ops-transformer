@@ -397,6 +397,21 @@ dump_dir/
 boundary; `gemm_a2a` forms the GroupedMatMul-AllToAllV boundary. Analyze all
 ranks with one argument:
 
+The call directory may also carry the operator direction and execution phase,
+for example `first_call_a2avgmm_backward` or
+`first_call_gmma2av_backward`. Common separator and abbreviation variants such
+as `first-call-gmma2av-bwd` are accepted. These directories are assigned
+sequence zero and the `backward` phase, while the operator name is inferred
+independently. `first_call_00000` remains the separate `numbered_call` phase, so
+the three directories never merge into one invocation even when their tensor
+filenames are identical. The simpler `first_call_forward` and
+`first_call_backward` forms remain supported.
+
+Operator-explicit directory names do not require the `call` token. For example,
+`first_all2all_grouped_matmul_backward_000000` and
+`first_grouped_matmul_all2all_backward_000000` are recognized as sequence zero,
+backward invocations of the corresponding operator.
+
 ```bash
 bash scripts/analyze_model_dumps.sh \
   --dump-dir /data/dumps/dump_dir \
