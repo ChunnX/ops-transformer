@@ -11,7 +11,8 @@ import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import get_as_library
+AS_LIBRARY = get_as_library()
 
 
 class BlockAttentionResidualsOpBuilder(OpBuilder):
