@@ -117,12 +117,14 @@ struct ConstInfo : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
 
 struct RunInfo {
     uint32_t loop = 0;
+    uint32_t mloop = 0;
     bool isValid = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
     bool isUpdatePScale = false;
     bool isC2Sync = false;            // s2上16个softmax是一个tile，这是每一个tile的第一个softmax 任务
     uint32_t s2FirstStartVecCore = 0; // s2上第一个softmax分给哪个vec core
+    uint32_t tileBuffIdx = 0;         // 当前tile分给哪个buff
     uint32_t tileMaxIdx = 0;
     uint32_t pscaleNum = 0;
     bool isS2FirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
@@ -142,11 +144,6 @@ struct RunInfo {
     uint32_t actVecMSize = 0;      // VEC 视角, 基本块GS1方向长度，每个核的M长度
     uint32_t vecMbaseIdx = 0;      // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
     uint32_t updateScaleNum = 0;
-    // UpdatePScale预计算参数(CalcParams阶段一次算好, 避免Vector核热路径scalar推导)
-    uint16_t firstLoopStart = 0;  // groupmax空间主段起始
-    uint16_t firstLoop = 0;       // groupmax空间主段长度
-    uint16_t secondLoopStart = 0; // groupmax空间回绕段起始
-    uint16_t secondLoop = 0;      // groupmax空间回绕段长度
 
     uint32_t actSingleLoopS2Size = 0;        // 单个softmaxS2方向长度
     uint32_t actSingleLoopS2SizeAlign = 0;   // 对齐到32
