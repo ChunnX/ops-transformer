@@ -13,6 +13,13 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
+/*
+ * 本头文件定义 tiling key 宏常量。tiling key 用于在编译期通过 TILING_KEY_VAR
+ * 选择不同的 kernel 代码路径：host 下发的 tilingKey 值与下列宏匹配后，
+ * kernel 侧据此进入对应的精度/形状分支实现。
+ */
+
+// base key，所有有效 key 均 >= 该值
 #define MINIMAX_SA_SPLIT_KV_BASE_TILING 20000
 
 // innerPrecise==4 (default): bf16 softmax S + fp32 O_partial.
@@ -29,4 +36,13 @@
 // (FP32 O_partial). innerPrecise=0/1 are not implemented for FP8.
 #define MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING 20004
 
-#endif // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILINGKEY_H
+// fp16 input, D=128, fp32 O_partial path (innerPrecise!=1).
+#define MINIMAX_SA_SPLIT_KV_FP16_D128_TILING 20007
+
+// fp16 input, D=128, fp16 O_partial path (innerPrecise==1).
+#define MINIMAX_SA_SPLIT_KV_FP16_D128_INNER_LOW_TILING 20008
+
+// fp16 input, D=128, fp32 score / fp32 O_partial path (innerPrecise==0).
+#define MINIMAX_SA_SPLIT_KV_FP16_D128_INNER_HIGH_TILING 20009
+
+#endif  // MINIMAX_SPARSE_ATTENTION_SPLIT_KV_TILINGKEY_H

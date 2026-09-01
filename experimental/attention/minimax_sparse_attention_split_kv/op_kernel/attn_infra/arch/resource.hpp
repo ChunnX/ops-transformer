@@ -14,10 +14,12 @@
 #include "../../attn_infra/base_defs.hpp"
 #include "../../attn_infra/arch/local_tensor_buffer.hpp"
 
-namespace NpuArch::Arch {
+namespace NpuArch::Arch
+{
 
 template<class ArchTag>
-struct Resource {};
+struct Resource
+{};
 
 template<>
 struct Resource<Arch::AtlasA5> {
@@ -40,6 +42,25 @@ public:
     ~Resource()
     {
         AscendC::InitSocState();
+    }
+};
+
+template<>
+struct Resource<Arch::AtlasA2> {
+public:
+    AscendC::TPipe pipe;
+
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::A1> l1Buf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::A2> l0ABuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::B2> l0BBuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::C2> btBuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::CO1> l0CBuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::VECCALC> ubBuf;
+
+    __aicore__ inline
+    Resource()
+    {
+        pipe.Destroy();
     }
 };
 
