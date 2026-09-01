@@ -217,7 +217,6 @@ __aicore__ inline void GMMA8W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     float quantScale = reduceResLocal.GetValue(0) / QUANT_SCALE_INT8;
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     quantScaleLocal.SetValue(loopIdx, quantScale);
-    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     quantScale = 1 / quantScale;
     GmmsqSetWaitFlag<HardEvent::S_V>();
     Muls(_inMMLocal[preOffset], _inMMLocal[preOffset], quantScale, halfTokenLen);
@@ -229,7 +228,6 @@ __aicore__ inline void GMMA8W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     LocalTensor<int8_t> castSpace = reduceWorkspace.Get<int8_t>(UB_BLOCK_UNIT_SIZE);
     CastFp32ToInt8Template(quantLocal, _inMMLocal, castSpace, dstTempOffset, srcTempOffset, tempCount);
     PipeBarrier<PIPE_V>();
-    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     mmOutQueue.EnQue(_inMMLocal);
     quantOutQueue.EnQue(quantLocal);
 }
@@ -411,7 +409,6 @@ __aicore__ inline void GMMA8W4PostProcess::customDataCopyOut(VecConfig &vecConfi
 {
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     DataCopyParams copyParams_0{1, (uint16_t)(vecConfig.innerLoopNum * sizeof(float)), 0, 0};
-    PipeBarrier<PIPE_ALL>();
     GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     DataCopyPad(quantScaleOutputGM[workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx], quantScaleLocal,
                 copyParams_0);

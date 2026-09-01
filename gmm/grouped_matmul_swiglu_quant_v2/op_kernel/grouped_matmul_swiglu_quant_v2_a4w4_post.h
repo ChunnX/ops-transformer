@@ -253,7 +253,6 @@ __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     LocalTensor<int8_t> castSpace = reduceWorkspace.Get<int8_t>(UB_BLOCK_UNIT_SIZE);
     CastFp32ToInt8Template(quantLocal, mmLocal_fp32, castSpace, dstTempOffset, srcTempOffset, tempCount);
     PipeBarrier<PIPE_V>();
-    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     mmOutQueue.EnQue(mmLocal_fp32);
     quantOutQueue.EnQue(quantLocal);
     quantScaleOutQueue.EnQue(quantScaleLocal);
@@ -371,7 +370,6 @@ __aicore__ inline void GMMA4W4PostProcess::customDataCopyOut(VecConfig &vecConfi
 {
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     DataCopyParams copyParams_0{1, (uint16_t)(vecConfig.innerLoopNum * sizeof(float)), 0, 0};
-    PipeBarrier<PIPE_ALL>();
     GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     DataCopyPad(quantScaleOutputGM[workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx], quantScaleLocal,
                 copyParams_0);
