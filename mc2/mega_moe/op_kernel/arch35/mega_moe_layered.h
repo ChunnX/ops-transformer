@@ -37,7 +37,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
-#include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "common/mega_moe_mxfp8_utils.h"
