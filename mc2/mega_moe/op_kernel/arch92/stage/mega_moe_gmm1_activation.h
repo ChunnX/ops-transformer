@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_stage_debug.h"
 
 namespace MegaMoeImpl {
 
@@ -219,6 +220,27 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
             kLoc, gmBlockA, gmBlockScaleA);
+        bool debugFirstExpertRow = false;
+        if constexpr (!IsShared) {
+            debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
+                                  gmmAddrInfo.gmm1OutGlobal == params.workspaceInfo.gmm1MmadResPtr &&
+                                  mLoc == 0U && nLoc == 0U && kLoc == 0U;
+        }
+        if (debugFirstExpertRow) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            auto gateOutput = workSet.gmC.Slice(
+                Te::MakeCoord(mLoc, nLoc),
+                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto upOutput = workSet.gmC.Slice(
+                Te::MakeCoord(mLoc, nLoc + config.outputN),
+                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            StageDebug::LogBf16Pair(
+                StageDebug::GMM1_OUTPUT_MARKER,
+                reinterpret_cast<GM_ADDR>(gateOutput.Data().Get()),
+                reinterpret_cast<GM_ADDR>(upOutput.Data().Get()),
+                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+        }
         if constexpr (TopkWeightsPrefetch) {
             NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         } else {
@@ -511,6 +533,20 @@ __aicore__ inline void Gmm1AivGmHandoffEpilogueTileGeneric(
         0};
     AscendC::SetCtrlSpr<60, 60>(0);
     activationQuantOp(epilogueShape, epilogueOffset);
+    if (gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
+        mLoc == 0U && nLoc == 0U) {
+        StageDebug::LogLocalBf16(
+            StageDebug::SWIGLU_OUTPUT_MARKER, activationQuantOp.GetGluResultTensor(),
+            gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+        using QuantOutputType = typename ActivationQuantOp::DataTypeOut;
+        if constexpr (AscendC::IsSameType<QuantOutputType, fp8_e4m3fn_t>::value ||
+                      AscendC::IsSameType<QuantOutputType, fp8_e5m2_t>::value) {
+            StageDebug::LogLocalFp8Scale<QuantOutputType>(
+                StageDebug::SWIGLU_QUANT_OUTPUT_MARKER,
+                activationQuantOp.GetQuantOutputTensor(), activationQuantOp.GetQuantScaleOutputTensor(),
+                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+        }
+    }
     NotifyGmm2InputReady<IsWaveFlagGrained>(
         gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);

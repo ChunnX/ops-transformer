@@ -603,11 +603,23 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         if (debugFirstExpertRow) {
-            StageDebug::LogGmm2WeightDependencyHashes(
-                reinterpret_cast<GM_ADDR>(gmBlockB.Data().Get()),
-                reinterpret_cast<GM_ADDR>(gmBlockScaleB.Data().Get()),
-                config.k, config.scaleK,
-                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
+            using KernelConfig = typename Config::KernelConfig;
+            const auto &tilingConfig = config.blockMmadTiling;
+            using ElementA = typename KernelConfig::ElementAType;
+            if constexpr (AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value ||
+                          AscendC::IsSameType<ElementA, fp8_e5m2_t>::value) {
+                StageDebug::LogFp8Scale<ElementA>(
+                    StageDebug::GMM2_INPUT_MARKER,
+                    reinterpret_cast<GM_ADDR>(gmBlockA.Data().Get()),
+                    reinterpret_cast<GM_ADDR>(gmBlockScaleA.Data().Get()),
+                    gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+            }
+            StageDebug::LogGmm2Config(
+                config.m, config.n, config.k, config.scaleK,
+                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape),
+                tilingConfig.tileM, tilingConfig.tileN, tilingConfig.l1Params.kL1,
+                tilingConfig.l1Params.scaleKL1, KernelConfig::IS_WEIGHT_NZ ? 1U : 0U,
+                mLoc, nLoc, kLoc, gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
         }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if (debugFirstExpertRow) {
