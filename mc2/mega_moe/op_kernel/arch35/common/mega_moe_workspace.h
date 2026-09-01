@@ -26,6 +26,22 @@ constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
 
+// MTE WAVE 的 GMM2/Combine 同步协议只由 Combine 量化模式和 W8/W4 模板决定。
+HOST_DEVICE Gmm2CombineSyncProtocol SelectMteGmm2CombineSyncProtocol(int64_t topoType, uint8_t groupedMatmulMode,
+                                                                     uint8_t combineQuantMode)
+{
+    if (topoType != TOPO_TYPE_MTE) {
+        return Gmm2CombineSyncProtocol::NONE;
+    }
+    if (combineQuantMode == COMBINE_NO_QUANT) {
+        return Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE;
+    }
+    bool isA8W8Mode = groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                      groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+    return isA8W8Mode ? Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER
+                      : Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS;
+}
+
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
@@ -139,7 +155,10 @@ struct WorkspaceInfo {
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
         // W4 GMM1 activation 始终使用该序号；非量化 GMM2/Combine 也复用它做 tile 一对一通知。
-        if (IsW4GroupedMatmulMode(tilingData->groupedMatmulMode) ||
+        bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+        if (isW4Mode ||
             combineSyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;

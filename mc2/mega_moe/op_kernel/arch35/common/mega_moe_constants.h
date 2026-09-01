@@ -79,6 +79,13 @@ constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 
+enum class Gmm2CombineSyncProtocol : uint8_t {
+    NONE,
+    PAIRED_TILE_SEQUENCE,
+    TOKEN_GROUP_COUNTER,
+    EXPERT_AIC_READY_FLAGS,
+};
+
 constexpr uint32_t L1_TILE_M_256 = 256U;
 constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;
