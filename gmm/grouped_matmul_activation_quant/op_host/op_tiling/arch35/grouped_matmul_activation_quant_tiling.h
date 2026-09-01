@@ -89,6 +89,8 @@ private:
     static constexpr uint8_t DEFAULT_SCALE_ALG_OCP = 0;
     static constexpr uint8_t DEFAULT_ACTIVATION_TYPE_GELU_TANH = 2;
     static constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
+    static constexpr size_t MXFP_SCALE_NZ_DIM_NUM = 5U;
+    static constexpr int64_t MXFP_SCALE_NZ_N0 = 16;
 
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
@@ -96,6 +98,7 @@ private:
     bool CheckCoreNum() const override;
     bool CheckDtype() const;
     bool CheckMxScaleShape(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
+    bool CheckMxScaleNzStorageShape(const gert::Shape &wScaleStorageShape) const;
     bool CheckWeightNzShape(const gert::Shape &wStorageShape) const;
     bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
@@ -106,6 +109,7 @@ private:
     uint8_t activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     ge::DataType yDtype_ = ge::DT_FLOAT8_E4M3FN;
+    bool scaleNzFlag_ = false;
 };
 } // namespace optiling
 
