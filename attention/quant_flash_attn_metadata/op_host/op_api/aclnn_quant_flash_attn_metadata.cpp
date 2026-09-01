@@ -13,7 +13,6 @@
  * \brief
  */
 
-#include "aclnn_quant_flash_attn_metadata.h"
 #include "l0_quant_flash_attn_metadata.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
