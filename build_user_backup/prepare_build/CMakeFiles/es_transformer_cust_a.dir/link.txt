@@ -1,0 +1,2 @@
+/usr/bin/ar qc libes_transformer_cust.a CMakeFiles/es_transformer_cust_obj.dir/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp.o
+/usr/bin/ranlib libes_transformer_cust.a

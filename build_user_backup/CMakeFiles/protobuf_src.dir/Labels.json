@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/CMakeFiles/protobuf_src"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/CMakeFiles/protobuf_src.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/CMakeFiles/protobuf_src-complete.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-build.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-configure.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-download.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-install.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-mkdir.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-patch.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"protobuf_src"
+		],
+		"name" : "protobuf_src"
+	}
+}

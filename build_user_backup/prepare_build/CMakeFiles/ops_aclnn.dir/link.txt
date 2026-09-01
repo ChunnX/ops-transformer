@@ -1,0 +1,2 @@
+/usr/bin/ar qc libops_aclnn.a CMakeFiles/ops_aclnn.dir/build/autogen/inner/aclnnInner_all_gather_matmul_v2.cpp.o CMakeFiles/ops_aclnn.dir/build/autogen/inner/aclnnInner_all_gather_matmul_v3.cpp.o
+/usr/bin/ranlib libops_aclnn.a

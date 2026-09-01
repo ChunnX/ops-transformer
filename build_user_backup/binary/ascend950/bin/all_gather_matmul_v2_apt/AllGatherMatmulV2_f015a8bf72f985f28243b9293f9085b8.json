@@ -1,0 +1,417 @@
+{
+    "binFileName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8",
+    "binFileSuffix": ".o",
+    "blockDim": -1,
+    "coreType": "MIX",
+    "intercoreSync": 1,
+    "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8",
+    "magic": "RT_DEV_BINARY_MAGIC_ELF",
+    "memoryStamping": [],
+    "opParaSize": 1648,
+    "parameters": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+    ],
+    "sha256": "7829a51f6d9941171b2fdf1d391ec83bd1d1af45232acd4409437767cde24efb",
+    "workspace": {
+        "num": 1,
+        "size": [
+            -1
+        ],
+        "type": [
+            0
+        ]
+    },
+    "kernelList": [
+        {
+            "tilingKey": 1,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_1"
+        },
+        {
+            "tilingKey": 257,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_257"
+        },
+        {
+            "tilingKey": 3,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_3"
+        },
+        {
+            "tilingKey": 259,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_259"
+        },
+        {
+            "tilingKey": 64,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_64"
+        },
+        {
+            "tilingKey": 320,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_320"
+        },
+        {
+            "tilingKey": 72,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_72"
+        },
+        {
+            "tilingKey": 328,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_328"
+        },
+        {
+            "tilingKey": 66,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_66"
+        },
+        {
+            "tilingKey": 322,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_322"
+        },
+        {
+            "tilingKey": 74,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_74"
+        },
+        {
+            "tilingKey": 330,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_330"
+        },
+        {
+            "tilingKey": 0,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_0"
+        },
+        {
+            "tilingKey": 256,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_256"
+        },
+        {
+            "tilingKey": 16,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_16"
+        },
+        {
+            "tilingKey": 272,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_272"
+        },
+        {
+            "tilingKey": 8,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_8"
+        },
+        {
+            "tilingKey": 264,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_264"
+        },
+        {
+            "tilingKey": 24,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_24"
+        },
+        {
+            "tilingKey": 280,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_280"
+        },
+        {
+            "tilingKey": 2,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_2"
+        },
+        {
+            "tilingKey": 258,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_258"
+        },
+        {
+            "tilingKey": 18,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_18"
+        },
+        {
+            "tilingKey": 274,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_274"
+        },
+        {
+            "tilingKey": 10,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_10"
+        },
+        {
+            "tilingKey": 266,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_266"
+        },
+        {
+            "tilingKey": 26,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_26"
+        },
+        {
+            "tilingKey": 282,
+            "kernelType": "MIX_AIC",
+            "crossCoreSync": 1,
+            "taskRation": "1:2",
+            "kernelName": "AllGatherMatmulV2_f015a8bf72f985f28243b9293f9085b8_282"
+        }
+    ],
+    "taskRation": "tilingKey",
+    "optionalInputMode": "gen_placeholder",
+    "optionalOutputMode": "gen_placeholder",
+    "supportSuperKernel": 1,
+    "compileInfo": {},
+    "supportInfo": {
+        "implMode": "high_performance",
+        "int64Mode": false,
+        "simplifiedKeyMode": 0,
+        "simplifiedKey": [
+            "AllGatherMatmulV2/d=0,p=1/1,2/1,2/1,2/1,2",
+            "AllGatherMatmulV2/d=0,p=0/1,2/1,2/1,2/1,2",
+            "AllGatherMatmulV2/d=1,p=1/1,2/1,2/1,2/1,2",
+            "AllGatherMatmulV2/d=1,p=0/1,2/1,2/1,2/1,2"
+        ],
+        "optionalInputMode": "gen_placeholder",
+        "optionalOutputMode": "gen_placeholder",
+        "staticKey": "29600fe1c452f50e794a698303467cb7fee0fd7fc358b427b40fe3a1661426e2,72a7898819b7b16a2fd40cacc0d8d1ff772010439fe1a113a8e46f6c99431891",
+        "inputs": [
+            {
+                "name": "x1",
+                "index": 0,
+                "dtype": "float16",
+                "format": "ND",
+                "paramType": "required",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "x2",
+                "index": 1,
+                "dtype": "float16",
+                "format": "ND",
+                "paramType": "required",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "bias",
+                "index": 2,
+                "dtype": "float16",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "x1_scale",
+                "index": 3,
+                "dtype": "float32",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "x2_scale",
+                "index": 4,
+                "dtype": "float32",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "quant_scale",
+                "index": 5,
+                "dtype": "float32",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "y",
+                "index": 0,
+                "dtype": "float16",
+                "format": "ND",
+                "paramType": "required",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "gather_out",
+                "index": 1,
+                "dtype": "float16",
+                "format": "ND",
+                "paramType": "required",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            },
+            {
+                "name": "amax_out",
+                "index": 2,
+                "dtype": "float32",
+                "format": "ND",
+                "paramType": "optional",
+                "shape": [
+                    -2
+                ],
+                "format_match_mode": "FormatAgnostic"
+            }
+        ],
+        "attrs": [
+            {
+                "name": "group",
+                "dtype": "str",
+                "value": ""
+            },
+            {
+                "name": "is_trans_a",
+                "dtype": "bool",
+                "value": false
+            },
+            {
+                "name": "is_trans_b",
+                "dtype": "bool",
+                "value": false
+            },
+            {
+                "name": "gather_index",
+                "dtype": "int",
+                "value": 0
+            },
+            {
+                "name": "comm_turn",
+                "dtype": "int",
+                "value": 0
+            },
+            {
+                "name": "rank_size",
+                "dtype": "int",
+                "value": 0
+            },
+            {
+                "name": "block_size",
+                "dtype": "int",
+                "value": 0
+            },
+            {
+                "name": "group_size",
+                "dtype": "int",
+                "value": 0
+            },
+            {
+                "name": "is_gather_out",
+                "dtype": "bool",
+                "value": false
+            },
+            {
+                "name": "is_amax_out",
+                "dtype": "bool",
+                "value": false
+            },
+            {
+                "name": "y_dtype",
+                "dtype": "int",
+                "value": 0
+            },
+            {
+                "name": "comm_mode",
+                "dtype": "str",
+                "value": ""
+            }
+        ],
+        "opMode": "dynamic",
+        "deterministic": "ignore"
+    }
+}

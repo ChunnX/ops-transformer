@@ -1,0 +1,3 @@
+repository='external project URL'
+module='/home/developer/codes/ops-transformer/third_party/protobuf/protobuf-25.1.tar.gz'
+tag='SHA256=9bd87b8280ef720d3240514f884e56a712f2218f0d693b48050c836028940a42'

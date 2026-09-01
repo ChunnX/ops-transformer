@@ -1,0 +1,2 @@
+/usr/bin/ar qc libes_math.a CMakeFiles/es_math_obj.dir/es_math_build/generated_code/es_math_all_in_one.cpp.o
+/usr/bin/ranlib libes_math.a

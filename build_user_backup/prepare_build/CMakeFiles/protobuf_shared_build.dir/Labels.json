@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_shared_build"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_shared_build.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_shared_build-complete.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-build.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-configure.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-download.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-install.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-mkdir.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-patch.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"protobuf_shared_build"
+		],
+		"name" : "protobuf_shared_build"
+	}
+}

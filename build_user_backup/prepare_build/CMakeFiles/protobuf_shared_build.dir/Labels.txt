@@ -1,0 +1,13 @@
+# Target labels
+ protobuf_shared_build
+# Source files and their labels
+/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_shared_build
+/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_shared_build.rule
+/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_shared_build-complete.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-build.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-configure.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-download.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-install.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-mkdir.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-patch.rule
+/home/developer/codes/ops-transformer/build/prepare_build/protobuf_shared_build-prefix/src/protobuf_shared_build-stamp/protobuf_shared_build-update.rule

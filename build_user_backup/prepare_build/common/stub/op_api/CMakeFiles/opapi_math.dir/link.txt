@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC    -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings -shared -Wl,-soname,libopapi_math.so -o ../../../../libopapi_math.so CMakeFiles/opapi_math.dir/opapi_stub.cpp.o 

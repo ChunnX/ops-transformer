@@ -1,0 +1,1 @@
+Build [ascend950] op_name [all_gather_matmul_v2_apt] index [13] bin_file [AllGatherMatmulV2_647c3a14e62753d0f5690e520c3873de] duration [3.75537] size [4393712] start_time [1788162365.495956923] end_time [1788162369.251323617]

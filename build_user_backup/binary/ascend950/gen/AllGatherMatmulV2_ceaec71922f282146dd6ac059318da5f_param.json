@@ -1,0 +1,173 @@
+{
+  "op_type": "AllGatherMatmulV2",
+  "op_list": [
+    {
+      "bin_filename": "AllGatherMatmulV2_ceaec71922f282146dd6ac059318da5f",
+      "inputs": [
+        {
+          "name": "x1",
+          "index": 0,
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "x2",
+          "index": 1,
+          "dtype": "float8_e5m2",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "bias",
+          "index": 2,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "x1_scale",
+          "index": 3,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "x2_scale",
+          "index": 4,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "quant_scale",
+          "index": 5,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "index": 0,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "gather_out",
+          "index": 1,
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "amax_out",
+          "index": 2,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "group",
+          "dtype": "str",
+          "value": ""
+        },
+        {
+          "name": "is_trans_a",
+          "dtype": "bool",
+          "value": false
+        },
+        {
+          "name": "is_trans_b",
+          "dtype": "bool",
+          "value": false
+        },
+        {
+          "name": "gather_index",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "comm_turn",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "rank_size",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "block_size",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "group_size",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "is_gather_out",
+          "dtype": "bool",
+          "value": false
+        },
+        {
+          "name": "is_amax_out",
+          "dtype": "bool",
+          "value": false
+        },
+        {
+          "name": "y_dtype",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "comm_mode",
+          "dtype": "str",
+          "value": ""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+[2026-08-31 15:46:04] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-08-31 15:46:04] [ES-GEN] Lock file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/.gen.lock
+[2026-08-31 15:46:04] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.0.0/bin/gen_esb
+[2026-08-31 15:46:04] [ES-GEN] OPP path: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-08-31 15:46:04] [ES-GEN] Output dir: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code
+[2026-08-31 15:46:04] [ES-GEN] Module: math
+[2026-08-31 15:46:04] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.0.0/lib64
+[2026-08-31 15:46:04] [ES-GEN] Exclude ops: 
+[2026-08-31 15:46:04] [ES-GEN] ========== Main Logic Started ==========
+[2026-08-31 15:46:04] [ES-GEN] Using flock file locking mechanism
+[2026-08-31 15:46:04] [ES-GEN] [flock] Acquired lock immediately
+[2026-08-31 15:46:04] [ES-GEN] Waiting for filesystem sync...
+[2026-08-31 15:46:05] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-08-31 15:46:05] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.0.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math "/home/developer/Ascend/cann-9.0.0/bin/gen_esb" --output_dir="/home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code" --module_name="math" --exclude_ops=""
+==========================================
+ES Graph Builder Generator v1.0
+Copyright (c) 2025 Huawei Technologies Co., Ltd.
+==========================================
+Starting code generation...
+Environment variable check: ASCEND_OPP_PATH = /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.0.0/lib64:/home/developer/codes/ops-transformer/build:/home/developer/Ascend/cann-9.0.0/lib64:/home/developer/Ascend/cann-9.0.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.0.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/Python-3.11.4/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/Python-3.11.4/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/opt/buildtools/python-3.11.4/lib::/home/developer/Ascend/cann-9.0.0/devlib
+Output directory: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/
+Module name: math
+ASCEND_OPP_PATH is: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+ops proto path: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/custom/:/home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/built-in/
+Get ops num: 1
+Generate done, generated num 1, unsupported: 
+Write to file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+Generated C generator aggregate file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+Write to file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+Generated C++ generator aggregate file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+Write to file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+Generated Python generator aggregate file: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+Generated aggregate files:
+  C generator: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+  C++ generator: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+  Python generator: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+Generated util files:
+  Utils generator:
+    /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_log.h
+Generated files in: /home/developer/codes/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/
+
+==========================================
+Code generation completed!
+Module name: math
+==========================================
+[2026-08-31 15:46:05] [ES-GEN] [Success] gen_esb executed successfully
+[2026-08-31 15:46:05] [ES-GEN] [flock] Execution completed, exit code: 0

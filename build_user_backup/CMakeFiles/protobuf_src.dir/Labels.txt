@@ -1,0 +1,13 @@
+# Target labels
+ protobuf_src
+# Source files and their labels
+/home/developer/codes/ops-transformer/build/CMakeFiles/protobuf_src
+/home/developer/codes/ops-transformer/build/CMakeFiles/protobuf_src.rule
+/home/developer/codes/ops-transformer/build/CMakeFiles/protobuf_src-complete.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-build.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-configure.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-download.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-install.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-mkdir.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-patch.rule
+/home/developer/codes/ops-transformer/build/protobuf_src-prefix/src/protobuf_src-stamp/protobuf_src-update.rule

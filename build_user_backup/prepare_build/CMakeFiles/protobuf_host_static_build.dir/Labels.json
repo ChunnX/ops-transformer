@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_host_static_build"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_host_static_build.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/CMakeFiles/protobuf_host_static_build-complete.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-build.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-configure.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-download.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-install.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-mkdir.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-patch.rule"
+		},
+		{
+			"file" : "/home/developer/codes/ops-transformer/build/prepare_build/protobuf_host_static_build-prefix/src/protobuf_host_static_build-stamp/protobuf_host_static_build-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"protobuf_host_static_build"
+		],
+		"name" : "protobuf_host_static_build"
+	}
+}

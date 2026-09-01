@@ -1,0 +1,14 @@
+Version=9.1.0
+version_dir=cann
+required_package_runtime_version=">=8.5"
+required_package_opbase_version=">=8.5"
+required_package_hcomm_version=">=8.5"
+required_package_ge-executor_version=">=8.5"
+required_package_metadef_version=">=8.5"
+required_package_ge-compiler_version=">=8.5"
+required_package_bisheng-compiler_version=">=8.5"
+required_package_asc-tools_version=">=8.5"
+required_package_bisheng-compiler_version=">=8.5"
+required_package_ops-nn_version=">=8.5"
+required_package_hccl_version=">=8.5"
+timestamp=20260831_154604643
