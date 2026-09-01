@@ -616,9 +616,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     Gmm1RuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
     GmmExecutionConfig sharedGmmConfig = gmmExecutionConfig_;
     if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
-        sharedGmmConfig.inputLayout = {
-            quantProcessConfig_.quantTokenScaleAlignBytes * MoeQuantConfig::A_ELEMS_PER_BYTE,
-            quantProcessConfig_.quantTokenScaleAlignBytes / sizeof(typename MoeQuantConfig::QuantScaleType)};
+        sharedGmmConfig.inputLayout = {quantProcessConfig_.quantTokenScaleAlignBytes * MoeQuantConfig::A_ELEMS_PER_BYTE,
+                                       quantProcessConfig_.quantTokenScaleAlignBytes /
+                                           static_cast<uint32_t>(sizeof(typename MoeQuantConfig::QuantScaleType))};
     }
     constexpr bool isA8W4 = SharedQuantConfig::AXW_MODE == AxWMode::A8W4;
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
