@@ -55,8 +55,6 @@ using namespace AscendC;
 #error "MEGA_MOE_WEIGHT1_INTERLEAVED must be 0 or 1"
 #endif
 
-// Use the conventional contiguous gate/up weight1 and MX-scale layout by
-// default. Builds that provide an interleaved weight can override this to 1.
 static constexpr bool WEIGHT1_INTERLEAVED = MEGA_MOE_WEIGHT1_INTERLEAVED != 0;
 
 #ifdef ENABLE_TENSOR_API
@@ -129,7 +127,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
             MegaMoeImpl::MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
-                                        CombineQuantOutType, TopkWeightsPrefetch>
+                                        CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
