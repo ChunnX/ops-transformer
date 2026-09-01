@@ -22,9 +22,6 @@ using std::pair;
 using std::string;
 namespace optiling {
 
-constexpr uint32_t QUANT_MODE_1 = 1;
-constexpr uint32_t QUANT_MODE_2 = 1;
-
 ge::graphStatus MQSMLATilingCheck::CheckFeatureWinKV() const
 {
     OP_CHECK_IF(oriWinLeft_ != -1 && oriWinLeft_ < 0,
@@ -73,7 +70,7 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
                                                       "dSizeV only support 512"),
                 return ge::GRAPH_FAILED);
 
-    if (quant_mode_ == QUANT_MODE_1) {
+    if (quant_mode_ == 1) {
         OP_CHECK_IF(
             dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -81,7 +78,7 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
                 "When quant_mode is 1, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE) +
                     ", but got " + std::to_string(dSizeVInput_)),
             return ge::GRAPH_FAILED);
-    } else if (quant_mode_ == QUANT_MODE_2) {
+    } else if (quant_mode_ == 2U) {
         OP_CHECK_IF(
             dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -119,12 +116,12 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantDtype() const
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     OP_CHECK_IF(
-        *opParamInfo_.quantMode != QUANT_MODE_1 && *opParamInfo_.quantMode != QUANT_MODE_2,
+        *opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(*opParamInfo_.quantMode).c_str(),
                                               "Quant_mode only support 1 and 2"),
         return ge::GRAPH_FAILED);
 
-    if (*opParamInfo_.quantMode == QUANT_MODE_1 || *opParamInfo_.quantMode == QUANT_MODE_2) {
+    if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2U) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "oriKv", "DT_HIFLOAT8",
                                                           "oriKv dtype only support DT_FLOAT8_E4M3FN"),
@@ -173,9 +170,6 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MQSMLATilingCheck::CheckFeature() const
-{
-    return CheckFeatureAntiquant();
-}
+ge::graphStatus MQSMLATilingCheck::CheckFeature() const { return CheckFeatureAntiquant(); }
 
 } // namespace optiling

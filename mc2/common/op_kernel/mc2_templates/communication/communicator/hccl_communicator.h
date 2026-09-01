@@ -17,6 +17,9 @@
 #define MC2_HCCL_COMMUNICATOR_H
 
 #include "../primitives/hccl_primitives.h"
+#if MC2_DFX_ENABLE
+#include "../../../mc2_runtime_info.h"
+#endif
 
 namespace MC2KernelTemplate {
 /**
@@ -52,6 +55,9 @@ public:
     __aicore__ inline void Process();
     // 释放通信器资源
     __aicore__ inline void End();
+#if MC2_DFX_ENABLE
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+#endif
 
 private:
     enum Communicationtype {
@@ -69,6 +75,9 @@ private:
     static constexpr uint8_t MAX_HCCL_HANDLE_ = 63; // hccl只支持最多63个任务并行
     AscendC::HcclHandle hTasks_[MAX_HCCL_HANDLE_];
     bool taskSuccess_[MAX_HCCL_HANDLE_];
+#if MC2_DFX_ENABLE
+    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_ = nullptr;
+#endif
 };
 
 template <bool AICSync, AscendC::HcclServerType ServerType, typename ContextType, typename TilingDataType,
@@ -128,6 +137,11 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         for (uint32_t i = 0; i < taskCnt; i++) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
+#if MC2_DFX_ENABLE
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncCommitCount();
+            }
+#endif
         }
     }
 }
@@ -145,9 +159,19 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         hccl_.Wait(hTasks_[startIndex_ + taskIndex]);
         taskSuccess_[startIndex_ + taskIndex] = true;
+#if MC2_DFX_ENABLE
+        if (runtimeInfo_ != nullptr) {
+            runtimeInfo_->IncWaitCount();
+        }
+#endif
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hccl_.Commit(hTasks_[startIndex_ + taskIndex]);
         taskSuccess_[startIndex_ + taskIndex] = false;
+#if MC2_DFX_ENABLE
+        if (runtimeInfo_ != nullptr) {
+            runtimeInfo_->IncCommitCount();
+        }
+#endif
     }
 }
 
@@ -164,6 +188,11 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (communicationType_ == Communicationtype::COMMUNICATION_WAIT_ONE) {
         AscendC::HcclHandle handleId = primitive_.SyncSend(&hccl_, &context_, taskIndex);
         hccl_.Wait(handleId);
+#if MC2_DFX_ENABLE
+        if (runtimeInfo_ != nullptr) {
+            runtimeInfo_->IncWaitCount();
+        }
+#endif
     } else if (communicationType_ == Communicationtype::COMMUNICATION_SEND_ONE) {
         hTasks_[endIndex_ + taskIndex] = primitive_.SyncSend(&hccl_, &context_, taskIndex);
         taskSuccess_[endIndex_ + taskIndex] = false;
@@ -205,6 +234,11 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         for (uint32_t i = 0; i < context_.repeat; ++i) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
+#if MC2_DFX_ENABLE
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncCommitCount();
+            }
+#endif
         }
     }
 }
@@ -231,6 +265,11 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
             if (!taskSuccess_[i]) {
                 hccl_.Wait(hTasks_[i]);
                 taskSuccess_[i] = true;
+#if MC2_DFX_ENABLE
+                if (runtimeInfo_ != nullptr) {
+                    runtimeInfo_->IncWaitCount();
+                }
+#endif
             }
         }
     }

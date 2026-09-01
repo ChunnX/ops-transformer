@@ -69,12 +69,7 @@ std::tuple<at::Tensor, at::Tensor> minimax_sparse_attention_split_kv(
         auto local_device = c10::Device(query.device());
         const c10::OptionalDeviceGuard device_guard(local_device);
         // Zero-init so BNSD/BSND padding tokens (kernel leaves them unwritten) stay 0.
-        // FP8 Q/K/V still writes BF16 attentionOut (see infershape / aclnn).
-        auto out_opts = query.options();
-        if (query.scalar_type() == at::kFloat8_e4m3fn) {
-            out_opts = out_opts.dtype(at::kBFloat16);
-        }
-        attention_out = at::zeros(query.sizes(), out_opts);
+        attention_out = at::zeros(query.sizes(), query.options());
         if (softmax_lse_flag) {
             if (input_layout == "TND") {
                 softmax_lse = at::zeros({query.size(0), query.size(1), 1}, query.options().dtype(at::kFloat));

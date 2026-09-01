@@ -53,7 +53,6 @@ def pta_customize_inputs(
     mrope_position=None,
     mrope_section=None,
     q_quant_mode="PerTokenPerHead",
-    k_quant_mode="PerTokenPerHead",
     q_out_dtype=None,
     **kwargs,
 ):
@@ -74,10 +73,6 @@ def pta_customize_inputs(
         v_scale,
         mrope_position,
         testcase_name=kwargs.get("testcase_name"),
-        head_nums=head_nums,
-        layout_qkv=layout_qkv,
-        q_quant_mode=q_quant_mode,
-        k_quant_mode=k_quant_mode,
     )
 
 
@@ -114,7 +109,6 @@ class PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec:
         mrope_position=None,
         mrope_section=None,
         q_quant_mode="PerTokenPerHead",
-        k_quant_mode="PerTokenPerHead",
         q_out_dtype=None,
         **kwargs,
     ):
@@ -145,7 +139,6 @@ class PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec:
             epsilon=epsilon,
             mrope_section=mrope_section,
             q_quant_mode=q_quant_mode,
-            k_quant_mode=k_quant_mode,
             q_out_dtype=dtype,
         )
         return _pta_outputs(result) + [
@@ -182,7 +175,6 @@ class PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec:
         mrope_position=None,
         mrope_section=None,
         q_quant_mode="PerTokenPerHead",
-        k_quant_mode="PerTokenPerHead",
         q_out_dtype=None,
         **kwargs,
     ):
@@ -213,7 +205,6 @@ class PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec:
             epsilon=epsilon,
             mrope_section=mrope_section,
             q_quant_mode=q_quant_mode,
-            k_quant_mode=k_quant_mode,
             q_out_dtype=dtype,
         )
         return _pta_outputs(result)
@@ -222,6 +213,4 @@ class PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec:
 __spec__ = {
     "cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale": "PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec",
     "cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_": "PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec",
-    "torch.ops.cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale": "PtaQkvRmsNormRopeCacheWithKScaleFunctionalTestSpec",
-    "torch.ops.cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_": "PtaQkvRmsNormRopeCacheWithKScaleInplaceTestSpec",
 }

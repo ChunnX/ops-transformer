@@ -14,15 +14,9 @@
 
 class KvQuantSparseFlashAttentionTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "KvQuantSparseFlashAttentionTiling SetUp" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "KvQuantSparseFlashAttentionTiling SetUp" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "KvQuantSparseFlashAttentionTiling TearDown" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "KvQuantSparseFlashAttentionTiling TearDown" << std::endl; }
 };
 
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_0)

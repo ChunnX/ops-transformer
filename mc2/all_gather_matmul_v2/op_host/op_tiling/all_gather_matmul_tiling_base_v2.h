@@ -91,7 +91,6 @@ protected:
     {
         return ge::GRAPH_SUCCESS;
     }
-
     void Reset();
 
     mc2tiling::HcclDataType GetDataType(ge::DataType type);
@@ -132,6 +131,7 @@ protected:
     bool enableNd2Nz_{false};
     bool castBias_{false};
     uint32_t gatherIndex_{0};
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout_{};
 };
 } // namespace optiling
 

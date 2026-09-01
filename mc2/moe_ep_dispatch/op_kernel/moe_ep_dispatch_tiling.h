@@ -18,7 +18,6 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
 
 constexpr uint32_t MOE_EP_SEND_ENTRY_BYTES = 2U * sizeof(uint32_t); // source slot和destination slot
 
@@ -42,7 +41,7 @@ struct MoeEpDispatchHybridInfo {
 };
 
 struct MoeEpDispatchWindowLayout {
-    uint32_t scaleoutSlotAlignedBytes; // scaleout 数据和转发元信息 slot 字节数
+    uint32_t scaleoutSlotAlignedBytes;   // scaleout 数据和转发元信息 slot 字节数
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
     uint64_t winDataOffset;
@@ -52,7 +51,7 @@ struct MoeEpDispatchWindowLayout {
 };
 
 struct MoeEpDispatchWorkspaceLayout {
-    uint64_t sendEntryTokenRangeBytes; // 单个 token 范围的发送记录字节数
+    uint64_t sendEntryTokenRangeBytes;  // 单个 token 范围的发送记录字节数
     uint64_t routeWorkspaceOffset;
     uint64_t scaleoutSendEntryOffset;
     uint64_t scaleupSendEntryOffset;
@@ -63,7 +62,6 @@ struct MoeEpDispatchInfo {
     MoeEpDispatchHybridInfo hybrid;
     MoeEpDispatchWindowLayout window;
     MoeEpDispatchWorkspaceLayout workspace;
-    MoeEpDumpMetadata dumpMetadata;
     uint64_t hostPinnedCounterAddr;
     uint64_t totalWinSizeEp;
     uint64_t totalUbSize;

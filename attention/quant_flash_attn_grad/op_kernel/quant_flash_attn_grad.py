@@ -121,7 +121,6 @@ class QuantFlashAttnGradTiling:
     s2_tail: int
     has_seq_used_q: bool
     has_seq_used_k: bool
-    metadata_len: int
 
     dq_work_space_offset: int
     dk_work_space_offset: int
@@ -2206,8 +2205,8 @@ def quant_flash_attn_grad(
     )
     tensor_metadata = pl.make_tensor(
         metadata,
-        [2, tiling.metadata_len],
-        [tiling.metadata_len, 1],
+        [1, 64],
+        [64, 1],
         dtype=pl.DT_INT32,
     )
     tensor_workspace_sfmg = pl.make_tensor(
@@ -2925,8 +2924,7 @@ def quant_flash_attn_grad(
 
     # process kernel
     alloc_event_id()
-    loop_max = 0
-    loop_max = loop_max + tensor_metadata[1, 0]
+    loop_max = cal_deter_max_loop_num(const_info)
     task_id = 0
 
     init_coordinate_info(const_info, 0, 0, coordinate_infos[0])

@@ -381,3 +381,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
 #ifdef __cplusplus
 }
 #endif
+

@@ -12,7 +12,6 @@
 #define SPARSE_FLASH_MLA_CHECKER_H
 
 #include "../sparse_flash_mla_tiling.h"
-#include "log/error_code.h"
 
 namespace optiling {
 

@@ -25,12 +25,11 @@ namespace ge {
 * @brief Fast and Memory-Efficient Exact Attention with IO-Awareness.
 
 * @par Inputs:
- * nineteen inputs, including:
- * @li query: A matrix Tensor. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
- * @li key: A matrix Tensor. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
- * @li value: A matrix Tensor. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
-* @li real_shift: A
-matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
+* twelve inputs, including:
+* @li query: A matrix Tensor. The type support float16, bf16, float32.
+* @li key: A matrix Tensor. The type support float16, bf16, float32.
+* @li value: A matrix Tensor. The type support float16, bf16, float32.
+* @li real_shift: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
 * @li drop_mask: A matrix Tensor. An optional input parameter. The type support uint8.
 * @li padding_mask: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
 * @li atten_mask: A matrix Tensor. An optional input parameter. The type support bool, uint8.
@@ -44,10 +43,8 @@ matrix Tensor. An optional input parameter. The type support float16, bf16, floa
 * @li d_scale_q: A matrix Tensor. An optional input parameter. The type support float32.
 * @li d_scale_k: A matrix Tensor. An optional input parameter. The type support float32.
 * @li d_scale_v: A matrix Tensor. An optional input parameter. The type support float32.
- * @li query_rope: A matrix Tensor. An optional input parameter. The type support float8_e5m2, float8_e4m3fn, float16,
-bf16, float32.
- * @li key_rope: A matrix Tensor. An optional input parameter. The type support float8_e5m2, float8_e4m3fn, float16,
-bf16, float32.
+* @li queryRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
+* @li keyRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
 * @li sink: A matrix Tensor. An optional input parameter. The type support float32.
 * @li p_scale: A matrix Tensor. An optional input parameter. The type support float32.
 
@@ -113,6 +110,6 @@ REG_OP(FlashAttentionScore)
     .ATTR(out_dtype, Int, 0)
     .ATTR(softmax_out_layout, String, "")
     .OP_END_FACTORY_REG(FlashAttentionScore)
-} // namespace ge
+}  // namespace ge
 
-#endif // FLASH_ATTENTION_SCORE_PROTO_H_
+#endif  // FLASH_ATTENTION_SCORE_PROTO_H_
