@@ -101,8 +101,8 @@ struct Config {
     using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t{}, uint32_t{}));
     using LayoutCType = decltype(MakeLayoutC{}(uint32_t{}, uint32_t{}));
     using LayoutBiasType = decltype(MakeLayoutBias{}(uint32_t{}, uint32_t{}));
-    using LayoutATrait = Te::GetLayoutTrait<LayoutAType>;
-    using LayoutScaleATrait = Te::GetLayoutTrait<LayoutScaleAType>;
+    using LayoutATrait = Te::get_layout_trait<LayoutAType>;
+    using LayoutScaleATrait = Te::get_layout_trait<LayoutScaleAType>;
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
     using BlockPrologue =
@@ -344,15 +344,15 @@ struct Config {
     __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig &config, const StridedAConfig &aConfig)
     {
         LayoutBundle layouts;
-        auto aShape = Te::MakeShape(Te::MakeShape(Te::_1{}, config.m), Te::MakeShape(Te::_1{}, config.k));
+        auto aShape = Te::make_shape(Te::make_shape(Te::_1{}, config.m), Te::make_shape(Te::_1{}, config.k));
         auto aStride =
-            Te::MakeStride(Te::MakeStride(Te::_0{}, aConfig.rowStrideElements), Te::MakeStride(Te::_0{}, Te::_1{}));
-        layouts.a = Te::MakePatternLayout<LayoutA, LayoutATrait>(aShape, aStride);
+            Te::make_stride(Te::make_stride(Te::_0{}, aConfig.rowStrideElements), Te::make_stride(Te::_0{}, Te::_1{}));
+        layouts.a = Te::make_pattern_layout<LayoutA, LayoutATrait>(aShape, aStride);
         layouts.b = MakeLayoutB{}(config.k, config.n);
-        auto scaleAShape = Te::MakeShape(Te::MakeShape(Te::_1{}, config.m), Te::MakeShape(Te::_1{}, config.scaleK));
-        auto scaleAStride = Te::MakeStride(Te::MakeStride(Te::_0{}, aConfig.scaleRowStrideElements),
-                                           Te::MakeStride(Te::_0{}, Te::_1{}));
-        layouts.scaleA = Te::MakePatternLayout<LayoutScaleA, LayoutScaleATrait>(scaleAShape, scaleAStride);
+        auto scaleAShape = Te::make_shape(Te::make_shape(Te::_1{}, config.m), Te::make_shape(Te::_1{}, config.scaleK));
+        auto scaleAStride = Te::make_stride(Te::make_stride(Te::_0{}, aConfig.scaleRowStrideElements),
+                                            Te::make_stride(Te::_0{}, Te::_1{}));
+        layouts.scaleA = Te::make_pattern_layout<LayoutScaleA, LayoutScaleATrait>(scaleAShape, scaleAStride);
         layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
         layouts.c = MakeLayoutC{}(config.m, config.n);
         layouts.bias = MakeLayoutBias{}(1U, config.n);
