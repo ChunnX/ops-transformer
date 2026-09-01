@@ -60,7 +60,6 @@ private:
     using MegaMoeBase::params_;
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
-    using MegaMoeBase::waveCombineJob_;
     using MegaMoeBase::waveCombineScratch_;
     using MegaMoeBase::syncWorkspaceLayout_;
 

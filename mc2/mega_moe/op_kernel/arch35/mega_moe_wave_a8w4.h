@@ -61,7 +61,6 @@ private:
     using MegaMoeBase::params_;
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
-    using MegaMoeBase::waveCombineJob_;
     using MegaMoeBase::waveCombineScratch_;
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
