@@ -830,10 +830,10 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetInputs()
     tilingDataPtr_->k = k_;
     tilingDataPtr_->cols = cols_;
 
-    // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
-    if (quantMode_ == QUANT_MODE_INT4_DYNAMIC && (cols_ % NUM_TWO != 0)) {
+    // INT4 and MXFP4 quantization pack two values per byte along the H/cols dimension.
+    if ((quantMode_ == QUANT_MODE_INT4_DYNAMIC || quantMode_ == QUANT_MODE_MXFP4_E2M1) && (cols_ % NUM_TWO != 0)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "cols", std::to_string(cols_).c_str(),
-                                              "For INT4 dynamic quantization, cols must be even.");
+                                              "For INT4 dynamic and MXFP4 quantization, cols must be even.");
         return ge::GRAPH_FAILED;
     }
 
@@ -1764,6 +1764,8 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxQuant()
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
     int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
 
+    // In MXFP4 mode, output is packed by two values per byte. MX_QUANT_BLOCK_SIZE is 32 (even), so
+    // with the MXFP4 input cols parity check every column tile, including the tail, remains even.
     int64_t perLoopCols = Ops::Base::CeilAlign(tilingDataPtr_->cols, MX_QUANT_BLOCK_SIZE);
     int64_t perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopMxQuant(perLoopCols);
     while (perLoopMaxIndicesElements <= 0 && perLoopCols > MX_QUANT_BLOCK_SIZE) {
@@ -1778,6 +1780,7 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxQuant()
         return;
     }
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
+    // In MXFP4 mode, cols and perLoopCols are even, so the tail tile is even as well.
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopCols;
     gatherOutTiling->needCoreNum = needCoreNum; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
     gatherOutTiling->perCoreIndicesElements =
@@ -2098,13 +2101,13 @@ bool MoeInitRoutingV3TilingArch35::IsSupportGatherCopyKernels() const
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         return false;
     }
-    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
+    if (quantMode_ == QUANT_MODE_UNQUANT || quantMode_ == QUANT_MODE_STATIC || quantMode_ == QUANT_MODE_HIF8_CAST ||
+        quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN ||
-        quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN) {
-        return true;
-    }
-    if (IsMXFP8NoQuantCase(quantMode_, xDtype_)) {
+        quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN ||
+        quantMode_ == QUANT_MODE_MXFP4_E2M1 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 ||
+        quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN) {
         return true;
     }
     return false;
@@ -2112,7 +2115,7 @@ bool MoeInitRoutingV3TilingArch35::IsSupportGatherCopyKernels() const
 
 void MoeInitRoutingV3TilingArch35::ComputeUseGatherCopy()
 {
-    if (IsSupportGatherCopyKernels()) {
+    if (IsSupportGatherCopyKernels() && !(isFullload_ && IsSupportFullloadQuantMode())) {
         // gather搬运收益与有效专家比例、专家数k成正比，当前阈值取3。
         tilingDataPtr_->useGatherCopy = ((expertEnd_ - expertStart_) * k_ > expertNum_ * NUM_THREE);
     } else {
