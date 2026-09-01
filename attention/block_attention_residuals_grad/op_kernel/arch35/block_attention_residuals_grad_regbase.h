@@ -125,6 +125,7 @@ private:
     event_t eventMTE2V_;
     event_t eventVMTE2_;
     event_t eventSV_;
+    event_t eventVS_;
 };
 
 template <typename D_IN>
@@ -331,11 +332,16 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeGradProb
         PipeBarrier<PIPE_V>();
         AscendC::Mul(outFp32_, vRow_, gradOutFp32_, hiddenSize_);
         PipeBarrier<PIPE_V>();
-        RegBase::ReduceMulSumTree(scalarLocal_, outFp32_, hiddenSize_, eventSV_);
+        SetFlag<HardEvent::V_S>(eventVS_);
+        WaitFlag<HardEvent::V_S>(eventVS_);
+        RegBase::ReduceMulSumTree(scalarLocal_, outFp32_, hiddenSize_, eventSV_, eventVS_);
         PipeBarrier<PIPE_V>();
         RegBase::CopyScalarToDense(gradProb_[n], scalarLocal_);
         PipeBarrier<PIPE_V>();
     }
+    // gradProb 现在由标量单元写入，SoftmaxBackward 的向量 Mul 读取前必须等标量写完成。
+    SetFlag<HardEvent::S_V>(eventSV_);
+    WaitFlag<HardEvent::S_V>(eventSV_);
 }
 
 template <typename D_IN>
@@ -343,7 +349,9 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::SoftmaxBackward
 {
     AscendC::Mul(gradScore_, probs_, gradProb_, blockCount_);
     PipeBarrier<PIPE_V>();
-    RegBase::ReduceMulSumTree(scalarLocal_, gradScore_, blockCount_, eventSV_);
+    SetFlag<HardEvent::V_S>(eventVS_);
+    WaitFlag<HardEvent::V_S>(eventVS_);
+    RegBase::ReduceMulSumTree(scalarLocal_, gradScore_, blockCount_, eventSV_, eventVS_);
     PipeBarrier<PIPE_V>();
     RegBase::SoftmaxBackwardVf(gradScore_, probs_, gradProb_, scalarLocal_, blockCount_);
     PipeBarrier<PIPE_V>();
@@ -360,6 +368,9 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
     }
     inQue_.FreeTensor(inLocal);
 
+    SetFlag<HardEvent::V_S>(eventVS_);
+    WaitFlag<HardEvent::V_S>(eventVS_);
+
     // 将标量值保存到 scalarLocal 槽位
     RegBase::CopyScalarToDense(scalarLocal_[1U * RegBase::GRAD_ELEM_PER_BLK_FP32], probs_[blk]);
     RegBase::CopyScalarToDense(scalarLocal_[2U * RegBase::GRAD_ELEM_PER_BLK_FP32], gradScore_[blk]);
@@ -368,7 +379,9 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
 
     AscendC::Mul(outFp32_, scoreWeight_, vRow_, hiddenSize_);
     PipeBarrier<PIPE_V>();
-    RegBase::ReduceMulSumTree(scalarLocal_, outFp32_, hiddenSize_, eventSV_);
+    SetFlag<HardEvent::V_S>(eventVS_);
+    WaitFlag<HardEvent::V_S>(eventVS_);
+    RegBase::ReduceMulSumTree(scalarLocal_, outFp32_, hiddenSize_, eventSV_, eventVS_);
     PipeBarrier<PIPE_V>();
 
     // sc = gs * inv_rms
@@ -531,6 +544,7 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Process()
     eventMTE2V_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     eventVMTE2_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
     eventSV_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     Duplicate(gswAcc_, 0.0f, hiddenSizeAlignFp32_);
     Duplicate(gswCmp_, 0.0f, hiddenSizeAlignFp32_);
     PipeBarrier<PIPE_V>();

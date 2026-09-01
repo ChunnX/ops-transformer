@@ -314,7 +314,7 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeAndSaveGra
                 LoadTensorTile(GetV(block, batch), hStart, length, v);
                 Mul(floatBuf2_.Get<float>(), gradHidden, v, length);
                 PipeBarrier<PIPE_V>();
-                RegBase::ReduceMulSumTree(scalar, floatBuf2_.Get<float>(), length, eventSV_);
+                RegBase::ReduceMulSumTree(scalar, floatBuf2_.Get<float>(), length, eventSV_, eventVS_);
                 SetFlag<HardEvent::V_S>(eventVS_);
                 WaitFlag<HardEvent::V_S>(eventVS_);
                 float partial = scalar.GetValue(0);
@@ -327,7 +327,7 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeAndSaveGra
 
                 Mul(floatBuf2_.Get<float>(), scoreWeightBuf_.Get<float>(), v, length);
                 PipeBarrier<PIPE_V>();
-                RegBase::ReduceMulSumTree(scalar, floatBuf2_.Get<float>(), length, eventSV_);
+                RegBase::ReduceMulSumTree(scalar, floatBuf2_.Get<float>(), length, eventSV_, eventVS_);
                 SetFlag<HardEvent::V_S>(eventVS_);
                 WaitFlag<HardEvent::V_S>(eventVS_);
                 partial = scalar.GetValue(0);
@@ -344,7 +344,7 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeAndSaveGra
         // A5 RegBase Softmax backward：gradScore = probs*gradProb - probs*sum(probs*gradProb)。
         Mul(gradScore, probs, gradProb, K);
         PipeBarrier<PIPE_V>();
-        RegBase::ReduceMulSumTree(scalar, gradScore, K, eventSV_);
+        RegBase::ReduceMulSumTree(scalar, gradScore, K, eventSV_, eventVS_);
         PipeBarrier<PIPE_V>();
         RegBase::SoftmaxBackwardVf(gradScore, probs, gradProb, scalar, K);
         PipeBarrier<PIPE_V>();

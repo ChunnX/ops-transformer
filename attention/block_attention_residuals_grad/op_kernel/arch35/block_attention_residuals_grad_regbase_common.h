@@ -110,7 +110,6 @@ __aicore__ inline void KahanFusedMulAddDual(const LocalTensor<float> &sum, const
                 Sub(c0, c0, y0, mask);
                 DataCopy(sAddr + i * kVlFp32, t0, mask);
                 DataCopy(cAddr + i * kVlFp32, c0, mask);
-                sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
             }
         }
     }
@@ -171,10 +170,8 @@ __aicore__ inline void AddFoldHalf(const LocalTensor<float> &buf, uint32_t len, 
             DataCopy<float, LoadDist::DIST_NORM>(y, bufAddr + srcOffset + i * kVlFp32);
             Add(sum, x, y, mask);
             DataCopy(bufAddr + i * kVlFp32, sum, mask);
-            sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
         }
     }
-    PipeBarrier<PIPE_V>();
 }
 
 /*!
@@ -184,7 +181,7 @@ __aicore__ inline void AddFoldHalf(const LocalTensor<float> &buf, uint32_t len, 
  * head, halve until 64 lanes), then combined with a Kahan summation.
  */
 __aicore__ inline void ReduceMulSumTree(const LocalTensor<float> &dstScalar, const LocalTensor<float> &productBuf,
-                                        uint32_t elemCount, event_t eventSV)
+                                        uint32_t elemCount, event_t eventSV, event_t eventVS)
 {
     if (elemCount == 0U) {
         return;
@@ -203,7 +200,8 @@ __aicore__ inline void ReduceMulSumTree(const LocalTensor<float> &dstScalar, con
         reduceCount = static_cast<int32_t>(REDUCE_FOLD_LANE_NUM);
     }
 
-    PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::V_S>(eventVS);
+    WaitFlag<HardEvent::V_S>(eventVS);
     dstScalar.SetValue(0, ReduceSumKahan(productBuf, reduceCount));
     SetFlag<HardEvent::S_V>(eventSV);
     WaitFlag<HardEvent::S_V>(eventSV);
@@ -247,7 +245,6 @@ __aicore__ inline void FusedMulAddAccumulate(const LocalTensor<float> &sum, cons
             Mul(acc, x0, scReg, mask);
             Add(acc, acc, s0, mask);
             DataCopy(sumAddr + i * kVlFp32, acc, mask);
-            sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
         }
     }
 }
@@ -255,15 +252,12 @@ __aicore__ inline void FusedMulAddAccumulate(const LocalTensor<float> &sum, cons
 /*! Copy one float between compact meta slots without requiring 32B alignment. */
 __aicore__ inline void CopyScalarToDense(const LocalTensor<float> &dst, const LocalTensor<float> &src)
 {
-    __local_mem__ float *dstAddr = (__local_mem__ float *)dst.GetPhyAddr();
-    __local_mem__ float *srcAddr = (__local_mem__ float *)src.GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-        RegTensor<float> scalar;
-        DataCopy<float, LoadDist::DIST_BRC_B32>(scalar, srcAddr);
-        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr, scalar, maskAll);
-    }
+    // DIST_BRC_B32 / DIST_FIRST_ELEMENT_B32 按 32B 块搬运，而 gradProb/probs/
+    // gradScore/invRms 都是 4B 步进的紧凑标量槽，非 32B 对齐时会被硬件取整到
+    // 错误的 32B 块。这里改为标量单元 SetValue/GetValue，与 arch22 和 split_h 一致。
+    LocalTensor<float> d = dst;
+    LocalTensor<float> s = src;
+    d.SetValue(0, s.GetValue(0));
 }
 
 /*!
@@ -336,7 +330,6 @@ __aicore__ inline void FusedGradVF(const LocalTensor<float> &dst, const LocalTen
                 MulAddDst(acc0, sw0, scReg, mask);
                 MulAddDst(acc0, v0, varReg, mask);
                 DataCopy(dstAddr + i * kVlFp32, acc0, mask);
-                sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
             }
         }
     }
@@ -366,7 +359,6 @@ __aicore__ inline void SoftmaxBackwardVf(const LocalTensor<float> &gradScore, co
             Mul(tmp2, pReg, scalarReg, mask);
             Sub(tmp, tmp, tmp2, mask);
             DataCopy(gsAddr + i * kVlFp32, tmp, mask);
-            sreg = sreg > kVlFp32 ? (sreg - kVlFp32) : 0U;
         }
     }
 }
