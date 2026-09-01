@@ -974,7 +974,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
 {
-    InitCommBuffer();
     // 按卡分核，并与 combine_setup 保持同一旋转规则，保证同一 hcommHandle/jetty 始终由同一 AIV 维护
     uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
     uint32_t sendRankNum = epWorldSize_ / aivNum_;
@@ -987,11 +986,11 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         startRankId += remainderRankNum;
     }
     uint32_t endRankId = startRankId + sendRankNum;
-    // uint32_t startRankId, endRankId, sendRankNum;
-    // SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
-    if (sendRankNum == 0 || startRankId >= epWorldSize_) { // 空闲核，直接返回
+    // 空闲核跳过 hcomm.Init / TPipe::Reset：通信并行度上限是 epWorldSize
+    if (sendRankNum == 0 || startRankId >= epWorldSize_) {
         return;
     }
+    InitCommBuffer();
 
     GlobalTensor<int32_t> windowExpGMTensor;
     windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET));
