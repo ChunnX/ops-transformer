@@ -247,7 +247,6 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
 
     int64_t totalBytes = EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + maskRecvSize + expertCountRecvSize +
                          quantTokenScaleSize + combineOut;
-    totalBytes = totalBytes * 2;
     return totalBytes;
 }
 } // namespace
