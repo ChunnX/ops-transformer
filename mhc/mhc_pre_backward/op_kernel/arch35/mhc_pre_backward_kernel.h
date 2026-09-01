@@ -1013,8 +1013,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     // 每段只读取已由两个V核共同写好的xRs，尾段按实际K长度计算。
     for (uint32_t kOffset = 0; kOffset < currentBSBlock; kOffset += C1_K_EVENT_SIZE) {
-        uint32_t readyFlag = buffIdx * C1_EVENTS_PER_BUFFER + kOffset / C1_K_EVENT_SIZE;
-        AscendC::CrossCoreWaitFlag(readyFlag);
+        uint32_t readyFlagBase =
+            (buffIdx * C1_EVENTS_PER_BUFFER + kOffset / C1_K_EVENT_SIZE) * VEC_CORE_VECIDX_MOD;
+        // 两个V核分别写入xRs的左右半块，必须等待两路独立通知后才能读取完整数据。
+        for (uint32_t vecIdx = 0; vecIdx < VEC_CORE_VECIDX_MOD; ++vecIdx) {
+            AscendC::CrossCoreWaitFlag(readyFlagBase + vecIdx);
+        }
         uint32_t currentK = Min(C1_K_EVENT_SIZE, currentBSBlock - kOffset);
         mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_);
         mm1.SetSingleShape(fusionSize_, currentNDBlock, currentK);
@@ -1276,7 +1280,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         // 分段边界及最终尾块各发布一次；槽步长由SINGLE_M推导，与C1等待保持一致。
         uint32_t readyRows = bsChunkEnd - bsStart;
         if (readyRows % C1_K_EVENT_SIZE == 0 || bsChunkEnd == bsEnd) {
-            uint32_t readyFlag = buffId * C1_EVENTS_PER_BUFFER + (readyRows - 1) / C1_K_EVENT_SIZE;
+            // 每个V核使用独立事件，避免同一事件被重复置位后覆盖或被C1提前消费。
+            uint32_t vecIdx = GetBlockIdx() % VEC_CORE_VECIDX_MOD;
+            uint32_t readyFlag =
+                (buffId * C1_EVENTS_PER_BUFFER + (readyRows - 1) / C1_K_EVENT_SIZE) * VEC_CORE_VECIDX_MOD + vecIdx;
             AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(readyFlag);
         }
     }
