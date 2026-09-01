@@ -41,7 +41,7 @@
   attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
   $$
 
-  当前仅支持`q_input_layout="TND"`、`kv_input_layout="PAGED_BBND"`。
+  当前仅支持`layout_q="TND"`、`layout_kv="PAGED_BBND"`。
 
 > [!NOTE]
 >
@@ -66,18 +66,18 @@ cann_ops_transformer.generic_block_sparse_attention_metadata(
     head_dim,
     block_shape,
     *,
-    cu_seq_lengths=None,
+    cu_seq_lengths_q=None,
     cu_seq_lengths_kv=None,
-    seq_used_q=None,
-    seq_used_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
     is_packed_gqa=1,
-    q_input_layout="TND",
-    kv_input_layout="PAGED_BBND",
+    layout_q="TND",
+    layout_kv="PAGED_BBND",
     mask_type=1,
     quant_type=0,
     softmax_precision=1,
-    window_size_left=-1,
-    window_size_right=-1,
+    win_left=-1,
+    win_right=-1,
 ) -> Tensor
 ```
 
@@ -98,19 +98,19 @@ cann_ops_transformer.generic_block_sparse_attention(
     p_quant_scale=None,
     cu_seq_lengths_q=None,
     cu_seq_lengths_kv=None,
-    seq_used_q=None,
-    seq_used_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
     block_table=None,
     is_packed_gqa=1,
-    q_input_layout="TND",
-    kv_input_layout="PAGED_BBND",
+    layout_q="TND",
+    layout_kv="PAGED_BBND",
     scale_value=0.0,
     mask_type=1,
     quant_type=0,
     dst_type_max=0.0,
     softmax_precision=1,
-    window_size_left=-1,
-    window_size_right=-1,
+    win_left=-1,
+    win_right=-1,
     return_softmax_lse=False,
     attention_out_dtype=None,
 ) -> (Tensor, Tensor)
@@ -143,18 +143,18 @@ cann_ops_transformer.generic_block_sparse_attention(
 | num_kv_heads | int | 必选 | key/value head数 | int32 | - | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
 | block_shape | list[int] | 必选 | 稀疏块形状 `[block_x, block_y]` | int64 | - | 长度为2 | - |
-| cu_seq_lengths | Tensor | TND必选 | query序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
+| cu_seq_lengths_q | Tensor | TND必选 | query序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
 | cu_seq_lengths_kv | Tensor | TND必选 | kv序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
-| seq_used_q | Tensor | 可选 | 每个batch实际使用的query序列长度 | int32 | ND | (B,) | × |
-| seq_used_kv | Tensor | 可选 | 每个batch实际使用的kv序列长度 | int32 | ND | (B,) | × |
+| seqused_q | Tensor | 可选 | 每个batch实际使用的query序列长度 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | 每个batch实际使用的kv序列长度 | int32 | ND | (B,) | × |
 | is_packed_gqa | int | 可选 | 1表示同group共享稀疏pattern，默认1 | int32 | - | - | - |
-| q_input_layout | string | 可选 | 默认`"TND"`，当前仅支持该值 | string | - | - | - |
-| kv_input_layout | string | 可选 | 默认`"PAGED_BBND"`，当前仅支持该值 | string | - | - | - |
+| layout_q | string | 可选 | 默认`"TND"`，当前仅支持该值 | string | - | - | - |
+| layout_kv | string | 可选 | 默认`"PAGED_BBND"`，当前仅支持该值 | string | - | - | - |
 | mask_type | int | 可选 | 掩码类型，默认1（当前仅支持1） | int32 | - | - | - |
 | quant_type | int | 可选 | 量化类型，默认0（非量化） | int32 | - | - | - |
 | softmax_precision | int | 可选 | Softmax精度模式，默认1。Ascend 950仅支持1 | int32 | - | - | - |
-| window_size_left | int | 可选 | 滑窗左边界，默认-1（当前仅支持-1） | int32 | - | - | - |
-| window_size_right | int | 可选 | 滑窗右边界，默认-1（当前仅支持-1） | int32 | - | - | - |
+| win_left | int | 可选 | 滑窗左边界，默认-1（当前仅支持-1） | int32 | - | - | - |
+| win_right | int | 可选 | 滑窗右边界，默认-1（当前仅支持-1） | int32 | - | - | - |
 | metadata | Tensor | 输出 | 主算子使用的预处理metadata | int32 | ND | (1024,) | × |
 
 ### generic_block_sparse_attention
@@ -173,17 +173,17 @@ cann_ops_transformer.generic_block_sparse_attention(
 | p_quant_scale | Tensor | 可选 | 当前须为None | float32 | ND | - | - |
 | cu_seq_lengths_q | Tensor | TND必选 | query序列长度前缀和 | int64 | ND | (B+1,) | × |
 | cu_seq_lengths_kv | Tensor | TND必选 | kv序列长度前缀和 | int64 | ND | (B+1,) | × |
-| seq_used_q / seq_used_kv | Tensor | 可选 | 实际使用的序列长度 | int32 | ND | (B,) | × |
+| seqused_q / seqused_kv | Tensor | 可选 | 实际使用的序列长度 | int32 | ND | (B,) | × |
 | block_table | Tensor | PAGED必选 | 物理页映射表 | int32 | ND | (B, maxNumBlocksPerBatch) | × |
 | is_packed_gqa | int | 可选 | 1表示同group共享稀疏pattern，默认1 | int32 | - | - | - |
-| q_input_layout | string | 可选 | 默认`"TND"`，当前仅支持该值 | string | - | - | - |
-| kv_input_layout | string | 可选 | 默认`"PAGED_BBND"`，当前仅支持该值 | string | - | - | - |
+| layout_q | string | 可选 | 默认`"TND"`，当前仅支持该值 | string | - | - | - |
+| layout_kv | string | 可选 | 默认`"PAGED_BBND"`，当前仅支持该值 | string | - | - | - |
 | scale_value | float | 可选 | 注意力缩放系数；默认0.0时算子内回落为`D^-0.5` | float32 | - | - | - |
 | mask_type | int | 可选 | 掩码类型，默认1（当前仅支持1） | int32 | - | - | - |
 | quant_type | int | 可选 | 量化类型，默认0（非量化） | int32 | - | - | - |
 | dst_type_max | float | 可选 | 量化相关参数，默认0.0 | float32 | - | - | - |
 | softmax_precision | int | 可选 | Softmax精度模式，默认1；须与metadata一致 | int32 | - | - | - |
-| window_size_left / window_size_right | int | 可选 | 滑窗左右窗口，默认-1（当前仅支持-1） | int32 | - | - | - |
+| win_left / win_right | int | 可选 | 滑窗左右窗口，默认-1（当前仅支持-1） | int32 | - | - | - |
 | return_softmax_lse | bool | 可选 | 是否返回softmaxLse，默认False（当前仅支持False） | bool | - | - | - |
 | attention_out_dtype | dtype | 可选 | FP8输入时必填，须为float16或bfloat16 | ScalarType | - | - | - |
 | attention_out | Tensor | 输出 | 注意力输出，shape与query一致 | float16/bfloat16 | ND | 与query一致 | - |
@@ -213,10 +213,10 @@ cann_ops_transformer.generic_block_sparse_attention(
 ## 约束说明
 
 - 声明
-  - `cu_seq_lengths`、`cu_seq_lengths_kv`、`seq_used_q`、`seq_used_kv`、`sparse_block_idx`、`sparse_block_count`及`block_table`均为Tensor。算子在Tiling阶段无法校验其具体值，用户必须保证其合法性；传入非法值可能导致精度异常或非法内存访问。
-  - `cu_seq_lengths` / `cu_seq_lengths_kv` / `cu_seq_lengths_q` / `cu_seq_lengths_kv`须满足首元素为0，且序列整体呈非递减排列。
-  - 当`kv_input_layout`为`PAGED_BBND`时，`key`和`value`支持dim0非连续（FIA fused cache布局，stride0 = 2 × page）。
-  - `generic_block_sparse_attention_metadata`和`generic_block_sparse_attention`分两段调用。两次调用中参与metadata生成的公共属性（`is_packed_gqa`、`q_input_layout`、`kv_input_layout`、`mask_type`、`quant_type`、`softmax_precision`、`window_size_left`、`window_size_right`等）必须一致；不一致时可能产生未定义行为。
+  - `cu_seq_lengths_q`、`cu_seq_lengths_kv`、`seqused_q`、`seqused_kv`、`sparse_block_idx`、`sparse_block_count`及`block_table`均为Tensor。算子在Tiling阶段无法校验其具体值，用户必须保证其合法性；传入非法值可能导致精度异常或非法内存访问。
+  - `cu_seq_lengths_q` / `cu_seq_lengths_kv` / `cu_seq_lengths_q` / `cu_seq_lengths_kv`须满足首元素为0，且序列整体呈非递减排列。
+  - 当`layout_kv`为`PAGED_BBND`时，`key`和`value`支持dim0非连续（FIA fused cache布局，stride0 = 2 × page）。
+  - `generic_block_sparse_attention_metadata`和`generic_block_sparse_attention`分两段调用。两次调用中参与metadata生成的公共属性（`is_packed_gqa`、`layout_q`、`layout_kv`、`mask_type`、`quant_type`、`softmax_precision`、`win_left`、`win_right`等）必须一致；不一致时可能产生未定义行为。
   - 须先调用`generic_block_sparse_attention_metadata`生成`metadata`，且每次主算子调用前重新生成。
   - 本接口支持单算子模式和TorchAir图模式调用，可用于训练和推理场景。
 
@@ -224,9 +224,9 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 | 特性参数组 | 参数字段名称 |
 | :--- | :--- |
-| 公共参数组 | q_input_layout、kv_input_layout、query、key、value、sparse_block_idx、sparse_block_count、block_shape、metadata、scale_value、attention_out |
+| 公共参数组 | layout_q、layout_kv、query、key、value、sparse_block_idx、sparse_block_count、block_shape、metadata、scale_value、attention_out |
 | Sparse参数组 | sparse_block_idx、sparse_block_count、block_shape |
-| SeqLens参数组 | cu_seq_lengths_q、cu_seq_lengths_kv、seq_used_q、seq_used_kv |
+| SeqLens参数组 | cu_seq_lengths_q、cu_seq_lengths_kv、seqused_q、seqused_kv |
 | Paged Attention参数组 | block_table、key、value |
 | Quant参数组 | quant_type、q_dequant_scale、k_dequant_scale、v_dequant_scale、dst_type_max、attention_out_dtype |
 | SoftmaxLSE参数组 | return_softmax_lse、softmax_lse、softmax_precision |
@@ -277,11 +277,11 @@ metadata = cann_ops_transformer.generic_block_sparse_attention_metadata(
     Nkv,
     D,
     block_shape,
-    cu_seq_lengths=cu_seq_lengths_q,
+    cu_seq_lengths_q=cu_seq_lengths_q,
     cu_seq_lengths_kv=cu_seq_lengths_kv,
     is_packed_gqa=1,
-    q_input_layout="TND",
-    kv_input_layout="PAGED_BBND",
+    layout_q="TND",
+    layout_kv="PAGED_BBND",
     mask_type=1,
     quant_type=0,
     softmax_precision=1,
@@ -299,8 +299,8 @@ attention_out, _ = cann_ops_transformer.generic_block_sparse_attention(
     cu_seq_lengths_kv=cu_seq_lengths_kv,
     block_table=block_table,
     is_packed_gqa=1,
-    q_input_layout="TND",
-    kv_input_layout="PAGED_BBND",
+    layout_q="TND",
+    layout_kv="PAGED_BBND",
     scale_value=1.0 / (D ** 0.5),
     mask_type=1,
     quant_type=0,

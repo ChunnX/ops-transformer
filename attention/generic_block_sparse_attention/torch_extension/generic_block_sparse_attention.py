@@ -33,11 +33,11 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
                 "generic_block_sparse_attention_metadata("
                 "Tensor sparse_block_idx, Tensor sparse_block_count, "
                 "int max_q_seq_len, int max_kv_seq_len, int num_q_heads, int num_kv_heads, int head_dim, "
-                "int[] block_shape, *, Tensor? cu_seq_lengths=None, Tensor? cu_seq_lengths_kv=None, "
-                "Tensor? seq_used_q=None, Tensor? seq_used_kv=None, int is_packed_gqa=1, "
-                'str q_input_layout="TND", str kv_input_layout="PAGED_BBND", '
+                "int[] block_shape, *, Tensor? cu_seq_lengths_q=None, Tensor? cu_seq_lengths_kv=None, "
+                "Tensor? seqused_q=None, Tensor? seqused_kv=None, int is_packed_gqa=1, "
+                'str layout_q="TND", str layout_kv="PAGED_BBND", '
                 "int mask_type=1, int quant_type=0, int softmax_precision=1, "
-                "int window_size_left=-1, int window_size_right=-1) -> Tensor"
+                "int win_left=-1, int win_right=-1) -> Tensor"
             ),
             (
                 "generic_block_sparse_attention("
@@ -52,19 +52,19 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
                 "Tensor? p_quant_scale=None, "
                 "Tensor? cu_seq_lengths_q=None, "
                 "Tensor? cu_seq_lengths_kv=None, "
-                "Tensor? seq_used_q=None, "
-                "Tensor? seq_used_kv=None, "
+                "Tensor? seqused_q=None, "
+                "Tensor? seqused_kv=None, "
                 "Tensor? block_table=None, "
                 "int is_packed_gqa=1, "
-                'str q_input_layout="TND", '
-                'str kv_input_layout="PAGED_BBND", '
+                'str layout_q="TND", '
+                'str layout_kv="PAGED_BBND", '
                 "float scale_value=0.0, "
                 "int mask_type=1, "
                 "int quant_type=0, "
                 "float dst_type_max=0.0, "
                 "int softmax_precision=1, "
-                "int window_size_left=-1, "
-                "int window_size_right=-1, "
+                "int win_left=-1, "
+                "int win_right=-1, "
                 "bool return_softmax_lse=False, "
                 "ScalarType? attention_out_dtype=None"
                 ") -> (Tensor, Tensor)"
@@ -85,18 +85,18 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             head_dim,
             block_shape,
             *,
-            cu_seq_lengths=None,
+            cu_seq_lengths_q=None,
             cu_seq_lengths_kv=None,
-            seq_used_q=None,
-            seq_used_kv=None,
+            seqused_q=None,
+            seqused_kv=None,
             is_packed_gqa=1,
-            q_input_layout="TND",
-            kv_input_layout="PAGED_BBND",
+            layout_q="TND",
+            layout_kv="PAGED_BBND",
             mask_type=1,
             quant_type=0,
             softmax_precision=1,
-            window_size_left=-1,
-            window_size_right=-1,
+            win_left=-1,
+            win_right=-1,
         ):
             return torch.empty(
                 (GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta"
@@ -119,19 +119,19 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             p_quant_scale: Optional[torch.Tensor] = None,
             cu_seq_lengths_q: Optional[torch.Tensor] = None,
             cu_seq_lengths_kv: Optional[torch.Tensor] = None,
-            seq_used_q: Optional[torch.Tensor] = None,
-            seq_used_kv: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None,
+            seqused_kv: Optional[torch.Tensor] = None,
             block_table: Optional[torch.Tensor] = None,
             is_packed_gqa: int = 1,
-            q_input_layout: str = "TND",
-            kv_input_layout: str = "PAGED_BBND",
+            layout_q: str = "TND",
+            layout_kv: str = "PAGED_BBND",
             scale_value: float = 0.0,
             mask_type: int = 1,
             quant_type: int = 0,
             dst_type_max: float = 0.0,
             softmax_precision: int = 1,
-            window_size_left: int = -1,
-            window_size_right: int = -1,
+            win_left: int = -1,
+            win_right: int = -1,
             return_softmax_lse: bool = False,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
@@ -152,7 +152,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             if return_softmax_lse:
                 if query.dim() == 3:
                     lse_shape = (query.size(0), query.size(1), 1)
-                elif q_input_layout == "BNSD":
+                elif layout_q == "BNSD":
                     lse_shape = (query.size(0), query.size(1), query.size(2), 1)
                 else:
                     lse_shape = (query.size(0), query.size(2), query.size(1), 1)
@@ -177,27 +177,27 @@ def generic_block_sparse_attention_metadata(
     head_dim,
     block_shape,
     *,
-    cu_seq_lengths=None,
+    cu_seq_lengths_q=None,
     cu_seq_lengths_kv=None,
-    seq_used_q=None,
-    seq_used_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
     is_packed_gqa=1,
-    q_input_layout="TND",
-    kv_input_layout="PAGED_BBND",
+    layout_q="TND",
+    layout_kv="PAGED_BBND",
     mask_type=1,
     quant_type=0,
     softmax_precision=1,
-    window_size_left=-1,
-    window_size_right=-1,
+    win_left=-1,
+    win_right=-1,
 ):
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
-        cu_seq_lengths,
+        cu_seq_lengths_q,
         cu_seq_lengths_kv,
-        seq_used_q,
-        seq_used_kv,
+        seqused_q,
+        seqused_kv,
         max_q_seq_len,
         max_kv_seq_len,
         num_q_heads,
@@ -205,13 +205,13 @@ def generic_block_sparse_attention_metadata(
         head_dim,
         block_shape,
         is_packed_gqa,
-        q_input_layout,
-        kv_input_layout,
+        layout_q,
+        layout_kv,
         mask_type,
         quant_type,
         softmax_precision,
-        window_size_left,
-        window_size_right,
+        win_left,
+        win_right,
     )
 
 
@@ -228,18 +228,18 @@ def generic_block_sparse_attention_metadata_fallback(
     head_dim,
     block_shape,
     *,
-    cu_seq_lengths=None,
+    cu_seq_lengths_q=None,
     cu_seq_lengths_kv=None,
-    seq_used_q=None,
-    seq_used_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
     is_packed_gqa=1,
-    q_input_layout="TND",
-    kv_input_layout="PAGED_BBND",
+    layout_q="TND",
+    layout_kv="PAGED_BBND",
     mask_type=1,
     quant_type=0,
     softmax_precision=1,
-    window_size_left=-1,
-    window_size_right=-1,
+    win_left=-1,
+    win_right=-1,
 ):
     return generic_block_sparse_attention_metadata(
         sparse_block_idx,
@@ -250,18 +250,18 @@ def generic_block_sparse_attention_metadata_fallback(
         num_kv_heads,
         head_dim,
         block_shape,
-        cu_seq_lengths=cu_seq_lengths,
+        cu_seq_lengths_q=cu_seq_lengths_q,
         cu_seq_lengths_kv=cu_seq_lengths_kv,
-        seq_used_q=seq_used_q,
-        seq_used_kv=seq_used_kv,
+        seqused_q=seqused_q,
+        seqused_kv=seqused_kv,
         is_packed_gqa=is_packed_gqa,
-        q_input_layout=q_input_layout,
-        kv_input_layout=kv_input_layout,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
         mask_type=mask_type,
         quant_type=quant_type,
         softmax_precision=softmax_precision,
-        window_size_left=window_size_left,
-        window_size_right=window_size_right,
+        win_left=win_left,
+        win_right=win_right,
     )
 
 
@@ -285,19 +285,19 @@ def generic_block_sparse_attention(
     p_quant_scale: Optional[torch.Tensor] = None,
     cu_seq_lengths_q: Optional[torch.Tensor] = None,
     cu_seq_lengths_kv: Optional[torch.Tensor] = None,
-    seq_used_q: Optional[torch.Tensor] = None,
-    seq_used_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
     is_packed_gqa: int = 1,
-    q_input_layout: str = "TND",
-    kv_input_layout: str = "PAGED_BBND",
+    layout_q: str = "TND",
+    layout_kv: str = "PAGED_BBND",
     scale_value: float = 0.0,
     mask_type: int = 1,
     quant_type: int = 0,
     dst_type_max: float = 0.0,
     softmax_precision: int = 1,
-    window_size_left: int = -1,
-    window_size_right: int = -1,
+    win_left: int = -1,
+    win_right: int = -1,
     return_softmax_lse: bool = False,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
@@ -320,19 +320,19 @@ def generic_block_sparse_attention(
         p_quant_scale,
         cu_seq_lengths_q,
         cu_seq_lengths_kv,
-        seq_used_q,
-        seq_used_kv,
+        seqused_q,
+        seqused_kv,
         block_table,
         is_packed_gqa,
-        q_input_layout,
-        kv_input_layout,
+        layout_q,
+        layout_kv,
         scale_value,
         mask_type,
         quant_type,
         dst_type_max,
         softmax_precision,
-        window_size_left,
-        window_size_right,
+        win_left,
+        win_right,
         return_softmax_lse,
         attention_out_dtype,
     )
