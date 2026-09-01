@@ -125,7 +125,6 @@ private:
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_; // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
 
     GlobalTensor<int32_t> hitCountGm_;
-    GlobalTensor<uint64_t> statusGMTensor_; // 打桩：槽位状态轮询
 
     LocalTensor<int32_t> ubHitCount_;
     LocalTensor<int64_t> ubRowStart_;
@@ -250,7 +249,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
-    // 打桩：flag总数=EP*每对端jetty数(32/组数)，组数=Ceil(EP/PEERS_PER_JETTY)封顶32（与dispatch同公式）
+    // 按拥有Jetty最多的组分配等待UB，覆盖32不能被组数整除的场景。
     uint32_t stubNumGroups = (epWorldSize_ + PEERS_PER_JETTY - 1U) / PEERS_PER_JETTY;
     if (stubNumGroups > JETTY_TOTAL) {
         stubNumGroups = JETTY_TOTAL;
@@ -258,7 +257,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     if (stubNumGroups == 0U) {
         stubNumGroups = 1U;
     }
-    totalNotifyCnt_ = epWorldSize_ * (JETTY_TOTAL / stubNumGroups);
+    totalNotifyCnt_ = epWorldSize_ * ((JETTY_TOTAL + stubNumGroups - 1U) / stubNumGroups);
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
@@ -388,7 +387,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     if (numGroups == 0U) {
         numGroups = 1U;
     }
-    uint32_t jettiesPerGroup = JETTY_TOTAL / numGroups;
+    uint32_t recvGroup = epRankId_ / PEERS_PER_JETTY;
+    if (recvGroup >= numGroups) {
+        recvGroup = numGroups - 1U;
+    }
+    uint32_t jettiesPerGroup = (JETTY_TOTAL + numGroups - 1U - recvGroup) / numGroups;
 
     // 多核分摊：每个远端srcRank一个等待项
     uint32_t remoteRankCnt = epWorldSize_ - 1U;
@@ -398,7 +401,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         return;
     }
 
-    GlobalTensor<uint64_t> statusGMTensor;
+    GlobalTensor<int32_t> statusGMTensor;
     LocalTensor<float> sharedTmp = sharedTmpBuf_.Get<float>();
     LocalTensor<float> ubWaitStatusFp32 = ubWaitStatus_.template ReinterpretCast<float>();
     LocalTensor<float> ubWaitSumFp32 = ubWaitSum_.template ReinterpretCast<float>();
@@ -408,17 +411,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyParams statusCopyParams = {static_cast<uint16_t>(jettiesPerGroup), 1U,
                                        static_cast<uint16_t>(numGroups * 16U - 1U), 0U};
     DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(jettiesPerGroup), 1U, 0U,
-                                             static_cast<uint16_t>(numGroups * 16U - 1U)};
+                                            static_cast<uint16_t>(numGroups * 16U - 1U)};
 
     for (uint32_t idx = waitStart; idx < waitEnd; ++idx) {
         uint32_t srcRankId = idx < epRankId_ ? idx : idx + 1U;
-        uint32_t group = srcRankId / PEERS_PER_JETTY;
-        if (group >= numGroups) {
-            group = numGroups - 1U;
-        }
-        statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(
+        statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             localSlotStateWinAddr_ + static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN * JETTY_TOTAL +
-            static_cast<uint64_t>(group) * WIN_ADDR_ALIGN));
+            static_cast<uint64_t>(recvGroup) * WIN_ADDR_ALIGN));
         int32_t sumOfFlag = -1;
         while (sumOfFlag != commpareFlag) {
             DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);

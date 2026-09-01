@@ -68,8 +68,10 @@ constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
+// shared-Jetty打桩固定32个Jetty、每个Jetty最多覆盖4个连续对端。
+constexpr int64_t MAX_EP_WORLD_SIZE = 128;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr uint32_t SHARED_JETTY_NUM = 32U;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
@@ -891,6 +893,10 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "Check output tensor failed."), return ge::GRAPH_FAILED);
 
     SetPlatformAndNetworkInfo(context, info, nodeName);
+    OP_TILING_CHECK(info.aivNum < SHARED_JETTY_NUM,
+                    OP_LOGE(nodeName, "shared-Jetty validation requires at least %u AIVs, but got %u.",
+                            SHARED_JETTY_NUM, info.aivNum),
+                    return ge::GRAPH_FAILED);
     if (info.networkMode == NETWORK_HYBRID) {
         SetSendEntryLayout(info);
     } else {

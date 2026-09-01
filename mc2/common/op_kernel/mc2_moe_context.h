@@ -18,6 +18,7 @@
 
 namespace Mc2Aclnn {
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint32_t MOE_SHARED_JETTY_NUM = 32;
 
 struct Mc2MoeContext {
     uint32_t epRankId;
@@ -33,6 +34,9 @@ struct MoeCommContext {
     uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
     uint32_t channelsPerRank;
+    // 每个句柄代表一个由多个逻辑对端通道共享SQ/CQ的物理Jetty。
+    uint64_t multiChannelHandle[MOE_SHARED_JETTY_NUM];
+    int32_t hcommStatus[MOE_SHARED_JETTY_NUM];
 };
 } // namespace Mc2Aclnn
 
