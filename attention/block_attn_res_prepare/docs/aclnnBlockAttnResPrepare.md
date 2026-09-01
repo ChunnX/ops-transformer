@@ -45,63 +45,61 @@
 * 接口功能：Attention Residuals的历史残差注意力两段式计算的阶段一：一次性并行完成全部 S 层的块间注意力计算；同时返回输出结果与 softmax 统计量(O, M, L)，供阶段二融合当前残差并形成下一子层输入。
 * 计算公式：
 
-    $$
-    \operatorname{block\_attn\_res\_prepare}
-    \left(V,Q,\operatorname{valid\_blocks};\epsilon\right)
-    \longrightarrow (O,M,L).
-    $$
+  $$
+  operatorname{block\_attn\_res\_prepare}
+  \left(V,Q,\operatorname{valid\_blocks};\epsilon\right)
+  \longrightarrow (O,M,L).
+  $$
 
-     对 token $t$ 的第 $n$ 个历史来源，首先计算 RMS 归一化因子：
+  对 token $t$ 的第 $n$ 个历史来源，首先计算 RMS 归一化因子：
 
-    $$
-    R_{t,n}=\sqrt{\frac{1}{D}\sum_{d=0}^{D-1}V_{t,n,d}^{2}+\epsilon}.
-    $$
+  $$
+  _{t,n}=\sqrt{\frac{1}{D}\sum_{d=0}^{D-1}V_{t,n,d}^{2}+\epsilon}.
+  $$
 
-     对每个 slot、token 和有效历史来源计算 logits：
+  对每个 slot、token 和有效历史来源计算 logits：
 
-    $$
-    Z_{s,t,n}=R_{t,n}^{-1}\sum_{d=0}^{D-1}Q_{s,d}V_{t,n,d}.
-    $$
+  $$
+  _{s,t,n}=R_{t,n}^{-1}\sum_{d=0}^{D-1}Q_{s,d}V_{t,n,d}.
+  $$
 
-     设 $N_v$ 为 `valid_blocks` 指定的有效历史来源数，则：
+  设 $N_v$ 为 `valid_blocks` 指定的有效历史来源数，则：
 
-    $$
-    M_{s,t}=\max_{0\le n<N_v}Z_{s,t,n},
-    $$
+  $$
+  _{s,t}=\max_{0\le n<N_v}Z_{s,t,n},
+  $$
 
-    $$
-    E_{s,t,n}=\exp\left(Z_{s,t,n}-M_{s,t}\right),
-    $$
+  $$
+  _{s,t,n}=\exp\left(Z_{s,t,n}-M_{s,t}\right),
+  $$
 
-    $$
-    L_{s,t}=\sum_{n=0}^{N_v-1}E_{s,t,n},
-    $$
+  $$
+  _{s,t}=\sum_{n=0}^{N_v-1}E_{s,t,n},
+  $$
 
-    $$
-    O_{s,t,d}=\sum_{n=0}^{N_v-1}E_{s,t,n}V_{t,n,d}.
-    $$
+  $$
+  _{s,t,d}=\sum_{n=0}^{N_v-1}E_{s,t,n}V_{t,n,d}.
+  $$
 
-     当 `validBlocks[0] == 0` 时，不执行上述 softmax 计算，直接返回：
+  当 `validBlocks[0] == 0` 时，不执行上述 softmax 计算，直接返回：
 
-    $$
-    O=\mathbf{0}_{S\times T\times D},\qquad
-    M=m_{\min}\mathbf{1}_{S\times T},\qquad
-    L=\mathbf{0}_{S\times T},\qquad
-    m_{\min}=-3.4028234663852886\times10^{38}.
-    $$
+  $$
+  =\mathbf{0}_{S\times T\times D},\qquad
+  M=m_{\min}\mathbf{1}_{S\times T},\qquad
+  L=\mathbf{0}_{S\times T},\qquad
+  m_{\min}=-3.4028234663852886\times10^{38}.
+  $$
 
-      即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值的 Tensor，`expSum` 为 shape `[S, T]` 的全 0 Tensor。
+  即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值的 Tensor，`expSum` 为 shape `[S, T]` 的全 0 Tensor。
 
   其中：
-    - $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `blockRes`；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史残差块在第 $d$ 个隐藏特征上的值。
-    - $Q\in\mathbb{R}^{S\times D}$ 表示输入 `pseudoQuery`（伪 Query）；每个目标 slot 对应一个 Query 向量，$Q_{s,d}$ 表示第 $s$ 个目标 slot 在第 $d$ 个隐藏特征上的值。
-    - $N_v=\min(\texttt{validBlocks[0]},N)$，表示实际参与计算的历史残差块数。
-    - $\epsilon$ 表示输入 `eps`，是计算 RMS 归一化因子时使用的数值稳定项。
-    - $T$ 表示 token 数，$N$ 表示 `blockRes` 第 1 维可容纳的历史残差块数，$S$ 表示目标 slot 数，$D$ 表示HiddenSize。
-    - $t\in[0,T)$、$n\in[0,N_v)$、$s\in[0,S)$、$d\in[0,D)$ 分别表示 token、有效历史残差块、目标 slot 和隐藏特征的索引。
 
-
-## 函数原型
+  - $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `blockRes`；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史残差块在第 $d$ 个隐藏特征上的值。
+  - $Q\in\mathbb{R}^{S\times D}$ 表示输入 `pseudoQuery`（伪 Query）；每个目标 slot 对应一个 Query 向量，$Q_{s,d}$ 表示第 $s$ 个目标 slot 在第 $d$ 个隐藏特征上的值。
+  - $N_v=\min(\texttt{validBlocks[0]},N)$，表示实际参与计算的历史残差块数。
+  - $\epsilon$ 表示输入 `eps`，是计算 RMS 归一化因子时使用的数值稳定项。
+  - $T$ 表示 token 数，$N$ 表示 `blockRes` 第 1 维可容纳的历史残差块数，$S$ 表示目标 slot 数，$D$ 表示HiddenSize。
+  - $t\in[0,T)$、$n\in[0,N_v)$、$s\in[0,S)$、$d\in[0,D)$ 分别表示 token、有效历史残差块、目标 slot 和隐藏特征的索引。函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnBlockAttnResPrepareGetWorkspaceSize”接口获取计算所需workspace大小以及包含算子计算流程的执行器，再调用“aclnnBlockAttnResPrepare”接口执行计算。
 
@@ -115,16 +113,16 @@ aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     aclTensor       *expSum,
     double           eps,
     uint64_t        *workspaceSize,
-    aclOpExecutor  **executor);
+    aclOpExecutor  **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnBlockAttnResPrepare(
     void          *workspace,
     uint64_t       workspaceSize,
     aclOpExecutor *executor,
-    aclrtStream    stream);
+    aclrtStream    stream)
 ```
-
 
 ## aclnnBlockAttnResPrepareGetWorkspaceSize
 
@@ -245,21 +243,20 @@ aclnnStatus aclnnBlockAttnResPrepare(
     </tr>
   </tbody>
   </table>
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成参数校验和执行器创建，可能返回以下状态码：
 
-  | 返回值 | 错误码 | 说明 |
-  | --- | --- | --- |
-  | `ACLNN_SUCCESS` | 0 | 接口调用成功。 |
-  | `ACLNN_ERR_PARAM_NULLPTR` | 161001 | `blockRes`、`validBlocks`、`pseudoQuery`、`numerator`、`logitMax`、`expSum`、`workspaceSize` 或 `executor` 为空指针。 |
-  | `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的数据类型、维数、shape 或连续性不满足约束，或者 `eps` 不是有限正数。 |
-  | `ACLNN_ERR_RUNTIME_ERROR` | 361001 | 当前运行平台不是 Ascend 950。 |
-  | `ACLNN_ERR_INNER_CREATE_EXECUTOR` | 561101 | 接口内部创建 `aclOpExecutor` 失败。 |
-  | `ACLNN_ERR_INNER_NULLPTR` | 561103 | 接口内部执行连续化处理、创建算子输出或创建输出拷贝节点时返回空指针。 |
+  | 返回值                              | 错误码 | 说明                                                                                                                                  |
+  | ----------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+  | `ACLNN_SUCCESS`                   | 0      | 接口调用成功。                                                                                                                        |
+  | `ACLNN_ERR_PARAM_NULLPTR`         | 161001 | `blockRes`、`validBlocks`、`pseudoQuery`、`numerator`、`logitMax`、`expSum`、`workspaceSize` 或 `executor` 为空指针。 |
+  | `ACLNN_ERR_PARAM_INVALID`         | 161002 | 输入或输出的数据类型、维数、shape 或连续性不满足约束，或者`eps` 不是有限正数。                                                      |
+  | `ACLNN_ERR_RUNTIME_ERROR`         | 361001 | 该接口运行在不支持的产品型号上。                                                                                                      |
+  | `ACLNN_ERR_INNER_CREATE_EXECUTOR` | 561101 | 接口内部创建`aclOpExecutor` 失败。                                                                                                  |
+  | `ACLNN_ERR_INNER_NULLPTR`         | 561103 | 接口内部执行连续化处理、创建算子输出或创建输出拷贝节点时返回空指针。                                                                  |
 
 ## aclnnBlockAttnResPrepare
 
@@ -300,7 +297,6 @@ aclnnStatus aclnnBlockAttnResPrepare(
     </tr>
   </tbody>
   </table>
-
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
