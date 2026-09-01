@@ -26,6 +26,7 @@
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
+#include "../moe_gmm_sync_policy.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
 #include "../../../common/quantize_functions.h"
@@ -489,77 +490,15 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
 }
 
 // 等待当前 GMM2 tile 对应的 SwiGLU 输入就绪。
-template <bool IsShared, typename Config>
-__aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
-{
-    if constexpr (IsShared) {
-        return;
-    }
-    if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
-        uint32_t waveIdx = mLoc / L1_TILE_M_256;
-        uint32_t waveStart = waveIdx * L1_TILE_M_256;
-        uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
-        constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? ACTIVATION_N_HALF : 1U;
-        uint32_t targetLoops =
-            Ops::Base::CeilDiv(waveM, config.activationTileM) * Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
-        uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
-        __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
-        WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetLoops));
-    } else {
-        GmmKernel::BlockScheduler gmmBlockScheduler(
-            {config.m, config.k, config.n},
-            GmmKernel::BlockScheduler::Params{
-                Te::MakeCoord(static_cast<int64_t>(config.activationTileM), static_cast<int64_t>(L1_TILE_N))});
-        uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        WaitUntilGmFlagEquals(gmmAddrInfo.activationToGmm2Flag, static_cast<int32_t>(targetLoops));
-    }
-}
-
-// Notifies all AIV consumers assigned to the completed GMM2 token group.
-__aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset,
-                                                              const GroupSyncSlotLayout &slotLayout,
-                                                              __gm__ int32_t *expertCounterBase)
-{
-    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-
-    uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
-    uint32_t firstSyncSlot = 0;
-    uint32_t syncSlotCount = 0;
-    GetGroupSyncSlotRange(tokenGroupIndex, slotLayout, firstSyncSlot, syncSlotCount);
-    for (uint32_t syncSlot = firstSyncSlot; syncSlot < firstSyncSlot + syncSlotCount; ++syncSlot) {
-        AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, syncSlot), int32_t(1));
-    }
-}
-
-// Notifies the AIV consumer assigned to the completed shared-expert token group.
-__aicore__ inline void NotifySharedExpertTileCompletion(uint32_t rowTileOffset, __gm__ int32_t *sharedExpertCounterBase)
-{
-    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-
-    uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
-    AscendC::AtomicAdd(GetCombineSyncCounterAddress(sharedExpertCounterBase, tokenGroupIndex), int32_t(1));
-}
 
 namespace GmmKernel {
 
-// 执行通用 GMM2 tile 循环。
-template <uint8_t CombineQuantMode, typename BlockMmad, bool IsShared, bool IsLayered = false, typename WorkSet,
-          typename Config>
-__aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo,
-                                          const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+// 执行通用 GMM2 tile 循环。同步细节（上游等待 / Combine 计数通知）在 SyncPolicy。
+// CombineQuantMode 原始循环体内未使用（wave 量化 combine 计数已移交 wave 层），已删。
+template <typename BlockMmad, typename WorkSet, typename Config, typename SyncPolicy>
+__aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet, const Config &config,
+                                          uint32_t startLoopIdx, uint32_t tileNum, SyncPolicy &sync)
 {
-    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
-    GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr (IsLayered && !IsShared) {
-        uint32_t logicalCoreCount = config.blockNum;
-        if constexpr (!std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
-            logicalCoreCount *= 2U;
-        }
-        groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
-    }
-
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
@@ -575,15 +514,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockScaleA =
             workSet.gmScaleA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
 
-        if constexpr (std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
-            uint32_t waveIdx = mLoc / L1_TILE_M_256;
-            if (waveIdx != lastWaveWaited) {
-                WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
-                lastWaveWaited = waveIdx;
-            }
-        } else if (loopIdx == startLoopIdx) {
-            WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
-        }
+        sync.WaitUpstreamReady(mLoc);
 
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
@@ -595,28 +526,17 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
-        if constexpr (IsLayered && !IsShared) {
-            NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
-        } else if constexpr (IsShared && !IsLayered) {
-            NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
-        }
+        sync.NotifyAivTileDone(mLoc);
     }
 }
 
 // 执行 A8W4 GMM2 tile 循环。
-template <bool IsShared, bool IsLayered, typename BlockMmad, typename Scheduler, typename TensorA,
-          typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
+template <typename BlockMmad, typename Scheduler, typename TensorA, typename TensorScaleA, typename TensorScaleB,
+          typename TensorC, typename Config, typename SyncPolicy>
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
-                                       TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                       uint32_t expertTokenCount, uint32_t rowOffsetInExpert)
+                                       TensorScaleB &gmScaleB, TensorC &l0cOutGm, const Config &config,
+                                       uint32_t startLoopIdx, uint32_t tileNum, SyncPolicy &sync)
 {
-    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
-    GroupSyncSlotLayout groupSyncSlotLayout{};
-    if constexpr (IsLayered && !IsShared) {
-        uint32_t logicalCoreCount = config.blockNum;
-        groupSyncSlotLayout = CalcGroupSyncSlotLayout(expertTokenCount, logicalCoreCount);
-    }
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -624,15 +544,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
-        if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
-            uint32_t waveIdx = mLoc / L1_TILE_M_256;
-            if (waveIdx != lastWaveWaited) {
-                WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
-                lastWaveWaited = waveIdx;
-            }
-        } else if (loopIdx == startLoopIdx) {
-            WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
-        }
+        sync.WaitUpstreamReady(mLoc);
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
         auto gmBlockScaleA =
@@ -643,12 +555,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
-        if constexpr (IsLayered && !IsShared) {
-            NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
-                                                   gmmAddrInfo.gmm2CombineSyncCounter);
-        } else if constexpr (IsShared) {
-            NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
-        }
+        sync.NotifyAivTileDone(mLoc);
     }
 }
 
@@ -668,7 +575,7 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
 }
 
 // 根据 GM 地址建立执行资源，并执行通用 GMM2 阶段。
-template <uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, bool IsLayered = false,
+template <typename BlockMmad, typename ElementC, bool IsLayered = false,
           bool IsShared = false, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                        uint32_t startLoopIdx, uint32_t tileNum,
@@ -705,15 +612,16 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC};
 
     if constexpr (g_coreType == AscendC::AIC) {
+        Gmm2UbSyncPolicy<IsLayered, IsShared, Config::IS_WAVE_FLAG_GRAINED, Config::SOURCE_GMM1_INTERLEAVED> sync(
+            gmmAddrInfo, config);
         if (blockMmadContext != nullptr) {
             InitBlockMmad(*blockMmadContext, config);
-            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered>(
-                blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum);
+            Gmm2AicMmadGeneric<BlockMmad>(blockMmadContext->blockMmad, workSet, config, startLoopIdx, tileNum, sync);
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
             InitBlockMmad(localBlockMmadContext, config);
-            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered>(
-                localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum);
+            Gmm2AicMmadGeneric<BlockMmad>(localBlockMmadContext.blockMmad, workSet, config, startLoopIdx, tileNum,
+                                         sync);
         }
     }
 }
@@ -758,11 +666,12 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
                                                    L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-        Gmm2AicMmadA8W4<IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler), decltype(workSet.gmA),
-                        decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
-                        std::remove_reference_t<decltype(workSet.gmC)>, Config>(
-            blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
-            config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+        Gmm2A8W4SyncPolicy<IsLayered, IsShared, Config::IS_WAVE_FLAG_GRAINED, Config::SOURCE_GMM1_INTERLEAVED> sync(
+            gmmAddrInfo, config, expertTokenCount, rowOffsetInExpert);
+        Gmm2AicMmadA8W4<BlockMmad, decltype(workSet.scheduler), decltype(workSet.gmA), decltype(workSet.gmScaleA),
+                        decltype(workSet.gmScaleB), std::remove_reference_t<decltype(workSet.gmC)>, Config>(
+            blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, config,
+            startLoopIdx, tileNum, sync);
     } else if (GetSubBlockIdx() == 0) {
         BlockPrologue blockPrologue;
         Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
@@ -802,7 +711,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     using BlockMmad = typename GmmConfig::BlockMmad;
     using MmadContext = GmmKernel::BlockMmadContext<BlockMmad>;
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
-    GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared>(
+    GmmKernel::Gmm2ExecGeneric<BlockMmad, ElementC, IsLayered, IsShared>(
         scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, typedBlockMmadContext, allowWeightL2Bypass);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
