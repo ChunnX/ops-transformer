@@ -35,13 +35,13 @@ constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Odd = {
     AscendC::MicroAPI::RegLayout::ONE,
     AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT,
+    AscendC::RoundMode::CAST_ROUND,
 };
 constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Even = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT,
+    AscendC::RoundMode::CAST_ROUND,
 };
 /* **************************************************************************************************
  * cast + ND_2_NZ                                             *
@@ -190,8 +190,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
 template <typename T1, typename T, uint32_t srcN>
 __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &srcTensor,
                                                const LocalTensor<uint8_t> &selrIndexesTensor, uint32_t srcM)
-{
-}
+{}
 #endif
 } // namespace AscendC
 
