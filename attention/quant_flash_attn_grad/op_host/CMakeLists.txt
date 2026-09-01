@@ -7,6 +7,45 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
+# ---------------- CANN 版本检查 ----------------
+# 参考 cmake/config.cmake 中 CANN_VERSION 的获取方式（check_version_compatible.py 读取 CANN 包 version.info），
+# 优先使用 config.cmake 输出的 CANN_VERSION（已转小写），否则直接读取 version.info 的 Version= 完整版本号；
+# 版本为 9.2.0-beta.1 / 9.2.0-beta.2 时跳过本算子编译，其余版本正常编译。
+set(_qfag_excluded_versions "9.2.0-beta.1;9.2.0-beta.2")
+set(_qfag_cann_version "")
+if(DEFINED CANN_VERSION AND NOT "${CANN_VERSION}" STREQUAL "")
+    set(_qfag_cann_version "${CANN_VERSION}")
+else()
+    foreach(_qfag_ver_file
+            "${ASCEND_CANN_PACKAGE_PATH}/toolkit/version.info"
+            "${ASCEND_CANN_PACKAGE_PATH}/version.info"
+            "${ASCEND_CANN_PACKAGE_PATH}/opp/version.info"
+            "${ASCEND_CANN_PACKAGE_PATH}/compiler/version.info")
+        if(EXISTS "${_qfag_ver_file}")
+            file(READ "${_qfag_ver_file}" _qfag_ver_content)
+            string(REPLACE "\r" "" _qfag_ver_content "${_qfag_ver_content}")
+            string(REPLACE "\n" ";" _qfag_ver_lines "${_qfag_ver_content}")
+            foreach(_qfag_line IN LISTS _qfag_ver_lines)
+                if(_qfag_line MATCHES "^Version=")
+                    string(SUBSTRING "${_qfag_line}" 8 -1 _qfag_cann_version)
+                    break()
+                endif()
+            endforeach()
+            if(NOT "${_qfag_cann_version}" STREQUAL "")
+                break()
+            endif()
+        endif()
+    endforeach()
+endif()
+
+string(TOLOWER "${_qfag_cann_version}" _qfag_cann_version)
+if(_qfag_cann_version IN_LIST _qfag_excluded_versions)
+    message(STATUS "算子quant_flash_attn_grad不支持在cann version=${_qfag_cann_version}场景下编译，已跳过编译")
+    set_property(GLOBAL PROPERTY quant_flash_attn_grad_CANN_VERSION_SKIPPED TRUE)
+    set_property(GLOBAL APPEND PROPERTY CANN_VERSION_SKIPPED_OPS "quant_flash_attn_grad（cann=${_qfag_cann_version}不支持）")
+    return()
+endif()
+
 require_pypto_pro(quant_flash_attn_grad)
 add_op_to_compiled_list()
 
