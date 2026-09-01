@@ -16,7 +16,7 @@
 
 /*!
  * \file arch.h
- * \brief
+ * \brief TEMP CI probe: modify existing duplicate basename (expect not blocked; status=M not A/R). Remove after test.
  */
 
 #ifndef UTILS_ARCH_H
