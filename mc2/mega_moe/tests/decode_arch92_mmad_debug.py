@@ -34,14 +34,16 @@ CONFIG_FIELDS = (
     "k_loc",
 )
 STAGE_SPECS = {
+    910000: ("PRE_DISPATCH", "fp8_scale"),
+    910001: ("DISPATCH_OUTPUT", "fp8_scale"),
+    910002: ("GMM1_OUTPUT", "bf16_pair"),
+    910003: ("SWIGLU_OUTPUT", "bf16"),
     910004: ("GMM2_OUTPUT", "bf16"),
-    910010: ("GMM2_WEIGHT_PHYSICAL_HASHES", "hashes"),
+    910005: ("COMBINE_OUTPUT", "bf16"),
+    910006: ("SWIGLU_QUANT_OUTPUT", "fp8_scale"),
+    910007: ("GMM2_INPUT", "fp8_scale"),
+    910012: ("GMM2_CONFIG", "config"),
 }
-HASH_FIELDS = (
-    "b_n0_19_k_all",
-    "scale_b_n0_19_k_all",
-)
-
 
 def decode_uint(raw):
     if raw < UINT_BIAS:
@@ -100,8 +102,6 @@ def payload_count(kind):
         return DATA_COUNT
     if kind == "config":
         return len(CONFIG_FIELDS)
-    if kind == "hashes":
-        return len(HASH_FIELDS)
     raise ValueError(f"unsupported stage kind: {kind}")
 
 
@@ -198,10 +198,6 @@ def print_record(record):
         print_value_table("up", payload[DATA_COUNT:], decode_bf16, 4)
     elif record["kind"] == "bf16":
         print_value_table("data", payload, decode_bf16, 4)
-    elif record["kind"] == "hashes":
-        print("\nphysical DNExt dependencies for output row 0, columns [0, 20):")
-        for field, value in zip(HASH_FIELDS, payload):
-            print(f"{field:24s}: 0x{value:08x}")
     else:
         print_config(payload)
 
@@ -216,7 +212,7 @@ def print_missing(records):
     if missing:
         print(f"\nWARNING: missing records: {', '.join(missing)}")
     else:
-        print("\nGMM2 BlockMmad boundary records were captured.")
+        print("\nAll focused Arch92 MegaMoe stage records were captured.")
 
 
 def main():
