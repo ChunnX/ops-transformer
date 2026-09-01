@@ -1571,12 +1571,17 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     bool isNewDeterForPreSfmg = fBaseParams.deterSparseType >= static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
                                 fBaseParams.deterSparseType <= static_cast<uint32_t>(DeterSparseType::DETER_BAND);
     bool deterSupportPreSfmg = !fBaseParams.isDeterministic || isNewDeterForPreSfmg;
+    // dTemplateType is selected by d, while PreSfmg reduces y/dy along d1.
+    bool isSmallDWithPse = fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
+                           fBaseParams.d1 <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
+                           fBaseParams.pseOptional == NORMAL_TENSOR;
+    bool isNormalDForPreSfmg = presfmgLimit && fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
+                               fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768);
     fBaseParams.enablePreSfmg =
         deterSupportPreSfmg &&
         ((fBaseParams.queryType == ge::DT_HIFLOAT8) ||
-         ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) && presfmgLimit &&
-          fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
-          fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
+         ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&
+          (isSmallDWithPse || isNormalDForPreSfmg) &&
           (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
           fBaseParams.sinkOptional != NORMAL_TENSOR && fBaseParams.dropoutIsDivisibleBy8 &&
           !fBaseParams.sValueZeroUnderTND));

@@ -231,7 +231,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                dropInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
-                              deqScaleV, deqScaleDy, dq, dk, dv, dqRope, dkRope, sink, dsink, workspace);
+                              deqScaleV, deqScaleDy, dq, dk, dv, dpse, dqRope, dkRope, sink, dsink, workspace);
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) {
         vecBlock.SetOldDeterFp32Param(constInfo);
     }
@@ -684,7 +684,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.commonConstInfo.subBlockIdx = vSubBlockIdx;
     constInfo.scaleValue = tilingData->s1s2BNGS1S2BaseParams.scaleValue;
     constInfo.aicCoreNum = tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1;
-    constInfo.enablePreSfmg = ((uint32_t)dTemplateType > 64) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
+    constInfo.enablePreSfmg =
+        ((uint32_t)dTemplateType > 64 || IS_PSE) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
     constInfo.dAlign16 = AlignTo16(constInfo.commonConstInfo.dSize);
     constInfo.dvAlign16 = AlignTo16(constInfo.commonConstInfo.dSizeV);
     uint32_t tmp = 0xFF7FFFFF;
