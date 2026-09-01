@@ -23,18 +23,18 @@ extern "C" {
  */
 aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
-    const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional, 
-    const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional,
-    double scaleValue, int64_t headNum, char *inputLayout, int64_t sparseMode,
-    int64_t compressBlockSize, int64_t compressStride, int64_t selectBlockSize, int64_t selectBlockCount,
-    const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *attentionOutOut,
-    const aclTensor *topkIndicesOut, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *topkMaskOptional, const aclIntArray *actualSeqQLenOptional,
+    const aclIntArray *actualCmpSeqKvLenOptional, const aclIntArray *actualSelSeqKvLenOptional, double scaleValue,
+    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t compressBlockSize, int64_t compressStride,
+    int64_t selectBlockSize, int64_t selectBlockCount, const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut,
+    const aclTensor *attentionOutOut, const aclTensor *topkIndicesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /**
  * @brief aclnnNsaCompressAttention的第二段接口，用于执行计算。
  */
 aclnnStatus aclnnNsaCompressAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                 const aclrtStream stream);
+                                      const aclrtStream stream);
 
 #ifdef __cplusplus
 }
