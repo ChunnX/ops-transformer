@@ -110,12 +110,10 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
     AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
     AscendC::Reg::MaskReg firstLaneMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::VL1>();
 
-    constexpr uint32_t MAX_INT32_VALUE = 0x7FFFFFFFU;
-    int32_t validMaxOutputSize =
-        static_cast<int32_t>(maxOutputSize < MAX_INT32_VALUE ? maxOutputSize : MAX_INT32_VALUE);
+    int32_t maxOutputSizeInt32 = static_cast<int32_t>(maxOutputSize);
     AscendC::Reg::Arange(laneIndexReg, 0);
     AscendC::Reg::Duplicate(previousVectorEndReg, 0, fullMask);
-    AscendC::Reg::Duplicate(maxOutputSizeReg, validMaxOutputSize, fullMask);
+    AscendC::Reg::Duplicate(maxOutputSizeReg, maxOutputSizeInt32, fullMask);
     for (uint32_t expertOffset = 0U; expertOffset < expertCount; expertOffset += ELEMENTS_PER_VECTOR) {
         uint32_t validCount = expertCount - expertOffset;
         validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
@@ -134,10 +132,10 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
                              reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(previousLaneIndexReg));
         AscendC::Reg::Select(previousEndPrefixReg, previousVectorEndReg, previousEndPrefixReg, firstLaneMask);
         AscendC::Reg::MaskReg overflowMask;
-        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, expertEndPrefixReg, validMaxOutputSize,
+        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, expertEndPrefixReg, maxOutputSizeInt32,
                                                               activeMask);
         AscendC::Reg::Select(expertCountReg, maxOutputSizeReg, expertEndPrefixReg, overflowMask);
-        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, previousEndPrefixReg, validMaxOutputSize,
+        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, previousEndPrefixReg, maxOutputSizeInt32,
                                                               activeMask);
         AscendC::Reg::Select(previousEndPrefixReg, maxOutputSizeReg, previousEndPrefixReg, overflowMask);
         AscendC::Reg::Sub(expertCountReg, expertCountReg, previousEndPrefixReg, activeMask);
