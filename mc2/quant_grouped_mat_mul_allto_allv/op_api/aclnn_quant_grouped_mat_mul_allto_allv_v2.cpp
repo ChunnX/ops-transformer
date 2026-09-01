@@ -53,6 +53,12 @@ enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
 
 static constexpr int64_t DIM_TWO = 2;
 static constexpr int64_t DIM_THREE = 3;
+// 转置检测支持的 tensor 维度数范围：至少 2 维（最后两维），最大支持 6 维
+static constexpr uint64_t TRANSPOSE_DETECT_MIN_DIM_NUM = 2;
+static constexpr uint64_t TRANSPOSE_DETECT_MAX_DIM_NUM = 6;
+// gmmWeight 转置交换的维度索引（4D 布局的 dim1/dim2）
+static constexpr uint64_t GMM_WEIGHT_SWAP_DIM_1 = 1;
+static constexpr uint64_t GMM_WEIGHT_SWAP_DIM_2 = 2;
 
 extern "C" aclnnStatus aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
@@ -233,7 +239,8 @@ static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, 
 // 检查tensor最后两维是否转置（stride不连续）
 static bool IsTransposeLastTwoDims(const aclTensor *tensor)
 {
-    if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
+    if (tensor->GetViewShape().GetDimNum() < TRANSPOSE_DETECT_MIN_DIM_NUM ||
+        tensor->GetViewShape().GetDimNum() > TRANSPOSE_DETECT_MAX_DIM_NUM) {
         return false;
     }
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
@@ -304,10 +311,10 @@ static aclnnStatus HandleGmmMxTranspose(const aclTensor *&weight, const aclTenso
     if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         transWeight = !transWeight;
         OP_LOGD("gmmWeight transposed detected: transWeight flipped to %d", transWeight);
-        weight = SwapTensorDims(weight, 1, 2);
+        weight = SwapTensorDims(weight, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
         CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (scale != nullptr) {
-            scale = SwapTensorDims(scale, 1, 2);
+            scale = SwapTensorDims(scale, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
             CHECK_RET(scale != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
     }
@@ -322,7 +329,7 @@ static aclnnStatus HandleGmmTtTranspose(const aclTensor *&weight, bool &transWei
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        weight = SwapTensorDims(weight, 1, 2);
+        weight = SwapTensorDims(weight, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
         CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         transWeight = !transWeight;
         OP_LOGD("gmmWeight transposed detected: transWeight flipped to %d", transWeight);
