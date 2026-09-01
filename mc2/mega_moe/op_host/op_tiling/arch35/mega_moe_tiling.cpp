@@ -648,8 +648,6 @@ static ge::graphStatus CheckQuantAttrs(const gert::TilingContext *context, MegaM
  * 校验这会儿还不知道激活是什么 dtype，elemsPerByte 取 1 是保守上界，与既有校验口径一致。
  * 聚合初始化末尾的标量字段要与 PeermemSizeParams 顺序对齐，类型相近，写反时编译器未必能发现。
  */
-static uint8_t GetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config);
-
 static int64_t CalcLeastCclBufferSize(const gert::TilingContext *context, MegaMoeConfig &config,
                                       const MegaMoeAttrShapeContext &shape, int64_t numMaxTokensPerRank,
                                       int64_t epWorldSize, int64_t moeExpertPerRank, bool topkWeightsPrefetch)
@@ -849,37 +847,32 @@ static void SetActivationAttrParams(const gert::TilingContext *context, MegaMoeC
 /*
  * 按 weight1 的 dtype、格式与 dispatch 量化模式判定 GMM 模式。
  */
-static uint8_t GetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config)
+static void SetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config,
+                                 MegaMoeTilingData *tilingData)
 {
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
         // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
-        return GROUPED_MATMUL_MODE_A8W4;
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
     } else if (opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
                weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
                static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) ==
                    ge::FORMAT_FRACTAL_NZ) {
         // A8W8_NZ: fp8_e4m3fn activation × fp8_e4m3fn weight in NZ format (E5M2 not supported)
-        return GROUPED_MATMUL_MODE_A8W8_NZ;
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
     } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
         // A4W4: weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
         // NZ format: weight1 为 FRACTAL_NZ → A4W4_NZ；否则为 A4W4（ND 格式）。
         if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-            return GROUPED_MATMUL_MODE_A4W4_NZ;
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4_NZ;
         } else {
-            return GROUPED_MATMUL_MODE_A4W4;
+            tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
         }
     } else {
         // Generic: fp8 activation × fp8 weight in ND format
-        return GROUPED_MATMUL_MODE_GENERAL;
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
-}
-
-static void SetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConfig &config,
-                                 MegaMoeTilingData *tilingData)
-{
-    tilingData->groupedMatmulMode = GetGroupedMatmulMode(context, config);
 }
 
 /*
