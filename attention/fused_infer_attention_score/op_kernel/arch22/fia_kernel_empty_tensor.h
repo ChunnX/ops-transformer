@@ -93,9 +93,9 @@ __aicore__ inline void FiaKernelEmptyTensor<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void
-FiaKernelEmptyTensor<T>::Init(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                              const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void FiaKernelEmptyTensor<T>::Init(
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+    const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling, TPipe *tPipe)
 {
     pipe = tPipe;
     // init tiling data
