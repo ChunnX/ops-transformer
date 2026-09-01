@@ -713,8 +713,9 @@ private:
 
         syncgmmIdx++;
         AscendC::GlobalTensor<ElementB> gmB1;
-
+        uint32_t gmm1DescId = 100000;
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
+            AscendC::PrintTimeStamp(gmm1DescId);
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
             if (preCurrentmSum >= params.maxOutputSize) {
                 currentM = 0;
@@ -822,6 +823,8 @@ private:
             }
             gmGroupOffsetC += inGroupProblemShape.m() * params.gmmOutPreRowStride;
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
+            AscendC::PrintTimeStamp(gmm1DescId);
+            gmm1DescId++;
         }
 
         for (; syncGroupIdx < params.expertPerRank; syncGroupIdx++) {
@@ -865,8 +868,9 @@ private:
                 lastDequantExpertNum = params.expertPerRank - params.epilogueGranularity;
             }
         }
-
+        uint32_t gmm2DescId = 110000;
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
+            AscendC::PrintTimeStamp(gmm2DescId);
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
             if (preCurrentmSum >= params.maxOutputSize) {
                 currentM = 0;
@@ -959,6 +963,8 @@ private:
             gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.n();
 
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
+            AscendC::PrintTimeStamp(gmm2DescId);
+            gmm2DescId++;
         }
         if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
             blockMmad.SynchronizeBlock();
@@ -1209,11 +1215,14 @@ private:
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::APPLY_XACTIVE_MASK);
+        AscendC::PrintTimeStamp(70003);
         ApplyXActiveMask(params);
+        AscendC::PrintTimeStamp(70003);
 
         constexpr int64_t colsAlign =
             std::is_same_v<ElementB, AscendC::int4b_t> ? int64_t{512} : static_cast<int64_t>(UB_ALIGN);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::MOE_INIT_ROUTING);
+        AscendC::PrintTimeStamp(70004);
         if constexpr (kRoutingIsQuant) {
             moe_init_routing_quant_v2<ElementD2>(
                 reinterpret_cast<GM_ADDR>(params.ptrA), params.expertIdx, params.moeInitRoutingQuantV2Scale,
@@ -1232,18 +1241,21 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        AscendC::PrintTimeStamp(70004);
         CopyRankMaskToLocal(params);
 
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ALLGATHER_TOKEN_PER_EXPERT);
+        AscendC::PrintTimeStamp(70005);
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
-
+        AscendC::PrintTimeStamp(70005);
+        AscendC::PrintTimeStamp(70006);
         if (coreIdx == 0) {
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
         }
 
         AscendC::SyncAll<true>();
-
+        AscendC::PrintTimeStamp(70006);
         AscendC::GlobalTensor<int32_t> ExpertTokenNums;
         ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
         if (coreIdx == 0) {
@@ -1267,12 +1279,14 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
+        uint32_t dispatchDescId = 80000;
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             // ----------------------------------------------------------
             // Each core pulls its `dstEpIdx`'s tokens out of the remote
             // rank's local peer-mem and runs the pre-process step.
             // ----------------------------------------------------------
+            AscendC::PrintTimeStamp(dispatchDescId);
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
             for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
                 if (IsRankMasked(dstEpIdx)) {
@@ -1315,6 +1329,8 @@ private:
                 }
             }
             AscendC::SyncAll<true>();
+            AscendC::PrintTimeStamp(dispatchDescId);
+            dispatchDescId++;
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
             syncgmm1Idx++;
 
@@ -1362,7 +1378,7 @@ private:
             static_cast<int32_t>(params.EP), static_cast<int32_t>(params.expertPerRank),
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
             static_cast<int32_t>(n2)};
-
+        
         typename BlockEpilogue3::Params epilogueParams3{
             static_cast<int32_t>(params.EP),
             static_cast<int32_t>(params.expertPerRank),
@@ -1374,12 +1390,17 @@ private:
             shmem,
             peermemInfo.offsetD,
             tokenPerExpertLayout};
-
+        
         uint32_t n = params.problemShape.n();
+        AscendC::PrintTimeStamp(90000);
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams2);
+        AscendC::PrintTimeStamp(90000);
+        AscendC::PrintTimeStamp(90001);
         BlockEpilogue3 blockEpilogue3(resource, epilogueParams3);
+        AscendC::PrintTimeStamp(90001);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
         BlockEpilogue1 blockEpilogue1(resource, n);
+        AscendC::PrintTimeStamp(90002);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             for (int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++) {
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
@@ -1455,6 +1476,8 @@ private:
             }
         }
         blockEpilogue1.Finalize();
+        AscendC::PrintTimeStamp(90002);
+        AscendC::PrintTimeStamp(90003);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::COMBINE);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             blockEpilogue3.InitFlag();
@@ -1468,10 +1491,13 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        AscendC::PrintTimeStamp(90003);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::RESET_TOKEN_PER_EXPERT);
+        AscendC::PrintTimeStamp(90004);
         ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
-
+        AscendC::PrintTimeStamp(90004);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CROSS_RANK_SYNC);
+        AscendC::PrintTimeStamp(90005);
         if constexpr (!std::is_same_v<ElementB, int8_t>) {
             shmem.InitStatusTargetSum();
             if (get_subblockid() == 0) {
@@ -1531,6 +1557,7 @@ private:
                                            reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData, true);
             kernelMoeTokenUnpermuteOp.Process();
         }
+        AscendC::PrintTimeStamp(90005);
     }
 
     CATLASS_DEVICE
