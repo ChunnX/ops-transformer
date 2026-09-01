@@ -85,9 +85,9 @@ public:
     uint32_t s2OEnd_ = 0;
     uint32_t coreFirstTmpOutWsPos_ = 0;
     uint32_t s2FirstStartVecCore = 0;
-    uint32_t tileLoopIdx = 1;
-    uint32_t tileMaxIdx = 3;
-    uint32_t updateScaleNum = 3;
+    // tile计数器: 每个s2loop首任务(isFirstS2Loop)及后续tile首任务(isC2Sync)各+1,
+    // tileMaxIdx/pscaleNum/updateScaleNum均由其纯函数推导, 消除原4个独立状态机
+    uint32_t tileCnt = 0;
     // fd metadata
     FDparams fdParams_;
 
@@ -99,8 +99,7 @@ public:
     uint32_t prevBIdx = 0;
     uint32_t prevBN2Idx = 0;
     uint32_t prevGS1Idx = 0;
-    uint32_t mloop = 0;
-    uint32_t pscaleNum = 0;
+    uint32_t mloop = 0; // 累计s2loop个数(跨section不复位), 用于推导updateScaleNum
     bool headS2Split = false;
     bool tailS2Split = false;
 
@@ -226,7 +225,6 @@ public:
         uint32_t createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         uint32_t validTaskCount = 0;
-        mloop = 0;
         headS2Split = false;
         tailS2Split = false;
 
@@ -445,10 +443,49 @@ public:
         runInfo.isValid = true;
     }
 
+    // UpdatePScale所需的groupmax空间索引推导, 前移到任务创建阶段预计算进RunInfo,
+    // 消除Vector核UpdatePScale热路径中的scalar计算(逻辑与原vector侧GetPScaleParams一致)
+    __aicore__ inline void CalcPScaleParams(RunInfo &info)
+    {
+        uint32_t subBlockIdx = constInfo.subBlockIdx;
+        uint16_t isLoopFirstTaskVecCore = (subBlockIdx == info.s2FirstStartVecCore);
+        constexpr uint32_t GROUP_MAX_SPACE_LEN = 20;
+        constexpr uint32_t WHOLE_PROCESS_LOOP = 16;
+
+        uint32_t curS2LoopIdx = info.curS2LoopIdx;
+        // 求单核目前为止，计算对应的第几个softmax(即第几个groupmax 8*128)（跨batch）
+        uint32_t loop = info.loop;
+        // 等价groupMaxEndLoop = (loop % 2 == 0) ? ((subBlockIdx == 0) ? (loop / 2) : ((loop / 2) - 1)) : (loop / 2);
+        uint32_t groupMaxEndLoop = (loop >> 1) - (subBlockIdx != 0 && loop % 2 == 0);
+        // 这一轮pscale的任务loop在groupMax空间下发的groupMaxEndIdx，*2的原因是因为groupmax一片空间承载4*128
+        uint32_t groupMaxEndIdx = groupMaxEndLoop * 2 % GROUP_MAX_SPACE_LEN + 1;
+
+        // toProcessGroupMaxLoopLen 求当前FD切核对应的Tile(16个softmax是一个tile)在每个核上有占用几片groupmax(4*128)空间
+        uint16_t toProcessGroupMaxLoopLen =
+            (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP + isLoopFirstTaskVecCore;
+        toProcessGroupMaxLoopLen = toProcessGroupMaxLoopLen / 2 * 2;
+        toProcessGroupMaxLoopLen =
+            toProcessGroupMaxLoopLen < WHOLE_PROCESS_LOOP ? toProcessGroupMaxLoopLen : WHOLE_PROCESS_LOOP;
+        uint16_t firstLoop = (toProcessGroupMaxLoopLen / 2 + 1) / 2 * 2;
+        uint16_t secondLoop = toProcessGroupMaxLoopLen - firstLoop;
+        int32_t firstLoopStartNotU = groupMaxEndIdx - toProcessGroupMaxLoopLen + 1;
+        if (firstLoopStartNotU < 0) {
+            info.firstLoopStart = firstLoopStartNotU + GROUP_MAX_SPACE_LEN;
+            firstLoop = GROUP_MAX_SPACE_LEN - info.firstLoopStart;
+            secondLoop = toProcessGroupMaxLoopLen - firstLoop;
+            info.secondLoopStart = 0;
+        } else {
+            info.firstLoopStart = firstLoopStartNotU;
+            info.secondLoopStart = firstLoopStartNotU + firstLoop; // 向上对齐到2
+        }
+        // 两片groupmax空间对应其中的一个softmax任务
+        info.firstLoop = firstLoop / 2;
+        info.secondLoop = secondLoop / 2;
+    }
+
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info)
     {
         info.loop = loop;
-        info.mloop = mloop;
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
@@ -492,18 +529,22 @@ public:
         }
         info.s2FirstStartVecCore = s2FirstStartVecCore;
         if (info.isFirstS2Loop || info.isC2Sync) {
-            tileLoopIdx = (tileLoopIdx + 1) % 2;
-            tileMaxIdx = (tileMaxIdx + 1) % 4;
-            pscaleNum = (pscaleNum + 1) % 20;
+            tileCnt++;
         }
-        if (info.isUpdatePScale && info.curS2LoopIdx / 16 != 0) {
-            updateScaleNum = (updateScaleNum + 1) % 4;
-        }
-        info.updateScaleNum = updateScaleNum;
-        info.tileBuffIdx = tileLoopIdx;
-        info.tileMaxIdx = tileMaxIdx;
+        // tileMaxIdx/pscaleNum与原状态机逐task严格等价(初值3/0, 每次tile start后+1取模)
+        info.tileMaxIdx = (3 + tileCnt) % 4;
+        info.pscaleNum = (tileCnt % 20) / 10;
+        // updateScaleNum仅在isUpdatePScale门控的消费点(UpdatePScale/ComputeVec2)被读取,
+        // 这些任务位于所在tile末尾(tile已start), 推导值与原状态机严格一致:
+        // 每个s2loop贡献 tileCnt+tiles / mloop+1 / updateScaleNum+(tiles-1)
+        info.updateScaleNum = (3 + tileCnt - mloop) % 4;
         info.isS2FirstTilePerCore = (info.curS2LoopIdx % TILE_N / 2 == 0);
-        info.pscaleNum = pscaleNum / 10;
+        if (info.isUpdatePScale) {
+            // 仅AIV消费(UpdatePScale), 预计算前移到任务创建阶段, 不增加cube侧scalar负载
+            if ASCEND_IS_AIV {
+                CalcPScaleParams(info);
+            }
+        }
 
         if constexpr (SOFTMAX_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
