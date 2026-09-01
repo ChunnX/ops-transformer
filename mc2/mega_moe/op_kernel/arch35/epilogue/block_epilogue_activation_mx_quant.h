@@ -22,8 +22,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/mega_moe_constants.h"
-#include "../../common/mega_moe_utils.h"
+#include "../common/mega_moe_constants.h"
+#include "../common/mega_moe_utils.h"
 #include "gated_activation.h"
 
 namespace ActivationQuantMsg {

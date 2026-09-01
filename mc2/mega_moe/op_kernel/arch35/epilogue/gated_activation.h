@@ -23,7 +23,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/mega_moe_utils.h"
+#include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
 namespace ActivationImpl {
