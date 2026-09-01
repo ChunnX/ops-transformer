@@ -272,7 +272,7 @@ public:
         Mxfp4Api::InitIndexesAndDuplicateCallVF<half>(nd2nzIndexUB, localGlobalMaxUB);
     }
 
-    __aicore__ inline void ReleaseTensors() {}
+    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
 
     __aicore__ inline void ComputeVec1(const RunInfo &runInfo)
     {
@@ -368,15 +368,12 @@ public:
     {
         LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
 
-        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
-            DataCopy(
-                localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
-                localGlobalMax, {1, 8, 0, 0});
-            return;
+        bool needMutex = (runInfo.loop % 2 == constInfo.subBlockIdx) && runInfo.isS2FirstTilePerCore &&
+                         runInfo.isUpdatePScale;
+        if (needMutex) {
+            Mutex::Unlock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+            Mutex::Lock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
         }
-
-        Mutex::Unlock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
-        Mutex::Lock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
 
         DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
                  localGlobalMax, {1, 8, 0, 0});
@@ -424,7 +421,11 @@ public:
                                                              localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                              firstLoop, secondLoop, constInfo.subBlockIdx);
         }
-        Mutex::Unlock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+        bool needMutexGmax = (runInfo.loop % 2 == constInfo.subBlockIdx) && runInfo.isS2FirstTilePerCore &&
+                             runInfo.isUpdatePScale;
+        if (needMutexGmax) {
+            Mutex::Unlock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+        }
         Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
         Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
         Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
@@ -463,13 +464,14 @@ public:
                 Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
                 LocalTensor<float> outTensorFp32Ub = attentionTransUB.template ReinterpretCast<float>();
                 Mxfp4Api::processOut(outTensorFp32Ub, attentionOutUB, globalRowsumUB);
-                PipeBarrier<PIPE_V>();
+                Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+                Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
+                Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+                Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
                 LocalTensor<OUT_T> outTensorBf16Ub = attentionTransUB.template ReinterpretCast<OUT_T>();
                 LocalTensor<OUT_T> attentionOutUBBf16 = attentionOutUB.template ReinterpretCast<OUT_T>();
                 uint32_t columnCnt = constInfo.dSize + AttentionCommon::BYTE_BLOCK / sizeof(OUT_T);
                 DataCopy(attentionOutUBBf16, outTensorBf16Ub, actDealMSize * columnCnt);
-                PipeBarrier<PIPE_V>();
-
                 Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
                 Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
 
@@ -488,6 +490,9 @@ public:
                     .tensor = attentionOutUBBf16, .rowCount = actDealMSize, .colCount = columnCnt};
 
                 AttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+            } else {
+                Mutex::Unlock<PIPE_V>(SYNC_ATTN_BUF_MUTEX_ID);
+                return;
             }
             Mutex::Unlock<PIPE_MTE3>(SYNC_ATTN_BUF_MUTEX_ID);
         }
