@@ -18,86 +18,86 @@ constexpr int64_t METADATA_SIZE = 1024;
 }
 
 at::Tensor GenericBlockSparseAttentionMetadata(
-    const at::Tensor &sparseBlockIdx, const at::Tensor &sparseBlockCount, const c10::optional<at::Tensor> &cuSeqLengths,
-    const c10::optional<at::Tensor> &cuSeqLengthsKv, const c10::optional<at::Tensor> &seqUsedQ,
-    const c10::optional<at::Tensor> &seqUsedKv, int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_t numQHeads,
-    int64_t numKvHeads, int64_t headDim, at::IntArrayRef blockShape, int64_t isPackedGQA, c10::string_view qInputLayout,
-    c10::string_view kvInputLayout, int64_t maskType, int64_t quantType, int64_t softmaxPrecision,
-    int64_t windowSizeLeft, int64_t windowSizeRight)
+    const at::Tensor &sparse_block_idx, const at::Tensor &sparse_block_count,
+    const c10::optional<at::Tensor> &cu_seq_lengths_q, const c10::optional<at::Tensor> &cu_seq_lengths_kv,
+    const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv, int64_t max_q_seq_len,
+    int64_t max_kv_seq_len, int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim, at::IntArrayRef block_shape,
+    int64_t is_packed_gqa, c10::string_view layout_q, c10::string_view layout_kv, int64_t mask_type, int64_t quant_type,
+    int64_t softmax_precision, int64_t win_left, int64_t win_right)
 {
     at::Tensor metadata{nullptr};
     {
-        const c10::OptionalDeviceGuard deviceGuard(sparseBlockIdx.device());
-        metadata = at::empty({METADATA_SIZE}, sparseBlockIdx.options().dtype(at::kInt));
+        const c10::OptionalDeviceGuard deviceGuard(sparse_block_idx.device());
+        metadata = at::empty({METADATA_SIZE}, sparse_block_idx.options().dtype(at::kInt));
     }
-    std::string qInputLayoutStr(qInputLayout);
-    std::string kvInputLayoutStr(kvInputLayout);
-    char *qInputLayoutPtr = const_cast<char *>(qInputLayoutStr.c_str());
-    char *kvInputLayoutPtr = const_cast<char *>(kvInputLayoutStr.c_str());
+    std::string layout_q_str(layout_q);
+    std::string layout_kv_str(layout_kv);
+    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
+    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
 
-    ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparseBlockIdx, sparseBlockCount, cuSeqLengths, cuSeqLengthsKv,
-              seqUsedQ, seqUsedKv, maxQSeqLen, maxKvSeqLen, numQHeads, numKvHeads, headDim, blockShape, isPackedGQA,
-              qInputLayoutPtr, kvInputLayoutPtr, maskType, quantType, softmaxPrecision, windowSizeLeft, windowSizeRight,
-              metadata);
+    ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparse_block_idx, sparse_block_count, cu_seq_lengths_q,
+              cu_seq_lengths_kv, seqused_q, seqused_kv, max_q_seq_len, max_kv_seq_len, num_q_heads, num_kv_heads,
+              head_dim, block_shape, is_packed_gqa, layout_q_ptr, layout_kv_ptr, mask_type, quant_type,
+              softmax_precision, win_left, win_right, metadata);
     return metadata;
 }
 
 std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &sparseBlockIdx,
-    const at::Tensor &sparseBlockCount, std::vector<int64_t> blockShape, const c10::optional<at::Tensor> &metadata,
-    const c10::optional<at::Tensor> &attenMask, const c10::optional<at::Tensor> &qDequantScale,
-    const c10::optional<at::Tensor> &kDequantScale, const c10::optional<at::Tensor> &vDequantScale,
-    const c10::optional<at::Tensor> &pQuantScale, const c10::optional<at::Tensor> &cuSeqLengthsQ,
-    const c10::optional<at::Tensor> &cuSeqLengthsKv, const c10::optional<at::Tensor> &seqUsedQ,
-    const c10::optional<at::Tensor> &seqUsedKv, const c10::optional<at::Tensor> &blockTable, int64_t isPackedGQA,
-    c10::string_view qInputLayout, c10::string_view kvInputLayout, double scaleValue, int64_t maskType,
-    int64_t quantType, double dstTypeMax, int64_t softmaxPrecision, int64_t windowSizeLeft, int64_t windowSizeRight,
-    bool returnSoftmaxLse, c10::optional<at::ScalarType> attentionOutDtype)
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &sparse_block_idx,
+    const at::Tensor &sparse_block_count, std::vector<int64_t> block_shape, const c10::optional<at::Tensor> &metadata,
+    const c10::optional<at::Tensor> &atten_mask, const c10::optional<at::Tensor> &q_dequant_scale,
+    const c10::optional<at::Tensor> &k_dequant_scale, const c10::optional<at::Tensor> &v_dequant_scale,
+    const c10::optional<at::Tensor> &p_quant_scale, const c10::optional<at::Tensor> &cu_seq_lengths_q,
+    const c10::optional<at::Tensor> &cu_seq_lengths_kv, const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &block_table, int64_t is_packed_gqa,
+    c10::string_view layout_q, c10::string_view layout_kv, double scale_value, int64_t mask_type, int64_t quant_type,
+    double dst_type_max, int64_t softmax_precision, int64_t win_left, int64_t win_right, bool return_softmax_lse,
+    c10::optional<at::ScalarType> attention_out_dtype)
 {
     // pybind 按值收下 std::vector，再在本作用域构建 IntArrayRef，避免悬垂指针。
-    at::IntArrayRef blockShapeRef(blockShape);
+    at::IntArrayRef block_shape_ref(block_shape);
 
     // Resolve output dtype: an explicit value passes through unchanged.
     // A missing value (None) only falls back to the input dtype for
     // non-FP8; FP8 path requires it explicitly (same idea as BSA quant_mode).
-    at::ScalarType outDtype;
-    if (attentionOutDtype.has_value()) {
-        outDtype = *attentionOutDtype;
+    at::ScalarType out_dtype;
+    if (attention_out_dtype.has_value()) {
+        out_dtype = *attention_out_dtype;
     } else if (query.scalar_type() != at::kFloat8_e4m3fn) {
-        outDtype = query.scalar_type();
+        out_dtype = query.scalar_type();
     } else {
         TORCH_CHECK(false, "attention_out_dtype must be specified when query dtype is float8_e4m3fn");
     }
 
-    at::Tensor attentionOut = at::empty(query.sizes(), query.options().dtype(outDtype));
+    at::Tensor attention_out = at::empty(query.sizes(), query.options().dtype(out_dtype));
 
-    at::Tensor softmaxLse;
-    auto optsF32 = query.options().dtype(at::kFloat);
-    if (returnSoftmaxLse) {
-        if (qInputLayout == "TND") {
-            softmaxLse = at::empty({query.size(0), query.size(1), 1}, optsF32);
-        } else if (qInputLayout == "BNSD") {
-            softmaxLse = at::empty({query.size(0), query.size(1), query.size(2), 1}, optsF32);
+    at::Tensor softmax_lse;
+    auto opts_f32 = query.options().dtype(at::kFloat);
+    if (return_softmax_lse) {
+        if (layout_q == "TND") {
+            softmax_lse = at::empty({query.size(0), query.size(1), 1}, opts_f32);
+        } else if (layout_q == "BNSD") {
+            softmax_lse = at::empty({query.size(0), query.size(1), query.size(2), 1}, opts_f32);
         } else {
             // BSND
-            softmaxLse = at::empty({query.size(0), query.size(2), query.size(1), 1}, optsF32);
+            softmax_lse = at::empty({query.size(0), query.size(2), query.size(1), 1}, opts_f32);
         }
     } else {
-        softmaxLse = at::empty({0}, optsF32);
+        softmax_lse = at::empty({0}, opts_f32);
     }
 
-    std::string qInputLayoutStr(qInputLayout);
-    std::string kvInputLayoutStr(kvInputLayout);
-    char *qInputLayoutPtr = const_cast<char *>(qInputLayoutStr.c_str());
-    char *kvInputLayoutPtr = const_cast<char *>(kvInputLayoutStr.c_str());
+    std::string layout_q_str(layout_q);
+    std::string layout_kv_str(layout_kv);
+    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
+    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
 
-    const int64_t returnSoftmaxLseFlag = returnSoftmaxLse ? 1 : 0;
-    ACLNN_CMD(aclnnGenericBlockSparseAttention, query, key, value, sparseBlockIdx, sparseBlockCount, metadata,
-              attenMask, qDequantScale, kDequantScale, vDequantScale, pQuantScale, cuSeqLengthsQ, cuSeqLengthsKv,
-              seqUsedQ, seqUsedKv, blockTable, blockShapeRef, isPackedGQA, qInputLayoutPtr, kvInputLayoutPtr,
-              scaleValue, maskType, quantType, dstTypeMax, softmaxPrecision, windowSizeLeft, windowSizeRight,
-              returnSoftmaxLseFlag, attentionOut, softmaxLse);
-    return std::make_tuple(attentionOut, softmaxLse);
+    const int64_t return_softmax_lse_flag = return_softmax_lse ? 1 : 0;
+    ACLNN_CMD(aclnnGenericBlockSparseAttention, query, key, value, sparse_block_idx, sparse_block_count, metadata,
+              atten_mask, q_dequant_scale, k_dequant_scale, v_dequant_scale, p_quant_scale, cu_seq_lengths_q,
+              cu_seq_lengths_kv, seqused_q, seqused_kv, block_table, block_shape_ref, is_packed_gqa, layout_q_ptr,
+              layout_kv_ptr, scale_value, mask_type, quant_type, dst_type_max, softmax_precision, win_left, win_right,
+              return_softmax_lse_flag, attention_out, softmax_lse);
+    return std::make_tuple(attention_out, softmax_lse);
 }
 
 } // namespace op_api
