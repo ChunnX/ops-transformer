@@ -169,7 +169,7 @@ uint32_t GenericSparseAttentionGradMetadataCpuKernel::GetKvBlockLen(uint32_t bId
 }
 
 uint64_t GenericSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t count,
-                                                                       uint32_t kvBlockLen) const
+                                                                         uint32_t kvBlockLen) const
 {
     if (count <= 0 || kvBlockLen == 0U) {
         return 0U;

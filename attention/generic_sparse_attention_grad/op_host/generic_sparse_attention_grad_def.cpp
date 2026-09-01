@@ -96,7 +96,7 @@ public:
         this->Attr("q_input_layout").AttrType(OPTIONAL).String("TND");
         this->Attr("kv_input_layout").AttrType(OPTIONAL).String("TND");
         this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
-        this->Attr("mask_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("mask_type").AttrType(OPTIONAL).Int(1);
         this->Attr("softmax_precision").AttrType(OPTIONAL).Int(0);
         this->Attr("window_size_left").AttrType(OPTIONAL).Int(-1);
         this->Attr("window_size_right").AttrType(OPTIONAL).Int(-1);

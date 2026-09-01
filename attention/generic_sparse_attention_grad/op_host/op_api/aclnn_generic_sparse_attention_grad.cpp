@@ -29,16 +29,50 @@ extern "C" {
 
 namespace {
 
+static constexpr int64_t GSAG_MAX_HEAD_NUM = 128;
+static constexpr int64_t GSAG_SUPPORTED_MASK_TYPE = 1;
+
 inline bool TensorOk(const aclTensor *t)
 {
     return t != nullptr && t->GetViewShape().GetDimNum() > 0;
 }
 
+int64_t GetHeadNumFromQuery(const aclTensor *query, const char *layout)
+{
+    const auto &shape = query->GetViewShape();
+    if (strcmp(layout, "TND") == 0) {
+        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
+    }
+    if (strcmp(layout, "BNSD") == 0) {
+        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
+    }
+    if (strcmp(layout, "BSND") == 0) {
+        return shape.GetDimNum() >= 3 ? shape.GetDim(2) : -1;
+    }
+    return -1;
+}
+
+int64_t GetHeadNumFromKey(const aclTensor *key, const char *layout)
+{
+    const auto &shape = key->GetViewShape();
+    if (strcmp(layout, "TND") == 0) {
+        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
+    }
+    if (strcmp(layout, "BNSD") == 0) {
+        return shape.GetDimNum() >= 2 ? shape.GetDim(1) : -1;
+    }
+    if (strcmp(layout, "BSND") == 0) {
+        return shape.GetDimNum() >= 3 ? shape.GetDim(2) : -1;
+    }
+    return -1;
+}
+
 aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout,
                      const aclTensor *out, const aclTensor *lse, const aclTensor *rsvdBlockIdx,
                      const aclTensor *rsvdBlockCount, const aclTensor *metadata, const aclIntArray *blockShape,
-                     int64_t isPackedGqa, char *qInputLayout, char *kvInputLayout, int64_t windowSizeLeft,
-                     int64_t windowSizeRight, const aclTensor *dQuery, const aclTensor *dKey, const aclTensor *dValue)
+                     int64_t isPackedGqa, char *qInputLayout, char *kvInputLayout, int64_t maskType,
+                     int64_t windowSizeLeft, int64_t windowSizeRight, const aclTensor *dQuery, const aclTensor *dKey,
+                     const aclTensor *dValue)
 {
     CHECK_RET(TensorOk(query) && TensorOk(key) && TensorOk(value) && TensorOk(dout) && TensorOk(out) && TensorOk(lse),
               ACLNN_ERR_PARAM_NULLPTR);
@@ -47,12 +81,18 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
     CHECK_RET(qInputLayout != nullptr && kvInputLayout != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(strcmp(qInputLayout, kvInputLayout) == 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(isPackedGqa == 1, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(maskType == GSAG_SUPPORTED_MASK_TYPE, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(windowSizeLeft == -1 && windowSizeRight == -1, ACLNN_ERR_PARAM_INVALID);
     if (blockShape != nullptr) {
         CHECK_RET(blockShape->Size() >= 2, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET((*blockShape)[0] == 1, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET((*blockShape)[1] >= 128 && ((*blockShape)[1] % 64 == 0), ACLNN_ERR_PARAM_INVALID);
     }
+    const int64_t qHeadNum = GetHeadNumFromQuery(query, qInputLayout);
+    const int64_t kvHeadNum = GetHeadNumFromKey(key, kvInputLayout);
+    CHECK_RET(qHeadNum > 0 && qHeadNum <= GSAG_MAX_HEAD_NUM, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(kvHeadNum > 0 && kvHeadNum <= GSAG_MAX_HEAD_NUM, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(qHeadNum % kvHeadNum == 0, ACLNN_ERR_PARAM_INVALID);
     DataType qDtype = query->GetDataType();
     CHECK_RET(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(key->GetDataType() == qDtype && value->GetDataType() == qDtype && dout->GetDataType() == qDtype &&
@@ -90,7 +130,7 @@ aclnnStatus aclnnGenericSparseAttentionGradGetWorkspaceSize(
 
     auto ret =
         Validate(query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount, metadata, blockShape, isPackedGqa,
-                 qInputLayout, kvInputLayout, windowSizeLeft, windowSizeRight, dQuery, dKey, dValue);
+                 qInputLayout, kvInputLayout, maskType, windowSizeLeft, windowSizeRight, dQuery, dKey, dValue);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto queryC = l0op::Contiguous(query, uniqueExecutor.get());
