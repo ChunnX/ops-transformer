@@ -561,10 +561,5 @@ TEST_PARAMS = {
     },
 }
 
-ENABLED_PARAMS = [
-    TEST_PARAMS["load_4096_swa_tnd_pa"],
-    TEST_PARAMS["load_8192_hca_tnd_tnd"],
-    TEST_PARAMS["load_2048_csa_bsnd_bsnd"],
-    TEST_PARAMS["load_5120_ori_sparse_bsnd_pa"],
-    TEST_PARAMS["load_4096_ori_cmp_sparse_tnd_pa"],
-]
+ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

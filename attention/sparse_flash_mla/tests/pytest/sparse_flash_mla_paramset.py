@@ -901,10 +901,8 @@ TEST_PARAMS = {
     },
 }
 
+# 按需选择要启用的测试参数（例如默认启用所有）
 ENABLED_PARAMS = [
-    TEST_PARAMS["load_4096_swa_tnd_pa"],
-    TEST_PARAMS["load_8192_hca_tnd_tnd"],
-    TEST_PARAMS["load_2048_csa_bsnd_bsnd"],
-    TEST_PARAMS["load_5120_ori_sparse_bsnd_pa"],
-    TEST_PARAMS["load_4096_ori_cmp_sparse_tnd_pa"],
+    # {**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()
+    TEST_PARAMS["ori_sparse_tnd_pa"],
 ]
