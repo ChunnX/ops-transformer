@@ -49,11 +49,15 @@
 
 ## 函数原型
 
-调用`generic_block_sparse_attention`接口前，请先调用前置接口`generic_block_sparse_attention_metadata`完成metadata生成。两次调用中的公共属性须保持一致。
+调用`generic_block_sparse_attention`接口前，请先调用前置接口`generic_block_sparse_attention_metadata`完成metadata生成。两次调用中所有对应的Tensor和属性须保持一致。
 
 > [!NOTE]
 >
 > `*`之后的所有参数仅支持以关键字方式传入。
+>
+> 主算子原型中`metadata`默认值为`None`，但当前落地场景必须传入由`generic_block_sparse_attention_metadata`生成的有效`metadata`。
+>
+> 当前仅支持`layout_q="TND"`、`layout_kv="PAGED_BBND"`，因此`cu_seq_lengths_q`、`cu_seq_lengths_kv`及`block_table`虽在原型中为可选，但实际调用时必须传入。
 
 ```python
 cann_ops_transformer.generic_block_sparse_attention_metadata(
@@ -137,22 +141,22 @@ cann_ops_transformer.generic_block_sparse_attention(
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | sparse_block_idx | Tensor | 必选 | 每个Q块选择的KV块索引 | int32 | ND | is_packed_gqa=1: [Nkv, totalQBlocks, topK] | × |
 | sparse_block_count | Tensor | 必选 | 每个Q块实际保留的KV块数量 | int32 | ND | is_packed_gqa=1: [Nkv, totalQBlocks] | × |
-| max_q_seq_len | int | 必选 | query序列长度上限 | int32 | - | - | - |
-| max_kv_seq_len | int | 必选 | kv序列长度上限 | int32 | - | - | - |
-| num_q_heads | int | 必选 | query head数 | int32 | - | - | - |
-| num_kv_heads | int | 必选 | key/value head数 | int32 | - | - | - |
-| head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
+| max_q_seq_len | int | 必选 | query序列长度上限，须与主算子query及长度类输入一致 | int32 | - | - | - |
+| max_kv_seq_len | int | 必选 | kv序列长度上限，须与主算子key/value及长度类输入一致 | int32 | - | - | - |
+| num_q_heads | int | 必选 | query head数，须与主算子query的Nq维一致 | int32 | - | - | - |
+| num_kv_heads | int | 必选 | key/value head数，须与主算子key/value的Nkv维一致 | int32 | - | - | - |
+| head_dim | int | 必选 | 每个注意力头的维度，须与主算子query的D维一致 | int32 | - | - | - |
 | block_shape | list[int] | 必选 | 稀疏块形状 `[block_x, block_y]` | int64 | - | 长度为2 | - |
 | cu_seq_lengths_q | Tensor | TND必选 | query序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
 | cu_seq_lengths_kv | Tensor | TND必选 | kv序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
 | seqused_q | Tensor | 可选 | 每个batch实际使用的query序列长度 | int32 | ND | (B,) | × |
 | seqused_kv | Tensor | 可选 | 每个batch实际使用的kv序列长度 | int32 | ND | (B,) | × |
-| is_packed_gqa | int | 可选 | 1表示同group共享稀疏pattern，默认1 | int32 | - | - | - |
+| is_packed_gqa | int | 可选 | 1表示同group共享稀疏pattern，默认1；当前仅支持1 | int32 | - | - | - |
 | layout_q | string | 可选 | 默认`"TND"`，当前仅支持该值 | string | - | - | - |
 | layout_kv | string | 可选 | 默认`"PAGED_BBND"`，当前仅支持该值 | string | - | - | - |
-| mask_type | int | 可选 | 掩码类型，默认1（当前仅支持1） | int32 | - | - | - |
-| quant_type | int | 可选 | 量化类型，默认0（非量化） | int32 | - | - | - |
-| softmax_precision | int | 可选 | Softmax精度模式，默认1。Ascend 950仅支持1 | int32 | - | - | - |
+| mask_type | int | 可选 | 掩码类型，默认1；当前仅支持1（内置causal mask） | int32 | - | - | - |
+| quant_type | int | 可选 | 量化类型，默认0（非量化）；Ascend 950可选5，取值1~4当前不支持 | int32 | - | - | - |
+| softmax_precision | int | 可选 | Softmax精度模式，默认1；Ascend 950仅支持1；A2/A3上FP16支持0或1，BF16仅支持0 | int32 | - | - | - |
 | win_left | int | 可选 | 滑窗左边界，默认-1（当前仅支持-1） | int32 | - | - | - |
 | win_right | int | 可选 | 滑窗右边界，默认-1（当前仅支持-1） | int32 | - | - | - |
 | metadata | Tensor | 输出 | 主算子使用的预处理metadata | int32 | ND | (1024,) | × |
@@ -168,22 +172,26 @@ cann_ops_transformer.generic_block_sparse_attention(
 | sparse_block_count | Tensor | 必选 | 每个Q块实际保留的KV块数量 | int32 | ND | is_packed_gqa=1: [Nkv, totalQBlocks] | × |
 | block_shape | list[int] | 必选 | 稀疏块形状 `[block_x, block_y]` | int64 | - | 长度为2 | - |
 | metadata | Tensor | 必选 | 由`generic_block_sparse_attention_metadata`生成 | int32 | ND | (1024,) | × |
-| atten_mask | Tensor | 可选 | 当前不支持，须为None | bool | ND | - | - |
-| q_dequant_scale / k_dequant_scale / v_dequant_scale | Tensor | 可选 | 反量化缩放；非量化场景为None | float32等 | ND | 见aclnn文档 | √ |
-| p_quant_scale | Tensor | 可选 | 当前须为None | float32 | ND | - | - |
-| cu_seq_lengths_q | Tensor | TND必选 | query序列长度前缀和 | int64 | ND | (B+1,) | × |
-| cu_seq_lengths_kv | Tensor | TND必选 | kv序列长度前缀和 | int64 | ND | (B+1,) | × |
-| seqused_q / seqused_kv | Tensor | 可选 | 实际使用的序列长度 | int32 | ND | (B,) | × |
+| atten_mask | Tensor | 可选 | 当前不支持，须为None；`mask_type=1`时使用算子内置causal mask | bool | ND | - | - |
+| q_dequant_scale | Tensor | 可选 | query的反量化缩放因子；非量化场景为None | float32/float8_e8m0 | ND | 见「约束说明」 | × |
+| k_dequant_scale | Tensor | 可选 | key的反量化缩放因子；非量化场景为None | float32/float8_e8m0 | ND | 见「约束说明」 | × |
+| v_dequant_scale | Tensor | 可选 | value的反量化缩放因子；非量化场景为None | float32/float8_e8m0 | ND | 见「约束说明」 | × |
+| p_quant_scale | Tensor | 可选 | 当前须为None | float32 | ND | - | × |
+| cu_seq_lengths_q | Tensor | TND必选 | query序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
+| cu_seq_lengths_kv | Tensor | TND必选 | kv序列长度前缀和，首元素须为0 | int64 | ND | (B+1,) | × |
+| seqused_q | Tensor | 可选 | 每个batch实际使用的query序列长度 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | 每个batch实际使用的kv序列长度 | int32 | ND | (B,) | × |
 | block_table | Tensor | PAGED必选 | 物理页映射表 | int32 | ND | (B, maxNumBlocksPerBatch) | × |
-| is_packed_gqa | int | 可选 | 1表示同group共享稀疏pattern，默认1 | int32 | - | - | - |
+| is_packed_gqa | int | 可选 | 1表示同group共享稀疏pattern，默认1；当前仅支持1 | int32 | - | - | - |
 | layout_q | string | 可选 | 默认`"TND"`，当前仅支持该值 | string | - | - | - |
 | layout_kv | string | 可选 | 默认`"PAGED_BBND"`，当前仅支持该值 | string | - | - | - |
 | scale_value | float | 可选 | 注意力缩放系数；默认0.0时算子内回落为`D^-0.5` | float32 | - | - | - |
-| mask_type | int | 可选 | 掩码类型，默认1（当前仅支持1） | int32 | - | - | - |
-| quant_type | int | 可选 | 量化类型，默认0（非量化） | int32 | - | - | - |
+| mask_type | int | 可选 | 掩码类型，默认1；当前仅支持1（内置causal mask），须与metadata一致 | int32 | - | - | - |
+| quant_type | int | 可选 | 量化类型，默认0（非量化）；Ascend 950可选5，取值1~4当前不支持；须与metadata一致 | int32 | - | - | - |
 | dst_type_max | float | 可选 | 量化相关参数，默认0.0 | float32 | - | - | - |
-| softmax_precision | int | 可选 | Softmax精度模式，默认1；须与metadata一致 | int32 | - | - | - |
-| win_left / win_right | int | 可选 | 滑窗左右窗口，默认-1（当前仅支持-1） | int32 | - | - | - |
+| softmax_precision | int | 可选 | Softmax精度模式，默认1；须与metadata一致；Ascend 950仅支持1 | int32 | - | - | - |
+| win_left | int | 可选 | 滑窗左边界，默认-1（当前仅支持-1） | int32 | - | - | - |
+| win_right | int | 可选 | 滑窗右边界，默认-1（当前仅支持-1） | int32 | - | - | - |
 | return_softmax_lse | bool | 可选 | 是否返回softmaxLse，默认False（当前仅支持False） | bool | - | - | - |
 | attention_out_dtype | dtype | 可选 | FP8输入时必填，须为float16或bfloat16 | ScalarType | - | - | - |
 | attention_out | Tensor | 输出 | 注意力输出，shape与query一致 | float16/bfloat16 | ND | 与query一致 | - |
@@ -214,9 +222,10 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 - 声明
   - `cu_seq_lengths_q`、`cu_seq_lengths_kv`、`seqused_q`、`seqused_kv`、`sparse_block_idx`、`sparse_block_count`及`block_table`均为Tensor。算子在Tiling阶段无法校验其具体值，用户必须保证其合法性；传入非法值可能导致精度异常或非法内存访问。
-  - `cu_seq_lengths_q` / `cu_seq_lengths_kv` / `cu_seq_lengths_q` / `cu_seq_lengths_kv`须满足首元素为0，且序列整体呈非递减排列。
+  - `cu_seq_lengths_q`、`cu_seq_lengths_kv`须满足首元素为0，且序列整体呈非递减排列。
+  - `seqused_q`、`seqused_kv`可选。不传时，实际长度等于对应cu前缀和差分得到的存储长度；与cu同时传入时，分核/任务空间按各batch实际有效长度（seqused）累加，稀疏块分块与QKV寻址仍按cu存储长度计算，每个元素须不大于对应batch的存储长度。
   - 当`layout_kv`为`PAGED_BBND`时，`key`和`value`支持dim0非连续（FIA fused cache布局，stride0 = 2 × page）。
-  - `generic_block_sparse_attention_metadata`和`generic_block_sparse_attention`分两段调用。两次调用中参与metadata生成的公共属性（`is_packed_gqa`、`layout_q`、`layout_kv`、`mask_type`、`quant_type`、`softmax_precision`、`win_left`、`win_right`等）必须一致；不一致时可能产生未定义行为。
+  - `generic_block_sparse_attention_metadata`和`generic_block_sparse_attention`分两段调用。两次调用中所有对应的Tensor和属性须完全一致（含`sparse_block_idx`、`sparse_block_count`、`block_shape`、`cu_seq_lengths_q`、`cu_seq_lengths_kv`、`seqused_q`、`seqused_kv`及`is_packed_gqa`、`layout_q`、`layout_kv`、`mask_type`、`quant_type`、`softmax_precision`、`win_left`、`win_right`等）；不一致时可能产生未定义行为。
   - 须先调用`generic_block_sparse_attention_metadata`生成`metadata`，且每次主算子调用前重新生成。
   - 本接口支持单算子模式和TorchAir图模式调用，可用于训练和推理场景。
 
@@ -225,15 +234,21 @@ cann_ops_transformer.generic_block_sparse_attention(
 | 特性参数组 | 参数字段名称 |
 | :--- | :--- |
 | 公共参数组 | layout_q、layout_kv、query、key、value、sparse_block_idx、sparse_block_count、block_shape、metadata、scale_value、attention_out |
+| metadata参数组 | max_q_seq_len、max_kv_seq_len、num_q_heads、num_kv_heads、head_dim、metadata |
 | Sparse参数组 | sparse_block_idx、sparse_block_count、block_shape |
 | SeqLens参数组 | cu_seq_lengths_q、cu_seq_lengths_kv、seqused_q、seqused_kv |
 | Paged Attention参数组 | block_table、key、value |
+| Mask参数组 | mask_type、win_left、win_right |
 | Quant参数组 | quant_type、q_dequant_scale、k_dequant_scale、v_dequant_scale、dst_type_max、attention_out_dtype |
 | SoftmaxLSE参数组 | return_softmax_lse、softmax_lse、softmax_precision |
 
 ### 其他约束
 
-- 当前落地：`D=128`；`block_shape=[1, 128]`；KV页`blockSize=128`且等于`block_y`；`groupSize≤128`；`topK≤256`；`return_softmax_lse`仅支持False；Ascend 950上`softmax_precision`仅支持1。
+- `atten_mask`、`p_quant_scale`当前须为None。
+- quant_type=0（非量化）时，`q_dequant_scale`、`k_dequant_scale`、`v_dequant_scale`须为None；量化场景shape与dtype约束见`aclnnGenericBlockSparseAttention`文档。
+- `num_q_heads`须满足`num_q_heads >= num_kv_heads`且`num_q_heads % num_kv_heads == 0`；`groupSize = num_q_heads / num_kv_heads`当前须不超过128。
+- `topK`（`sparse_block_idx`最后一维）须不小于`sparse_block_count`中所有元素的最大值，且当前不超过256。
+- 当前落地：`D=128`；`block_shape=[1, 128]`；KV页`blockSize=128`且等于`block_y`；`return_softmax_lse`仅支持False；Ascend 950上`softmax_precision`仅支持1。
 - 详细约束见`aclnnGenericBlockSparseAttentionMetadata`与`aclnnGenericBlockSparseAttention`文档。
 
 ## 调用示例
