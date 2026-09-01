@@ -75,9 +75,6 @@ struct GMMAddrInfo {
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
-    __gm__ Mc2MoeContext *mc2Context;
-    // Layered 各通信阶段串行复用同一段固定 UB，避免 Combine 按 token 数动态侵占计算缓冲。
-    LocalTensor<uint8_t> batchWqeTensor;
 };
 #endif
 

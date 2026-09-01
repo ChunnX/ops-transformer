@@ -488,7 +488,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     params_.sharedBScaleGmAddr = GetTensorAddr(0, sharedWeightScales1);
     params_.sharedB2ScaleGmAddr = GetTensorAddr(0, sharedWeightScales2);
     params_.combineCommParams.hcomm = &hcomm_;
-    params_.combineCommParams.mc2Context = mc2Context_;
 
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
@@ -568,7 +567,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     hcomm_.Init(hcommTensor_, ALIGN_512 / sizeof(uint8_t));
     hcommBatchWqeTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, LAYERED_HCOMM_BATCH_UB_OFFSET,
                                                 LAYERED_HCOMM_BATCH_UB_BYTES / sizeof(uint8_t));
-    params_.combineCommParams.batchWqeTensor = hcommBatchWqeTensor_;
     uint32_t expertTokenCntTensorAddr = ALIGN_512;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
     expertTokenCntTensor_ =
@@ -735,7 +733,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendAndQu
     hcomm_.Init(hcommTensor_, ALIGN_512);
     hcommBatchWqeTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, LAYERED_HCOMM_BATCH_UB_OFFSET,
                                                 LAYERED_HCOMM_BATCH_UB_BYTES / sizeof(uint8_t));
-    params_.combineCommParams.batchWqeTensor = hcommBatchWqeTensor_;
 
     // 计算 resetTensor 大小（与原逻辑一致）
     uint64_t totalFlagInt32 =
@@ -1221,7 +1218,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SetLocalR
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     GlobalTensor<uint64_t> readyFlagGlobal;
     readyFlagGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr) +
-                                    static_cast<uint64_t>(serverId_) * m_ + tokenStart);
+                                    static_cast<uint64_t>(serverId_) * params_.tilingData->numMaxTokensPerRank +
+                                    tokenStart);
     for (uint32_t offset = 0U; offset < tokenNumInCore; offset += DISPATCH_READY_FLAG_BATCH_TOKENS) {
         uint32_t remaining = tokenNumInCore - offset;
         uint32_t currentTokenCount = remaining < DISPATCH_READY_FLAG_BATCH_TOKENS ?

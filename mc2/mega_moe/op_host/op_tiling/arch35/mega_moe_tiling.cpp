@@ -680,20 +680,21 @@ static ge::graphStatus CheckQuantAttrs(const gert::TilingContext *context, MegaM
 /*
  * 算 peermem 窗口至少要开多大。公式跟 kernel 侧的布局同源（common/mega_moe_peermem.h），
  * host 和 device 不各写一份，免得两边算出来的窗口对不上。
- * 校验这会儿还不知道激活是什么 dtype，elemsPerByte 取 1 是保守上界，与既有校验口径一致。
- * 后四个标量形参要与下面聚合初始化的字段顺序对齐，类型都一样，写反了编译器不会报。
+ * 下面的聚合初始化须与 PeermemSizeParams 字段顺序保持一致。
  */
 static int64_t CalcLeastCclBufferSize(const gert::TilingContext *context, MegaMoeConfig &config,
                                       const MegaMoeAttrShapeContext &shape, int64_t numMaxTokensPerRank,
                                       int64_t epWorldSize, int64_t moeExpertPerRank, bool topkWeightsPrefetch)
 {
+    uint32_t activationElementsPerByte =
+        GetOpQuantModeByAttrDispatchOutType(context, config) == DISPATCH_QUANT_OUT_DTYPE_E2M1 ? 2U : 1U;
     PeermemSizeParams peermemSizeParams{static_cast<int64_t>(numMaxTokensPerRank),
                                         static_cast<int64_t>(shape.topK),
                                         static_cast<int64_t>(shape.h),
                                         static_cast<int64_t>(moeExpertPerRank),
                                         static_cast<int64_t>(epWorldSize),
                                         static_cast<int64_t>(shape.yDtypeSize),
-                                        1U,
+                                        activationElementsPerByte,
                                         topkWeightsPrefetch,
                                         GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT,
                                         *context->GetAttrs()->GetAttrPointer<int64_t>(config.attrTopoTypeIndex),
