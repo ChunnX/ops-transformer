@@ -748,8 +748,14 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
-    // urma发送 地址信息暂存区
-    uint64_t addrTableBytes = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) * WIN_ADDR_ALIGN * epWorldSize;
+    // hitPerRank 转置存储区 [ep][aivNum][perCoreTokenAlign]，每元素 int64，按核分片避免多核写冲突
+    uint64_t perCoreTokens = (info.cfg.numTokens + info.aivNum - 1UL) / info.aivNum;
+    uint64_t tokenHitPerCoreBytes = AlignUpWin(perCoreTokens * sizeof(int64_t));
+    uint64_t hitPerRankBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * info.aivNum * tokenHitPerCoreBytes;
+    // 每核 token 计数区 [aivNum][512B]：各核写入实际处理的 token 数，发送侧恢复全局 tokenId
+    uint64_t coreTokenCntBytes = aivNum * WIN_ADDR_ALIGN;
+    info.workspace.tokenHitPerCoreBytes = tokenHitPerCoreBytes;
+
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
         (info.networkMode == NETWORK_HYBRID) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
@@ -770,7 +776,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + addrTableBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + coreTokenCntBytes + hitPerRankBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
