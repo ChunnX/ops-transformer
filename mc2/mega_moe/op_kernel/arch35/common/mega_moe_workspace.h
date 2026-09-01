@@ -130,6 +130,7 @@ struct WorkspaceInfo {
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         Gmm2CombineSyncProtocol combineSyncProtocol = SelectMteGmm2CombineSyncProtocol(
             tilingData->topoType, tilingData->groupedMatmulMode, tilingData->combineQuantMode);
+        const bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
 
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
