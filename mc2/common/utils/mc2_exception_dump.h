@@ -35,7 +35,6 @@
 #include <mutex>
 #include "./mc2_hcom_topo_info.h"
 #include "../op_kernel/mc2_exception_dump.h"
-#include "./mc2_hcomm_dfx_types.h"
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的
 // weight 值, 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
