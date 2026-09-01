@@ -28,6 +28,7 @@
 #include "mc2_common_log.h"
 #include "runtime/base.h"
 #include "log/log.h"
+#include "securec.h"
 
 namespace fallback {
 using namespace std;
@@ -396,12 +397,24 @@ auto call(Function f, Tuple t) -> int
     return call(f, t, std_utils::make_index_sequence<size>{});
 }
 
+template <typename FuncType>
+inline FuncType AddrToFunc(void *addr)
+{
+    static_assert(sizeof(FuncType) == sizeof(addr), "function pointer size must equal void pointer size");
+    FuncType func = nullptr;
+    errno_t cpyRet = memcpy_s(&func, sizeof(func), &addr, sizeof(func));
+    if (cpyRet != EOK) {
+        return nullptr;
+    }
+    return func;
+}
+
 template <typename Tuple, size_t... I>
 auto ConvertToOpApiFunc(const Tuple &params, void *opApiAddr, std_utils::index_sequence<I...>)
     -> int (*)(typename std::decay<decltype(std::get<I>(params))>::type...)
 {
     using LocalOpApiFunc = int (*)(typename std::decay<decltype(std::get<I>(params))>::type...);
-    auto func = reinterpret_cast<LocalOpApiFunc>(opApiAddr);
+    auto func = AddrToFunc<LocalOpApiFunc>(opApiAddr);
     return func;
 }
 
@@ -484,7 +497,7 @@ using ResetCacheThreadLocal = void (*)();
                 ret = GRAPH_FAILED; \
                 break; \
             } \
-            auto ResetCacheThreadLocalFunc = reinterpret_cast<ResetCacheThreadLocal>(ResetCacheThreadLocalAddr); \
+            auto ResetCacheThreadLocalFunc = AddrToFunc<ResetCacheThreadLocal>(ResetCacheThreadLocalAddr); \
             ResetCacheThreadLocalFunc(); \
             uint64_t workspace_size = 0; \
             uint64_t *workspace_size_addr = &workspace_size; \
@@ -509,9 +522,9 @@ using ResetCacheThreadLocal = void (*)();
             } \
             auto acl_stream = host_api_ctx->GetStream(); \
             auto acl_call = [converted_params, workspace_addr, workspace_size, host_api_ctx, acl_stream, \
-                             executor]() -> int { \
+                             executor]() -> ge::graphStatus { \
                 using OpApiFunc = int (*)(void *, uint64_t, aclOpExecutor *, const aclrtStream); \
-                OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr); \
+                OpApiFunc opApiFunc = AddrToFunc<OpApiFunc>(opApiFuncAddr); \
                 auto api_ret_inner = opApiFunc(workspace_addr, workspace_size, executor, acl_stream); \
                 ReleaseConvertTypes(converted_params); \
                 host_api_ctx->FreeWorkspace(); \
