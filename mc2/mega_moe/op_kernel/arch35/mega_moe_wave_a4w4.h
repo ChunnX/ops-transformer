@@ -48,7 +48,7 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
     using MegaMoeBase::DispatchBuffInit;
-    using MegaMoeBase::RunGmm2CombineForExpert;
+    using MegaMoeBase::RunW4Gmm2TokenSlice;
     using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmmLoopCount_;
     using MegaMoeBase::commonConfig_;
@@ -133,6 +133,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     int32_t vecSetSyncCom = 0;
     uint16_t gmm1PingPongIdx = 0U;
     GmmRuntimeState gmm1RuntimeState{startBlockIdx, vecSetSyncCom, gmm1PingPongIdx};
+    CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, waveCombineJob_, countWorkspace_,
+                                       syncWorkspaceLayout_, params_, moeWeightTensorListAddrs_};
+    CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence, combineRowSequence};
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
@@ -233,9 +236,49 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                 bool isFinalCombine = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
                                       expertIdx == waveLastActiveExpertIdx &&
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
-                RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence,
-                                        pairwiseTileSequence, isFinalCombine);
+                ExpertTokenRange sliceRange{
+                    {expertIdx, sliceTokenStartIndexInExpert,
+                     static_cast<uint64_t>(gmm2State.globalTokenStartIndex) + sliceTokenStartIndexInExpert},
+                    {expertIdx, sliceTokenEndIndexInExpert,
+                     static_cast<uint64_t>(gmm2State.globalTokenStartIndex) + sliceTokenEndIndexInExpert}};
+                if (sliceTokenEndIndexInExpert >= expertTokenCount) {
+                    sliceRange.end.expertIdx = expertIdx + 1U;
+                    sliceRange.end.tokenIndexInExpert = 0U;
+                }
+
+                RunW4Gmm2TokenSlice(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
+                                    sliceTokenCount, pairwiseTileSequence);
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
+                                      Gmm2KernelKind::W4, GMM1_TILE_M,
+                                      TopkWeightsPrefetch>(
+                        combineContext, combineBufferConfig, waveCombineScratch_, sliceRange, combineRuntime);
+                } else if (sliceTokenEndIndexInExpert >= expertTokenCount) {
+                    NotifyWaveGmm2Ready(waveCombineJob_, params_, expertIdx);
+                    ExpertTokenRange expertRange{
+                        {expertIdx, 0U, static_cast<uint64_t>(gmm2State.globalTokenStartIndex)},
+                        {expertIdx + 1U, 0U,
+                         static_cast<uint64_t>(gmm2State.globalTokenStartIndex) + expertTokenCount}};
+                    if (isFinalCombine) {
+                        if constexpr (g_coreType == AIV) {
+                            if (GetSubBlockIdx() == 0U) {
+                                // W4 prologue 完成后，末轮 AIV0 才能通过 MTE2 复用同一 UB 区域。
+                                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
+                            }
+                        }
+                        combineBufferConfig = PrepareFinalWaveCombineBuffers<CombineQuantMode>(
+                            commonConfig_, combineBufferConfig, waveCombineScratch_);
+                        CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
+                                          Gmm2KernelKind::W4, GMM1_TILE_M,
+                                          TopkWeightsPrefetch, false, WaveCombineAivSet::ALL_AIV>(
+                            combineContext, combineBufferConfig, waveCombineScratch_, expertRange, combineRuntime);
+                    } else {
+                        CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
+                                          Gmm2KernelKind::W4, GMM1_TILE_M,
+                                          TopkWeightsPrefetch>(
+                            combineContext, combineBufferConfig, waveCombineScratch_, expertRange, combineRuntime);
+                    }
+                }
             }
         }
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {

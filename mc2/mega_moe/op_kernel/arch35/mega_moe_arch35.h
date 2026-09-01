@@ -97,12 +97,9 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
-    __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-                                                   uint32_t sliceTokenCount,
-                                                   WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
-                                                   bool isFinalCombine);
+    __aicore__ inline void RunW4Gmm2TokenSlice(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+                                              uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+                                              uint32_t sliceTokenCount, int32_t &pairwiseTileSequence);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -518,15 +515,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-/*
- * W4 公共专家 slice GMM2/Combine。GMM2 的分核、地址更新和 slice 执行顺序不随 Combine 量化模式变化；
- * 非量化模式在 GMM2 tile 完成后触发 pairwise Combine，量化模式在专家完整结束后执行量化 Combine。
- */
+// 执行一个 W4 专家 slice 的 GMM2。函数只更新当前 slice 地址、执行 GMM2 并发布所选 ready 协议；
+// Combine 由调用方随后通过统一的 CombineTokenRange 消费同一显式范围。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunW4Gmm2TokenSlice(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-    uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &pairwiseTileSequence, bool isFinalCombine)
+    uint32_t sliceTokenCount, int32_t &pairwiseTileSequence)
 {
     constexpr Gmm2CombineSyncProtocol syncProtocol =
         CombineQuantMode == COMBINE_NO_QUANT ? Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE
@@ -550,32 +544,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
                     TopkWeightsPrefetch, false, false, true, syncProtocol>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
             tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
-    }
-    if constexpr (syncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
-        // 非量化 Combine 已与 GMM2 tile 配对完成，不执行专家级量化 Combine 收尾。
-        return;
-    }
-    if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
-        return;
-    }
-    NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
-    UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
-    if (isFinalCombine) {
-        if constexpr (g_coreType == AIV) {
-            if (GetSubBlockIdx() == 0U) {
-                // W4 prologue 的 MTE3 完成后，Final Combine 才能通过 MTE2 复用同一 UB 区域。
-                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
-            }
-        }
-        combineBufferConfig =
-            PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        RunWaveCombineStage<CombineQuantMode, WaveCombineAivSet::ALL_AIV>(
-            commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_, params_, gmmAddrInfo, state,
-            state.expertIdx, combineRowSequence);
-    } else {
-        RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                              waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                              combineRowSequence);
     }
 }
 
