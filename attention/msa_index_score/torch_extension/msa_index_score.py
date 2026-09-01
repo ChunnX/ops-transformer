@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Callable, Optional
+from typing import Optional
 
 import torch
 from torch.library import impl
@@ -19,7 +19,6 @@ DEFAULT_INIT_BLOCKS = 0
 DEFAULT_LOCAL_BLOCKS = 1
 DEFAULT_LAYOUT_KEY = "BBND"
 SUPPORTED_LAYOUT_KEYS = ("TND", "BBND", "BNBD")
-MSA_BLOCK_SIZE = 128
 
 
 def _round_up(value: int, align: int) -> int:
@@ -35,107 +34,6 @@ def _normalize_layout_key(layout_key: Optional[str]) -> str:
     if layout not in SUPPORTED_LAYOUT_KEYS:
         raise ValueError(f"layout_key must be TND, BBND or BNBD, got {layout_key}")
     return layout
-
-
-def _infer_max_blocks(
-    layout: str,
-    block_table: Optional[torch.Tensor],
-    actual_seq_klen: Optional[torch.Tensor],
-) -> int:
-    if layout != "TND":
-        torch._check(
-            block_table is not None,
-            lambda: f"layout_key={layout} requires block_table",
-        )
-        torch._check(block_table.dim() == 2, lambda: "block_table must be 2D [B, MB]")
-        return int(block_table.size(1))
-    torch._check(
-        actual_seq_klen is not None and actual_seq_klen.dim() == 1,
-        lambda: "layout_key=TND requires actual_seq_klen [B+1]",
-    )
-    pref = [int(v) for v in actual_seq_klen.tolist()]
-    max_blocks = 0
-    for i in range(len(pref) - 1):
-        kv = pref[i + 1] - pref[i]
-        blocks = 0 if kv <= 0 else (kv + MSA_BLOCK_SIZE - 1) // MSA_BLOCK_SIZE
-        if blocks > max_blocks:
-            max_blocks = blocks
-    return 1 if max_blocks <= 0 else max_blocks
-
-
-def _empty_score(query: torch.Tensor, max_blocks: int, device) -> torch.Tensor:
-    score_stride = _round_up(int(max_blocks), SCORE_STRIDE_ALIGN)
-    return torch.empty(
-        (query.size(1), query.size(0), score_stride),
-        dtype=torch.float32,
-        device=device,
-    )
-
-
-def _register_msa_index_score_impl(
-    op_name: str, dispatch_key: str, handler: Callable[..., torch.Tensor]
-) -> None:
-    @impl(get_as_library(), op_name, dispatch_key)
-    def msa_index_score(
-        query: torch.Tensor,
-        key: torch.Tensor,
-        start_loc: torch.Tensor,
-        block_table: Optional[torch.Tensor],
-        scale: Optional[torch.Tensor],
-        atten_mask: Optional[torch.Tensor],
-        actual_seq_qlen: Optional[torch.Tensor],
-        actual_seq_klen: Optional[torch.Tensor],
-        *,
-        layout_key: str = DEFAULT_LAYOUT_KEY,
-        sparse_mode: int = DEFAULT_SPARSE_MODE,
-        init_blocks: int = DEFAULT_INIT_BLOCKS,
-        local_blocks: int = DEFAULT_LOCAL_BLOCKS,
-    ):
-        return handler(
-            query=query,
-            key=key,
-            start_loc=start_loc,
-            block_table=block_table,
-            scale=scale,
-            atten_mask=atten_mask,
-            actual_seq_qlen=actual_seq_qlen,
-            actual_seq_klen=actual_seq_klen,
-            layout_key=layout_key,
-            sparse_mode=sparse_mode,
-            init_blocks=init_blocks,
-            local_blocks=local_blocks,
-        )
-
-
-def _msa_index_score_meta(**kwargs) -> torch.Tensor:
-    query = kwargs["query"]
-    torch._check(query.dim() == 3, lambda: "query must be 3D [T, Hq, D]")
-    layout = _normalize_layout_key(kwargs["layout_key"])
-    max_blocks = _infer_max_blocks(
-        layout, kwargs["block_table"], kwargs["actual_seq_klen"]
-    )
-    return _empty_score(query, max_blocks, device="meta")
-
-
-def _msa_index_score_npu(**kwargs) -> torch.Tensor:
-    key = kwargs["key"]
-    layout = _normalize_layout_key(kwargs["layout_key"])
-    if layout == "BBND" and key.dim() == 3 and int(key.size(1)) == MSA_BLOCK_SIZE:
-        key = key.unsqueeze(2)
-    return _get_op_module().msa_index_score(
-        kwargs["query"],
-        key,
-        kwargs["block_table"],
-        kwargs["scale"],
-        kwargs["atten_mask"],
-        kwargs["actual_seq_qlen"],
-        kwargs["actual_seq_klen"],
-        kwargs["start_loc"],
-        layout,
-        kwargs["sparse_mode"],
-        kwargs["init_blocks"],
-        kwargs["local_blocks"],
-    )
 
 
 class MsaIndexScoreOpBuilder(OpBuilder):
@@ -159,7 +57,55 @@ class MsaIndexScoreOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        _register_msa_index_score_impl(self.name, "Meta", _msa_index_score_meta)
+        @impl(get_as_library(), self.name, "Meta")
+        def msa_index_score_meta(
+            query: torch.Tensor,
+            key: torch.Tensor,
+            start_loc: torch.Tensor,
+            block_table: Optional[torch.Tensor],
+            scale: Optional[torch.Tensor],
+            atten_mask: Optional[torch.Tensor],
+            actual_seq_qlen: Optional[torch.Tensor],
+            actual_seq_klen: Optional[torch.Tensor],
+            *,
+            layout_key: str = DEFAULT_LAYOUT_KEY,
+            sparse_mode: int = DEFAULT_SPARSE_MODE,
+            init_blocks: int = DEFAULT_INIT_BLOCKS,
+            local_blocks: int = DEFAULT_LOCAL_BLOCKS,
+        ):
+            torch._check(query.dim() == 3, lambda: "query must be 3D [T, Hq, D]")
+            total_q = query.size(0)
+            num_q_heads = query.size(1)
+            layout = _normalize_layout_key(layout_key)
+            if layout != "TND":
+                torch._check(
+                    block_table is not None,
+                    lambda: f"layout_key={layout} requires block_table",
+                )
+                torch._check(
+                    block_table.dim() == 2, lambda: "block_table must be 2D [B, MB]"
+                )
+                max_blocks = int(block_table.size(1))
+            else:
+                torch._check(
+                    actual_seq_klen is not None and actual_seq_klen.dim() == 1,
+                    lambda: "layout_key=TND requires actual_seq_klen [B+1]",
+                )
+                pref = [int(v) for v in actual_seq_klen.tolist()]
+                max_blocks = 0
+                for i in range(len(pref) - 1):
+                    kv = pref[i + 1] - pref[i]
+                    blocks = 0 if kv <= 0 else (kv + 127) // 128
+                    if blocks > max_blocks:
+                        max_blocks = blocks
+                if max_blocks <= 0:
+                    max_blocks = 1
+            score_stride = _round_up(int(max_blocks), SCORE_STRIDE_ALIGN)
+            return torch.empty(
+                (num_q_heads, total_q, score_stride),
+                dtype=torch.float32,
+                device="meta",
+            )
 
 
 _msa_index_score_op_builder = MsaIndexScoreOpBuilder()
@@ -174,9 +120,40 @@ def _get_op_module():
     return _op_module
 
 
-_register_msa_index_score_impl(
-    _msa_index_score_op_builder.name, "PrivateUse1", _msa_index_score_npu
-)
+@impl(get_as_library(), _msa_index_score_op_builder.name, "PrivateUse1")
+def _msa_index_score(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    start_loc: torch.Tensor,
+    block_table: Optional[torch.Tensor],
+    scale: Optional[torch.Tensor],
+    atten_mask: Optional[torch.Tensor],
+    actual_seq_qlen: Optional[torch.Tensor],
+    actual_seq_klen: Optional[torch.Tensor],
+    *,
+    layout_key: str = DEFAULT_LAYOUT_KEY,
+    sparse_mode: int = DEFAULT_SPARSE_MODE,
+    init_blocks: int = DEFAULT_INIT_BLOCKS,
+    local_blocks: int = DEFAULT_LOCAL_BLOCKS,
+) -> torch.Tensor:
+    layout = _normalize_layout_key(layout_key)
+    if layout == "BBND" and key.dim() == 3 and int(key.size(1)) == 128:
+        key = key.unsqueeze(2)
+    # C++ wrapper still follows aclnn order: optionals then start_loc.
+    return _get_op_module().msa_index_score(
+        query,
+        key,
+        block_table,
+        scale,
+        atten_mask,
+        actual_seq_qlen,
+        actual_seq_klen,
+        start_loc,
+        layout,
+        sparse_mode,
+        init_blocks,
+        local_blocks,
+    )
 
 
 def msa_index_score(
