@@ -69,13 +69,15 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+    uint32_t gmm2CombineLogicalCoreCount = 0U;
 };
 
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {
-    uint32_t rankId;
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext *mc2Context;
+    // Layered 各通信阶段串行复用同一段固定 UB，避免 Combine 按 token 数动态侵占计算缓冲。
+    LocalTensor<uint8_t> batchWqeTensor;
 };
 #endif
 
