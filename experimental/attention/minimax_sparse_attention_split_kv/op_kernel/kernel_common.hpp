@@ -8,6 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*
+ * 本头文件定义 kernel 侧的 tiling 数据结构 MinimaxSparseAttentionSplitKvTilingData，
+ * 它是 host 侧 TilingData 结构在 kernel 侧的镜像，用于在 kernel 中从 GM（Global Memory）
+ * 反序列化 host 下发的 tiling 数据。kernel 通过该结构按字段偏移读取 tiling buffer，
+ * 获取执行所需的形状、切分、workspace 布局以及派发 key 等信息。
+ */
+
 #ifndef MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_COMMON_HPP
 #define MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_COMMON_HPP
 
@@ -22,6 +29,9 @@ struct MinimaxSparseAttentionSplitKvTilingData {
     uint32_t groupSize;
     uint32_t embeddingSize;
     uint32_t blockSize;
+    uint64_t queryTokenStride; // Q token stride in elements (A2)
+    uint64_t keyBlockStride;   // K cache physical-block stride in elements (A2)
+    uint64_t valueBlockStride; // V cache physical-block stride in elements (A2)
     uint32_t topK;
     uint32_t totalQTokens;
     uint32_t numKvBlocks;
@@ -31,15 +41,20 @@ struct MinimaxSparseAttentionSplitKvTilingData {
     uint32_t totalTaskNumP2;
     float scaleValue;
     uint32_t innerPrecise;
+    uint32_t softmaxLseFlag;
     uint64_t accumOutSize;
     uint64_t lseStatSize;
     uint64_t workSpaceSize;
+    uint64_t gmSWorkspaceSize; // A2 GM S staging workspace per-core bytes (A5=0)
+    uint64_t gmPWorkspaceSize; // A2 GM P staging workspace per-core bytes (A5=0)
     uint64_t tilingKey;
-    uint32_t isPageAttention;
-    uint32_t softmaxLseFlag;
-    uint32_t layoutType;
-    uint32_t qSeqLen;
-    uint32_t kvSeqLen;
+    uint32_t isKvContinuous;   // A2: KV contiguous vs paged
+    uint64_t keyTokenStride;   // A2: K token stride for contiguous KV
+    uint64_t valueTokenStride; // A2: V token stride for contiguous KV
+    uint32_t isPageAttention;  // master: paged attention flag
+    uint32_t layoutType;       // master: TND/BNSD/BSND layout
+    uint32_t qSeqLen;          // master: per-batch Q seq len (kv gather q)
+    uint32_t kvSeqLen;         // master: per-batch KV seq len (kv gather q)
 };
 
 constexpr uint32_t LAYOUT_TND = 0;
