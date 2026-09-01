@@ -173,15 +173,20 @@ private:
     FaGmTensor<OUT_T, OUT_FORMAT, SEQLEN_T, OUT_IS_TND> outGmTensor;
     CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_OUT>()> AttenOutUbToGm;
 
-    // 同步eventID
-    static constexpr uint64_t SYNC_VEC1_RES_BUF0_FLAG = 0;
-    static constexpr uint64_t SYNC_VEC1_RES_BUF1_FLAG = 1;
-    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF0_FLAG = 2;
-    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF1_FLAG = 3;
-    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF2_FLAG = 4;
-    static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF3_FLAG = 5;
-    static constexpr uint64_t SYNC_ATTN_BUF_FLAG = 6;
-    static constexpr uint64_t SYNC_INIT_OUTPUT = 7;
+    // 同步 mutexId，静态分配 0-27 内连续 ID
+    // V 计算结果 buffer (2 个): V (producer) <> MTE3 (consumer 搬运)
+    // cube 核占用 mutex ID 0-16，vector 核从 17 开始排，避免跨核 ID 冲突导致死锁
+    static constexpr uint32_t SYNC_VEC1_RES_BUF0_MUTEX_ID = 17;
+    static constexpr uint32_t SYNC_VEC1_RES_BUF1_MUTEX_ID = 18;
+    // GMax UB→L1 buffer (4 个): V (producer) <> MTE3 (consumer 搬运)
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID = 19;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF1_MUTEX_ID = 20;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF2_MUTEX_ID = 21;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF3_MUTEX_ID = 22;
+    // attention out buffer: V (producer) <> MTE3 (consumer 搬运)
+    static constexpr uint32_t SYNC_ATTN_BUF_MUTEX_ID = 23;
+    // init output buffer: V (producer) <> MTE3 (consumer 搬运)
+    static constexpr uint32_t SYNC_INIT_OUTPUT_MUTEX_ID = 24;
 
 public:
     // 初始化 Vec Block 层
@@ -201,15 +206,14 @@ public:
     // 初始化 UB
     __aicore__ inline void InitTensors()
     {
-        AllocEventID();
-
         // =================================L1 Tensor Init=================================
         uint32_t addrL1Start = 0; // 16K * 20 = 320K
         pL1Tensor = LocalTensor<uint8_t>(TPosition::A1, addrL1Start, L1_P_SIZE * L1_P_BUFCNT);
         addrL1Start += L1_P_SIZE * L1_P_BUFCNT;
         pScaleL1 = LocalTensor<uint8_t>(TPosition::A1, addrL1Start, L1_P_DESCALE_SIZE * L1_P_BUFCNT); // 1K * 20 = 20K
 
-        localGlobalMaxL1 = LocalTensor<half>(TPosition::A1, 498 * 1024, 256);
+        // 偏移需与 cube 侧 L1 布局对齐: cube 侧 7 KV buffer + vSum 常驻后 localGlobalMaxL1 位于 512128
+        localGlobalMaxL1 = LocalTensor<half>(TPosition::A1, 512128, 256);
 
         // =================================UB Tensor Init=================================
         uint32_t addrUBStart = 0;
@@ -268,15 +272,15 @@ public:
         Mxfp4Api::InitIndexesAndDuplicateCallVF<half>(nd2nzIndexUB, localGlobalMaxUB);
     }
 
-    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
+    __aicore__ inline void ReleaseTensors() {}
 
     __aicore__ inline void ComputeVec1(const RunInfo &runInfo)
     {
         uint32_t buffIdx = GetBufferIdx(runInfo.loop);
         if (runInfo.isS2FirstTilePerCore) { // 每个vector core都需要一个跨tile的同步
-            WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
+            Mutex::Lock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
         }
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
+        Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID + buffIdx);
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (likely(runInfo.actMSize == s1BaseSize &&
@@ -340,8 +344,8 @@ public:
             }
         }
 
-        SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
+        Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID + buffIdx);
+        Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID + buffIdx);
 
         if (likely(runInfo.actMSize == s1BaseSize &&
                    runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
@@ -357,7 +361,7 @@ public:
                      {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8,
                       8, 0});
         }
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG + buffIdx);
+        Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID + buffIdx);
     }
 
     __aicore__ inline void CopyGMaxUbToL1(const RunInfo &runInfo)
@@ -371,8 +375,8 @@ public:
             return;
         }
 
-        SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
+        Mutex::Unlock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+        Mutex::Lock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
 
         DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
                  localGlobalMax, {1, 8, 0, 0});
@@ -409,8 +413,8 @@ public:
         LocalTensor<half> localGroupMax1 = this->localGroupMaxUB[firstLoopStart * SINGLE_GROUP_MAX_SPACE_SIZE];
         LocalTensor<half> localGroupMax2 = this->localGroupMaxUB[secondLoopStart * SINGLE_GROUP_MAX_SPACE_SIZE];
 
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
+        Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+        Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
         if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
             Mxfp4Api::computePscale<true, half, s1BaseSize>(pscale1, pscale2, localGroupMax1, localGroupMax2,
                                                             localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
@@ -420,11 +424,11 @@ public:
                                                              localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                              firstLoop, secondLoop, constInfo.subBlockIdx);
         }
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG + runInfo.tileMaxIdx);
-        SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG);
-        SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF0_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_VEC1_RES_BUF1_FLAG);
+        Mutex::Unlock<PIPE_MTE3>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
+        Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+        Mutex::Unlock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
+        Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+        Mutex::Lock<PIPE_MTE3>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
 
         DataCopy(pScaleL1[constInfo.subBlockIdx * (32 * 5 * 8) + firstLoopStart * (32 * 5 * 8)], pscale1,
                  {static_cast<uint16_t>(firstLoop), 40, 0, 40});
@@ -432,8 +436,8 @@ public:
             DataCopy(pScaleL1[constInfo.subBlockIdx * (32 * 5 * 8) + secondLoopStart * (32 * 5 * 8)],
                      pscale1[firstLoop * (32 * 5 * 8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
         }
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
+        Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+        Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
     }
 
     __aicore__ inline void ComputeVec2(const RunInfo &runInfo)
@@ -441,7 +445,7 @@ public:
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
 
         if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);
+            Mutex::Lock<PIPE_V>(SYNC_ATTN_BUF_MUTEX_ID);
             Mxfp4Api::processUpdate<false>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
         } else {
             Mxfp4Api::processUpdate<true>(attentionOutUB, mm2ResUB, urs, globalRowsumUB, localRowsumUB);
@@ -455,8 +459,8 @@ public:
             }
             PipeBarrier<PIPE_V>();
             if (actDealMSize != 0) {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
-                WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
+                Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+                Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
                 LocalTensor<float> outTensorFp32Ub = attentionTransUB.template ReinterpretCast<float>();
                 Mxfp4Api::processOut(outTensorFp32Ub, attentionOutUB, globalRowsumUB);
                 PipeBarrier<PIPE_V>();
@@ -466,11 +470,11 @@ public:
                 DataCopy(attentionOutUBBf16, outTensorBf16Ub, actDealMSize * columnCnt);
                 PipeBarrier<PIPE_V>();
 
-                SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
-                SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
+                Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF0_MUTEX_ID);
+                Mutex::Unlock<PIPE_MTE3>(SYNC_VEC1_RES_BUF1_MUTEX_ID);
 
-                SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_ATTN_BUF_FLAG);
-                WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_ATTN_BUF_FLAG);
+                Mutex::Unlock<PIPE_V>(SYNC_ATTN_BUF_MUTEX_ID);
+                Mutex::Lock<PIPE_MTE3>(SYNC_ATTN_BUF_MUTEX_ID);
 
                 GmCoord gmCoord;
                 gmCoord.bIdx = runInfo.bIdx;
@@ -485,15 +489,13 @@ public:
 
                 AttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
             }
-            SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);
+            Mutex::Unlock<PIPE_MTE3>(SYNC_ATTN_BUF_MUTEX_ID);
         }
     }
 
     __aicore__ inline void ClearOutput()
     {
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_INIT_OUTPUT);
         InitOutputSingleCore();
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_INIT_OUTPUT);
         SyncAll();
     }
 
@@ -508,12 +510,12 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (likely(singleInitOutputSize > 0)) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_INIT_OUTPUT);
+            Mutex::Lock<PIPE_V>(SYNC_INIT_OUTPUT_MUTEX_ID);
             constexpr int64_t initChunkSize = INIT_OUTPUT_UB_BYTES / sizeof(OUT_T);
             LocalTensor<OUT_T> initUb = mm1ResUB.template ReinterpretCast<OUT_T>();
             Duplicate<OUT_T>(initUb, static_cast<OUT_T>(0), initChunkSize);
-            SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_INIT_OUTPUT);
-            WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_INIT_OUTPUT);
+            Mutex::Unlock<PIPE_V>(SYNC_INIT_OUTPUT_MUTEX_ID);
+            Mutex::Lock<PIPE_MTE3>(SYNC_INIT_OUTPUT_MUTEX_ID);
             int64_t yOffset = constInfo.aivIdx * singleCoreSize;
             int64_t movRound = singleInitOutputSize / initChunkSize;
             int64_t movTail = singleInitOutputSize - movRound * initChunkSize;
@@ -526,32 +528,8 @@ public:
                 ub2GmParams.blockLen = static_cast<uint32_t>(movTail * sizeof(OUT_T));
                 DataCopyPad(outGmTensor.gmTensor[yOffset], initUb, ub2GmParams);
             }
-            SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_INIT_OUTPUT);
+            Mutex::Unlock<PIPE_MTE3>(SYNC_INIT_OUTPUT_MUTEX_ID);
         }
-    }
-
-private:
-    // // 同步初始化及释放
-    __aicore__ inline void AllocEventID()
-    {
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF1_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF2_FLAG);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF3_FLAG);
-    }
-
-    __aicore__ inline void FreeEventID()
-    {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF0_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_VEC1_RES_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_ATTN_BUF_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF0_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF2_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_GMAX_UB_TO_L1_BUF3_FLAG);
     }
 
     // V2 attentionOut GM初始化
