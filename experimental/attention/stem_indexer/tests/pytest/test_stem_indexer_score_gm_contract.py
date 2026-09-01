@@ -293,6 +293,21 @@ def test_initial_blocks_are_masked_before_first_score_tile_store():
     assert store.index(first_tile_guard) < store.index(mask_initial_blocks) < store.index(store_to_gm)
 
 
+def test_a6_uint32_initial_block_padding_uses_strided_duplicate_without_row_loop():
+    utils = (ARCH_920R1 / "vf" / "stem_indexer_topk_utils.h").read_text(encoding="utf-8")
+
+    wrapper_begin = utils.index("inline void PadMrgRowsInitBlockVF(LocalTensor")
+    wrapper_end = utils.index("inline void PadMrgFourRowsFirstS2RangeVF", wrapper_begin)
+    wrapper = "".join(utils[wrapper_begin:wrapper_end].split())
+
+    assert "ifconstexpr(std::is_same_v<SCORE_T,uint32_t>)" in wrapper
+    assert "for(" not in wrapper
+    assert "dstRepStride=static_cast<uint8_t>(rowStride*sizeof(uint32_t)/32U)" in wrapper
+    assert "Duplicate(mrgValueLocal[topkSelectNumAlign],static_cast<uint32_t>(0),mask," in wrapper
+    assert "repeatTimes,1U,dstRepStride);" in wrapper
+    assert "else{PadMrgRowsInitBlockVFImpl<SCORE_T>(" in wrapper
+
+
 def test_direct_output_skips_zero_length_index_vector_and_mte3():
     service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
 

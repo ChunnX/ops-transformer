@@ -143,7 +143,22 @@ __aicore__ inline void PadMrgRowsInitBlockVF(LocalTensor<SCORE_T> &mrgValueLocal
                                              const uint32_t initialBlocks)
 {
     __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
-    PadMrgRowsInitBlockVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        if (rowNum == 0U || initialBlocks == 0U) {
+            return;
+        }
+        constexpr uint32_t B32_VF_ELEMS = 64U;
+        uint32_t maskElems = initialBlocks < B32_VF_ELEMS ? initialBlocks : B32_VF_ELEMS;
+        uint64_t mask[1] = {
+            maskElems == B32_VF_ELEMS ? ~static_cast<uint64_t>(0) : (static_cast<uint64_t>(1) << maskElems) - 1U};
+        uint8_t repeatTimes = static_cast<uint8_t>(rowNum);
+        uint8_t dstRepStride = static_cast<uint8_t>(rowStride * sizeof(uint32_t) / 32U);
+        // One repeat clears the initial-block prefix of one row. The repeat stride advances directly to the next
+        // row, avoiding the V121 invalid-address lowering observed for explicit dynamic row loops.
+        Duplicate(mrgValueLocal[topkSelectNumAlign], static_cast<uint32_t>(0), mask, repeatTimes, 1U, dstRepStride);
+    } else {
+        PadMrgRowsInitBlockVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+    }
 }
 
 template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
