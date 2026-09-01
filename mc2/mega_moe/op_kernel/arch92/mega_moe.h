@@ -32,14 +32,14 @@
 #include "common/mega_moe_stage_debug.h"
 #include "common/mega_moe_mxfp8_utils.h"
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
-#include "../arch35/stage/mega_moe_token_quant.h"
-#include "../arch35/stage/mega_moe_send_mask.h"
+#include "stage/mega_moe_token_quant.h"
+#include "stage/mega_moe_send_mask.h"
 #include "stage/mega_moe_workspace_reset.h"
-#include "../arch35/stage/mega_moe_shared_expert_input.h"
+#include "stage/mega_moe_shared_expert_input.h"
 #include "stage/mega_moe_token_dispatch.h"
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
-#include "../arch35/stage/mega_moe_unpermute.h"
+#include "stage/mega_moe_unpermute.h"
 
 namespace MegaMoeImpl {
 

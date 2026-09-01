@@ -31,7 +31,7 @@
 #define HOST_DEVICE
 #endif
 #include "../mega_moe_tiling.h"
-#include "../../arch35/common/mega_moe_constants.h"
+#include "mega_moe_constants.h"
 
 namespace MegaMoeImpl {
 

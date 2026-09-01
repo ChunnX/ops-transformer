@@ -20,7 +20,7 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
-#include "../../arch35/common/mega_moe_constants.h"
+#include "mega_moe_constants.h"
 #include "mega_moe_types.h"
 
 namespace MegaMoeImpl {

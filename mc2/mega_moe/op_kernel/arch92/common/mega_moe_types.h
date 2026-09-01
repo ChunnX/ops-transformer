@@ -14,7 +14,7 @@
 #include "lib/std/tuple.h"
 #include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
-#include "../../arch35/common/mega_moe_constants.h"
+#include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
 #include "adv_api/hcomm/hcomm.h"
 

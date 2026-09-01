@@ -12,7 +12,7 @@
 #define MEGA_MOE_MXFP8_UTILS_H
 
 #include "kernel_operator.h"
-#include "../../arch35/common/mega_moe_constants.h"
+#include "mega_moe_constants.h"
 #include "mega_moe_quant_compat.h"
 
 namespace MegaMoeImpl {
