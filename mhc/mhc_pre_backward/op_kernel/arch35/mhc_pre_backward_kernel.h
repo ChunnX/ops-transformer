@@ -71,15 +71,11 @@ public:
     __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart, uint64_t bsEnd,
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
-                                              uint64_t bsEnd, uint64_t bsChunkStart, uint32_t currentChunkSize,
-                                              uint32_t chunkSize, uint32_t chunkNDSize, uint32_t currentN,
-                                              uint32_t buffId, LocalTensor<P> &sumBuf);
+                                              uint64_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
+                                              uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkLoadInvRms(uint64_t bsChunkStart, uint32_t currentChunkSize);
-    __aicore__ inline void PrefetchV2ChunkHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                                  uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                                     uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart,
-                                                     uint64_t bsEnd, uint32_t chunkSize);
+                                                     uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart);
     __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
                                                        uint64_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
@@ -185,6 +181,7 @@ private:
     // ProcessV2 chunk循环使用的buffer
     LocalTensor<P> invRmsInBuf_;
     LocalTensor<P> invRmsGradBuf_;
+    LocalTensor<T> gradHInInBuf_;
     LocalTensor<T> bf16InputBuf_;
     LocalTensor<P> gammaOutUb_;
     LocalTensor<P> xRsGradMmInBuf_;
@@ -1266,8 +1263,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
     // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
     ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
-    // invRms的FP32槽释放后再预取首个BF16 hIn块，避免q0中异类型Tensor同时驻留。
-    PrefetchV2ChunkHInGrad(offsetND, copySizeND, bsStart, Min(chunkSize, currentBsSize));
 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
@@ -1281,20 +1276,19 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         if ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0) {
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
         }
-        ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsEnd, bsChunkStart, currentChunkSize, chunkSize, chunkNDSize,
-                           currentN, buffId, sumBuf);
+        ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
+                           sumBuf);
     }
 }
 
 template <class T, class P>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
-                                               uint64_t bsEnd, uint64_t bsChunkStart, uint32_t currentChunkSize,
-                                               uint32_t chunkSize, uint32_t chunkNDSize, uint32_t currentN,
-                                               uint32_t buffId, LocalTensor<P> &sumBuf)
+                                               uint64_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
+                                               uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf)
 {
     // 2. 加载hInGrad并进行向量计算
-    ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart, bsEnd, chunkSize);
+    ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart);
 
     // 3. 加载x和gamma，计算xRs
     ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, buffId);
@@ -1335,10 +1329,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint
     vecInQueue1_.FreeTensor(invRmsGradUb);
 }
 
+// 子函数2: 加载hInGrad并进行向量计算
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkHInGrad(uint32_t offsetND, uint32_t copySizeND,
-                                                                          uint64_t bsChunkStart,
-                                                                          uint32_t currentChunkSize)
+__aicore__ inline void
+MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
+                                                      uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart)
 {
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
@@ -1347,35 +1342,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkHInGrad(uint32
     blockCopyParams.blockLen = copySizeND * sizeof(T);
     blockCopyParams.srcStride = (D_ - copySizeND) * sizeof(T);
     blockCopyParams.dstStride = 0;
-    LocalTensor<T> hInPrefetchBuf;
-    vecInQueue0_.AllocTensor<T>(hInPrefetchBuf);
-    DataCopyPad(hInPrefetchBuf, gradHInGm_[bsChunkStart * D_ + (offsetND % D_)], blockCopyParams, dataCopyPadParams);
-    vecInQueue0_.EnQue(hInPrefetchBuf);
-}
+    vecInQueue0_.AllocTensor<T>(gradHInInBuf_);
+    DataCopyPad(gradHInInBuf_, gradHInGm_[bsChunkStart * D_ + (offsetND % D_)], blockCopyParams, dataCopyPadParams);
+    vecInQueue0_.EnQue(gradHInInBuf_);
+    vecInQueue0_.DeQue<T>(gradHInInBuf_);
 
-// 子函数2: 加载hInGrad并进行向量计算
-template <class T, class P>
-__aicore__ inline void
-MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                                      uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart,
-                                                      uint64_t bsEnd, uint32_t chunkSize)
-{
-    LocalTensor<T> currentHInBuf;
-    vecInQueue0_.DeQue<T>(currentHInBuf);
-    uint64_t nextChunkStart = bsChunkStart + currentChunkSize;
-    if (nextChunkStart < bsEnd) {
-        uint32_t nextChunkSize =
-            static_cast<uint32_t>(Min(static_cast<uint64_t>(chunkSize), bsEnd - nextChunkStart));
-        // 当前槽仍供VF读取时，用q0第二槽预取下一块，下一轮直接DeQue消费。
-        PrefetchV2ChunkHInGrad(offsetND, copySizeND, nextChunkStart, nextChunkSize);
-    }
-
-    __ubuf__ T *gradHInInBufAddr = (__ubuf__ T *)currentHInBuf.GetPhyAddr();
+    __ubuf__ T *gradHInInBufAddr = (__ubuf__ T *)gradHInInBuf_.GetPhyAddr();
     __ubuf__ P *hPreUbAddr = (__ubuf__ P *)hPreUb_.GetPhyAddr();
     __ubuf__ P *xGradVec3BufAddr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     VFDoV2HInMulHPre(xGradVec3BufAddr, gradHInInBufAddr, hPreUbAddr, currentChunkSize, copySizeND, currentN,
                      (bsChunkStart - bsStart));
-    vecInQueue0_.FreeTensor(currentHInBuf);
+    vecInQueue0_.FreeTensor(gradHInInBuf_);
 }
 
 // 子函数3: 加载x和gamma，计算xRs
