@@ -465,62 +465,38 @@ __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenC
 }
 
 /*
- * 在当前 WAVE 的剩余容量内规划下一个非空专家 slice，并返回其左闭右开 token 范围。
- * 该函数只负责推进位置和 M-group 计数，不执行 Dispatch；因此 W4 稳态可每轮只规划一个专家 slice，
- * 再与当前 WAVE 的一个专家 Activation 交错。返回的非空范围最多覆盖一个专家。
+ * 在当前 WAVE 的剩余容量内，将下一个非空专家 slice 追加到左闭右开 token 范围。
+ * 单次调用最多推进一个非空专家：W4 稳态调用一次得到专家 slice；整 WAVE 调度由调用方循环调用，
+ * 直到 M-group 容量用完。该函数只规划范围和推进位置，不执行 Dispatch。
  */
 template <uint32_t TileM>
-__aicore__ inline void PlanNextExpertTokenRangeInWave(
+__aicore__ inline void PlanTokenRangeInWave(
     GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
     uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
 {
-    // 默认返回当前位置上的空范围；找到有效专家后再填写真实 slice 起止点。
-    range.begin = position;
-    range.end = position;
+    bool rangeIsEmpty = range.end.globalTokenIndex <= range.begin.globalTokenIndex;
+    if (rangeIsEmpty) {
+        // 新范围先锚定当前位置；若后续只有空专家，则保持为显式空范围。
+        range.begin = position;
+        range.end = position;
+    }
     while (position.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
         uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
             expertTokenCountWorkspace, countWorkspace, expertCount, position.expertIdx);
-        // 空专家或已完成专家不占用 WAVE 容量，直接规范化到下一专家起点。
+        // 空专家或已完成专家不占用 WAVE 容量，继续寻找下一个非空专家。
         if (expertTokenCount == 0U || position.tokenIndexInExpert >= expertTokenCount) {
             ++position.expertIdx;
             position.tokenIndexInExpert = 0U;
             continue;
         }
 
-        range.begin = position;
+        // 首个有效 slice 确定范围起点；后续调用只延伸同一范围的终点。
+        if (rangeIsEmpty) {
+            range.begin = position;
+        }
         AdvanceExpertTokenPositionInWave<TileM>(expertTokenCount, waveMGroupTarget, waveMGroupCount, position);
         range.end = position;
         return;
-    }
-}
-
-/*
- * 从当前位置规划当前 WAVE 的全部剩余 token，范围可以跨越多个专家，也可以在大专家中间结束。
- * A8W8 的每轮 Dispatch 和 W4 的启动 Dispatch 使用该规划方式；实际搬运统一交给 DispatchTokenRange。
- */
-template <uint32_t TileM>
-__aicore__ inline void PlanRemainingWaveTokenRange(
-    GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
-    uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
-{
-    // 没有有效 token 时保留一个显式空范围，由 DispatchTokenRange 统一判断并返回。
-    range.begin = position;
-    range.end = position;
-    bool hasTokenRange = false;
-    ExpertTokenRange expertRange{};
-    while (position.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
-        PlanNextExpertTokenRangeInWave<TileM>(expertTokenCountWorkspace, countWorkspace, expertCount,
-                                               waveMGroupTarget, waveMGroupCount, position, expertRange);
-        // 规划后显式判断结果；尾部全为空专家时结束整 WAVE 聚合。
-        if (expertRange.end.globalTokenIndex <= expertRange.begin.globalTokenIndex) {
-            break;
-        }
-        // 第一个非空专家 slice 确定整段起点；后续 slice 只延伸整段终点。
-        if (!hasTokenRange) {
-            range.begin = expertRange.begin;
-            hasTokenRange = true;
-        }
-        range.end = expertRange.end;
     }
 }
 

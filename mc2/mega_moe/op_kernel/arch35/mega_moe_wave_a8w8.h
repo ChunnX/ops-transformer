@@ -828,9 +828,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                     // 首轮由调度层规划完整 WAVE；Dispatch 执行层只消费明确的 [begin, end) 范围。
                     ExpertTokenRange dispatchRange{};
                     uint32_t dispatchWaveMGroupCount = 0U;
-                    PlanRemainingWaveTokenRange<GMM1_TILE_M>(
-                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
-                        mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+                    while (dispatchPosition.expertIdx < moeExpertPerRank_ &&
+                           dispatchWaveMGroupCount < mGroupsPerWave_) {
+                        // 整 WAVE 通过重复追加专家 slice 形成，规划函数本身只有这一种粒度语义。
+                        PlanTokenRangeInWave<GMM1_TILE_M>(
+                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
+                            mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+                    }
                     DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                         g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
@@ -840,9 +844,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 if (waveEndPosition.expertIdx < moeExpertPerRank_) {
                     ExpertTokenRange dispatchRange{};
                     uint32_t dispatchWaveMGroupCount = 0U;
-                    PlanRemainingWaveTokenRange<GMM1_TILE_M>(
-                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
-                        mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+                    while (dispatchPosition.expertIdx < moeExpertPerRank_ &&
+                           dispatchWaveMGroupCount < mGroupsPerWave_) {
+                        PlanTokenRangeInWave<GMM1_TILE_M>(
+                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
+                            mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+                    }
                     DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                         g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
