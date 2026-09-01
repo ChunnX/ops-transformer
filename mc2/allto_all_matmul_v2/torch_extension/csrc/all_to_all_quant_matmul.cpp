@@ -99,7 +99,7 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     int64_t bs = x1Size[0];
     int64_t h = x1Size[1];
     int64_t localBs = bs / worldSize;
-    int64_t n = is_w4 ? x2Size[0] * INT4_NUMS_IN_INT32 : x2Size[0]; // x2 布局为 (N, K_total)，与算子 tiling 校验一致
+    int64_t n = is_w4 ? x2Size[1] * INT4_NUMS_IN_INT32 : x2Size[1];
 
     TORCH_CHECK(bs % worldSize == 0, "The first dim of x1 (", bs, ") should be divisible by world_size (", worldSize,
                 ")");
