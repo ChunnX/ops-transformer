@@ -68,15 +68,15 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
         ):
             if rank_size <= 0:
                 raise ValueError(
-                    f"rank_size should be greater than 0, {ops_error(ErrCode.VALUE)}."
+                    f"rank_size should be greater than 0."
                 )
             if x1.dim() != 2:
                 raise ValueError(
-                    f"x1 should be 2D, but got {x1.dim()}D, {ops_error(ErrCode.VALUE)}."
+                    f"x1 should be 2D, but got {x1.dim()}D."
                 )
             if x2.dim() != 2:
                 raise ValueError(
-                    f"x2 should be 2D, but got {x2.dim()}D, {ops_error(ErrCode.VALUE)}."
+                    f"x2 should be 2D, but got {x2.dim()}D."
                 )
             m_per_rank = x1.size(0)
             k = x1.size(1)
@@ -148,6 +148,14 @@ def _check_params(
     comm_mode,
 ):
     """Validate input parameters."""
+    if x1.dim() != 2:
+        raise ValueError(
+            f"x1 should be 2D, but got {x1.dim()}D."
+        )
+    if x2.dim() != 2:
+        raise ValueError(
+            f"x2 should be 2D, but got {x2.dim()}D."
+        )
     if comm_mode != "urma":
         raise ValueError(
             f"comm_mode only supports 'urma', but got '{comm_mode}'. "
