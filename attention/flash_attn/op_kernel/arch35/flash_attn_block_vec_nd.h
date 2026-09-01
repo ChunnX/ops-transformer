@@ -364,21 +364,15 @@ public:
 
             Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
             {
-                // S1G场景,仅头尾两块且未覆盖完整G时,因为可能不32B对齐,每一段需预留16个数,故预留32元素,
-                // 预计brcb后要预留32行
-                static constexpr uint32_t MAX_VEC_M_SIZE = ((mBaseSize / CV_RATIO + 15U) & ~15U) + 32U;
                 LocalTensor<INPUT_T> sinkTmpUb =
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-                LocalTensor<T> sinkExpandUb = sinkTmpUb[MAX_VEC_M_SIZE].template ReinterpretCast<T>();
 
                 if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, true>(maxUb, sinkTmpUb, sinkExpandUb, gs1Start,
-                                                                   runInfo.actVecMSize, runInfo.actS1Size,
-                                                                   constInfo_.gSize);
+                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                   runInfo.actS1Size, constInfo_.gSize);
                 } else {
-                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, false>(maxUb, sinkTmpUb, sinkExpandUb, gs1Start,
-                                                                    runInfo.actVecMSize, runInfo.actS1Size,
-                                                                    constInfo_.gSize);
+                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                    runInfo.actS1Size, constInfo_.gSize);
                 }
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
