@@ -52,6 +52,12 @@ struct AllToAllVAllGatherProblemShape {
     }
 
     CATLASS_HOST_DEVICE
+    uint32_t m() const
+    {
+        return originProblemShape_.m();
+    }
+
+    CATLASS_HOST_DEVICE
     uint32_t k() const
     {
         return originProblemShape_.k();

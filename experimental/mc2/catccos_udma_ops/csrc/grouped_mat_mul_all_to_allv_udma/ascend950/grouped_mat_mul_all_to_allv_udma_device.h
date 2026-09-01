@@ -39,11 +39,16 @@ namespace OpsTransformer::CatccosUdma {
 // alias because its TileRemoteCopy builds and completes the WQE internally.
 // This adapter supplies only that host/device construction ABI; the actual
 // block operator, UDMA GET and quiet remain the official CatCCOS code path.
-template <class OfficialBlock_, class Params_>
+template <class OfficialBlock_, class ParamsBlock_>
 class OfficialUdmaBlockAdapter : public OfficialBlock_ {
 public:
     using Base = OfficialBlock_;
-    using Params = Params_;
+    // Keep the same host-side dynamic block/tile parameter ABI as the local
+    // MTE block.  The official UDMA block itself has no Params alias and its
+    // TileRemoteCopy owns a different Params type, but its device constructor
+    // accepts an arbitrary parameter object.
+    using Params = typename ParamsBlock_::Params;
+    using TileRemoteCopy = typename ParamsBlock_::TileRemoteCopy;
     using ElementSrc = typename Base::ElementSrc;
     using LayoutSrc = typename Base::LayoutSrc;
     using ElementDst = typename Base::ElementDst;
@@ -123,7 +128,7 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using OfficialBlockBase = Catccos::Comm::Block::CommBlock<
         RemoteDispatch, CType, CType, OfficialTile>;
     using OfficialBlockComm = OfficialUdmaBlockAdapter<
-        OfficialBlockBase, typename BlockLocalComm::Params>;
+        OfficialBlockBase, BlockLocalComm>;
     using BlockComm = std::conditional_t<
         UseOfficialUdmaBlock, OfficialBlockComm, HybridBlockComm>;
 
