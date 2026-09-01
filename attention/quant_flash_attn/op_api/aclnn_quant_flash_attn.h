@@ -73,21 +73,14 @@ extern "C" {
  * @return aclnnStatus. ACLNN_SUCCESS on success.
  */
 aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v,
-    const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
-    const aclTensor *blockTableOptional,
-    const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantMode,
-    double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
-    bool returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *qDescale, const aclTensor *kDescale,
+    const aclTensor *vDescale, const aclTensor *blockTableOptional, const aclTensor *pScaleOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutQDescale,
+    const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse, const aclTensor *attnOut,
+    const aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief Second phase of aclnnQuantFlashAttn: execute computation.
