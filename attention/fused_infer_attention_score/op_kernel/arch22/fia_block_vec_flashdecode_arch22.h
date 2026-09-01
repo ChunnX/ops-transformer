@@ -203,12 +203,11 @@ public:
 };
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecFlashDecode<FIAT>::InitGlobalTensor(GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm,
-                                               GlobalTensor<T> accumOutGm, GlobalTensor<OUT_T> attentionOutGm,
-                                               GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                               GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key,
-                                               __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitGlobalTensor(
+    GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm, GlobalTensor<T> accumOutGm,
+    GlobalTensor<OUT_T> attentionOutGm, GlobalTensor<uint64_t> actualSeqLengthsGmQ,
+    GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key, __gm__ uint8_t *quantScale2,
+    __gm__ uint8_t *quantOffset2)
 {
     this->lseMaxFdGm = lseMaxFdGm;
     this->lseSumFdGm = lseSumFdGm;
@@ -244,7 +243,6 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitParams(const AttentionC
 {
     this->constInfo = constInfo;
 }
-
 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitDecodeParams()

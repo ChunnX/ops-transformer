@@ -22,7 +22,9 @@ namespace optiling {
 ge::graphStatus TilingFusedInferAttentionScoreArch38(gert::TilingContext *context);
 class FusedInferAttentionScoreTilingArch38 : public FiaTilingBase {
 public:
-    explicit FusedInferAttentionScoreTilingArch38(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FusedInferAttentionScoreTilingArch38(gert::TilingContext *context)
+        : FiaTilingBase(context)
+    {}
     ~FusedInferAttentionScoreTilingArch38() override = default;
 
 protected:

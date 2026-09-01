@@ -29,15 +29,14 @@ namespace optiling {
 #define FIA_MLA_UT_VISIBLE
 #endif
 
-FIA_MLA_UT_VISIBLE void FillArch22MlaKvStrideParams(
-    FusedInferAttentionKvStrideParams &params, const FiaTilingInfo &fiaInfo);
+FIA_MLA_UT_VISIBLE void FillArch22MlaKvStrideParams(FusedInferAttentionKvStrideParams &params,
+                                                    const FiaTilingInfo &fiaInfo);
 
 class FiaTilingNonQuantMla : public FiaTilingBase {
 public:
     explicit FiaTilingNonQuantMla(gert::TilingContext *context)
         : FiaTilingBase(context)
-    {
-    }
+    {}
     ~FiaTilingNonQuantMla() override = default;
 
 protected:
