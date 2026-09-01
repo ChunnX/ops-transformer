@@ -911,7 +911,7 @@ aclnnStatus InnerFusedInferAttentionScoreV4GetWorkspaceSize(
         learnableSinkOptional, qStartIdxOptional, kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens,
         inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
         keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, outDtype, attentionOut, softmaxLse,
-        workspaceSize, executor, true);
+        workspaceSize, executor, false);
 }
 
 aclnnStatus InnerFusedInferAttentionScore(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
