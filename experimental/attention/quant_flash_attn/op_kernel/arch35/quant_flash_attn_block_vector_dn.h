@@ -175,18 +175,18 @@ private:
 
     // 同步 mutexId，静态分配 0-27 内连续 ID
     // V 计算结果 buffer (2 个): V (producer) <> MTE3 (consumer 搬运)
-    // cube 核占用 mutex ID 0-18 (KV扩到8个后 cube 侧 ID 整体后移)，vector 核从 19 开始排，避免跨核 ID 冲突导致死锁
-    static constexpr uint32_t SYNC_VEC1_RES_BUF0_MUTEX_ID = 19;
-    static constexpr uint32_t SYNC_VEC1_RES_BUF1_MUTEX_ID = 20;
+    // cube 核占用 mutex ID 0-16，vector 核从 17 开始排，避免跨核 ID 冲突导致死锁
+    static constexpr uint32_t SYNC_VEC1_RES_BUF0_MUTEX_ID = 17;
+    static constexpr uint32_t SYNC_VEC1_RES_BUF1_MUTEX_ID = 18;
     // GMax UB→L1 buffer (4 个): V (producer) <> MTE3 (consumer 搬运)
-    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID = 21;
-    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF1_MUTEX_ID = 22;
-    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF2_MUTEX_ID = 23;
-    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF3_MUTEX_ID = 24;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID = 19;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF1_MUTEX_ID = 20;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF2_MUTEX_ID = 21;
+    static constexpr uint32_t SYNC_GMAX_UB_TO_L1_BUF3_MUTEX_ID = 22;
     // attention out buffer: V (producer) <> MTE3 (consumer 搬运)
-    static constexpr uint32_t SYNC_ATTN_BUF_MUTEX_ID = 25;
+    static constexpr uint32_t SYNC_ATTN_BUF_MUTEX_ID = 23;
     // init output buffer: V (producer) <> MTE3 (consumer 搬运)
-    static constexpr uint32_t SYNC_INIT_OUTPUT_MUTEX_ID = 26;
+    static constexpr uint32_t SYNC_INIT_OUTPUT_MUTEX_ID = 24;
 
 public:
     // 初始化 Vec Block 层

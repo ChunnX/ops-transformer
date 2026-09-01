@@ -208,15 +208,10 @@ private:
     static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;
-    static constexpr uint32_t L1_KV_BUFCNT = 8;
+    static constexpr uint32_t L1_KV_BUFCNT = 7;
     static constexpr uint32_t L1_P_BUFCNT = 20;
 
     static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
-
-    // "1"矩阵第9分形(L0A行128..143)专用常驻: V只用前128行, 第9分形永不被LoadVToL0覆写,
-    // 只需Fill一次+每problem的isLastS2Loop重刷L0A, 无需常驻整个144x256
-    static constexpr uint32_t L1_VSUM_FRACTAL_SIZE = 16 * 256 / 2;                       // 2K
-    static constexpr uint32_t L1_VSCALE_FRACTAL_SIZE = (256 / 64) * 1 * 32;              // 128B, 4列块x1行块x32B
 
     // 静态
     LocalTensor<DATA_T> pL1Tensor;
@@ -239,6 +234,7 @@ private:
     static constexpr uint32_t PV_L0A_SIZE = 256 * (128 + 16) / 2;                 // 18K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t PV_L0B_SIZE = 256 * (128 + 16) / 2;                 // 18K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t PV_L0C_SIZE = (128 + 16) * 128 * sizeof(COMPUTE_T); // 72K
+    static constexpr uint32_t V_SCALE_L0A_SIZE = (256 / 64) * ((128 + 16) / 16) * 32;
     static constexpr uint32_t PV_L0AB_BUFCNT = 2;
     static constexpr uint32_t PV_L0C_BUFCNT = 1;
 
@@ -269,19 +265,18 @@ private:
     static constexpr uint32_t KV_MUTEX_ID_BASE = 2;
     uint32_t kvBufId = 0;
     // vSum buffer (L1) : mte2 (Fill常驻) <> mte1 (LoadData到L0A)
-    // KV扩到8个buffer后 KV_MUTEX_ID_BASE+kvBufId 占用2..9, VSUM及后续ID整体后移1避免冲突
-    static constexpr uint32_t VSUM_MUTEX_ID_BASE = 10;
+    static constexpr uint32_t VSUM_MUTEX_ID_BASE = 9;
     // QK L0AB buffer : mte1 (producer) <> m (consumer)
-    static constexpr uint32_t QK_L0AB_MUTEX_ID_BASE = 11;
+    static constexpr uint32_t QK_L0AB_MUTEX_ID_BASE = 10;
     uint32_t qkL0abBufId = 0;
     // PV L0AB buffer : mte1 (producer) <> m (consumer)
-    static constexpr uint32_t PV_L0AB_MUTEX_ID_BASE = 13;
+    static constexpr uint32_t PV_L0AB_MUTEX_ID_BASE = 12;
     uint32_t pvL0abBufId = 0;
     // QK L0C buffer : m (producer) <> fix (consumer)
-    static constexpr uint32_t QK_L0C_MUTEX_ID_BASE = 15;
+    static constexpr uint32_t QK_L0C_MUTEX_ID_BASE = 14;
     uint32_t qkL0cBufId = 0;
-    // PV L0C buffer : m (producer) <> fix (consumer), 占用17-18, vector侧从19开始
-    static constexpr uint32_t PV_L0C_MUTEX_ID_BASE = 17;
+    // PV L0C buffer : m (producer) <> fix (consumer)
+    static constexpr uint32_t PV_L0C_MUTEX_ID_BASE = 16;
     uint32_t pvL0cBufId = 0;
 
     uint32_t headDimInt8 = 0;
@@ -336,20 +331,19 @@ public:
             LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_Q_DESCALE_SIZE * L1_Q_BUFCNT); // 0.5K * 2 = 1K
 
         addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
-        kvL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 8 = 128K
+        kvL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 7 = 112K
 
         addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
         kvDescaleL1Tensor =
-            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 1K * 8 = 8K
+            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 1K * 7 = 7K
 
         addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
-        vSumL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_VSUM_FRACTAL_SIZE); // 2K * 1, "1"第9分形常驻
+        vSumL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, PV_L0A_SIZE); // 18K * 1 = 18K
 
-        addrL1Start += L1_VSUM_FRACTAL_SIZE;
-        vScaleSumL1Tensor =
-            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_VSCALE_FRACTAL_SIZE); // 128B * 1
+        addrL1Start += PV_L0A_SIZE;
+        vScaleSumL1Tensor = LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, V_SCALE_L0A_SIZE); // 1.125K * 1
 
-        addrL1Start += L1_VSCALE_FRACTAL_SIZE;
+        addrL1Start += V_SCALE_L0A_SIZE;
         localGlobalMaxL1 = LocalTensor<half>(TPosition::A1, addrL1Start, 256 * 4); // 512b
 
         // L0A
@@ -622,24 +616,21 @@ private:
         }
     }
 
-    // "1"矩阵第9分形在L1上Fill一次常驻: 0x6666(fp4值4.0) * 0x7d7d(scale 0.25) = 1.0
-    // 只刷第9分形(16x256), 其余8个分形由V的LoadData覆盖, 无需常驻
+    // "1"矩阵在L1上Fill一次常驻: 0x6666(fp4值4.0) * 0x7d7d(scale 0.25) = 1.0
     __aicore__ inline void InitL0BufferForReduceSum()
     {
         Mutex::Lock<PIPE_MTE2>(VSUM_MUTEX_ID_BASE);
-        InitConstValueParams<uint16_t> vL1InitParams(1, static_cast<uint16_t>(L1_VSUM_FRACTAL_SIZE / 32), 0, 0x6666);
+        InitConstValueParams<uint16_t> vL1InitParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x6666);
         Fill(vSumL1Tensor.template ReinterpretCast<uint16_t>(), vL1InitParams);
 
         PipeBarrier<PIPE_MTE2>(); // initvalue会被刷到同一个寄存器, 两个Fill需要顺序执行
 
-        InitConstValueParams<uint16_t> vScaleL1InitParams(1, static_cast<uint16_t>(L1_VSCALE_FRACTAL_SIZE / 32), 0,
-                                                          0x7d7d);
+        InitConstValueParams<uint16_t> vScaleL1InitParams(1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
         Fill(vScaleSumL1Tensor.template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
         Mutex::Unlock<PIPE_MTE2>(VSUM_MUTEX_ID_BASE);
     }
 
-    // 将常驻"1"矩阵第9分形从L1搬运到L0A, 每个problem的isLastS2Loop各刷一次
-    // L1源已是紧凑的16x256布局, LoadData直接以16行粒度装载到L0A第9分形(行128..143)
+    // 将常驻"1"矩阵从L1搬运到L0A, 每个problem的isLastS2Loop各刷一次
     __aicore__ inline void InitL0MXBufferForReduceSum()
     {
         Mutex::Lock<PIPE_MTE1>(VSUM_MUTEX_ID_BASE);
@@ -647,25 +638,22 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = 16 / 16; // 第9分形仅16行
+        loadData2DParamsA.mStep = (128 + 16) / 16;
         loadData2DParamsA.kStep = 256 / 64;
-        loadData2DParamsA.srcStride = 16 / 16; // 源为16行紧凑块, m方向分形容量=1
-        loadData2DParamsA.dstStride = (128 + 16) / 16; // dst为L0A全高144行, m方向分形容量=9(与整块装载一致)
+        loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
+        loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
         loadData2DParamsA.ifTranspose = false;
 
         LoadData2DMxParams loadData2DMXParamsA;
         loadData2DMXParamsA.xStartPosition = 0;
         loadData2DMXParamsA.yStartPosition = 0;
-        loadData2DMXParamsA.xStep = 16 / 16; // 第9分形仅16行
+        loadData2DMXParamsA.xStep = (128 + 16) / 16;
         loadData2DMXParamsA.yStep = 256 / 64;
         loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
         loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
 
         Mutex::Lock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
-        // dst偏移: 槽基址 + 第9分形行首分形(m=8,k=0)。zN列优先布局下分形(m,k)位于k*(144/16)+m,
-        // (8,0)即第8个16x16分形 = 8*128B(QUANT_T=fp4x2, 每分形16行x16列/2B)
-        uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T)) +
-                               8 * (16 * 16 / 2 / sizeof(DATA_T));
+        uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
         LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(), vSumL1Tensor.ReinterpretCast<QUANT_T>(),
                  vScaleSumL1Tensor, loadData2DParamsA, loadData2DMXParamsA);
         Mutex::Unlock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
