@@ -490,8 +490,8 @@ public:
 
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         GetCommProtocol(hcclComm, protocol);
-        // 16P UB_RTP无业务验证固定使用UB_RTP建链，不采用拓扑探测出的协议。
-        protocol = CommProtocol::COMM_PROTOCOL_UB_RTP;
+        // 16P shared-Jetty无业务验证固定使用UBC_CTP建链，不采用拓扑探测出的协议。
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
 
         MoeCommContext context;
         BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize);
@@ -686,8 +686,8 @@ private:
                 continue;
             }
             uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            // 16P UB_RTP无业务验证固定经过第2层交换网络。
-            uint32_t layerId = 2U;
+            // 16P shared-Jetty无业务验证固定经过第1层交换网络。
+            uint32_t layerId = 1U;
             CommLink *links = nullptr;
             GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
@@ -735,8 +735,8 @@ private:
                                uint32_t srcRankId, const CommProtocol &protocol, MoeCommContext &context)
     {
         TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
-        TORCH_CHECK(protocol == CommProtocol::COMM_PROTOCOL_UB_RTP,
-                    "16P shared-Jetty validation requires COMM_PROTOCOL_UB_RTP, got ",
+        TORCH_CHECK(protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP,
+                    "16P shared-Jetty validation requires COMM_PROTOCOL_UBC_CTP, got ",
                     static_cast<int>(protocol));
         TORCH_CHECK(rankDim <= MOE_JETTY_TOTAL * MOE_PEERS_PER_JETTY,
                     "shared-Jetty validation supports at most ", MOE_JETTY_TOTAL * MOE_PEERS_PER_JETTY,
@@ -773,8 +773,8 @@ private:
                 if (peer == srcRankId) {
                     continue;
                 }
-                // 16P场景所有逻辑对端固定从第2层获取链路。
-                uint32_t layerId = 2U;
+                // 16P场景所有逻辑对端固定从第1层获取链路。
+                uint32_t layerId = 1U;
                 CommLink *links = nullptr;
                 GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
                 if (!hasLocalEndpoint) {
