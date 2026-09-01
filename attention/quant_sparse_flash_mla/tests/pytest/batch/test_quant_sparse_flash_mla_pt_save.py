@@ -281,9 +281,7 @@ def qsmla(param_combinations):
     global case_id
     try:
         params = utils.fill_none_params(param_combinations)
-        batch_consistency_policy = os.environ.get(
-            "QSMLA_BATCH_CONSISTENCY", "auto"
-        )
+        batch_consistency_policy = os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto")
         prepare_consistency_params(params, batch_consistency_policy)
 
         Testcase_Name = params["Testcase_Name"]

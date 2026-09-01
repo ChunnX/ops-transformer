@@ -145,7 +145,9 @@ def _random_order(batch_size: int, rng: random.Random) -> Optional[List[int]]:
     return order
 
 
-def _validate_positive_partition(values: Sequence[int], total: int, name: str) -> List[int]:
+def _validate_positive_partition(
+    values: Sequence[int], total: int, name: str
+) -> List[int]:
     result = list(values)
     if len(result) < 2 or any(value <= 0 for value in result) or sum(result) != total:
         raise ValueError(
@@ -160,9 +162,13 @@ def _resolve_mode_batch(
 ) -> int:
     candidates = [index for index, length in enumerate(valid_lengths) if length >= 2]
     if not candidates:
-        candidates = [index for index, length in enumerate(valid_lengths) if length >= 1]
+        candidates = [
+            index for index, length in enumerate(valid_lengths) if length >= 1
+        ]
     if not candidates:
-        raise ValueError("CONFIG_ERROR: batch consistency requires at least one valid Q token")
+        raise ValueError(
+            "CONFIG_ERROR: batch consistency requires at least one valid Q token"
+        )
     if configured is None:
         return rng.choice(candidates)
     if configured < 0 or configured >= len(valid_lengths):
@@ -186,7 +192,11 @@ def resolve_consistency_config(
         raise ValueError(f"CONFIG_ERROR: {LEVEL_KEY} must be 3 when enabled")
 
     configured_seed = parse_optional_int(params.get(SEED_KEY), SEED_KEY)
-    seed = configured_seed if configured_seed is not None else random.SystemRandom().randrange(2**31)
+    seed = (
+        configured_seed
+        if configured_seed is not None
+        else random.SystemRandom().randrange(2**31)
+    )
     if seed < 0:
         raise ValueError(f"CONFIG_ERROR: {SEED_KEY} must be non-negative")
     rng = random.Random(seed)
@@ -206,7 +216,9 @@ def resolve_consistency_config(
     if batch_split is None:
         batch_split = _random_partition(batch_size, rng)
     else:
-        batch_split = _validate_positive_partition(batch_split, batch_size, BATCH_SPLIT_KEY)
+        batch_split = _validate_positive_partition(
+            batch_split, batch_size, BATCH_SPLIT_KEY
+        )
 
     configured_batch = parse_optional_int(params.get(MODE_BATCH_KEY), MODE_BATCH_KEY)
     mode_batch = _resolve_mode_batch(configured_batch, valid_lengths, rng)
@@ -216,9 +228,13 @@ def resolve_consistency_config(
     if token_split is None:
         token_split = _random_partition(token_count, rng)
     else:
-        token_split = _validate_positive_partition(token_split, token_count, TOKEN_SPLIT_KEY)
+        token_split = _validate_positive_partition(
+            token_split, token_count, TOKEN_SPLIT_KEY
+        )
 
-    shape_change = parse_optional_int_list(params.get(SHAPE_CHANGE_KEY), SHAPE_CHANGE_KEY)
+    shape_change = parse_optional_int_list(
+        params.get(SHAPE_CHANGE_KEY), SHAPE_CHANGE_KEY
+    )
     if shape_change is None:
         if token_count >= 2:
             shape_change = [rng.randint(1, token_count - 1), 0]
