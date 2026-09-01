@@ -767,14 +767,17 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
         print_op_result('grouped_matmul', 'Cube', gmm_cores, r, m, fm, s2)
         results.append(('grouped_matmul', 'Cube', gmm_cores, r, m, fm, s2))
 
-# 生成汇总表 (长表: 每算子 min/mean/max 各一行, 2 算子共 6 行数据)
+# 生成汇总表 (长表: 每算子 min/mean/max 各一行, 2 算子共 6 行数据; 第二行为表头解释)
 summary_path = os.path.join(output_dir, f'summary_{soc_version}.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
+    w.writerow(['# 说明: 头开销=T1-stars(Tstars->首个MTE2前); 调度开销=Tkick-stars(STARS派发->核kick);',
+                '硬件头=T0-kick(核kick->取回首指令); 软件头=T1-T0(kernel prologue); T2-stars=kernel末指令;',
+                'min/mean/max=最快核/核平均/最慢核(墙钟); n=有效配对样本数'])
     w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)', '统计口径',
-                '段1kick-stars(us)', '段1_n',
-                '段2T0-kick(us)', '段2_n',
-                '段3T1-T0(us)',
+                '调度开销Tkick-stars(us)', '调度_n',
+                '硬件头T0-kick(us)', '硬件_n',
+                '软件头T1-T0(us)',
                 '头开销T1-stars(us)',
                 'T2-stars(us)'])
     for op, typ, cores, r, m, fm, s2 in results:
