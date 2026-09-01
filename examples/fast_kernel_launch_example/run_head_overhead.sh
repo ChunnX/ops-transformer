@@ -705,41 +705,35 @@ def fmt(v):
 print()
 print("============================================")
 print("  头开销分段测试结果 (稳态=跳过前2次; 多拍各拍独立计算取 median)")
-print("  分段口径 (T0=取回首指令):")
-print("    段1 调度开销   = Taicore_kick_start - Tstars")
-print("    段2 硬件头     = T0 - Taicore_kick_start")
-print("    段3 软件头     = T1 - T0")
-print("    头开销(总)     = T1 - Tstars")
+print("  指标 (us): 调度开销 Tkick-stars / 硬件头 T0-kick / 软件头 T1-T0 / 头开销 T1-stars / kernel末指令 T2-stars")
 print("  核间有快有慢, 每指标三组统计: min=最快核 / mean=核平均 / max=最慢核(墙钟,与TaskDur同语义)")
-print("  ffts PMU 校验: max(T2)+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
 print("============================================")
 print()
 
 def seg_line(name, formula, mn, mean, mx, extra=""):
-    return (f"  {name:16s} {formula:14s} min={fmt(mn):>7s}  mean={fmt(mean):>7s}  max={fmt(mx):>7s} us{extra}")
+    return (f"  {name:10s} {formula:12s} min={fmt(mn):>7s}  mean={fmt(mean):>7s}  max={fmt(mx):>7s} us{extra}")
 
 def print_op_result(op, typ, cores, r, m, fm, s2):
     shots = m.get('shots', 1) if m else 1
-    print(f"{op} ({typ}, {cores}核, {shots}拍):")
-    print(f"  {'TaskDur':16s} {'稳态mean':14s} = {r['mean']:.3f} us")
+    print(f"{op} ({typ}, {cores}核, {shots}拍)  TaskDur={r['mean']:.3f}us")
     if not m:
         print("  [无 kernel 打点数据]")
         print()
         return
     seg1 = fm.get('seg1_dist') if fm else None
     if seg1:
-        print(seg_line("段1 调度开销", "kick-stars", seg1['min'], seg1['mean'], seg1['max'],
-                       f"  (n={seg1['n']}, median={seg1['median']:.3f}, 核间无错峰)"))
+        print(seg_line("调度开销", "Tkick-stars", seg1['min'], seg1['mean'], seg1['max'],
+                       f"  (n={seg1['n']}, 核间无错峰)"))
     else:
-        print(seg_line("段1 调度开销", "kick-stars", None, None, None))
+        print(seg_line("调度开销", "Tkick-stars", None, None, None))
     if s2:
-        print(seg_line("段2 硬件头", "T0-kick", s2['min'], s2['mean'], s2['max'],
-                       f"  (n={s2['n']} dispatch分组配对, ffts 滚动采样)"))
+        print(seg_line("硬件头", "T0-kick", s2['min'], s2['mean'], s2['max'],
+                       f"  (n={s2['n']}, ffts 滚动采样)"))
     else:
-        print(seg_line("段2 硬件头", "T0-kick", None, None, None, "  (无 ffts pmu 配对)"))
-    print(seg_line("段3 软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'),
-                   m.get('t1_t0_max'), f"  (median={fmt(m['t1_t0'])})"))
-    print(seg_line("头开销(总)", "T1-stars", m.get('t1_stars_min'), m.get('t1_stars_mean'),
+        print(seg_line("硬件头", "T0-kick", None, None, None, "  (无 ffts pmu 配对)"))
+    print(seg_line("软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'),
+                   m.get('t1_t0_max')))
+    print(seg_line("头开销", "T1-stars", m.get('t1_stars_min'), m.get('t1_stars_mean'),
                    m['t1_stars']))
     print(seg_line("kernel末指令", "T2-stars", m.get('t2_stars_min'), m.get('t2_stars_mean'),
                    m['t2_stars']))
