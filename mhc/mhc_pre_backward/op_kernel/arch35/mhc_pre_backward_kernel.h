@@ -1180,17 +1180,14 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
     {
         Reg::RegTensor<T> hInReg;
         Reg::RegTensor<P> hInFP32Reg, hPreReg, hPreFullReg;
-        Reg::RegTensor<uint32_t> hPreIndexReg;
-        Reg::MaskReg mask, maskAll;
-        maskAll = Reg::CreateMask<P, Reg::MaskPattern::ALL>();
+        Reg::MaskReg mask;
         uint32_t hPreOffset = static_cast<uint32_t>(bsGlobalOffset * N_ + currentN);
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
             uint32_t lenND = copySizeND;
             uint32_t hInOffset = tIdx * copySizeND;
 
-            // Load hPre [1] -> [copySizeND]
-            Reg::Duplicate(hPreIndexReg, hPreOffset, maskAll);
-            Reg::Gather(hPreFullReg, hPreUbAddr, hPreIndexReg, maskAll);
+            // hPre每行只使用一个FP32标量，直接广播加载，减少索引构造和Gather指令。
+            Reg::DataCopy<P, Reg::LoadDist::DIST_BRC_B32>(hPreFullReg, hPreUbAddr + hPreOffset);
             // copySizeND最大为64，当前T行只需一次向量处理，删除恒单次的内层循环控制。
             mask = Reg::UpdateMask<P>(lenND);
             // hIn B16 -> B32
