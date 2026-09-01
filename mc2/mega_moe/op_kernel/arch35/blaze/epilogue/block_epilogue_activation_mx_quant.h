@@ -35,7 +35,6 @@
 #include "activation/swigluoai_activation.h"
 #include "block_epilogue_ub_layout.h"
 #include "quant/mx_quant_common.h"
-#include "quant/mxfp4_quant.h"
 #include "quant/mxfp8_quant.h"
 
 namespace ActivationQuantMsg {
@@ -368,8 +367,9 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
                                                 ubPointers.quantOutput, dataCount, dataLoopCount);
     }
     if constexpr (IsSameType<DataTypeOut, fp4x2_e2m1_t>::value || IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
-        MxQuant::QuantizeMxFp4Data<DataTypeOut>(ubPointers.activationOutput, ubPointers.reciprocalScale,
-                                                ubPointers.quantOutput, dataCount, dataLoopCount);
+        Quant::ComputeFp4Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
+                              AscendC::RoundMode::CAST_RINT>(
+            ubPointers.activationOutput, ubPointers.reciprocalScale, ubPointers.quantOutput, dataCount);
     }
 }
 
