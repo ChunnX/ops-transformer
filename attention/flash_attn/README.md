@@ -64,8 +64,7 @@ cd build_out
 
 ### 2. torch 扩展包构建与安装
 
-使用 torch 接口前必做。torch_extension 采用分布式算子注册：构建时通过 `--ops`
-选择要打包的算子集合，**未选中的算子不会进入安装包**。
+使用 torch 接口前必做。在仓根目录构建 torch 扩展 whl 并安装：
 
 ```bash
 # 前置：加载 CANN 环境
@@ -74,29 +73,24 @@ source ${CANN_DIR}/cann/set_env.sh
 # 清理 torch 扩展缓存（~ 为当前用户 home，需与安装/运行 torch 的用户一致，避免加载过期编译产物）
 rm -rf ~/.cache/torch_extensions/*
 
-# 构建 torch 扩展 whl（在仓根目录执行，whl 输出至 build_out/）
-bash build.sh --torch_extension --ops=flash_attn,flash_attn_metadata
+# 构建 torch 扩展 whl（全量包，包名 cann_ops_transformer 保持不变，whl 输出至 build_out/）
+bash build.sh --torch_extension
 
 # 安装
 python3 -m pip install build_out/*.whl --force-reinstall --no-deps
 ```
 
-**包名规则**（导入路径与包名一致，与旧版全量包名不同）：
-
-- 指定 `--ops` 时：包名带 vendor 后缀，默认 `cann_ops_transformer_custom`；
-  可用 `--vendor_name=name` 指定为 `cann_ops_transformer_name`。
-- 不指定 `--ops` 时：构建全量包，包名为 `cann_ops_transformer`。
-
-**安装后验证**（包名按上文规则，选装时为 `cann_ops_transformer_custom`）：
+**安装后验证**：
 
 ```bash
-python3 -c "from cann_ops_transformer_custom.ops import flash_attn, flash_attn_metadata; print('ok')"
+python3 -c "from cann_ops_transformer.ops import flash_attn, flash_attn_metadata; print('ok')"
 ```
 
 **注意事项**：
 
-- `flash_attn` 与 `flash_attn_metadata` 必须同时列入 `--ops`（调用 `flash_attn` 前需先用
-  `flash_attn_metadata` 生成 metadata）。
+- 如需保持安装包名为 `cann_ops_transformer`，**不要**给 `--torch_extension` 附加
+  `--ops`：一旦指定 `--ops`，包名会变为带 vendor 后缀的选装包（默认
+  `cann_ops_transformer_custom`），导入路径随之改变。
 - **避免 `pip install -e`（editable）安装**：editable 模式不执行构建期算子模块收集，
   `ops/<category>/<op>/` 目录不会生成，导入将失败。
 - 接口文档路径（含参数与调用示例）：
@@ -108,13 +102,9 @@ python3 -c "from cann_ops_transformer_custom.ops import flash_attn, flash_attn_m
 
 调用分两步：先用`flash_attn_metadata`生成负载均衡metadata，再调用`flash_attn`主算子。完整调用示例（含代码）见接口文档的[调用示例](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md#调用示例)章节。
 
-导入路径与安装包名一致（按步骤 2 的 `TORCH_EXTENSION_VENDOR` 规则）：
+导入路径与安装包名一致（按步骤 2 构建的全量包）：
 
 ```python
-# 选装包（--ops 指定时，默认 vendor=custom）
-from cann_ops_transformer_custom.ops import flash_attn, flash_attn_metadata
-
-# 全量包（未设置 TORCH_EXTENSION_OPS）
 from cann_ops_transformer.ops import flash_attn, flash_attn_metadata
 ```
 
