@@ -20,6 +20,7 @@
 #include "opdev/op_executor.h"
 #include <acl/acl.h>
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 #include <string>
 
@@ -30,6 +31,12 @@ extern "C" {
 #endif
 
 namespace {
+constexpr int64_t MAX_BATCH_SIZE = 20000;
+constexpr int64_t MAX_TOKEN_COUNT = 1024 * 1024;
+constexpr int64_t MAX_HEAD_NUM = 256;
+constexpr int64_t SUPPORTED_HEAD_DIM = 128;
+constexpr int64_t MIN_BLOCK_SHAPE = 16;
+
 struct BSAGParams {
     const aclTensor *query = nullptr;
     const aclTensor *key = nullptr;
@@ -46,6 +53,7 @@ struct BSAGParams {
     const aclIntArray *blockShapeOptional;
     int64_t numKeyValueHeads;
     int64_t maskType;
+    double scaleValue;
     int64_t preTokens;
     int64_t nextTokens;
     const aclTensor *dqOut = nullptr;
@@ -60,7 +68,10 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *dout,
                                          const aclTensor *value,
                                          const aclTensor *attentionOut,
                                          const aclTensor *softmaxLse,
-                                         const aclTensor *blockSparseMaskOptional)
+                                          const aclTensor *blockSparseMaskOptional,
+                                          const aclTensor *dq,
+                                          const aclTensor *dk,
+                                          const aclTensor *dv)
 {
     CHECK_RET(dout != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -69,10 +80,13 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *dout,
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(softmaxLse != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(dq != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(dk != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(dv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ParseBlockShape(const aclIntArray *blockShapeOptional)
+static aclnnStatus ParseBlockShape(const aclIntArray *blockShapeOptional, int64_t &blockShapeX, int64_t &blockShapeY)
 {
     if (blockShapeOptional == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "blockShapeOptional is null.");
@@ -80,8 +94,9 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShapeOptional)
     }
 
     uint64_t size = blockShapeOptional->Size();
-    if (size < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain at least two elements [x, y].");
+    if (size != 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain exactly two elements [x, y], got %lu.",
+                size);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -91,8 +106,14 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShapeOptional)
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (data[0] <= 0 || data[1] <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0], data[1]);
+    blockShapeX = data[0];
+    blockShapeY = data[1];
+    if (blockShapeX < MIN_BLOCK_SHAPE || blockShapeY < MIN_BLOCK_SHAPE ||
+        blockShapeX > MAX_TOKEN_COUNT || blockShapeY > MAX_TOKEN_COUNT ||
+        blockShapeX % MIN_BLOCK_SHAPE != 0 || blockShapeY % MIN_BLOCK_SHAPE != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "blockShapeOptional values must be in [16, 512] and multiples of 16, got [%ld, %ld].",
+                blockShapeX, blockShapeY);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -105,8 +126,21 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     std::string qLayout(params.qInputLayout);
     std::string kvLayout(params.kvInputLayout);
     CHECK_RET(CheckMandatoryTensors(params.attentionOutGrad, params.query, params.key, params.value,
-                                    params.attentionOut, params.softmaxLse, params.blockSparseMaskOptional) == ACLNN_SUCCESS,
+                                    params.attentionOut, params.softmaxLse, params.blockSparseMaskOptional,
+                                    params.dqOut, params.dkOut, params.dvOut) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_COND(qLayout == "TND" || qLayout == "BNSD" || qLayout == "BSND", ACLNN_ERR_PARAM_INVALID,
+               "qInputLayout only supports TND, BNSD or BSND.");
+    CHECK_COND(qLayout == kvLayout, ACLNN_ERR_PARAM_INVALID,
+               "qInputLayout and kvInputLayout must be identical.");
+    CHECK_COND(std::isfinite(params.scaleValue), ACLNN_ERR_PARAM_INVALID, "scaleValue must be finite.");
+
+    int64_t blockShapeX = 0;
+    int64_t blockShapeY = 0;
+    aclnnStatus blockShapeRet = ParseBlockShape(params.blockShapeOptional, blockShapeX, blockShapeY);
+    if (blockShapeRet != ACLNN_SUCCESS) {
+        return blockShapeRet;
+    }
     // dtype检查
     DataType qDtype = params.query->GetDataType();
     DataType kDtype = params.key->GetDataType();
@@ -118,13 +152,15 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     DataType dqDtype = params.dqOut->GetDataType();
     DataType dkDtype = params.dkOut->GetDataType();
     DataType dvDtype = params.dvOut->GetDataType();
-    CHECK_COND(qDtype == ACL_FLOAT16 || qDtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID, "The dtype of query is not support.");
+    CHECK_COND(qDtype == ge::DT_FLOAT16 || qDtype == ge::DT_BF16, ACLNN_ERR_PARAM_INVALID,
+               "The dtype of query is not support.");
     CHECK_COND(qDtype == kDtype, ACLNN_ERR_PARAM_INVALID, "key dtype error.");
     CHECK_COND(qDtype == vDtype, ACLNN_ERR_PARAM_INVALID, "value dtype error.");
     CHECK_COND(attnOutDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "attentionOut dtype must match query dtype.");
     CHECK_COND(gradDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "attentionOutGrad dtype must match query dtype.");
-    CHECK_COND(lseDtype == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID, "softmaxLse dtype must be FLOAT32.");
-    CHECK_COND(maskDtype == ACL_BOOL || maskDtype == ACL_UINT8, ACLNN_ERR_PARAM_INVALID, "blockSparseMask dtype must be BOOL or UINT8.");
+    CHECK_COND(lseDtype == ge::DT_FLOAT, ACLNN_ERR_PARAM_INVALID, "softmaxLse dtype must be FLOAT32.");
+    CHECK_COND(maskDtype == ge::DT_BOOL || maskDtype == ge::DT_UINT8, ACLNN_ERR_PARAM_INVALID,
+               "blockSparseMask dtype must be BOOL or UINT8.");
     CHECK_COND(dqDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dqOut dtype must match query dtype.");
     CHECK_COND(dkDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match query dtype.");
     CHECK_COND(dvDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match query dtype.");
@@ -151,6 +187,18 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     auto dqShape = params.dqOut->GetViewShape();
     auto dkShape = params.dkOut->GetViewShape();
     auto dvShape = params.dvOut->GetViewShape();
+    auto maskShape = params.blockSparseMaskOptional->GetViewShape();
+    uint64_t expectedRank = qLayout == "TND" ? 3 : 4;
+    CHECK_COND(queryShape.GetDimNum() == expectedRank && keyShape.GetDimNum() == expectedRank &&
+                   valueShape.GetDimNum() == expectedRank && attnOutShape.GetDimNum() == expectedRank &&
+                   gradShape.GetDimNum() == expectedRank && dqShape.GetDimNum() == expectedRank &&
+                   dkShape.GetDimNum() == expectedRank && dvShape.GetDimNum() == expectedRank,
+               ACLNN_ERR_PARAM_INVALID, "Q/K/V, dout, attentionOut and dQ/dK/dV ranks must match inputLayout.");
+    CHECK_COND(lseShape.GetDimNum() == expectedRank, ACLNN_ERR_PARAM_INVALID,
+               "softmaxLse rank must match inputLayout.");
+    CHECK_COND(maskShape.GetDimNum() == 4, ACLNN_ERR_PARAM_INVALID,
+               "blockSparseMask must be a 4-D tensor.");
+
     if (qLayout == "TND") {
         // check head_dim
         CHECK_COND(queryShape.GetDim(2) == keyShape.GetDim(2), ACLNN_ERR_PARAM_INVALID, "The dim's 2 of query and key must be same.");
@@ -218,8 +266,7 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
                 "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-
-    return ParseBlockShape(params.blockShapeOptional);
+    return ACLNN_SUCCESS;
 }
 
 static aclnnStatus MakeContiguous(const aclTensor *&dout,
@@ -309,6 +356,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
     bsag_params.blockShapeOptional = blockShapeOptional;
     bsag_params.numKeyValueHeads = numKeyValueHeads;
     bsag_params.maskType = maskType;
+    bsag_params.scaleValue = scaleValue;
     bsag_params.preTokens = preTokens;
     bsag_params.nextTokens = nextTokens;
     bsag_params.dqOut = dq;
