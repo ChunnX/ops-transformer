@@ -1241,8 +1241,8 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
         }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
             uint32_t lenND = copySizeND;
-            P invRmsScalar = invRmsAddr[tIdx];
-            MicroAPI::Duplicate<P>(invRmsReg, invRmsScalar, maskAll);
+            // invRms每行只使用一个FP32标量，直接广播加载，减少标量读取和Duplicate指令。
+            MicroAPI::DataCopy<P, MicroAPI::LoadDist::DIST_BRC_B32>(invRmsReg, invRmsAddr + tIdx);
             // copySizeND最大为64，当前T行只需一次向量处理，删除恒单次的内层循环控制。
             MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(lenND);
             uint32_t offset = tIdx * copySizeND;
