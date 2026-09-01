@@ -55,7 +55,6 @@ __attribute__((deprecated("aclnnMlaPrologV2WeightNz is scheduled to be deprecate
 __attribute__((visibility("default"))) aclnnStatus
 aclnnMlaPrologV2WeightNz(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
 
-
 #ifdef __cplusplus
 }
 #endif
