@@ -315,7 +315,6 @@ def mqsmla(param_combinations):
             input_data,
             batch_consistency_policy,
             persist=True,
-        )
         if config is not None:
             print("batch consistency config:", config)
         mixed_quant_sparse_flash_mla_golden.save_test_case(input_data, save_path)
