@@ -34,6 +34,9 @@ constexpr int64_t MX_GROUP_SIZE = 64L;
 constexpr int64_t MX_SCALE_PAIR = 2L;
 constexpr size_t MIN_X_DIM_NUM = 1UL;
 constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
+constexpr size_t WEIGHT_SCALE_NZ_DIM_NUM = 5UL;
+constexpr int64_t WEIGHT_SCALE_NZ_N_BLOCK_DIM_INDEX = 1L;
+constexpr int64_t WEIGHT_SCALE_NZ_N0_DIM_INDEX = 3L;
 constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 1UL;
 constexpr size_t ATTR_INDEX_Y_DTYPE = 5UL;
 constexpr int64_t DYNAMIC_DIM = -1L;
@@ -46,6 +49,8 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     const gert::Shape *weightScaleShape = context->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScaleShape);
+    const auto weightScaleDesc = context->GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightScaleDesc);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const bool *transposeWeightPtr = attrs->GetBool(ATTR_INDEX_TRANSPOSE_WEIGHT);
@@ -55,14 +60,18 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()),
                                                       "x dim num must be greater than or equal to 1"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(weightScaleShape->GetDimNum() != WEIGHT_SCALE_DIM_NUM,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "weightScale",
-                                                      std::to_string(weightScaleShape->GetDimNum()),
-                                                      "weightScale dim num must be 4"),
+    const bool scaleNz = ge::GetPrimaryFormat(weightScaleDesc->GetStorageFormat()) == ge::FORMAT_FRACTAL_NZ;
+    const size_t expectedWeightScaleDimNum = scaleNz ? WEIGHT_SCALE_NZ_DIM_NUM : WEIGHT_SCALE_DIM_NUM;
+    OP_CHECK_IF(weightScaleShape->GetDimNum() != expectedWeightScaleDimNum,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context->GetNodeName(), "weightScale", std::to_string(weightScaleShape->GetDimNum()),
+                    scaleNz ? "Scale NZ weightScale dim num must be 5" : "weightScale dim num must be 4"),
                 return GRAPH_FAILED);
     int64_t m = xShape->GetDim(M_DIM_INDEX);
-    int64_t n = transposeWeight ? weightScaleShape->GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
-                                  weightScaleShape->GetDim(WEIGHT_SCALE_N_DIM_INDEX);
+    int64_t n = scaleNz ? weightScaleShape->GetDim(WEIGHT_SCALE_NZ_N_BLOCK_DIM_INDEX) *
+                              weightScaleShape->GetDim(WEIGHT_SCALE_NZ_N0_DIM_INDEX) :
+                          (transposeWeight ? weightScaleShape->GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
+                                             weightScaleShape->GetDim(WEIGHT_SCALE_N_DIM_INDEX));
 
     auto outShape = context->GetOutputShape(OUT_Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outShape);

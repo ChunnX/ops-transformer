@@ -107,6 +107,7 @@ void GroupedMatmulActivationQuantTiling950::Reset()
     activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     yDtype_ = ge::DT_FLOAT8_E4M3FN;
+    scaleNzFlag_ = false;
 }
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::GetShapeAttrsInfo()
@@ -295,6 +296,8 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
     inputParams_.outDataDtype = yDesc->GetDataType();
     inputParams_.outScaleDtype = yScaleDesc->GetDataType();
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
+    const ge::Format scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetStorageFormat()));
+    scaleNzFlag_ = scaleFormat == ge::FORMAT_FRACTAL_NZ;
     inputParams_.hasBias = false;
     return CheckDtype();
 }
@@ -302,19 +305,17 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
 bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape &xScaleShape,
                                                               const gert::Shape &wScaleShape) const
 {
+    const size_t expectedWeightScaleDimNum = scaleNzFlag_ ? MXFP_SCALE_NZ_DIM_NUM : MXFP_TYPE_M_SCALE_DIM_NUM;
     OP_CHECK_IF(
-        xScaleShape.GetDimNum() != MXFP_PER_TOKEN_SCALE_DIM_NUM || wScaleShape.GetDimNum() != MXFP_TYPE_M_SCALE_DIM_NUM,
+        xScaleShape.GetDimNum() != MXFP_PER_TOKEN_SCALE_DIM_NUM || wScaleShape.GetDimNum() != expectedWeightScaleDimNum,
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
             context_->GetNodeName(), "x_scale and weight_scale",
             FormatString("x_scale=%zu, weight_scale=%zu", xScaleShape.GetDimNum(), wScaleShape.GetDimNum()),
-            "x_scale dim num must be 3 and weight_scale dim num must be 4"),
+            scaleNzFlag_ ? "x_scale dim num must be 3 and Scale NZ weight_scale dim num must be 5" :
+                           "x_scale dim num must be 3 and weight_scale dim num must be 4"),
         return false);
     auto expectedKBlocks = static_cast<int64_t>(
         Ops::Base::CeilDiv(static_cast<int64_t>(inputParams_.kSize), static_cast<int64_t>(MXFP_BASEK_FACTOR)));
-    auto wScaleN = inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
-                                         wScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX);
-    auto wScaleK = inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_K_BLOCK_DIM_INDEX) :
-                                         wScaleShape.GetDim(WEIGHT_SCALE_K_BLOCK_DIM_INDEX);
     OP_CHECK_IF(xScaleShape.GetDim(X_SCALE_M_DIM_INDEX) != static_cast<int64_t>(inputParams_.mSize) ||
                     xScaleShape.GetDim(X_SCALE_K_BLOCK_DIM_INDEX) != expectedKBlocks ||
                     xScaleShape.GetDim(X_SCALE_PAIR_DIM_INDEX) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
@@ -323,12 +324,50 @@ bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape 
                     FormatString("when the quantization mode is mx, the shape of x_scale must be (%lu, %ld, 2)",
                                  inputParams_.mSize, expectedKBlocks)),
                 return false);
+    if (scaleNzFlag_) {
+        return true;
+    }
+    auto wScaleN = inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
+                                         wScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX);
+    auto wScaleK = inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_K_BLOCK_DIM_INDEX) :
+                                         wScaleShape.GetDim(WEIGHT_SCALE_K_BLOCK_DIM_INDEX);
     OP_CHECK_IF(wScaleShape.GetDim(WEIGHT_SCALE_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
                     wScaleN != static_cast<int64_t>(inputParams_.nSize) || wScaleK != expectedKBlocks ||
                     wScaleShape.GetDim(WEIGHT_SCALE_PAIR_DIM_INDEX) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     context_->GetNodeName(), "weight_scale", ShapeToDebugString(wScaleShape),
                     "weight_scale shape must be (E, ceil(K/64), N, 2) or (E, N, ceil(K/64), 2)"),
+                return false);
+    return true;
+}
+
+bool GroupedMatmulActivationQuantTiling950::CheckMxScaleNzStorageShape(const gert::Shape &wScaleStorageShape) const
+{
+    if (!scaleNzFlag_) {
+        return true;
+    }
+    OP_CHECK_IF(inputParams_.transB,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "transpose_weight", "true",
+                                                      "transpose_weight must be false when weight_scale is FRACTAL_NZ"),
+                return false);
+    OP_CHECK_IF(
+        wScaleStorageShape.GetDimNum() != MXFP_SCALE_NZ_DIM_NUM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "weight_scale storageShape",
+                                                 std::to_string(wScaleStorageShape.GetDimNum()),
+                                                 "when weight_scale is FRACTAL_NZ, storageShape dim num must be 5"),
+        return false);
+    const int64_t expectedKScale = static_cast<int64_t>(
+        Ops::Base::CeilDiv(static_cast<int64_t>(inputParams_.kSize), static_cast<int64_t>(MXFP_BASEK_FACTOR)));
+    const int64_t expectedN1 =
+        static_cast<int64_t>(Ops::Base::CeilDiv(static_cast<int64_t>(inputParams_.nSize), MXFP_SCALE_NZ_N0));
+    OP_CHECK_IF(wScaleStorageShape.GetDim(0) != static_cast<int64_t>(inputParams_.groupNum) ||
+                    wScaleStorageShape.GetDim(1) != expectedN1 || wScaleStorageShape.GetDim(2) != expectedKScale ||
+                    wScaleStorageShape.GetDim(3) != MXFP_SCALE_NZ_N0 ||
+                    wScaleStorageShape.GetDim(4) != static_cast<int64_t>(MXFP_MULTI_BASE_SIZE),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context_->GetNodeName(), "weight_scale storageShape", ShapeToDebugString(wScaleStorageShape),
+                    FormatString("when weight_scale is FRACTAL_NZ, storageShape must be (%lu, %ld, %ld, 16, 2)",
+                                 inputParams_.groupNum, expectedN1, expectedKScale)),
                 return false);
     return true;
 }
@@ -427,6 +466,8 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     inputParams_.isSingleY = true;
     OP_CHECK_IF(!CheckMxScaleShape(xScaleStorageShape->GetOriginShape(), wScaleStorageShape->GetOriginShape()),
                 OP_LOGE(inputParams_.opName, "CheckMxScaleShape failed."), return false);
+    OP_CHECK_IF(!CheckMxScaleNzStorageShape(wScaleStorageShape->GetStorageShape()),
+                OP_LOGE(inputParams_.opName, "CheckMxScaleNzStorageShape failed."), return false);
     OP_CHECK_IF(!CheckWeightNzShape(wStorageShape->GetStorageShape()),
                 OP_LOGE(inputParams_.opName, "CheckWeightNzShape failed."), return false);
     OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);

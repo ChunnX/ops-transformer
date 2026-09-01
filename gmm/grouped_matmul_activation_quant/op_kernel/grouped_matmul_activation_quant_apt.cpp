@@ -26,6 +26,20 @@ constexpr uint32_t FLOAT_OVERFLOW_MODE_CTRL = 60U;
 using namespace AscendC;
 using namespace matmul;
 
+#ifndef FORMAT_FRACTAL_NZ
+#define FORMAT_FRACTAL_NZ
+#endif
+
+namespace {
+#if defined(FORMAT_WEIGHT_SCALE) && defined(FORMAT_WEIGHT) && defined(ORIG_DTYPE_WEIGHT_SCALE) && \
+    defined(DT_FLOAT8_E8M0) && FORMAT_WEIGHT_SCALE == FORMAT_FRACTAL_NZ && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ && \
+    ORIG_DTYPE_WEIGHT_SCALE == DT_FLOAT8_E8M0
+constexpr bool scaleNz = true;
+#else
+constexpr bool scaleNz = false;
+#endif
+} // namespace
+
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
 __global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR groupList, GM_ADDR weight,
                                                            GM_ADDR weightScale, GM_ADDR bias, GM_ADDR xScale, GM_ADDR y,
@@ -38,11 +52,13 @@ __global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR gr
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
-        GroupedMatmulActivationQuant::GmmActivationMxQuant<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn>(
-            x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
+        GroupedMatmulActivationQuant::GmmActivationMxQuant<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                                           scaleNz>(x, weight, weightScale, xScale, groupList, y,
+                                                                    yScale, workspace, tiling);
     } else if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_TRANS && QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
-        GroupedMatmulActivationQuant::GmmActivationMxQuant<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn>(
-            x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
+        GroupedMatmulActivationQuant::GmmActivationMxQuant<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
+                                                           scaleNz>(x, weight, weightScale, xScale, groupList, y,
+                                                                    yScale, workspace, tiling);
     }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

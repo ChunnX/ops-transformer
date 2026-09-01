@@ -617,10 +617,11 @@ aclnnStatus CheckMxQuantFormat(const aclTensor *x, const aclTensor *groupList, c
                          OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
                              OP_NAME, "groupList", op::ToString(groupList->GetStorageFormat()).GetString(),
                              "when the quantization mode is mx, the format of groupList must be ND"));
-    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(weightScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+    GMMAQ_CHECK_WITH_LOG(!op::IsPrivateFormat(weightScale->GetStorageFormat()) || IsNzFormat(weightScale),
+                         ACLNN_ERR_PARAM_INVALID,
                          OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
                              OP_NAME, "weightScale", op::ToString(weightScale->GetStorageFormat()).GetString(),
-                             "when the quantization mode is mx, the format of weightScale must be ND"));
+                             "when the quantization mode is mx, the format of weightScale must be ND or FRACTAL_NZ"));
     GMMAQ_CHECK_WITH_LOG(
         !op::IsPrivateFormat(y->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(OP_NAME, "y", op::ToString(y->GetStorageFormat()).GetString(),
@@ -664,6 +665,10 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckMXTranspose(x, xScaleOptional, weight, weightScale, transposeWeight);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+    GMMAQ_CHECK_WITH_LOG(
+        !IsNzFormat(wScale) || !transposeWeight, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "transposeWeight", "true",
+                                              "transposeWeight must be false when weightScale is FRACTAL_NZ"));
     checkRet = NormalizeMXTranspose(weight, weightScale, transposeWeight, executor);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
@@ -757,7 +762,10 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     groupList = l0op::Contiguous(groupList, uniqueExecutor.get());
     CHECK_RET(groupList != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    if (!IsNzFormat((*weightScale)[gmaq::FIRST_TENSOR_INDEX])) {
+        CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
+                  ACLNN_ERR_INNER_NULLPTR);
+    }
     NormalizeEmptyTensorList(bias);
     CHECK_RET(CreateEmptyTensorList(aclDataType::ACL_FLOAT, bias, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
