@@ -82,8 +82,9 @@ constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // 直方图每次计算0-255
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr uint32_t SLOT_NOTIFY_STRIDE = 64U;
-constexpr uint32_t HCOMM_BATCH_CAPACITY = 256U;
-// asc-comm要求单次BatchCommit的WQEBB数严格小于SQ深度；预留一个槽位，避免256深度SQ提交失败。
+// 16P下每个Jetty仅生成15个数据WQE和15个flag WQE，64个WQEBB可保证整批一次提交。
+constexpr uint32_t HCOMM_BATCH_CAPACITY = 64U;
+// asc-comm要求单次BatchCommit的WQEBB数严格小于SQ深度，预留一个槽位。
 constexpr uint32_t HCOMM_BATCH_COMMIT_SIZE = HCOMM_BATCH_CAPACITY - 1U;
 constexpr uint32_t HCOMM_WRITE_NOTIFY_TASK_BYTES = 64U;
 constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_WRITE_NOTIFY_TASK_BYTES;
@@ -984,7 +985,7 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssi
 }
 
 // 打桩：核aivId与jetty一一绑定。每个jetty连接所有远端，并发送第jettyIndex片token。
-// 同一个batch混合多个逻辑对端的WQE，容量满时提交，全部对端处理完后提交尾批。
+// 每个对端的连续token片合并成一个大块WQE；同一个batch混合多个逻辑对端，全部处理完后统一提交。
 // （在对端槽位区r*512*JETTY_TOTAL + jettyIdx*512处，按jetty错开）
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenToRemote()
@@ -1020,32 +1021,35 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
         auto &peerBatchHandle = hcomm_.GetHandleRef(batchHandle, channelIndex, remoteBase);
 
         if (tokenCnt != 0U) {
-            uint32_t processed = 0U;
             uint64_t addrOffset = static_cast<uint64_t>(tokenStart) * hAlign512_;
             GM_ADDR localSrcAddr = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_) + addrOffset;
             GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_ +
                                    addrOffset;
-            while (processed < tokenCnt) {
-                auto ret = hcomm_.WriteNbi<DATA_CFG>(peerBatchHandle, remoteWinAddr, localSrcAddr, hAlign512_);
+            uint64_t transferBytes = static_cast<uint64_t>(tokenCnt) * hAlign512_;
+            if (transferBytes > 0xFFFFFFFFULL) {
+                mc2Context_->hcommStatus[jettyIndex] = HCOMM_FAILED;
+                ascendc_assert(false,
+                               "shared-Jetty transfer exceeds WriteNbi limit, bytes=%llu, jetty=%u, dstRank=%u",
+                               transferBytes, jettyIndex, dstRankId);
+                return;
+            }
+            auto ret = hcomm_.WriteNbi<DATA_CFG>(peerBatchHandle, remoteWinAddr, localSrcAddr,
+                                                 static_cast<uint32_t>(transferBytes));
+            if (ret != HCOMM_SUCCESS) {
+                mc2Context_->hcommStatus[jettyIndex] = ret;
+                ascendc_assert(false, "shared-Jetty data WriteNbi failed, ret=%d, jetty=%u, dstRank=%u", ret,
+                               jettyIndex, dstRankId);
+                return;
+            }
+            ++commCnt;
+            if (commCnt == HCOMM_BATCH_COMMIT_SIZE) {
+                ret = hcomm_.BatchCommit(batchHandle);
                 if (ret != HCOMM_SUCCESS) {
                     mc2Context_->hcommStatus[jettyIndex] = ret;
-                    ascendc_assert(false, "shared-Jetty data WriteNbi failed, ret=%d, jetty=%u, dstRank=%u", ret,
-                                   jettyIndex, dstRankId);
+                    ascendc_assert(false, "shared-Jetty BatchCommit failed, ret=%d, jetty=%u", ret, jettyIndex);
                     return;
                 }
-                ++commCnt;
-                if (commCnt == HCOMM_BATCH_COMMIT_SIZE) {
-                    ret = hcomm_.BatchCommit(batchHandle);
-                    if (ret != HCOMM_SUCCESS) {
-                        mc2Context_->hcommStatus[jettyIndex] = ret;
-                        ascendc_assert(false, "shared-Jetty BatchCommit failed, ret=%d, jetty=%u", ret, jettyIndex);
-                        return;
-                    }
-                    commCnt = 0U;
-                }
-                ++processed;
-                localSrcAddr += hAlign512_;
-                remoteWinAddr += hAlign512_;
+                commCnt = 0U;
             }
         }
 
@@ -1076,7 +1080,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
             return;
         }
     }
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
