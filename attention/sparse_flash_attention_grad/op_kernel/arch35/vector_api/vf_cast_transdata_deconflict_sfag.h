@@ -36,13 +36,13 @@ constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Odd = {
     AscendC::MicroAPI::RegLayout::ONE,
     AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT,
+    AscendC::RoundMode::CAST_ROUND,
 };
 constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Even = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT,
+    AscendC::RoundMode::CAST_ROUND,
 };
 /* **************************************************************************************************
  * cast + ND_2_NZ                                             *
