@@ -103,7 +103,7 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     if (!faInfo.pageAttentionFlag) {
         OP_CHECK_IF(faInfo.keyNonContigDim != -1,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "context",
-                                                             "In non-PA scenarios, key tensors must be contiguous."),
+                                                             "Test In non-PA scenarios, key tensors must be contiguous."),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.valueNonContigDim != -1,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "context",
