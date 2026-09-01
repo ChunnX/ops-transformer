@@ -190,7 +190,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitInp
     aivJob_ = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_};
     quantProcessConfig_ = CreateQuantProcessConfig<ActivationType, QuantScaleOutType, TopkWeightsPrefetch,
                                                    PackedElementTraits<ActivationType>::ELEMENTS_PER_BYTE>(k_, params_);
-    sendMaskConfig_ = CreateSendMaskConfig(params_, aivCoreIdx_, true, true);
+    sendMaskConfig_ = CreateSendMaskConfig(params_, aivCoreIdx_);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -286,9 +286,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig();
 
-    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
-                                                              params_.peermemInfo, sendMaskConfig_.maskAlignSize,
-                                                              reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+    gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(
+        exceptionDump_, dumpBase, tilingGM, tilingData, params_.peermemInfo,
+        reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
 // =================================================================================================
@@ -311,7 +311,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // compact route 已消除 mask 扫描，只需一份接收 index batch。
-    bufferConfig = params_.tilingData->compactDispatchBufferConfig;
+    bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
     // 按既定顺序落地址。Tensor 保存所有 [expert][source rank] count 的前缀和。
@@ -389,8 +389,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
 
     // 必须与 host SetAdaptiveBufferConfigs 的 quotient/remainder 分核保持一致。
     bufferConfig = aivCoreIdx_ < params_.tilingData->sendMaskCoreCountWithExtraExpert ?
-                       params_.tilingData->compactSendConfigForCoreWithExtraExpert :
-                       params_.tilingData->compactSendConfigForCoreWithoutExtraExpert;
+                       params_.tilingData->sendMaskConfigForCoreWithExtraExpert :
+                       params_.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
     // 按既定顺序落地址。routeItemsPerBatch 按 256 个 item 对齐，因此两个 int32 tensor 均天然满足 256B 对齐。
