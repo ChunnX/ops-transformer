@@ -36,7 +36,14 @@ class CaseAdapter:
     SMLA = CaseFormat(
         name="smla",
         tensor_key="input",
-        required_top_keys=("B", "layout_q", "layout_kv", "params", "metadata_input", "input"),
+        required_top_keys=(
+            "B",
+            "layout_q",
+            "layout_kv",
+            "params",
+            "metadata_input",
+            "input",
+        ),
         required_tensor_keys=(
             "q",
             "ori_kv",
@@ -98,7 +105,12 @@ class CaseAdapter:
             "layout_q",
             "layout_kv",
         ),
-        metadata_names={"N1": "num_heads_q", "N2": "num_heads_kv", "D": "head_dim", "B": "batch_size"},
+        metadata_names={
+            "N1": "num_heads_q",
+            "N2": "num_heads_kv",
+            "D": "head_dim",
+            "B": "batch_size",
+        },
     )
 
     QSMLA = CaseFormat(
@@ -136,7 +148,12 @@ class CaseAdapter:
             "layout_q",
             "layout_kv",
         ),
-        metadata_names={"N1": "num_heads_q", "N2": "num_heads_kv", "D": "head_dim", "B": "batch_size"},
+        metadata_names={
+            "N1": "num_heads_q",
+            "N2": "num_heads_kv",
+            "D": "head_dim",
+            "B": "batch_size",
+        },
     )
 
     def __init__(self, input_data: Dict[str, Any]):
@@ -151,7 +168,10 @@ class CaseAdapter:
         if "op_input" in input_data:
             op_input = input_data["op_input"]
             # QSMLA carries explicit dequantization scales; MQSMLA does not.
-            if any(name in op_input for name in ("q_descale", "ori_kv_descale", "cmp_kv_descale")):
+            if any(
+                name in op_input
+                for name in ("q_descale", "ori_kv_descale", "cmp_kv_descale")
+            ):
                 return cls.QSMLA
             return cls.MQSMLA
         raise ValueError("Cannot identify case format: expected 'input' or 'op_input'")
@@ -250,7 +270,9 @@ class CaseAdapter:
                     f"private seqused_{prefix}_kv length {len(values)} != B={batch_size}"
                 )
             if any(value < 0 for value in values):
-                raise ValueError(f"private seqused_{prefix}_kv contains negative values")
+                raise ValueError(
+                    f"private seqused_{prefix}_kv contains negative values"
+                )
             return values
         layout = self.get_layout_kv()
         if layout == "BSND":
@@ -260,6 +282,8 @@ class CaseAdapter:
             if cu is None:
                 raise ValueError(f"TND {prefix}_kv requires cu_seqlens_{prefix}_kv")
             offsets = cu.to("cpu", torch.int64).tolist()
-            return [offsets[index + 1] - offsets[index] for index in range(len(offsets) - 1)]
+            return [
+                offsets[index + 1] - offsets[index] for index in range(len(offsets) - 1)
+            ]
 
         raise ValueError(f"PA_BBND {prefix}_kv requires logical KV lengths")

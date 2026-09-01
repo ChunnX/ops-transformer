@@ -19,7 +19,12 @@ import torch_npu
 from .adapter import CaseAdapter
 from .compare import ResultComparator
 from .model import ConsistencyCase, RunResult, TokenOrigin
-from .schema import build_baseline_origins, check_invariants, get_q_lengths, validate_schema
+from .schema import (
+    build_baseline_origins,
+    check_invariants,
+    get_q_lengths,
+    validate_schema,
+)
 from .transform import (
     ActualInputSemanticOracle,
     transform_mode1_reorder,
@@ -91,7 +96,10 @@ class DeterministicLevelGuard:
             )
 
     def restore(self) -> None:
-        if self.previous_level is not None and self.current_level() != self.previous_level:
+        if (
+            self.previous_level is not None
+            and self.current_level() != self.previous_level
+        ):
             self.set_level(self.previous_level)
 
     def __enter__(self):
@@ -310,9 +318,13 @@ class ConsistencyRunner:
             baseline_coordinate = (baseline_batch, baseline_token)
             derived_coordinate = (derived_batch, derived_token)
             if baseline_coordinate in baseline_seen:
-                raise ValueError(f"duplicate baseline mapping coordinate {baseline_coordinate}")
+                raise ValueError(
+                    f"duplicate baseline mapping coordinate {baseline_coordinate}"
+                )
             if derived_coordinate in derived_seen:
-                raise ValueError(f"duplicate derived mapping coordinate {derived_coordinate}")
+                raise ValueError(
+                    f"duplicate derived mapping coordinate {derived_coordinate}"
+                )
             baseline_seen.add(baseline_coordinate)
             derived_seen.add(derived_coordinate)
 
@@ -339,7 +351,9 @@ class ConsistencyRunner:
         relation_case = ConsistencyCase(
             name=f"independent_{relation_id}",
             input_data=derived_data,
-            output_origins=[TokenOrigin(batch, token) for batch, token, _, _ in mappings],
+            output_origins=[
+                TokenOrigin(batch, token) for batch, token, _, _ in mappings
+            ],
             transform_meta={
                 "scenario": "independent-cross-case",
                 "relation_id": relation_id,
@@ -399,7 +413,9 @@ class ConsistencyRunner:
     def run_mode1(
         self, input_data: Dict[str, Any], order: Optional[List[int]], seed: int
     ) -> Dict[str, Any]:
-        return self.run_cases(input_data, [transform_mode1_reorder(input_data, order, seed)])
+        return self.run_cases(
+            input_data, [transform_mode1_reorder(input_data, order, seed)]
+        )
 
     def run_mode2(
         self, input_data: Dict[str, Any], groups: List[List[int]], seed: int

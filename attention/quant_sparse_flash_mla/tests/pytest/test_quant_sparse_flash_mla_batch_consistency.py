@@ -77,7 +77,9 @@ def test_quant_sparse_flash_mla_batch_consistency(case_path, mode):
     )
 
 
-@pytest.mark.parametrize("relation", INDEPENDENT_RELATIONS, ids=lambda value: value["id"])
+@pytest.mark.parametrize(
+    "relation", INDEPENDENT_RELATIONS, ids=lambda value: value["id"]
+)
 def test_quant_sparse_flash_mla_independent_batch_consistency(relation):
     device_id = int(os.environ.get("QSMLA_DEVICE_ID", "0"))
     run_independent_pytest_case(

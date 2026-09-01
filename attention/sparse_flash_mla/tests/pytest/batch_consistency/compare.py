@@ -55,7 +55,9 @@ class OriginComparator:
         return positions
 
     @staticmethod
-    def read_token(tensor: torch.Tensor, position: Any, layout_q: str, lse: bool) -> torch.Tensor:
+    def read_token(
+        tensor: torch.Tensor, position: Any, layout_q: str, lse: bool
+    ) -> torch.Tensor:
         if layout_q == "TND":
             # TND output is (T, N, D), while TND LSE is (N2, T, G).
             return tensor[:, position, :] if lse else tensor[position]
@@ -102,7 +104,9 @@ class OriginComparator:
             offsets.append(offsets[-1] + length)
         for batch, token in coordinates:
             if batch < 0 or batch >= len(valid_lengths):
-                raise ValueError(f"output batch {batch} is outside [0, {len(valid_lengths)})")
+                raise ValueError(
+                    f"output batch {batch} is outside [0, {len(valid_lengths)})"
+                )
             if token < 0 or token >= valid_lengths[batch]:
                 raise ValueError(
                     f"output token {token} is outside [0, {valid_lengths[batch]}) "
@@ -143,11 +147,17 @@ class OriginComparator:
             if len(actual_positions) != len(actual_origins):
                 raise ValueError("derived output and token-origin counts differ")
         elif len(actual_coordinates) != len(actual_origins):
-            raise ValueError("derived output coordinates and token-origin counts differ")
+            raise ValueError(
+                "derived output coordinates and token-origin counts differ"
+            )
         try:
-            return torch.stack([source[origin] for origin in actual_origins]).contiguous()
+            return torch.stack(
+                [source[origin] for origin in actual_origins]
+            ).contiguous()
         except KeyError as error:
-            raise ValueError(f"derived output references unknown token {error.args[0]}") from error
+            raise ValueError(
+                f"derived output references unknown token {error.args[0]}"
+            ) from error
 
 
 class ResultComparator:

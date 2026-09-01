@@ -27,7 +27,9 @@ class CaseSchema:
     """Encapsulates schema helpers instead of exposing module-private functions."""
 
     @staticmethod
-    def _require_keys(data: Dict[str, Any], required: Sequence[str], context: str) -> None:
+    def _require_keys(
+        data: Dict[str, Any], required: Sequence[str], context: str
+    ) -> None:
         missing = [key for key in required if key not in data]
         if missing:
             raise SchemaError(f"{context}: missing keys {missing}")
@@ -35,7 +37,9 @@ class CaseSchema:
     @classmethod
     def validate(cls, input_data: Dict[str, Any]) -> None:
         if "input" not in input_data and "op_input" not in input_data:
-            expected = "input" if "B" in input_data or "layout_q" in input_data else "op_input"
+            expected = (
+                "input" if "B" in input_data or "layout_q" in input_data else "op_input"
+            )
             raise SchemaError(f"top-level: missing keys ['{expected}']")
         try:
             adapter = CaseAdapter(input_data)
@@ -44,8 +48,12 @@ class CaseSchema:
 
         case_format = adapter.case_format
         cls._require_keys(input_data, case_format.required_top_keys, "top-level")
-        cls._require_keys(adapter.tensors, case_format.required_tensor_keys, adapter.tensor_key)
-        cls._require_keys(adapter.metadata, case_format.required_metadata_keys, "metadata_input")
+        cls._require_keys(
+            adapter.tensors, case_format.required_tensor_keys, adapter.tensor_key
+        )
+        cls._require_keys(
+            adapter.metadata, case_format.required_metadata_keys, "metadata_input"
+        )
 
         layout_q = adapter.get_layout_q()
         layout_kv = adapter.get_layout_kv()
@@ -88,9 +96,15 @@ class CaseSchema:
                 raise SchemaError("TND Q requires cu_seqlens_q")
 
         if layout_kv == "TND":
-            if adapter.tensors.get("ori_kv") is not None and adapter.tensors.get("cu_seqlens_ori_kv") is None:
+            if (
+                adapter.tensors.get("ori_kv") is not None
+                and adapter.tensors.get("cu_seqlens_ori_kv") is None
+            ):
                 raise SchemaError("TND ori_kv requires cu_seqlens_ori_kv")
-            if adapter.tensors.get("cmp_kv") is not None and adapter.tensors.get("cu_seqlens_cmp_kv") is None:
+            if (
+                adapter.tensors.get("cmp_kv") is not None
+                and adapter.tensors.get("cu_seqlens_cmp_kv") is None
+            ):
                 raise SchemaError("TND cmp_kv requires cu_seqlens_cmp_kv")
         if layout_kv == "PA_BBND":
             if (
@@ -132,8 +146,12 @@ class CaseSchema:
             if indices is None and lengths is None:
                 continue
             if indices is None:
-                raise SchemaError(f"{prefix}_topk_length requires {prefix}_sparse_indices")
-            expected_prefix = (batch_size, q_tokens) if layout_q == "BSND" else (q_tokens,)
+                raise SchemaError(
+                    f"{prefix}_topk_length requires {prefix}_sparse_indices"
+                )
+            expected_prefix = (
+                (batch_size, q_tokens) if layout_q == "BSND" else (q_tokens,)
+            )
             if tuple(indices.shape[: len(expected_prefix)]) != expected_prefix:
                 raise SchemaError(
                     f"{prefix}_sparse_indices shape {tuple(indices.shape)} does not match "
@@ -151,7 +169,9 @@ class CaseSchema:
                     f"{prefix}_sparse_indices KV-head axis {indices.shape[head_axis]} "
                     f"!= num_heads_kv {num_heads_kv}"
                 )
-            if lengths is not None and tuple(lengths.shape) != tuple(indices.shape[:-1]):
+            if lengths is not None and tuple(lengths.shape) != tuple(
+                indices.shape[:-1]
+            ):
                 raise SchemaError(
                     f"{prefix}_topk_length shape {tuple(lengths.shape)} != sparse prefix "
                     f"{tuple(indices.shape[:-1])}"
@@ -174,7 +194,9 @@ class CaseSchema:
                 )
 
     @staticmethod
-    def get_q_lengths(input_data: Dict[str, Any], valid_only: bool = False) -> List[int]:
+    def get_q_lengths(
+        input_data: Dict[str, Any], valid_only: bool = False
+    ) -> List[int]:
         adapter = CaseAdapter(input_data)
         tensors = adapter.tensors
         layout_q = adapter.get_layout_q()
@@ -185,7 +207,9 @@ class CaseSchema:
             physical = [int(q.shape[1])] * batch_size
         elif tensors.get("cu_seqlens_q") is not None:
             cu_list = tensors["cu_seqlens_q"].to("cpu", torch.int64).tolist()
-            physical = [cu_list[index + 1] - cu_list[index] for index in range(len(cu_list) - 1)]
+            physical = [
+                cu_list[index + 1] - cu_list[index] for index in range(len(cu_list) - 1)
+            ]
         else:
             raise SchemaError("Cannot determine per-batch Q lengths")
 
@@ -194,7 +218,9 @@ class CaseSchema:
             valid = seqused_q.to("cpu", torch.int64).tolist()
             if len(valid) != batch_size:
                 raise SchemaError(f"seqused_q length {len(valid)} != B={batch_size}")
-            return [min(int(length), physical[index]) for index, length in enumerate(valid)]
+            return [
+                min(int(length), physical[index]) for index, length in enumerate(valid)
+            ]
         return physical
 
     @classmethod
@@ -206,10 +232,17 @@ class CaseSchema:
         layout_q = adapter.get_layout_q()
         layout_kv = adapter.get_layout_kv()
 
-        for field_name in ("seqused_q", "seqused_ori_kv", "seqused_cmp_kv", "cmp_residual_kv"):
+        for field_name in (
+            "seqused_q",
+            "seqused_ori_kv",
+            "seqused_cmp_kv",
+            "cmp_residual_kv",
+        ):
             value = tensors.get(field_name)
             if value is not None and value.shape[0] != batch_size:
-                raise SchemaError(f"{field_name} length {value.shape[0]} != B={batch_size}")
+                raise SchemaError(
+                    f"{field_name} length {value.shape[0]} != B={batch_size}"
+                )
 
         q = tensors["q"]
         q_lengths = cls.get_q_lengths(input_data)
@@ -221,20 +254,31 @@ class CaseSchema:
                 cu_list = cu_q.to("cpu", torch.int64).tolist()
                 expected = [index * q.shape[1] for index in range(batch_size + 1)]
                 if cu_list != expected:
-                    raise SchemaError(f"BSND cu_seqlens_q {cu_list} != expected {expected}")
+                    raise SchemaError(
+                        f"BSND cu_seqlens_q {cu_list} != expected {expected}"
+                    )
         else:
             cu_q = tensors.get("cu_seqlens_q")
             cu_list = cu_q.to("cpu", torch.int64).tolist()
             if len(cu_list) != batch_size + 1:
-                raise SchemaError(f"cu_seqlens_q length {len(cu_list)} != B+1={batch_size + 1}")
+                raise SchemaError(
+                    f"cu_seqlens_q length {len(cu_list)} != B+1={batch_size + 1}"
+                )
             if cu_list[-1] != q.shape[0]:
-                raise SchemaError(f"cu_seqlens_q[-1]={cu_list[-1]} != Q dim-0 {q.shape[0]}")
+                raise SchemaError(
+                    f"cu_seqlens_q[-1]={cu_list[-1]} != Q dim-0 {q.shape[0]}"
+                )
 
         seqused_q = tensors.get("seqused_q")
         if seqused_q is not None:
             valid_q_lengths = seqused_q.to("cpu", torch.int64).tolist()
-            if any(length < 0 or length > physical for length, physical in zip(valid_q_lengths, q_lengths)):
-                raise SchemaError(f"seqused_q values {valid_q_lengths} exceed physical Q lengths {q_lengths}")
+            if any(
+                length < 0 or length > physical
+                for length, physical in zip(valid_q_lengths, q_lengths)
+            ):
+                raise SchemaError(
+                    f"seqused_q values {valid_q_lengths} exceed physical Q lengths {q_lengths}"
+                )
 
         ori_kv = tensors.get("ori_kv")
         cmp_kv = tensors.get("cmp_kv")
@@ -245,7 +289,9 @@ class CaseSchema:
             if seqused_ori_kv is not None and ori_kv is not None:
                 max_s = int(seqused_ori_kv.max().item())
                 if max_s > ori_kv.shape[1]:
-                    raise SchemaError(f"max seqused_ori_kv {max_s} > ori_kv dim-1 {ori_kv.shape[1]}")
+                    raise SchemaError(
+                        f"max seqused_ori_kv {max_s} > ori_kv dim-1 {ori_kv.shape[1]}"
+                    )
         elif layout_kv == "TND":
             cls._check_tnd_kv(tensors, "ori_kv", "cu_seqlens_ori_kv", batch_size)
             cls._check_tnd_kv(tensors, "cmp_kv", "cu_seqlens_cmp_kv", batch_size)
@@ -253,11 +299,17 @@ class CaseSchema:
             for table_name in ("ori_block_table", "cmp_block_table"):
                 table = tensors.get(table_name)
                 if table is not None and table.shape[0] != batch_size:
-                    raise SchemaError(f"{table_name} dim-0 {table.shape[0]} != B={batch_size}")
+                    raise SchemaError(
+                        f"{table_name} dim-0 {table.shape[0]} != B={batch_size}"
+                    )
 
         cls._check_max_length(metadata, "max_seqlen_q", q_lengths)
-        cls._check_max_length(metadata, "max_seqlen_ori_kv", adapter.get_kv_lengths("ori"))
-        cls._check_max_length(metadata, "max_seqlen_cmp_kv", adapter.get_kv_lengths("cmp"))
+        cls._check_max_length(
+            metadata, "max_seqlen_ori_kv", adapter.get_kv_lengths("ori")
+        )
+        cls._check_max_length(
+            metadata, "max_seqlen_cmp_kv", adapter.get_kv_lengths("cmp")
+        )
 
         if layout_kv == "PA_BBND" and ori_kv is not None:
             from .layouts import validate_block_ids
@@ -276,9 +328,13 @@ class CaseSchema:
             return
         cu_list = cu.to("cpu", torch.int64).tolist()
         if len(cu_list) != batch_size + 1:
-            raise SchemaError(f"{cu_name} length {len(cu_list)} != B+1={batch_size + 1}")
+            raise SchemaError(
+                f"{cu_name} length {len(cu_list)} != B+1={batch_size + 1}"
+            )
         if cu_list[-1] != tensor.shape[0]:
-            raise SchemaError(f"{cu_name}[-1]={cu_list[-1]} != {tensor_name} dim-0 {tensor.shape[0]}")
+            raise SchemaError(
+                f"{cu_name}[-1]={cu_list[-1]} != {tensor_name} dim-0 {tensor.shape[0]}"
+            )
 
     @staticmethod
     def _check_max_length(metadata: Dict[str, Any], name: str, lengths: Any) -> None:
@@ -293,12 +349,19 @@ class CaseSchema:
             raise SchemaError(f"metadata {name} {configured} < actual max {actual}")
 
     @classmethod
-    def build_origins(cls, input_data: Dict[str, Any], valid_only: bool = False) -> List[Any]:
+    def build_origins(
+        cls, input_data: Dict[str, Any], valid_only: bool = False
+    ) -> List[Any]:
         from .model import TokenOrigin
 
         origins = []
-        for batch, length in enumerate(cls.get_q_lengths(input_data, valid_only=valid_only)):
-            origins.extend(TokenOrigin(source_batch=batch, source_token=token) for token in range(length))
+        for batch, length in enumerate(
+            cls.get_q_lengths(input_data, valid_only=valid_only)
+        ):
+            origins.extend(
+                TokenOrigin(source_batch=batch, source_token=token)
+                for token in range(length)
+            )
         return origins
 
 
@@ -318,5 +381,7 @@ def check_invariants(input_data: Dict[str, Any]) -> None:
     CaseSchema.check_invariants(input_data)
 
 
-def build_baseline_origins(input_data: Dict[str, Any], valid_only: bool = False) -> List[Any]:
+def build_baseline_origins(
+    input_data: Dict[str, Any], valid_only: bool = False
+) -> List[Any]:
     return CaseSchema.build_origins(input_data, valid_only=valid_only)

@@ -156,8 +156,7 @@ def gen_cu_seqlens_cmp_kv(
 
     capacities = [
         math.floor(
-            (cu_seqlens_ori_kv[index + 1] - cu_seqlens_ori_kv[index])
-            / cmp_ratio
+            (cu_seqlens_ori_kv[index + 1] - cu_seqlens_ori_kv[index]) / cmp_ratio
         )
         for index in range(len(cu_seqlens_ori_kv) - 1)
     ]
@@ -480,9 +479,7 @@ def fill_none_params(params_dict):
         "batch_consistency_batch_split": params_dict.get(
             "batch_consistency_batch_split"
         ),
-        "batch_consistency_mode_batch": params_dict.get(
-            "batch_consistency_mode_batch"
-        ),
+        "batch_consistency_mode_batch": params_dict.get("batch_consistency_mode_batch"),
         "batch_consistency_token_split": params_dict.get(
             "batch_consistency_token_split"
         ),

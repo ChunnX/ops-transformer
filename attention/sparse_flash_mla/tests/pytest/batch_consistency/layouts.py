@@ -32,7 +32,10 @@ import torch
 #  BSND
 # ------------------------------------------------------------------ #
 
-def select_bsnd(tensor: Optional[torch.Tensor], batch_ids: List[int]) -> Optional[torch.Tensor]:
+
+def select_bsnd(
+    tensor: Optional[torch.Tensor], batch_ids: List[int]
+) -> Optional[torch.Tensor]:
     """Select (and optionally reorder) batch rows from a BSND tensor.
 
     Only valid for tensors whose dim-0 is the explicit batch dimension.
@@ -48,7 +51,10 @@ def select_bsnd(tensor: Optional[torch.Tensor], batch_ids: List[int]) -> Optiona
 #  TND
 # ------------------------------------------------------------------ #
 
-def split_tnd(tensor: Optional[torch.Tensor], cu_seqlens: torch.Tensor) -> Optional[List[torch.Tensor]]:
+
+def split_tnd(
+    tensor: Optional[torch.Tensor], cu_seqlens: torch.Tensor
+) -> Optional[List[torch.Tensor]]:
     """Split a TND tensor ``[T, ...]`` into per-batch segments using ``cu_seqlens``.
 
     Returns a list of ``B`` slices (each ``segment_i = tensor[offset_i:offset_{i+1}]``).
@@ -58,7 +64,7 @@ def split_tnd(tensor: Optional[torch.Tensor], cu_seqlens: torch.Tensor) -> Optio
     offsets = cu_seqlens.to("cpu", torch.int64).tolist()
     segments = []
     for i in range(len(offsets) - 1):
-        segments.append(tensor[offsets[i]:offsets[i + 1]].contiguous())
+        segments.append(tensor[offsets[i] : offsets[i + 1]].contiguous())
     return segments
 
 
@@ -97,6 +103,7 @@ def select_tnd(
 #  PA_BBND
 # ------------------------------------------------------------------ #
 
+
 def select_pa_block_table(
     block_table: Optional[torch.Tensor], batch_ids: List[int]
 ) -> Optional[torch.Tensor]:
@@ -130,7 +137,10 @@ def validate_block_ids(
 #  Per-batch vector helpers (1-D ``[B]`` tensors)
 # ------------------------------------------------------------------ #
 
-def select_per_batch_vec(vec: Optional[torch.Tensor], batch_ids: List[int]) -> Optional[torch.Tensor]:
+
+def select_per_batch_vec(
+    vec: Optional[torch.Tensor], batch_ids: List[int]
+) -> Optional[torch.Tensor]:
     """Select / reorder a 1-D per-batch vector of length ``B``."""
     if vec is None:
         return None

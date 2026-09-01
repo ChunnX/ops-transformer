@@ -173,8 +173,7 @@ def gen_cu_seqlens_cmp_kv(
 
     inferred = [math.floor(value / cmp_ratio) for value in cu_seqlens_ori_kv]
     capacities = [
-        inferred[index + 1] - inferred[index]
-        for index in range(len(inferred) - 1)
+        inferred[index + 1] - inferred[index] for index in range(len(inferred) - 1)
     ]
     if all(capacity >= actual for capacity, actual in zip(capacities, seqused_cmp_kv)):
         return inferred
@@ -189,6 +188,7 @@ def gen_cu_seqlens_cmp_kv(
     adjusted = list(seqused_cmp_kv)
     adjusted[-1] += total - required
     return gen_cu_seqlens_from_seqused(adjusted)
+
 
 def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio):
     """
@@ -484,9 +484,7 @@ def fill_none_params(params_dict):
         "batch_consistency_batch_split": params_dict.get(
             "batch_consistency_batch_split"
         ),
-        "batch_consistency_mode_batch": params_dict.get(
-            "batch_consistency_mode_batch"
-        ),
+        "batch_consistency_mode_batch": params_dict.get("batch_consistency_mode_batch"),
         "batch_consistency_token_split": params_dict.get(
             "batch_consistency_token_split"
         ),
