@@ -102,10 +102,6 @@ private:
     __aicore__ inline ExpertTokenPosition ProcessGmm1Wave(ExpertTokenPosition &gmm1Position,
                                                           ExpertLoopState &gmm1ExpertState, GMMAddrInfo &gmm1AddrInfo,
                                                           GmmRuntimeState &runtimeState);
-    __aicore__ inline ExpertTokenPosition ProcessMoeGmm1Wave(
-        const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition,
-        ExpertTokenPosition &preparedWaveEndPosition, bool &hasPreparedWave, ExpertTokenPosition &gmm1Position,
-        ExpertLoopState &gmm1ExpertState, GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState);
     __aicore__ inline void ReplayGmm1WaveOwnership(const ExpertTokenPosition &waveBeginPosition,
                                                    const ExpertTokenPosition &waveEndPosition);
     __aicore__ inline void ProcessGmm2Wave(ExpertTokenPosition &gmm2Position,
@@ -677,32 +673,6 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     return gmm1Position;
 }
 
-// 完成一个 WAVE 的输入/GMM1 角色分工：AIV1 维持 Dispatch lookahead，其余计算核执行 GMM1。
-template <TemplateMegaMoeA8W8WaveTypeClass>
-__aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeGmm1Wave(
-    const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition,
-    ExpertTokenPosition &preparedWaveEndPosition, bool &hasPreparedWave, ExpertTokenPosition &gmm1Position,
-    ExpertLoopState &gmm1ExpertState, GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState)
-{
-    if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() == 1U) {
-            ExpertTokenPosition waveEndPosition =
-                hasPreparedWave ? preparedWaveEndPosition : DispatchNextWave(dispatchPosition);
-            if (waveEndPosition.expertIdx < moeExpertPerRank_) {
-                preparedWaveEndPosition = DispatchNextWave(dispatchPosition);
-                hasPreparedWave = true;
-            } else {
-                hasPreparedWave = false;
-            }
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                ReplayGmm1WaveOwnership(waveBeginPosition, waveEndPosition);
-            }
-            return waveEndPosition;
-        }
-    }
-    return ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, runtimeState);
-}
-
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmm2Wave(
     ExpertTokenPosition &gmm2Position, const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
@@ -883,9 +853,22 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
         const uint32_t waveStartBlockIndex = startBlockIdx_;
-        ExpertTokenPosition waveEndPosition = ProcessMoeGmm1Wave(
-            waveBeginPosition, dispatchPosition, preparedWaveEndPosition, hasPreparedWave, gmm1Position,
-            gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+        ExpertTokenPosition waveEndPosition =
+            ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+        if constexpr (g_coreType == AIV) {
+            if (GetSubBlockIdx() == 1U) {
+                waveEndPosition = hasPreparedWave ? preparedWaveEndPosition : DispatchNextWave(dispatchPosition);
+                if (waveEndPosition.expertIdx < moeExpertPerRank_) {
+                    preparedWaveEndPosition = DispatchNextWave(dispatchPosition);
+                    hasPreparedWave = true;
+                } else {
+                    hasPreparedWave = false;
+                }
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    ReplayGmm1WaveOwnership(waveBeginPosition, waveEndPosition);
+                }
+            }
+        }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
