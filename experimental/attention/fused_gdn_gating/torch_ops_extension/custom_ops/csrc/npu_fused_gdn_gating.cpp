@@ -68,8 +68,14 @@ npu_fused_gdn_gating_npu(const at::Tensor &A_log, const at::Tensor &a, const at:
     at::Tensor g = std::get<0>(outputs);
     at::Tensor beta_output = std::get<1>(outputs);
 
+    // torch schema的float参数在C++侧为double，aclnn接口形参为float，
+    // 必须显式转换：ARM64下double/float共用v寄存器，不转换时callee读到
+    // double低位32位（对0.5/1.0/20.0等值恰为0x00000000），属性全部变0.0
+    float beta_val = static_cast<float>(beta);
+    float threshold_val = static_cast<float>(threshold);
+
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出）
-    EXEC_NPU_CMD_V1(aclnnFusedGdnGating, A_log, a, b, dt_bias, beta, threshold, g, beta_output);
+    EXEC_NPU_CMD_V1(aclnnFusedGdnGating, A_log, a, b, dt_bias, beta_val, threshold_val, g, beta_output);
 
     return std::tuple<at::Tensor, at::Tensor>(g, beta_output);
 }
