@@ -46,7 +46,7 @@ constexpr int32_t ENGRAM_DT_FLOAT = 0;
 constexpr uint32_t GRAD_SUB_BATCH = 8U;
 constexpr uint32_t SENDCOUNT_STRIDE_RATIO = 8U;
 
-constexpr uint32_t MAX_BLOCK_BYTES = 65535U; // MTE3 单次 DataCopy 块上限（替代 arch35/unique 双份定义）
+constexpr uint32_t MAX_BLOCK_BYTES = 65504U; // 单次 DataCopy 块上限 65535
 constexpr uint32_t MAX_PENDING_HANDLES = 8U;
 constexpr uint32_t SORT_TMP_BUCKET_BYTES = 512U;
 constexpr uint32_t SORT_TMP_BYTES_PER_ELEM = 7U;
