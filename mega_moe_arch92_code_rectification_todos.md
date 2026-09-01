@@ -23,13 +23,13 @@
 
 | 编号 | 优先级 | 状态 | 整改项 | 主要依赖 |
 |---|---|---|---|---|
-| R01 | P1/P2 | 单 L0 slot 正确性已闭环/双 slot 待恢复 | 验证并恢复 arch92 自研 MX FP8 BlockMmad 的 L0 operand 双缓冲 | arch92 原生 MX MMAD 参考与 A6 实机验证 |
-| R02 | P0 | 外部阻塞/本仓有绕过 | 恢复共享专家 GMM1 路径 | CANN CopyL0C2UB 接口一致性或本地兼容实现 |
+| R01 | P0 | 已切换 A5 QBMM 接口/待 A6 回归 | 验证 arch92 直接复用 QBMM MX BlockMmad 的编译与精度 | A6 CANN 与实机验证 |
+| R02 | - | 设计已确认/无需整改 | 确认共享专家 A8W8 GMM1 直接写 UB 的 A5 原始设计 | A5 arch35 调用链 |
 | R03 | P1 | 未完成 | 删除 arch92 A8W4/A4W4 类型和控制流残留 | R01 稳定后执行 |
 | R04 | P1 | 未完成 | 系统清理 1C2V、AIV0/AIV1、subBlock 遗留语义 | 无 |
 | R05 | P1 | 未完成 | 收敛 arch92 Dispatch cumsum 策略接口 | R08 决定最终存储方式 |
 | R06 | P1 | 未完成 | 裁剪 arch92 Host Tiling 中不可达模式 | R03 |
-| R07 | P1 | 未完成 | 收敛 Workspace 条件分配和 Host/Kernel 公式 | R02、R08 |
+| R07 | P1 | 未完成 | 收敛 Workspace 条件分配和 Host/Kernel 公式 | R03、R08 |
 | R08 | P2 | 未实现 | 将 Dispatch cumsum 常驻高地址 UB | R09 |
 | R09 | P1/P2 | 未实现 | 建立 arch92 384KB UB layout policy | 无 |
 | R10 | P2 | 未实现 | GMM1 GM 输出到 Activation 的 128 行双缓冲 | R01、R09 |
@@ -39,12 +39,25 @@
 | R14 | P3 | 未实现 | Dispatch/Activation/Combine 跨阶段 MTE 重叠 | R09、R10/R11 |
 | R15 | P3 | 明确延后 | 改进 Wave 专家装箱，使每轮在超过目标负载后尽量贴近目标 | 当前首版正确性稳定 |
 | R16 | P1 | 待一次干净回归后清理 | 删除 BlockMmad 临时诊断代码和解码脚本 | R01 的定位结论已固化 |
-| R17 | P1 | 未完成 | 清理 arch92 Params/公共类型中的 URMA 不可达代码 | R01、R02 稳定后执行 |
+| R17 | P1 | 未完成 | 清理 arch92 Params/公共类型中的 URMA 不可达代码 | R01 稳定后执行 |
 | R18 | P0 | 根因已闭环/兼容修复已落地/待 A6 回归 | 修复 Combine group-sync counter 跨 expert 槽位别名 | A6 Host Tiling 构建路由与实机验证 |
 
 ## 3. P0 正确性与功能缺口
 
-### R01 验证并恢复自研 MX FP8 BlockMmad 的 L0 operand 双缓冲
+### R01 验证 arch92 直接复用 QBMM MX BlockMmad
+
+#### 0. 当前整改状态
+
+当前默认 A6 与 A5 一样提供并支持 `block_mmad_qbmm_mx.h`。arch92 不新增仓内 BlockMmad 或
+K-tail padding 适配，而是完全仿照 A5：
+
+- 直接包含 `blaze/gemm/block/block_mmad_qbmm_mx.h`；
+- DispatchPolicy 使用 `MatmulWithScaleMx<>`；
+- `L1Params` 使用 `kL1/scaleKL1/l1BufNum`；
+- 按 A5 的五参数接口调用 `BlockMmad::Init`。
+
+下文关于旧 `mega_moe_block_mmad_mx_fp8.h`、单 L0 slot fallback、QGMM 尝试和分段诊断的内容仅保留为
+历史定位记录，不再描述当前代码。下一步直接在 A6 环境验证编译、GMM1/GMM2 中间值和最终精度。
 
 #### 1. 问题背景与原始现象
 
@@ -190,33 +203,31 @@ arch92 MX 路径上不成立。恢复步骤如下：
 - 恢复双 slot 后 GMM1、GMM2 中间值及最终输出与 golden 对齐。
 - 覆盖 1/2/3/4 个 K chunk、小 M、M/N/K tail、ND/NZ 权重及 E4M3/E5M2 合法组合。
 - 删除诊断旁路后完成一次正确性回归，并确认双 slot 相对单 slot 有可测量的性能收益。
-### R02 恢复共享专家 GMM1
+### R02 确认共享专家 A8W8 GMM1 的 UB 直通设计
 
-**当前事实**
+**确认结论**
 
-- 共享专家 GMM1 当前因 CANN Tensor API `CopyL0C2UB` 参数签名不一致被临时注释。
-- A6 除 URMA 外应支持 A5 已有特性，因此跳过共享专家不是最终可接受实现。
-- 该问题触发于共享专家 `RunGmm1Generic<..., QF322BF16_PRE, ...>` 的 L0C 到 UB 路径，普通 MoE 专家当前未由此报错。
+- A5 A8W8 共享专家原本就不使用 GM handoff。`UpdateSharedExpertGmm1GlobalBuffer` 不配置
+  `gmm1OutGlobal`，`RunSharedExpertGmm1ActivationStage` 以 `TopkWeightsPrefetch=false` 调用
+  `RunGmm1Generic`，AIC 将 GMM1 结果直接写入 UB。
+- QBMM 使用默认的 `MatmulWithScaleMx<>`，即 `L0C2UB_MODE_NONE`。Gate 和 Up 是两次独立
+  BlockMmad 调用，分别写入同一个 AIV0 的两块 UB；这不是把 M 方向分给两个 AIV 的
+  `DUAL_DST_SPLIT_M`。
+- A5 Generic 路径在 `GetSubBlockIdx()!=0` 时提前返回，因此完整 SwiGLU/量化由 AIV0 执行，AIV1
+  不参与该路径。量化后的共享专家 Activation 数据和 Scale 再写入 GM，供共享专家 GMM2 使用。
+- A5 A8W4 是另一套设计：AIV0 执行权重 Prologue，AIC 将 GMM1 Gate/Up 写入
+  `sharedExpertGmm1OutPtr`，AIV1 从 GM 读取并执行 SwiGLU/量化。不能把 A8W4 的 GM 路径推广到 A8W8。
+- arch92 A6 是 1C1V，当前 A8W8 共享专家直接写唯一 AIV 的 UB，与 A5 A8W8 的算法设计一致；没有传递
+  `UseGmHandoff` 不是逻辑遗漏，无需改成 GM handoff。
+- 之前 QGMM 实验路径触发的 `DUAL_DST_SPLIT_M` 静态断言来自 BlockMmad 实现选择错误，不能用于证明
+  共享专家必须写 GM。当前直接复用 A5 QBMM 接口后，该问题已与共享专家流程解耦。
 
-**待修改**
+**后续处理**
 
-1. 优先在兼容版本 CANN 上恢复 `ProcessSharedExpertGmm1` 并验证。
-2. 如果目标 CANN 仍不一致，为 arch92 提供局部兼容实现，避免修改 A5 文件或全局篡改 CANN 头：
-   - 使用目标 SoC 实际生效的 `asc_copy_l0c2ub` 重载；或
-   - 将共享专家 epilogue 改为 arch92 可编译且语义一致的输出路径。
-3. 删除 `skip for now`/注释调用等临时绕过。
-4. 重新检查共享专家 GMM1、Activation、GMM2 的 Workspace、同步和最终融合路径都实际可达。
-
-**主要文件**
-
-- `mc2/mega_moe/op_kernel/arch92/mega_moe_a8w8_wave.h`
-- `mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm1_activation.h`
-- `mc2/mega_moe/op_kernel/arch92/blaze/epilogue/block_epilogue_activation_mx_quant.h`
-
-**完成标准**
-
-- `sharedExpertNum > 0` 不再跳过 GMM1。
-- 共享专家开启/关闭均能编译，开启时结果正确且不会破坏 MoE 专家流水。
+- `sharedExpertGmm1OutPtr` 和对应 flag 对 A8W8 共享路径没有用途。确认 arch92 A8W4 分支不可达后，随
+  R03/R07 一并删除相关 Workspace 和同步遗留，不为 A8W8 强行启用它们。
+- A6 回归应验证共享专家 GMM1 Gate/Up、SwiGLU/量化结果和 GMM2 输入，但不再把“中间结果未写 GM”
+  判为错误。
 
 ### R18 修复 Combine group-sync counter 跨 expert 槽位别名
 
@@ -293,7 +304,10 @@ arch92 当前产品范围只有 A8W8，但本地主类和部分 stage 仍保留�
 **待修改**
 
 1. 从 arch92 主类、stage、common 和 Host Tiling 中删除不可达的数据类型与模板实例。
-2. 对实际仍需要的行为重新按语义命名，例如 `UseGmHandoff`、`UseRankSharding`，不要借用 `EnableA8W4` 表达 A6 行为。
+2. 对实际仍需要的行为重新按语义命名，不要借用 `EnableA8W4` 表达 A6 行为。R02 已确认
+   `UseGmHandoff=false` 的共享专家 UB 路径和 `UseGmHandoff=true` 的普通 MoE wave GM 路径均有明确
+   用途，在统一两条流水前不能把该模板维度当作恒值删除。`UseRankSharding` 等确有多种可达策略的参数也按
+   其真实语义保留。
 3. 删除只为兼容 arch35 调用签名存在的 wrapper，让 arch92 调用点直接使用本地接口。
 4. 保留 A5 arch35 文件零侵入。
 
@@ -346,7 +360,8 @@ arch92 Host Tiling 由 arch35 副本演化而来，需要在 Kernel 正确性稳
 
 1. 清理 R03/R04 后不再使用的 A8W4/A4W4、AIV0/AIV1 flag 和 buffer。
 2. R08 完成后删除 `cumsumInfoPtr` 及每核 cumsum GM 备份空间。
-3. R02 恢复后重新核对共享专家 Workspace，避免“已分配但业务被跳过”或恢复后空间不足。
+3. 按 R02 的确认结果核对共享专家 Workspace：A8W8 不使用 `sharedExpertGmm1OutPtr` 及其 GM handoff
+   flag；确认 arch92 A8W4 分支不可达后删除这些冗余区域。
 4. Host Tiling 和 Kernel 必须使用同一个布局策略/同一组公式描述以下区域：
    - GMM1/GMM2 GM handoff；
    - dispatch/gmm/activation/combine flags；
@@ -361,7 +376,7 @@ A6 首版明确不支持 URMA。当前为了低风险迁移可能仍在公共 `P
 
 **待修改**
 
-1. 在 R01/R02 正确性稳定后，沿 arch92 本地类型闭包删除不会被 MTE 路径读取的 URMA 参数、分支和辅助函数。
+1. 在 R01 正确性稳定后，沿 arch92 本地类型闭包删除不会被 MTE 路径读取的 URMA 参数、分支和辅助函数。
 2. 若公共 ABI/模板签名要求保留字段，明确限制为“结构兼容但不可达”，不得在 arch92 生成 URMA 实例。
 3. 不为清理 arch92 而修改 arch35 公共热路径；必要时继续使用 arch92 本地副本。
 
@@ -504,14 +519,13 @@ slot parity 与整算子回归后再彻底删除。不得长期保留会增加�
 能否退出同步轮询，优先级高于其他结构与性能整改。
 
 1. **R01（单 slot 已完成）**：保留当前正确性 fallback；双 slot 恢复作为独立整改，不阻塞后续结构清理。
-2. **R02**：恢复共享专家，补齐 A5 已有功能。
-3. **R16**：删除临时诊断，恢复干净业务代码。
-4. **R03 + R04 + R06 + R17**：集中清理 A8W4/A4W4、1C2V、URMA 和 Host 不可达分支。
-5. **R09**：建立统一的 arch92 UB layout policy。
-6. **R08 + R05 + R07**：cumsum 常驻 UB，并同步收敛策略与 Workspace。
-7. **R10**：实现 GMM1 到 Activation 的 128 行双缓冲。
-8. **R11 + R12**：根据 profiling 继续消费额外 UB。
-9. **R13 + R14 + R15**：作为独立性能课题逐项评估，不能和正确性修复混在同一次提交。
+2. **R16**：删除临时诊断，恢复干净业务代码。
+3. **R03 + R04 + R06 + R17**：集中清理 A8W4/A4W4、1C2V、URMA 和 Host 不可达分支。
+4. **R09**：建立统一的 arch92 UB layout policy。
+5. **R08 + R05 + R07**：cumsum 常驻 UB，并同步收敛策略与 Workspace。
+6. **R10**：实现 GMM1 到 Activation 的 128 行双缓冲。
+7. **R11 + R12**：根据 profiling 继续消费额外 UB。
+8. **R13 + R14 + R15**：作为独立性能课题逐项评估，不能和正确性修复混在同一次提交。
 
 ## 9. 已完成但不再列为 TODO 的事项
 
@@ -519,7 +533,8 @@ slot parity 与整算子回归后再彻底删除。不得长期保留会增加�
 - arch92 Kernel 入口放到 `op_kernel/mega_moe_apt.cpp`，并显式包含 arch92 头。
 - arch92 Host Tiling 使用可解析的本地头文件路径。
 - FP8 类型去掉错误的 `AscendC::` 命名空间前缀。
-- arch92 本地 A8W8 BlockMmad 已建立；L0 slot1 异常已定位，当前用单 slot 闭环正确性，剩余任务是按 R01 验证并恢复双 slot 性能。
+- arch92 已改为像 A5 一样直接调用 CANN QBMM A8W8 BlockMmad，当前待 A6 编译与精度回归；不再维护仓内 BlockMmad 适配实现。
+- 已确认 A5/A6 A8W8 共享专家采用 GMM1 结果直接写 AIV UB 的设计，不需要 GM handoff；A8W4 写 GM 是另一条独立流水。
 - BlockMmad 诊断中的 `GetBlockIdx` 已改为 `AscendC::GetBlockIdx`。
 - 第一版沿用 A5 最新 A8W4 token-grained Wave 的专家内切分能力。
 - Host 已通过平台接口读取 UB 大小并生成 Dispatch、SendMask、Unpermute 自适应 buffer 配置。
