@@ -7,10 +7,9 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "${SCRIPT_DIR}"
 
 TEST_MODE=${TEST_MODE:-normal}
-DEVICE_ID=${DEVICE_ID:-2}
+DEVICE_ID=${DEVICE_ID:-1}
 ATK_WHITE_LIST=${ATK_WHITE_LIST:-}
 RUN_NONCONTIG=${RUN_NONCONTIG:-0}
-ATK_SINGLE_PROCESS=${ATK_SINGLE_PROCESS:-0}
 ATK_LOOP_NUMS=${ATK_LOOP_NUMS:-1}
 ATK_UNCON_WHITE_LIST=${ATK_UNCON_WHITE_LIST:-'[178]'}
 DEFAULT_CUSTOM_OPP_ENV=/home/npu_user1/l00937279/package/package_custom_personal/wjc/msa_new_dev_llw2_c36ad0218c/vendors/custom_transformer/bin/set_env.bash
@@ -112,9 +111,6 @@ function run_one_plugin() {
     local plugin=$1
     local white_list=${2:-}
     local args=(task -c "${CASE_FILE}" -n "${RUNTIME_NODES}" -p "${plugin}" -to 9999 --loop_nums "${ATK_LOOP_NUMS}")
-    if [[ "${ATK_SINGLE_PROCESS}" == "1" ]]; then
-        args+=(-sp)
-    fi
     if [[ -n "${white_list}" ]]; then
         args+=(-wl "${white_list}")
     fi
@@ -140,7 +136,6 @@ Usage: TEST_MODE=normal|fd [DEVICE_ID=N] bash ./run_atk_test.sh all|generate|run
 Optional:
   ATK_WHITE_LIST='[0,1]'       Run selected generated Case IDs.
   RUN_NONCONTIG=1              In FD mode, also run dim0-strided KV coverage.
-  ATK_SINGLE_PROCESS=1         Use ATK single-process mode (default: 0).
   ATK_LOOP_NUMS=100            Repeat each selected Case for stability coverage.
   ATK_UNCON_WHITE_LIST='[178]' Select the non-contiguous KV Case IDs.
   CUSTOM_OPP_PATH=<vendor-dir> Select a newly installed custom OPP package.

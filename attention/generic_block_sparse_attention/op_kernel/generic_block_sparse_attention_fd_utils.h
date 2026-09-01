@@ -39,13 +39,13 @@ __aicore__ inline uint32_t CalculateConfigSignature(
 }
 
 __aicore__ inline bool ValidateMetadata(
-    __gm__ const GsaMetadata::Metadata *meta,
+    __gm__ const GbsaMetadata::Metadata *meta,
     __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData,
     uint32_t physicalAicNum)
 {
-    if (meta == nullptr || meta->magic != GsaMetadata::METADATA_MAGIC ||
-        meta->version != GsaMetadata::METADATA_VERSION ||
-        meta->metadataUsedSize != static_cast<int32_t>(GsaMetadata::METADATA_USED_SIZE) ||
+    if (meta == nullptr || meta->magic != GbsaMetadata::METADATA_MAGIC ||
+        meta->version != GbsaMetadata::METADATA_VERSION ||
+        meta->metadataUsedSize != static_cast<int32_t>(GbsaMetadata::METADATA_USED_SIZE) ||
         meta->configSignature != static_cast<int32_t>(CalculateConfigSignature(tilingData)) ||
         meta->saTotalTaskNum < 0 ||
         static_cast<uint64_t>(meta->saTotalTaskNum) >
@@ -54,18 +54,18 @@ __aicore__ inline bool ValidateMetadata(
     }
 
     const uint32_t flags = static_cast<uint32_t>(meta->fdScheduleFlags);
-    constexpr uint32_t KNOWN_FLAGS = GsaMetadata::FD_SCHEDULE_ENABLED | GsaMetadata::FD_ACTUAL_BLOCK_PREFIX;
-    if ((flags & ~KNOWN_FLAGS) != 0U || (flags & GsaMetadata::FD_ACTUAL_BLOCK_PREFIX) == 0U) {
+    constexpr uint32_t KNOWN_FLAGS = GbsaMetadata::FD_SCHEDULE_ENABLED | GbsaMetadata::FD_ACTUAL_BLOCK_PREFIX;
+    if ((flags & ~KNOWN_FLAGS) != 0U || (flags & GbsaMetadata::FD_ACTUAL_BLOCK_PREFIX) == 0U) {
         return false;
     }
-    if ((flags & GsaMetadata::FD_SCHEDULE_ENABLED) == 0U) {
+    if ((flags & GbsaMetadata::FD_SCHEDULE_ENABLED) == 0U) {
         return meta->fdActiveCoreNum == 0 && meta->combineTaskNum == 0 && meta->fdPartialTaskNum == 0;
     }
     if (meta->fdActiveCoreNum <= 0 ||
-        meta->fdActiveCoreNum > static_cast<int32_t>(GsaMetadata::MAX_FD_ACTIVE_CORE_NUM) ||
+        meta->fdActiveCoreNum > static_cast<int32_t>(GbsaMetadata::MAX_FD_ACTIVE_CORE_NUM) ||
         meta->fdActiveCoreNum > static_cast<int32_t>(physicalAicNum) || meta->decodePerCoreTaskNum <= 0 ||
         meta->fdTotalFlatTaskNum <= 0 || meta->combineTaskNum < 0 ||
-        meta->combineTaskNum > static_cast<int32_t>(GsaMetadata::MAX_COMBINE_TASK_NUM) ||
+        meta->combineTaskNum > static_cast<int32_t>(GbsaMetadata::MAX_COMBINE_TASK_NUM) ||
         meta->fdPartialTaskNum < 0 ||
         (tilingData->fdStaticEnabled != 0U &&
          meta->fdPartialTaskNum > static_cast<int32_t>(tilingData->fdPartialCapacity))) {
@@ -73,7 +73,7 @@ __aicore__ inline bool ValidateMetadata(
     }
 
     for (int32_t core = 0; core < meta->fdActiveCoreNum; ++core) {
-        const __gm__ GsaMetadata::DecodeSchedule &schedule = meta->decodeSchedules[core];
+        const __gm__ GbsaMetadata::DecodeSchedule &schedule = meta->decodeSchedules[core];
         if (schedule.baseTaskStart < 0 || schedule.baseTaskEnd < schedule.baseTaskStart ||
             schedule.baseTaskEnd > meta->saTotalTaskNum || schedule.firstBlockStart < 0 ||
             schedule.firstBlockStart > static_cast<int32_t>(tilingData->topK) || schedule.lastBlockEnd < 0 ||
@@ -83,10 +83,10 @@ __aicore__ inline bool ValidateMetadata(
     }
     uint32_t scheduledPartialTaskNum = 0U;
     for (int32_t combineIdx = 0; combineIdx < meta->combineTaskNum; ++combineIdx) {
-        const __gm__ GsaMetadata::CombineSchedule &combine = meta->combineSchedules[combineIdx];
+        const __gm__ GbsaMetadata::CombineSchedule &combine = meta->combineSchedules[combineIdx];
         if (combine.baseTask < 0 || combine.baseTask >= meta->saTotalTaskNum || combine.firstCore < 0 ||
             combine.partialCount <= 1 ||
-            combine.partialCount > static_cast<int32_t>(GsaMetadata::MAX_FD_PARTIAL_PER_BASE_TASK) ||
+            combine.partialCount > static_cast<int32_t>(GbsaMetadata::MAX_FD_PARTIAL_PER_BASE_TASK) ||
             combine.partialCount > meta->fdActiveCoreNum ||
             combine.firstCore + combine.partialCount > meta->fdActiveCoreNum || combine.partialStart < 0 ||
             combine.partialCount > meta->fdPartialTaskNum ||
@@ -100,13 +100,13 @@ __aicore__ inline bool ValidateMetadata(
 }
 
 __aicore__ inline bool FindPartialTask(
-    __gm__ const GsaMetadata::Metadata *meta, uint32_t baseTask, uint32_t coreIdx,
+    __gm__ const GbsaMetadata::Metadata *meta, uint32_t baseTask, uint32_t coreIdx,
     uint32_t &partialTaskId, uint32_t &partialCount)
 {
     partialTaskId = 0U;
     partialCount = 0U;
     for (int32_t combineIdx = 0; combineIdx < meta->combineTaskNum; ++combineIdx) {
-        const __gm__ GsaMetadata::CombineSchedule &combine = meta->combineSchedules[combineIdx];
+        const __gm__ GbsaMetadata::CombineSchedule &combine = meta->combineSchedules[combineIdx];
         if (combine.baseTask != static_cast<int32_t>(baseTask)) {
             continue;
         }

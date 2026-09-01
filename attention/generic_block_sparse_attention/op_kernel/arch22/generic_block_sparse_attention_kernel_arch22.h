@@ -58,14 +58,14 @@ public:
         __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData =
             reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *>(params.tiling);
         FetchTilingData(tilingData, params.metaData);
-        __gm__ const GsaMetadata::Metadata *meta =
-            reinterpret_cast<__gm__ const GsaMetadata::Metadata *>(params.metaData);
+        __gm__ const GbsaMetadata::Metadata *meta =
+            reinterpret_cast<__gm__ const GbsaMetadata::Metadata *>(params.metaData);
         const uint32_t physicalAicNum = AscendC::GetBlockNum();
         if (!GsaFd::ValidateMetadata(meta, tilingData, physicalAicNum)) {
             return;
         }
         const bool fdEnabled = tilingData->fdStaticEnabled != 0U &&
-            (static_cast<uint32_t>(meta->fdScheduleFlags) & GsaMetadata::FD_SCHEDULE_ENABLED) != 0U;
+            (static_cast<uint32_t>(meta->fdScheduleFlags) & GbsaMetadata::FD_SCHEDULE_ENABLED) != 0U;
 
         AscendC::GlobalTensor<ElementQ> gQ;
         gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
@@ -228,7 +228,7 @@ public:
             taskLoopEnd = totalTaskNum_;
             taskLoopStep = 1U;
             if (coreIdx < static_cast<uint32_t>(meta->fdActiveCoreNum)) {
-                const __gm__ GsaMetadata::DecodeSchedule &schedule = meta->decodeSchedules[coreIdx];
+                const __gm__ GbsaMetadata::DecodeSchedule &schedule = meta->decodeSchedules[coreIdx];
                 taskLoopStart = static_cast<uint32_t>(schedule.baseTaskStart);
                 taskLoopEnd = static_cast<uint32_t>(schedule.baseTaskEnd);
                 scheduleFirstBlock = static_cast<uint32_t>(schedule.firstBlockStart);
@@ -312,8 +312,8 @@ public:
             uint32_t lastBlockTileSize = (historyLen + qTokenInBatch) % blockShapeY_ + 1;
 
             uint32_t kvSLoopNum = rawEnd - rawBegin;
-            int32_t validPhysicalIds[GsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
-            uint32_t validTileSize[GsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
+            int32_t validPhysicalIds[GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
+            uint32_t validTileSize[GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
             uint32_t lastLogicalBlockId = (historyLen + qTokenInBatch) / blockShapeY_;
             uint32_t actualLoopNum = 0;
             for (uint32_t i = rawBegin; i < rawEnd && i < topK_; i++) {

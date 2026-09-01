@@ -11,12 +11,12 @@
 #include "adv_api/reduce/reduce.h"
 #include "../generic_block_sparse_attention_fd_utils.h"
 
-namespace GsaKernelArch35 {
+namespace GbsaKernelArch35 {
 
 template <class ElementO, class Resource>
 class GenericBlockSparseAttentionFdCombineArch35 {
 public:
-    static constexpr uint32_t MAX_SPLIT_NUM = GsaMetadata::MAX_DECODE_CORE_NUM;
+    static constexpr uint32_t MAX_SPLIT_NUM = GbsaMetadata::MAX_DECODE_CORE_NUM;
     static constexpr uint32_t MAX_ROW_TILE = 8U;
     static constexpr uint32_t FLOATS_PER_BLOCK = 8U;
     static constexpr uint32_t HEAD_DIM = 128U;
@@ -48,7 +48,7 @@ public:
 
     template <class CuSeqTensor, class SeqUsedTensor>
     __aicore__ inline void operator()(
-        __gm__ const GsaMetadata::Metadata *meta,
+        __gm__ const GbsaMetadata::Metadata *meta,
         __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData,
         AscendC::GlobalTensor<float> &gPartialLse,
         AscendC::GlobalTensor<float> &gPartialO,
@@ -90,7 +90,7 @@ public:
             const uint32_t rowCount = Min(rowTile, sourceRows - sourceLocalRow);
             const uint32_t groupRowStart = (sourceSubBlock == 0U ? 0U : rowSplit) + sourceLocalRow;
             const uint32_t rowCountAlign = RoundUp(rowCount, FLOATS_PER_BLOCK);
-            const __gm__ GsaMetadata::CombineSchedule &schedule = meta->combineSchedules[combineTask];
+            const __gm__ GbsaMetadata::CombineSchedule &schedule = meta->combineSchedules[combineTask];
             const uint32_t baseTask = static_cast<uint32_t>(schedule.baseTask);
             const uint32_t splitCount = static_cast<uint32_t>(schedule.partialCount);
             const uint32_t splitCountAlign = RoundUp(splitCount, FLOATS_PER_BLOCK);
@@ -223,6 +223,6 @@ private:
     AscendC::LocalTensor<uint8_t> reduceTmpUb_;
 };
 
-} // namespace GsaKernelArch35
+} // namespace GbsaKernelArch35
 
 #endif // GENERIC_BLOCK_SPARSE_ATTENTION_FD_COMBINE_ARCH35_H
