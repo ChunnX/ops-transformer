@@ -42,11 +42,20 @@ using namespace Blaze::Gemm;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
+// SyncAll 硬件同步接口保留的 flagId 上界：SyncAll<true> 使用 flagId 14。
+// release 方向的 flagId 用它取模后落在 [0,13]，避免与 SyncAll 抢同一个 AIV 计数器。
+constexpr uint32_t SYNCALL_FLAG_ID_MAX = 14;
+
 struct UrmaCommWaitPolicy {
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
     }
+    __aicore__ inline void ReleaseTile(uint32_t tileIdx)
+    {
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tileIdx % SYNCALL_FLAG_ID_MAX);
+    }
+    uint32_t bufferCount{0};
 };
 
 // 定义问题形状：[M, N, K, Batch]
@@ -144,6 +153,8 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
+        uint32_t bufferCount{0};    // win区复用槽位数，0=不复用
+        uint64_t scaleWinOffset{0}; // win区data部分字节大小，用作scale的winOffset
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
@@ -195,7 +206,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
                          commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
-                         baseParams_.rankSize * baseParams_.rankDataBytes);
+                         baseParams_.scaleWinOffset);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -222,6 +233,15 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
+        // win buffer 复用：写 tile tid 会覆盖槽位 tid%bufferCount，需等本端 cube 消费完 tile tid-bufferCount，
+        // 并跨 device 屏障保证对端 cube 也已释放该槽位
+        if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>((tid - baseParams_.bufferCount) % SYNCALL_FLAG_ID_MAX);
+            AscendC::SyncAll<true>();
+            if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
+                teamBarrier_.CrossDevice();
+            }
+        }
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
             allToAllScaleA_.Commit();
             allToAllA_.Commit();
@@ -265,6 +285,19 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         // MXFP4 打包存储(2 个 fp4 占 1 字节)，A 矩阵通信字节数减半
         baseParams_.rankDataBytes >>= 1;
     }
+
+    uint64_t commTiles = tilingData->commTilingData.splitAxisTileCnt + tilingData->commTilingData.splitAxisTailCnt;
+    uint64_t rawBufferCount = tilingData->commTilingData.bufferCount;
+    // release 门控用（0 表示不复用）
+    baseParams_.bufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
+                              static_cast<uint32_t>(rawBufferCount) : 0;
+    // A 数据补齐后的 footprint → scale 偏移
+    uint64_t effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
+    uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
+        tilingData->commTilingData.splitAxisTailSize ?
+        tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
+    baseParams_.scaleWinOffset = static_cast<uint64_t>(baseParams_.rankSize) * effBufferCount *
+                           maxTileSize * baseParams_.axisKa * sizeof(AType);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -329,10 +362,11 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     MatmulMode mode = (tilingData_->localMatmul == 1) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
-    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
+    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.scaleWinOffset;
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
+    quantMatmulKernelImpl_.GetCommPolicy().bufferCount = baseParams_.bufferCount;
     quantMatmulKernelImpl_(params);
 }
 
