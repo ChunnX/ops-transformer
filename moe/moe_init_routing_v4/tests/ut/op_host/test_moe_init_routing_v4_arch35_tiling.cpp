@@ -404,7 +404,6 @@ void ExpectV4TilingData(const V4TilingDataCase &testCase)
     EXPECT_EQ(tilingData->dropPadMode, testCase.dropPadMode);
     EXPECT_EQ(tilingData->expertCapacity, testCase.expertCapacity);
     EXPECT_EQ(tilingData->isInputTopkWeight, testCase.hasTopkWeight ? 1 : 0);
-    EXPECT_EQ(tilingData->topkWeightOutPerCorePerLoopElements, 0);
 
     EXPECT_GT(tilingData->vbsComputeParamsOp.needCoreNum, 0);
     if (testCase.dropPadMode == 1) {

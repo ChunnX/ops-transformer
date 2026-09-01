@@ -121,9 +121,6 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
 
     ComputeUseGatherCopy();
 
-    // TopkWeightOut is handled by SIMT via direct GM access; no per-loop tiling is needed.
-    // Preserve the serialized field for ABI compatibility and set its loop element count to zero.
-    tilingDataPtr_->topkWeightOutPerCorePerLoopElements = 0;
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
@@ -1226,7 +1223,6 @@ void MoeInitRoutingV3TilingArch35::LogBaseTilingData()
     ss << "dropPadMode = " << tilingDataPtr_->dropPadMode << "\n";
     ss << "smoothType = " << tilingDataPtr_->smoothType << "\n";
     ss << "isInputTopkWeight = " << tilingDataPtr_->isInputTopkWeight << "\n";
-    ss << "topkWeightOutPerCorePerLoopElements = " << tilingDataPtr_->topkWeightOutPerCorePerLoopElements << "\n";
     OP_LOGI(context_, "%s", ss.str().c_str());
 }
 
