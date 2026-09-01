@@ -806,6 +806,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     if (args_.nValue != 0) {
         AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
         MC2_CHECK_LOG_RET(opName_, mmLocalTile.DoTiling());
+        if (isFp4_ && !args_.isBTrans) {
+            OP_LOGI(opName_, "enable alignNTailSplit for local tiling");
+            MutableTCubeLocalTilingWindowParam().alignNTailSplit = 1;
+        }
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
                        (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) :
@@ -815,6 +819,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     // 当N=0时，跳过matmul tiling，避免shape检查失败
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
+        if (isFp4_ && !args_.isBTrans) {
+            OP_LOGI(opName_, "enable alignNTailSplit for tile tiling");
+            MutableTCubeTileTilingWindowParam().alignNTailSplit = 1;
+        }
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTileTilingData().M = tileMValue_;
@@ -831,6 +839,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     // 当N=0时，跳过matmul tiling，避免shape检查失败
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+        if (isFp4_ && !args_.isBTrans) {
+            OP_LOGI(opName_, "enable alignNTailSplit for tail tiling");
+            MutableTCubeTailTilingWindowParam().alignNTailSplit = 1;
+        }
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTailTilingData().M = tailMValue_;
