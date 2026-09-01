@@ -924,6 +924,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     // V1已同时持有invRms和归约后的invRmsGrad，在这里一次性完成组合，避免V2对每个ND分块重复计算。
     VFDoV1InvRmsGradCombine((__ubuf__ P *)invRmsGradUb.GetPhyAddr(),
                             (__ubuf__ P *)invRmsBufLocal.GetPhyAddr(), curBSSize);
+    // 等待组合计算完成后再释放输入Tensor，避免下一轮MTE2覆写仍被V流水读取的invRms。
+    PipeBarrier<PIPE_V>();
     vecInQueue1_.FreeTensor(invRmsBufLocal);
     vecOutQueueSmall_.EnQue(invRmsGradUb);
     LocalTensor<P> invRmsGradUbtBuf = vecOutQueueSmall_.DeQue<P>();
