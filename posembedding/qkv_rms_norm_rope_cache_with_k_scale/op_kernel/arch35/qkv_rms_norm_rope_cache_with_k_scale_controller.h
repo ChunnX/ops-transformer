@@ -114,8 +114,8 @@ private:
             const uint32_t currentBufferId = GetCurrentTileParamBufferId(tileCount);
             const uint32_t previousBufferId = GetPreviousTileParamBufferId(tileCount);
             FillTileParam(tileParam[currentBufferId], tilingData, tokenOffset, tokenSize);
-            basicBlock_.ComputeTile(tileParam[currentBufferId], tileParam[previousBufferId],
-                                    tileCount, tokenOffset + tokenSize >= range.end);
+            basicBlock_.ComputeTile(tileParam[currentBufferId], tileParam[previousBufferId], tileCount,
+                                    tokenOffset + tokenSize >= range.end);
             tokenOffset += tokenSize;
             ++tileCount;
         }
