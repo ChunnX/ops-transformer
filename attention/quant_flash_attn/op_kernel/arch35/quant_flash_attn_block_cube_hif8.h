@@ -115,6 +115,12 @@ public:
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+    /* [性能实验6] L0C分区: 原DB(2×128KB)下MM1/MM2交替占用同一乒乓, MM2的fixpipe排空
+     * 直接阻塞MM1获取L0C。分区为MM1专用Single(128KB)+MM2专用DB(2×64KB):
+     * MM2结果仅64KB, 双缓冲化后其fixpipe与MM1的matmul并行, 剪断L0C归还环。
+     * 仅Config2(S2=256,Dv=128)等MM2块<=64KB的档位适用。 */
+    using L0C1Type = BuffersPolicySingleBuffer<BufferType::L0C>;
+    using L0C2Type = BuffersPolicyDB<BufferType::L0C>;
 
     static constexpr bool IS_TND_LAYOUT =
         (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD);
@@ -159,7 +165,9 @@ public:
 
     L0AType mmL0ABuffers_;
     L0BType mmL0BBuffers_;
-    L0CType mmL0CBuffers_;
+    // [实验6] 原 mmL0CBuffers_ 共享DB已移除, 由下方MM1/MM2独立池替代
+    L0C1Type mm1L0CBuffers_;
+    L0C2Type mm2L0CBuffers_;
 
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
@@ -201,12 +209,11 @@ public:
         mmL0ABuffers_.Init(l0aBufferManager_, 32 * 1024);
         mmL0BBuffers_.Init(l0bBufferManager_, 32 * 1024);
 
-        if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                      mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
-            mmL0CBuffers_.Init(l0cBufferManager_, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
-        } else {
-            mmL0CBuffers_.Init(l0cBufferManager_, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
-        }
+        // [性能实验6] L0C分区: MM1单块128KB + MM2双缓冲2×64KB = 256KB, 与原DB(2×128KB)总占用相同。
+        // MM2双缓冲后, MM2的fixpipe(i-2)排空不再阻塞MM1(i)获取L0C, 两个matmul独立乒乓。
+        // 原mmL0CBuffers_ DB不再初始化(其Init/Uninit成对注释保留结构, 事件ID省出2个)。
+        mm1L0CBuffers_.Init(l0cBufferManager_, mBaseSize * s2BaseSize * FLOAT_BYTES);
+        mm2L0CBuffers_.Init(l0cBufferManager_, (mBaseSize * dVBaseSize * FLOAT_BYTES));
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -270,7 +277,9 @@ public:
         l1KVBuffers_.Uninit((*l1BufferManagerPtr_));
         mmL0ABuffers_.Uninit(l0aBufferManager_);
         mmL0BBuffers_.Uninit(l0bBufferManager_);
-        mmL0CBuffers_.Uninit(l0cBufferManager_);
+        // [实验6] mmL0CBuffers_已不再初始化, 跳过Uninit; 新池成对释放
+        mm1L0CBuffers_.Uninit(l0cBufferManager_);
+        mm2L0CBuffers_.Uninit(l0cBufferManager_);
     }
 
     // copy query with full s1g
@@ -376,12 +385,17 @@ public:
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
+        // [性能实验4b] duration复核: 目的端fp32->half(F322F16), FIX纯执行段应减半(128KB->64KB)。
+        // 与4a的区别: 本次重点核对msprof指令duration列(fp32基线2100μs vs half)——
+        // 若half显著下降(~1450μs)则纯执行段确被削减, 排队段由V1流量决定;
+        // 若不变则说明排队段与FIX写量负耦合, 需重新建模。数值错误(V1按fp32读), 只测性能。
+        fixpipeParams.dstStride = 32;
+        fixpipeParams.quantPre = QuantMode_t::F322F16;
         fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<half, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, K * Q^T, Q矩阵驻留. GS1>80, S=S1*S2 */
@@ -408,7 +422,7 @@ public:
         mm1A.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
+        Buffer<BufferType::L0C> mm1ResL0C = mm1L0CBuffers_.Get(); // [实验6] MM1专用L0C池
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param =
             MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo_.dSize, false, true);
@@ -424,7 +438,11 @@ public:
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
         outputBuf.WaitCrossCore();
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        // [性能实验4b] fixpipe输出half: duration复核实验, 见FixpipeMm1Dn注释。数值错误, 仅测性能。
+        {
+            LocalTensor<half> mm1DstUb = outputBuf.template GetTensor<half>();
+            FixpipeMm1Dn(mm1DstUb, mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        }
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
     }
@@ -456,7 +474,7 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-        Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
+        Buffer<BufferType::L0C> mm2ResL0C = mm2L0CBuffers_.Get(); // [实验6] MM2专用DB池, fixpipe排空不再阻塞MM1
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
         constexpr uint32_t baseK = s2BaseSize;
