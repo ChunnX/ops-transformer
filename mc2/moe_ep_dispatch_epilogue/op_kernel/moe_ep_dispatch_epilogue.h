@@ -61,6 +61,7 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 static constexpr uint8_t BUFFER_NUM = 2;
 static constexpr uint32_t ELEM_ALIGN = 8U;
+static constexpr uint32_t FLAG_ELEMS_PER_SLOT = UB_ALIGN / sizeof(float);
 static constexpr uint32_t META_TOPK_SECTION = 2U;
 static constexpr uint32_t META_EXTRA_FIELDS = 2U;
 static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
@@ -254,7 +255,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
     uint32_t statusReduceTmpBytes =
-        ReduceSumWorkNeedSize(static_cast<int32_t>(totalNotifyCnt_), sizeof(float)) * sizeof(float);
+        ReduceSumWorkNeedSize(static_cast<int32_t>(totalNotifyCnt_ * FLAG_ELEMS_PER_SLOT), sizeof(float)) *
+        sizeof(float);
     uint32_t sharedBytes = expertReduceTmpBytes > statusReduceTmpBytes ? expertReduceTmpBytes : statusReduceTmpBytes;
     // tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(waitStatusBuf_, totalNotifyCnt_ * UB_ALIGN);
@@ -383,7 +385,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     LocalTensor<float> ubWaitStatusFp32 = ubWaitStatus_.template ReinterpretCast<float>();
     LocalTensor<float> ubWaitSumFp32 = ubWaitSum_.template ReinterpretCast<float>();
     uint32_t mask = 1;
-    int32_t commpareFlag = static_cast<int32_t>(JETTY_TOTAL);
+    float compareFlag = static_cast<float>(JETTY_TOTAL);
     // 同srcRank相邻flag槽间距=512B；块单位(32B)间隔=15。
     DataCopyParams statusCopyParams = {static_cast<uint16_t>(JETTY_TOTAL), 1U, 15U, 0U};
     DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(JETTY_TOTAL), 1U, 0U, 15U};
@@ -392,13 +394,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         uint32_t srcRankId = idx < epRankId_ ? idx : idx + 1U;
         statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             localSlotStateWinAddr_ + static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN * JETTY_TOTAL));
-        int32_t sumOfFlag = -1;
-        while (sumOfFlag != commpareFlag) {
+        float sumOfFlag = -1.0F;
+        while (sumOfFlag != compareFlag) {
             DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
-            ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, JETTY_TOTAL, 1);
+            ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, JETTY_TOTAL * FLAG_ELEMS_PER_SLOT, 1);
             SyncFunc<AscendC::HardEvent::V_S>();
-            sumOfFlag = ubWaitSum_.GetValue(0);
+            sumOfFlag = ubWaitSumFp32.GetValue(0);
         }
         Duplicate<int32_t>(ubWaitStatus_, 0, JETTY_TOTAL * UB_ALIGN / sizeof(int32_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();

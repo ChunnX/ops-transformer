@@ -353,11 +353,14 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     Duplicate<uint8_t>(hcommBatchTensor_, 0U, HCOMM_BATCH_BUFFER_BYTES);
     SyncFunc<AscendC::HardEvent::V_S>();
     if (aivId_ == 0) {
-        LocalTensor<int32_t> status = topkIdsBuf_.Get<int32_t>();
-        GlobalTensor<int32_t> statusGMTensor;
-        statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)payloadStashWinAddr_);
-        Duplicate<int32_t>(status, 1, UB_STRIDE);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        LocalTensor<float> status = topkIdsBuf_.Get<float>();
+        GlobalTensor<float> statusGMTensor;
+        statusGMTensor.SetGlobalBuffer((__gm__ float *)payloadStashWinAddr_);
+        // 每个flag占32B，只使用首个float。其余位置必须为0，等待端会归约完整的32B槽位。
+        Duplicate<float>(status, 0.0F, UB_STRIDE);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        status.SetValue(0, 1.0F);
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopy(statusGMTensor, status, UB_STRIDE);
     }
 
@@ -665,7 +668,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
 
         if (dstRankId != epRankId_) {
             uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId);
-            // 打桩：直接写512B(前32B为1)到对端cnt槽位，内容即flag
+            // 打桩：直接写512B到对端cnt槽位，前32B为flag payload。
             auto ret = hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(
                 commHandle, notifyAddr, payloadStashWinAddr_, WIN_ADDR_ALIGN);
             ascendc_assert(ret == HCOMM_SUCCESS, "cnt barrier WriteNbi failed, ret=%d, dstRank=%u, aivId=%u", ret,
@@ -673,10 +676,13 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
             continue;
         }
 
-        GlobalTensor<uint64_t> notifyGMTensor;
-        notifyGMTensor.SetGlobalBuffer((__gm__ uint64_t *)notifyAddr);
-        notifyGMTensor.SetValue(0, 1);
-        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(notifyGMTensor);
+        GlobalTensor<float> notifyGMTensor;
+        notifyGMTensor.SetGlobalBuffer((__gm__ float *)notifyAddr);
+        notifyGMTensor.SetValue(0, 1.0F);
+        for (uint32_t elemIdx = 1U; elemIdx < UB_STRIDE; ++elemIdx) {
+            notifyGMTensor.SetValue(elemIdx, 0.0F);
+        }
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(notifyGMTensor);
     }
 }
 
@@ -698,15 +704,16 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr_);
 
     uint32_t mask = 1;
-    int32_t sumOfFlag = -1;
-    int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
+    float sumOfFlag = -1.0F;
+    float compareFlag = static_cast<float>(epWorldSize_);
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // buf复用（aivNum_==1时aiv0在Init用topkIdsBuf做过MTE3写）
-    while (sumOfFlag != commpareFlag) {
+    while (sumOfFlag != compareFlag) {
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, epWorldSize_, 1);
+        ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask,
+                  epWorldSize_ * UB_STRIDE, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        sumOfFlag = numRecvPerRankTensorFp32.GetValue(0);
     }
     // 清理状态位
     Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
