@@ -144,9 +144,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         if (GetSubBlockIdx() == 1U) {
             ExpertTokenRange firstDispatchRange{};
             uint32_t firstDispatchWaveMGroupCount = 0U;
-            PlanRemainingWaveTokenRange<GMM1_TILE_M>(
-                params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
-                mGroupsPerWave_, firstDispatchWaveMGroupCount, dispatchPosition, firstDispatchRange);
+            while (IsPositionWithinWave(dispatchPosition, firstDispatchWaveMGroupCount)) {
+                // 启动 WAVE 重复追加专家 slice；稳态复用同一规划函数但每轮只调用一次。
+                PlanTokenRangeInWave<GMM1_TILE_M>(
+                    params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
+                    mGroupsPerWave_, firstDispatchWaveMGroupCount, dispatchPosition, firstDispatchRange);
+            }
             // count-table 准备刚完成，UB prefix 仍有效；首 WAVE 无需从 GM 备份重复恢复。
             DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                 tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
@@ -176,7 +179,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
                     ExpertTokenRange nextExpertDispatchRange{};
-                    PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
+                    PlanTokenRangeInWave<GMM1_TILE_M>(
                         params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
                         mGroupsPerWave_, nextDispatchWaveMGroupCount, dispatchPosition, nextExpertDispatchRange);
                     // 规划完成后再判断是否得到有效专家 slice，调度函数本身不参与流程分支。
