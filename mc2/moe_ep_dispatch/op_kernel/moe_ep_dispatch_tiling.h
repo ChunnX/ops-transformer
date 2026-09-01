@@ -53,6 +53,7 @@ struct MoeEpDispatchWindowLayout {
 
 struct MoeEpDispatchWorkspaceLayout {
     uint64_t sendEntryTokenRangeBytes;  // 单个 token 范围的发送记录字节数
+    uint64_t tokenHitPerCoreBytes;  // 每个核处理 token 命中记录字节数
     uint64_t routeWorkspaceOffset;
     uint64_t scaleoutSendEntryOffset;
     uint64_t scaleupSendEntryOffset;
