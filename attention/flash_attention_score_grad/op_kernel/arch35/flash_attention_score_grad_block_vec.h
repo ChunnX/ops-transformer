@@ -38,8 +38,7 @@ constexpr static AscendC::MicroAPI::CastTrait DPSE_CAST_TRAIT_B32_TO_B16 = {
 };
 
 template <typename T>
-__simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue,
-                                      uint32_t dataSize)
+__simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue, uint32_t dataSize)
 {
     using namespace AscendC::MicroAPI;
     RegTensor<float> srcReg;
@@ -59,10 +58,8 @@ __simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalIn
 }
 #else
 template <typename T>
-__aicore__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue,
-                                     uint32_t dataSize)
-{
-}
+__aicore__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalInt, float scaleValue, uint32_t dataSize)
+{}
 #endif
 
 TEMPLATES_DEF
@@ -81,6 +78,8 @@ private:
     __aicore__ inline uint16_t FindAvailableRows(FagConstInfo &constInfo, uint64_t writeStartAddr,
                                                  uint64_t writeLastAddr, uint16_t blockCount, uint32_t blockLen,
                                                  uint32_t dstStride);
+    __aicore__ inline void ClearDpseBlock(LocalTensor<OUTDTYPE> &dpseOutTensor, int64_t dpseOffset, int64_t s1RealSize,
+                                          int64_t s2RealSize, int64_t actualS2Size);
 
 public:
     __aicore__ inline FAGBlockVec(){};
@@ -93,6 +92,8 @@ public:
                                             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
                                             GM_ADDR dkRope, GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace);
     __aicore__ inline void SetOldDeterFp32Param(FagConstInfo &constInfo);
+    __aicore__ inline void ClearInvalidDpse(FagConstInfo &constInfo);
+    __aicore__ inline void ClearInvalidDpseBlock(FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void InitUbBuffer();
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
@@ -336,6 +337,176 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
             dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dk);
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dv);
         }
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ClearDpseBlock(LocalTensor<OUTDTYPE> &dpseOutTensor,
+                                                                  int64_t dpseOffset, int64_t s1RealSize,
+                                                                  int64_t s2RealSize, int64_t actualS2Size)
+{
+    if (s1RealSize == 0 || s2RealSize == 0) {
+        return;
+    }
+
+    DataCopyExtParams copyOutParams;
+    copyOutParams.blockCount = s1RealSize;
+    copyOutParams.blockLen = s2RealSize * sizeof(OUTDTYPE);
+    copyOutParams.srcStride =
+        CeilDiv(VECTOR_BASEN * sizeof(OUTDTYPE), blockBytes) - CeilDiv(copyOutParams.blockLen, blockBytes);
+    copyOutParams.dstStride = (actualS2Size - s2RealSize) * sizeof(OUTDTYPE);
+    DataCopyPad(dpseGm[dpseOffset], dpseOutTensor, copyOutParams);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ClearInvalidDpse(FagConstInfo &constInfo)
+{
+    if constexpr (IS_PSE && IS_ATTEN_MASK) {
+        bool isFullPse = pseInfoPtr.pseLayoutType == static_cast<uint32_t>(PseLayoutTypeEnum::PSE_S1S2) &&
+                         pseInfoPtr.pseEncodeType != pseEncodeALibiS2Full && pseInfoPtr.pseBSize == constInfo.bSize;
+        bool isSparse = tilingData->s1s2BNGS1S2BaseParams.sparseType != static_cast<uint8_t>(SparseType::DENSE);
+        int64_t blockStart = tilingData->s1s2BNGS1S2BlockNumList.blockStarts[cBlockIdx];
+        int64_t blockEnd = tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx];
+        if (!isFullPse || !isSparse || blockStart >= blockEnd) {
+            return;
+        }
+
+        // blockStarts/blockEnds are disjoint between cBlockIdx, and the two AIV sub-blocks split S1 rows.
+        // Direct schedules do not visit invalid blocks, so clear this core's complement once in the first round.
+        LocalTensor<OUTDTYPE> dpseOutTensor = dSOutQue.AllocTensor<OUTDTYPE>();
+        Duplicate(dpseOutTensor, static_cast<OUTDTYPE>(0), VECTOR_BASEM * VECTOR_BASEN);
+        dSOutQue.EnQue(dpseOutTensor);
+        dSOutQue.DeQue<OUTDTYPE>();
+
+        int64_t totalBlockOffset = 0;
+        int64_t b1SSOffset = 0;
+        int64_t lastS1Prefix = 0;
+        int64_t lastS2Prefix = 0;
+        for (int64_t bIdx = 0; bIdx < constInfo.bSize && totalBlockOffset < blockEnd; ++bIdx) {
+            int64_t actualS1Size = constInfo.commonConstInfo.s1Size;
+            int64_t actualS2Size = constInfo.commonConstInfo.s2Size;
+            if constexpr (IS_TND) {
+                int64_t s1Prefix = ((__gm__ int64_t *)constInfo.seqS1_addr)[bIdx];
+                int64_t s2Prefix = ((__gm__ int64_t *)constInfo.seqS2_addr)[bIdx];
+                actualS1Size = s1Prefix - lastS1Prefix;
+                actualS2Size = s2Prefix - lastS2Prefix;
+                lastS1Prefix = s1Prefix;
+                lastS2Prefix = s2Prefix;
+            }
+
+            int64_t s1Outer = CeilDiv(actualS1Size, static_cast<int64_t>(CUBE_BASEM));
+            int64_t s2Outer = CeilDiv(actualS2Size, static_cast<int64_t>(CUBE_BASEN));
+            int64_t batchBlockNum = constInfo.commonConstInfo.n2G * s1Outer * s2Outer;
+            int64_t currentBlockStart = Max(blockStart, totalBlockOffset);
+            int64_t currentBlockEnd = Min(blockEnd, totalBlockOffset + batchBlockNum);
+            for (int64_t blockIdx = currentBlockStart; blockIdx < currentBlockEnd; ++blockIdx) {
+                int64_t batchBlockIdx = blockIdx - totalBlockOffset;
+                int64_t n2oIdx = batchBlockIdx / (constInfo.commonConstInfo.gSize * s1Outer * s2Outer);
+                int64_t n2BlockTail = batchBlockIdx % (constInfo.commonConstInfo.gSize * s1Outer * s2Outer);
+                int64_t goIdx = n2BlockTail / (s1Outer * s2Outer);
+                int64_t gBlockTail = n2BlockTail % (s1Outer * s2Outer);
+                int64_t s2oIdx = gBlockTail / s1Outer;
+                int64_t s1oIdx = gBlockTail % s1Outer;
+                int64_t s2IdxLeft = s2oIdx * CUBE_BASEN;
+                int64_t s2IdxRight = Min((s2oIdx + 1) * CUBE_BASEN, actualS2Size);
+
+                bool isValid = false;
+                bool needBandValidCheck = true;
+                if constexpr (!IS_TND) {
+                    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL || constInfo.sparseMode == PREFIX ||
+                        constInfo.sparseMode == PREFIX_COMPRESS) {
+                        int64_t s2IgnoredEndLen = constInfo.commonConstInfo.s1Size - CUBE_BASEM * (s1oIdx + 1);
+                        int64_t s2EndLen = Max(constInfo.commonConstInfo.s2Size - s2IgnoredEndLen, 0);
+                        if (constInfo.sparseMode == PREFIX || constInfo.sparseMode == PREFIX_COMPRESS) {
+                            s2EndLen = Min(Max(s2EndLen, ((__gm__ int64_t *)attenMaskInfoPtr.prefixNAddr)[bIdx]),
+                                           constInfo.commonConstInfo.s2Size);
+                        }
+                        isValid = s2IdxLeft < s2EndLen;
+                        needBandValidCheck = false;
+                    }
+                } else if (constInfo.sparseMode == PREFIX_COMPRESS) {
+                    int64_t s2IgnoredEndLen = actualS1Size - CUBE_BASEM * (s1oIdx + 1);
+                    int64_t s2EndLen = Max(actualS2Size - s2IgnoredEndLen, 0);
+                    s2EndLen = Min(Max(s2EndLen, ((__gm__ int64_t *)attenMaskInfoPtr.prefixNAddr)[bIdx]), actualS2Size);
+                    isValid = s2IdxLeft < s2EndLen;
+                    needBandValidCheck = false;
+                }
+
+                if (needBandValidCheck) {
+                    int64_t actualS1Token = constInfo.s1Token;
+                    int64_t actualS2Token = constInfo.s2Token;
+                    if constexpr (IS_TND) {
+                        if (constInfo.sparseMode == RIGHT_DOWN_CASUAL_BAND && bIdx != attenMaskInfoPtr.bandIndex) {
+                            actualS1Token = static_cast<int64_t>(INT32_MAX) + actualS1Size - actualS2Size;
+                            actualS2Token = -actualS1Size + actualS2Size;
+                        } else if (constInfo.sparseMode == BAND_LEFT_UP_CASUAL && bIdx != attenMaskInfoPtr.bandIndex) {
+                            actualS1Token = INT32_MAX;
+                            actualS2Token = 0;
+                        } else if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL || constInfo.sparseMode == BAND ||
+                                   (constInfo.sparseMode == RIGHT_DOWN_CASUAL_BAND &&
+                                    bIdx == attenMaskInfoPtr.bandIndex) ||
+                                   (constInfo.sparseMode == BAND_LEFT_UP_CASUAL &&
+                                    bIdx == attenMaskInfoPtr.bandIndex)) {
+                            actualS1Token += actualS1Size - actualS2Size;
+                            actualS2Token += -actualS1Size + actualS2Size;
+                        }
+                    }
+                    int64_t s2SparseLeft = Max(CUBE_BASEM * s1oIdx - actualS1Token, 0);
+                    s2SparseLeft = s2SparseLeft >> 6 << 6;
+                    int64_t s2SparseRight =
+                        AlignTo64(Min(CUBE_BASEM * (s1oIdx + 1), constInfo.commonConstInfo.s1Size) + actualS2Token);
+                    s2SparseRight = Min(s2SparseRight, actualS2Size);
+                    isValid = s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
+                }
+                if (isValid) {
+                    continue;
+                }
+
+                int64_t s1RealSize = Min(static_cast<int64_t>(CUBE_BASEM), actualS1Size - s1oIdx * CUBE_BASEM);
+                int64_t firstHalfS1RealSize = (s1RealSize + 1) >> 1;
+                int64_t halfS1RealSize = vSubBlockIdx == 0 ? firstHalfS1RealSize : s1RealSize - firstHalfS1RealSize;
+                int64_t vecCoreOffset = vSubBlockIdx * firstHalfS1RealSize;
+                int64_t dpseOffset = b1SSOffset * constInfo.commonConstInfo.n2G +
+                                     n2oIdx * constInfo.commonConstInfo.gSize * actualS1Size * actualS2Size +
+                                     goIdx * actualS1Size * actualS2Size +
+                                     (s1oIdx * CUBE_BASEM + vecCoreOffset) * actualS2Size + s2IdxLeft;
+                ClearDpseBlock(dpseOutTensor, dpseOffset, halfS1RealSize, s2IdxRight - s2IdxLeft, actualS2Size);
+            }
+            totalBlockOffset += batchBlockNum;
+            b1SSOffset += actualS1Size * actualS2Size;
+        }
+        dSOutQue.FreeTensor(dpseOutTensor);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ClearInvalidDpseBlock(FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
+    if constexpr (IS_PSE && IS_ATTEN_MASK) {
+        bool isFullPse = pseInfoPtr.pseLayoutType == static_cast<uint32_t>(PseLayoutTypeEnum::PSE_S1S2) &&
+                         pseInfoPtr.pseEncodeType != pseEncodeALibiS2Full && pseInfoPtr.pseBSize == constInfo.bSize;
+        bool isSparse = tilingData->s1s2BNGS1S2BaseParams.sparseType != static_cast<uint8_t>(SparseType::DENSE);
+        if (!isFullPse || !isSparse || runInfo.commonRunInfo.halfS1RealSize == 0 ||
+            runInfo.commonRunInfo.s2RealSize == 0) {
+            return;
+        }
+
+        LocalTensor<OUTDTYPE> dpseOutTensor = dSOutQue.AllocTensor<OUTDTYPE>();
+        Duplicate(dpseOutTensor, static_cast<OUTDTYPE>(0), VECTOR_BASEM * VECTOR_BASEN);
+        dSOutQue.EnQue(dpseOutTensor);
+        dSOutQue.DeQue<OUTDTYPE>();
+
+        int64_t dpseOffset =
+            runInfo.commonRunInfo.b1SSOffset * constInfo.commonConstInfo.n2G +
+            runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize * runInfo.commonRunInfo.actualS1Size *
+                runInfo.commonRunInfo.actualS2Size +
+            runInfo.commonRunInfo.goIdx * runInfo.commonRunInfo.actualS1Size * runInfo.commonRunInfo.actualS2Size +
+            (runInfo.commonRunInfo.s1oIdx * CUBE_BASEM + runInfo.commonRunInfo.vecCoreOffset) *
+                runInfo.commonRunInfo.actualS2Size +
+            runInfo.commonRunInfo.s2StartIdx;
+        ClearDpseBlock(dpseOutTensor, dpseOffset, runInfo.commonRunInfo.halfS1RealSize,
+                       runInfo.commonRunInfo.s2RealSize, runInfo.commonRunInfo.actualS2Size);
+        dSOutQue.FreeTensor(dpseOutTensor);
     }
 }
 
@@ -593,8 +764,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyDsToDpse(LocalTensor<CALC
         }
 
         LocalTensor<OUTDTYPE> dpseOutTensor = dSOutQue.AllocTensor<OUTDTYPE>();
-        bool needPseScale =
-            pseInfoPtr.pseType == static_cast<uint32_t>(PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE);
+        bool needPseScale = pseInfoPtr.pseType == static_cast<uint32_t>(PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE);
         if constexpr (IsSameType<OUTDTYPE, CALC_TYPE>::value) {
             if (needPseScale) {
                 Muls(dpseOutTensor, dsTensor, constInfo.scaleValue, VECTOR_BASEM * VECTOR_BASEN);
@@ -604,7 +774,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyDsToDpse(LocalTensor<CALC
         } else {
             if (needPseScale) {
                 MulsCastDpseVF<OUTDTYPE>(dpseOutTensor.GetPhyAddr(), dsTensor.GetPhyAddr(), constInfo.scaleValue,
-                                        VECTOR_BASEM * VECTOR_BASEN);
+                                         VECTOR_BASEM * VECTOR_BASEN);
             } else {
                 Cast(dpseOutTensor, dsTensor, RoundMode::CAST_ROUND, VECTOR_BASEM * VECTOR_BASEN);
             }
@@ -698,7 +868,12 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(
         }
     }
 
-    CopyDsToDpse(mm1ResTensor, constInfo, runInfo);
+    if (runInfo.isInvalidDpseBlock) {
+        // BN2S2 may intentionally execute a fully masked block for reduction. Its dpse must still be zero.
+        ClearInvalidDpseBlock(constInfo, runInfo);
+    } else {
+        CopyDsToDpse(mm1ResTensor, constInfo, runInfo);
+    }
 
     // input type fp32, no post, mov muls here
     if constexpr (IS_FP32_INPUT) {
@@ -1528,6 +1703,8 @@ TEMPLATES_DEF
 class FAGBlockVecDummy {
 public:
     __aicore__ inline void InitUbBuffer() {};
+    __aicore__ inline void ClearInvalidDpse(FagConstInfo &constInfo) {};
+    __aicore__ inline void ClearInvalidDpseBlock(FagConstInfo &constInfo, FagRunInfo &runInfo) {};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,

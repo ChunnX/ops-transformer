@@ -830,6 +830,11 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                   runInfos[taskId & 1]);
 
     for (int64_t loopIdx = 0; loopIdx < deterLoopMax + 1; loopIdx++) {
+        if (loopIdx == 0) {
+            // The compressed new-deter schedule does not enumerate invalid blocks. Clear this core's complement
+            // once in the first pipeline round so AIV MTE3 can overlap with AIC computation.
+            this->vecBlock.ClearInvalidDpse(this->constInfo);
+        }
         if (loopIdx >= nextValidLoopIdx) {
             blockInnerIdx = nextblockIdx;
             CalDeterIndex(loopIdx + 1, deterLoopMax, nextValidLoopIdx, nextblockIdx, taskId,
@@ -1109,7 +1114,17 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
     LocalTensor<CALC_TYPE> mm2ResTensor;
     bool needSyncDkMM = false;
 
+    if constexpr (IS_TND_SWIZZLE) {
+        if (remainLoopNum == 0) {
+            this->vecBlock.ClearInvalidDpse(this->constInfo);
+        }
+    }
     while (remainLoopNum > 0) { // remainLoop每次做完确定性计算减1
+        if constexpr (IS_TND_SWIZZLE) {
+            if (loopIdx == 0) {
+                this->vecBlock.ClearInvalidDpse(this->constInfo);
+            }
+        }
         blockInnerIdx = this->tilingData->s1s2BNGS1S2BlockNumList.blockStarts[this->cBlockIdx] + loopIdx;
         if (this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx] != 0) { // 有主流程需要处理的核
             if (blockInnerIdx < this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx] +
@@ -1118,6 +1133,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                     (blockInnerIdx == this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx]);
                 // 无效块跳过
                 if (!this->isLastLoop && !this->IsValid(runInfos[taskId & 1], taskId, blockInnerIdx)) {
+                    // Before the first valid block there is no look-ahead GetNextValidIdx to clear skipped blocks.
+                    if (taskId == 0) {
+                        this->vecBlock.ClearInvalidDpseBlock(this->constInfo, runInfos[taskId & 1]);
+                    }
                     loopIdx++;
                     continue;
                 }

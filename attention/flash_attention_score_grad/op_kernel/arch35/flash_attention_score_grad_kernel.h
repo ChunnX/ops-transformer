@@ -43,9 +43,8 @@ public:
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessBn2gs1s2LastVec(FagRunInfo &prevRunInfo,
-                                                                                   bool &needSyncDkMM)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessBn2gs1s2LastVec(
+    FagRunInfo &prevRunInfo, bool &needSyncDkMM)
 {
     LocalTensor<CALC_TYPE> mm1ResTensor =
         this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -160,9 +159,8 @@ FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessBn2gs1s2LastV
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2gs1s2(FagRunInfo &prevRunInfo,
-                                                                                bool &needSyncDkMM, int64_t taskId)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2gs1s2(
+    FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId)
 {
     LocalTensor<CALC_TYPE> mm2ResTensor =
         this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -311,9 +309,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2(FagRunInfo &prevRunInfo, bool &needSyncDkMM,
-                                                                           int64_t taskId)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2(
+    FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId)
 {
     LocalTensor<CALC_TYPE> mm1ResTensor =
         this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -515,6 +512,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         bool needSyncDkMM = false;
         bool needSyncDkDvFixUb = false;
         while (true) {
+            if (taskId == 0 && (IS_TND_SWIZZLE || (BaseClass::IS_NORMAL_SWIZZLE &&
+                                                   this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx))) {
+                // A direct schedule contains only valid blocks, so clear this core's invalid complement once while
+                // the AIC starts the first compute round.
+                this->vecBlock.ClearInvalidDpse(this->constInfo);
+            }
             this->isLastLoop = (blockInnerIdx == -1);
             if (taskId > 0) {
                 prevRunInfo = runInfos[(taskId + 1) & 1];
@@ -603,15 +606,23 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     nextValidBlockInnerIdx = this->GetNextValidIdx(
         runInfos[0], taskId, this->tilingData->s1s2BNGS1S2BlockNumList.blockStarts[this->cBlockIdx], curLoopIdx);
     if (nextValidBlockInnerIdx == -1) {
+        if (IS_TND_SWIZZLE ||
+            (BaseClass::IS_NORMAL_SWIZZLE && this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            this->vecBlock.ClearInvalidDpse(this->constInfo);
+        }
         return;
     }
-    
+
     blockInnerIdx = nextValidBlockInnerIdx;
     FagRunInfo prevRunInfo;
     bool needSyncDkDvFixUb = false;
     bool isLastTwoLoop = false;
     uint8_t lastTwoLoopCount = 0;
     while (true) {
+        if (taskId == 0 && (IS_TND_SWIZZLE || (BaseClass::IS_NORMAL_SWIZZLE &&
+                                               this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx))) {
+            this->vecBlock.ClearInvalidDpse(this->constInfo);
+        }
         if (taskId > 0) {
             prevRunInfo = runInfos[(taskId + 1) % PRELOAD_TIMES];
             if (likely(!this->constInfo.enablePreSfmg)) {
