@@ -34,6 +34,7 @@
 
 |    接口名   |   说明     |  确定性说明（A2/A3）  | 确定性说明（Ascend 950） |
 | ----------- | ------------------- | ------------------- | ------------------- |
+|[block_attn_res_prepare](../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_prepare.md)|完成 Attention Residuals 历史残差注意力两阶段计算的第一阶段，返回 softmax 加权分子及统计量。|-|默认支持确定性计算|
 |[block_attn_res_update](../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_update.md)|将`delta`原地累加到`partial_block`，计算更新后`partial_block`的RMSNorm score，并与历史online softmax中间状态合并，返回当前层结果`h`。|-|默认确定性实现|
 |[apply_rotary_pos_emb](../../torch_extension/cann_ops_transformer/docs/zh/apply_rotary_pos_emb.md)|融合query和key两路旋转位置编码计算，返回旋转位置编码后的query和key输出张量。|默认支持确定性计算|默认支持确定性计算|
 |[apply_rotary_pos_emb_grad](../../torch_extension/cann_ops_transformer/docs/zh/apply_rotary_pos_emb_grad.md)|执行双路旋转位置编码的反向计算，将query和key两路梯度计算融合为一次kernel调用。|-|默认支持确定性计算|
@@ -43,6 +44,7 @@
 |[dense_lightning_indexer_softmax_lse](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_softmax_lse.md)| dense场景DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。支持压缩注意力（Compressed Attention），并支持通过metadata前置算子进行分核负载均衡。需与`dense_lightning_indexer_softmax_lse_metadata`配套使用。|-|默认确定性实现|
 |[dense_lightning_indexer_softmax_lse_metadata](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_softmax_lse.md)| dense_lightning_indexer_softmax_lse接口的前置接口，用于计算dense_lightning_indexer_softmax_lse的负载均衡。|-|默认确定性实现|
 |[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)| 调用`FlashAttn`算子完成共享KV（Key和Value使用同一份输入）的非量化注意力计算，训练推理归一化。需与`flash_attn_metadata`配套使用。 | - | 默认支持确定性计算  |
+|[ffn_to_attention](../../torch_extension/cann_ops_transformer/docs/zh/ffn_to_attention.md)| 一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。 | - | 默认支持确定性计算  |
 |[get_low_latency_ccl_buffer_size](../../torch_extension/cann_ops_transformer/docs/zh/get_low_latency_ccl_buffer_size.md)|计算low_latency_dispatch/low_latency_combine所需的HCCL通信buffer_size（单位MB），为MoeDistributeBuffer的静态方法，可在初始化前调用。|默认支持确定性计算|默认支持确定性计算|
 |[grouped_matmul_activation_quant](../../torch_extension/cann_ops_transformer/docs/zh/grouped_matmul_activation_quant.md)|融合GMM、激活函数和量化算子，完成分组矩阵乘、激活和量化计算，输出量化结果及量化因子。|-|默认确定性实现|
 |[indexer_quant_cache](../../torch_extension/cann_ops_transformer/docs/zh/indexer_quant_cache.md)| 在Indexer注意力机制的Epilog阶段对KV Cache进行原地动态量化压缩更新，封装aclnnIndexerQuantCache。  |-|默认确定性实现|
