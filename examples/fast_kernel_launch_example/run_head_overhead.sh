@@ -723,12 +723,12 @@ def print_op_result(op, typ, cores, r, m, fm, s2):
     seg1 = fm.get('seg1_dist') if fm else None
     if seg1:
         print(seg_line("调度开销", "Tkick-stars", seg1['min'], seg1['mean'], seg1['max'],
-                       f"  (n={seg1['n']}, 核间无错峰)"))
+                       f"  ({seg1['n']} 个 dispatch->kick 有效配对, 核间无错峰)"))
     else:
         print(seg_line("调度开销", "Tkick-stars", None, None, None))
     if s2:
         print(seg_line("硬件头", "T0-kick", s2['min'], s2['mean'], s2['max'],
-                       f"  (n={s2['n']}, ffts 滚动采样)"))
+                       f"  ({s2['n']} 个 kick->T0 有效配对, ffts 滚动采样)"))
     else:
         print(seg_line("硬件头", "T0-kick", None, None, None, "  (无 ffts pmu 配对)"))
     print(seg_line("软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'),
@@ -739,7 +739,7 @@ def print_op_result(op, typ, cores, r, m, fm, s2):
                    m['t2_stars']))
     per = m.get('t1_stars_per_shot')
     if per and len(per) > 1:
-        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.3f}' for v in per)}  (n={m['n']} blocks)")
+        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.3f}' for v in per)}  ({m['n']} blocks, 拍间波动观测)")
     if fm:
         # launch_delay 可能为 None (A3 低频分辨率, dispatch->核启动差可能为 0)
         ld = fm['launch_delay'] if fm['launch_delay'] is not None else 0.0

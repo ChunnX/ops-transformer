@@ -45,7 +45,7 @@ class AstLogStructBean:
         return [self.func_type, self.cnt, self.head, self.task_id, self.stream_id, self.sys_cycle]
 
 
-def parse(file_path: str) -> list:
+def parse(file_path: str, quiet: bool = True) -> list:
     bean_list = []
     for name in sorted(os.listdir(file_path)):
         # 只解析 stars_soc.data.*，过滤 .done 等标记文件（空文件/非 28 字节整数倍）
@@ -59,7 +59,8 @@ def parse(file_path: str) -> list:
         if n_records == 0:
             print(f"[WARN] {name}: 大小 {file_size}B 不是 {STRUCT_SIZE}B 整数倍，跳过")
             continue
-        print(f"[INFO] 解析 {name}: {n_records} 条记录")
+        if not quiet:
+            print(f"[INFO] 解析 {name}: {n_records} 条记录")
         with open(file_name, "rb") as fd:
             context = fd.read()
             for index in range(n_records):
@@ -78,13 +79,11 @@ def main():
                         help="SYS_CNT 频率 MHz（默认 1000，A5 实测；A3 需上板标定）")
     args = parser.parse_args()
 
-    print(f"start parse: {args.path}")
+    print(f"解析 STARS 调度日志 (stars_soc.data): {args.path}")
     bean_list = parse(args.path)
-    print(f"end parse: {len(bean_list)} 条记录")
-
     dispatches = [b.sys_cycle for b in bean_list if b.func_type == 0]
     completes = [b.sys_cycle for b in bean_list if b.func_type == 1]
-    print(f"dispatch={len(dispatches)}  complete={len(completes)}")
+    print(f"共 {len(bean_list)} 条记录: dispatch(派发)={len(dispatches)}  complete(完成)={len(completes)}")
 
     header = ["func type", "cnt", "head", "task id", "stream id", "sys cnt"]
     with open(args.output, "w", newline="", encoding="utf-8") as csvfile:
@@ -92,7 +91,7 @@ def main():
         writer.writerow(header)
         for bean in bean_list:
             writer.writerow(bean.to_row())
-    print(f"CSV 输出: {args.output}")
+    print(f"明细 CSV 输出: {args.output}")
 
     # 简要统计: 成对 dispatch/complete 的 task 跨度
     if dispatches and completes:
@@ -101,7 +100,7 @@ def main():
             spans = [c - d for d, c in zip(sorted(dispatches), sorted(completes)) if c >= d]
             if spans:
                 import statistics
-                print(f"task span (dispatch->complete): mean={statistics.mean(spans):.0f} cyc "
+                print(f"task 跨度 (dispatch->complete): mean={statistics.mean(spans):.0f} cyc "
                       f"({statistics.mean(spans)/args.freq*1000:.3f} us)  min={min(spans)}  max={max(spans)}")
 
 
