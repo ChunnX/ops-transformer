@@ -149,7 +149,8 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             # D7: 输出布局默认跟随 layout_q，允许 TND→NTD 转置。
             if layout_out is not None:
                 torch._check(
-                    layout_out == layout_q or (layout_q == "TND" and layout_out == "NTD"),
+                    layout_out == layout_q
+                    or (layout_q == "TND" and layout_out == "NTD"),
                     lambda: f"layout_out must equal layout_q ({layout_q}), but got {layout_out}",
                 )
             if layout_q == "TND":
