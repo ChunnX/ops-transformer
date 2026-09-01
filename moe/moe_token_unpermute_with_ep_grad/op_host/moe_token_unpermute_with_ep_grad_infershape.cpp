@@ -29,74 +29,113 @@ static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_NUM_TWO = 2;
 static constexpr size_t DIM_NUM_ONE = 1;
 static constexpr size_t OUTPUT_INPUTGRAD_DIMNUM = 2;
+static constexpr int64_t UNKNOWN_DIM_VALUE = -1;
+static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2;
 
 namespace ops {
-static graphStatus MoeTokenUnpermuteWithEpGrad(gert::InferShapeContext* context)
+static bool CheckKnownShape(const gert::InferShapeContext *context, const gert::Shape &shape, const char *shapeName)
 {
-    constexpr int64_t UNKNOWN_RANK_DIM_VALUE_EP = -2;
-    OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenUnpermuteWithEpGrad");
-    const gert::Shape* permutedTokensShape = context->GetInputShape(INPUT_PERMUTED_TOKENS_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokensShape);
-    const gert::Shape* unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
-    const gert::Shape* rowIdMapShape = context->GetInputShape(INPUT_ROWIDMAP_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, rowIdMapShape);
-    const gert::Shape* probShape = context->GetOptionalInputShape(INPUT_PROB_IDX);
+    for (size_t idx = 0; idx < shape.GetDimNum(); ++idx) {
+        const int64_t dimValue = shape.GetDim(idx);
+        if (dimValue == UNKNOWN_DIM_VALUE || dimValue == UNKNOWN_RANK_DIM_VALUE || dimValue < 0) {
+            OP_LOGE(context->GetNodeName(),
+                    "[MoeTokenUnpermuteWithEpGrad] %s does not support dynamic shape, got dim[%zu]=%ld.", shapeName,
+                    idx, dimValue);
+            return false;
+        }
+        if (dimValue == 0) {
+            OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] %s does not support empty tensor.",
+                    shapeName);
+            return false;
+        }
+    }
+    return true;
+}
 
-    gert::Shape* permutedTokensGradShape = context->GetOutputShape(OUTPUT_PERMUTEDTOKENSGRAD_IDX);
+static graphStatus MoeTokenUnpermuteWithEpGrad(gert::InferShapeContext *context)
+{
+    OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenUnpermuteWithEpGrad");
+    const gert::Shape *permutedTokensShape = context->GetInputShape(INPUT_PERMUTED_TOKENS_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokensShape);
+    const gert::Shape *unpermutedOutputDShape = context->GetInputShape(INPUT_UNPERMUTEDOUTPUTD_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, unpermutedOutputDShape);
+    const gert::Shape *rowIdMapShape = context->GetInputShape(INPUT_ROWIDMAP_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, rowIdMapShape);
+    const gert::Shape *probShape = context->GetOptionalInputShape(INPUT_PROB_IDX);
+
+    gert::Shape *permutedTokensGradShape = context->GetOutputShape(OUTPUT_PERMUTEDTOKENSGRAD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, permutedTokensGradShape);
-    gert::Shape* probGradShape = context->GetOutputShape(OUTPUT_PROBGRAD_IDX);
+    gert::Shape *probGradShape = context->GetOutputShape(OUTPUT_PROBGRAD_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, probGradShape);
 
-    // permutedTokensGrad
-    if (Ops::Base::IsUnknownRank(*permutedTokensShape)) { // [-2]输入
-        OP_LOGD(context->GetNodeName(), "Input shape is -2, set output shape to (-2)");
-        permutedTokensGradShape->SetDim(DIM_0, UNKNOWN_RANK_DIM_VALUE_EP);
-    } else {
-        if (permutedTokensShape->GetDimNum() != DIM_NUM_TWO || unpermutedOutputDShape->GetDimNum() != DIM_NUM_TWO ||
-            rowIdMapShape->GetDimNum() != DIM_NUM_ONE) {
-            OP_LOGE(
-                context->GetNodeName(),
-                "The dim number of input must be 2, indices must be 1, but got: input %zu, indices %zu",
-                permutedTokensShape->GetDimNum(), rowIdMapShape->GetDimNum());
-            return ge::GRAPH_FAILED;
-        }
-        uint32_t inputGradDim0 = rowIdMapShape->GetDim(DIM_0);
-        uint32_t hiddenSize = unpermutedOutputDShape->GetDim(DIM_1);
-        permutedTokensGradShape->SetDimNum(OUTPUT_INPUTGRAD_DIMNUM);
-        permutedTokensGradShape->SetDim(DIM_0, inputGradDim0);
-        permutedTokensGradShape->SetDim(DIM_1, hiddenSize);
+    if (!CheckKnownShape(context, *permutedTokensShape, "permutedTokens") ||
+        !CheckKnownShape(context, *unpermutedOutputDShape, "unpermutedTokensGrad") ||
+        !CheckKnownShape(context, *rowIdMapShape, "sortedIndices")) {
+        return ge::GRAPH_FAILED;
     }
-    // probGrad
+    if (probShape != nullptr && !CheckKnownShape(context, *probShape, "probs")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (permutedTokensShape->GetDimNum() != DIM_NUM_TWO || unpermutedOutputDShape->GetDimNum() != DIM_NUM_TWO ||
+        rowIdMapShape->GetDimNum() != DIM_NUM_ONE) {
+        OP_LOGE(context->GetNodeName(),
+                "The dim number of input must be 2, indices must be 1, but got:  input %zu, indices %zu",
+                permutedTokensShape->GetDimNum(), rowIdMapShape->GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(permutedTokensShape->GetDim(DIM_0) != rowIdMapShape->GetDim(DIM_0),
+                OP_LOGE(context->GetNodeName(),
+                        "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim0 should equal sortedIndices dim0."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(permutedTokensShape->GetDim(DIM_1) != unpermutedOutputDShape->GetDim(DIM_1),
+                OP_LOGE(context->GetNodeName(),
+                        "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim1 should equal unpermutedTokensGrad dim1."),
+                return ge::GRAPH_FAILED);
     if (probShape != nullptr) {
-        OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithEpGrad: probShape is not null");
+        OP_CHECK_IF(
+            probShape->GetDimNum() != DIM_NUM_TWO,
+            OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] probs dim number should be 2, but got %zu.",
+                    probShape->GetDimNum()),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(probShape->GetDim(DIM_0) != unpermutedOutputDShape->GetDim(DIM_0),
+                    OP_LOGE(context->GetNodeName(),
+                            "[MoeTokenUnpermuteWithEpGrad] probs dim0 should equal unpermutedTokensGrad dim0."),
+                    return ge::GRAPH_FAILED);
+    }
+
+    uint32_t inputGradDim0 = rowIdMapShape->GetDim(DIM_0);
+    uint32_t hiddenSize = unpermutedOutputDShape->GetDim(DIM_1);
+    permutedTokensGradShape->SetDimNum(OUTPUT_INPUTGRAD_DIMNUM);
+    permutedTokensGradShape->SetDim(DIM_0, inputGradDim0);
+    permutedTokensGradShape->SetDim(DIM_1, hiddenSize);
+
+    if (probShape != nullptr) {
+        OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithEpGrad: probShape  is not null");
         *probGradShape = *probShape;
     } else {
-        OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithEpGrad: probShape is null");
+        OP_LOGD(context->GetNodeName(), "MoeTokenUnpermuteWithEpGrad: probShape  is null");
         probGradShape = nullptr;
     }
     OP_LOGD(context->GetNodeName(), "End to do MoeTokenUnpermuteWithEpGrad");
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType4MoeTokenUnpermuteWithEpGrad(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataType4MoeTokenUnpermuteWithEpGrad(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataType4MoeTokenUnpermuteGrad");
-    OP_LOGD(
-        context->GetNodeName(), "input input dtype: %s",
-        Ops::Base::ToString(context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX)).c_str());
+    OP_LOGD(context->GetNodeName(), "input input dtype: %s",
+            Ops::Base::ToString(context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX)).c_str());
     context->SetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX, context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX));
     context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetInputDataType(INPUT_PERMUTED_TOKENS_IDX));
     // 混精场景PROBGRAD dtype与PROB一致，与PERMUTED_TOKENS不一致
     if (context->GetOptionalInputDataType(INPUT_PROB_IDX) != ge::DT_UNDEFINED) {
         context->SetOutputDataType(OUTPUT_PROBGRAD_IDX, context->GetInputDataType(INPUT_PROB_IDX));
     }
-    OP_LOGD(
-        context->GetNodeName(), "output input_grad dtype: %s",
-        Ops::Base::ToString(context->GetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX)).c_str());
-    OP_LOGD(
-        context->GetNodeName(), "output prob_grad dtype: %s",
-        Ops::Base::ToString(context->GetOutputDataType(OUTPUT_PROBGRAD_IDX)).c_str());
+    OP_LOGD(context->GetNodeName(), "output input_grad dtype: %s",
+            Ops::Base::ToString(context->GetOutputDataType(OUTPUT_PERMUTEDTOKENSGRAD_IDX)).c_str());
+    OP_LOGD(context->GetNodeName(), "output prob_grad dtype: %s",
+            Ops::Base::ToString(context->GetOutputDataType(OUTPUT_PROBGRAD_IDX)).c_str());
     OP_LOGD(context->GetNodeName(), "End to do InferDataType4MoeTokenUnpermuteGrad");
     return ge::GRAPH_SUCCESS;
 }
