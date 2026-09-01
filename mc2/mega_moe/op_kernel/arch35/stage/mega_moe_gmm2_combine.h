@@ -528,8 +528,10 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
     }
 }
 
-// Compact A8W8 MTE wave 使用一个 counter 表示一个 expert-local 256-token group 已完成的 GMM2 N tile 数。
-// FIX_S 保证 consumer 观察到完成计数前，对应 GMM2 输出已经写入 GM。
+/*
+ * 每完成一个 GMM2 N tile，就向对应 expert-local 256-token group 的 Combine counter 发布一次通知。
+ * FIX_S 保证通知发布前，该 tile 的 GMM2 输出已经写入 GM。
+ */
 __aicore__ inline void NotifyWaveCombineGroupCompletion(uint32_t rowTileOffset, __gm__ int32_t *expertCounterBase)
 {
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
@@ -604,8 +606,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr (UsePairwiseTileCombine && !IsShared) {
-            // 与本 AIC 配对的 AIV1 使用同一 scheduler 次序。FIX 写出完成后只发布本核单调序号，
-            // 因而每个 tile 恰好一个 writer、一个 reader，不需要跨核 fan-in 或 AtomicAdd。
+            // GMM2 tile 与配对 AIV1 的 Combine tile 一对一通知。
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
