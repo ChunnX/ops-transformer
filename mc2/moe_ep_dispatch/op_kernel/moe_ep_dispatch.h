@@ -120,16 +120,17 @@ private:
     __aicore__ inline void GetRecvCount();
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
-    __aicore__ inline void DedupAndSendDirect(uint32_t tokenId, uint32_t hitStride, uint32_t copyStride);
-    __aicore__ inline void SetAddrInfoTable(uint32_t tokenId, uint32_t dstRankId, uint32_t slot, uint32_t copyStride);
-    __aicore__ inline void WriteAddrInfoTable(uint32_t copyStride, DataCopyParams &addrInfoCopyOutParams);
+    __aicore__ inline void DedupAndSendDirect(uint32_t tokenId, uint32_t hitCopyIndex, uint32_t copyCntPerRank);
     __aicore__ inline void CopyInMetaInfo(uint32_t tokenId);
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void DispatchWaitNotify();
     __aicore__ inline void CommBufferInit();
-    __aicore__ inline void SendTokenByAddrInfo(uint32_t tokenNum, uint64_t commHandle, GM_ADDR remoteWinBaseAddr,
-                                               GM_ADDR notifyAddr, GlobalTensor<uint64_t> slotAddrInfoGMTensor);
+    __aicore__ inline void SendTokenBySlotInfo(uint32_t tokenNum, uint64_t commHandle, GM_ADDR remoteWinBaseAddr,
+                                               GM_ADDR notifyAddr, GlobalTensor<int64_t> slotInfoGMTensor);
     __aicore__ inline void SendPhase();
+    __aicore__ inline void WriteTokenCnt();
+    __aicore__ inline void WriteHitInfoTable(uint32_t copyCntPerRank, uint32_t hitCopyIndex,
+                                             uint32_t hitCopyOffset);
     __aicore__ inline void GetSlotStartNum();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
@@ -152,7 +153,6 @@ private:
     GlobalTensor<int32_t> metaSlotGMTensor_;
     GlobalTensor<XType> localSlotGMTensor_;
     GlobalTensor<ScalesType> scalesGMTensor_;
-    GlobalTensor<uint64_t> addrInfoTableGMTensor_;
     GlobalTensor<uint64_t> payloadStatusGMTensor_;
 
     LocalTensor<int32_t> topkIdxTensor_;
@@ -167,7 +167,6 @@ private:
     LocalTensor<int32_t> dstRankTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<uint8_t> hcommBatchTensor_;
-    LocalTensor<uint64_t> slotAddrInfoTensor_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tokenSlotQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> metaSlotQueue_;
@@ -186,7 +185,8 @@ private:
     GM_ADDR hostPinnedCounterAddrGM_{nullptr};
     GM_ADDR scaleupCounterAddr_{nullptr};
     GM_ADDR sendCntWorkspaceAddr_{nullptr};
-    GM_ADDR slotInfoWorkspaceAddr_{nullptr};
+    GM_ADDR coreTokenCntAddr_{nullptr};
+    GM_ADDR hitPerRankWorkspaceAddr_{nullptr};
     GM_ADDR localCntStateWinAddr_{nullptr};
     GM_ADDR localSlotStateWinAddr_{nullptr};
     GM_ADDR localWinAddr_{nullptr};
@@ -231,6 +231,9 @@ private:
     uint32_t cntFlagWinSize_{0};
     uint32_t dispatchNotifyCount_{1};
     uint32_t topkCopyAlign_{0};
+    uint32_t tokenHitPerCoreBytes_{0}; // 每核 hit 表分片字节数（512B 对齐）
+    uint32_t tokenHitPerRankBytes_{0}; // 单 rank 完整 hit 表字节数 = aivNum * tokenHitPerCoreBytes_
+    uint32_t perCoreTokenAlign_{0}; // ceil(nmt/aivNum) 按 WIN_ADDR_ALIGN 对齐后的 int64 数
     uint64_t cntWinStateOffset_{0};
     uint64_t slotWinStateOffset_{0};
     uint64_t payloadWinStateOffset_{0};
@@ -273,6 +276,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     perSlotBytes_ = info.perSlotBytes;
     metaSlotBytes_ = info.metaSlotBytes;
     aivNum_ = info.aivNum;
+    tokenHitPerCoreBytes_ = info.workspace.tokenHitPerCoreBytes;
     cntWinStateOffset_ = info.window.cntWinStateOffset;
     slotWinStateOffset_ = info.window.slotWinStateOffset;
     payloadWinStateOffset_ = info.window.payloadWinStateOffset;
@@ -298,6 +302,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     cntFlagWinSize_ = epWorldSize_ * WIN_ADDR_ALIGN;
     dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_; // 目标窗口地址偏移
+    tokenHitPerRankBytes_ = aivNum_ * tokenHitPerCoreBytes_;
+    perCoreTokenAlign_ = tokenHitPerCoreBytes_ / sizeof(int64_t);
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -338,7 +344,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
         (__gm__ int32_t *)(sendCntWorkspaceAddr_ + epWorldSize_ * WIN_ADDR_ALIGN));
     metaSlotGMTensor_.SetGlobalBuffer((__gm__ int32_t *)payloadStashWinAddr_);
     payloadStatusGMTensor_.SetGlobalBuffer((__gm__ uint64_t *)payloadStashStateWinAddr_);
-    slotInfoWorkspaceAddr_ = sendCntWorkspaceAddr_ + cntFlagWinSize_ + moeExpertNumAlign512_;
+    coreTokenCntAddr_ = sendCntWorkspaceAddr_ + cntFlagWinSize_ + moeExpertNumAlign512_;
+    hitPerRankWorkspaceAddr_ = coreTokenCntAddr_ + static_cast<uint64_t>(aivNum_) * WIN_ADDR_ALIGN;
     localSlotWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_) + dstRankWinOffset_;
 }
 
@@ -682,22 +689,44 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
 
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void
-MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSendDirect(uint32_t tokenId, uint32_t hitStride, uint32_t copyStride)
+MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSendDirect(uint32_t tokenId, uint32_t hitCopyIndex,
+                                                                  uint32_t copyCntPerRank)
 {
     for (uint32_t k = 0; k < axisK_; k++) {
-        int32_t expertId = topkIdxTensor_.GetValue(k);
-        int32_t dstRankId = dstRankTensor_.GetValue(k);
-        int32_t hit = (expertId < 0) ? -1 : hitPerRankTensor_.GetValue(hitStride + dstRankId);
-        if ((hit >= 0) || (expertId < 0)) {
-            dstSlotIdxTensor_.SetValue(k, hit);
-            continue;
+        uint32_t dstRankId = static_cast<uint32_t>(dstRankTensor_.GetValue(k));
+        uint32_t hitOffset = dstRankId * copyCntPerRank + hitCopyIndex;
+        int32_t slot;
+        if constexpr (!IsCached) {
+            int32_t expertId = topkIdxTensor_.GetValue(k);
+            int32_t hit = (expertId < 0) ? -1 : hitPerRankTensor_.GetValue(hitOffset);
+            if ((hit >= 0) || (expertId < 0)) {
+                dstSlotIdxTensor_.SetValue(k, hit);
+                continue;
+            }
+            slot = slotIdxPerRankTensor_.GetValue(dstRankId);
+            dstSlotIdxTensor_.SetValue(k, slot);
+            hitPerRankTensor_.SetValue(hitOffset, slot);
+            slotIdxPerRankTensor_.SetValue(dstRankId, slot + 1);
+        } else {
+            slot = dstSlotIdxTensor_.GetValue(k);
+            if ((slot == -1) || (hitPerRankTensor_.GetValue(hitOffset) == slot)) {
+                continue;
+            }
+            hitPerRankTensor_.SetValue(hitOffset, slot);
         }
-
-        int32_t slot = slotIdxPerRankTensor_.GetValue(dstRankId);
-        dstSlotIdxTensor_.SetValue(k, slot);
-        hitPerRankTensor_.SetValue(hitStride + dstRankId, slot);
-        slotIdxPerRankTensor_.SetValue(dstRankId, slot + 1);
-        SetAddrInfoTable(tokenId, dstRankId, slot, copyStride);
+        // 本卡 token 直接写 receive window，远端 token 记录 hit 表由发送阶段统一发送。
+        if (unlikely(dstRankId == epRankId_)) {
+            localSlotGMTensor_.SetGlobalBuffer(
+                (__gm__ XType *)(localSlotWinAddr_ + static_cast<uint64_t>(slot) * perSlotBytes_));
+            DataCopyPad(localSlotGMTensor_[hAlignSize_ / sizeof(XType)].template ReinterpretCast<int32_t>(),
+                        metaLocalTensor_, metaSlotCopyParams_);
+            LocalTensor<XType> tokenSlotTensor = tokenSlotQueue_.AllocTensor<XType>();
+            DataCopyPad(tokenSlotTensor, xGMTensor_[tokenId * axisH_], xCopyParams_, padParams_);
+            tokenSlotQueue_.EnQue(tokenSlotTensor);
+            tokenSlotTensor = tokenSlotQueue_.DeQue<XType>();
+            DataCopyPad(localSlotGMTensor_, tokenSlotTensor, xCopyParams_);
+            tokenSlotQueue_.FreeTensor<XType>(tokenSlotTensor);
+        }
     }
 }
 
@@ -720,57 +749,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CopyInMetaI
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void
-MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetAddrInfoTable(uint32_t tokenId, uint32_t dstRankId, uint32_t slot,
-                                                               uint32_t copyStride)
-{
-    if (unlikely(dstRankId == epRankId_)) {
-        localSlotGMTensor_.SetGlobalBuffer(
-            (__gm__ XType *)(localSlotWinAddr_ + static_cast<uint64_t>(slot) * perSlotBytes_));
-        DataCopyPad(localSlotGMTensor_[hAlignSize_ / sizeof(XType)].template ReinterpretCast<int32_t>(),
-                    metaLocalTensor_, metaSlotCopyParams_);
-        LocalTensor<XType> tokenSlotTensor = tokenSlotQueue_.AllocTensor<XType>();
-        DataCopyPad(tokenSlotTensor, xGMTensor_[tokenId * axisH_], xCopyParams_, padParams_);
-        tokenSlotQueue_.EnQue(tokenSlotTensor);
-        tokenSlotTensor = tokenSlotQueue_.DeQue<XType>();
-        DataCopyPad(localSlotGMTensor_, tokenSlotTensor, xCopyParams_);
-        tokenSlotQueue_.FreeTensor<XType>(tokenSlotTensor);
-        return;
-    }
-    uint32_t offset = dstRankId * copyStride;
-    uint64_t cnt = slotAddrInfoTensor_.GetValue(offset + 2);
-    slotAddrInfoTensor_.SetValue(offset + cnt * INT64_UB_STRIDE, static_cast<uint64_t>(tokenId));
-    slotAddrInfoTensor_.SetValue(offset + cnt * INT64_UB_STRIDE + 1, static_cast<uint64_t>(slot) * perSlotBytes_);
-    if (cnt == 0) {
-        slotAddrInfoTensor_.SetValue(offset + 3, static_cast<uint64_t>(slot));
-    }
-    slotAddrInfoTensor_.SetValue(offset + 2, cnt + 1);
-}
-
-template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteAddrInfoTable(
-    uint32_t copyStride, DataCopyParams &addrInfoCopyOutParams)
-{
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    for (uint32_t rankId = 0; rankId < epWorldSize_; rankId++) {
-        if (rankId == epRankId_) {
-            continue;
-        }
-        uint32_t offset = rankId * copyStride;
-        uint64_t cnt = slotAddrInfoTensor_.GetValue(offset + 2);
-        if (cnt == 0) {
-            continue;
-        }
-        uint64_t hit = slotAddrInfoTensor_.GetValue(offset + 3);
-        addrInfoCopyOutParams.blockCount = static_cast<uint16_t>(cnt);
-        addrInfoTableGMTensor_.SetGlobalBuffer(
-            (__gm__ uint64_t *)(slotInfoWorkspaceAddr_ +
-             (static_cast<uint64_t>(rankId) * axisMaxBS_ + hit) * WIN_ADDR_ALIGN));
-        DataCopy(addrInfoTableGMTensor_, slotAddrInfoTensor_[offset], addrInfoCopyOutParams);
-    }
-}
-
-template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferInit()
 {
     PipeBarrier<PIPE_ALL>();
@@ -786,6 +764,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferI
     // ub buffer init
     tpipe_->InitBuffer(sendCntRankBuf_, rankNumPerCore_ * UB_ALIGN);
     tpipe_->InitBuffer(tempBuf_, MAX_BATCH_SIZE);
+    tpipe_->InitBuffer(dstExpBuf_, aivNum_ * UB_ALIGN);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -796,6 +775,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         return;
     }
 
+    GlobalTensor<int64_t> slotInfoGMTensor;
     LocalTensor<int32_t> sendNumPerRankTensor = sendCntRankBuf_.Get<int32_t>();
     DataCopyParams sendCntCopyParams = {static_cast<uint16_t>(rankNumPerCore_), 1U,
                                         static_cast<uint16_t>(STATE_STRIDE), 0U};
@@ -819,51 +799,75 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
 
         uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId);
         GM_ADDR remoteWinBaseAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_;
-        if (sendTokenNum == 0) {
-            hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, payloadStashStateWinAddr_,
-                                                               WIN_ADDR_ALIGN);
-            continue;
-        }
-        GlobalTensor<uint64_t> slotAddrInfoGMTensor;
-        slotAddrInfoGMTensor.SetGlobalBuffer((__gm__ uint64_t *)(slotInfoWorkspaceAddr_ +
-            static_cast<uint64_t>(dstRankId) * axisMaxBS_ * WIN_ADDR_ALIGN));
-        SendTokenByAddrInfo(sendTokenNum, commHandle, remoteWinBaseAddr, notifyAddr, slotAddrInfoGMTensor);
+        slotInfoGMTensor.SetGlobalBuffer((__gm__ int64_t *)(hitPerRankWorkspaceAddr_ +
+            static_cast<uint64_t>(dstRankId) * tokenHitPerRankBytes_));
+        SendTokenBySlotInfo(sendTokenNum, commHandle, remoteWinBaseAddr, notifyAddr, slotInfoGMTensor);
     }
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenByAddrInfo(
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBySlotInfo(
     uint32_t tokenNum, uint64_t commHandle, GM_ADDR remoteWinBaseAddr, GM_ADDR notifyAddr,
-    GlobalTensor<uint64_t> slotAddrInfoGMTensor)
+    GlobalTensor<int64_t> slotInfoGMTensor)
 {
-    uint32_t processed = 0;
+    uint32_t blockIndex = 0;
     uint32_t commCnt = 0;
-    uint32_t maxBatchCnt = MAX_BATCH_SIZE / UB_ALIGN;
-    uint32_t winStride = WIN_ADDR_ALIGN / sizeof(uint64_t);
+    uint32_t maxBatchAivCnt = MAX_BATCH_SIZE / tokenHitPerCoreBytes_;
     uint32_t tokenSize = axisH_ * sizeof(XType);
-    LocalTensor<uint64_t> commInfoTensor = tempBuf_.Get<uint64_t>();
-    DataCopyParams addrCopyParams = {0U, 1U, static_cast<uint16_t>(STATE_STRIDE), 0U};
+    if (tokenNum == 0) {
+        hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(commHandle, notifyAddr, payloadStashStateWinAddr_,
+                                                           WIN_ADDR_ALIGN);
+        return;
+    }
+    uint32_t blockCnt = aivNum_;
+    DataCopyExtParams commInfoCopyParams = {1U, 0U, 0U, 0U, 0U};
+    DataCopyPadExtParams<int64_t> commInfoPadParams = {false, 0U, 0U, 0};
+    DataCopyParams cntCopyParams = {static_cast<uint16_t>(blockCnt), 1U, static_cast<uint16_t>(STATE_STRIDE), 0U};
+    LocalTensor<int64_t> commInfoTensor = tempBuf_.Get<int64_t>();
+    LocalTensor<uint32_t> coreTokenCntTensor = dstExpBuf_.Get<uint32_t>();
+    GlobalTensor<uint32_t> cntGMTensor;
+    cntGMTensor.SetGlobalBuffer((__gm__ uint32_t *)coreTokenCntAddr_);
+    DataCopy(coreTokenCntTensor, cntGMTensor, cntCopyParams);
     auto batchHandle = hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES,
                                               remoteWinBaseAddr);
-    while (processed < tokenNum) {
-        uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
-        addrCopyParams.blockCount = static_cast<uint16_t>(batchCnt);
-        DataCopy(commInfoTensor, slotAddrInfoGMTensor[processed * winStride], addrCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        for (uint32_t i = 0; i < batchCnt; i++) {
-            uint64_t srcTokenId =  commInfoTensor.GetValue(i * INT64_UB_STRIDE);
-            GM_ADDR remoteWinAddr = remoteWinBaseAddr + commInfoTensor.GetValue(i * INT64_UB_STRIDE + 1);
-            hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr, xAddr_ + srcTokenId * tokenSize, tokenSize);
-            hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr + hAlignSize_,
-                                      payloadStashWinAddr_ + srcTokenId * metaSlotBytesAlign512_, metaSlotBytes_);
-            processed++;
-            commCnt++;
-            if (commCnt ==  HCOMM_BATCH_CAPACITY) {
-                hcomm_.BatchCommit(batchHandle);
-                commCnt = 0;
+    while (blockIndex < blockCnt) {
+        uint32_t batchAivCnt = (blockCnt - blockIndex > maxBatchAivCnt) ? maxBatchAivCnt : blockCnt - blockIndex;
+        uint32_t srcStride = blockIndex * perCoreTokenAlign_;
+        commInfoCopyParams.blockLen = static_cast<uint32_t>(batchAivCnt * tokenHitPerCoreBytes_);
+        DataCopyPad(commInfoTensor, slotInfoGMTensor[srcStride], commInfoCopyParams, commInfoPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Muls(commInfoTensor, commInfoTensor, static_cast<int64_t>(perSlotBytes_), batchAivCnt * perCoreTokenAlign_);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        for (uint32_t index = 0; index < batchAivCnt; index++) {
+            uint32_t tokenCnt = coreTokenCntTensor.GetValue(blockIndex * UB_STRIDE + 1);
+            if (tokenCnt == 0) {
+                blockIndex++;
+                continue;
             }
+            uint32_t startTokenId = coreTokenCntTensor.GetValue(blockIndex * UB_STRIDE);
+            uint32_t aivOffset = index * perCoreTokenAlign_;
+            for (uint32_t i = 0; i < tokenCnt; i++) {
+                int64_t dstOffset = commInfoTensor.GetValue(aivOffset + i);
+                if (dstOffset < 0) {
+                    continue;
+                }
+                uint32_t globalTokenId = startTokenId + i;
+                GM_ADDR remoteWinAddr = remoteWinBaseAddr + static_cast<uint64_t>(dstOffset);
+                hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr,
+                                          xAddr_ + static_cast<uint64_t>(globalTokenId) * tokenSize, tokenSize);
+                hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr + hAlignSize_,
+                                          payloadStashWinAddr_ +
+                                          static_cast<uint64_t>(globalTokenId) * metaSlotBytesAlign512_,
+                                          metaSlotBytes_);
+                commCnt++;
+                if (commCnt == HCOMM_BATCH_CAPACITY) {
+                    hcomm_.BatchCommit(batchHandle);
+                    commCnt = 0;
+                }
+            }
+            blockIndex++;
         }
-        if (processed < tokenNum) {
+        if (blockIndex < blockCnt) {
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
     }
@@ -937,32 +941,62 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStar
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteTokenCnt()
+{
+    GlobalTensor<uint32_t> cntGMTensor;
+    cntGMTensor.SetGlobalBuffer(
+        (__gm__ uint32_t *)(coreTokenCntAddr_ + static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN));
+    LocalTensor<uint32_t> tokenCntTensor = dstExpBuf_.GetWithOffset<uint32_t>(UB_STRIDE, 0);
+    Duplicate<uint32_t>(tokenCntTensor, 0, UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    tokenCntTensor.SetValue(0, startTokenId_);
+    tokenCntTensor.SetValue(1, endTokenId_ - startTokenId_);
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopy(cntGMTensor, tokenCntTensor, UB_STRIDE);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteHitInfoTable(uint32_t copyCntPerRank,
+    uint32_t hitCopyIndex, uint32_t hitCopyOffset)
+{
+    uint32_t copyBlockLen = hitCopyIndex * sizeof(int64_t);
+    LocalTensor<int64_t> slotInfoTensor = topkIdsBuf_.Get<int64_t>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Cast(slotInfoTensor, hitPerRankTensor_, RoundMode::CAST_NONE, epWorldSize_ * copyCntPerRank);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    GlobalTensor<int64_t> hitInfoGMTensor;
+    hitInfoGMTensor.SetGlobalBuffer((__gm__ int64_t *)(hitPerRankWorkspaceAddr_ +
+        static_cast<uint64_t>(aivId_) * tokenHitPerCoreBytes_ + hitCopyOffset));
+    DataCopyExtParams hitInfoCopyOutParams = {static_cast<uint16_t>(epWorldSize_), copyBlockLen,
+        static_cast<uint32_t>((copyCntPerRank * sizeof(int64_t) - copyBlockLen) / UB_ALIGN),
+        static_cast<uint32_t>(tokenHitPerRankBytes_ - copyBlockLen), 0U};
+    DataCopyPad(hitInfoGMTensor, slotInfoTensor, hitInfoCopyOutParams);
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 {
+    WriteTokenCnt(); // 保存每个核处理的startId和tokenCnt
     if (startTokenId_ >= axisBS_) {
         return;
     }
 
     uint32_t perSlotStride = metaSlotBytesAlign512_ / sizeof(int32_t);
     uint32_t metaOffset = topkCopyAlign_ + 2 * axisKAlign_;
-    uint32_t addrCopyCnt = perGroupSizeAlign_ / (epWorldSize_ * UB_ALIGN);
-    uint32_t addrCopyStride = addrCopyCnt * INT64_UB_STRIDE;
-    uint32_t hitStride = 0;
-    uint32_t hitStrideStep = epWorldSizeAlign_ / sizeof(int32_t);
-    DataCopyParams addrInfoCopyOutParams = {0U, 1U, 0U, static_cast<uint16_t>(STATE_STRIDE)};
-    LocalTensor<int32_t> divsTensor = topkIdsBuf_.GetWithOffset<int32_t>(axisKAlign_, 0);
-    dstRankTensor_ = topkIdsBuf_.GetWithOffset<int32_t>(axisKAlign_, kAlignSize_);
-    hitPerRankTensor_ = dstExpBuf_.Get<int32_t>();
-    slotAddrInfoTensor_ = tempBuf_.Get<uint64_t>();
+    uint32_t copyCntPerRank = perGroupSizeAlign_ / epWorldSize_ / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN / sizeof(int32_t);
+    uint32_t hitCopyIndex = 0;
+    uint32_t hitCopyOffset = 0;
+    LocalTensor<int32_t> divsTensor = dstExpBuf_.GetWithOffset<int32_t>(axisKAlign_, UB_ALIGN);
+    dstRankTensor_ = dstExpBuf_.GetWithOffset<int32_t>(axisKAlign_, kAlignSize_ + UB_ALIGN);
+    hitPerRankTensor_ = tempBuf_.Get<int32_t>();
     SyncFunc<AscendC::HardEvent::MTE3_V>();
     Duplicate<int32_t>(divsTensor, moeExpertNumPerRank_, axisKAlign_);
 
     CopyInMetaInfo(startTokenId_);
     for (uint32_t tokenId = startTokenId_; tokenId < endTokenId_; ++tokenId) {
         uint32_t topkOffset = tokenId * axisK_;
-        uint32_t addrIndex = (tokenId - startTokenId_) % addrCopyCnt;
         metaLocalTensor_ = metaSlotQueue_.DeQue<int32_t>();
-        // SyncFunc<AscendC::HardEvent::MTE2_S>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         metaLocalTensor_.SetValue(metaOffset, epRankId_);
         metaLocalTensor_.SetValue(metaOffset + 1, tokenId);
         topkIdxTensor_ = metaLocalTensor_[topkCopyAlign_];
@@ -971,9 +1005,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         }
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(metaSlotGMTensor_[tokenId * perSlotStride], metaLocalTensor_, metaSlotCopyParams_);
-        if (addrIndex == 0) {
-            hitStride = 0;
-            Duplicate<uint64_t>(slotAddrInfoTensor_, 0, perGroupSizeAlign_ / sizeof(uint64_t));
+        if (hitCopyIndex == 0) {
             Duplicate<int32_t>(hitPerRankTensor_, -1, perGroupSizeAlign_ / sizeof(int32_t));
         }
         dstSlotIdxTensor_ = dstSlotQueue_.AllocTensor<int32_t>();
@@ -981,7 +1013,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         SyncFunc<AscendC::HardEvent::V_S>();
 
         if constexpr (!IsCached) {
-            DedupAndSendDirect(tokenId, hitStride, addrCopyStride);
+            DedupAndSendDirect(tokenId, hitCopyIndex, copyCntPerRank);
             dstSlotQueue_.EnQue(dstSlotIdxTensor_);
             dstSlotIdxTensor_ = dstSlotQueue_.DeQue<int32_t>();
         } else {
@@ -989,27 +1021,18 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
             dstSlotQueue_.EnQue(dstSlotIdxTensor_);
             dstSlotIdxTensor_ = dstSlotQueue_.DeQue<int32_t>();
             SyncFunc<AscendC::HardEvent::MTE2_S>();
-            for (uint32_t k = 0; k < axisK_; k++) {
-                int32_t slot = dstSlotIdxTensor_.GetValue(k);
-                if (slot == -1) {
-                    continue;
-                }
-                int32_t dstRankId = dstRankTensor_.GetValue(k);
-                if (hitPerRankTensor_.GetValue(hitStride + dstRankId) == slot) {
-                    continue;
-                }
-                SetAddrInfoTable(tokenId, dstRankId, static_cast<uint32_t>(slot), addrCopyStride);
-                hitPerRankTensor_.SetValue(hitStride + dstRankId, slot);
-            }
+            DedupAndSendDirect(tokenId, hitCopyIndex, copyCntPerRank);
         }
         DataCopyPad(dstSlotIdxGMTensor_[topkOffset], dstSlotIdxTensor_, topkCopyParams_);
-        if ((addrIndex == addrCopyCnt - 1) || (tokenId == endTokenId_ - 1)) {
-            WriteAddrInfoTable(addrCopyStride, addrInfoCopyOutParams);
+        hitCopyIndex++;
+        if ((hitCopyIndex == copyCntPerRank) || (tokenId == endTokenId_ - 1)) {
+            WriteHitInfoTable(copyCntPerRank, hitCopyIndex, hitCopyOffset);
             SyncFunc<AscendC::HardEvent::MTE3_V>();
+            hitCopyOffset += hitCopyIndex * sizeof(int64_t);
+            hitCopyIndex = 0;
         }
         metaSlotQueue_.FreeTensor<int32_t>(metaLocalTensor_);
         dstSlotQueue_.FreeTensor<int32_t>(dstSlotIdxTensor_);
-        hitStride += hitStrideStep;
     }
 }
 
