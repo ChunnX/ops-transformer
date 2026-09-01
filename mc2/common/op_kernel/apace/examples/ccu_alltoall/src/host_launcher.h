@@ -19,7 +19,7 @@
  *   - dtype 校验 INT8 → FP16
  *
  * ⚠️ 依赖前置符号（由 .asc 在 include 本文件之前定义；调整 .asc 前文顺序时须保证仍在场）：
- *   宏：     HCCLCHECK / CHK_PTR_NULL / ACLCHECK
+ *   宏：     HCCLCHECK / CHK_PTR_NULL
  *   常量：   SIZE_TABLE / DIE_ID / MAX_COMMTURN / HCOMM_HOST_TASK_ARG_NUM / CCU_MEMSLICES_PER_LOOP /
  *            CCU_LOCAL_COPY_LOOP_COUNT / CCU_MS_INTERLEAVE / CCU_MS_SIZE
  *   类型：   CcuMappedAddrs / A2aGoSize / CcuKernelArgAllToAllMesh1D / LoopGroupConfig /
@@ -200,17 +200,25 @@ inline HcclResult ComputeAndCopyOffsets(AllToAllContext &ctx)
         ctx.sliceSizes[r] = subBytes;
     }
 
+    // 注意：本函数返回 HcclResult，aclxx 失败须转 HCCL_E_INTERNAL（ACLCHECK 宏会 return
+    // aclError，类型不兼容——AG 原版即用此局部变量模式）
     const uint64_t bytes = ctx.commTurn * sizeof(uint64_t);
     void *dSrcOffsets = nullptr;
-    ACLCHECK(aclrtMalloc(&dSrcOffsets, bytes, ACL_MEM_MALLOC_HUGE_ONLY));
     void *dDstOffsets = nullptr;
-    ACLCHECK(aclrtMalloc(&dDstOffsets, bytes, ACL_MEM_MALLOC_HUGE_ONLY));
     void *dSliceSizes = nullptr;
-    ACLCHECK(aclrtMalloc(&dSliceSizes, bytes, ACL_MEM_MALLOC_HUGE_ONLY));
+    aclError aclRet = aclrtMalloc(&dSrcOffsets, bytes, ACL_MEM_MALLOC_HUGE_ONLY);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtMalloc(&dDstOffsets, bytes, ACL_MEM_MALLOC_HUGE_ONLY);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtMalloc(&dSliceSizes, bytes, ACL_MEM_MALLOC_HUGE_ONLY);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
 
-    ACLCHECK(aclrtMemcpy(dSrcOffsets, bytes, ctx.srcOffsets, bytes, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACLCHECK(aclrtMemcpy(dDstOffsets, bytes, ctx.dstOffsets, bytes, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACLCHECK(aclrtMemcpy(dSliceSizes, bytes, ctx.sliceSizes, bytes, ACL_MEMCPY_HOST_TO_DEVICE));
+    aclRet = aclrtMemcpy(dSrcOffsets, bytes, ctx.srcOffsets, bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtMemcpy(dDstOffsets, bytes, ctx.dstOffsets, bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtMemcpy(dSliceSizes, bytes, ctx.sliceSizes, bytes, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
 
     ctx.d_srcOffsetsAddr = reinterpret_cast<uint64_t>(dSrcOffsets);
     ctx.d_dstOffsetsAddr = reinterpret_cast<uint64_t>(dDstOffsets);
@@ -224,16 +232,20 @@ inline HcclResult ComputeAndCopyOffsets(AllToAllContext &ctx)
 // ----------------------------------------------------------------------------
 inline HcclResult ReleaseA2aContext(AllToAllContext &ctx)
 {
+    aclError aclRet = ACL_SUCCESS;
     if (ctx.d_srcOffsetsAddr) {
-        ACLCHECK(aclrtFree(reinterpret_cast<void *>(ctx.d_srcOffsetsAddr)));
+        aclRet = aclrtFree(reinterpret_cast<void *>(ctx.d_srcOffsetsAddr));
+        if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
         ctx.d_srcOffsetsAddr = 0;
     }
     if (ctx.d_dstOffsetsAddr) {
-        ACLCHECK(aclrtFree(reinterpret_cast<void *>(ctx.d_dstOffsetsAddr)));
+        aclRet = aclrtFree(reinterpret_cast<void *>(ctx.d_dstOffsetsAddr));
+        if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
         ctx.d_dstOffsetsAddr = 0;
     }
     if (ctx.d_sliceSizesAddr) {
-        ACLCHECK(aclrtFree(reinterpret_cast<void *>(ctx.d_sliceSizesAddr)));
+        aclRet = aclrtFree(reinterpret_cast<void *>(ctx.d_sliceSizesAddr));
+        if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
         ctx.d_sliceSizesAddr = 0;
     }
     if (ctx.insHandle) {

@@ -112,9 +112,11 @@ static HcclResult RunA2aOnce(HcclComm hcclComm, aclrtStream streamAicore, aclrtS
     HCCLCHECK(AllToAllCustom(sendBuf, recvBuf, sendCount, HCCL_DATA_TYPE_FP16,
         hcclComm, streamAicore, streamCcu, commTurn, a2aCtx));
 
-    // 同步双流，等待通信完成
-    ACLCHECK(aclrtSynchronizeStream(streamAicore));
-    ACLCHECK(aclrtSynchronizeStream(streamCcu));
+    // 同步双流，等待通信完成（本函数返回 HcclResult，aclxx 失败须转 HCCL_E_INTERNAL）
+    aclError aclRet = aclrtSynchronizeStream(streamAicore);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
+    aclRet = aclrtSynchronizeStream(streamCcu);
+    if (aclRet != ACL_SUCCESS) { return HCCL_E_INTERNAL; }
 
     // 释放 CCU 资源（与 PrepareAllToAll 的分配配对）
     return ReleaseA2aContext(a2aCtx);
@@ -389,7 +391,7 @@ int main(int argc, char *argv[])
     }
 
     ACLCHECK(aclrtFreeHost(rootInfoBuf));
-    ACLCHECK(aclrtFinalize());
+    ACLCHECK(aclFinalize());
 
     // ---- 聚合各 rank 结果：任一失败 → 进程退出码非 0（run.sh set -e 依赖）----
     int finalRet = 0;
