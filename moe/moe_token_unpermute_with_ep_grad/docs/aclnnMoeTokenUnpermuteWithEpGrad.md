@@ -333,38 +333,22 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 ## 约束说明
 
-- Shape约束：
-  - unpermutedTokensGrad仅支持2维，shape为(tokens_num, hidden_size)。
-  - sortedIndices仅支持1维，shape为(tokens_num * topK)。
-  - permutedTokensOptional传入时仅支持2维，shape为(tokens_num * topK, hidden_size)，第0维需要等于sortedIndices第0维，第1维需要等于hidden_size。
-  - probsOptional传入时仅支持2维，shape为(tokens_num, topK)，第0维需要等于unpermutedTokensGrad第0维；probsOptional不传入时，以topkNum作为有效topK，默认值为1。
-  - permutedTokensGradOut仅支持2维，shape为(tokens_num * topK, hidden_size)；probsGradOut仅支持2维，probsOptional传入时shape与probsOptional一致。
-  - 不支持broadcast，各输入、输出shape需要按照上述规则显式匹配。
+- 确定性说明：aclnnMoeTokenUnpermuteWithEpGrad默认确定性实现。
 
-- 数据类型与格式约束：
-  - unpermutedTokensGrad、permutedTokensOptional、permutedTokensGradOut支持BFLOAT16、FLOAT16、FLOAT32，且permutedTokensOptional传入时需要与unpermutedTokensGrad数据类型一致，permutedTokensGradOut与unpermutedTokensGrad数据类型一致。
-  - probsOptional、probsGradOut支持BFLOAT16、FLOAT16、FLOAT32；probsOptional传入时，probsGradOut与probsOptional数据类型一致。
-  - sortedIndices仅支持INT32。
-  - 所有Tensor仅支持ND格式，不支持其他数据格式。
-  - 传入上述范围外的数据类型或数据格式时，第一段接口返回错误。
+- Shape匹配约束：不支持broadcast，各输入、输出shape需显式匹配。permutedTokensOptional传入时其第0维需等于sortedIndices第0维、第1维需等于unpermutedTokensGrad第1维（hidden_size）；probsOptional传入时其第0维需等于unpermutedTokensGrad第0维（tokens_num）；permutedTokensGradOut第0维需等于sortedIndices第0维、第1维需等于hidden_size；probsOptional传入时probsGradOut需与probsOptional一致。
 
-- 动态shape约束：
-  - aclnn通路当前不支持以-1表示未知维度，也不支持以-2表示未知rank；调用第一段接口时，各输入、输出shape需要为确定shape。
+- 有效topK约束：probsOptional传入时有效topK为probsOptional第2维，probsOptional不传入时有效topK为topkNum（默认1），有效topK取值范围为[1, 512]。
 
-- 维度与参数值域约束：
-  - 仅支持上述固定rank，不支持9维等非约定维度场景。
-  - 有效topK取值范围为[1, 512]。probsOptional传入时，有效topK为probsOptional第2维；probsOptional不传入时，有效topK为topkNum。
-  - tokens_num、hidden_size、有效topK、num_out_tokens需要大于0；空Tensor约束见下文。
-  - paddedMode当前仅支持false。
-  - restoreShapeOptional当前仅支持nullptr。
-  - rangeOptional支持nullptr或长度为2的aclIntArray。rangeOptional为nullptr或取值为{-1, -1}时不生效；生效时表示左闭右开区间[start, end)，要求归一化后的start <= end，且会被裁剪到[0, tokens_num * topK]范围内。
-  - sortedIndices元素取值范围为[0, tokens_num * topK - 1]；设置rangeOptional时，仅range范围内的索引参与写入。
+- rangeOptional约束：支持nullptr（不生效，全程处理）或长度为2的aclIntArray。传入时支持负值（按tokens_num * topK归一化），会被裁剪到[0, tokens_num * topK]范围内，表示左闭右开区间[start, end)，要求归一化后start <= end，且仅该范围内sortedIndices元素参与写入。
 
-- 空Tensor约束：
-  - 当tokens_num、hidden_size、有效topK或num_out_tokens为0时为空Tensor场景。除支持空Tensor快速返回的产品外，当前不支持空Tensor，第一段接口返回错误；支持空Tensor快速返回的产品上不进行有效计算，workspaceSize为0。
+- 空Tensor约束：当tokens_num、hidden_size或有效topK为0时为空Tensor场景。
 
-- 确定性计算：
-  - aclnnMoeTokenUnpermuteWithEpGrad默认确定性实现。
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor，第一段接口快速返回，workspaceSize为0，不进行有效计算。
+<!-- end id7 -->
+<!-- npu="A3,910b" id8 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持空Tensor，第一段接口返回错误。
+<!-- end id8 -->
 
 ## 调用示例
 
