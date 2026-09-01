@@ -205,6 +205,7 @@ public:
     AttenMaskInfo attenMaskInfoPtr;
     PseInfo pseInfoPtr;
     DropMaskInfo dropInfoPtr;
+    bool isDpseBnss = false;
 
     // old deter info
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), bool, std::nullptr_t>::type isFirstDeter;
@@ -272,6 +273,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::SetVecBlockParams(TPipe *pipe
     attenMaskInfoPtr = attenMaskInfo;
     pseInfoPtr = pseInfo;
     dropInfoPtr = dropInfo;
+    if constexpr (IS_PSE) {
+        isDpseBnss = tilingData->s1s2BNGS1S2BaseParams.pseShapeType == PSE_SHAPE_TYPE_BNSS;
+    }
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
         isFirstDeter = true;
     }
@@ -298,7 +302,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
     dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
     if constexpr (IS_PSE) {
-        dpseGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dpse);
+        if (isDpseBnss) {
+            dpseGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dpse);
+        }
     }
     if constexpr (IS_ROPE) {
         dqRopeGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
@@ -362,17 +368,16 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ClearInvalidDpse(FagConstInfo &constInfo)
 {
     if constexpr (IS_PSE && IS_ATTEN_MASK) {
-        bool isFullPse = pseInfoPtr.pseLayoutType == static_cast<uint32_t>(PseLayoutTypeEnum::PSE_S1S2) &&
-                         pseInfoPtr.pseEncodeType != pseEncodeALibiS2Full && pseInfoPtr.pseBSize == constInfo.bSize;
         bool isSparse = tilingData->s1s2BNGS1S2BaseParams.sparseType != static_cast<uint8_t>(SparseType::DENSE);
         int64_t blockStart = tilingData->s1s2BNGS1S2BlockNumList.blockStarts[cBlockIdx];
         int64_t blockEnd = tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx];
-        if (!isFullPse || !isSparse || blockStart >= blockEnd) {
+        if (!isDpseBnss || !isSparse || blockStart >= blockEnd) {
             return;
         }
 
         // blockStarts/blockEnds are disjoint between cBlockIdx, and the two AIV sub-blocks split S1 rows.
-        // Direct schedules do not visit invalid blocks, so clear this core's complement once in the first round.
+        // BNSS maps each PSE element to one score element. Direct schedules do not visit invalid blocks, so clear
+        // this core's complement once in the first round.
         LocalTensor<OUTDTYPE> dpseOutTensor = dSOutQue.AllocTensor<OUTDTYPE>();
         Duplicate(dpseOutTensor, static_cast<OUTDTYPE>(0), VECTOR_BASEM * VECTOR_BASEN);
         dSOutQue.EnQue(dpseOutTensor);
@@ -483,10 +488,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ClearInvalidDpseBlock(FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     if constexpr (IS_PSE && IS_ATTEN_MASK) {
-        bool isFullPse = pseInfoPtr.pseLayoutType == static_cast<uint32_t>(PseLayoutTypeEnum::PSE_S1S2) &&
-                         pseInfoPtr.pseEncodeType != pseEncodeALibiS2Full && pseInfoPtr.pseBSize == constInfo.bSize;
         bool isSparse = tilingData->s1s2BNGS1S2BaseParams.sparseType != static_cast<uint8_t>(SparseType::DENSE);
-        if (!isFullPse || !isSparse || runInfo.commonRunInfo.halfS1RealSize == 0 ||
+        if (!isDpseBnss || !isSparse || runInfo.commonRunInfo.halfS1RealSize == 0 ||
             runInfo.commonRunInfo.s2RealSize == 0) {
             return;
         }
@@ -755,11 +758,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyDsToDpse(LocalTensor<CALC
                                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     if constexpr (IS_PSE) {
-        // dS can be copied directly only when every PSE element maps to one score element. Broadcast PSE and
-        // compressed ALiBi PSE require reduction and must not write the raw dS block into the smaller output.
-        bool isFullPse = pseInfoPtr.pseLayoutType == static_cast<uint32_t>(PseLayoutTypeEnum::PSE_S1S2) &&
-                         pseInfoPtr.pseEncodeType != pseEncodeALibiS2Full && pseInfoPtr.pseBSize == constInfo.bSize;
-        if (!isFullPse || runInfo.commonRunInfo.halfS1RealSize == 0 || runInfo.commonRunInfo.s2RealSize == 0) {
+        // dpse currently supports BNSS only. Broadcast and compressed PSE shapes require reduction and must not
+        // write the raw dS block into their output.
+        if (!isDpseBnss || runInfo.commonRunInfo.halfS1RealSize == 0 || runInfo.commonRunInfo.s2RealSize == 0) {
             return;
         }
 
