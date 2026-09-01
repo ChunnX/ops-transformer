@@ -41,16 +41,6 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
-__aicore__ inline uint16_t FloatToBf16Bits(float value)
-{
-    union {
-        float f;
-        uint32_t u;
-    } converter{value};
-    uint32_t roundingBias = 0x7FFFU + ((converter.u >> 16) & 1U);
-    return static_cast<uint16_t>((converter.u + roundingBias) >> 16);
-}
-
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS DataTypeOut_, DataTypeIn_
 
@@ -105,17 +95,15 @@ private:
 };
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(
-    Params const &params)
+__aicore__ inline void
+BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(Params const &params)
 {
     if ASCEND_IS_AIC {
         return;
     }
     params_ = &params;
     InitAllLocalTensor();
-    if (params_->sharedInputLen != 0) {
-        residualGm_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeIn *>(params_->residualGm));
-    }
+    residualGm_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeIn *>(params_->residualGm));
     yGmAddr_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut *>(params_->yGmAddr));
 }
 
@@ -134,9 +122,6 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::CopyOutShareInput(
     LocalTensor<DataTypeOut> &yLocal, uint64_t offset, uint64_t size)
 {
-    if (size == 0) {
-        return;
-    }
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(size * sizeof(DataTypeOut)), 1, 1, 0};
     DataCopyPad(yGmAddr_[offset], yLocal, paramsOut);
 }
@@ -159,19 +144,20 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockPrologueFinalizeRouting<
-    BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(uint64_t outOffset, uint64_t totalLen)
+__aicore__ inline void
+BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(
+    uint64_t outOffset, uint64_t totalLen)
 {
     // may be sharedInput Offset = 0 or tail = batch
     if (totalLen == 0) {
         return;
     }
-
-    uint64_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(vectorCoreNum_));
+    // one core perSize
+    uint32_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(vectorCoreNum_));
     singleCount = CeilDiv(singleCount, static_cast<uint64_t>(ONE_CORE_ALIGN_LEN)) * ONE_CORE_ALIGN_LEN;
 
-    uint64_t baseOffset = static_cast<uint64_t>(GetBlockIdx()) * singleCount;
-    if (baseOffset >= totalLen) {
+    uint64_t baseOffset = GetBlockIdx() * singleCount;
+    if (baseOffset > totalLen) {
         return;
     }
 
@@ -206,43 +192,23 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::VFDoSharedCastAndMuls(
     __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
-    constexpr uint32_t vectorRegLen = IsSameType<DataTypeOut, bfloat16_t>::value ?
-                                          VECTOR_REG_WIDTH / sizeof(float) :
-                                          VECTOR_REG_WIDTH / sizeof(DataTypeOut);
+    constexpr uint32_t vectorRegLen = VECTOR_REG_WIDTH / sizeof(DataTypeOut);
     uint16_t loopNum = CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
     __VEC_SCOPE__
     {
+        AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+        AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
+        AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
         uint32_t elementNum = static_cast<uint32_t>(curCount);
         AscendC::MicroAPI::MaskReg mask;
         uint16_t oneRepeatSize = vectorRegLen;
-        if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
-            uint16_t sharedWeightBf16 = FloatToBf16Bits(sharedWeight);
-            for (uint16_t i = 0; i < loopNum; ++i) {
-                mask = AscendC::MicroAPI::UpdateMask<float>(elementNum);
-                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
-                AscendC::MicroAPI::RegTensor<uint16_t> vSharedWeightReg;
-                AscendC::MicroAPI::RegTensor<bfloat16_t> vDstReg;
-                AscendC::MicroAPI::Duplicate<uint16_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(
-                    vSharedWeightReg, sharedWeightBf16, mask);
-                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-                AscendC::MicroAPI::Mul<bfloat16_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(
-                    vDstReg, vSrcReg, (AscendC::MicroAPI::RegTensor<bfloat16_t> &)vSharedWeightReg, mask);
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    dstPtr + i * oneRepeatSize, vDstReg, mask);
-            }
-        } else {
-            for (uint16_t i = 0; i < loopNum; ++i) {
-                mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
-                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
-                AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
-                AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
-                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
-                AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
-                AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
-            }
+        for (uint16_t i = 0; i < loopNum; ++i) {
+            mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
+            AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+            AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+            AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
+            AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
         }
     }
 }
