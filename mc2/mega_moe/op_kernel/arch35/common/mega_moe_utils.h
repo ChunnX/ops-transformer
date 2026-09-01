@@ -470,10 +470,13 @@ __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenC
  * 再与当前 WAVE 的一个专家 Activation 交错。返回的非空范围最多覆盖一个专家。
  */
 template <uint32_t TileM>
-__aicore__ inline bool PlanNextExpertTokenRangeInWave(
+__aicore__ inline void PlanNextExpertTokenRangeInWave(
     GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
     uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
 {
+    // 默认返回当前位置上的空范围；找到有效专家后再填写真实 slice 起止点。
+    range.begin = position;
+    range.end = position;
     while (position.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
         uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
             expertTokenCountWorkspace, countWorkspace, expertCount, position.expertIdx);
@@ -487,9 +490,8 @@ __aicore__ inline bool PlanNextExpertTokenRangeInWave(
         range.begin = position;
         AdvanceExpertTokenPositionInWave<TileM>(expertTokenCount, waveMGroupTarget, waveMGroupCount, position);
         range.end = position;
-        return range.end.globalTokenIndex > range.begin.globalTokenIndex;
+        return;
     }
-    return false;
 }
 
 /*
@@ -506,8 +508,13 @@ __aicore__ inline void PlanRemainingWaveTokenRange(
     range.end = position;
     bool hasTokenRange = false;
     ExpertTokenRange expertRange{};
-    while (PlanNextExpertTokenRangeInWave<TileM>(expertTokenCountWorkspace, countWorkspace, expertCount,
-                                                  waveMGroupTarget, waveMGroupCount, position, expertRange)) {
+    while (position.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
+        PlanNextExpertTokenRangeInWave<TileM>(expertTokenCountWorkspace, countWorkspace, expertCount,
+                                               waveMGroupTarget, waveMGroupCount, position, expertRange);
+        // 规划后显式判断结果；尾部全为空专家时结束整 WAVE 聚合。
+        if (expertRange.end.globalTokenIndex <= expertRange.begin.globalTokenIndex) {
+            break;
+        }
         // 第一个非空专家 slice 确定整段起点；后续 slice 只延伸整段终点。
         if (!hasTokenRange) {
             range.begin = expertRange.begin;

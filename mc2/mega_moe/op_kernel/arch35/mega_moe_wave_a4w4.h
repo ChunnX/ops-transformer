@@ -176,10 +176,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
                     ExpertTokenRange nextExpertDispatchRange{};
-                    if (PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
-                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
-                            commonConfig_.moeExpertPerRank, mGroupsPerWave_, nextDispatchWaveMGroupCount,
-                            dispatchPosition, nextExpertDispatchRange)) {
+                    PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
+                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
+                        mGroupsPerWave_, nextDispatchWaveMGroupCount, dispatchPosition, nextExpertDispatchRange);
+                    // 规划完成后再判断是否得到有效专家 slice，调度函数本身不参与流程分支。
+                    if (nextExpertDispatchRange.end.globalTokenIndex >
+                        nextExpertDispatchRange.begin.globalTokenIndex) {
                         // 当前 WAVE 的 Activation 可能覆盖 prefix UB；只恢复本专家 slice 所需的前缀。
                         ReloadDispatchCumsumRange(commonConfig_, tokenDispatchScratch_,
                                                   nextExpertDispatchRange.begin.expertIdx,
