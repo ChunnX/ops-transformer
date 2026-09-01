@@ -16,51 +16,94 @@ from torch.library import impl
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-_OP_NAME = "generic_block_sparse_attention"
+GBSA_METADATA_SIZE = 1024
+GBSA_METADATA_OP_NAME = "generic_block_sparse_attention_metadata"
 
 
 class GenericBlockSparseAttentionOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__(_OP_NAME, category="attention")
+        super().__init__("generic_block_sparse_attention", category="attention")
 
     def sources(self):
         return ["csrc/attention/generic_block_sparse_attention.cpp"]
 
-    def schema(self) -> str:
-        return (
-            "generic_block_sparse_attention("
-            "Tensor query, Tensor key, Tensor value, "
-            "Tensor sparse_block_idx, Tensor sparse_block_count, "
-            "int[] block_shape, *, "
-            "Tensor? metadata=None, "
-            "Tensor? atten_mask=None, "
-            "Tensor? q_dequant_scale=None, "
-            "Tensor? k_dequant_scale=None, "
-            "Tensor? v_dequant_scale=None, "
-            "Tensor? p_quant_scale=None, "
-            "Tensor? cu_seq_lengths_q=None, "
-            "Tensor? cu_seq_lengths_kv=None, "
-            "Tensor? seq_used_q=None, "
-            "Tensor? seq_used_kv=None, "
-            "Tensor? block_table=None, "
-            "int is_packed_gqa=1, "
-            'str q_input_layout="TND", '
-            'str kv_input_layout="PAGED_BBND", '
-            "float scale_value=0.0, "
-            "int mask_type=1, "
-            "int quant_type=0, "
-            "float dst_type_max=0.0, "
-            "int softmax_precision=1, "
-            "int window_size_left=-1, "
-            "int window_size_right=-1, "
-            "bool return_softmax_lse=False, "
-            "ScalarType? attention_out_dtype=None"
-            ") -> (Tensor, Tensor)"
-        )
+    def schema(self):
+        return [
+            (
+                "generic_block_sparse_attention_metadata("
+                "Tensor sparse_block_idx, Tensor sparse_block_count, "
+                "int max_q_seq_len, int max_kv_seq_len, int num_q_heads, int num_kv_heads, int head_dim, "
+                "int[] block_shape, *, Tensor? cu_seq_lengths=None, Tensor? cu_seq_lengths_kv=None, "
+                "Tensor? seq_used_q=None, Tensor? seq_used_kv=None, int is_packed_gqa=1, "
+                'str q_input_layout="TND", str kv_input_layout="PAGED_BBND", '
+                "int mask_type=1, int quant_type=0, int softmax_precision=1, "
+                "int window_size_left=-1, int window_size_right=-1) -> Tensor"
+            ),
+            (
+                "generic_block_sparse_attention("
+                "Tensor query, Tensor key, Tensor value, "
+                "Tensor sparse_block_idx, Tensor sparse_block_count, "
+                "int[] block_shape, *, "
+                "Tensor? metadata=None, "
+                "Tensor? atten_mask=None, "
+                "Tensor? q_dequant_scale=None, "
+                "Tensor? k_dequant_scale=None, "
+                "Tensor? v_dequant_scale=None, "
+                "Tensor? p_quant_scale=None, "
+                "Tensor? cu_seq_lengths_q=None, "
+                "Tensor? cu_seq_lengths_kv=None, "
+                "Tensor? seq_used_q=None, "
+                "Tensor? seq_used_kv=None, "
+                "Tensor? block_table=None, "
+                "int is_packed_gqa=1, "
+                'str q_input_layout="TND", '
+                'str kv_input_layout="PAGED_BBND", '
+                "float scale_value=0.0, "
+                "int mask_type=1, "
+                "int quant_type=0, "
+                "float dst_type_max=0.0, "
+                "int softmax_precision=1, "
+                "int window_size_left=-1, "
+                "int window_size_right=-1, "
+                "bool return_softmax_lse=False, "
+                "ScalarType? attention_out_dtype=None"
+                ") -> (Tensor, Tensor)"
+            ),
+        ]
 
     def register_meta(self):
+        @torch.library.register_fake(
+            "cann_ops_transformer::" + GBSA_METADATA_OP_NAME
+        )
+        def generic_block_sparse_attention_metadata_meta(
+            sparse_block_idx,
+            sparse_block_count,
+            max_q_seq_len,
+            max_kv_seq_len,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            block_shape,
+            *,
+            cu_seq_lengths=None,
+            cu_seq_lengths_kv=None,
+            seq_used_q=None,
+            seq_used_kv=None,
+            is_packed_gqa=1,
+            q_input_layout="TND",
+            kv_input_layout="PAGED_BBND",
+            mask_type=1,
+            quant_type=0,
+            softmax_precision=1,
+            window_size_left=-1,
+            window_size_right=-1,
+        ):
+            return torch.empty(
+                (GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta"
+            )
+
         @impl(get_as_library(), self.name, "Meta")
-        def _meta(
+        def generic_block_sparse_attention_meta(
             query: torch.Tensor,
             key: torch.Tensor,
             value: torch.Tensor,
@@ -119,12 +162,113 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             return attn, lse
 
 
-_op_builder = GenericBlockSparseAttentionOpBuilder()
-_op_builder._ensure_initialized()
-_op_module = _op_builder.load()
+generic_block_sparse_attention_op_builder = GenericBlockSparseAttentionOpBuilder()
+generic_block_sparse_attention_op_builder._ensure_initialized()
 
 
-@impl(get_as_library(), _OP_NAME, "PrivateUse1")
+@impl(get_as_library(), GBSA_METADATA_OP_NAME, "PrivateUse1")
+def generic_block_sparse_attention_metadata(
+    sparse_block_idx,
+    sparse_block_count,
+    max_q_seq_len,
+    max_kv_seq_len,
+    num_q_heads,
+    num_kv_heads,
+    head_dim,
+    block_shape,
+    *,
+    cu_seq_lengths=None,
+    cu_seq_lengths_kv=None,
+    seq_used_q=None,
+    seq_used_kv=None,
+    is_packed_gqa=1,
+    q_input_layout="TND",
+    kv_input_layout="PAGED_BBND",
+    mask_type=1,
+    quant_type=0,
+    softmax_precision=1,
+    window_size_left=-1,
+    window_size_right=-1,
+):
+    op_module = generic_block_sparse_attention_op_builder.load()
+    return op_module.generic_block_sparse_attention_metadata(
+        sparse_block_idx,
+        sparse_block_count,
+        cu_seq_lengths,
+        cu_seq_lengths_kv,
+        seq_used_q,
+        seq_used_kv,
+        max_q_seq_len,
+        max_kv_seq_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        block_shape,
+        is_packed_gqa,
+        q_input_layout,
+        kv_input_layout,
+        mask_type,
+        quant_type,
+        softmax_precision,
+        window_size_left,
+        window_size_right,
+    )
+
+
+@torch.library.register_kernel(
+    "cann_ops_transformer::" + GBSA_METADATA_OP_NAME, None
+)
+def generic_block_sparse_attention_metadata_fallback(
+    sparse_block_idx,
+    sparse_block_count,
+    max_q_seq_len,
+    max_kv_seq_len,
+    num_q_heads,
+    num_kv_heads,
+    head_dim,
+    block_shape,
+    *,
+    cu_seq_lengths=None,
+    cu_seq_lengths_kv=None,
+    seq_used_q=None,
+    seq_used_kv=None,
+    is_packed_gqa=1,
+    q_input_layout="TND",
+    kv_input_layout="PAGED_BBND",
+    mask_type=1,
+    quant_type=0,
+    softmax_precision=1,
+    window_size_left=-1,
+    window_size_right=-1,
+):
+    return generic_block_sparse_attention_metadata(
+        sparse_block_idx,
+        sparse_block_count,
+        max_q_seq_len,
+        max_kv_seq_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        block_shape,
+        cu_seq_lengths=cu_seq_lengths,
+        cu_seq_lengths_kv=cu_seq_lengths_kv,
+        seq_used_q=seq_used_q,
+        seq_used_kv=seq_used_kv,
+        is_packed_gqa=is_packed_gqa,
+        q_input_layout=q_input_layout,
+        kv_input_layout=kv_input_layout,
+        mask_type=mask_type,
+        quant_type=quant_type,
+        softmax_precision=softmax_precision,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+    )
+
+
+torch.compiler.allow_in_graph(generic_block_sparse_attention_metadata)
+
+
+@impl(get_as_library(), generic_block_sparse_attention_op_builder.name, "PrivateUse1")
 def generic_block_sparse_attention(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -160,7 +304,8 @@ def generic_block_sparse_attention(
     if query.dtype == torch.float8_e4m3fn and attention_out_dtype is None:
         attention_out_dtype = torch.bfloat16
 
-    return _op_module.generic_block_sparse_attention(
+    op_module = generic_block_sparse_attention_op_builder.load()
+    return op_module.generic_block_sparse_attention(
         query,
         key,
         value,
@@ -192,5 +337,17 @@ def generic_block_sparse_attention(
         attention_out_dtype,
     )
 
+
+generic_block_sparse_attention = (
+    torch.ops.cann_ops_transformer.generic_block_sparse_attention
+)
+generic_block_sparse_attention_metadata = (
+    torch.ops.cann_ops_transformer.generic_block_sparse_attention_metadata
+)
+
+if not hasattr(torch_npu, "npu_generic_block_sparse_attention_metadata"):
+    torch_npu.npu_generic_block_sparse_attention_metadata = (
+        generic_block_sparse_attention_metadata
+    )
 
 torch.compiler.allow_in_graph(generic_block_sparse_attention)
