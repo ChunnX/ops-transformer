@@ -118,6 +118,7 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "flash_attn_metadata": "attention.flash_attn",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
