@@ -2168,24 +2168,17 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     int64_t expertCountStride = Ops::Base::CeilAlign(actualExpertNum, CS_ONE_BLOCK_ELEMENT);
 
     int64_t chunkAligned = Ops::Base::CeilAlign(CS_FILTER_CHUNK_SIZE, CS_ONE_BLOCK_ELEMENT);
-    // 持久区：expertCountLocal（Phase A→B 存活）+ shortPath gathered 双区（coreEntries<=2048 && ep_==1）
+    // 持久区：仅 expertCountLocal（Phase A→B 存活）；kernel 无 shortPath（gathered 恒计入 Phase A）
     int64_t persistentSize = Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)),
                                                   UB_BLOCK_SIZE);
-    if (coreEntries <= 2048 && ep_ == 1) {
-        persistentSize += Ops::Base::CeilAlign(2048 * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
-    }
     // Phase A：chunked filtering（expertIdxLocal + expertIdxFp32Local + 3 mask + flatIdxBuffer + gatheredExpert/gatheredIdx）
     int64_t phaseASize = Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
     phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
     int64_t maskBytesA = Ops::Base::CeilAlign(
         Ops::Base::CeilDiv(chunkAligned, static_cast<int64_t>(8)), static_cast<int64_t>(sizeof(int8_t)));
     phaseASize += maskBytesA * NUM_THREE;
+    // 无 shortPath：flatIdxBuffer + gatheredExpert/gatheredIdx 恒计入（与 kernel MoeV3CutOriginPhaseAB 对齐）
     phaseASize += Ops::Base::CeilAlign(chunkAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
-    if (coreEntries > 2048 || ep_ == 0) {
-        // 非 shortPath 时 gatheredExpert/gatheredIdx 计入 Phase A（kernel 同条件分支）
-        phaseASize += Ops::Base::CeilAlign(chunkAligned * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)),
-                                           UB_BLOCK_SIZE);
-    }
     // Phase B：batchBuf 按 kernel 公式（196608 预算）封顶，仅校验总量
     int64_t expertCountAlign =
         Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
