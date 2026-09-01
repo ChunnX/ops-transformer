@@ -69,7 +69,7 @@ static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 8192U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
-static constexpr uint32_t JETTY_CNT = 1U;   // 打桩 通信使用jetty个数  仅取1或2
+static constexpr uint32_t JETTY_CNT = 1U;   // 打桩 通信使用jetty个数  取1-8 与moe_ep_dispatch.h保持一致
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {

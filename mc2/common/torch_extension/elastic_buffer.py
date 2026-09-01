@@ -259,7 +259,7 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    dispatch_notify_count = 2
+    dispatch_notify_count = 8
     dispatch_notify_size = (
         world_size * win_addr_align
         + world_size * dispatch_notify_count * win_addr_align

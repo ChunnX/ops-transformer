@@ -447,7 +447,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t superNodeCount = static_cast<uint64_t>(serverNum);
     uint64_t cntWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchNotifyCount = 2UL;     // 打桩调试
+    uint64_t dispatchNotifyCount = 8UL;     // 预留slot状态槽位数 需>=JETTY_CNT(每对端channel数)
     uint64_t slotWinStateSize = dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinStateSize = cntWinStateSize + slotWinStateSize + WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
