@@ -58,8 +58,8 @@ public:
         constInfo_.group_size = static_cast<int32_t>(tilingData->qGroup);
         baseM_ = static_cast<int32_t>(tilingData->baseM);
 
-        taskStart_ = static_cast<int32_t>(metadata_[CORE_TASK_START_OFFSET + cubeCoreIdx_]); // 获取当前核的起始任务索引，按 (b,n2,j) 分配给当前核的group数量 * G
-        taskEnd_ = static_cast<int32_t>(metadata_[CORE_TASK_END_OFFSET + cubeCoreIdx_]); // 获取当前核的结束任务索引
+        taskStart_ = static_cast<int32_t>(metadata_[CORE_TASK_START_OFFSET + cubeCoreIdx_]);
+        taskEnd_ = static_cast<int32_t>(metadata_[CORE_TASK_END_OFFSET + cubeCoreIdx_]);
         cursor_ = taskStart_;
         lastB_ = -1;
         lastN2_ = -1;
@@ -71,17 +71,15 @@ public:
         inMetaTask_ = false;
     }
 
-    /** 获取当前一个Q基本块任务的运行时信息，若无则返回*/
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &info)
     {
         info = {};
-        // Finish remaining baseM tiles of current metadata task before advancing cursor
         if (!inMetaTask_) {
-            if (cursor_ >= taskEnd_) { // 如果分配给当前核的任务已经完成，则不需要计算
+            if (cursor_ >= taskEnd_) {
                 info.need_compute = 0;
                 return;
             }
-            if (!LoadMetaTask()) { // 加载当前任务的元数据
+            if (!LoadMetaTask()) {
                 info.need_compute = 0;
                 return;
             }
@@ -173,7 +171,7 @@ private:
         info.cur_kv_seq_len = static_cast<int32_t>(curActS2_);
         info.s1Len = m;
         info.s2Len = curKvBlockLen_;
-        // Align with BSAG: RoundUp(m, 16) for NZ fractal / Fixpipe mSize.
+        // RoundUp(m, 16) for NZ fractal / Fixpipe mSize.
         info.s1LenAlign = RoundUp(static_cast<int64_t>(m), static_cast<int64_t>(16));
         info.s2LenAlign = RoundUp(static_cast<int64_t>(curKvBlockLen_), static_cast<int64_t>(16));
         info.sparseIdxOffset = curIdxBase_ + s1Offset_;
