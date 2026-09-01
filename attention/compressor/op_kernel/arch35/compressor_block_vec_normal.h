@@ -25,13 +25,9 @@ namespace Compressor {
 template <typename COMP>
 class CompressorBlockVectorNormal : public CompressorBlockVector<COMP> {
 public:
-    static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::BF16;
-    static constexpr uint64_t BLOCK_VEC_BASE_BUFFER_SIZE = BUFFER_SIZE_BYTE_32K;
-    static constexpr uint32_t DATABLOCK_BYTES = 32;
-    static constexpr float FLOAT_ZERO = 0;
-    static constexpr float SOFTMAX_MIN_NUM = -std::numeric_limits<float>::infinity();
-    using T = float;
-    using X_T = typename AscendC::Conditional<X_DTYPE, bfloat16_t, half>::type;
+    using Base = CompressorBlockVector<COMP>;
+    using T = typename Base::T;
+    using X_T = typename Base::X_T;
 
     __aicore__ inline CompressorBlockVectorNormal(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -41,10 +37,8 @@ private:
     __aicore__ inline void CopyInApe(const LocalTensor<T> &apeUb, uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void AddApeToScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
                                          const Vec1SliceInfo &sliceInfo, uint32_t dDealSize);
-    __aicore__ inline void AddSingleApeToScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
+    __aicore__ inline void AddApe(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeUb,
                                                const Vec1SliceInfo &sliceInfo, uint32_t dDealSize);
-    __aicore__ inline void PadAlign(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
-                                    const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx, uint32_t dDealSize);
     template <bool IS_SCORE>
     __aicore__ inline void OverLap(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
                                    const GlobalTensor<T> &srcGm, const GlobalTensor<T> &stateGm,
@@ -140,7 +134,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::AddApeToScore(const Lo
     }
 }
 template <typename COMP>
-__aicore__ inline void CompressorBlockVectorNormal<COMP>::AddSingleApeToScore(const LocalTensor<T> &scoreLocal,
+__aicore__ inline void CompressorBlockVectorNormal<COMP>::AddApe(const LocalTensor<T> &scoreLocal,
                                                                         const LocalTensor<T> &apeUb,
                                                                         const Vec1SliceInfo &sliceInfo,
                                                                         uint32_t dDealSize)
@@ -151,44 +145,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::AddSingleApeToScore(co
     uint64_t apeOffset = (this->cmpRatio_ - dealRowCount) * singleRowElemNum;
     AddVF(scoreLocal[scoreOffset], this->apeUb[apeOffset], dealRowCount, dDealSize, singleRowElemNum);
 }
-template <typename COMP>
-__aicore__ inline void CompressorBlockVectorNormal<COMP>::PadAlign(const LocalTensor<T> &dstLocal,
-                                                             const LocalTensor<T> &srcLocal,
-                                                             const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
-                                                             uint32_t dDealSize)
-{
-    // Ub data layout after overlap when r = 4 and coff = 2:
-    //  Tc0_seq01: |--- --D_L--- -|------D_R-----|
-    //  Tc0_seq02: |--- --D_L--- -|------D_R-----|
-    //  Tc0_seq03: |--- --D_L--- -|------D_R-----|
-    //  Tc0_seq04: |--- --D_L--- -|------D_R-----|
-    //  Tc1_seq01: |--- --D_L--- -|------D_R-----|
-    //  Tc1_seq02: |--- --D_L--- -|------D_R-----|
-    //  Tc1_seq03: |--- --D_L--- -|------D_R-----|
-    //  Tc1_seq04: |--- --D_L--- -|------D_R-----|
-    uint32_t srcSingleRowElemNum = dDealSize * this->coff_;
-    uint32_t copyRowCount = sliceInfo.compressTcSize * this->cmpRatio_ - sliceInfo.headHolderSeqCnt;
-    uint32_t copyColCount = dDealSize;
-    uint32_t srcSingleRowCount = srcSingleRowElemNum;
-    uint32_t dstSingleRowCount = srcSingleRowElemNum; // left和right在seq方向是交错存储的
-    uint64_t srcLocalOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum;
 
-    uint64_t dstUbOffset = sliceInfo.compressoredScCnt * this->cmpRatio_ * dstSingleRowCount;
-    if constexpr (COMP::coff == COFF::OVERLAP) {
-        // 左侧
-        uint64_t preSrcLocalOffset = srcLocalOffset;
-        uint64_t preDstUbOffset = dstUbOffset + (sliceInfo.headHolderSeqCnt + this->cmpRatio_) * dstSingleRowCount;
-        this->DataCopyAlignUbToUb(dstLocal[preDstUbOffset], srcLocal[preSrcLocalOffset],
-                            copyRowCount - min(copyRowCount, this->cmpRatio_), copyColCount, srcSingleRowCount,
-                            dstSingleRowCount);
-        dstUbOffset += dDealSize;
-        srcLocalOffset += dDealSize;
-    }
-    // 右侧
-    dstUbOffset += sliceInfo.headHolderSeqCnt * dstSingleRowCount;
-    this->DataCopyAlignUbToUb(dstLocal[dstUbOffset], srcLocal[srcLocalOffset], copyRowCount, copyColCount, srcSingleRowCount,
-                        dstSingleRowCount);
-}
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLap(
@@ -215,7 +172,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLap(
         this->SaveToWorkSpace(srcLocal, nextCacheTcGm, sliceInfo, loopInfo, dStartIdx, dDealSize);
     }
     if (sliceInfo.compressTcSize > 0) {
-        PadAlign(dstLocal, srcLocal, sliceInfo, dStartIdx, dDealSize);
+        this->PadAlign(dstLocal, srcLocal, sliceInfo, dStartIdx, dDealSize, dDealSize);
         if constexpr (COMP::coff == COFF::OVERLAP) {
             GlobalTensor<T> curCacheTcGm = cacheTcGm[info.c1v1DbIdx * this->cmpRatio_ * this->constInfo_.headDim];
             this->LoadFromWorkSpace(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx, globalSeqIdx,
@@ -252,7 +209,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLapScoreKv(
         if (originSliceInfo.sIdx != 0 && originSliceInfo.compressTcSize > 0 &&
             (!loopInfo.isCoreRowFirst || !loopInfo.isCoreLoopFirst)) {
             PipeBarrier<PIPE_V>();
-            AddSingleApeToScore(scoreLocal, this->apeUb, originSliceInfo, dDealSize);
+            AddApe(scoreLocal, this->apeUb, originSliceInfo, dDealSize);
         }
     }
 
