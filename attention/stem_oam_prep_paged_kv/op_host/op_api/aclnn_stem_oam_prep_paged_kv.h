@@ -33,11 +33,13 @@ ACLNN_API aclnnStatus aclnnStemOamPrepPagedKv(void *workspace, uint64_t workspac
  * @brief aclnnStemOamPrepPagedKv的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  */
-ACLNN_API aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
-    const aclTensor *kCache, const aclTensor *vCache, const aclTensor *kvIndices, const aclIntArray *kvSeqLens,
-    const aclTensor *kScaleCacheOptional, const aclTensor *vScaleOptional, double lambdaMag, char *kvLayout,
-    int64_t stemBlockSize, int64_t stemStride, const aclTensor *kFlat, const aclTensor *vBias,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+ACLNN_API aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(const aclTensor *kCache, const aclTensor *vCache,
+                                                              const aclTensor *kvIndices, const aclIntArray *kvSeqLens,
+                                                              const aclTensor *kScaleCacheOptional,
+                                                              const aclTensor *vScaleOptional, double lambdaMag,
+                                                              char *kvLayout, int64_t stemBlockSize, int64_t stemStride,
+                                                              const aclTensor *kFlat, const aclTensor *vBias,
+                                                              uint64_t *workspaceSize, aclOpExecutor **executor);
 
 #ifdef __cplusplus
 }

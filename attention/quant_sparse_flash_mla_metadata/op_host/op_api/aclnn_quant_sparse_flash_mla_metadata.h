@@ -23,13 +23,15 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantSparseFlashMlaMetad
     const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
     const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional, int64_t numHeadsQ,
     int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t batchSize, int64_t maxSeqlenQ,
-    int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk,
-    int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
-    const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
+    const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantSparseFlashMlaMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantSparseFlashMlaMetadata(void *workspace,
+                                                                                    uint64_t workspaceSize,
+                                                                                    aclOpExecutor *executor,
+                                                                                    aclrtStream stream);
 
 #ifdef __cplusplus
 }
