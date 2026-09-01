@@ -68,6 +68,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>残差注意力的反向传播算子，根据前向保存的inv_norm、probs和上游梯度grad_hidden_states，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/block_attn_res_prepare/README.md">block_attn_res_prepare</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>BlockAttnRes第一阶段准备算子，用于并行计算全部目标slot的块间注意力，输出softmax加权分子及统计量，供下一阶段融合当前残差。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_attn_res_update/README.md">block_attn_res_update</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -948,6 +968,16 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/ffn_to_attention_v2/README.md">ffn_to_attention_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/attention_to_ffn/README.md">attention_to_ffn</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -1508,15 +1538,6 @@
   </tr>
   <tr>
     <td>mhc</td>
-    <td><a href="../../mhc/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>残差注意力的反向传播算子，根据前向保存的inv_norm、probs和上游梯度grad_hidden_states，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
-  </tr>
-  <tr>
     <td>mamba</td>
     <td><a href="../../mamba/causal_conv1d/README.md">causal_conv1d</a></td>
     <td>✓</td>
