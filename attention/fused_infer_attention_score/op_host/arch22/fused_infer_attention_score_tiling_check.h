@@ -48,7 +48,7 @@ std::string RopeModeToSerialString(const RopeMode &ropeMode);
 std::string FusedDataTypeToSerialString(ge::DataType type);
 
 template <typename vecT, typename T>
-static bool VecContains(const vecT& vec, const T& value)
+static bool VecContains(const vecT &vec, const T &value)
 {
     return std::find(vec.begin(), vec.end(), value) != vec.end();
 }
@@ -58,7 +58,8 @@ public:
     static ge::graphStatus Check(const FiaTilingInfo &fiaInfo);
 
 protected:
-    explicit TilingCheck(const FiaTilingInfo &fiaInfo) : fiaInfo_(fiaInfo) {};
+    explicit TilingCheck(const FiaTilingInfo &fiaInfo)
+        : fiaInfo_(fiaInfo) {};
     virtual ~TilingCheck() = default;
 
     virtual ge::graphStatus Process() = 0;
@@ -69,7 +70,8 @@ protected:
 
 class FiaTilingCheck : public TilingCheck {
 public:
-    explicit FiaTilingCheck(const FiaTilingInfo &fiaInfo) : TilingCheck(fiaInfo) {};
+    explicit FiaTilingCheck(const FiaTilingInfo &fiaInfo)
+        : TilingCheck(fiaInfo) {};
     virtual ~FiaTilingCheck() override = default;
 
     virtual ge::graphStatus Process() override;
@@ -78,35 +80,33 @@ private:
     void Init();
 
     // 单参数校验
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-        const ge::DataType &actualDtype, const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-        const std::string &name) const;
-    ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc,
-        const std::string &name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
+                              const std::string &name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     template <typename T>
-    void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name, const std::string subName) const;
+    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+                               const std::string subName) const;
     template <typename T>
-    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name) const;
+    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
+                               const std::string &name) const;
     template <typename T>
-    void LogErrorShapeNumSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name) const;
+    void LogErrorShapeNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
+                                 const std::string &name) const;
     template <typename T>
-    void LogErrorAttrValueSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
-        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::Tensor *tensor,
-        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
-    ge::graphStatus CheckShapeSupport(const gert::Tensor *tensor,
-        const std::vector<int64_t> &expectShapeList, const std::string &name) const;
+    void LogErrorAttrValueSupport(const std::vector<T> &expectNumberList, const T &actualValue,
+                                  const std::string &name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::vector<size_t> &expectDimNumList,
+                                       const std::string &name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::Tensor *tensor, const std::vector<size_t> &expectDimNumList,
+                                       const std::string &name) const;
+    ge::graphStatus CheckShapeSupport(const gert::Tensor *tensor, const std::vector<int64_t> &expectShapeList,
+                                      const std::string &name) const;
     template <typename T>
-    ge::graphStatus CheckAttrValueSupport(const T *attrValue,
-        const std::vector<T> &expectAttrValList, const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<FiaLayout> &expectLayoutList,
-        const FiaLayout &actualLayout, const std::string &name) const;
+    ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
+                                          const std::string &name) const;
+    void LogErrorLayoutSupport(const std::vector<FiaLayout> &expectLayoutList, const FiaLayout &actualLayout,
+                               const std::string &name) const;
     ge::graphStatus CheckLayoutSupport(const FiaLayout &actualLayout, const std::string &name) const;
 
     ge::graphStatus CheckSingleParaQuery() const;
@@ -165,7 +165,7 @@ private:
     ge::graphStatus CheckExistsByMap(const std::map<std::string, const void *> &paramMap) const;
     ge::graphStatus CheckNotExistsByMap(const std::map<std::string, const void *> &paramMap) const;
     ge::graphStatus CheckExistenceByMap(std::map<std::string, const void *> &existMap,
-        std::map<std::string, const void *> &notExistMap) const;
+                                        std::map<std::string, const void *> &notExistMap) const;
     void LogErrorExistenceEqual(std::map<std::string, const void *> &paramMap) const;
     ge::graphStatus CheckParaExistenceEqual(std::map<std::string, const void *> &paramMap) const;
     template <typename T>
@@ -191,8 +191,8 @@ private:
     // 特性交叉校验
     ge::graphStatus CheckFeatureInOutDtype() const;
     ge::graphStatus CheckFeatureActualSeqLensExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const FiaLayout &layout, const std::string &actualSeqLenName, const std::string &attrName);
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const FiaLayout &layout,
+                                        const std::string &actualSeqLenName, const std::string &attrName);
     ge::graphStatus CheckFeatureActualSeqLensQData();
     ge::graphStatus CheckFeatureActualSeqLensKvData();
     ge::graphStatus CheckFeatureActualSeqLens();
@@ -214,16 +214,16 @@ private:
     ge::graphStatus CheckFeatureGqaFullquant() const;
     ge::graphStatus CheckFeatureGqaPrefix() const;
     ge::graphStatus CheckFeaturePostQuant() const;
-    int64_t GetQActualSeqLenForPostQuant(uint32_t batchIdx, const gert::Tensor *tempData,
-        int64_t actualLenDims) const;
+    int64_t GetQActualSeqLenForPostQuant(uint32_t batchIdx, const gert::Tensor *tempData, int64_t actualLenDims) const;
     int64_t GetKVActualSeqLenForPostQuant(uint32_t batchIdx, const gert::Tensor *tempDataKV,
-        int64_t actualLenDimsKV) const;
-    void CalcPostQuantTokensPerBatch(int64_t &preTokensPerbatch, int64_t &nextTokensPerbatch,
-        int64_t actualSeqLenKV, int64_t actualSeqLenQ) const;
+                                          int64_t actualLenDimsKV) const;
+    void CalcPostQuantTokensPerBatch(int64_t &preTokensPerbatch, int64_t &nextTokensPerbatch, int64_t actualSeqLenKV,
+                                     int64_t actualSeqLenQ) const;
     ge::graphStatus CheckFeaturePostQuantLayout() const;
-    ge::graphStatus CheckFeaturePostQuantOffsetPerBatch(bool checkPostQuantOffset,
-        int64_t preTokensPerbatch, int64_t nextTokensPerbatch, int64_t actualSeqLenKV,
-        int64_t actualSeqLenQ, int64_t preTokens, int64_t nextTokens) const;
+    ge::graphStatus CheckFeaturePostQuantOffsetPerBatch(bool checkPostQuantOffset, int64_t preTokensPerbatch,
+                                                        int64_t nextTokensPerbatch, int64_t actualSeqLenKV,
+                                                        int64_t actualSeqLenQ, int64_t preTokens,
+                                                        int64_t nextTokens) const;
     ge::graphStatus CheckFeatureLeftPadding() const;
     ge::graphStatus CheckFeaturePSE() const;
     ge::graphStatus CheckFeatureHeadDim() const;

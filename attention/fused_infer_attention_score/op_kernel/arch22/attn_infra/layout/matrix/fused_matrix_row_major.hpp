@@ -40,23 +40,29 @@ public:
     /// Constructor
     HOST_DEVICE
     RowMajor(Index rows = 0, Index cols = 0)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(LongIndex(cols), LongIndex(1))) {}
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(LongIndex(cols), LongIndex(1)))
+    {}
 
     /// Constructor
     HOST_DEVICE
     RowMajor(Index rows, Index cols, LongIndex ldm)
-        : shape_(MakeCoord(rows, cols)), stride_(MakeCoord(ldm, LongIndex(1))) {}
+        : shape_(MakeCoord(rows, cols)),
+          stride_(MakeCoord(ldm, LongIndex(1)))
+    {}
 
     /// Ctor
     HOST_DEVICE
-    RowMajor(Shape shape, Stride stride) : shape_(shape), stride_(stride) {}
+    RowMajor(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
+    {}
 
     template <class Element>
-    HOST_DEVICE
-    static RowMajor MakeLayoutInUb(MatrixCoord const &shape)
+    HOST_DEVICE static RowMajor MakeLayoutInUb(MatrixCoord const &shape)
     {
         return RowMajor(shape.row(), shape.column(),
-            NpuArch::Detail::Alignment::RoundUp<BYTE_PER_C0 / sizeof(Element)>(shape.column()));
+                        NpuArch::Detail::Alignment::RoundUp<BYTE_PER_C0 / sizeof(Element)>(shape.column()));
     }
 
     /// Returns the offset of a coordinate in linear memory.
@@ -142,6 +148,6 @@ private:
     Stride stride_;
 };
 
-}  // namespace NpuArch::layout
+} // namespace NpuArch::layout
 
-#endif  // FUSED_MATRIX_ROW_MAJOR_HPP
+#endif // FUSED_MATRIX_ROW_MAJOR_HPP
