@@ -709,15 +709,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
         ProblemShape gmm2WaveProblemShape = gmm2ExpertState.problemShape;
         Get<M_VALUE>(gmm2WaveProblemShape) = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
-        constexpr bool useGroupCombineReady = true;
-        UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType, true, useGroupCombineReady>(
+        constexpr Gmm2CombineSyncProtocol syncProtocol = Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER;
+        UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2AddrInfo,
             gmm2ExpertState, gmm2Position.tokenIndexInExpert);
+        BindMoeExpertGmm2GroupCounter(syncWorkspaceLayout_, params_.workspaceInfo, gmm2ExpertState.expertIdx,
+                                      gmm2AddrInfo);
         // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
         bool isWholeExpert =
             gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
-                      GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true, useGroupCombineReady, false>(
+                      GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true, syncProtocol>(
             gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert,
             gmm2Position.tokenIndexInExpert, &params_, nullptr);
 
@@ -754,7 +756,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
     uint32_t rowSequence = 0U;
     if (isFinalWave) {
-        RunWaveCombineStage<CombineQuantMode, true>(
+        RunWaveCombineStage<CombineQuantMode, WaveCombineAivSet::ALL_AIV>(
             commonConfig_, waveCombineJob_, countWorkspace_, syncWorkspaceLayout_, activeBufferConfig,
             waveCombineScratch_, params_, waveBeginPosition.expertIdx, waveBeginPosition.tokenIndexInExpert,
             waveGlobalRowBegin, waveGlobalRowEnd - waveGlobalRowBegin, rowSequence);
@@ -865,8 +867,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
         GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            RunWaveGmm2PairwiseCombineStage<QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
-                                            GMM1_TILE_M, TopkWeightsPrefetch, GMM1_INTERLEAVED>(
+            RunWaveGmm2PairwiseCombineStage<ActivationType, Weight1Type, QuantScaleOutType, GMM1_TILE_M,
+                                            TopkWeightsPrefetch, GMM1_INTERLEAVED>(
                 commonConfig_, gmmExecutionConfig_, countWorkspace_, syncWorkspaceLayout_, params_,
                 moeWeightTensorListAddrs_, gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo,
                 gmm2RuntimeState, gmm2TileSequence);

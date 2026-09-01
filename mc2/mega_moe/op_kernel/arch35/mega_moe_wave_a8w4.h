@@ -224,13 +224,13 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                 expertIdx == waveEndPosition.expertIdx ? waveEndPosition.tokenIndexInExpert : expertTokenCount;
             uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
             if (sliceTokenCount != 0U) {
-                bool useAllAivCores = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
+                bool isFinalCombine = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
                                       expertIdx == waveLastActiveExpertIdx &&
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
                 // 公共入口保持同一套 GMM2 调度，仅在内部按 CombineQuantMode 选择 Combine 协议。
                 RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
                                         sliceTokenCount, combineBufferConfig, combineRowSequence,
-                                        gmm1TileReadySequence, useAllAivCores);
+                                        gmm1TileReadySequence, isFinalCombine);
             }
         }
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
