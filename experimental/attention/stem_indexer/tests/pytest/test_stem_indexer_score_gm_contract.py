@@ -187,3 +187,43 @@ def test_direct_output_skips_zero_length_index_vector_and_mte3():
     assert guarded_create in direct_compact
     assert "DataCopyPad(sparseSeqLenGm" in direct_compact
     assert guarded_indices_copy in direct_compact
+
+
+def test_output_cleanup_partitions_match_launched_vector_cores():
+    service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
+
+    init_begin = service.index("inline void SIVector<SIT>::InitOutputSingleCore")
+    init_end = service.index("inline void SIVector<SIT>::InitParams", init_begin)
+    init = service[init_begin:init_end]
+
+    # The failing device launches 54 logical Vector cores. Dividing cleanup into the
+    # compile-time maximum of 64 leaves exactly the padding tails reported by the two
+    # mixed-zero batch failures.
+    align_elems = 128  # 512 bytes / sizeof(int32_t)
+
+    def uncovered_size(total_size, partition_count, launched_core_count):
+        single_core_size = (total_size + partition_count - 1) // partition_count
+        single_core_size = (single_core_size + align_elems - 1) // align_elems * align_elems
+        return max(total_size - launched_core_count * single_core_size, 0)
+
+    launched_core_count = 54
+    si_gen_1258_size = 3 * 64 * 1 * 256
+    si_gen_1349_size = 3 * 64 * 8 * 64
+    assert uncovered_size(si_gen_1258_size, 64, launched_core_count) == 7680
+    assert uncovered_size(si_gen_1349_size, 64, launched_core_count) == 15360
+    assert uncovered_size(si_gen_1258_size, launched_core_count, launched_core_count) == 0
+    assert uncovered_size(si_gen_1349_size, launched_core_count, launched_core_count) == 0
+
+    redline_q_blocks = 30720 // 128
+    redline_k_blocks = 30720 // 128
+    redline_size = 40 * 32 * redline_q_blocks * redline_k_blocks
+    fixed_partition_size = (redline_size // 64 + align_elems - 1) // align_elems * align_elems
+    first_uncovered_element = fixed_partition_size * launched_core_count
+    first_uncovered_row = first_uncovered_element // redline_k_blocks
+    rows_per_batch = 32 * redline_q_blocks
+    redline_batch, row_in_batch = divmod(first_uncovered_row, rows_per_batch)
+    redline_q_head, redline_q_block = divmod(row_in_batch, redline_q_blocks)
+    assert (redline_batch, redline_q_head, redline_q_block) == (33, 24, 0)
+
+    assert "constInfo_.usedCoreNum" in init
+    assert "AIV_CORE_NUM" not in init
