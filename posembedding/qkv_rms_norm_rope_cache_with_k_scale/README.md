@@ -169,4 +169,14 @@
 | 调用方式 | 调用样例 | 说明 |
 |---|---|---|
 | aclnn API | [test_aclnn_qkv_rms_norm_rope_cache_with_k_scale](examples/test_aclnn_qkv_rms_norm_rope_cache_with_k_scale.cpp) | 通过[aclnnQkvRmsNormRopeCacheWithKScale](docs/aclnnQkvRmsNormRopeCacheWithKScale.md)接口方式调用QkvRmsNormRopeCacheWithKScale算子。 |
-| PyTorch API | - | 通过[qkv_rms_norm_rope_cache_with_k_scale](../../torch_extension/cann_ops_transformer/docs/zh/qkv_rms_norm_rope_cache_with_k_scale.md)接口方式调用QkvRmsNormRopeCacheWithKScale算子。 |
+| PyTorch API | [test_torch_qkv_rms_norm_rope_cache_with_k_scale_mrope_mx](examples/test_torch_qkv_rms_norm_rope_cache_with_k_scale_mrope_mx.py) | 通过[qkv_rms_norm_rope_cache_with_k_scale](../../torch_extension/cann_ops_transformer/docs/zh/qkv_rms_norm_rope_cache_with_k_scale.md)接口方式调用QkvRmsNormRopeCacheWithKScale算子。 |
+
+使用已安装且支持M-RoPE MX的`cann_ops_transformer` Torch Extension，并加载对应CANN环境后，可在仓库根目录直接运行functional或inplace样例：
+
+```bash
+python3 posembedding/qkv_rms_norm_rope_cache_with_k_scale/examples/test_torch_qkv_rms_norm_rope_cache_with_k_scale_mrope_mx.py --api functional
+```
+
+```bash
+python3 posembedding/qkv_rms_norm_rope_cache_with_k_scale/examples/test_torch_qkv_rms_norm_rope_cache_with_k_scale_mrope_mx.py --api inplace
+```
