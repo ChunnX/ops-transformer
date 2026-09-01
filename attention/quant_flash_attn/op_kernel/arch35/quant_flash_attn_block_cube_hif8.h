@@ -366,16 +366,20 @@ public:
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
-                                        uint32_t s2RealSize)
+                                        uint32_t s2RealSize, uint32_t mCount = 0)
     {
+        uint32_t mFull = (s2RealSize + 7) >> 3 << 3;
+        if (mCount == 0) {
+            mCount = mFull;
+        }
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-        fixpipeParams.mSize = (s2RealSize + 7) >> 3 << 3;
+        fixpipeParams.mSize = (mCount + 7) >> 3 << 3;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
-        // 源NZ矩阵中相邻Z排布的起始地址偏移
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        // 源NZ矩阵中相邻Z排布的起始地址偏移; 拆分搬运时源布局不变, srcStride仍按整块M计算
+        fixpipeParams.srcStride = ((mFull + 15) / 16) * 16;
         fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
         fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
@@ -424,9 +428,26 @@ public:
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
         outputBuf.WaitCrossCore();
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        // [性能实验1] fixpipe按M(s2)方向拆成两半: 前半搬运完成即发跨核信号(PIPE_FIX有序),
+        // AIV侧Vec1提前启动, 与后半fixpipe搬运时间重叠。
+        // AIV侧WaitCrossCore每轮只等一次, 拆分路径只发一次信号(前半完成), set/wait保持1:1, 不会死锁;
+        // 极限时序下AIV可能读到尚未写完的后半数据(数值错误, 仅用于性能测量, 访存模式不变)。
+        // 尾块(mFull<128)不拆分, 保持原单次信号语义。
+        {
+            LocalTensor<T> mm1DstUb = outputBuf.template GetTensor<T>();
+            LocalTensor<T> mm1SrcL0C = mm1ResL0C.GetTensor<T>();
+            uint32_t mFull = (s2CalcSize + 7) >> 3 << 3;
+            if (mFull >= 128) {
+                uint32_t halfM = ((mFull >> 1) + 15) >> 4 << 4; // 16行对齐(L0C fractal边界)
+                FixpipeMm1Dn(mm1DstUb, mm1SrcL0C, runInfo, s2CalcSize, halfM);
+                outputBuf.SetCrossCore(); // 前半完成信号(替代原整块完成信号)
+                FixpipeMm1Dn(mm1DstUb[halfM * 64], mm1SrcL0C[halfM * 16], runInfo, s2CalcSize, mFull - halfM);
+            } else {
+                FixpipeMm1Dn(mm1DstUb, mm1SrcL0C, runInfo, s2CalcSize);
+                outputBuf.SetCrossCore();
+            }
+        }
         mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
     }
 
     __aicore__ inline void IterateBmm2(MM2_DBUF_T &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
