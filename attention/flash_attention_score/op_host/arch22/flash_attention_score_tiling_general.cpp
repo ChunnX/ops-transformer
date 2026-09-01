@@ -3057,9 +3057,10 @@ protected:
         coreParams.set_dOuterSize(CeilDivision(dSize, dBasicBlock));
         coreParams.set_s1SparseValidSize(s1SparseValidSize);
         coreParams.set_s2SparseValidSize(s2SparseValidSize);
+        coreParams.set_d2Size(d2Size);
         batchBasic = coreParams.get_bBaseSize() * n2 * g;
-        OP_LOGD(context_, "[b:%ld, n2:%ld, g:%ld, s1:%ld, s2:%ld, batchBasic:%ld].", b, n2, g, s1,
-                inputParams.get_s2Size(), batchBasic);
+        OP_LOGD(context_, "[b:%ld, n2:%ld, g:%ld, s1:%ld, s2:%ld, batchBasic:%ld, d2Size: %ld].", b, n2, g, s1,
+                inputParams.get_s2Size(), batchBasic, d2Size);
         OP_LOGD(context_, "[bBaseSize: %d, bBaseTailSize:%d, bOuterSize:%ld].", coreParams.get_bBaseSize(),
                 coreParams.get_bBaseTailSize(), coreParams.get_bOuterSize());
         OP_LOGD(context_, "[s1BaseSize: %d, s1BaseTailSize:%d, s1OuterSize:%ld].", coreParams.get_s1BaseSize(),
@@ -3118,7 +3119,7 @@ protected:
         tensorSizeParams.set_softmaxSumUbSize(s1BasicBlock * (BYTE_BLOCK / sizeof(float)));
         tensorSizeParams.set_softmaxExpUbSize(s1BasicBlock * (BYTE_BLOCK / calcTypeSize));
         tensorSizeParams.set_apiTmpBufferBytes(apiMaxUBSize);
-        tensorSizeParams.set_bmm2ResUbSize(coreParams.get_s1Vec2BaseSize() * dBasicBlock);
+        tensorSizeParams.set_bmm2ResUbSize(coreParams.get_s1Vec2BaseSize() * alignedD2);
     }
 
     void CalcDBasicBlock() override
@@ -3154,18 +3155,18 @@ protected:
         bmm2.SetAType(matmul_tiling::TPosition::VECCALC, matmul_tiling::CubeFormat::NZ, bmmDtype, false);
         bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
         bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm2OutDtype);
-        bmm2.SetShape(s1Size, dSize, s2Size);
-        bmm2.SetOrgShape(s1Size, dSize, s2Size); // consider broadcst, N same as A tensor
+        bmm2.SetShape(s1Size, d2Size, s2Size);
+        bmm2.SetOrgShape(s1Size, d2Size, s2Size); // consider broadcst, N same as A tensor
         bmm2.SetALayout(bSize, s1Size, n2Size, gSize, s2Size);
-        bmm2.SetBLayout(bSize, s2Size, n2Size, 1, dSize);
-        bmm2.SetCLayout(bSize, s1Size, n2Size, gSize, dSize);
+        bmm2.SetBLayout(bSize, s2Size, n2Size, 1, d2Size);
+        bmm2.SetCLayout(bSize, s1Size, n2Size, gSize, d2Size);
         bmm2.SetBatchNum(batch);
         bmm2.SetBias(false);
         if (bmm2.SetBufferSpace(aicoreParams_.l1Size, aicoreParams_.l0cSize) != 0) {
             return false;
         }
         int64_t maxDBasicBlock = AlignDown(aicoreParams_.l0cSize / (tmpS1BasicBlock * calcTypeSize), 16UL);
-        if (bmm2.SetFixSplit(tmpS1BasicBlock, std::min(maxDBasicBlock, tmpDBasicBlock)) != 0) {
+        if (bmm2.SetFixSplit(tmpS1BasicBlock, std::min(maxDBasicBlock, alignedD2)) != 0) {
             return false;
         }
         return true;
@@ -3514,7 +3515,8 @@ protected:
 
     bool IsCapable() override
     {
-        if (dSize != d2Size) { // D不等长(d != dv): S1S2 支持并主动接住
+        OP_LOGD(context_, "try s1s2");
+        if (dSize != d2Size && s2Size > s2sizeLimitMin) { // D不等长(d != dv): S1S2 支持并主动接住
             return true;
         }
         if (s2Size > s2sizeLimitMin) {
