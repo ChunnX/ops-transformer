@@ -127,6 +127,11 @@ cleanup() {
     # 恢复原始源码
     [ -f "${ADD_CPP}.orig" ] && mv "${ADD_CPP}.orig" "$ADD_CPP"
     [ -f "${GMM_CPP}.orig" ] && mv "${GMM_CPP}.orig" "$GMM_CPP"
+    # 恢复被排除算子的 CMakeLists (排除时 mv 成 .bak)
+    for _op in incre_flash_attention $INCOMPAT_OPS; do
+        _c="csrc/${_op}/${SRC_SUFFIX}/CMakeLists.txt"
+        [ -f "${_c}.bak" ] && mv "${_c}.bak" "$_c"
+    done
     echo "[CLEANUP] 源码已恢复"
 }
 trap cleanup EXIT
@@ -137,6 +142,17 @@ if [ -f "$IFA_CMAKE" ]; then
     mv "$IFA_CMAKE" "${IFA_CMAKE}.bak"
     echo "[SETUP] 已临时排除 incre_flash_attention"
 fi
+
+# 排除 CANN 8.5 不兼容算子 (TPipe::DestroyWithoutPipeAll 不存在, 会拖垮整 wheel 构建;
+# 与头开销测试无关, 仅在源码存在时排除)
+INCOMPAT_OPS="moe_distribute_combine_v2 moe_distribute_dispatch_v2 incre_flash_attention_meta update_context"
+for _op in $INCOMPAT_OPS; do
+    _c="csrc/${_op}/${SRC_SUFFIX}/CMakeLists.txt"
+    if [ -f "$_c" ]; then
+        mv "$_c" "${_c}.bak"
+        echo "[SETUP] 已临时排除 ${_op} (CANN 8.5 不兼容)"
+    fi
+done
 
 # ============================================================
 # 构建函数: 接收核数参数, sed 改源码, 构建+安装 wheel

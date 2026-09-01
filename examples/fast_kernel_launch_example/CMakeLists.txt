@@ -23,14 +23,16 @@ set(_ASC_CMAKE_PATHS
     "${_ASCEND_ROOT}/tikcpp/ascendc_kernel_cmake"
 )
 foreach(_p ${_ASC_CMAKE_PATHS})
-    if(EXISTS "${_p}/asc-config.cmake" OR EXISTS "${_p}/asc_modules/FindASC.cmake")
+    # CANN 布局差异: 新版为 asc-config.cmake, 8.5.T107 aarch64 为 ASCConfig.cmake
+    if(EXISTS "${_p}/asc-config.cmake" OR EXISTS "${_p}/ASCConfig.cmake" OR EXISTS "${_p}/asc_modules/FindASC.cmake")
         list(APPEND CMAKE_PREFIX_PATH "${_p}")
         set(ASC_DIR "${_p}" CACHE PATH "ASC cmake path" FORCE)
         break()
     endif()
 endforeach()
 foreach(_p ${_ASC_CMAKE_PATHS})
-    if(EXISTS "${_p}/aicpu-config.cmake" OR EXISTS "${_p}/aicpu_modules/FindAICPU.cmake")
+    # CANN 布局差异: 新版为 aicpu-config.cmake, 8.5.T107 aarch64 为 AICPUConfig.cmake
+    if(EXISTS "${_p}/aicpu-config.cmake" OR EXISTS "${_p}/AICPUConfig.cmake" OR EXISTS "${_p}/aicpu_modules/FindAICPU.cmake")
         list(APPEND CMAKE_PREFIX_PATH "${_p}")
         set(AICPU_DIR "${_p}" CACHE PATH "AICPU cmake path" FORCE)
         break()
