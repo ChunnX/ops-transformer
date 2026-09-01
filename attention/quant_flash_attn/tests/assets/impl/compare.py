@@ -34,9 +34,9 @@ def _resolve_csv_tolerance(idx):
 
     ttk 框架不把 testcase 对象直接传给 custom compare, golden 插件在调用前把
     csv 的 precision_tolerances / absolute_precision 暂存到对应 golden 模块上。
-    按 quant_mode 分流: mxfp8 → mxfp8_golden_mod, gqa_fp8 → fp8_golden_mod。
-    本函数优先检查 fp8_golden_mod (quant_mode=6), 再检查 mxfp8_golden_mod,
-    取首个非 None 的属性 (两个模块不会同时有值, 因一个 case 只走一条路径)。
+    按 quant_mode 分流: mxfp8 → mxfp8_golden_mod, gqa_fp8 → fp8_golden_mod, hif8 → hif8_golden_mod。
+    golden 函数写入前会清空其他模块残留 (防止跨 quant_mode 容差污染),
+    因此同一时刻只有一个模块有值, 回退链顺序不影响结果。
     返回 (rtol, atol, diff_thd, pct_thd, max_diff_hd); csv 省略时返回 (None,)*5
     由 check_result 用默认值 (rtol/atol 按 dtype 分支, diff_thd=0.005, pct_thd=0.005,
     max_diff_hd=10)。
