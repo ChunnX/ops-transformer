@@ -419,7 +419,6 @@ __aicore__ inline void GMMA8W4PostProcess::customDataCopyOut(VecConfig &vecConfi
     DataCopyParams copyParams_1{
         1, (uint16_t)(vecConfig.innerLoopNum * gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR * sizeof(int8_t)), 0,
         0};
-    PipeBarrier<PIPE_ALL>();
     DataCopyPad(quantOutputGM[(workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx) *
                               gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR],
                 quantLocal, copyParams_1);
