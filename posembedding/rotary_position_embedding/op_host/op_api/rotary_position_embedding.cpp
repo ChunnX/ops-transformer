@@ -26,6 +26,9 @@ const aclTensor *RotaryPositionEmbedding(const aclTensor *x, const aclTensor *co
     const aclTensor *rotate, int64_t mode, aclOpExecutor *executor)
 {
     L0_DFX(RotaryPositionEmbedding, x, cos, sin, rotate, mode);
+    OP_CHECK_NULL(x, return nullptr);
+    OP_CHECK_NULL(cos, return nullptr);
+    OP_CHECK_NULL(sin, return nullptr);
     DataType outType = x->GetDataType();
     Format format = x->GetStorageFormat();
     auto output = executor->AllocTensor(outType, format, format);

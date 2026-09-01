@@ -108,3 +108,41 @@ TEST_F(l2_rotary_position_embedding_test, Ascend910B2_rotary_position_embedding_
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
+TEST_F(l2_rotary_position_embedding_test, Ascend910B2_rotary_position_embedding_x_nullptr)
+{
+    auto cos = TensorDesc({1, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto sin = TensorDesc({1, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
+    int64_t mode = 0;
+    auto out = TensorDesc({8, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnRotaryPositionEmbedding, INPUT(nullptr, cos, sin, mode), OUTPUT(out));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_INNER_NULLPTR);
+}
+
+TEST_F(l2_rotary_position_embedding_test, Ascend910B2_rotary_position_embedding_cos_nullptr)
+{
+    auto x = TensorDesc({8, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sin = TensorDesc({1, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
+    int64_t mode = 0;
+    auto out = TensorDesc({8, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnRotaryPositionEmbedding, INPUT(x, nullptr, sin, mode), OUTPUT(out));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_INNER_NULLPTR);
+}
+
+TEST_F(l2_rotary_position_embedding_test, Ascend910B2_rotary_position_embedding_sin_nullptr)
+{
+    auto x = TensorDesc({8, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto cos = TensorDesc({1, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 8);
+    int64_t mode = 0;
+    auto out = TensorDesc({8, 1, 1, 64}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnRotaryPositionEmbedding, INPUT(x, cos, nullptr, mode), OUTPUT(out));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_INNER_NULLPTR);
+}

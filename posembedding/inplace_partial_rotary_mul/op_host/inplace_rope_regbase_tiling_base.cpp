@@ -366,7 +366,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
 
     // 获取slice
     const gert::ContinuousVector *sliceRangeListPtr = attrs->GetAttrPointer<gert::ContinuousVector>(1);
-    if (sliceRangeListPtr->GetSize() == 0) {
+    if (sliceRangeListPtr == nullptr || sliceRangeListPtr->GetSize() == 0) {
         sliceStart_ = 0;
         sliceEnd_ = d_;
     } else {
