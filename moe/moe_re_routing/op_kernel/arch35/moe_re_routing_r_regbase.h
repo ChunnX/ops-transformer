@@ -50,6 +50,14 @@ protected:
     __aicore__ inline void CopyOutScale(const int64_t blockLen, const int64_t offset);
     __aicore__ inline void CopyOutIndex(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
     __aicore__ inline void CopyTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
+    __aicore__ inline void CopyTopkWeightLarge(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
+    __aicore__ inline void CopyTopkWeightGroup(const int64_t rows, const int64_t localRows, const int64_t srcOffset,
+                                               const int64_t rankId, const int64_t expertStart,
+                                               const int64_t expertCount);
+    __aicore__ inline bool IsRegularTopkWeight(const int64_t rankId, int64_t &segmentRows, int64_t &dstOffset);
+    __aicore__ inline void CopyTopkWeightRegular(const int64_t rows, const int64_t segmentRows, const int64_t srcOffset,
+                                                 const int64_t dstOffset, const int64_t blockCount,
+                                                 const int64_t dstStride);
 
     TPipe *pipe_ = nullptr;
     const MoeReRoutingRTilingData *tilingData_;
@@ -66,8 +74,10 @@ protected:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> queBind_;
     TQue<QuePosition::VECOUT, 1> idxOutQue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightQue_;
+    TBuf<QuePosition::VECCALC> topkOffsetBuf_;
     static constexpr int64_t DOUBLE_BUFFER = 2;
     static constexpr int64_t INDEX_UB_SIZE = 256;
+    static constexpr int64_t TOPK_GROUP_EXPERTS = 256;
     int64_t blockIdx_ = 0;
     int64_t tokensSrc_ = 0;
     int64_t tokensDst_ = 0;
@@ -106,6 +116,7 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::Init(
     if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
         this->pipe_->InitBuffer(topkWeightQue_, DOUBLE_BUFFER,
                                 Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(float), BLOCK_SIZE / sizeof(float)));
+        this->pipe_->InitBuffer(topkOffsetBuf_, TOPK_GROUP_EXPERTS * sizeof(int64_t));
     }
 }
 
@@ -139,22 +150,93 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::Proce
                 tokensSrc_ += srcRankTokenGm_(rankId * tilingData_->expertNum + expertIdx);
             }
         }
-        // 计算当前rankId之前的dst偏移
+        if (tilingData_->hasTopkWeight != HAS_TOPK_WEIGHT) {
+            // 计算当前rankId之前的dst偏移
+            for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
+                int64_t currTokenNum = srcRankTokenGm_(expertIdx + currRankId * tilingData_->expertNum);
+                for (int64_t rankIdx = 0; rankIdx < currRankId; rankIdx++) {
+                    tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+                }
+                ProcessTokenScale(currTokenNum);
+                tokensSrc_ += currTokenNum;
+                // 计算当前rank之后的dst偏移
+                for (int64_t rankIdx = currRankId; rankIdx < tilingData_->rankNum; rankIdx++) {
+                    tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+                }
+            }
+            continue;
+        }
+
+        // topk weight的源数据按rank连续。将多个expert段合并到一次UB申请中，减少碎片场景的队列开销。
+        LocalTensor<int64_t> topkOffsets = topkOffsetBuf_.Get<int64_t>();
+        const int64_t topkWeightUbSize = tilingData_->ubFactor / sizeof(float);
+        const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
+        const int64_t rankSrcOffset = tokensSrc_;
+        int64_t regularSegmentRows = 0;
+        int64_t regularDstOffset = 0;
+        // H=1 的规则 rank-expert 网格可将 destination 的多个 expert 段合并为 blockCount。
+        const bool useRegularTopk =
+            tokenSize_ == 1 && IsRegularTopkWeight(currRankId, regularSegmentRows, regularDstOffset);
+        if (useRegularTopk) {
+            for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
+                int64_t currTokenNum = srcRankTokenGm_(expertIdx + currRankId * tilingData_->expertNum);
+                for (int64_t rankIdx = 0; rankIdx < currRankId; rankIdx++) {
+                    tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+                }
+                ProcessTokenScale(currTokenNum);
+                tokensSrc_ += currTokenNum;
+                for (int64_t rankIdx = currRankId; rankIdx < tilingData_->rankNum; rankIdx++) {
+                    tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+                }
+            }
+            CopyTopkWeightRegular(tilingData_->expertNum * regularSegmentRows, regularSegmentRows, rankSrcOffset,
+                                  regularDstOffset, tilingData_->expertNum,
+                                  (tilingData_->rankNum - 1) * regularSegmentRows);
+            continue;
+        }
+        int64_t groupExpertStart = 0;
+        int64_t groupExpertCount = 0;
+        int64_t groupRows = 0;
+        int64_t groupLocalRows = 0;
+        int64_t groupSrcOffset = tokensSrc_;
         for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
             int64_t currTokenNum = srcRankTokenGm_(expertIdx + currRankId * tilingData_->expertNum);
+            int64_t currLocalRows = Ops::Base::CeilAlign(currTokenNum, topkBlockElements);
+            bool useSmallQueue = tokenSize_ > 1 && currTokenNum > 0 && currTokenNum <= INDEX_UB_SIZE * 2;
+            if ((groupExpertCount > 0 && useSmallQueue) || groupExpertCount == TOPK_GROUP_EXPERTS ||
+                (groupExpertCount > 0 && groupLocalRows + currLocalRows > topkWeightUbSize)) {
+                CopyTopkWeightGroup(groupRows, groupLocalRows, groupSrcOffset, currRankId, groupExpertStart,
+                                    groupExpertCount);
+                groupExpertStart = expertIdx;
+                groupExpertCount = 0;
+                groupRows = 0;
+                groupLocalRows = 0;
+                groupSrcOffset = tokensSrc_;
+            }
             for (int64_t rankIdx = 0; rankIdx < currRankId; rankIdx++) {
                 tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
             }
             ProcessTokenScale(currTokenNum);
-            if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
+            if (useSmallQueue) {
                 CopyTopkWeight(currTokenNum, tokensSrc_, tokensDst_);
+            } else if (currLocalRows > topkWeightUbSize) {
+                CopyTopkWeightLarge(currTokenNum, tokensSrc_, tokensDst_);
+            } else {
+                topkOffsets.SetValue(groupExpertCount, tokensDst_);
+                groupExpertCount++;
+                groupRows += currTokenNum;
+                groupLocalRows += currLocalRows;
             }
             tokensSrc_ += currTokenNum;
-            // 计算当前rank之后的dst偏移
             for (int64_t rankIdx = currRankId; rankIdx < tilingData_->rankNum; rankIdx++) {
                 tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
             }
+            if (useSmallQueue || currLocalRows > topkWeightUbSize) {
+                groupExpertStart = expertIdx + 1;
+                groupSrcOffset = tokensSrc_;
+            }
         }
+        CopyTopkWeightGroup(groupRows, groupLocalRows, groupSrcOffset, currRankId, groupExpertStart, groupExpertCount);
     }
     CalcExpertTokenNum();
 }
@@ -374,6 +456,127 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyT
         DataCopyPad(dstTopkWeightGm_[dstOffset + loopIdx * INDEX_UB_SIZE], topkLocal, copyParams);
         topkWeightQue_.FreeTensor(topkLocal);
     }
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeightLarge(const int64_t rows,
+                                                                                               const int64_t srcOffset,
+                                                                                               const int64_t dstOffset)
+{
+    int64_t topkWeightUbSize = tilingData_->ubFactor / sizeof(float);
+    int64_t loopCnt = Ops::Base::CeilDiv(rows, topkWeightUbSize);
+    int64_t subRows = topkWeightUbSize;
+    for (int64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
+        if (loopIdx == loopCnt - 1 && rows % topkWeightUbSize != 0) {
+            subRows = rows % topkWeightUbSize;
+        }
+        LocalTensor<float> topkLocal = queBind_.AllocTensor<float>();
+        DataCopyExtParams copyParams(1, subRows * sizeof(float), 0, 0, 0);
+        DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
+        DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset + loopIdx * topkWeightUbSize], copyParams, padParams);
+        queBind_.EnQue(topkLocal);
+        topkLocal = queBind_.DeQue<float>();
+        DataCopyPad(dstTopkWeightGm_[dstOffset + loopIdx * topkWeightUbSize], topkLocal, copyParams);
+        queBind_.FreeTensor(topkLocal);
+    }
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeightGroup(
+    const int64_t rows, const int64_t localRows, const int64_t srcOffset, const int64_t rankId,
+    const int64_t expertStart, const int64_t expertCount)
+{
+    if (rows == 0) {
+        return;
+    }
+    LocalTensor<int64_t> topkOffsets = topkOffsetBuf_.Get<int64_t>();
+    LocalTensor<float> topkLocal = queBind_.AllocTensor<float>();
+    const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
+    if (rows == localRows) {
+        DataCopyExtParams copyParams(1, rows * sizeof(float), 0, 0, 0);
+        DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
+        DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset], copyParams, padParams);
+    } else {
+        int64_t srcRows = 0;
+        int64_t localOffset = 0;
+        for (int64_t expertOffset = 0; expertOffset < expertCount; expertOffset++) {
+            int64_t currRows = srcRankTokenGm_((rankId * tilingData_->expertNum) + expertStart + expertOffset);
+            if (currRows > 0) {
+                DataCopyExtParams copyParams(1, currRows * sizeof(float), 0, 0, 0);
+                DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
+                DataCopyPad(topkLocal[localOffset], srcTopkWeightGm_[srcOffset + srcRows], copyParams, padParams);
+            }
+            srcRows += currRows;
+            localOffset += Ops::Base::CeilAlign(currRows, topkBlockElements);
+        }
+    }
+    queBind_.EnQue(topkLocal);
+    topkLocal = queBind_.DeQue<float>();
+    int64_t localOffset = 0;
+    for (int64_t expertOffset = 0; expertOffset < expertCount; expertOffset++) {
+        int64_t currRows = srcRankTokenGm_((rankId * tilingData_->expertNum) + expertStart + expertOffset);
+        if (currRows > 0) {
+            DataCopyExtParams copyParams(1, currRows * sizeof(float), 0, 0, 0);
+            DataCopyPad(dstTopkWeightGm_[topkOffsets.GetValue(expertOffset)], topkLocal[localOffset], copyParams);
+        }
+        localOffset += Ops::Base::CeilAlign(currRows, topkBlockElements);
+    }
+    queBind_.FreeTensor(topkLocal);
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline bool MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::IsRegularTopkWeight(const int64_t rankId,
+                                                                                               int64_t &segmentRows,
+                                                                                               int64_t &dstOffset)
+{
+    if (tilingData_->expertNum <= 0 || tilingData_->rankNum <= 0) {
+        return false;
+    }
+    segmentRows = srcRankTokenGm_(rankId * tilingData_->expertNum);
+    const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
+    const int64_t topkWeightUbSize = tilingData_->ubFactor / sizeof(float);
+    if (segmentRows <= 0 || segmentRows % topkBlockElements != 0 ||
+        segmentRows * tilingData_->expertNum > topkWeightUbSize) {
+        return false;
+    }
+    for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
+        if (srcRankTokenGm_(rankId * tilingData_->expertNum + expertIdx) != segmentRows) {
+            return false;
+        }
+        int64_t expertTotal = 0;
+        for (int64_t rankIdx = 0; rankIdx < tilingData_->rankNum; rankIdx++) {
+            expertTotal += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+        }
+        if (expertTotal != segmentRows * tilingData_->rankNum) {
+            return false;
+        }
+    }
+    dstOffset = 0;
+    for (int64_t rankIdx = 0; rankIdx < rankId; rankIdx++) {
+        dstOffset += srcRankTokenGm_(rankIdx * tilingData_->expertNum);
+    }
+    return true;
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeightRegular(
+    const int64_t rows, const int64_t segmentRows, const int64_t srcOffset, const int64_t dstOffset,
+    const int64_t blockCount, const int64_t dstStride)
+{
+    if (rows <= 0 || segmentRows <= 0 || blockCount <= 0) {
+        return;
+    }
+    LocalTensor<float> topkLocal = queBind_.AllocTensor<float>();
+    DataCopyExtParams copyInParams(1, rows * sizeof(float), 0, 0, 0);
+    DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
+    DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset], copyInParams, padParams);
+    queBind_.EnQue(topkLocal);
+    topkLocal = queBind_.DeQue<float>();
+    DataCopyExtParams copyOutParams(static_cast<uint16_t>(blockCount),
+                                    static_cast<uint32_t>(segmentRows * sizeof(float)), 0,
+                                    static_cast<uint32_t>(dstStride * sizeof(float)), 0);
+    DataCopyPad(dstTopkWeightGm_[dstOffset], topkLocal, copyOutParams);
+    queBind_.FreeTensor(topkLocal);
 }
 
 } // end namespace MoeReRouting

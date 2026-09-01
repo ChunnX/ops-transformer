@@ -24,7 +24,8 @@ namespace optiling {
 
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t BYTE_LENGTH_FOUR = 4;
-constexpr int64_t RESERVE_UB_GAP = 32;
+constexpr int64_t TOPK_OFFSET_UB_SIZE = 256 * sizeof(int64_t);
+constexpr int64_t TOPK_COPY_UB_SIZE = 256 * 2 * sizeof(float);
 constexpr uint64_t MOE_RE_ROUTING_RE_WITHOUT_SCALE = 200000;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT = 200100;
 /* Note: MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -60,12 +61,9 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
     // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
     if (hasTopkWeight_) {
-        reserveUbSize += INDEX_UB_SIZE * DOUBLE_BUFFER * sizeof(float);
+        reserveUbSize += TOPK_OFFSET_UB_SIZE + TOPK_COPY_UB_SIZE;
     }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
-    if (hasTopkWeight_) {
-        canUseUbSize -= RESERVE_UB_GAP;
-    }
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
     return ge::GRAPH_SUCCESS;
 }
@@ -73,13 +71,12 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
 ge::graphStatus MoeReRoutingReTiling::DoOpTiling()
 {
     OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context_->GetNodeName(), "CheckParam()", "GRAPH_FAILED", "check param fail."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "CheckParam()", "GRAPH_FAILED",
+                                                      "check param fail."),
                 return ge::GRAPH_FAILED);
     SplitCore();
     if (SplitUb() != ge::GRAPH_SUCCESS) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "SplitUb()", "GRAPH_FAILED", "SplitUb failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "SplitUb()", "GRAPH_FAILED", "SplitUb failed.");
         return ge::GRAPH_FAILED;
     }
     if (hasScale_) {
