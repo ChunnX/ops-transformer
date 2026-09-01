@@ -55,6 +55,12 @@ constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 10;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
 constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 13;
+
+// Dim Index
+constexpr uint32_t DIM_IDX_ONE = 1;
+constexpr uint32_t DIM_IDX_TWO = 2;
+constexpr uint32_t DIM_IDX_THREE = 3;
+>>>>>>> master
 // Dim Num
 constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
