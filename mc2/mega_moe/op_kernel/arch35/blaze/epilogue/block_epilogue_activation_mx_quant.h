@@ -325,17 +325,20 @@ BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeig
             const float invAlpha = activationAlpha_ != 0.0f ? 1.0f / activationAlpha_ : 1.0f;
             const Activation::SituGluParams situGluParams{clampLimit_, activationBeta_, invBeta, activationAlpha_,
                                                           invAlpha};
-            Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, true>(gatedActivationContext, situGluParams);
+            asc_vf_call<Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, true>>(gatedActivationContext,
+                                                                                    situGluParams);
         } else {
             const Activation::SituGluParams situGluParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
-            Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, false>(gatedActivationContext, situGluParams);
+            asc_vf_call<Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, false>>(gatedActivationContext,
+                                                                                     situGluParams);
         }
     } else if (actMode == ActMode::SWIGLU_STEP) {
         asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>>(gatedActivationContext,
                                                                                  clampLimit_);
     } else if (actMode == ActMode::SWIGLU_OAI) {
         const Activation::SwiGluOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
-        Activation::RunSwiGLUOAI<DataTypeIn, TopkWeightsPrefetch>(gatedActivationContext, swiGluOaiParams);
+        asc_vf_call<Activation::RunSwiGLUOAI<DataTypeIn, TopkWeightsPrefetch>>(gatedActivationContext,
+                                                                             swiGluOaiParams);
     } else {
         asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>>(gatedActivationContext,
                                                                                   clampLimit_);
