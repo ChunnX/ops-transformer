@@ -1,2 +1,15 @@
 testcase_name	api_name	tensor_view_shapes	tensor_dtypes	tensor_formats	attributes	output_tensor_indexes	golden_api	input_data_ranges	precision_tolerances	absolute_precision
 Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_1_20_2_4096_4096_72_72_TND_000000	torch.ops.cann_ops_transformer.quant_flash_attn	((4096, 20, 72), (4096, 2, 72), (4096, 2, 72), (4096, 20, 2, 2), (4096, 2, 2, 2), (64, 2, 72, 2), (0,), (1,), (2,), (2,), (0,), (0,), (0,), (0,), (0,))	('float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e8m0', 'float8_e8m0', 'float8_e8m0', 'int32', 'float32', 'int32', 'int32', 'int32', 'int32', 'float32', 'int8', 'float32')		{'precision_tolerances': ((0.0078125, 0.0001, 0.005, 0.005, 10),), 'absolute_precision': 1e-08, 'p_scale_value': 1.0, 'cu_seqlens_q': [0, 4096], 'cu_seqlens_kv': [0, 4096], 'seqused_q': None, 'seqused_kv': None, 'attn_mask_dtype': 'int8', 'quant_mode': 1, 'softmax_scale': 0.117851130197757, 'mask_mode': 0, 'win_left': -1, 'win_right': -1, 'max_seqlen_q': 4096, 'max_seqlen_kv': -1, 'layout_q': 'TND', 'layout_q_descale': 'TND', 'layout_kv': 'TND', 'layout_out': 'TND', 'return_softmax_lse': 1, 'enable_lse': 1, 'N_q': 20, 'N_kv': 2, 'D': 72, 'batch_size': None, 'enable_pa': False, 'kv_cache_layout': 'TND', 'q_scale_layout': 'TND', 'block_size': 0}			((10.0, 1000.0), (-2.0, -1.0), (-2.0, -1.0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1))	((0.0078125, 0.0001, 0.005, 0.005, 10),)	1.00E-08
+
+[profiling.py:366]: NPU deterministic level set (e2e batch consistency for Decode_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_8_24_8_4_1024_72_72_TND_Mask_000001) 
+[Decode_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_8_24_8_4_1024_72_72_TND_Mask_000001] Input generation failure
+Traceback (most recent call last):
+  File "/home/y00938753/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 1127, in _do_profile
+    raw_inputs = generate_inputs(testcase, switches, backend, plan)
+  File "/home/y00938753/ops-test-kit/ttk/core_modules/framework_api/input_generation.py", line 83, in generate_inputs
+    input_func(*args, **kwargs)
+  File "/home/y00938753/ops-transformer/attention/quant_flash_attn/tests/assets/spec.py", line 62, in _inputs_dispatch
+    return inputs_module.generate_qfa_mxfp8_inputs(*args, **kwargs)
+TypeError: generate_qfa_mxfp8_inputs() takes 15 positional arguments but 27 positional arguments (and 13 keyword-only arguments) were given
+2026-09-01 14:48:37,956 [INFO] [3950825 MP MT] [instance_base.py:147]: ttk Profiling complete 
+2026-09-01 14:48:38,374 [INFO] [3950825 MP MT] [instance_base.py:329]: 
