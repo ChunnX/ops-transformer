@@ -1000,8 +1000,8 @@ ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTiling
                                                              "In non-PA scenarios, value tensors must be contiguous"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.keyRopeNonContigDim != -1,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        fiaInfo.opName, "keyRope", "In non-PA scenarios, keyRope tensors must be contiguous"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                                                             "In non-PA scenarios, keyRope tensors must be contiguous"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
