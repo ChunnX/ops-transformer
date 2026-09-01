@@ -326,7 +326,8 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr"), return ge::GRAPH_FAILED);
     const int64_t *modePtr = attrs->GetAttrPointer<int64_t>(0);
     int64_t mode = (modePtr == nullptr) ? 0 : *modePtr;
-    OP_CHECK_IF(mode != 1,
+    OP_CHECK_IF(
+        mode != 1,
         OP_LOGE(context_->GetNodeName(), "mode = %ld is not supported, only mode = 1 (interleave) is supported", mode),
         return ge::GRAPH_FAILED);
     // 获取slice范围：空属性时默认 [0, allHeadDim_]，与A5行为一致
@@ -793,10 +794,8 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitMixed()
 ge::graphStatus InplacePartialRotaryMulTiling::DoTiling()
 {
     OP_LOGI(context_->GetNodeName(), "Enter InplacePartialRotaryMulTiling DoTiling");
-    OP_CHECK_IF(
-        CheckInput() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "CheckInput failed"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckInput() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CheckInput failed"),
+                return ge::GRAPH_FAILED);
     // No-op: empty slice (sliceStart==sliceEnd), nothing to compute
     if (headDim_ == 0) {
         tilingKey_ = TILING_KEY_NOOP;
