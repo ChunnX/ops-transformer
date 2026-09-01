@@ -773,10 +773,10 @@ with open(summary_path, 'w') as f:
     w = csv.writer(f)
     w.writerow(['# 说明: 头开销=T1-stars(Tstars->首个MTE2前); 调度开销=Tkick-stars(STARS派发->核kick);',
                 '硬件头=T0-kick(核kick->取回首指令); 软件头=T1-T0(kernel prologue); T2-stars=kernel末指令;',
-                'min/mean/max=最快核/核平均/最慢核(墙钟); n=有效配对样本数'])
+                'min/mean/max=最快核/核平均/最慢核(墙钟)'])
     w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)', '统计口径',
-                '调度开销Tkick-stars(us)', '调度_n',
-                '硬件头T0-kick(us)', '硬件_n',
+                '调度开销Tkick-stars(us)',
+                '硬件头T0-kick(us)',
                 '软件头T1-T0(us)',
                 '头开销T1-stars(us)',
                 'T2-stars(us)'])
@@ -786,8 +786,8 @@ with open(summary_path, 'w') as f:
                 m['n'] if m else '', f"{r['mean']:.3f}"]
         for stat in ('min', 'mean', 'max'):
             row = list(base) + [stat]
-            row += [fmt(seg1[stat]) if seg1 else 'N/A', seg1['n'] if seg1 else '']
-            row += [fmt(s2[stat]) if s2 else 'N/A', s2['n'] if s2 else '']
+            row += [fmt(seg1[stat]) if seg1 else 'N/A']
+            row += [fmt(s2[stat]) if s2 else 'N/A']
             if m:
                 row += [fmt(m.get('t1_t0_' + stat))]
                 row += [fmt(m.get('t1_stars_' + stat if stat != 'max' else 't1_stars'))]
