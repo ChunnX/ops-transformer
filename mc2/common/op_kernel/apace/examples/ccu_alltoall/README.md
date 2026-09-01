@@ -96,6 +96,11 @@ cmake --build build --target ccu_alltoall --parallel 4
 标卡4P 是多开发者共享服务器，**任何占用 NPU 的运行（precision/perf）都必须通过
 `qrun` 排队工具提交**，直接裸跑会与他人任务抢卡冲突。`qrun -h` 可看完整帮助。
 
+> **🚫 铁律：禁止使用 `qrun clear`**——该命令会清除队列中**所有人**的排队任务
+> （含他人正在等待的任务），属于破坏共享秩序的危险操作，任何情况下不得使用。
+> 只允许 `qrun list`（查队列）/ `qrun stats`（查占用看板）等只读操作；
+> 自己的任务误提交时等它执行完或超时，不得动全局队列。
+
 **排队的两个坑（2026-09-01 实测）：**
 
 1. **qrun 的执行 shell 不继承你的环境**——它起的是干净 shell，CANN 环境
@@ -203,4 +208,5 @@ print("PASS")
 - **AIC 桥 kernel 固定 8 核**（Blaze-free 无法查询 platform 核数），阶段3 恢复查询
 - ~~**token 机制**：仅对 sendBuf 获取 token~~（阶段2 已上板验证无问题，4 rank 全 PASS）
 - **CCU kernel 性能不可被 msprof --ai-core 采集**（沿用 AG 实测结论），perf 模式仅作烟囱
-- **共享服务器必须 qrun 排队**（见上"精度验证必须走 qrun 排队"），裸跑抢占会干扰他人任务
+- **共享服务器必须 qrun 排队**（见上"精度验证必须走 qrun 排队"），裸跑抢占会干扰他人任务；
+  **禁止 `qrun clear`**（清除全队列含他人任务，铁律）
