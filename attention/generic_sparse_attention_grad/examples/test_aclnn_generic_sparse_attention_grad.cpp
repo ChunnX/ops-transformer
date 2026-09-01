@@ -109,7 +109,7 @@ int main()
     auto ret = Init(deviceId, &context, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. BNSD smoke 参数（对齐 BSAG/GSAG 约束：D=128, blockShape=[1,128]）
+    // 2. BNSD smoke 参数（对齐 GSAG 约束：D=128, blockShape=[1,128]）
     const int64_t B = 1;
     const int64_t N1 = 1;
     const int64_t N2 = 1;

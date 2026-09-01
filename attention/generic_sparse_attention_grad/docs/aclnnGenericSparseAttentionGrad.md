@@ -2,89 +2,67 @@
 
 ## 产品支持情况
 
-<!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
-<!-- end id1 -->
-<!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
-<!-- end id2 -->
-<!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
-<!-- end id4 -->
-<!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
-<!-- end id5 -->
-<!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
-<!-- end id6 -->
+- Ascend 950PR/Ascend 950DT：支持
+- Atlas A3 训练系列产品/Atlas A3 推理系列产品：不支持
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品：不支持
+- Atlas 200I/500 A2 推理产品：不支持
+- Atlas 推理系列产品：不支持
+- Atlas 训练系列产品：不支持
 
 ## 功能说明
 
-* **算子功能**：GenericSparseAttentionGrad 是通用块稀疏注意力的反向计算算子。算子以 **KV2Q** 稀疏表（`rsvdBlockIdx` / `rsvdBlockCount`）描述每个 KV 块选中的 Q token 集合，结合正向输出 `out`、`lse` 与上游梯度 `dout`，计算 `dQuery`、`dKey`、`dValue`。调用前须先通过 `aclnnGenericSparseAttentionGradMetadata` 生成分核 `metadata`。
-
-* **稀疏表语义**：
-  * `rsvdBlockIdx` shape 为 `[B, N2, J, maxS1]`：第 `j` 个 KV 块（长度 `blockShapeY`）对应的选中 Q token 下标列表，无效位置填 `-1`。
-  * `rsvdBlockCount` shape 为 `[B, N2, J]`：每个 KV 块实际有效 Q 数量。
-  * `J = ceilDiv(maxKvSeqLength, blockShapeY)`。
-
-* **计算公式**：稀疏块大小为 $blockShapeX \times blockShapeY$（当前 $blockShapeX=1$）。对每个有效 KV 块，按稀疏表 Gather 对应 Q 行后执行与 FlashAttention 同类的反向：
-
-  已知正向在稀疏支持集上满足：
-
+- **算子功能**：GenericSparseAttentionGrad 是通用块稀疏注意力的反向计算算子。依据 `rsvdBlockIdx` / `rsvdBlockCount`（稀疏块索引表）定义的索引，仅在被选中的 KV 块上计算和传播梯度，在反向传播时精确路由梯度，支持动态、可变长的分块稀疏模式。调用前须先通过 `aclnnGenericSparseAttentionGradMetadata` 生成分核 `metadata`。
+- **计算公式**：
+  1. 计算 Softmax 后的注意力权重矩阵
   $$
-  S = Mask(scale \cdot Q_{sel} \cdot K_{blk}^{T}, atten\_mask)
+  P = SimpleSoftmax(Mask(Q @ selectedK^{T} \cdot scale), lse)
   $$
-
+  1. 计算 $dP$（Softmax 梯度的直接部分）
   $$
-  P = Softmax(S)
+  dP = dO @ selectedV^{T}
   $$
-
+  1. 计算 $dS$（注意力分数梯度）
   $$
-  Out_{sel} = P \cdot V_{blk}
+  dS = P \odot (dP - SoftmaxGrad(dO, O))
   $$
-
-  记正向写出的全序列结果为 $Out$、$LSE$。反向计算：
-
+  1. 计算 $dQ$、$dK$、$dV$
   $$
-  softmax\_grad = SoftmaxGrad(dOut, Out)
+  dQ = dS @ selectedK \cdot scale
+  $$
+  $$
+  dK = dS^{T} @ Q \cdot scale
+  $$
+  $$
+  dV = P^{T} @ dO
   $$
 
-  $$
-  dP = dOut_{sel} \cdot V_{blk}^{T}
-  $$
+  | 符号                   | 含义                       |
+  | -------------------- | ------------------------ |
+  | $Q$                  | 查询矩阵                     |
+  | $K, V$               | 键、值矩阵                    |
+  | $P$                  | Softmax 后的注意力权重矩阵        |
+  | $S$                  | 注意力分数（缩放掩码后、Softmax 前）   |
+  | $O$                  | 注意力输出矩阵（$O = P \cdot V$） |
+  | $\text{lse}$         | log-sum-exp 值，前向保存供反向使用  |
+  | $dO$                 | 输出梯度（从上层传入）              |
+  | $\text{scale}$       | 缩放因子，通常为 $1/\sqrt{d_k}$  |
+  | $dP, dS, dQ, dK, dV$ | 各中间变量和参数的梯度              |
 
-  $$
-  dS = P \odot (dP - softmax\_grad_{sel})
-  $$
-
-  $$
-  dV_{blk} = P^{T} \cdot dOut_{sel}
-  $$
-
-  $$
-  dQ_{sel} = (dS \cdot K_{blk}) \cdot scale
-  $$
-
-  $$
-  dK_{blk} = (dS^{T} \cdot Q_{sel}) \cdot scale
-  $$
-
-  其中 $dQ$ 按稀疏表 ScatterAdd 回原 Q 位置；$dK$、$dV$ 按 KV 块写回。
 
 输入 `query`/`key`/`value`/`dout`/`out` 的排布由 `qInputLayout`、`kvInputLayout` 指定。布局字母含义：
 
-* B：Batch
-* T：B 与 S 合轴后的 Total tokens
-* S：Seq-Length
-* N：Head-Num
-* D：Head-Dim
+- B：Batch
+- T：B 与 S 合轴后的 Total tokens
+- S：Seq-Length
+- N：Head-Num
+- D：Head-Dim
 
-当前支持：
+当前支持的布局：
 
-* `qInputLayout` / `kvInputLayout`：`"TND"`、`"BNSD"`、`"BSND"`（二者须一致）
+- `qInputLayout`：`"TND"`、`"BNSD"`、`"BSND"`
+- `kvInputLayout`：`"TND"`、`"BNSD"`、`"BSND"`（须与 `qInputLayout` 一致）
+
+
 
 ## 函数原型
 
@@ -130,316 +108,48 @@ aclnnStatus aclnnGenericSparseAttentionGrad(
     const aclrtStream stream)
 ```
 
+
+
 ## aclnnGenericSparseAttentionGradGetWorkspaceSize
+
+
 
 ### 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1550px">
-<colgroup>
-    <col style="width: 220px">
-    <col style="width: 120px">
-    <col style="width: 280px">
-    <col style="width: 400px">
-    <col style="width: 180px">
-    <col style="width: 100px">
-    <col style="width: 190px">
-    <col style="width: 100px">
-</colgroup>
-<thead>
-    <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>使用说明</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
-    </tr>
-</thead>
-<tbody>
-    <tr>
-    <td>query</td>
-    <td>输入</td>
-    <td>注意力 Query。</td>
-    <td>不支持空 Tensor。<br>支持的 shape：<ul><li>TND: [T1, N1, D]</li><li>BNSD: [B, N1, S1, D]</li><li>BSND: [B, S1, N1, D]</li></ul></td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>key</td>
-    <td>输入</td>
-    <td>注意力 Key。</td>
-    <td>不支持空 Tensor。<br>支持的 shape：<ul><li>TND: [T2, N2, D]</li><li>BNSD: [B, N2, S2, D]</li><li>BSND: [B, S2, N2, D]</li></ul></td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>value</td>
-    <td>输入</td>
-    <td>注意力 Value。</td>
-    <td>不支持空 Tensor。shape 与 key 一致。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>dout</td>
-    <td>输入</td>
-    <td>正向输出梯度。</td>
-    <td>不支持空 Tensor。shape/dtype 与 query 一致。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>out</td>
-    <td>输入</td>
-    <td>正向注意力输出。</td>
-    <td>不支持空 Tensor。shape/dtype 与 query 一致。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>lse</td>
-    <td>输入</td>
-    <td>正向 Softmax log-sum-exp。</td>
-    <td>不支持空 Tensor。<br>推荐 shape：<ul><li>TND: [T1, N1] 或 [T1, N1, 1]</li><li>BNSD/BSND: [B, N1, S1] 或 [B, N1, S1, 1]</li></ul></td>
-    <td>FLOAT</td>
-    <td>ND</td>
-    <td>2-4</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>rsvdBlockIdx</td>
-    <td>输入</td>
-    <td>KV2Q 稀疏索引表。</td>
-    <td>不支持空 Tensor。有效位置填 Q token 下标，无效填 -1。</td>
-    <td>INT32</td>
-    <td>ND</td>
-    <td>[B, N2, J, maxS1]</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>rsvdBlockCount</td>
-    <td>输入</td>
-    <td>每个 KV 块选中的 Q 数量。</td>
-    <td>不支持空 Tensor。须与 rsvdBlockIdx 的 B/N2/J 一致。</td>
-    <td>INT32</td>
-    <td>ND</td>
-    <td>[B, N2, J]</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>metadata</td>
-    <td>输入</td>
-    <td>分核与任务列表元数据。</td>
-    <td>不支持空 Tensor。须由 aclnnGenericSparseAttentionGradMetadata 生成。<br>长度 ≥ <code>80 + B × N1 × J × 4</code>（int64 元素个数）。</td>
-    <td>INT64</td>
-    <td>ND</td>
-    <td>1</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>attenMaskOptional</td>
-    <td>输入</td>
-    <td>显式注意力 mask。</td>
-    <td>可选。当前版本建议传 nullptr，由 maskType 控制内置 mask。</td>
-    <td>BOOL</td>
-    <td>ND</td>
-    <td>-</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>cuSeqLengthsOptional</td>
-    <td>输入</td>
-    <td>Query 累积序列长度（packed）。</td>
-    <td>qInputLayout 为 "TND" 时必选。shape [B+1]，dtype INT64。</td>
-    <td>INT64</td>
-    <td>ND</td>
-    <td>1</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>cuSeqLengthsKvOptional</td>
-    <td>输入</td>
-    <td>Key/Value 累积序列长度（packed）。</td>
-    <td>kvInputLayout 为 "TND" 时必选。shape [B+1]，dtype INT64。</td>
-    <td>INT64</td>
-    <td>ND</td>
-    <td>1</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>sequsedQOptional</td>
-    <td>输入</td>
-    <td>每个 batch 实际 Q 长度。</td>
-    <td>可选。TND 场景可与 cuSeqLengths 配合使用。</td>
-    <td>INT32</td>
-    <td>ND</td>
-    <td>[B]</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>sequsedKvOptional</td>
-    <td>输入</td>
-    <td>每个 batch 实际 KV 长度。</td>
-    <td>可选。TND 场景可与 cuSeqLengthsKv 配合使用。</td>
-    <td>INT32</td>
-    <td>ND</td>
-    <td>[B]</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>blockShape</td>
-    <td>输入</td>
-    <td>稀疏块尺寸 [blockShapeX, blockShapeY]。</td>
-    <td>当前要求 blockShapeX=1；blockShapeY≥128 且为 64 的倍数，且 blockShapeY≤128（当前 cube baseN 预算）。默认 [1, 128]。</td>
-    <td>INT64</td>
-    <td>-</td>
-    <td>1</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>isPackedGqa</td>
-    <td>输入</td>
-    <td>是否按 packed GQA 解释 head。</td>
-    <td>当前仅支持传 1。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>qInputLayout</td>
-    <td>输入</td>
-    <td>query/dout/out 布局。</td>
-    <td>支持 "TND"/"BNSD"/"BSND"，须与 kvInputLayout 一致。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>kvInputLayout</td>
-    <td>输入</td>
-    <td>key/value 布局。</td>
-    <td>支持 "TND"/"BNSD"/"BSND"，须与 qInputLayout 一致。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>scaleValue</td>
-    <td>输入</td>
-    <td>注意力缩放系数。</td>
-    <td>一般取 D^-0.5。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>maskType</td>
-    <td>输入</td>
-    <td>内置 mask 类型。</td>
-    <td>当前仅支持 1：RIGHT_DOWN_CAUSAL（右下角原点因果 mask）。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>softmaxPrecision</td>
-    <td>输入</td>
-    <td>Softmax 精度模式。</td>
-    <td>当前传 0。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>windowSizeLeft</td>
-    <td>输入</td>
-    <td>滑窗左边界。</td>
-    <td>当前须传 -1（不支持滑窗）。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>windowSizeRight</td>
-    <td>输入</td>
-    <td>滑窗右边界。</td>
-    <td>当前须传 -1（不支持滑窗）。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>dQuery</td>
-    <td>输出</td>
-    <td>query 梯度。</td>
-    <td>不支持空 Tensor。shape/dtype 与 query 一致。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>dKey</td>
-    <td>输出</td>
-    <td>key 梯度。</td>
-    <td>不支持空 Tensor。shape/dtype 与 key 一致。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>dValue</td>
-    <td>输出</td>
-    <td>value 梯度。</td>
-    <td>不支持空 Tensor。shape/dtype 与 value 一致。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>3-4</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>workspaceSize</td>
-    <td>输出</td>
-    <td>Device 侧 workspace 字节数。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>executor</td>
-    <td>输出</td>
-    <td>算子执行器。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-</tbody>
-</table>
+
+| 参数名                    | 输入/输出   | 描述                                                    | 使用说明                                                                                                                                                           | 数据类型             | 数据格式 | 维度(shape)                                                                                                                                 | 非连续Tensor |
+| ---------------------- | ------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| query                  | 输入，必选   | Device侧的aclTensor，attention结构的输入Q。                    | query、key、value、dout、out、lse 的 Shape 维度语义保持一致。                                                                                                                 | BFLOAT16、FLOAT16 | ND   | (B,S1,N1,D)、(T1,N1,D)、(B,N1,S1,D) B：支持泛化；S1：支持泛化；N1：支持1~128，且能被N2整除；D：128；T1：B × S1                                                       | √         |
+| key                    | 输入，必选   | Device侧的aclTensor，attention结构的输入K。                    | -                                                                                                                                                              | BFLOAT16、FLOAT16 | ND   | (B,S2,N2,D)、(T2,N2,D)、(B,N2,S2,D) B：支持泛化；S2：支持泛化；N2：支持1~128；D：128；T2：B × S2                                                               | √         |
+| value                  | 输入，必选   | Device侧的aclTensor，attention结构的输入V。                    | -                                                                                                                                                              | BFLOAT16、FLOAT16 | ND   | (B,S2,N2,D)、(T2,N2,D)、(B,N2,S2,D) Shape与key相同。                                                                                            | √         |
+| dout                   | 输入，必选   | Device侧的aclTensor，注意力输出矩阵的梯度。                         | -                                                                                                                                                              | BFLOAT16、FLOAT16 | ND   | (B,S1,N1,D)、(T1,N1,D)、(B,N1,S1,D) B、S1、N1与query保持一致；D：128；T1：B × S1                                                                       | √         |
+| out                    | 输入，必选   | Device侧的aclTensor，注意力输出矩阵。                            | -                                                                                                                                                              | BFLOAT16、FLOAT16 | ND   | (B,S1,N1,D)、(T1,N1,D)、(B,N1,S1,D) Shape与dout保持一致。                                                                                         | √         |
+| lse                    | 输入，必选   | Device侧的aclTensor，注意力正向计算的输出lse，layout与正向输出保持一致。      | -                                                                                                                                                              | FLOAT32          | ND   | query为"TND"：[totalQTokens, headNum, 1]。 query为"BNSD"：[batch, headNum, maxQSeqLength, 1]。 query为"BSND"：[batch, maxQSeqLength, headNum, 1]。 | √         |
+| rsvdBlockIdx           | 输入，必选   | Device侧的aclTensor，稀疏块索引数组，指定每个KV块选择的Q块/token索引。       | 存储每个KV块选择的Q索引。 TND：[B, N2, ceilDiv(maxS2, blockShapeY), maxS1]。 BNSD/BSND：[B, N2, ceilDiv(S2, blockShapeY), S1]。 同group每个KVHead对应的Q稀疏pattern一致（isPackedGqa=1）。 | INT32            | ND   | 4                                                                                                                                         | √         |
+| rsvdBlockCount         | 输入，必选   | Device侧的aclTensor，指定每个KV块实际选择的Q数量。                    | 存储每个KV块实际选择的Q数量。 TND：[B, N2, ceilDiv(maxS2, blockShapeY)]。 BNSD/BSND：[B, N2, ceilDiv(S2, blockShapeY)]。                                                        | INT32            | ND   | (B, N2, ceilDiv(maxS2, blockShapeY))或(B, N2, ceilDiv(S2, blockShapeY))                                                                    | √         |
+| metadata               | 输入，必选   | Device侧的aclTensor，表示tiling下沉的AICPU算子输出结果。             | 须由 aclnnGenericSparseAttentionGradMetadata 生成。长度 ≥ `80 + B × N1 × J × 4`（int64 元素个数）。                                                                          | INT64            | ND   | (x)                                                                                                                                       | √         |
+| attenMaskOptional      | 输入，可选   | Device侧的aclTensor，公式中的atten_mask，与稀疏pattern叠加产生作用。    | 当前暂不支持，应传nullptr。                                                                                                                                              | BOOL             | ND   | -                                                                                                                                         | √         |
+| cuSeqLengthsOptional   | 输入，可选   | Device侧的aclTensor，描述每个Batch对应的query序列长度，以前缀和形式存储。     | 用于变长序列场景。 qInputLayout为"TND"时必须配置；为"BNSD"或"BSND"时传nullptr。                                                                                                     | INT64            | ND   | 1                                                                                                                                         | -         |
+| cuSeqLengthsKvOptional | 输入，可选   | Device侧的aclTensor，描述每个Batch对应的key/value序列长度，以前缀和形式存储。 | 用于变长序列场景。 kvInputLayout为"TND"时必须配置；为"BNSD"或"BSND"时传nullptr。                                                                                                    | INT64            | ND   | 1                                                                                                                                         | -         |
+| sequsedQOptional       | 输入，可选   | Device侧的aclTensor，各batch中query的实际序列长度。                | -                                                                                                                                                              | INT32            | ND   | 1                                                                                                                                         | √         |
+| sequsedKvOptional      | 输入，可选   | Device侧的aclTensor，各batch中kv的实际序列长度。                   | -                                                                                                                                                              | INT32            | ND   | 1                                                                                                                                         | √         |
+| blockShape             | 输入，Attr | 代表稀疏块形状数组。                                            | 含两个元素[blockShapeX, blockShapeY]。 blockShapeX当前仅支持1。 blockShapeY须≥128且按64对齐；当前实现仅支持128。                                                                         | INT64            | -    | -                                                                                                                                         | -         |
+| isPackedGqa            | 输入，Attr | 代表进行块状稀疏时，同一个group内的qHead是否共享同样的稀疏pattern（当前仅支持1）。    | 0表示不共享；1表示共享。不同batch之间不共享。                                                                                                                                     | INT64            | N/A  | -                                                                                                                                         | -         |
+| qInputLayout           | 输入，Attr | Host侧的string，代表输入query的数据排布格式。                        | 当前支持"TND"、"BNSD"、"BSND"。                                                                                                                                       | String           | -    | -                                                                                                                                         | -         |
+| kvInputLayout          | 输入，Attr | Host侧的string，代表输入key、value的数据排布格式。                    | 当前支持"TND"、"BNSD"、"BSND"。                                                                                                                                       | String           | -    | -                                                                                                                                         | -         |
+| scaleValue             | 输入，Attr | Host侧的double，公式中的scale，代表缩放系数。                        | 建议值：公式中d开根号的倒数。                                                                                                                                                | FLOAT            | N/A  | -                                                                                                                                         | -         |
+| maskType               | 输入，Attr | Host侧的int64_t，表示attention计算中的掩码类型。当前仅支持1。             | 具体见“掩码说明”。                                                                                                                                                     | INT64            | -    | -                                                                                                                                         | -         |
+| softmaxPrecision       | 输入，Attr | Softmax计算采取的精度级别。                                     | 仅支持0或1。 0：online softmax和rescale均使用fp32。 1：online softmax使用fp16/bf16，rescale使用fp32，可能发生数值溢出。当前实现传0。                                                            | INT64            | -    | -                                                                                                                                         | -         |
+| windowSizeLeft         | 输入，Attr | Host侧的int64_t，滑窗attention场景下，滑窗需要向前包含多少个token。        | 不使能时必须为-1，需要与maskType、mask配合使用。                                                                                                                                | INT64            | -    | -                                                                                                                                         | -         |
+| windowSizeRight        | 输入，Attr | Host侧的int64_t，滑窗attention场景下，滑窗需要向后包含多少个token。        | 不使能时必须为-1，需要与maskType、mask配合使用。                                                                                                                                | INT64            | -    | -                                                                                                                                         | -         |
+| dQuery                 | 输出      | Device侧的aclTensor，表示query的梯度。                         | 与输入query的Shape维度保持一致。                                                                                                                                          | BFLOAT16、FLOAT16 | ND   | -                                                                                                                                         | √         |
+| dKey                   | 输出      | Device侧的aclTensor，表示key的梯度。                           | 与输入key的Shape维度保持一致。                                                                                                                                            | BFLOAT16、FLOAT16 | ND   | -                                                                                                                                         | √         |
+| dValue                 | 输出      | Device侧的aclTensor，表示value的梯度。                         | 与输入value的Shape维度保持一致。                                                                                                                                          | BFLOAT16、FLOAT16 | ND   | -                                                                                                                                         | √         |
+| workspaceSize          | 输出      | 返回需要在Device侧申请的workspace大小。                           | -                                                                                                                                                              | -                | -    | -                                                                                                                                         | -         |
+| executor               | 输出      | 返回op执行器，包含算子计算流程。                                     | -                                                                                                                                                              | -                | -    | -                                                                                                                                         | -         |
+
+
+
 
 ### 返回值
 
@@ -447,101 +157,69 @@ aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/co
 
 第一段接口完成入参校验，出现以下场景时报错：
 
-<table style="undefined;table-layout: fixed;width: 1170px"><colgroup>
-<col style="width: 268px">
-<col style="width: 140px">
-<col style="width: 762px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_NULLPTR</td>
-    <td rowspan="3">161001</td>
-    <td>query/key/value/dout/out/lse/rsvdBlockIdx/rsvdBlockCount/metadata/dQuery/dKey/dValue 或 layout 字符串为空指针。</td>
-  </tr>
-  <tr>
-    <td>qInputLayout 为 "TND" 时未提供 cuSeqLengthsOptional。</td>
-  </tr>
-  <tr>
-    <td>kvInputLayout 为 "TND" 时未提供 cuSeqLengthsKvOptional。</td>
-  </tr>
-  <tr>
-    <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="4">161002</td>
-    <td>输入 dtype 不在支持范围，或 query/key/value/dout/out dtype 不一致；lse 非 FLOAT；稀疏表非 INT32；metadata 非 INT64。</td>
-  </tr>
-  <tr>
-    <td>qInputLayout 与 kvInputLayout 不一致，或取值非法。</td>
-  </tr>
-  <tr>
-    <td>isPackedGqa != 1，或 windowSizeLeft/Right != -1。</td>
-  </tr>
-  <tr>
-    <td>blockShape 不满足 [1, By]，By≥128 且 64 对齐。</td>
-  </tr>
-</tbody></table>
+
+| 返回码                                                | 错误码    | 描述                                                                                                     |
+| -------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| ACLNN_ERR_PARAM_NULLPTR                            | 161001 | query/key/value/dout/out/lse/rsvdBlockIdx/rsvdBlockCount/metadata/dQuery/dKey/dValue 或 layout 字符串为空指针。 |
+| qInputLayout 为 "TND" 时未提供 cuSeqLengthsOptional。    |        |                                                                                                        |
+| kvInputLayout 为 "TND" 时未提供 cuSeqLengthsKvOptional。 |        |                                                                                                        |
+| ACLNN_ERR_PARAM_INVALID                            | 161002 | 输入 dtype 不在支持范围，或 query/key/value/dout/out dtype 不一致；lse 非 FLOAT；稀疏表非 INT32；metadata 非 INT64。          |
+| qInputLayout 与 kvInputLayout 不一致，或取值非法。            |        |                                                                                                        |
+| isPackedGqa != 1，或 windowSizeLeft/Right != -1。     |        |                                                                                                        |
+| blockShape 不满足 [1, By]，By≥128 且 64 对齐。             |        |                                                                                                        |
+
+
+
 
 ## aclnnGenericSparseAttentionGrad
 
+
+
 ### 参数说明
 
-<table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-<col style="width: 173px">
-<col style="width: 112px">
-<col style="width: 668px">
-</colgroup>
-<thead>
-  <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>workspace</td>
-    <td>输入</td>
-    <td>Device 侧 workspace 地址。</td>
-  </tr>
-  <tr>
-    <td>workspaceSize</td>
-    <td>输入</td>
-    <td>由 GetWorkspaceSize 返回的 workspace 大小。</td>
-  </tr>
-  <tr>
-    <td>executor</td>
-    <td>输入</td>
-    <td>算子执行器。</td>
-  </tr>
-  <tr>
-    <td>stream</td>
-    <td>输入</td>
-    <td>AscendCL stream。</td>
-  </tr>
-</tbody>
-</table>
+
+| 参数名           | 输入/输出 | 描述                                                                              |
+| ------------- | ----- | ------------------------------------------------------------------------------- |
+| workspace     | 输入    | 在Device侧申请的workspace内存地址。                                                       |
+| workspaceSize | 输入    | 在Device侧申请的workspace大小，由第一段接口aclnnGenericSparseAttentionGradGetWorkspaceSize获取。 |
+| executor      | 输入    | op执行器，包含了算子计算流程。                                                                |
+| stream        | 输入    | 指定执行任务的Stream。                                                                  |
+
+
+
 
 ### 返回值
 
 aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
+## 掩码说明
+
+
+| maskType | 含义                             | attenMaskOptional | windowSizeLeft/Right |
+| -------- | ------------------------------ | ----------------- | -------------------- |
+| 1        | causal mask（RIGHT_DOWN_CAUSAL） | 当前应传nullptr       | -1/-1                |
+
+
+
+
 ## 约束说明
 
-* 该接口与 PyTorch 配合使用时，需保证 CANN 与 PyTorch 相关包版本匹配。
-* 须先调用 [`aclnnGenericSparseAttentionGradMetadata`](../generic_sparse_attention_grad_metadata/docs/aclnnGenericSparseAttentionGradMetadata.md) 生成 `metadata`，再调用本接口。
-* HeadDim 固定为 **128**。
-* `N1` / `N2` 须落在 **[1, 128]**，且 `N1 % N2 == 0`，支持 MHA / GQA / MQA（packed GQA，`isPackedGqa=1`）。
-* `blockShape` 当前仅支持 `[1, 128]`（By 须 ≥128、64 对齐且 ≤128）。
-* `windowSizeLeft` / `windowSizeRight` 当前仅支持 `-1`。
-* 不支持确定性计算（Deterministic）。
-* `maskType` 当前仅支持 **1**（RIGHT_DOWN_CAUSAL，有效条件 $k \le q + (S2 - S1)$）。
-* TND 布局下 `cuSeqLengths` / `cuSeqLengthsKv` 必选；BNSD/BSND 下可省略。
-* Softmax LSE 的 head/seq 轴语义须与 query 布局一致。
+- 确定性计算：默认为非确定性实现，暂不支持确定性实现，确定性计算配置后不会生效。
+- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
+- 须先调用 `[aclnnGenericSparseAttentionGradMetadata](../generic_sparse_attention_grad_metadata/docs/aclnnGenericSparseAttentionGradMetadata.md)` 生成 `metadata`，再调用本接口。
+- layoutQ（`qInputLayout`）当前仅支持"TND"、"BNSD"、"BSND"。
+- layoutKv（`kvInputLayout`）当前仅支持"TND"、"BNSD"、"BSND"。
+- query、key、value的InputLayout必须保持一致。
+- 输入query、key、value的数据类型必须一致，支持FLOAT16、BFLOAT16。
+- HeadDim固定为**128**；`N1`/`N2`须落在**[1, 128]**，且`N1 % N2 == 0`。
+- `cuSeqLengthsOptional`在`qInputLayout`为"TND"时必选；`cuSeqLengthsKvOptional`在`kvInputLayout`为"TND"时必选。
+- `rsvdBlockIdx`第4维maxS1应 ≥ `rsvdBlockCount` tensor中所有元素的最大值，不限制上限。
+- `windowSizeLeft`和`windowSizeRight`不使能时必须为-1。
+- `maskType`当前仅支持**1**。
+- `isPackedGqa`当前仅支持**1**。
+- Softmax LSE的head/seq轴语义须与query布局一致。
+
+
 
 ## 调用示例
 
