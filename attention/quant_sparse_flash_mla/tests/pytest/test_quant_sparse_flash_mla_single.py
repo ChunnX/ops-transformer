@@ -25,7 +25,7 @@ import sys
 import torch_npu
 
 if os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto") == "on":
-    from batch_consistancy_paramset import ENABLED_PARAMS
+    from quant_sparse_flash_mla_paramset import BATCH_CONSISTENCY_PARAMS as ENABLED_PARAMS
 else:
     from quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 
