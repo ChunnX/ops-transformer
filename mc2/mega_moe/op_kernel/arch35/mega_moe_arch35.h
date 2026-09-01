@@ -556,9 +556,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         // 非量化 Combine 紧跟当前 GMM2 slice，AIV1 按相同 scheduler 逐 tile 消费。
-        CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, waveCombineJob_, countWorkspace_,
-                                           syncWorkspaceLayout_, params_, moeWeightTensorListAddrs_};
-        CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence, combineRowSequence};
+        CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, countWorkspace_, syncWorkspaceLayout_,
+                                           params_, moeWeightTensorListAddrs_};
+        CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence};
         ExpertTokenRange sliceRange{
             {state.expertIdx, tokenStartIndexInExpert,
              static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert},
@@ -568,9 +568,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
             sliceRange.end.expertIdx = state.expertIdx + 1U;
             sliceRange.end.tokenIndexInExpert = 0U;
         }
-        CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
-                          Gmm2KernelKind::W4, GMM1_TILE_M, TopkWeightsPrefetch>(
-            combineContext, combineBufferConfig, waveCombineScratch_, sliceRange, combineRuntime);
+        CombineTokenRange<ActivationQuantOutType, Weight1Type, QuantScaleOutType, Gmm2KernelKind::W4, GMM1_TILE_M,
+                          TopkWeightsPrefetch>(combineContext, sliceRange, combineRuntime);
         return;
     }
 
@@ -580,12 +579,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
 
     NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
-    CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, waveCombineJob_, countWorkspace_,
-                                       syncWorkspaceLayout_, params_, moeWeightTensorListAddrs_};
-    CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence, combineRowSequence};
-    ExpertTokenRange expertRange{
-        {state.expertIdx, 0U, static_cast<uint64_t>(state.globalTokenStartIndex)},
-        {state.expertIdx + 1U, 0U, static_cast<uint64_t>(state.globalTokenStartIndex) + expertTokenCount}};
+    UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
     if (isFinalCombine) {
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 0U) {
@@ -595,15 +589,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         }
         combineBufferConfig =
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
-                          Gmm2KernelKind::W4, GMM1_TILE_M, TopkWeightsPrefetch, false,
-                          WaveCombineAivSet::ALL_AIV>(
-            combineContext, combineBufferConfig, waveCombineScratch_, expertRange, combineRuntime);
+        RunWaveCombineStage<CombineQuantMode, WaveCombineAivSet::ALL_AIV>(
+            commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_, params_, gmmAddrInfo, state,
+            state.expertIdx, combineRowSequence);
         return;
     }
-    CombineTokenRange<CombineQuantMode, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
-                      Gmm2KernelKind::W4, GMM1_TILE_M, TopkWeightsPrefetch>(
-        combineContext, combineBufferConfig, waveCombineScratch_, expertRange, combineRuntime);
+    RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_,
+                                          params_, gmmAddrInfo, state, state.expertIdx, combineRowSequence);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
