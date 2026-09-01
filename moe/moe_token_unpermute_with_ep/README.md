@@ -18,37 +18,32 @@
 - 算子功能：根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。
 - 计算公式：
 
-$$
-sortedIndices = sortedIndices[rangeOptional[0]<=i<rangeOptional[1]]
-$$
-
-（1）probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., numTopk - 1}$，$k \in {0, 1, 2, ..., num\_tokens * numTopk}$：
+设numTopk为$K$，原始token数为$N$，隐藏维度为$H$，rangeOptional为$[r_0,r_1)$，且$s_{i,j}=sortedIndices_{iK+j}$，则：
 
 $$
-permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-$$
-
-$$
-permutedTokens_{k} = permutedTokens_{k} * probs_{i,j}
+x_{i,j,h}=\begin{cases}
+permutedTokens_{s_{i,j}-r_0,h}, & r_0\le s_{i,j}<r_1 \\
+0, & \text{其他情况}
+\end{cases}
 $$
 
 $$
-out_{i} = \sum_{k=i*numTopk}^{(i+1)*numTopk - 1 } permutedTokens_{k}
-$$
-
-（2）probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., numTopk - 1}$：
-
-$$
-permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-$$
-
-$$
-out_{i} = \sum_{k=i*numTopk}^{(i+1)*numTopk - 1 } permutedTokens_{k}
+out_{i,h}=\begin{cases}
+\sum_{j=0}^{K-1}x_{i,j,h}\times probsOptional_{i,j}, & probsOptional\text{不为空} \\
+\sum_{j=0}^{K-1}x_{i,j,h}, & probsOptional\text{为空}
+\end{cases}
 $$
 
 ## 参数说明
 
-  <table style="table-layout: auto; width: 100%">
+  <table style="table-layout: fixed; width: 1576px">
+  <colgroup>
+    <col style="width: 170px">
+    <col style="width: 170px">
+    <col style="width: 200px">
+    <col style="width: 200px">
+    <col style="width: 170px">
+  </colgroup>
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>
@@ -76,7 +71,7 @@ $$
     <tr>
       <td>probsOptional</td>
       <td>可选输入</td>
-      <td>表示输入tokens对应的专家概率，对应公式中的`probs`。</td>
+      <td>表示输入tokens对应的专家概率，对应公式中的`probsOptional`。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
@@ -121,12 +116,13 @@ $$
 
 ## 约束说明
 
-- numTopk <= 512。
+- numTopk必须大于等于1；probsOptional非空时，numTopk必须小于等于512。
+- 不支持Broadcast。
 - 不支持paddedMode为`True`。
-- 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)。
+- 当rangeOptional为空时，使用默认值{0,0}，输出为全0，不会回退调用其他算子。
 
 ## 调用说明
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_aclnn_moe_token_unpermute_with_ep](examples/test_aclnn_moe_token_unpermute_with_ep.cpp) | 通过[aclnnMoeTokenUnpermuteWithEp](docs/aclnnMoeTokenUnpermuteWithEp.md)接口方式调用MoeTokenUnpermuteWithEp算子。 |
+| aclnn API  | [test_aclnn_moe_token_unpermute_with_ep](examples/test_aclnn_moe_token_unpermute_with_ep.cpp) | 通过[aclnnMoeTokenUnpermuteWithEp](docs/aclnnMoeTokenUnpermuteWithEp.md)接口方式调用MoeTokenUnpermuteWithEp算子。 |
