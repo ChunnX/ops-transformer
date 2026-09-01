@@ -526,7 +526,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_02)
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_03)
 {
     std::string expectTilingData =
-        "40 160 96 1450 180 192 12 -1 0 0 0 0 256 1 1 0 1 232000 0 0 0 0 0 40 5824 1 5824 5824 4864 1 4864 4864 6144 "
+        "40 160 96 1450 180 192 12 -1 0 1 0 0 256 1 1 0 1 232000 0 0 0 0 0 40 5824 1 5824 5824 4864 1 4864 4864 6144 "
         "10 1024 40 5800 5800 1 5800 5800 1 5800 5800 40 5800 5800 8 744 592 8 744 592 1 96 96 232000 2 0 0 0 0 0 0 0 "
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {23275904};
@@ -538,7 +538,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_03)
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_04)
 {
     std::string expectTilingData =
-        "40 160 96 1450 180 192 12 -1 1 0 0 0 256 1 1 0 1 232000 0 0 0 0 0 40 5824 1 5824 5824 4864 1 4864 4864 6144 "
+        "40 160 96 1450 180 192 12 -1 1 1 0 0 256 1 1 0 1 232000 0 0 0 0 0 40 5824 1 5824 5824 4864 1 4864 4864 6144 "
         "10 1024 40 5800 5800 1 5800 5800 1 5800 5800 40 5800 5800 25 234 184 25 234 184 1 96 96 232000 2 0 0 0 0 0 0 "
         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {23275904};
@@ -711,10 +711,18 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_roundsca
 // MXFP4 E2M1 fullload
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp4)
 {
-    int64_t h = 83;
+    int64_t h = 84;
     RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP4_E2M1, ge::DT_FLOAT16,
                               {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
                               ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp4_odd_cols)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP4_E2M1, ge::DT_FLOAT16,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_FAILED);
 }
 
 // FP8 PerBlock E5M2 fullload
