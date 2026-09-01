@@ -74,8 +74,7 @@ public:
                                               uint64_t bsEnd, uint64_t bsChunkStart, uint32_t currentChunkSize,
                                               uint32_t chunkSize, uint32_t chunkNDSize, uint32_t currentN,
                                               uint32_t buffId, LocalTensor<P> &sumBuf);
-    __aicore__ inline void ProcessV2ChunkLoadInvRms(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                                    uint32_t currentChunkSize, uint32_t firstChunkSize);
+    __aicore__ inline void ProcessV2ChunkLoadInvRms(uint64_t bsChunkStart, uint32_t currentChunkSize);
     __aicore__ inline void PrefetchV2ChunkHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
                                                   uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
@@ -1266,7 +1265,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams);
 
     // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
-    ProcessV2ChunkLoadInvRms(offsetND, copySizeND, bsStart, currentBsSize, Min(chunkSize, currentBsSize));
+    ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
+    // invRms的FP32槽释放后再预取首个BF16 hIn块，避免q0中异类型Tensor同时驻留。
+    PrefetchV2ChunkHInGrad(offsetND, copySizeND, bsStart, Min(chunkSize, currentBsSize));
 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
@@ -1307,10 +1308,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
 
 // 子函数1: 加载inv_rms和inv_rms_grad
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint32_t offsetND, uint32_t copySizeND,
-                                                                            uint64_t bsChunkStart,
-                                                                            uint32_t currentChunkSize,
-                                                                            uint32_t firstChunkSize)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint64_t bsChunkStart,
+                                                                            uint32_t currentChunkSize)
 {
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
@@ -1331,8 +1330,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint
     vecInQueue1_.EnQue(invRmsGradBuf_);
     LocalTensor<P> invRmsGradUb = vecInQueue1_.DeQue<P>();
 
-    // q0已有两个槽：保留invRms当前槽的同时预取首个hIn块，使MTE2与系数VF计算重叠。
-    PrefetchV2ChunkHInGrad(offsetND, copySizeND, bsChunkStart, firstChunkSize);
     AIV21Process(invRmsInBuf_, invRmsUb_, invRmsGradUb, currentChunkSize);
     vecInQueue0_.FreeTensor(invRmsInBuf_);
     vecInQueue1_.FreeTensor(invRmsGradUb);
