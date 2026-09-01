@@ -280,8 +280,11 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
                 "This is an error in launch aicore, aclnnAlltoAllMatmulBaseGetWorkspaceSize interface call failed.");
     }
 
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
-        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr) {
+        uint8_t commModeVal = commModeEnum;
+        void *args = nullptr;
+        errno_t cpyRet = memcpy_s(&args, sizeof(args), &commModeVal, sizeof(commModeVal));
+        CHECK_RET(cpyRet == EOK, ACLNN_ERR_INNER);
         NnopbaseSetUserHandle(*executor, args);
     }
 
@@ -350,8 +353,9 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBase(void *workspace, uint64_t workspa
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
-            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            uint8_t commMode = 0;
+            errno_t cpyRet = memcpy_s(&commMode, sizeof(commMode), &arg, sizeof(commMode));
+            CHECK_RET(cpyRet == EOK, ACLNN_ERR_INNER);
             if (commMode == Mc2Comm::COMM_MODE_CCU) {
                 OP_LOGD("aclnnAlltoAllMatmul: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
