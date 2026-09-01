@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import os
+import platform
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple, Union
 
@@ -166,8 +167,11 @@ class ElasticBufferOpBuilder(OpBuilder):
 
     def include_paths(self):
         """Override include paths to ensure CANN headers are prioritized."""
+        platform_arch = platform.machine() + "-linux"
         return [
             os.path.join(self._cann_path, "asc/include/adv_api"),
+            os.path.join(self._cann_path, platform_arch, "pkg_inc"),
+            os.path.join(self._cann_path, platform_arch, "include/hcomm"),
             os.path.join(self._cann_path, "include"),
             os.path.join(self._torch_npu_path, "include"),
             os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
