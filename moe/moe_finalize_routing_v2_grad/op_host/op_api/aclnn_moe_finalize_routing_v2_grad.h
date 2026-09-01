@@ -23,15 +23,15 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
-    const aclTensor* gradY, const aclTensor* expandedRowIdx, const aclTensor* expandedXOptional,
-    const aclTensor* scalesOptional, const aclTensor* expertIdxOptional, const aclTensor* biasOptional,
+    const aclTensor *gradY, const aclTensor *expandedRowIdx, const aclTensor *expandedXOptional,
+    const aclTensor *scalesOptional, const aclTensor *expertIdxOptional, const aclTensor *biasOptional,
     int64_t dropPadMode, int64_t activeNum, int64_t expertNum, int64_t expertCapacity,
-    const aclTensor* gradExpandedXOut, const aclTensor* gradScalesOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+    const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /* @brief aclnnMoeFinalizeRoutingV2Grad的第二段接口，用于执行计算。 */
-ACLNN_API aclnnStatus
-aclnnMoeFinalizeRoutingV2Grad(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2Grad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                    aclrtStream stream);
 
 #ifdef __cplusplus
 }

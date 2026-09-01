@@ -73,7 +73,8 @@ struct MatmulAllReduceTilingUtParam : public MatmulAllReduceHostUtParamBase {
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    MatmulAllReduceTilingUtParam(const csv_map &csvMap) : MatmulAllReduceHostUtParamBase(csvMap)
+    MatmulAllReduceTilingUtParam(const csv_map &csvMap)
+        : MatmulAllReduceHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", this->x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", this->x2));
@@ -122,7 +123,8 @@ struct MatmulAllReduceInferShapeUtParam : public MatmulAllReduceHostUtParamBase 
     uint64_t ranksize;
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    MatmulAllReduceInferShapeUtParam(const csv_map &csvMap) : MatmulAllReduceHostUtParamBase(csvMap)
+    MatmulAllReduceInferShapeUtParam(const csv_map &csvMap)
+        : MatmulAllReduceHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", this->x1));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", this->x2));
@@ -163,7 +165,8 @@ struct MatmulAllReduceInferDataTypeUtParam : public MatmulAllReduceHostUtParamBa
     ge::DataType comm_quant_scale_2 = ge::DT_UNDEFINED;
     ge::DataType y = ge::DT_UNDEFINED;
 
-    MatmulAllReduceInferDataTypeUtParam(const csv_map &csvMap) : MatmulAllReduceHostUtParamBase(csvMap)
+    MatmulAllReduceInferDataTypeUtParam(const csv_map &csvMap)
+        : MatmulAllReduceHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", this->x1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", this->x2));
