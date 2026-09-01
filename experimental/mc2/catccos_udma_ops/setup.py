@@ -187,12 +187,15 @@ setup(
     zip_safe=False,
     python_requires=">=3.8",
     install_requires=["torch", "torch_npu"],
-    extras_require={"validation": ["PyYAML>=6.0", "matplotlib>=3.5"]},
+    extras_require={
+        "validation": ["PyYAML>=6.0", "matplotlib>=3.5", "numpy>=1.21"]
+    },
     entry_points={
         "console_scripts": [
             "ops-transformer-udma-accuracy=validation.run_accuracy:main",
             "ops-transformer-udma-performance=validation.run_performance:main",
             "ops-transformer-udma-import-baseline=validation.import_msprof_baseline:main",
+            "ops-transformer-udma-analyze-dumps=validation.model_dump_analysis:main",
         ]
     },
     distclass=BinaryDistribution,

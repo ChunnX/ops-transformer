@@ -371,6 +371,105 @@ a deterministic uniform sample capped at that size; `report.json` records the
 total, finite and sampled element counts plus `quantiles_approximate`. Mean and
 maximum remain exact full-tensor reductions.
 
+### Model-level fused/reference dump comparison
+
+To locate the first NaN or numerical divergence after model integration, dump
+the inputs and outputs at the same semantic boundaries in the fused UDMA run
+and in the unfused AllToAllV + grouped-matmul run. The model dump layout below
+is recognized directly:
+
+```text
+dump_dir/
+└── rank_00000/
+    ├── mc2/
+    │   └── first_call_00000/
+    │       ├── hidden_states_before_a2a_gemm.pt
+    │       ├── hidden_states_after_a2a_gemm.pt
+    │       ├── hidden_states_before_gemm_a2a.pt
+    │       └── hidden_states_after_gemm_a2a.pt
+    └── mc2_udma/
+        └── first_call_00000/
+            └── <the same four files>
+```
+
+`mc2` is treated as the reference and `mc2_udma` as the fused result. The
+`a2a_gemm` before/after files form the AllToAllV-GroupedMatMul input/output
+boundary; `gemm_a2a` forms the GroupedMatMul-AllToAllV boundary. Analyze all
+ranks with one argument:
+
+```bash
+bash scripts/analyze_model_dumps.sh \
+  --dump-dir /data/dumps/dump_dir \
+  --output-dir /data/dumps/analysis
+```
+
+Both ordinary `torch.save` files and byte-split files named `*.pt.part.0`,
+`*.pt.part.1`, ... are accepted. Separate fused/reference trees remain
+supported as an alternative:
+
+```bash
+bash scripts/analyze_model_dumps.sh \
+  --fused-root /data/dumps/udma \
+  --reference-root /data/dumps/unfused \
+  --output-dir /data/dumps/analysis
+```
+
+After installing the validation extra, the equivalent command is
+`ops-transformer-udma-analyze-dumps`.
+
+Automatic pairing ignores markers such as `udma`, `fused`, `reference`, and
+`baseline`, and normalizes both operator spellings. When both kinds of files
+share one directory, select disjoint sets explicitly:
+
+```bash
+bash scripts/analyze_model_dumps.sh \
+  --fused-root /data/dumps/all \
+  --reference-root /data/dumps/all \
+  --fused-include 'udma' \
+  --reference-include '(^|/|_)reference(_|/|$)'
+```
+
+For an unambiguous runtime timeline, pass matching JSON or JSONL manifests with
+one record per file. `pair_key` must be identical on the two sides; the other
+fields drive causal grouping and reporting:
+
+```json
+{"file":"rank_0/000017_a2av_gmm/input_x.pt","pair_key":"r0-c17-a2av-x","rank":0,"sequence":17,"op":"all_to_allv_grouped_mat_mul","invocation":"rank0-call17-a2av-gmm","io":"input","tensor":"x"}
+{"file":"rank_0/000017_a2av_gmm/output.pt","pair_key":"r0-c17-a2av-out","rank":0,"sequence":17,"op":"all_to_allv_grouped_mat_mul","invocation":"rank0-call17-a2av-gmm","io":"output","tensor":"output"}
+```
+
+Use `--fused-manifest fused.jsonl --reference-manifest reference.jsonl` to load
+them. The analyzer does not import torch or torch_npu. It reassembles split
+files on disk and performs bounded-memory NumPy reductions in chunks. Inputs
+are required to be bitwise identical; floating outputs use the corresponding
+OpBase experimental dtype threshold. Route tensors and the exported
+AllToAllV activation remain bitwise-exact comparisons because they are data
+movement results rather than arithmetic outputs. It reports inherited
+nonfinite values separately from finite-reference values newly changed to
+NaN/Inf.
+
+The main artifacts are:
+
+- `report.md`: first divergent invocation and evidence-based diagnosis;
+- `timeline.csv`: every rank/invocation classified as matched, input already
+  divergent, operator output divergent, or operator-introduced nonfinite;
+- `comparisons.csv`: shape, dtype, exact/precision status, NaN/Inf counts,
+  cosine similarity, relative L2 error and first failing coordinate;
+- `top_mismatches.csv` and `introduced_nonfinite.csv`: concrete values and
+  multidimensional indices for debugging layout/tile boundaries;
+- `row_distribution.csv`, `row_runs.csv`, and
+  `column_new_nan_distribution.csv`: spatial concentration and contiguous
+  failing regions;
+- `summary.json`: the complete machine-readable report, including row runs,
+  row periodicity, unmatched files and load errors.
+
+If paired inputs are identical and an output first introduces NaN/Inf, the
+fault is localized to that fused invocation. For AllToAllV-GroupedMatMul, a bad
+exported AllToAllV tensor points before GMM (routing, communication, staging or
+completion); a correct export with a bad final output points to the GMM side.
+If an input is already different, inspect the preceding producer or run
+reproducibility before attributing the issue to the current operator.
+
 For the balanced GroupedMatMul-AllToAllV synchronization failure, run the
 single-process-lifetime no-reuse/delay matrix. It generates each Rank's input,
 final-output Golden and local-GMM producer Golden once, then reuses the same
