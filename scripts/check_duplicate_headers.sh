@@ -14,8 +14,10 @@
 #   1) 命令行入参：pre-commit --files / pass_filenames 传入的路径
 #      - 仅保留 .h/.hpp
 #      - 相对比对基线不存在的路径视为新增/重命名目标：
+#        * merge 且父对象存在：HEAD^1
+#        * 已有 origin/<trunk>：merge-base
+#        * 浅克隆无父提交：自动 fetch 目标分支后再判（仅此场景联网）
 #        * 本地 commit hook：基线 = HEAD（提交尚未生成）
-#        * 线上 merge 提交：基线 = HEAD^1（目标分支）
 #   2) 回退：git diff --cached --diff-filter=AR（本地暂存区）
 #
 # 判定：find <仓库根> -name <basename>，非白名单命中数 > 1 则拦截
@@ -61,13 +63,70 @@ is_header_file() {
   [[ "$f" == *.h || "$f" == *.hpp ]]
 }
 
-# 比对基线：merge 提交（线上常见）用第一父提交；否则用 HEAD（本地未提交前）
+# 比对基线（用于判断路径是新增还是修改），不做网络访问：
+#   1) merge 且父树存在 -> HEAD^1
+#   2) 与已有远端主干 / TARGET_BRANCH 的 merge-base
+#   3) HEAD（本地 commit hook：提交尚未产生，新文件相对 HEAD 不存在）
 resolve_compare_base() {
-  if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+  local head mb b remote_b
+  head="$(git rev-parse HEAD 2>/dev/null || true)"
+
+  if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1 \
+     && git cat-file -e "HEAD^1^{tree}" 2>/dev/null; then
     printf '%s\n' "HEAD^1"
-  else
-    printf '%s\n' "HEAD"
+    return 0
   fi
+
+  for b in \
+      "${PRE_COMMIT_FROM_REF:-}" \
+      "${TARGET_BRANCH:-}" \
+      "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}" \
+      "${GITHUB_BASE_REF:-}" \
+      master main develop dev
+  do
+    [[ -z "$b" ]] && continue
+    b="${b#refs/heads/}"
+    b="${b#origin/}"
+    for remote_b in "origin/${b}" "$b"; do
+      if git rev-parse -q --verify "$remote_b" >/dev/null 2>&1; then
+        mb="$(git merge-base HEAD "$remote_b" 2>/dev/null || true)"
+        if [[ -n "$mb" && "$mb" != "$head" ]]; then
+          printf '%s\n' "$mb"
+          return 0
+        fi
+      fi
+    done
+  done
+
+  printf '%s\n' "HEAD"
+}
+
+# 浅克隆兜底：拉取目标分支作为比对基线
+try_fetch_compare_base() {
+  local head mb fetch_ref
+  head="$(git rev-parse HEAD 2>/dev/null || true)"
+  fetch_ref="${TARGET_BRANCH:-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-${GITHUB_BASE_REF:-master}}}"
+  fetch_ref="${fetch_ref#refs/heads/}"
+  fetch_ref="${fetch_ref#origin/}"
+
+  echo "[dup-header] Shallow checkout has no usable parent/base; fetching origin/${fetch_ref} ..."
+  if ! git fetch --depth=1 origin "$fetch_ref" 2>/dev/null; then
+    echo "[dup-header] WARNING: git fetch origin/${fetch_ref} failed; cannot distinguish Added vs Modified."
+    return 1
+  fi
+  if ! git rev-parse -q --verify FETCH_HEAD >/dev/null 2>&1; then
+    return 1
+  fi
+  mb="$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)"
+  if [[ -n "$mb" && "$mb" != "$head" ]]; then
+    printf '%s\n' "$mb"
+    return 0
+  fi
+  if git cat-file -e "FETCH_HEAD^{tree}" 2>/dev/null; then
+    printf '%s\n' "FETCH_HEAD"
+    return 0
+  fi
+  return 1
 }
 
 # 路径在 base 中是否已存在（已存在 => 视为修改，非 A/R）
@@ -149,22 +208,53 @@ suggest_unique_basename() {
 COMPARE_BASE="$(resolve_compare_base)"
 COLLECT_MODE=""
 CANDIDATES=()
+ARGV_HEADERS=()
+
+collect_from_argv_against_base() {
+  local base="$1"
+  local _f _rel
+  CANDIDATES=()
+  for _f in "${ARGV_HEADERS[@]}"; do
+    _rel="${_f#./}"
+    if path_exists_in_ref "$base" "$_rel"; then
+      continue
+    fi
+    CANDIDATES+=("$_rel")
+  done
+}
 
 if [[ $# -gt 0 ]]; then
   # 1) pre-commit --files / pass_filenames 入参（线上主路径；本地 commit 也会传）
-  COLLECT_MODE="argv (pre-commit --files / pass_filenames), base=${COMPARE_BASE}"
   for _f in "$@"; do
     _rel="${_f#./}"
     case "$_rel" in
       /*) _rel="${_rel#"${ROOT}/"}" ;;
     esac
     is_header_file "$_rel" || continue
-    # 基线中已有该路径 => 修改，跳过
-    if path_exists_in_ref "$COMPARE_BASE" "$_rel"; then
-      continue
-    fi
-    CANDIDATES+=("$_rel")
+    ARGV_HEADERS+=("$_rel")
   done
+
+  collect_from_argv_against_base "$COMPARE_BASE"
+
+  # 浅克隆：入参文件都已在 HEAD 中，base=HEAD 无法区分 A/R -> 拉目标分支再判一次
+  if [[ ${#CANDIDATES[@]} -eq 0 && ${#ARGV_HEADERS[@]} -gt 0 && "$COMPARE_BASE" == "HEAD" ]]; then
+    _all_in_head=1
+    for _rel in "${ARGV_HEADERS[@]}"; do
+      if ! path_exists_in_ref "HEAD" "$_rel"; then
+        _all_in_head=0
+        break
+      fi
+    done
+    if [[ "$_all_in_head" -eq 1 ]]; then
+      _fetched_base="$(try_fetch_compare_base || true)"
+      if [[ -n "${_fetched_base:-}" ]]; then
+        COMPARE_BASE="$_fetched_base"
+        collect_from_argv_against_base "$COMPARE_BASE"
+      fi
+    fi
+  fi
+
+  COLLECT_MODE="argv (pre-commit --files / pass_filenames), base=${COMPARE_BASE}"
 else
   # 2) 无入参时回退暂存区 AR（本地手动执行脚本）
   COLLECT_MODE="cached AR (git diff --cached)"
