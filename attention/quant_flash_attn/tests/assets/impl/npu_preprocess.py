@@ -33,6 +33,29 @@ import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
+_metadata_op = None
+
+
+def _resolve_metadata_op():
+    """惰性解析 quant_flash_attn_metadata 算子入口。
+
+    优先走 cann_ops_transformer.ops python 包路径 (与 CSV api_name 一致的
+    import 链路, 不依赖 torch.ops 命名空间注册时机); 包不可用时回退到
+    torch.ops.cann_ops_transformer 命名空间。
+    """
+    global _metadata_op
+    if _metadata_op is not None:
+        return _metadata_op
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn_metadata
+
+        _metadata_op = quant_flash_attn_metadata
+        return _metadata_op
+    except (ImportError, AttributeError):
+        pass
+    _metadata_op = torch.ops.cann_ops_transformer.quant_flash_attn_metadata
+    return _metadata_op
+
 
 def _tolist_t(t, default=None):
     """把 tensor slot 读回 list (空 tensor -> default)。"""
@@ -197,7 +220,7 @@ def run(
         head_dim,
         batch_size,
     )
-    generated = torch.ops.cann_ops_transformer.quant_flash_attn_metadata(
+    generated = _resolve_metadata_op()(
         int(nq),
         int(nkv),
         int(head_dim),

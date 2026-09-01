@@ -29,6 +29,41 @@ import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
+_main_op = None
+_metadata_op = None
+
+
+def _resolve_main_op():
+    """惰性解析 quant_flash_attn 主算子入口 (python 包路径优先, 回退 torch.ops)。"""
+    global _main_op
+    if _main_op is not None:
+        return _main_op
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn
+
+        _main_op = quant_flash_attn
+        return _main_op
+    except (ImportError, AttributeError):
+        pass
+    _main_op = torch.ops.cann_ops_transformer.quant_flash_attn
+    return _main_op
+
+
+def _resolve_metadata_op():
+    """惰性解析 quant_flash_attn_metadata 算子入口 (python 包路径优先, 回退 torch.ops)。"""
+    global _metadata_op
+    if _metadata_op is not None:
+        return _metadata_op
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn_metadata
+
+        _metadata_op = quant_flash_attn_metadata
+        return _metadata_op
+    except (ImportError, AttributeError):
+        pass
+    _metadata_op = torch.ops.cann_ops_transformer.quant_flash_attn_metadata
+    return _metadata_op
+
 
 def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块, 与 qfa_wrapper 一致).
@@ -313,7 +348,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         #   - batch_size 透传 CSV 原始值 (可为 -1)
         #   - 不传 win_left/win_right (用 schema 默认, 与 golden 一致)
         logger.info("[GRAPH] 构建 metadata (quant_flash_attn_metadata)")
-        self.metadata = torch.ops.cann_ops_transformer.quant_flash_attn_metadata(
+        self.metadata = _resolve_metadata_op()(
             int(inputs["q_n"]),
             int(inputs["kv_n"]),
             int(D),
@@ -383,7 +418,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
           - 不传 sinks/win_left/win_right (用 schema 默认, 与 golden 一致)
           - return_softmax_lse 由 _get_npu_fa_kwargs 机制对应 (此处直接传 enable_lse)
         """
-        atten_out, lse_out = torch.ops.cann_ops_transformer.quant_flash_attn(
+        atten_out, lse_out = _resolve_main_op()(
             self.q,
             self.k,
             self.v,

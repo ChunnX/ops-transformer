@@ -16,9 +16,9 @@
 
 输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
 输出：3 个 csv 到同目录
-  - qfa_mxfp8_excel.csv            api_name=torch.ops.cann_ops_transformer.quant_flash_attn
-  - qfa_mxfp8_excel_metadata.csv   api_name=torch.ops.cann_ops_transformer.quant_flash_attn_metadata
-  - qfa_mxfp8_excel_main.csv       api_name=torch.ops.cann_ops_transformer.quant_flash_attn
+  - qfa_mxfp8_excel.csv            api_name=cann_ops_transformer.ops.quant_flash_attn
+  - qfa_mxfp8_excel_metadata.csv   api_name=cann_ops_transformer.ops.quant_flash_attn_metadata
+  - qfa_mxfp8_excel_main.csv       api_name=cann_ops_transformer.ops.quant_flash_attn
 
 空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
 
@@ -81,8 +81,8 @@ HEADER = [
     "absolute_precision",
 ]
 
-_API_MAIN = "torch.ops.cann_ops_transformer.quant_flash_attn"
-_API_METADATA = "torch.ops.cann_ops_transformer.quant_flash_attn_metadata"
+_API_MAIN = "cann_ops_transformer.ops.quant_flash_attn"
+_API_METADATA = "cann_ops_transformer.ops.quant_flash_attn_metadata"
 
 # 3 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
 # main / metadata 分离的用例表保留, 但统一走 torch.ops 算子;

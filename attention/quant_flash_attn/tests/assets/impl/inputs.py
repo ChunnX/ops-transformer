@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 __input__ = {
     "e2e": {
-        "torch.ops.cann_ops_transformer.quant_flash_attn": "generate_qfa_mxfp8_inputs"
+        "cann_ops_transformer.ops.quant_flash_attn": "generate_qfa_mxfp8_inputs"
     }
 }
 

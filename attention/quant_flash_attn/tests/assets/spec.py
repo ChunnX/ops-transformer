@@ -66,7 +66,7 @@ def _inputs_dispatch(*args, **kwargs):
 class QuantFlashAttnSpec:
     """quant_flash_attn 主算子测试规范 (MXFP8 + GQA FP8 + HIF8, 按 quant_mode 派发)。
 
-    CSV api_name = torch.ops.cann_ops_transformer.quant_flash_attn。
+    CSV api_name = cann_ops_transformer.ops.quant_flash_attn。
     npu_preprocess 在主算子调用前构建 metadata 并注入 golden 全局变量,
     取代原 qfa_wrapper / qfa_main_wrapper。
     """
@@ -95,7 +95,7 @@ class QuantFlashAttnSpec:
 class QuantFlashAttnMetadataSpec:
     """quant_flash_attn_metadata 独立测试规范 (T4 metadata-only 用例)。
 
-    CSV api_name = torch.ops.cann_ops_transformer.quant_flash_attn_metadata。
+    CSV api_name = cann_ops_transformer.ops.quant_flash_attn_metadata。
     metadata 用例直接调 metadata 算子并返回 metadata tensor, 无 golden/compare,
     仅需 customize_inputs 把真实 cu_seqlens/seqused 等写入对应 tensor slot。
     """
@@ -104,6 +104,6 @@ class QuantFlashAttnMetadataSpec:
 
 
 __spec__ = {
-    "torch.ops.cann_ops_transformer.quant_flash_attn": "QuantFlashAttnSpec",
-    "torch.ops.cann_ops_transformer.quant_flash_attn_metadata": "QuantFlashAttnMetadataSpec",
+    "cann_ops_transformer.ops.quant_flash_attn": "QuantFlashAttnSpec",
+    "cann_ops_transformer.ops.quant_flash_attn_metadata": "QuantFlashAttnMetadataSpec",
 }
