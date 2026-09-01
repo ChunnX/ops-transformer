@@ -516,6 +516,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainBiasOutput(Local
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
     DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], biasSumBuf, dataCopyParams);
+    // 等待本次bias写回结束后再复用EVENT_ID2，避免与后续alpha写回事件覆盖。
+    PipeBarrier<PIPE_MTE3>();
 }
 
 template <class T, class P>
