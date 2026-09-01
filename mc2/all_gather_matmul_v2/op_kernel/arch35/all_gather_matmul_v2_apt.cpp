@@ -24,6 +24,7 @@
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                   \
      ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+#include "../../../common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_hcomm_impl.h"
 #include "all_gather_quant_bmm.h"
 #include "all_gather_quant_bmm_perblock.h"
 #endif
@@ -61,17 +62,14 @@ using namespace AllGatherMatmulImpl;
         op.Process();                                                                                                  \
     } while (0)
 
-#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(templateClass, isMxFp4, hcclCommType, ...)                      \
+// MX 场景 apace Hcomm 路径: AIC-only 纯 C 核 HCCL AllGather 通信 + Blaze BlockMmad 直调计算
+#define INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(ImplClass, isMxFp4, hcclServerType)                            \
     do {                                                                                                               \
-        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                              \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8 *)tilingGM;                                      \
-        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
-        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
-        GET_TILING_DATA(tilingData, tilingGM);                                                                         \
-        templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, fp8_e8m0_t, DTYPE_Y, __VA_ARGS__, isMxFp4, hcclCommType> op;     \
-        op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t *)context, \
-                &tilingData, mc2InitTiling, mc2CcTiling, &pipe);                                                       \
-        op.Process();                                                                                                  \
+        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8); /* 按当前最大的结构体申请内存 */              \
+        GET_TILING_DATA_WITH_STRUCT(Apace::hcommAllGatherMatmulTilingData, tilingData, tilingGM);                      \
+        ImplClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcclServerType, isMxFp4, TRANS_B> impl(&tilingData);                    \
+        impl.Init(aGM, scaleInv1, bGM, scaleInv2, biasGM, cGM, gatherOut, workspaceGM);                                \
+        impl.Run();                                                                                                    \
     } while (0)
 
 template <TPL_PARAMS_COMM, TPL_QUANT_BMM_PARAMS_COMM, TPL_HCCL_COMM_MODE>
@@ -79,7 +77,8 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
                                                 GM_ADDR scaleInv2, GM_ADDR scale, GM_ADDR cGM, GM_ADDR gatherOut,
                                                 GM_ADDR amax, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    // kernel 启动类型由 tiling key 的 ASCENDC_TPL_KERNEL_TYPE_SEL 决定：
+    // MX 场景为 AIC_ONLY（纯 C 核通信），其余场景为 MIX_AIC_1_2
     TPipe pipe;
     __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
 
@@ -87,14 +86,21 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                   \
      ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+    // HcclServerType 仅在 fp8/fp4 分支可见（经 apace impl 头引入 hccl），须置于本 #if 内，
+    // 否则 FP16/BF16 实例化（不包含 apace 头）编译失败
+    constexpr AscendC::HcclServerType hcclServerType = HCCL_COMM_MODE == HCCL_COMM_MODE_CCU ?
+                                                           AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU :
+                                                           AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU;
 // MX
 #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
     if constexpr (SCALETYPE == SCALE_TYPE_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
         if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&
             ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) {
-            INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, HCCL_COMM_MODE, false, TRANS_B);
+            INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(Apace::AllGatherMxQuantMatmulHcommImpl, false,
+                                                            hcclServerType);
         } else if ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)) {
-            INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, true, HCCL_COMM_MODE, false, TRANS_B);
+            INVOKE_ALL_GATHER_QUANT_MATMUL_APACE_HCOMM_IMPL(Apace::AllGatherMxQuantMatmulHcommImpl, true,
+                                                            hcclServerType);
         }
     }
 #endif
