@@ -16,6 +16,15 @@
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
 #   REPLAY_SHOTS     replay 多拍次数 (默认: 5, 传给 scan_replay.py; 各拍独立计算指标取 median)
+#
+# 输出 (全部归档到 OUTPUT_DIR, 原始/中间/结果数据):
+#   {add,gmm}_full/            msprof 原始数据 (op_summary/stars_soc.data/ffts_profile.data)
+#   {add,gmm}_full.{stdout,stderr}.log  采集原始日志 (含每 block T0/T1/T2 dump)
+#   stars_{add,gmm}_full.csv   STARS dispatch/complete 事件表
+#   blocks_{add,gmm}.csv       每 block T0/T1/T2 + 前向匹配 dispatch (中间数据)
+#   seg1_pairs_{add,gmm}.csv   段1 有效配对明细 (dispatch -> kick)
+#   seg2_pairs_{add,gmm}.csv   段2 有效配对明细 (kick -> T0)
+#   summary_{soc}.csv          汇总表: 段1/段2/段3/头开销/T2-stars 各 min/mean/max
 # ----------------------------------------------------------------------------
 set -e
 
@@ -307,6 +316,105 @@ def parse_cycle_shots(stderr_log):
                 (int(m.group(3)), int(m.group(4)), int(m.group(5))))
     return shots
 
+def parse_cycle_shots_bid(stderr_log):
+    """解析 scan_replay.py 多拍 dump (带 block_id): {shot_id: {bid: (T0, T1, T2)}}
+    段2 (T0-kick) 需按 block_id 将 ffts pmu_start (kick) 与该核 T0 配对"""
+    shots = {}
+    if not os.path.exists(stderr_log):
+        return shots
+    for line in open(stderr_log, errors="ignore"):
+        m = SHOT_RE.search(line)
+        if m:
+            shots.setdefault(int(m.group(1)), {})[int(m.group(2))] = (
+                int(m.group(3)), int(m.group(4)), int(m.group(5)))
+    return shots
+
+def seg2_stats(prof_dir, freq):
+    """段2 (T0 - Taicore_kick_start) 每核统计:
+    每个 ffts pmu_start(=该核 kick) 按 block_id 前向匹配该核最近的 T0,
+    全部有效配对取 min/mean/max (核间有快有慢; 池化所有拍, pmu 滚动采样)
+    窗口 2us: back-to-back launch 间隔 ≈ TaskDur(>2us), 窗口内前向匹配必属同拍"""
+    pmu = parse_ffts_pmu(prof_dir)
+    shots = parse_cycle_shots_bid(f"{prof_dir}.stderr.log")
+    if not pmu or not shots:
+        return None
+    pmu_by_bid = {}
+    for r in pmu:
+        if r["pmu_start"] > 0:
+            pmu_by_bid.setdefault(r["block_id"], []).append(r["pmu_start"])
+    for v in pmu_by_bid.values():
+        v.sort()
+    win = int(2 * freq)
+    vals = []
+    for sid in shots:
+        for bid, (t0, _, _) in shots[sid].items():
+            lst = pmu_by_bid.get(bid)
+            if not lst:
+                continue
+            i = bisect.bisect_right(lst, t0) - 1
+            if i >= 0:
+                d = t0 - lst[i]
+                if 0 < d <= win:
+                    vals.append(d / freq)
+    if not vals:
+        return None
+    return {"n": len(vals), "min": min(vals),
+            "mean": statistics.mean(vals), "max": max(vals)}
+
+def dump_intermediates(prof_dir, tag, freq):
+    """归档计算过程原始/中间数据到结果目录:
+    blocks_{tag}.csv   每 block T0/T1/T2 + 前向匹配的 dispatch sys cnt
+    seg1_pairs_{tag}.csv  段1 有效配对 (dispatch -> pmu_start) 明细
+    seg2_pairs_{tag}.csv  段2 有效配对 (pmu_start -> T0) 明细"""
+    if not os.path.isdir(prof_dir):
+        return
+    disp = parse_stars_dispatches(prof_dir)
+    shots = parse_cycle_shots_bid(f"{prof_dir}.stderr.log")
+    pmu = parse_ffts_pmu(prof_dir)
+    d_hi = int(20 * freq)
+    if disp and shots:
+        def fwd(ts):
+            i = bisect.bisect_right(disp, ts) - 1
+            return disp[i] if i >= 0 else ''
+        with open(os.path.join(output_dir, f'blocks_{tag}.csv'), 'w', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(['shot', 'block', 'T0', 'T1', 'T2',
+                        'T0_matched_dispatch', 'T1_matched_dispatch', 'T2_matched_dispatch'])
+            for sid in sorted(shots):
+                for bid, (a, b, b2) in sorted(shots[sid].items()):
+                    w.writerow([sid, bid, a, b, b2, fwd(a), fwd(b), fwd(b2)])
+    if disp and pmu:
+        with open(os.path.join(output_dir, f'seg1_pairs_{tag}.csv'), 'w', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(['block', 'dispatch_syscnt', 'pmu_start_kick', 'kick-stars_cyc', 'kick-stars_us'])
+            for r in pmu:
+                j = bisect.bisect_right(disp, r["pmu_start"]) - 1
+                if j >= 0:
+                    d = r["pmu_start"] - disp[j]
+                    if 0 < d <= d_hi:
+                        w.writerow([r["block_id"], disp[j], r["pmu_start"], d, round(d / freq, 6)])
+    if pmu and shots:
+        pmu_by_bid = {}
+        for r in pmu:
+            if r["pmu_start"] > 0:
+                pmu_by_bid.setdefault(r["block_id"], []).append(r["pmu_start"])
+        for v in pmu_by_bid.values():
+            v.sort()
+        win = int(2 * freq)
+        with open(os.path.join(output_dir, f'seg2_pairs_{tag}.csv'), 'w', newline='') as f:
+            w = csv.writer(f)
+            w.writerow(['shot', 'block', 'pmu_start_kick', 'T0', 'T0-kick_cyc', 'T0-kick_us'])
+            for sid in shots:
+                for bid, (t0, _, _) in shots[sid].items():
+                    lst = pmu_by_bid.get(bid)
+                    if not lst:
+                        continue
+                    i = bisect.bisect_right(lst, t0) - 1
+                    if i >= 0:
+                        d = t0 - lst[i]
+                        if 0 < d <= win:
+                            w.writerow([sid, bid, lst[i], t0, d, round(d / freq, 6)])
+
 def three_metrics(prof_dir, op, freq):
     """T0-stars / T1-T0 / T1-stars / T2-stars 四指标 (kernel 打点 + STARS 联合)
     多拍模式: scan_replay.py 每拍独立 dump (Shot<r>), 各拍独立计算全部指标后
@@ -336,6 +444,14 @@ def three_metrics(prof_dir, op, freq):
             return -1
         return ts - disp[i]
 
+    def match_idx(ts):
+        # 返回 (dispatch 下标, 差值): 供跨 slot 差值做同拍校验
+        # (T0/T1/T2 回读可能来自不同拍, 差值 T1-T0 仅当两者匹配同一条 dispatch 才可信)
+        i = bisect.bisect_right(disp, ts) - 1
+        if i < 0:
+            return -1, -1
+        return i, ts - disp[i]
+
     # 匹配窗口按频率缩放: A5 1GHz 下 50cyc=0.05us/20000cyc=20us;
     # 固定 cyc 阈值在 A3 50MHz (1cyc=20ns) 下会把 T0-stars(<1us) 全部过滤掉
     d_lo = max(2, int(0.05 * freq))
@@ -355,8 +471,15 @@ def three_metrics(prof_dir, op, freq):
             if d_lo <= d2 <= d_hi:
                 t2s.append(d2)
             if a < b <= b2:  # 同拍单调: 跨 slot 差值才可信
-                t1t0.append(b - a)
-                t2t0.append(b2 - a)
+                # 同拍校验: T0/T1/T2 须匹配同一条 dispatch (D2H 回读拍次错位时
+                # T0 来自上一拍, 差值可达 launch 间隔 ~44us, 直接污染 min/mean/max)
+                i0, dd0 = match_idx(a)
+                i1, dd1 = match_idx(b)
+                i2, dd2 = match_idx(b2)
+                if i0 >= 0 and i0 == i1:
+                    t1t0.append(b - a)
+                if i0 >= 0 and i0 == i2:
+                    t2t0.append(b2 - a)
         if not t0s:
             return None
         # T2 校验口径 (TaskDur 同口径): TaskDuration 由最慢完成 block 决定,
@@ -398,6 +521,16 @@ def three_metrics(prof_dir, op, freq):
             # 单核参考口径 (mean)
             't0_stars_mean': statistics.mean(t0s) / freq if t0s else None,
             't1_stars_mean': statistics.mean(t1s) / freq if t1s else None,
+            # 核间快慢分布 (min=最快核 / mean=核平均 / max=最慢核):
+            # 段3 T1-T0、头开销 T1-stars、T2-stars 的三组统计
+            't1_t0_min': min(t1t0) / freq if t1t0 else None,
+            't1_t0_mean': statistics.mean(t1t0) / freq if t1t0 else None,
+            't1_t0_max': max(t1t0) / freq if t1t0 else None,
+            't1_stars_min': min(t1s) / freq if t1s else None,
+            't1_stars_max_blk': max(t1s) / freq if t1s else None,
+            't2_stars_min': min(t2s) / freq if t2s else None,
+            't2_stars_mean': statistics.mean(t2s) / freq if t2s else None,
+            't2_stars_max_blk': max(t2s) / freq if t2s else None,
         }
 
     per_shot = [m for m in (one_shot(recs) for recs in shot_list) if m]
@@ -409,7 +542,10 @@ def three_metrics(prof_dir, op, freq):
         return out
     # 多拍: 各指标独立取 median
     keys = ['t0_stars', 't1_t0', 't1_stars', 't2_stars', 't2_t0',
-            't0_stars_mean', 't1_stars_mean']
+            't0_stars_mean', 't1_stars_mean',
+            't1_t0_min', 't1_t0_mean', 't1_t0_max',
+            't1_stars_min', 't1_stars_max_blk',
+            't2_stars_min', 't2_stars_mean', 't2_stars_max_blk']
     out = {'shots': len(per_shot)}
     for k in keys:
         vals = [m[k] for m in per_shot if m.get(k) is not None]
@@ -451,7 +587,9 @@ def ffts_check(prof_dir, freq, taskdur):
     ① dispatch->pmu_start = 核启动延迟 (权威, 同域 SYS_CNT)
     ② kernel T2 -> 最近 pmu_end = 硬件尾 (MTE 排空; kernel 打点无法覆盖, 这就是
        T2-stars 不可能等于 TaskDur 的物理原因)
-    ③ dispatch(末拍) -> pmu_end max ≈ TaskDur + STARS 完成上报 (正确校验口径)"""
+    ③ dispatch(末拍) -> pmu_end max ≈ TaskDur + STARS 完成上报 (正确校验口径)
+    另附 段1(Taicore_kick_start - Tstars) 全量分布: 每个 pmu_start 前向匹配
+    dispatch, 全部有效配对的 min/median/p90/max (纯硬件固定开销, 核间无错峰)"""
     pmu = parse_ffts_pmu(prof_dir)
     recs = parse_cycle_blocks(f"{prof_dir}.stderr.log")
     disp = parse_stars_dispatches(prof_dir)
@@ -460,6 +598,26 @@ def ffts_check(prof_dir, freq, taskdur):
     ends = sorted(r["pmu_end"] for r in pmu if r["pmu_end"] > 0)
     if not ends:
         return None
+    # === 段1 全量分布: Taicore_kick_start(每个 pmu_start) 前向匹配 dispatch ===
+    seg1 = []
+    seg1_win = int(20 * freq)
+    for r in pmu:
+        j = bisect.bisect_right(disp, r["pmu_start"]) - 1
+        if j >= 0:
+            d = r["pmu_start"] - disp[j]
+            if 0 < d <= seg1_win:
+                seg1.append(d / freq)
+    seg1_dist = None
+    if seg1:
+        s = sorted(seg1)
+        seg1_dist = {
+            "n": len(s),
+            "min": s[0],
+            "median": statistics.median(s),
+            "mean": statistics.mean(s),
+            "p90": s[int(len(s) * 0.9)],
+            "max": s[-1],
+        }
     # kernel 末拍簇 (T0 聚类, 窗口 1.5us, 与 three_metrics 同口径)
     t0max = max(r[0] for r in recs)
     kcluster = [r for r in recs if r[0] >= t0max - int(1.5 * freq) and r[2] > 0]
@@ -487,6 +645,7 @@ def ffts_check(prof_dir, freq, taskdur):
     pmuend_stars = (pmuend_max - dp) / freq
     return {
         "launch_delay": launch_delay,
+        "seg1_dist": seg1_dist,
         "hw_tail": hw_tail,
         "pmuend_stars": pmuend_stars,
         "diff_vs_taskdur": pmuend_stars - taskdur,
@@ -541,65 +700,104 @@ def fmt(v):
 
 print()
 print("============================================")
-print("  头开销测试结果 (稳态=跳过前2次)")
-print("  STARS 四指标 (max 口径=墙钟, 与 TaskDur 同语义由最慢核决定):")
-print("  max(T0)-stars=调度+硬件启动  T1-T0=单核软件头(median)  max(T1)-stars=总头开销  max(T2)-stars=kernel末指令")
-print("  ffts PMU 权威校验: max(T2)+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
-print("  多拍模式: REPLAY_SHOTS 拍独立计算取 median (滤除单拍随机波动)")
+print("  头开销分段测试结果 (稳态=跳过前2次; 多拍各拍独立计算取 median)")
+print("  分段口径 (T0=取回首指令):")
+print("    段1 调度开销   = Taicore_kick_start - Tstars")
+print("    段2 硬件头     = T0 - Taicore_kick_start")
+print("    段3 软件头     = T1 - T0")
+print("    头开销(总)     = T1 - Tstars")
+print("  核间有快有慢, 每指标三组统计: min=最快核 / mean=核平均 / max=最慢核(墙钟,与TaskDur同语义)")
+print("  ffts PMU 校验: max(T2)+硬件尾 == dispatch->最慢核结束 (自洽闭环, 不依赖 TaskDur)")
 print("============================================")
 print()
 
-def print_metrics(m):
-    shots_str = f"  shots={m.get('shots', 1)}"
+def seg_line(name, formula, mn, mean, mx, extra=""):
+    return (f"  {name:16s} {formula:14s} min={fmt(mn):>7s}  mean={fmt(mean):>7s}  max={fmt(mx):>7s} us{extra}")
+
+def print_op_result(op, typ, cores, r, m, fm, s2):
+    shots = m.get('shots', 1) if m else 1
+    print(f"{op} ({typ}, {cores}核, {shots}拍):")
+    print(f"  {'TaskDur':16s} {'稳态mean':14s} = {r['mean']:.3f} us")
+    if not m:
+        print("  [无 kernel 打点数据]")
+        print()
+        return
+    seg1 = fm.get('seg1_dist') if fm else None
+    if seg1:
+        print(seg_line("段1 调度开销", "kick-stars", seg1['min'], seg1['mean'], seg1['max'],
+                       f"  (n={seg1['n']}, median={seg1['median']:.3f}, 核间无错峰)"))
+    else:
+        print(seg_line("段1 调度开销", "kick-stars", None, None, None))
+    if s2:
+        print(seg_line("段2 硬件头", "T0-kick", s2['min'], s2['mean'], s2['max'],
+                       f"  (n={s2['n']}, ffts 滚动采样)"))
+    else:
+        print(seg_line("段2 硬件头", "T0-kick", None, None, None, "  (无 ffts pmu 配对)"))
+    print(seg_line("段3 软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'),
+                   m.get('t1_t0_max'), f"  (median={fmt(m['t1_t0'])})"))
+    print(seg_line("头开销(总)", "T1-stars", m.get('t1_stars_min'), m.get('t1_stars_mean'),
+                   m['t1_stars']))
+    print(seg_line("kernel末指令", "T2-stars", m.get('t2_stars_min'), m.get('t2_stars_mean'),
+                   m['t2_stars']))
     per = m.get('t1_stars_per_shot')
     if per and len(per) > 1:
-        shots_str += f" (逐拍 max(T1)-stars: {'/'.join(f'{v:.3f}' for v in per)})"
-    print(f"  {'':12s} max(T0)-stars={fmt(m['t0_stars'])}us  T1-T0={fmt(m['t1_t0'])}us  "
-          f"max(T1)-stars={fmt(m['t1_stars'])}us  max(T2)-stars={fmt(m['t2_stars'])}us  "
-          f"[单核mean: T0={fmt(m['t0_stars_mean'])} T1={fmt(m['t1_stars_mean'])}]  (n={m['n']} blocks){shots_str}")
+        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.3f}' for v in per)}  (n={m['n']} blocks)")
+    if fm:
+        # launch_delay 可能为 None (A3 低频分辨率, dispatch->核启动差可能为 0)
+        ld = fm['launch_delay'] if fm['launch_delay'] is not None else 0.0
+        print(f"  [ffts PMU] dispatch->核启动={ld:.3f}us  T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  "
+              f"dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
+    print()
 
 results = []
 if os.path.isdir(os.path.join(output_dir, 'add_full')):
-    print("add (Vector):")
-    r, m = analyze_add(os.path.join(output_dir, 'add_full'), 'add 满核')
+    prof = os.path.join(output_dir, 'add_full')
+    r, m = analyze_add(prof, 'add 满核')
     if r:
-        print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
-        if m:
-            print_metrics(m)
-        fm = ffts_check(os.path.join(output_dir, 'add_full'), freq_add, r['mean'])
-        if fm:
-            # launch_delay 可能为 None (A3 50MHz 分辨率 20ns, dispatch->核启动差可能为 0)
-            _ld = f"{fm['launch_delay']:.3f}" if fm['launch_delay'] is not None else "N/A"
-            print(f"  {'':12s} [ffts PMU] dispatch->核启动={_ld}us  "
-                  f"T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
-        results.append(('add', 'Vector', add_cores, r['mean'], m))
-    print()
+        fm = ffts_check(prof, freq_add, r['mean'])
+        s2 = seg2_stats(prof, freq_add)
+        dump_intermediates(prof, 'add', freq_add)
+        print_op_result('add', 'Vector', add_cores, r, m, fm, s2)
+        results.append(('add', 'Vector', add_cores, r, m, fm, s2))
 if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
-    print("grouped_matmul (Cube):")
-    r, m = analyze_gmm(os.path.join(output_dir, 'gmm_full'), 'gmm 满核')
+    prof = os.path.join(output_dir, 'gmm_full')
+    r, m = analyze_gmm(prof, 'gmm 满核')
     if r:
-        print(f"  {r['label']:12s} TaskDur steady mean={r['mean']:.3f}us")
-        if m:
-            print_metrics(m)
-        fm = ffts_check(os.path.join(output_dir, 'gmm_full'), freq_gmm, r['mean'])
-        if fm:
-            _ld = f"{fm['launch_delay']:.3f}" if fm['launch_delay'] is not None else "N/A"
-            print(f"  {'':12s} [ffts PMU] dispatch->核启动={_ld}us  "
-                  f"T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
-        results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean'], m))
-    print()
+        fm = ffts_check(prof, freq_gmm, r['mean'])
+        s2 = seg2_stats(prof, freq_gmm)
+        dump_intermediates(prof, 'gmm', freq_gmm)
+        print_op_result('grouped_matmul', 'Cube', gmm_cores, r, m, fm, s2)
+        results.append(('grouped_matmul', 'Cube', gmm_cores, r, m, fm, s2))
 
-# 生成汇总表
-summary_path = os.path.join(output_dir, 'summary.csv')
+# 生成汇总表 (文件名带 SoC 前缀; 每指标 min/mean/max 三组)
+summary_path = os.path.join(output_dir, f'summary_{soc_version}.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
-    w.writerow(['算子', '类型', '核数', 'TaskDur稳态mean(us)', 'T0-stars(us)', 'T1-T0(us)', 'T1-stars(us)', 'T2-stars(us)'])
-    for op, typ, cores, mean, m in results:
-        if m:
-            w.writerow([op, typ, cores, f"{mean:.3f}", fmt(m['t0_stars']),
-                        fmt(m['t1_t0']), fmt(m['t1_stars']), fmt(m['t2_stars'])])
+    w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)',
+                '段1kick-stars_min(us)', '段1kick-stars_mean(us)', '段1kick-stars_max(us)', '段1_n',
+                '段2T0-kick_min(us)', '段2T0-kick_mean(us)', '段2T0-kick_max(us)', '段2_n',
+                '段3T1-T0_min(us)', '段3T1-T0_mean(us)', '段3T1-T0_max(us)',
+                '头开销T1-stars_min(us)', '头开销T1-stars_mean(us)', '头开销T1-stars_max(us)',
+                'T2-stars_min(us)', 'T2-stars_mean(us)', 'T2-stars_max(us)'])
+    for op, typ, cores, r, m, fm, s2 in results:
+        seg1 = fm.get('seg1_dist') if fm else None
+        row = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1, m['n'] if m else '',
+               f"{r['mean']:.3f}"]
+        if seg1:
+            row += [fmt(seg1[k]) for k in ('min', 'mean', 'max')] + [seg1['n']]
         else:
-            w.writerow([op, typ, cores, f"{mean:.3f}", "N/A", "N/A", "N/A", "N/A"])
+            row += ['N/A', 'N/A', 'N/A', '']
+        if s2:
+            row += [fmt(s2[k]) for k in ('min', 'mean', 'max')] + [s2['n']]
+        else:
+            row += ['N/A', 'N/A', 'N/A', '']
+        if m:
+            row += [fmt(m.get(k)) for k in ('t1_t0_min', 't1_t0_mean', 't1_t0_max')]
+            row += [fmt(m.get(k)) for k in ('t1_stars_min', 't1_stars_mean', 't1_stars')]
+            row += [fmt(m.get(k)) for k in ('t2_stars_min', 't2_stars_mean', 't2_stars')]
+        else:
+            row += ['N/A'] * 9
+        w.writerow(row)
 
 print(f"汇总 CSV: {summary_path}")
 print()

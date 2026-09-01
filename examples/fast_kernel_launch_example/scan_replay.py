@@ -57,7 +57,8 @@ if op_type == "add":
     #   A3 (48 AIV): blockLength=152915=7 整 tile, 48 核均分
     # 两平台均不触发 kernel 尾块处理分支 (tailTileElementNum=0), 消除尾块分支对
     # 头开销/块间方差的干扰 (旧 1000x1000: 末核 tail=17810 走尾块分支)
-    _total = 336 * 21845  # 7,339,920
+    # ADD_TOTAL 覆盖 shape (保持 21845 整数倍以维持 56/48 均分无尾块)
+    _total = int(os.environ.get("ADD_TOTAL", str(336 * 21845)))  # 默认 7,339,920
     x = torch.randn(_total, dtype=torch.float16).npu()
     y = torch.randn(_total, dtype=torch.float16).npu()
     dummy = x
@@ -70,7 +71,8 @@ elif op_type == "gemm":
     # M=448 = 28(A5 Cube 满核) x 16(baseM): MN 切分满核调度 28 核;
     # A3 (24 Cube 核) 下 448 行同样切满 24 核, 无需平台分支
     # (K=16/N=16 保持小计算量, 聚焦头开销)
-    E, M, K, N, PERGROUP = 1, 448, 16, 16, 448
+    # GMM_M/GMM_K/GMM_N 覆盖 shape (M 须为 16 的倍数且切满核)
+    E, M, K, N, PERGROUP = 1, int(os.environ.get("GMM_M", "448")), int(os.environ.get("GMM_K", "16")), int(os.environ.get("GMM_N", "16")), int(os.environ.get("GMM_M", "448"))
     x_cpu = torch.rand(M, K, dtype=torch.bfloat16)
     weight_cpu = torch.rand(K, N, dtype=torch.bfloat16)
     x = [x_cpu.npu()]
