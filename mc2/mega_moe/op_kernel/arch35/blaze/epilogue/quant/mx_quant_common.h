@@ -28,7 +28,6 @@ namespace MxQuant {
 
 constexpr int64_t DATA_ELEMENT_COUNT_PER_LOOP = 256;
 constexpr int64_t SCALE_ELEMENT_COUNT_PER_DATA_LOOP = 8;
-constexpr int64_t FP4_OUTPUT_ELEMENT_COUNT_PER_STORE = 64;
 
 constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP32_ZERO_LAYOUT = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
@@ -48,10 +47,6 @@ constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_TWO = {
 constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_THREE = {
     AscendC::MicroAPI::RegLayout::THREE, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
-constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP4 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
-
 } // namespace MxQuant
 } // namespace MegaMoeImpl
 
