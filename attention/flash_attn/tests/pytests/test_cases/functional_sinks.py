@@ -1783,5 +1783,129 @@ TestCases = {
         "seed": [19583],
         "sinks": [True],
     },
-}
+    "FlashGen_S8_gap_case21_TND_TND_m0_902101": {
+        "B": [8],
+        "N1": [80],
+        "N2": [1],
+        "S1": [65],
+        "S2": [100],
+        "D": [128],
+        "Dtype": ["bf16"],
+        "layout_q": ["TND"],
+        "layout_kv": ["TND"],
+        "layout_out": ["TND"],
+        "mask_mode": [0],
+        "cu_seqlens_q": [
+            [0, 65, 130, 195, 260, 325, 390, 455, 520],
+        ],
+        "cu_seqlens_kv": [
+            [0, 65, 130, 195, 260, 325, 390, 455, 520],
+        ],
+        "return_softmax_lse": [True],
+        "q_range": [
+            [-1.0, 1.0],
+        ],
+        "k_range": [
+            [-1.0, 1.0],
+        ],
+        "v_range": [
+            [-0.1, 0.1],
+        ],
+        "variance": ["uniform"],
+        "seed": [902101],
+        "sinks": [True],
+    },
+    "FlashGen_S8_gap_case21_BSND_PA_BNBD_m3_902102": {
+        "B": [6],
+        "N1": [96],
+        "N2": [1],
+        "S1": [70],
+        "S2": [64],
+        "D": [64],
+        "Dtype": ["fp16"],
+        "layout_q": ["BSND"],
+        "layout_kv": ["PA_BNBD"],
+        "layout_out": ["BSND"],
+        "mask_mode": [3],
+        "seqused_q": [
+            [70, 70, 70, 70, 70, 70],
+        ],
+        "seqused_kv": [
+            [59, 31, 62, 64, 49, 48],
+        ],
+        "return_softmax_lse": [True],
+        "q_range": [
+            [-1.0, 1.0],
+        ],
+        "k_range": [
+            [-1.0, 1.0],
+        ],
+        "v_range": [
+            [-0.1, 0.1],
+        ],
+        "variance": ["uniform"],
+        "seed": [902102],
+        "sinks": [True],
+    },
+    "FlashGen_S8_rot_deep_g2_TND_TND_m0_902103": {
+        "B": [5],
+        "N1": [128],
+        "N2": [64],
+        "S1": [128],
+        "S2": [200],
+        "D": [128],
+        "Dtype": ["bf16"],
+        "layout_q": ["TND"],
+        "layout_kv": ["TND"],
+        "layout_out": ["TND"],
+        "mask_mode": [0],
+        "cu_seqlens_q": [
+            [0, 128, 256, 384, 512, 640],
+        ],
+        "cu_seqlens_kv": [
+            [0, 128, 256, 384, 512, 640],
+        ],
+        "return_softmax_lse": [False],
+        "q_range": [
+            [-0.1, 0.1],
+        ],
+        "k_range": [
+            [-0.1, 0.1],
+        ],
+        "v_range": [
+            [-0.1, 0.1],
+        ],
+        "variance": ["uniform"],
+        "seed": [902103],
+        "sinks": [True],
+    },
+    "FlashGen_S8_mixkv_BNSD_BNSD_BSND_m0_902104": {
+        "B": [4],
+        "N1": [64],
+        "N2": [16],
+        "S1": [64],
+        "S2": [128],
+        "D": [64],
+        "Dtype": ["fp16"],
+        "layout_q": ["BNSD"],
+        "layout_kv": ["BNSD_BSND"],
+        "layout_out": ["BNSD"],
+        "mask_mode": [0],
+        "seqused_kv": [
+            [128, 100, 64, 33],
+        ],
+        "return_softmax_lse": [True],
+        "q_range": [
+            [-1.0, 1.0],
+        ],
+        "k_range": [
+            [-1.0, 1.0],
+        ],
+        "v_range": [
+            [-0.1, 0.1],
+        ],
+        "variance": ["uniform"],
+        "seed": [902104],
+        "sinks": [True],
+    },}
 # fmt: on
