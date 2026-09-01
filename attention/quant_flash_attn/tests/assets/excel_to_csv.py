@@ -16,9 +16,9 @@
 
 输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
 输出：3 个 csv 到同目录
-  - qfa_mxfp8_excel.csv            api_name=qfa_wrapper.npu_qfa
-  - qfa_mxfp8_excel_metadata.csv   api_name=qfa_metadata_wrapper.run_metadata
-  - qfa_mxfp8_excel_main.csv       api_name=qfa_main_wrapper.run_main
+  - qfa_mxfp8_excel.csv            api_name=torch.ops.cann_ops_transformer.quant_flash_attn
+  - qfa_mxfp8_excel_metadata.csv   api_name=torch.ops.cann_ops_transformer.quant_flash_attn_metadata
+  - qfa_mxfp8_excel_main.csv       api_name=torch.ops.cann_ops_transformer.quant_flash_attn
 
 空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
 
@@ -81,35 +81,32 @@ HEADER = [
     "absolute_precision",
 ]
 
+_API_MAIN = "torch.ops.cann_ops_transformer.quant_flash_attn"
+_API_METADATA = "torch.ops.cann_ops_transformer.quant_flash_attn_metadata"
+
 # 3 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
+# main / metadata 分离的用例表保留, 但统一走 torch.ops 算子;
+# metadata 在主算子调用前由 spec 的 npu_preprocess 自动构建。
 CSV_PROFILES_MXFP8 = [
-    ("qfa_mxfp8_excel.csv", "qfa_wrapper.npu_qfa", ""),
-    ("qfa_mxfp8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_metadata"),
-    ("qfa_mxfp8_excel_main.csv", "qfa_main_wrapper.run_main", "_main"),
+    ("qfa_mxfp8_excel.csv", _API_MAIN, ""),
+    ("qfa_mxfp8_excel_metadata.csv", _API_METADATA, "_metadata"),
+    ("qfa_mxfp8_excel_main.csv", _API_MAIN, "_main"),
 ]
 
 # 3 个 csv 的 api_name 和 testcase_name 后缀 (GQA FP8 全量化, quant_mode=6)
-# api_name 与 MXFP8 相同 (wrapper 复用, 内部按 quant_mode 分支),
-# 仅 CSV 文件名和 testcase 后缀区分, 避免与 mxfp8 testcase 重名。
+# api_name 与 MXFP8 相同 (spec 按 quant_mode 派发), 仅 CSV 文件名和
+# testcase 后缀区分, 避免与 mxfp8 testcase 重名。
 CSV_PROFILES_GQA_FP8 = [
-    ("qfa_gqa_fp8_excel.csv", "qfa_wrapper.npu_qfa", "_gqa_fp8"),
-    (
-        "qfa_gqa_fp8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
-        "_gqa_fp8_metadata",
-    ),
-    ("qfa_gqa_fp8_excel_main.csv", "qfa_main_wrapper.run_main", "_gqa_fp8_main"),
+    ("qfa_gqa_fp8_excel.csv", _API_MAIN, "_gqa_fp8"),
+    ("qfa_gqa_fp8_excel_metadata.csv", _API_METADATA, "_gqa_fp8_metadata"),
+    ("qfa_gqa_fp8_excel_main.csv", _API_MAIN, "_gqa_fp8_main"),
 ]
 
 # 3 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=0)
 CSV_PROFILES_HIF8 = [
-    ("qfa_hif8_excel.csv", "qfa_wrapper.npu_qfa", "_hif8"),
-    (
-        "qfa_hif8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
-        "_hif8_metadata",
-    ),
-    ("qfa_hif8_excel_main.csv", "qfa_main_wrapper.run_main", "_hif8_main"),
+    ("qfa_hif8_excel.csv", _API_MAIN, "_hif8"),
+    ("qfa_hif8_excel_metadata.csv", _API_METADATA, "_hif8_metadata"),
+    ("qfa_hif8_excel_main.csv", _API_MAIN, "_hif8_main"),
 ]
 
 # 向后兼容别名 (现有脚本若 import CSV_PROFILES)

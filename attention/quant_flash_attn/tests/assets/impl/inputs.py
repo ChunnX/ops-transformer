@@ -29,7 +29,11 @@ import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+__input__ = {
+    "e2e": {
+        "torch.ops.cann_ops_transformer.quant_flash_attn": "generate_qfa_mxfp8_inputs"
+    }
+}
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
 
