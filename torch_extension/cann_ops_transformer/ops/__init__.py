@@ -170,3 +170,8 @@ if __name__ == "cann_ops_transformer.ops":
 
 
 # Centralized operators not yet migrated to distributed structure
+
+try:
+    from .block_attention_residuals import block_attention_residuals
+except (ImportError, RuntimeError, AttributeError):
+    pass
