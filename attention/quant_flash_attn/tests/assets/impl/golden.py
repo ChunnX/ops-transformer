@@ -304,6 +304,22 @@ def _apply_golden_globals(attrs, quant_mode=1):
     setattr(target, "P_SCALE", p_scale)
 
 
+def _clear_all_csv_tolerance():
+    """清空所有 golden 模块上的 _csv_precision_tolerances / _csv_absolute_precision。
+
+    compare._resolve_csv_tolerance 按模块回退链读取容差, 若上一用例残留,
+    会误命中 → 跨 quant_mode 容差污染 (如 HIF8 先跑、MXFP8 后跑时 MXFP8 读到 HIF8 阈值)。
+    每个 golden 函数在写入自身容差前调用本函数清空其他模块残留。
+    """
+    import quant_flash_attn_golden as _mxfp8_mod
+    import quant_flash_attn_fp8_golden as _fp8_mod
+    import quant_flash_attn_hif8_golden as _hif8_mod
+
+    for _mod in (_mxfp8_mod, _fp8_mod, _hif8_mod):
+        _mod._csv_precision_tolerances = None
+        _mod._csv_absolute_precision = None
+
+
 def _cu_seqlens_to_actual(cu_seqlens):
     """cu_seqlens → actual_seq (差分还原)。
 
@@ -367,6 +383,7 @@ def cpu_qfa_mxfp8(
 ):
     # csv precision_tolerances / absolute_precision 经 testcase.attributes → kwargs 传入,
     # 暂存到 mxfp8_golden_mod 供 compare 插件读取（ttk 不把 testcase 直接传给 custom compare）。
+    _clear_all_csv_tolerance()
     mxfp8_golden_mod._csv_precision_tolerances = kwargs.get("precision_tolerances")
     mxfp8_golden_mod._csv_absolute_precision = kwargs.get("absolute_precision")
 
@@ -704,6 +721,7 @@ def cpu_qfa_gqa_fp8(
         raise NotImplementedError("GQA FP8 (quant_mode=6) 仅支持 PA 模式")
 
     # csv precision_tolerances 暂存到 fp8_golden_mod 供 compare 读取
+    _clear_all_csv_tolerance()
     fp8_golden_mod._csv_precision_tolerances = kwargs.get("precision_tolerances")
     fp8_golden_mod._csv_absolute_precision = kwargs.get("absolute_precision")
 
@@ -897,6 +915,7 @@ def cpu_qfa_hif8(
     """
     import quant_flash_attn_hif8_golden as hif8_golden_mod
 
+    _clear_all_csv_tolerance()
     hif8_golden_mod._csv_precision_tolerances = kwargs.get("precision_tolerances")
     hif8_golden_mod._csv_absolute_precision = kwargs.get("absolute_precision")
     input_layout = layout_q or input_layout

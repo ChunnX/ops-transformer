@@ -365,23 +365,31 @@ public:
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
-                                        uint32_t s2RealSize)
+    __aicore__ inline void FixpipeMm1Dn(const LocalTensor<half> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
+                                        uint32_t s2RealSize, uint32_t nCount = 0)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
-        fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
+        uint32_t nFull = (runInfo.actMSize + 31) >> 5 << 5;
+        if (nCount == 0) {
+            nCount = nFull;
+        }
+        fixpipeParams.nSize = nCount;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
         fixpipeParams.mSize = (s2RealSize + 7) >> 3 << 3;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = 64; // mmResUb上两行之间的间隔，单位：element
+        // [性能实验4a] 流量上界实验: 目的端fp32->half(F322F16纯转换), FIX写UB 128KB->64KB减半;
+        // dstStride单位为16B, 64(fp32元素)->32(half元素)保持两行间隔256B不变;
+        // V1侧未适配仍按fp32读(数据错位, 数值错误), 仅测vec利用率变化, 不做结果比对。
+        fixpipeParams.dstStride = 32;
+        fixpipeParams.quantPre = QuantMode_t::F322F16;
         fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分， M * N / 2写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<half, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, K * Q^T, Q矩阵驻留. GS1>80, S=S1*S2 */
@@ -424,7 +432,12 @@ public:
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
         outputBuf.WaitCrossCore();
-        FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        // [性能实验4a] 单次整块fixpipe输出half(不拆分): nSize=128不变, 列路由仍为AIV0←0..63/AIV1←64..127。
+        // V1侧按fp32读取会错位, 仅用于测vec利用率(FIX写流量128KB->64KB的收益上界)。
+        {
+            LocalTensor<half> mm1DstUb = outputBuf.template GetTensor<half>();
+            FixpipeMm1Dn(mm1DstUb, mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
+        }
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
     }
