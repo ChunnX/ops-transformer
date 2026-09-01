@@ -1225,7 +1225,7 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     // A8W8 MTE wave 的 GMM2/Combine 依赖按 expert-local 256-token group 发布。
     // 同一 token 的 topK expert id 不重复，因此单专家从每张卡最多接收 numMaxTokensPerRank 行；
     // 再与整卡 maxOutputSize 取小，避免按整卡容量为每个专家重复预留 counter。
-    if (UseMteGroupCombineReady(tilingData->topoType, tilingData->groupedMatmulMode)) {
+    if (tilingData->topoType == TOPO_TYPE_MTE && IsA8W8GroupedMatmulMode(tilingData->groupedMatmulMode)) {
         uint64_t maxTokenCountForOneExpert =
             static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
         maxTokenCountForOneExpert =
@@ -1255,41 +1255,27 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
-    bool useMteGroupReady = UseMteGroupCombineReady(tilingData->topoType, tilingData->groupedMatmulMode);
-    bool useA8W8PairwiseTileCombine = useMteGroupReady && tilingData->combineQuantMode == COMBINE_NO_QUANT;
-    bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
-    bool useW4PairwiseTileCombine =
-        useMteWaveCombine && isW4Mode && tilingData->combineQuantMode == COMBINE_NO_QUANT;
-    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
-    bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
+    Gmm2CombineSyncProtocol combineSyncProtocol = SelectMteGmm2CombineSyncProtocol(
+        tilingData->topoType, tilingData->groupedMatmulMode, tilingData->combineQuantMode);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
-    uint64_t activationFlagSlotsPerExpert = useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : INT_CACHELINE;
+    uint64_t activationFlagSlotsPerExpert =
+        tilingData->topoType == TOPO_TYPE_MTE ? waveFlagSlotsPerExpert : INT_CACHELINE;
     uint64_t moeExpertCount = tilingData->moeExpertPerRank;
 
     uint64_t flagElementCount = moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
                                                   static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
-    if (useA8W8PairwiseTileCombine || tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+    if (IsW4GroupedMatmulMode(tilingData->groupedMatmulMode) ||
+        combineSyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
-    if (useMteWaveCombine) {
-        if (useMteGroupReady) {
-            if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-                flagElementCount +=
-                    tilingData->combineSyncSlotCountPerExpert * moeExpertCount * static_cast<uint64_t>(INT_CACHELINE);
-            }
-        } else {
-            if (!useW4PairwiseTileCombine) {
-                flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
-            }
-        }
+    if (combineSyncProtocol == Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER) {
+        flagElementCount +=
+            tilingData->combineSyncSlotCountPerExpert * moeExpertCount * static_cast<uint64_t>(INT_CACHELINE);
+    } else if (combineSyncProtocol == Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS) {
+        flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
-    if (useGroupSyncCounters) {
+    if (tilingData->topoType == TOPO_TYPE_URMA) {
         flagElementCount += tilingData->combineSyncSlotCountPerExpert * moeExpertCount * INT_CACHELINE;
     }
     if (tilingData->sharedExpertNum > 0) {

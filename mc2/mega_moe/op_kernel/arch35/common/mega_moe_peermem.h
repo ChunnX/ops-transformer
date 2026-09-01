@@ -71,10 +71,44 @@ HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSize(const MegaMoeTilingData *til
     return CalcDispatchRouteIndexAlignSizeBy(static_cast<int64_t>(tilingData->numMaxTokensPerRank));
 }
 
-HOST_DEVICE bool UseMteGroupCombineReady(int64_t topoType, uint8_t groupedMatmulMode)
+// GMM2 与 Combine 之间采用的同步协议。枚举值描述生产者实际发布的内容，避免用多个 bool
+// 分别表达模板、量化模式和通知粒度，并从这些开关组合中反推同步行为。
+enum class Gmm2CombineSyncProtocol : uint8_t {
+    NONE,
+    PAIRED_TILE_SEQUENCE,   // 每个 AIC 发布单调 tile 序号，配对 AIV1 一对一消费。
+    TOKEN_GROUP_COUNTER,    // 每个 expert-local 256-token group 统计已完成的 GMM2 N tile。
+    EXPERT_AIC_READY_FLAGS, // 每个专家由所有 AIC 各发布一个完成标记。
+};
+
+HOST_DEVICE bool IsW4GroupedMatmulMode(uint8_t groupedMatmulMode)
 {
-    return topoType == TOPO_TYPE_MTE &&
-           (groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL || groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+    return groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+           groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+}
+
+HOST_DEVICE bool IsA8W8GroupedMatmulMode(uint8_t groupedMatmulMode)
+{
+    return groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+           groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+}
+
+// 根据 MTE Wave 模板和 Combine 量化模式选择唯一同步协议。
+HOST_DEVICE Gmm2CombineSyncProtocol SelectMteGmm2CombineSyncProtocol(int64_t topoType, uint8_t groupedMatmulMode,
+                                                                     uint8_t combineQuantMode)
+{
+    if (topoType != TOPO_TYPE_MTE) {
+        return Gmm2CombineSyncProtocol::NONE;
+    }
+    bool isA8W8Mode = IsA8W8GroupedMatmulMode(groupedMatmulMode);
+    bool isW4Mode = IsW4GroupedMatmulMode(groupedMatmulMode);
+    if (!isA8W8Mode && !isW4Mode) {
+        return Gmm2CombineSyncProtocol::NONE;
+    }
+    if (combineQuantMode == COMBINE_NO_QUANT) {
+        return Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE;
+    }
+    return isA8W8Mode ? Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER
+                      : Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS;
 }
 
 // compact route 接收区不再携带槽尾 count；count 继续使用下方独立连续表。

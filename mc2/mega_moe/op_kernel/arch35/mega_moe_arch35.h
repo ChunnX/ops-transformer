@@ -102,7 +102,7 @@ protected:
                                                    uint32_t sliceTokenCount,
                                                    WaveCombineBufferConfig &combineBufferConfig,
                                                    uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
-                                                   bool useAllAivCores);
+                                                   bool isFinalCombine);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -534,17 +534,19 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &pairwiseTileSequence, bool useAllAivCores)
+    int32_t &pairwiseTileSequence, bool isFinalCombine)
 {
-    constexpr bool usePairwiseTileCombine = CombineQuantMode == COMBINE_NO_QUANT;
+    constexpr Gmm2CombineSyncProtocol syncProtocol =
+        CombineQuantMode == COMBINE_NO_QUANT ? Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE
+                                             : Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS;
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
     if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
-        UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
+        UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
-        if constexpr (usePairwiseTileCombine) {
+        if constexpr (syncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
             // 非量化 Combine 按 GMM2 tile 配对消费，需要为每个 AIC 配置独立完成标记。
             gmmAddrInfo.gmmToEpilogueFlag =
                 reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
@@ -553,11 +555,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true, usePairwiseTileCombine>(
+                    TopkWeightsPrefetch, false, false, true, syncProtocol>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
             tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
     }
-    if constexpr (usePairwiseTileCombine) {
+    if constexpr (syncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
         // 非量化 Combine 已与 GMM2 tile 配对完成，不执行专家级量化 Combine 收尾。
         return;
     }
@@ -566,7 +568,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
     NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
     UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
-    if (useAllAivCores) {
+    if (isFinalCombine) {
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 0U) {
                 // W4 prologue 的 MTE3 完成后，Final Combine 才能通过 MTE2 复用同一 UB 区域。
@@ -575,9 +577,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         }
         combineBufferConfig =
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                                    waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                                    combineRowSequence);
+        RunWaveCombineStage<CombineQuantMode, WaveCombineAivSet::ALL_AIV>(
+            commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_, params_, gmmAddrInfo, state,
+            state.expertIdx, combineRowSequence);
     } else {
         RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                               waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
