@@ -94,14 +94,16 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Init(
     }
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
 
+    // cols==0时使用最小buffer避免InitBuffer(0)异常
+    int64_t colsForBuf = (this->cols_ > 0) ? this->cols_ : 1;
     if constexpr (IsSameType<T, float>::value) {
         this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
-                                AlignBytes(this->cols_, sizeof(float)));
+                                AlignBytes(colsForBuf, sizeof(float)));
     } else {
         this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
-                                2 * AlignBytes(this->cols_, sizeof(T)));
+                                2 * AlignBytes(colsForBuf, sizeof(T)));
     }
-    this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(float)));
+    this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(colsForBuf, sizeof(float)));
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
                             AlignBytes(colsAsInt8_, sizeof(int8_t)));
     this->pipe_->InitBuffer(scaleOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, BLOCK_BYTES + BLOCK_BYTES);

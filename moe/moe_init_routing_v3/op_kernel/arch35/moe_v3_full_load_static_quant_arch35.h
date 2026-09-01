@@ -84,12 +84,14 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     offset_ = offsetGm_.GetValue(0);
 
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
+    // cols==0时使用最小buffer避免InitBuffer(0)异常
+    int64_t colsForBuf = (this->cols_ > 0) ? this->cols_ : 1;
 
-    int64_t colsAlignBytes = AlignBytes(this->cols_ * rowLength, sizeof(T));
+    int64_t colsAlignBytes = AlignBytes(colsForBuf * rowLength, sizeof(T));
     colsAlignBytes = static_cast<int64_t>(colsAlignBytes * sizeof(float) / sizeof(T));
     this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM, colsAlignBytes);
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM,
-                            AlignBytes(this->cols_ * rowLength, sizeof(int8_t)));
+                            AlignBytes(colsForBuf * rowLength, sizeof(int8_t)));
 }
 
 template <typename T>

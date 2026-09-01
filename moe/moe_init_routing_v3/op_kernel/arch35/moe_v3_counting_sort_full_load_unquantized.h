@@ -327,7 +327,9 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     coreEntries_ = coreTokenNum_ * k_;
 
     expertCountStride_ = AlignElem(actualExpertNum_, COUNTING_SORT_ONE_BLOCK_ELEMENT);
-    colsAligned_ = Align(cols_, static_cast<int64_t>(sizeof(T)));
+    // cols==0时使用最小1对齐避免InitBuffer(0)和除零
+    colsAligned_ = (cols_ > 0) ? Align(cols_, static_cast<int64_t>(sizeof(T))) :
+                                 Align(static_cast<int64_t>(1), static_cast<int64_t>(sizeof(T)));
     scaleSlotSize_ = BLOCK_BYTES / static_cast<int64_t>(sizeof(float)); // 8
     maxFilteredCount_ = coreEntries_;
     filteredCount_ = 0;

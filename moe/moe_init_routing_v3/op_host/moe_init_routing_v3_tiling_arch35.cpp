@@ -853,13 +853,14 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // 空tensor场景：n_==0、k_==0
+    // cols_==0但n_*k_>0时不算空tensor：expertIdx排序、expandedRowIdx、expertTokensCount仍需正常计算，
+    // 仅gather阶段因每行0元素自然跳过x搬运。
+    if (n_ == 0 || k_ == 0) {
         isEmptyTensor_ = true;
     }
 
-    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
-    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    // 空tensor场景下activeNum无实际意义，归一化为totalLength_，与非arch35版本保持一致。
     if (isEmptyTensor_) {
         tilingDataPtr_->activeNum = totalLength_;
     } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
@@ -1485,6 +1486,17 @@ PerLoopParams MoeInitRoutingV3TilingArch35::GetPerLoopParams(MultipleParams &mul
 {
     PerLoopParams perLoopParams;
     perLoopParams.perLoopCols = tilingDataPtr_->cols;
+    // cols==0时无需gather x，设perLoopCols=1保证InitBuffer安全，colsLoops=0由调用方设置
+    if (perLoopParams.perLoopCols == 0) {
+        perLoopParams.perLoopCols = 1;
+        perLoopParams.perLoopMaxIndicesElements =
+            std::min(perCoreIndicesElements,
+                     availUbSize_ / NUM_TWO /
+                         (AlignBytes(static_cast<int64_t>(1), inputXDtypeSize_) +
+                          AlignBytes(static_cast<int64_t>(1), sizeof(float)) + static_cast<int64_t>(sizeof(int32_t))));
+        perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
+        return perLoopParams;
+    }
     if (quantMode_ == QUANT_MODE_HIF8_PERTENSOR) {
         perLoopParams.perLoopMaxIndicesElements =
             (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple) /
@@ -1630,8 +1642,9 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutCompute()
         AlignInt4DynamicQuantPerLoopCols(perLoopParams);
     }
 
-    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
-    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    int64_t colsLoops =
+        (tilingDataPtr_->cols == 0) ? 0 : Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
+    int64_t lastLoopCols = (colsLoops == 0) ? 0 : tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
     gatherOutTiling->needCoreNum = needCoreNum;
     gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
     gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
@@ -1666,6 +1679,24 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxFP8NoQuantCompute()
     }
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
     int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
+
+    // cols==0时无需gather，设安全最小值避免while死循环
+    if (tilingDataPtr_->cols == 0) {
+        PerLoopParams perLoopParams;
+        perLoopParams.perLoopCols = MXFPX_SCALE_BLOCK_SIZE;
+        perLoopParams.perLoopMaxIndicesElements = perCoreIndicesElements;
+        perLoopParams.xCopyInQueueBufferNum = DOUBLE_BUFFER;
+        gatherOutTiling->needCoreNum = needCoreNum;
+        gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
+        gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
+        gatherOutTiling->colsLoops = 0;
+        gatherOutTiling->perLoopCols = perLoopParams.perLoopCols;
+        gatherOutTiling->lastLoopCols = 0;
+        gatherOutTiling->xCopyInQueueBufferNum = perLoopParams.xCopyInQueueBufferNum;
+        gatherOutTiling->perCorePerLoopIndicesElements = perCoreIndicesElements;
+        SetLastCoreIndicesTiling(gatherOutTiling, lastCoreIndicesElements, perLoopParams.perLoopMaxIndicesElements);
+        return;
+    }
 
     PerLoopParams perLoopParams;
     perLoopParams.perLoopCols = tilingDataPtr_->cols;
@@ -1764,6 +1795,20 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxQuant()
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
     int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
 
+    // cols==0时无需gather，设安全最小值
+    if (tilingDataPtr_->cols == 0) {
+        int64_t perLoopCols = MX_QUANT_BLOCK_SIZE;
+        gatherOutTiling->needCoreNum = needCoreNum;
+        gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
+        gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
+        gatherOutTiling->colsLoops = 0;
+        gatherOutTiling->perLoopCols = perLoopCols;
+        gatherOutTiling->lastLoopCols = 0;
+        SetIndicesLoopParams4GatherOut(perCoreIndicesElements, perCoreIndicesElements, lastCoreIndicesElements);
+        gatherOutTiling->activeNum = tilingDataPtr_->activeNum;
+        return;
+    }
+
     int64_t perLoopCols = Ops::Base::CeilAlign(tilingDataPtr_->cols, MX_QUANT_BLOCK_SIZE);
     int64_t perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopMxQuant(perLoopCols);
     while (perLoopMaxIndicesElements <= 0 && perLoopCols > MX_QUANT_BLOCK_SIZE) {
@@ -1831,6 +1876,21 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutFP8Quant()
 
     bool isFp8Group = (quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN ||
                        quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
+    // cols==0时无需gather，设安全最小值
+    if (tilingDataPtr_->cols == 0) {
+        int64_t perLoopCols = FP8_PERBLOCK_BLOCK_SIZE;
+        gatherOutTiling->needCoreNum = needCoreNum;
+        gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
+        gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
+        gatherOutTiling->colsLoops = 0;
+        gatherOutTiling->perLoopCols = perLoopCols;
+        gatherOutTiling->lastLoopCols = 0;
+        gatherOutTiling->perCoreIndicesLoops = 1;
+        gatherOutTiling->perCorePerLoopIndicesElements = perCoreIndicesElements;
+        gatherOutTiling->perCoreLastLoopIndicesElements = perCoreIndicesElements;
+        SetLastCoreIndicesTiling(gatherOutTiling, lastCoreIndicesElements, perCoreIndicesElements);
+        return;
+    }
     int64_t perLoopCols = Ops::Base::CeilAlign(tilingDataPtr_->cols, FP8_PERBLOCK_BLOCK_SIZE);
     int64_t perLoopMaxIndicesElements =
         isFp8Group ? CalcMaxRowIdxPerLoopFP8GroupQuant(perLoopCols) : CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
@@ -2042,7 +2102,7 @@ int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64
     // 聚合搬出相关缓冲区仅在 csAggrEnable=1 时申请：bucketBase + offsetTbl + countTbl。
     // 聚合搬出 gatherOutBuf 位于 UB 最前，固定预留 AGGRBUFBYTES_A5。
     int64_t actualExpertNum = expertEnd_ - expertStart_;
-    int64_t aggrOutRows = AGGRBUFBYTES_A5 / (colsAligned * inputXDtypeSize_);
+    int64_t aggrOutRows = (colsAligned * inputXDtypeSize_ > 0) ? AGGRBUFBYTES_A5 / (colsAligned * inputXDtypeSize_) : 0;
     bool aggrEnable = (aggrOutRows >= NUM_TWO) && (actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM) &&
                       (quantMode_ == QUANT_MODE_UNQUANT);
     if (aggrEnable) {
@@ -2077,7 +2137,7 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortFullLoadTiling()
     // 聚合区在 UB 最前独立预留 10KB（不挤占 xLocal），分桶区已计入 EstimateArch35CountingSortFullLoadUB
     int64_t colsAligned = Ops::Base::CeilAlign(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE) / inputXDtypeSize_;
     int64_t aggrBufBytes = static_cast<int64_t>(AGGRBUFBYTES_A5);
-    int64_t aggrOutRows = aggrBufBytes / (colsAligned * inputXDtypeSize_);
+    int64_t aggrOutRows = (colsAligned * inputXDtypeSize_ > 0) ? aggrBufBytes / (colsAligned * inputXDtypeSize_) : 0;
     int64_t actualExpertNum = expertEnd_ - expertStart_;
     // 启用判定：k>=2（聚合区至少容纳 2 行）、桶数受限、非量化
     // xLocal 不再被切分，搬入区完整保留，无需容量校验
@@ -2226,6 +2286,21 @@ void MoeInitRoutingV3TilingArch35::SetGatherOutDropPadLoopParams(int64_t perCore
 {
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
     int64_t perLoopCols = cols_;
+    // cols==0时无需gather，设安全最小值避免CeilDiv(0,0)
+    if (perLoopCols == 0) {
+        perLoopCols = 1;
+        tilingData->colsLoops = 0;
+        tilingData->perLoopCols = perLoopCols;
+        tilingData->lastLoopCols = 0;
+        tilingData->perCorePerLoopIndicesElements = perCoreIndicesElements;
+        tilingData->perCoreIndicesLoops = 1;
+        tilingData->perCoreLastLoopIndicesElements = perCoreIndicesElements;
+        tilingData->lastCorePerLoopIndicesElements = lastCoreIndicesElements;
+        tilingData->lastCoreIndicesLoops = 1;
+        tilingData->lastCoreLastLoopIndicesElements = lastCoreIndicesElements;
+        tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
+        return;
+    }
     // compact DropPad gather_out 按输出行遍历，只需要保留单行 X queue 和 source-row map queue。
     int64_t scaleCopyInQueueSize =
         isInputScale_ == 1 ? DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
