@@ -97,11 +97,12 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
-    __aicore__ inline void RunQuantGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                        uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-                                                        uint32_t sliceTokenCount,
-                                                        WaveCombineBufferConfig &combineBufferConfig,
-                                                        uint32_t &combineRowSequence, bool useAllAivCores);
+    __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+                                                   uint32_t sliceTokenCount,
+                                                   WaveCombineBufferConfig &combineBufferConfig,
+                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
+                                                   bool useAllAivCores);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -525,13 +526,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-// W4 量化 GMM2/Combine：非量化路径统一由 RunWaveGmm2PairwiseCombineStage 处理。
+/*
+ * W4 公共专家 slice GMM2/Combine。GMM2 的分核、地址更新和 slice 执行顺序不随 Combine 量化模式变化；
+ * 非量化模式在 GMM2 tile 完成后触发 pairwise Combine，量化模式在专家完整结束后执行量化 Combine。
+ */
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunQuantGmm2CombineForExpert(
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    bool useAllAivCores)
+    int32_t &pairwiseTileSequence, bool useAllAivCores)
 {
+    constexpr bool usePairwiseTileCombine = CombineQuantMode == COMBINE_NO_QUANT;
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
@@ -539,12 +544,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunQuantGmm2CombineForE
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
+        if constexpr (usePairwiseTileCombine) {
+            // 非量化 Combine 按 GMM2 tile 配对消费，需要为每个 AIC 配置独立完成标记。
+            gmmAddrInfo.gmmToEpilogueFlag =
+                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
+                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
+        }
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true, false>(
+                    TopkWeightsPrefetch, false, false, true, usePairwiseTileCombine>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_, nullptr);
+            tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
+    }
+    if constexpr (usePairwiseTileCombine) {
+        // 非量化 Combine 已与 GMM2 tile 配对完成，不执行专家级量化 Combine 收尾。
+        return;
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;

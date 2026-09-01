@@ -1089,8 +1089,8 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
     }
 }
 
-// 三条 WAVE 路径的唯一非量化 GMM2/Combine 入口。调用方只提供当前 WAVE 的首尾位置；本函数统一将
-// 连续 WAVE 范围展开为逐专家 slice，并保持跨 WAVE 的专家状态、分核游标和 AIC/AIV1 tile 序号连续。
+// A8W8 非量化 GMM2/Combine 入口：将连续 WAVE 范围展开为逐专家 slice，并保持跨 WAVE 的专家状态、
+// 分核游标和 AIC/AIV1 tile 序号连续。W4 在模板主循环中维持原有专家 slice GMM2 调度。
 template <typename GenericElementA, typename Gmm2ElementA, typename WeightType, typename QuantScaleType,
           bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsGmm1Interleaved = false>
