@@ -111,6 +111,11 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     if (td == nullptr) {
         return ge::GRAPH_FAILED;
     }
+    // 对齐celu模式：先清零，避免tiling buffer残留
+    if (memset_s(td, sizeof(FusedGdnGating::FusedGdnGatingTilingData), 0,
+                 sizeof(FusedGdnGating::FusedGdnGatingTilingData)) != EOK) {
+        return ge::GRAPH_FAILED;
+    }
     td->numHeads = static_cast<uint32_t>(numHeads);
     td->beta = beta;
     td->threshold = threshold;
@@ -242,6 +247,25 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     }
 
     // 6. Tiling 数据已通过 GetTilingData 指针直接写入，无需手动序列化
+    //    调试：dump 序列化前的 raw tiling bytes（前 48B = struct 布局）
+    {
+        auto *raw = context->GetRawTilingData();
+        if (raw != nullptr) {
+            const uint8_t *b = reinterpret_cast<const uint8_t *>(raw->GetData());
+            OP_LOGI(context->GetNodeName(),
+                    "FGG tiling dump: cap=%zu dataSz=%zu | "
+                    "%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x "
+                    "%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x "
+                    "%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
+                    raw->GetCapacity(), raw->GetDataSize(),
+                    b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+                    b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15],
+                    b[16], b[17], b[18], b[19], b[20], b[21], b[22], b[23],
+                    b[24], b[25], b[26], b[27], b[28], b[29], b[30], b[31],
+                    b[32], b[33], b[34], b[35], b[36], b[37], b[38], b[39],
+                    b[40], b[41], b[42], b[43], b[44], b[45], b[46], b[47]);
+        }
+    }
     context->SetBlockDim(blockDim);
     context->SetTilingKey(tilingKey);
 
