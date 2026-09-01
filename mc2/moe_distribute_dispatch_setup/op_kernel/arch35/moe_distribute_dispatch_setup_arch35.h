@@ -554,7 +554,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SplitToC
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SendToMoeExpert()
 {
-    if (startTokenId_ >= curSendCnt_) {
+    if (startTokenId_ >= curSendCnt_ || sendTokenNum_ == 0U) {
         return;
     }
     GlobalTensor<YOutType> dstWinGMTensor;
@@ -656,6 +656,9 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::AlltoAll
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatus()
 {
+    if (sendExpertNum_ == 0U) {
+        return;
+    }
     if (activeMaskBsCnt_ > 0) { // 需要发送的再算
         for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
             int32_t curExpertCnt = 0;
@@ -679,7 +682,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatu
         (__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
     DataCopy<int32_t>(windowExpGMTensor, statusTensor_[startExpertId_ * 8],
                       sendExpertNum_ * 8); // 8时数据大小，按32对齐拷贝
-    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateMC2TypeClass>
@@ -945,33 +948,35 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
 {
     uint32_t preExpertNum = sharedExpertRankNum_ + (epRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
     uint32_t calCnt = 0;
+    GlobalTensor<uint8_t> srcAddr_T;
+    GlobalTensor<uint8_t> dstAddr_T;
     for (uint32_t expertIdx = 0; expertIdx < moeExpertNumPerRank_; expertIdx++) {
         uint32_t tokenNum = static_cast<uint32_t>(statusTensor_((preExpertNum + expertIdx) * 8 + 1));
         uint64_t sendBytes = static_cast<uint64_t>(tokenNum) * hAlignWinSize_;
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
-        DataCopyPadExtParams<uint8_t> copyPadExtParams{false, 0U, 0U, 0U};
-        GlobalTensor<uint8_t> srcAddr_T;
-        GlobalTensor<uint8_t> dstAddr_T;
-        LocalTensor<uint8_t> expertTokenTmpU8 = tmpTokenQueue_.AllocTensor<uint8_t>();
-
         srcAddr_T.SetGlobalBuffer((__gm__ uint8_t *)(yOutGM_ + (moeStartToken + calCnt) * hAlignWinSize_));
         dstAddr_T.SetGlobalBuffer(
             (__gm__ uint8_t *)(GetUrmaAddrByRankId(epRankId_) +
                                (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ + expertIdx))));
-        uint64_t i = 0;
-        for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
+        if (sendBytes > 0U && remain_ub_space > 0U) {
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> copyPadExtParams{false, 0U, 0U, 0U};
+            LocalTensor<uint8_t> expertTokenTmpU8 = tmpTokenQueue_.AllocTensor<uint8_t>();
+            uint64_t i = 0;
+            for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
+                DataCopyPad(expertTokenTmpU8, srcAddr_T[i * remain_ub_space], copyParams, copyPadExtParams);
+                tmpTokenQueue_.EnQue(expertTokenTmpU8);
+                expertTokenTmpU8 = tmpTokenQueue_.DeQue<uint8_t>();
+                DataCopyPad(dstAddr_T[i * remain_ub_space], expertTokenTmpU8, copyParams);
+                ++i;
+                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            }
+            copyParams.blockLen = sendBytes;
             DataCopyPad(expertTokenTmpU8, srcAddr_T[i * remain_ub_space], copyParams, copyPadExtParams);
             tmpTokenQueue_.EnQue(expertTokenTmpU8);
             expertTokenTmpU8 = tmpTokenQueue_.DeQue<uint8_t>();
             DataCopyPad(dstAddr_T[i * remain_ub_space], expertTokenTmpU8, copyParams);
-            ++i;
-            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            tmpTokenQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
         }
-        copyParams.blockLen = sendBytes;
-        DataCopyPad(expertTokenTmpU8, srcAddr_T[i * remain_ub_space], copyParams, copyPadExtParams);
-        tmpTokenQueue_.EnQue(expertTokenTmpU8);
-        expertTokenTmpU8 = tmpTokenQueue_.DeQue<uint8_t>();
-        DataCopyPad(dstAddr_T[i * remain_ub_space], expertTokenTmpU8, copyParams);
         // 发状态
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         GlobalTensor<int32_t> dstAddrStatus;
@@ -979,7 +984,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
                                                          (epRankId_ + expertIdx * epWorldSize_) * stateOffset_));
         DataCopy<int32_t>(dstAddrStatus, statusTensor_[(expertIdx + preExpertNum) * 8], 8);
         calCnt += tokenNum;
-        tmpTokenQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
     }
     moeStartToken += calCnt;
 }
@@ -1035,9 +1039,10 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     if (endRankId > sharedExpertRankNum_) {
         len += (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
     }
-
-    DataCopy<int32_t>(statusTensor_, windowExpGMTensor, len * 8); // 8时数据大小，按32对齐拷贝
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    if (len > 0U) {
+        DataCopy<int32_t>(statusTensor_, windowExpGMTensor, len * 8); // 8时数据大小，按32对齐拷贝
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+    }
 
     uint32_t moeStartToken = 0; // 当前核处理的第一张moe卡之前的token数，根据该值计算起始偏移地址
     CalMoeStartTokenNum(startRankId, statusTensor_, moeStartToken);
@@ -1113,7 +1118,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Process(
         }
         TokenScatter();
         // aivNum > ep 且无共享专家时：通信核不做量化，token 改分到计算核；
-        // 通信核先写 status 再 Init，与其他核的量化重叠。aivNum == ep 时所有核都要量化。
+        // YOut 仍在 SyncAll 之后再 WriteNbi。aivNum == ep 时所有核都要量化。
         const bool overlapCommCompute = (sharedExpertRankNum_ == 0U) && (aivNum_ > epWorldSize_);
         if (overlapCommCompute && !isSendShared_) {
             uint32_t coreIdxNew = (aivId_ + epRankId_) % aivNum_;
@@ -1131,9 +1136,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Process(
         if (overlapCommCompute && IsEpCommCore() && !isSendShared_) {
             expertIdsActCnt_ = activeMaskBsCnt_ * axisK_;
             SetStatus();
-            PipeBarrier<PIPE_ALL>();
-            InitCommBuffer();
-            commBufInited_ = true;
         } else {
             AlltoAllDispatch();
             SetStatus();
