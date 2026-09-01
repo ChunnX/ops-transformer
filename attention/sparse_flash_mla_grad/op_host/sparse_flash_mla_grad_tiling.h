@@ -83,6 +83,9 @@ TILING_DATA_FIELD_DEF(int64_t, oriWinRight);
 TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqQ);
 TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqOriKV);
 TILING_DATA_FIELD_DEF(uint8_t, hasUsedSeqCmpKV);
+// tilingData需要8字节对齐
+TILING_DATA_FIELD_DEF(uint8_t, reserved0);
+TILING_DATA_FIELD_DEF(uint32_t, reserved1);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaGradBasicParamsOp, SparseFlashMlaGradBasicParams)
 
