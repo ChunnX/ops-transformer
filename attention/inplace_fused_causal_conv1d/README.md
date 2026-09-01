@@ -430,10 +430,7 @@
       <td>max_draft_tokens（int64_t）</td>
       <td>属性</td>
       <td>最大投机个数。</td>
-      <td><ul><li>取值范围[0, 16]。</li></ul></td>
       <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
       <td>-</td>
     </tr>
   </tbody>
