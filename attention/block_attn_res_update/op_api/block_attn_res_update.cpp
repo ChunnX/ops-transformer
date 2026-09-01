@@ -57,7 +57,7 @@ static bool IsEmptyWorkload(const aclTensor *partialBlockRef)
 
 const aclTensor *BlockAttnResUpdate(aclTensor *partialBlockRef, const aclTensor *delta, const aclTensor *pseudoQuery,
                                     const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum,
-                                    float eps, aclOpExecutor *executor)
+                                    double eps, aclOpExecutor *executor)
 {
     L0_DFX(BlockAttnResUpdate, partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum, eps);
 

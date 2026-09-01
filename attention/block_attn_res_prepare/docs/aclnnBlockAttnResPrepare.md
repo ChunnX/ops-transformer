@@ -113,7 +113,7 @@ aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     aclTensor       *numerator,
     aclTensor       *logitMax,
     aclTensor       *expSum,
-    float            eps,
+    double           eps,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor);
 ```
@@ -214,7 +214,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>×</td>
     </tr>
     <tr>
-      <td>eps（float）</td>
+      <td>eps（double）</td>
       <td>输入</td>
       <td>表示RMS归一化的稳定项，通常为1e-6。</td>
       <td>必须为有限正数。</td>

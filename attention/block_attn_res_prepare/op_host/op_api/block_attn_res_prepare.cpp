@@ -41,7 +41,7 @@ OP_TYPE_REGISTER(BlockAttnResPrepare);
 const std::array<const aclTensor *, BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM> BlockAttnResPrepare(const aclTensor *blockRes,
                                                                                            const aclTensor *validBlocks,
                                                                                            const aclTensor *pseudoQuery,
-                                                                                           float eps,
+                                                                                           double eps,
                                                                                            aclOpExecutor *executor)
 {
     L0_DFX(BlockAttnResPrepare, blockRes, validBlocks, pseudoQuery, eps);
