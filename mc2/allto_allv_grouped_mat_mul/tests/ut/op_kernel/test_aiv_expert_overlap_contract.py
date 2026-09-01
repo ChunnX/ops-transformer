@@ -14,6 +14,7 @@ SOURCE = (
     / "allto_allv_grouped_mat_mul_aiv_mode.h"
 )
 COMM_SOURCE = SOURCE.parent / "allto_allv_grouped_mat_mul_aiv_comm.h"
+CATLASS_SOURCE = SOURCE.parent / "allto_allv_grouped_mat_mul_catlass.h"
 HOST_TILING_HEADER = (
     SOURCE.parent.parent
     / "op_host"
@@ -39,6 +40,23 @@ def _function_body(source: str, signature: str) -> str:
 
 def _source() -> str:
     return SOURCE.read_text(encoding="utf-8")
+
+
+def test_catlass_tla_include_targets_exist() -> None:
+    source = CATLASS_SOURCE.read_text(encoding="utf-8")
+    includes = [
+        line.split('"')[1]
+        for line in source.splitlines()
+        if line.startswith('#include "') and "template_linear_algebra" in line
+    ]
+    missing = [
+        str((CATLASS_SOURCE.parent / include).resolve())
+        for include in includes
+        if not (CATLASS_SOURCE.parent / include).resolve().is_file()
+    ]
+
+    assert len(includes) == 9
+    assert not missing, "missing TLA include targets:\n" + "\n".join(missing)
 
 
 def test_a2_ep8_accepts_both_fixed_and_runtime_dynamic_peer_windows() -> None:
