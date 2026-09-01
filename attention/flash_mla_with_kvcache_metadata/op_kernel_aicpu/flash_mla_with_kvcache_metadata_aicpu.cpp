@@ -13,16 +13,15 @@
  * \brief
  */
 
-#include "log.h"
-#include "status.h"
+#include "flash_mla_with_kvcache_metadata_aicpu.h"
 #include <algorithm>
 #include <numeric>
 #include <cstdio>
 #include <cmath>
-#include "flash_mla_with_kvcache_metadata.h"
-#include "flash_mla_with_kvcache_metadata_aicpu.h"
+#include "log.h"
+#include "status.h"
 #include "../../common/op_kernel/aicpu_common.h"
-#include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
+#include "flash_mla_with_kvcache_metadata.h"
 
 constexpr uint32_t FA_KERNEL_STATUS_OK = 0;
 constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID = 1;
@@ -228,19 +227,8 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitDeviceInfo()
 
 void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
 {
-    uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
-    if (baseInfo.layoutQuery == load_balance::Layout::BSH || baseInfo.layoutQuery == load_balance::Layout::BSND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
-    } else if (baseInfo.layoutQuery == load_balance::Layout::TND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
-    }
-    uint32_t gSize = static_cast<uint32_t>(numHeadsQ_ / numHeadsKv_);
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDimQk, gSize, maxSeqlenQ_, maxSeqlenKv_,
-                                                                baseInfo.sparseMode, baseInfo.preToken,
-                                                                baseInfo.nextToken, qlayout, mBaseSize_, s2BaseSize_);
-    mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
-    param.mBaseSize = mBaseSize_;
-    param.s2BaseSize = s2BaseSize_;
+    param.mBaseSize = 64;
+    param.s2BaseSize = 128;
     param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
     param.fdTolerance = 10;             // 10: tolerance block
     param.fdLeastBlock = 3;             // 3: least block
@@ -249,7 +237,7 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
     // 真机校验（isFd 路由修正后 b8/kvS=32768 上板挂起）。暂关闭 FD 调度 → 所有 (bn2,m) 块在单核
     // 内顺序覆盖全部 s2（cachedS2LoopTimes），无需核间归约，LSE/out 全程在 FA 路径完成；
     // 正确性优先，性能留待后续按需恢复（与 flash_attn 运行时开关一致后可回退本行）。
-    param.fdOn = false;
+    param.fdOn = true;
 }
 
 void FlashMlaWithKvcacheMetadataCpuKernel::InitBaseInfo()
