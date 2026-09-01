@@ -1137,9 +1137,8 @@ static aclnnStatus CheckFunctionQuantParams(const gmm::GroupedMatmulParams &gmmP
                    opName, "y", gmm::dTypeToString(yDtypeOrg).c_str(), i, gmm::dTypeToString(yDtype).c_str());
         if (!(yDtype == DataType::DT_INT8 || yDtype == DataType::DT_BF16 || yDtype == DataType::DT_FLOAT16 ||
               yDtype == DataType::DT_INT32)) {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                opName, "y[" + std::to_string(i) + "]", gmm::dTypeToString(yDtype),
-                "When A8W8 quant, the data type of y is not supported");
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y[" + std::to_string(i) + "]", gmm::dTypeToString(yDtype),
+                                                  "When A8W8 quant, the data type of y is not supported");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -1668,8 +1667,7 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         return CheckGroupedMatmulAntiQuant(gmmParams, opName);
     }
     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-        opName, "x, weight",
-        std::string(gmm::dTypeToString(gmmParams.xDtype)) + ", " + gmm::dTypeToString(weightDtype),
+        opName, "x, weight", std::string(gmm::dTypeToString(gmmParams.xDtype)) + ", " + gmm::dTypeToString(weightDtype),
         "There is no matching x dtype and weight dtype pattern. Supported scenarios include A8W8 quant, A8W4 "
         "weight quant, A4W4 quant, A16W8 antiquant, A16W4 antiquant and non-quant");
     return ACLNN_ERR_PARAM_INVALID;
@@ -2883,8 +2881,7 @@ static aclnnStatus ParamsWeightNzDtype(gmm::GroupedMatmulParams &params, const c
         return ACLNN_SUCCESS;
     }
     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-        opName, "x, weight",
-        std::string(gmm::dTypeToString(x1Dtype)) + ", " + gmm::dTypeToString(weightDtype),
+        opName, "x, weight", std::string(gmm::dTypeToString(x1Dtype)) + ", " + gmm::dTypeToString(weightDtype),
         "The x dtype and weight dtype do not match with required dtype when " +
             std::string(GetGmmScenarioName(x1Dtype, weightDtype)) +
             ". Only supported scenarios: A8W8 quant, non-quant BF16/FP16, "
@@ -2896,8 +2893,8 @@ static const aclTensor *SetTensorToNZFormat(const aclTensor *input, op::Shape &s
 {
     auto formatTensor = executor->CreateView(input, shape, input->GetViewOffset());
     if (formatTensor == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            "aclnnGroupedMatmulWeightNz", "CreateView result", "nullptr", "Failed to create the NZ-format view");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulWeightNz", "CreateView result", "nullptr",
+                                              "Failed to create the NZ-format view");
         return nullptr;
     }
     formatTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
