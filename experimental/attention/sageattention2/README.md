@@ -103,6 +103,64 @@ PYTHONPATH=<本包 python/ 目录的绝对路径> SAGEATTN_NPU_MODULE=sageattent
 
 精度口径 L-A（vs GPU `sageattn_qk_int8_pv_fp8_cuda` 同 `pv_accum_dtype`）+ L-B（vs FP32 SDPA）；性能口径见任务书 P-01~P-07（双路径 ≥1.6× FIA，需在自验证报告填两路径计时表）。
 
+## 实测验证结果（CANN 9.2.0-beta.1 / Atlas 950PR）
+
+验证环境：Atlas 950PR（Ascend950PR_9579，HBM 128GB），CANN 9.2.0-beta.1（x86_64），driver 25.7.rc1.6，torch 2.12.0 / torch_npu 2.12.0，WARMUP=5 REPEAT=20。
+
+### 精度
+
+| 项目 | 结果 | 判定 |
+|------|------|:----:|
+| MM1 INT8 QK^T（独立 kernel） | Compare success | ✅ |
+| MM2 FP8 PV（独立 kernel） | Compare success；absErr max=0.0034 mean=0.00017 rmse=0.0004，err>0.15=0/32768 | ✅ |
+| 全链 L-B（vs FP32 SDPA） | maxAbsErr=0.937 mean=0.093 RMSE=0.163（阈值 max≤2 / mean≤1.2 / RMSE≤1.2） | ✅ PASS |
+| 全链 L-A（vs GPU `sageattn_qk_int8_pv_fp8_cuda`） | 未执行（验证环境无 GPU golden）；以 L-B 兜底 | ⚠️ |
+
+### 性能（P-01~P-07 双路径，Speedup = T_FIA / T_SAGE）
+
+**PyTorch 路径**（vs `torch_npu.npu_fused_infer_attention_score`，BNSD）：
+
+| 编号 | shape（B,H,S,D） | FIA(ms) | SAGE(ms) | Speedup | 判定 |
+|------|-------------------|---------|----------|---------|:----:|
+| P-01 | [1,32,4096,128] FP16 | 0.90 | 14.93 | 0.06× | ❌ |
+| P-02 | [1,32,8192,128] FP16 | 3.62 | 58.73 | 0.06× | ❌ |
+| P-03 | [1,32,8192,128] causal | 3.58 | 82.75 | 0.04× | ❌ |
+| P-04 | [2,32,8192,128] FP16 | 7.66 | 117.39 | 0.07× | ❌ |
+| P-05 | GQA 32/8 S=4096 | 0.90 | ERR | N/A | ❌ |
+| P-06 | [1,32,4096,128] BF16 | 0.91 | 14.94 | 0.06× | ❌ |
+| P-07 | [1,32,16384,128] FP16 | 25.71 | 234.73 | 0.11× | ❌ |
+
+**aclnn 路径**（基线 `aclnnFusedInferAttentionScoreV5`；torch_npu 未直接暴露，回退同接口族 `npu_fused_infer_attention_score`，待测为 Python 兜底入口 `aclnn_sageattn_pv_py`）：
+
+| 编号 | shape（B,H,S,D） | V5(ms) | ACLNN(ms) | Speedup | 判定 |
+|------|-------------------|--------|-----------|---------|:----:|
+| P-01 | [1,32,4096,128] FP16 | 0.89 | 15.18 | 0.06× | ❌ |
+| P-02 | [1,32,8192,128] FP16 | 3.55 | 59.26 | 0.06× | ❌ |
+| P-03 | [1,32,8192,128] causal | 3.52 | 83.30 | 0.04× | ❌ |
+| P-04 | [2,32,8192,128] FP16 | 7.33 | 118.54 | 0.06× | ❌ |
+| P-05 | GQA 32/8 S=4096 | 0.88 | ERR | N/A | ❌ |
+| P-06 | [1,32,4096,128] BF16 | 0.90 | 15.18 | 0.06× | ❌ |
+| P-07 | [1,32,16384,128] FP16 | 24.47 | 235.86 | 0.10× | ❌ |
+
+**如实结论**：两路径均 0/7，几何平均 ≈0.06×，未达 1.6× 门禁。当前可跑路径为 Plan B host 链（分步 MM1→softmax→MM2），架构性劣势于融合 FIA；device-side 融合 kernel 受 AIC 断链限制（runtime 调度诊断见 `docs/`），待断链修复或 CANN 正式版后复测。SAGE 数字为 PyTorch fp32 等价近似（非真 CATLASS kernel 计时），已诚实标注。
+
+### 复现
+
+```bash
+# 精度：mm1 / mm2 / 全链（需在 catlass examples 接入本目录后构建）
+build/examples/99_sageattn_fp8/mm1_qk_int8 256 256 128
+build/examples/99_sageattn_fp8/mm2_pv_fp8 256 128 256 --datapath <gen_data 产物>
+build/examples/99_sageattn_fp8/sageattn_chain 256 256 128
+
+# 性能双路径（tools/ 下，需 NPU + torch_npu + FIA）
+python3 tools/perf_benchmark.py      # PyTorch 路径 vs npu_fused_infer_attention_score
+python3 tools/perf_aclnn_path.py     # aclnn 路径 vs V5(回退) + 兜底入口
+
+# 测试工程（sageAttentionTest，500 用例）
+python -m pytest -rA -s tests/pytest/test.py -m "functional or accuracy"
+python -m pytest -rA -s tests/pytest/test_perf.py -m perf
+```
+
 ## 详细设计
 
 见 `docs/sageattention2_design.md`（AscendC/CATLASS 模块边界、量化语义、tiling、head_dim pad、两级累加、LSE 换算）。任务书口径唯一来源：`SageAttention2_task_doc.md`，冲突时以任务书为准。
