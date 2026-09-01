@@ -48,7 +48,7 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
     using MegaMoeBase::DispatchBuffInit;
-    using MegaMoeBase::RunQuantGmm2CombineForExpert;
+    using MegaMoeBase::RunGmm2CombineForExpert;
     using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmmLoopCount_;
     using MegaMoeBase::commonConfig_;
@@ -216,37 +216,29 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
 
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            ExpertTokenPosition gmm2Position = waveBeginPosition;
-            RunWaveGmm2PairwiseCombineStage<QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
-                                            false, true, GMM1_TILE_M, TopkWeightsPrefetch>(
-                commonConfig_, gmmExecutionConfig_, countWorkspace_, syncWorkspaceLayout_, params_,
-                moeWeightTensorListAddrs_, gmm2Position, waveEndPosition, gmm2State, gmm2AddrInfo, gmm1RuntimeState,
-                pairwiseTileSequence);
-        } else {
-            // Wave 在专家内结束时需包含该专家；在专家边界结束时，waveEndPosition 已指向下一专家。
-            uint32_t waveGmm2ExpertEndExclusive =
-                waveEndPosition.expertIdx + (waveEndPosition.tokenIndexInExpert == 0U ? 0U : 1U);
-            for (uint32_t expertIdx = waveBeginPosition.expertIdx; expertIdx < waveGmm2ExpertEndExclusive;
-                 ++expertIdx) {
-                uint32_t sliceTokenStartIndexInExpert =
-                    expertIdx == waveBeginPosition.expertIdx ? waveBeginPosition.tokenIndexInExpert : 0U;
-                if (sliceTokenStartIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<false>(gmm2State, expertIdx);
-                }
-                uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape));
-                uint32_t sliceTokenEndIndexInExpert =
-                    expertIdx == waveEndPosition.expertIdx ? waveEndPosition.tokenIndexInExpert : expertTokenCount;
-                uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
-                if (sliceTokenCount != 0U) {
-                    bool useAllAivCores = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
-                                          expertIdx == waveLastActiveExpertIdx &&
-                                          sliceTokenEndIndexInExpert >= expertTokenCount;
-                    RunQuantGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx,
-                                                 sliceTokenStartIndexInExpert, sliceTokenCount, combineBufferConfig,
-                                                 combineRowSequence, useAllAivCores);
-                }
+        // GMM2 调度与 Combine 量化模式无关：统一按当前 WAVE 覆盖的专家 slice 顺序推进。
+        uint32_t waveGmm2ExpertEndExclusive =
+            waveEndPosition.expertIdx + (waveEndPosition.tokenIndexInExpert == 0U ? 0U : 1U);
+        for (uint32_t expertIdx = waveBeginPosition.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
+            uint32_t sliceTokenStartIndexInExpert =
+                expertIdx == waveBeginPosition.expertIdx ? waveBeginPosition.tokenIndexInExpert : 0U;
+            if (sliceTokenStartIndexInExpert == 0U) {
+                this->template PrepareGmmExpertState<false>(gmm2State, expertIdx);
             }
+            uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape));
+            uint32_t sliceTokenEndIndexInExpert =
+                expertIdx == waveEndPosition.expertIdx ? waveEndPosition.tokenIndexInExpert : expertTokenCount;
+            uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
+            if (sliceTokenCount != 0U) {
+                bool useAllAivCores = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
+                                      expertIdx == waveLastActiveExpertIdx &&
+                                      sliceTokenEndIndexInExpert >= expertTokenCount;
+                RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence,
+                                        pairwiseTileSequence, useAllAivCores);
+            }
+        }
+        if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
