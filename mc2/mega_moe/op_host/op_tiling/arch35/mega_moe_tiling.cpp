@@ -1240,31 +1240,20 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    // MTE 统一使用 per-expert AIC ready 表；group counter 只服务 layered 量化 Combine。
-    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT ||
-        tilingData->moeExpertPerRank == 0U) {
+    // MTE 统一使用 per-expert AIC ready 表；group counter 服务 URMA layered Combine，量化与非量化均需要。
+    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
-    uint64_t logicalCoreCount = tilingData->blockAivNum;
-    bool useAiv1OnlyWaveCombine =
-        tilingData->topoType == TOPO_TYPE_URMA ||
-        (tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                                                   tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ));
-    if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
-        // A5 混合核启动约定为每个逻辑核对应两个 AIV；这些路径仅由
-        // subBlockIdx=1 执行 Combine，因此沿用 blockAivNum / 2 计算参与核数。
-        logicalCoreCount = tilingData->blockAivNum / 2U;
-    }
+    // 上述 guard 保证这里只剩 URMA；layered Combine 仅由 subBlockIdx=1 的半数 AIV 执行。
+    uint64_t combineCoreCount = tilingData->blockAivNum / 2U;
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
     uint64_t maxTokenCountForOneExpert =
         static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
     uint64_t maxTokenGroupCountForOneExpert =
         ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
     // Workspace 在路由结果产生前分配，因此每个本卡 MoE expert 都按独立最坏情况预留 slot。
-    return std::max(maxTokenGroupCountForOneExpert, logicalCoreCount);
+    return std::max(maxTokenGroupCountForOneExpert, combineCoreCount);
 }
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
