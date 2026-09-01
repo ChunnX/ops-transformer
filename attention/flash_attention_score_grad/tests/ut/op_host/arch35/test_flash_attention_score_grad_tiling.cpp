@@ -14,6 +14,7 @@
 #include "../../../../common/include/op_host/tiling_base.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "../../../../op_host/arch35/flash_attention_score_grad_tiling_common_regbase.h"
 
 using namespace std;
 
@@ -5243,5 +5244,93 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_fail_pse_pad_n
          {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}},
         &compileInfo, "Ascend950", A5SocInfo, 4096);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_regbase_h_helpers)
+{
+    using optiling::fag::AbsCeil;
+    using optiling::fag::CeilDivideBy;
+    using optiling::fag::Gcd;
+    using optiling::fag::SliceVector;
+
+    EXPECT_EQ(AbsCeil(5, 3), 2);
+    EXPECT_EQ(AbsCeil(-5, 3), -2);
+    EXPECT_EQ(AbsCeil(5, -3), -2);
+    EXPECT_EQ(Gcd(48, 18), 6);
+    EXPECT_EQ(Gcd(7, 0), 7);
+    EXPECT_EQ(CeilDivideBy(static_cast<int64_t>(10), static_cast<int64_t>(3)), 4);
+    EXPECT_EQ(CeilDivideBy(static_cast<int64_t>(10), static_cast<int64_t>(0)), 0);
+    const std::vector<int64_t> arr{1, 2, 3, 4, 5, 6};
+    const std::vector<int64_t> sliced = SliceVector(arr, static_cast<int64_t>(2));
+    ASSERT_EQ(sliced.size(), 3U);
+    EXPECT_EQ(sliced[0], 1);
+    EXPECT_EQ(sliced[1], 3);
+    EXPECT_EQ(sliced[2], 5);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_52_tnd_deter_b129)
+{
+    constexpr int64_t kBatch = 129;
+    int64_t actual_seq_qlist[kBatch];
+    int64_t actual_seq_kvlist[kBatch];
+    int64_t acc = 0;
+    for (int64_t i = 0; i < kBatch; ++i) {
+        acc += (i + 1 == kBatch) ? 256 : 32;
+        actual_seq_qlist[i] = acc;
+        actual_seq_kvlist[i] = acc;
+    }
+    const int64_t tLen = acc;
+    auto compileInfo = MakeA5CompileInfo();
+    gert::TilingContextPara tilingContextPara(
+        "FlashAttentionScoreGrad",
+        {
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{tLen, 2, 8}, {tLen, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{tLen, 2, 8}, {tLen, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{kBatch}, {kBatch}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{kBatch}, {kBatch}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tLen, 2, 32}, {tLen, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.17677669529663687f)},
+         {"keep_prob", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+         {"pre_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+         {"next_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+         {"head_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"seed", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}},
+        &compileInfo, "Ascend950", A5SocInfo, 262144, 1);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kSkipTilingKey, "", {});
 }
 
