@@ -580,16 +580,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备后再进入 GMM。
 
+    /*
+     * 共享专家头并行（A8W4/A4W4 基类版）：第一次全卡同步上移到共享 GMM1 之前。
+     * 同步语义不变（仍先于 MoE stage 的 dispatch 写远端）。与 A8W8 版不同，本路径的
+     * 奇数子核在共享 GMM1 中承担 W4 prologue（有活而非空等），收益预期有限——
+     * 本改动作为独立阶梯档位实测归因，以数据为准。
+     */
+    // 等待所有 rank 完成输入准备，再消费远端 Dispatch 数据。
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+
     int32_t gmm1TileReadySequence = 0;
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
         ProcessSharedExpertGmm1(gmm1TileReadySequence);
     }
-
-    // 等待所有 rank 完成输入准备，再消费远端 Dispatch 数据。
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
     if constexpr (ENABLE_A8W4) {
         derived.ProcessMoeExpertStages(gmm1TileReadySequence);
