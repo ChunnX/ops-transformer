@@ -19,7 +19,6 @@
 #include "arch22/compressor_kernel_full_load.h"
 #else
 #include "arch35/compressor_kernel.h"
-#include "arch35/compressor_kernel_full_load.h"
 #endif
  
 using namespace Compressor;
@@ -33,9 +32,9 @@ using namespace Compressor;
         op.Process();                                                                                                  \
     } while (0)
 #else
-#define INVOKE_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
+#define INVOKE_COMPRESSOR_GENERAL_OP_IMPL(templateClass, isFullLoad, ...)                                              \
     do {                                                                                                               \
-        templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
+        templateClass<COMPType<__VA_ARGS__>, isFullLoad> op(&pipe, tilingData);                                        \
         op.Init(x, wKv, wGate, stateCache, ape, stateBlockTable,  \
                 cuSeqlens, seqUsed, startPos, cmpKvOut, \
                 softmaxScoreOut, kvOut, workspace);                                                    \
@@ -81,9 +80,9 @@ __global__ __aicore__ void compressor(
     #else
         constexpr auto gradEnabled = static_cast<GRAD_ENABLED>(GradEnabled);
         if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
-            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelFullLoad, xLayout, xDtype, coff, cacheMode, gradEnabled);
+            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, true, xLayout, xDtype, coff, cacheMode, gradEnabled);
         } else {
-            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, xLayout, xDtype, coff, cacheMode, gradEnabled);
+            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, false, xLayout, xDtype, coff, cacheMode, gradEnabled);
         }
     #endif
 }
