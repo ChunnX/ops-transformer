@@ -790,13 +790,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> invRmsBufLocal = vecInQueue1_.DeQue<P>();
 
-    const uint32_t xRowSumBroadCastDst[2] = {curBSSize, static_cast<uint32_t>(fusionSize_)};
-    const uint32_t xRowSumBroadCastSrc[2] = {curBSSize, 1};
-    BroadCast<float, 2, 1>(buffers.invRmsBuf, invRmsBufLocal, xRowSumBroadCastDst, xRowSumBroadCastSrc,
-                           buffers.brcbTmpBuf);
-    PipeBarrier<PIPE_V>();
-    vecInQueue1_.FreeTensor(invRmsBufLocal);
-
+    // invRms按行在VF中复制到寄存器，避免先扩展并写入完整的[BS,F]临时张量。
     PipeBarrier<PIPE_V>();
     LocalTensor<P> hMixBuf;
     vecInQueue0_.AllocTensor<P>(hMixBuf);
@@ -808,7 +802,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     PipeBarrier<PIPE_V>();
     VFDoV1Process((__ubuf__ P *)fp32OutBuf.GetPhyAddr(), (__ubuf__ P *)hMixGradBuf.GetPhyAddr(),
                   (__ubuf__ P *)buffers.hFusionBuf.GetPhyAddr(), (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(),
-                  (__ubuf__ P *)hMixBuf.GetPhyAddr(), (__ubuf__ P *)buffers.invRmsBuf.GetPhyAddr(), curBSSize);
+                  (__ubuf__ P *)hMixBuf.GetPhyAddr(), (__ubuf__ P *)invRmsBufLocal.GetPhyAddr(), curBSSize);
+    PipeBarrier<PIPE_V>();
+    vecInQueue1_.FreeTensor(invRmsBufLocal);
 
     vecOutQueue1_.EnQue(fp32OutBuf);
     LocalTensor<P> hMixGradOutBuf = vecOutQueue1_.DeQue<P>();
@@ -846,34 +842,37 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV1Process(__ubuf__ P *gra
                                                                  __ubuf__ P *hMixIn, __ubuf__ P *invRmsIn,
                                                                  uint32_t curBSSize)
 {
-    uint32_t totalElem = static_cast<uint32_t>(curBSSize * fusionSize_);
-    uint16_t nLoopCnt = Ceil(totalElem, eleNumPerVf_);
-    uint32_t curElemCnt = totalElem;
-
     __VEC_SCOPE__
     {
-        for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; ++vfBlockIdx) {
-            uint32_t elemOffset = vfBlockIdx * eleNumPerVf_;
-            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(curElemCnt);
+        MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
+        for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(curBSSize); ++bsIdx) {
+            MicroAPI::RegTensor<P> invRmsReg;
+            P invRmsScalar = invRmsIn[bsIdx];
+            MicroAPI::Duplicate(invRmsReg, invRmsScalar, maskAll);
 
-            MicroAPI::RegTensor<P> h1GradReg, invRmsReg, hMixReg, gatherReg;
-            MicroAPI::RegTensor<P> hMixGradReg, invRmsGradReg;
-            MicroAPI::RegTensor<P> hMul1Reg, hMul2Reg, hMul3Reg;
+            for (uint16_t fusionOffset = 0; fusionOffset < fusionSize_; fusionOffset += eleNumPerVf_) {
+                uint32_t elemOffset = static_cast<uint32_t>(bsIdx * fusionSize_ + fusionOffset);
+                uint32_t currentFusionSize =
+                    Min(static_cast<uint32_t>(eleNumPerVf_), static_cast<uint32_t>(fusionSize_ - fusionOffset));
+                MicroAPI::MaskReg mask = MicroAPI::UpdateMask<P>(currentFusionSize);
 
-            MicroAPI::LoadAlign(h1GradReg, hMixGradBuf + elemOffset);
-            MicroAPI::LoadAlign(invRmsReg, invRmsIn + elemOffset);
+                MicroAPI::RegTensor<P> h1GradReg, hMixReg, gatherReg;
+                MicroAPI::RegTensor<P> hMixGradReg;
+                MicroAPI::RegTensor<P> hMul1Reg, hMul2Reg, hMul3Reg;
 
-            MicroAPI::Mul(hMixGradReg, h1GradReg, invRmsReg, mask);
-            MicroAPI::StoreAlign(gradHMixOut + elemOffset, hMixGradReg, mask);
+                MicroAPI::LoadAlign(h1GradReg, hMixGradBuf + elemOffset);
+                MicroAPI::Mul(hMixGradReg, h1GradReg, invRmsReg, mask);
+                MicroAPI::StoreAlign(gradHMixOut + elemOffset, hMixGradReg, mask);
 
-            MicroAPI::LoadAlign(hMixReg, hMixIn + elemOffset);
-            MicroAPI::Mul(hMul1Reg, h1GradReg, hMixReg, mask);
-            MicroAPI::StoreAlign(hMixGradBuf + elemOffset, hMul1Reg, mask);
+                MicroAPI::LoadAlign(hMixReg, hMixIn + elemOffset);
+                MicroAPI::Mul(hMul1Reg, h1GradReg, hMixReg, mask);
+                MicroAPI::StoreAlign(hMixGradBuf + elemOffset, hMul1Reg, mask);
 
-            MicroAPI::LoadAlign(gatherReg, gatherIn + elemOffset);
-            MicroAPI::Mul(hMul2Reg, invRmsReg, hMixReg, mask);
-            MicroAPI::Mul(hMul3Reg, hMul2Reg, gatherReg, mask);
-            MicroAPI::StoreAlign(gradAlphaOut + elemOffset, hMul3Reg, mask);
+                MicroAPI::LoadAlign(gatherReg, gatherIn + elemOffset);
+                MicroAPI::Mul(hMul2Reg, invRmsReg, hMixReg, mask);
+                MicroAPI::Mul(hMul3Reg, hMul2Reg, gatherReg, mask);
+                MicroAPI::StoreAlign(gradAlphaOut + elemOffset, hMul3Reg, mask);
+            }
         }
     }
 }
