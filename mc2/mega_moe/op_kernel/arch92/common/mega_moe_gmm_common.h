@@ -126,10 +126,10 @@ struct Config {
      *                         scaleKL1 = scaleFactor * kL1
      *
      * 在 A/B 数据占用之外，用半片 L1 的剩余空间尽可能放大 scaleFactor，从而减少 MX scale 搬运轮数。
-     * scaleKL1 is the full L1 scale-tensor capacity; a K tail only shortens the GM source slice.
+     * K 尾块不计入可复用的完整窗口，避免 scaleKL1 跨过实际 K 后再从大窗口内部读取 tail scale。
      */
-    static __aicore__ inline typename BlockMmad::L1Params CalcAdaptiveL1Params(uint32_t blockM,
-                                                                               uint32_t blockN)
+    static __aicore__ inline typename BlockMmad::L1Params CalcAdaptiveL1Params(uint32_t blockM, uint32_t blockN,
+                                                                               uint32_t k)
     {
         constexpr uint64_t halfL1Size = AscendC::TOTAL_L1_SIZE / 2U;
         constexpr uint64_t scaleGroupK = 64U;
@@ -174,25 +174,29 @@ struct Config {
 
         /*
          * scaleFactor = min(floor((halfL1Size - dataBytes) / scaleBytes),
-         *                   floor(64 KiB / scaleABytes), floor(64 KiB / scaleBBytes), 127)
-         * K does not cap scaleFactor: native QBMM keeps a full scaleKL1 L1 layout and only
-         * shortens the GM source slice for a tail.
+         *                   floor(64 KiB / scaleABytes), floor(64 KiB / scaleBBytes),
+         *                   max(1, floor(K / kL1)), 127)
+         * K 约束必须使用 floor 而不是 ceil：尾 K 不足一个完整窗口，必须在下一次 scale
+         * 搬运中从窗口起点处理，不能挂在前一个 scaleKL1 窗口的末尾复用。
          */
         uint64_t scaleFactor = (halfL1Size - dataBytes) / scaleBytes;
         const uint64_t scaleFactorByA = scaleTransferBytes / scaleABytes;
         const uint64_t scaleFactorByB = scaleTransferBytes / scaleBBytes;
+        const uint64_t fullKWindowCount = static_cast<uint64_t>(k) / kL1;
+        const uint64_t scaleFactorByK = fullKWindowCount == 0U ? 1U : fullKWindowCount;
         scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByA);
         scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByB);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByK);
         scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
         return MakeL1Params(kL1, scaleFactor * kL1);
     }
 
-    static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m)
+    static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m, uint32_t k)
     {
         constexpr uint32_t blockMAlign = 16U;
         // blockM 是 BlockMmad 的容量上限；实际 MMAD 仍使用 actualShape 中的有效 M，不会补算对齐行。
         const uint32_t blockM = Ops::Base::CeilAlign(m, blockMAlign);
-        return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N)};
+        return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N, k)};
     }
 
     static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k,
@@ -209,7 +213,7 @@ struct Config {
                 return baselineConfig;
             }
 
-            BlockMmadTilingConfig adaptiveConfig = MakeAdaptiveBlockMmadTilingConfig(m);
+            BlockMmadTilingConfig adaptiveConfig = MakeAdaptiveBlockMmadTilingConfig(m, k);
             // 512K 一旦可用，必然比 256K 减少 A/B 的 K 搬运轮数。
             if (adaptiveConfig.l1Params.kL1 > baselineConfig.l1Params.kL1) {
                 return adaptiveConfig;

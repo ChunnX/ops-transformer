@@ -11,6 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
+#include "../common/mega_moe_stage_debug.h"
 #include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
@@ -215,6 +216,20 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+    }
+
+    if constexpr (AscendC::IsSameType<ActivationType, fp8_e4m3fn_t>::value ||
+                  AscendC::IsSameType<ActivationType, fp8_e5m2_t>::value) {
+        if (context.common.rankId == 0U && rowDstOffset == 0) {
+            int32_t tokenIndex = firstTopkIndex / static_cast<int32_t>(context.common.topK);
+            GM_ADDR source = winRankAddr[remoteRankIdx] + context.quantWinOffset +
+                             static_cast<uint64_t>(tokenIndex) * context.quantTokenScaleAlignBytes;
+            StageDebug::LogFp8Scale<ActivationType>(
+                StageDebug::PRE_DISPATCH_MARKER, source, source + context.quantTokenAlignBytes, 0U, 0U, 0U);
+            StageDebug::LogFp8Scale<ActivationType>(
+                StageDebug::DISPATCH_OUTPUT_MARKER, params.workspaceInfo.dispatchRevDataPtr,
+                params.workspaceInfo.dispatchRevScalePtr, 0U, 0U, 0U);
+        }
     }
 }
 

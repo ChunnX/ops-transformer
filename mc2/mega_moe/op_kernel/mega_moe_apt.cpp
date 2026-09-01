@@ -56,15 +56,27 @@ __global__ __aicore__ void mega_moe(
             (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
              Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value);
         if constexpr (isA8W8DtypePair) {
-            MegaMoeImpl::MegaMoeArch92A8W8Wave<
-                DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
-                CombineQuantOutType, TopkWeightsPrefetch>
-                op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask,
-                    weightScales1, weightScales2, scales, sharedWeight1, sharedWeight2,
-                    sharedWeightScales1, sharedWeightScales2, yOut, expertTokenNumsOut,
-                    workspaceGM, &tilingData);
-            op.Process();
+            if (tilingData.groupedMatmulMode == MegaMoeImpl::GROUPED_MATMUL_MODE_A8W8_NZ) {
+                MegaMoeImpl::MegaMoeArch92A8W8Wave<
+                    DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
+                    CombineQuantOutType, TopkWeightsPrefetch, true>
+                    op;
+                op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask,
+                        weightScales1, weightScales2, scales, sharedWeight1, sharedWeight2,
+                        sharedWeightScales1, sharedWeightScales2, yOut, expertTokenNumsOut,
+                        workspaceGM, &tilingData);
+                op.Process();
+            } else {
+                MegaMoeImpl::MegaMoeArch92A8W8Wave<
+                    DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
+                    CombineQuantOutType, TopkWeightsPrefetch, false>
+                    op;
+                op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask,
+                        weightScales1, weightScales2, scales, sharedWeight1, sharedWeight2,
+                        sharedWeightScales1, sharedWeightScales2, yOut, expertTokenNumsOut,
+                        workspaceGM, &tilingData);
+                op.Process();
+            }
         }
     }
 #endif
