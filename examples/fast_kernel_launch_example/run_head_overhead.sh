@@ -713,6 +713,39 @@ print()
 def seg_line(name, formula, mn, mean, mx, extra=""):
     return (f"  {name:10s} {formula:12s} min={fmt(mn):>7s}  mean={fmt(mean):>7s}  max={fmt(mx):>7s} us{extra}")
 
+def print_ascii_bar(op, r, m, fm, s2, width=50):
+    """头开销分段 ASCII 时间轴 (mean 口径):
+    Tstars -> kick -> T0 -> T1 -> T2 -> 核结束, 段宽按耗时比例,
+    含 T1 后的计算段与 MTE 排空硬件尾, 直观展示时间都花在哪。
+    段太窄 (<1 格) 的合并显示在图例, 不画块。"""
+    total = r['mean']
+    if total <= 0:
+        return
+    seg1 = fm.get('seg1_dist') if fm else None
+    v_sched = seg1['mean'] if seg1 else 0.0
+    v_hw = s2['mean'] if s2 else 0.0
+    v_sw = m.get('t1_t0_mean') or 0.0
+    v_t1_stars = m.get('t1_stars_mean') or 0.0
+    v_t2_stars = m.get('t2_stars_mean') or 0.0
+    v_compute = max(0.0, v_t2_stars - v_t1_stars)   # T1 -> T2 计算段
+    v_tail = max(0.0, total - v_t2_stars)            # T2 -> 核结束 (MTE 排空硬件尾)
+    segs = [("调度", v_sched), ("硬件头", v_hw), ("软件头", v_sw),
+            ("计算", v_compute), ("硬件尾", v_tail)]
+    segs = [(nm, v) for nm, v in segs if v > 0]
+    scale = width / total
+    blocks = []
+    for nm, v in segs:
+        nch = max(1, int(v * scale))  # 窄段至少 1 格, 保证可见
+        ch = {"调度": "S", "硬件头": "H", "软件头": "w",
+              "计算": "=", "硬件尾": "T"}[nm]
+        blocks.append(ch * nch)
+    bar = "".join(blocks)[:width]
+    print(f"  T0时间轴 (mean, 1格≈{total/width:.3f}us):")
+    print(f"  |{bar:<{width}}|  总={total:.3f}us (TaskDur)")
+    legend = " + ".join(f"{nm}={v:.3f}" for nm, v in segs)
+    print(f"  {legend}")
+    print(f"  S=调度 H=硬件头 w=软件头 ==计算 T=硬件尾(MTE排空)   头开销=调度+硬件头+软件头={v_t1_stars:.3f}us")
+
 def print_op_result(op, typ, cores, r, m, fm, s2):
     shots = m.get('shots', 1) if m else 1
     print(f"{op} ({typ}, {cores}核, {shots}拍)  TaskDur={r['mean']:.3f}us")
@@ -745,6 +778,7 @@ def print_op_result(op, typ, cores, r, m, fm, s2):
         ld = fm['launch_delay'] if fm['launch_delay'] is not None else 0.0
         print(f"  [ffts PMU] dispatch->核启动={ld:.3f}us  T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  "
               f"dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
+    print_ascii_bar(op, r, m, fm, s2)
     print()
 
 results = []
