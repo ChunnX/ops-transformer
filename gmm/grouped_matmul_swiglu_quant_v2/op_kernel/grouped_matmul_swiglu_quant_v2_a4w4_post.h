@@ -242,7 +242,6 @@ __aicore__ inline void GMMA4W4PostProcess::Quant(uint32_t loopIdx, VecConfig &ve
     float quantScale = reduceResLocal.GetValue(0) / QUANT_SCALE_INT8;
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     quantScaleLocal.SetValue(loopIdx, quantScale);
-    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     quantScale = QUANT_SCALE_INT8 / reduceResLocal.GetValue(0);
     GmmsqSetWaitFlag<HardEvent::S_V>();
     Muls(mmLocal_fp32[preOffset], mmLocal_fp32[preOffset], quantScale, halfTokenLen);
@@ -380,7 +379,6 @@ __aicore__ inline void GMMA4W4PostProcess::customDataCopyOut(VecConfig &vecConfi
     DataCopyParams copyParams_1{
         1, (uint16_t)(vecConfig.innerLoopNum * gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR * sizeof(int8_t)), 0,
         0};
-    PipeBarrier<PIPE_ALL>();
     DataCopyPad(quantOutputGM[(workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx) *
                               gmmSwigluQuantV2->tokenLen / SWIGLU_REDUCE_FACTOR],
                 quantLocal, copyParams_1);
