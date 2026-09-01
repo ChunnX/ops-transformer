@@ -1379,7 +1379,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkX(uint32_t off
     xCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
     xCopyParams.dstStride = 0;
 
-    vecInQueue1_.AllocTensor<T>(bf16InputBuf_);
+    bf16InputBuf_ = vecInQueue1_.AllocTensor<T>();
     // 先提升为64位再乘，避免大T乘ND超过2^32个元素时地址回绕。
     DataCopyPad(bf16InputBuf_, xGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], xCopyParams, xCopyPadParams);
     vecInQueue1_.EnQue(bf16InputBuf_);
@@ -1392,7 +1392,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
                                                                                uint32_t currentChunkSize,
                                                                                uint32_t buffId)
 {
-    vecInQueue1_.DeQue<T>(bf16InputBuf_);
+    bf16InputBuf_ = vecInQueue1_.DeQue<T>();
 
     // 计算xRs和gamma
     __ubuf__ T *bf16InputAddr = (__ubuf__ T *)bf16InputBuf_.GetPhyAddr();
