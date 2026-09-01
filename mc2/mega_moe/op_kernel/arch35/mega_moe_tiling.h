@@ -58,7 +58,7 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 /*
  * Route batch shared policy
  *
- * Dispatch 和 SendMask 的 route batch 均按 ALIGN_256 个 item 对齐，使 bit mask 天然按 32B 对齐。
+ * Dispatch 和 topK 有效下标发送的 route batch 均按 ALIGN_256 个 item 对齐，使 bit mask 天然按 32B 对齐。
  * 两个基准值当前数值相同，只是各自 UB 预算计算后的结果，彼此独立，不要求保持相等。
  */
 
@@ -94,10 +94,10 @@ constexpr int32_t MAX_DISPATCH_BUFFER_COUNT = 6;
 constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
 
 /*
- * SendMask buffer policy
+ * TopK valid-index buffer policy
  *
- * Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。
- * Bsend 表示基准 batch 的 route item 数，N 表示 mask buffer 数：
+ * Send route batch 基准用于先选择 ring buffer 数量，再固定 buffer 数反推最终 batch。
+ * Bsend 表示基准 batch 的 route item 数，N 表示 ring buffer 数：
  *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * (Bsend / 8 + 32)；
  *   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
  *                    + sendCntAccBytes；
@@ -110,17 +110,17 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *   2 个 xInTensor              = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
  *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
  *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
- *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
+ *   6 个 valid-index buffer     = 6 * (12288 / 8 + 32) = 9408B；
  *   合计 176064B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
- * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
+ * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 ring buffer 数量上限，
  * 必须重新验证该前提。
  *
- * CalcSendMaskBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
- * SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer，最多 6 个。
+ * CalcTopkValidIndexBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
+ * topK 有效下标发送使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 ring。最低保留双 buffer，最多 6 个。
  */
-constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
-constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
+constexpr int32_t MIN_TOPK_VALID_INDEX_BUFFER_COUNT = 2;
+constexpr int32_t MAX_TOPK_VALID_INDEX_BUFFER_COUNT = 6;
 constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
 
 /*
@@ -152,7 +152,7 @@ struct MegaMoeDispatchBufferConfig {
     uint32_t copyBufferBytes;
 };
 
-struct MegaMoeSendMaskBufferConfig {
+struct MegaMoeTopkValidIndexBufferConfig {
     int32_t routeItemsPerBatch;
     int32_t routeBatchCount;
     int32_t bufferCount;
@@ -173,18 +173,18 @@ struct MegaMoeTilingData {
     float clampLimit;
     uint8_t groupedMatmulMode;
     int64_t topoType;
-    uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
+    uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 MoE topK expert id 空间
 
     // 每个 MoE 专家固定预留的 GMM2 -> Combine 同步 slot 数。
     uint64_t combineSyncSlotCountPerExpert;
 
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
     MegaMoeDispatchBufferConfig dispatchBufferConfig;
-    // SendMask 将全局 expertId 连续均分，前 remainder 个 core 会多处理一个 expert；
-    // 对应 kernel SendAndQuantBuffInit 的选择条件和 SendMaskCal 的连续 expert 区间。
-    MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithExtraExpert;
-    MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithoutExtraExpert;
-    uint32_t sendMaskCoreCountWithExtraExpert;
+    // topK 有效下标发送将全局 expertId 连续均分，前 remainder 个 core 会多处理一个 expert；
+    // 对应 kernel buffer 初始化的选择条件和发送阶段的连续 expert 区间。
+    MegaMoeTopkValidIndexBufferConfig topkValidIndexConfigForCoreWithExtraExpert;
+    MegaMoeTopkValidIndexBufferConfig topkValidIndexConfigForCoreWithoutExtraExpert;
+    uint32_t topkValidIndexCoreCountWithExtraExpert;
     // Unpermute 的 TilingByCore 生成若干完整 token chunk 和至多一个尾 chunk，分别预计算配置；
     // 对应 kernel UnpermuteBuffInit 的选择条件。
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
@@ -201,7 +201,7 @@ struct MegaMoeTilingData {
     // MoE 和共享专家使用相同布局：true 表示每个专家一个二维 tensor，false 表示单个三维堆叠 tensor。
     bool isPerExpertWeightTensor;
     // 全卡一致的单卡 token 数上界（attr num_max_tokens_per_rank；attr=0 时 host 置为 bs）。
-    // 跨卡窗口布局、mask 槽几何与收发批网格一律用该上界，bs 仅描述本卡真实 token 数。
+    // 跨卡窗口布局、有效下标槽几何与收发批网格一律用该上界，bs 仅描述本卡真实 token 数。
     uint32_t numMaxTokensPerRank;
 };
 #endif

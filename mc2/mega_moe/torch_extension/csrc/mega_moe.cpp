@@ -223,9 +223,9 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
 {
     int64_t expertPerRank = moeExpertNum / epWorldSize;
 
-    // Compact route-index receive area.
-    int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * static_cast<int64_t>(sizeof(int32_t)), 32);
-    int64_t routeRecvSize = CeilAlign(expertPerRank * epWorldSize * routeIndexAlignSize, 512);
+    // MTE topK valid-index receive area.
+    int64_t topkValidIndexAlignSize = CeilAlign(numMaxTokensPerRank * static_cast<int64_t>(sizeof(int32_t)), 32);
+    int64_t routeRecvSize = CeilAlign(expertPerRank * epWorldSize * topkValidIndexAlignSize, 512);
 
     // Expert-major raw count table: [localExpert][sourceRank].
     int64_t expertCountRecvSize = CeilAlign(expertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), 512);

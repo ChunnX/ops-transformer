@@ -46,6 +46,7 @@ constexpr uint64_t IDX_GMM2_OFFSET = 13UL;
 
 constexpr int32_t INT_CACHELINE = 16;
 constexpr uint64_t INT32_PER_256B = 8U;
+constexpr uint32_t BITS_PER_BYTE = 8U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;

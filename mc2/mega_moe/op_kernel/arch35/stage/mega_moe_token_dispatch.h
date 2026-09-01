@@ -23,7 +23,7 @@ using namespace AscendC;
 struct TokenDispatchConfig {
     uint64_t maxOutputSize;
     MegaMoeDispatchBufferConfig bufferConfig;
-    uint64_t routeIndexAlignSize;
+    uint64_t topkValidIndexAlignSize;
     uint64_t quantWinOffset;
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
@@ -34,7 +34,7 @@ template <typename ActivationType>
 struct TokenDispatchScratch {
     GlobalTensor<int32_t> expertRevNumsGlobalTensor;
     GlobalTensor<int32_t> cumsumInfoGlobalTensor;
-    LocalTensor<int32_t> validTopkIndexTensor;
+    LocalTensor<int32_t> topkValidIndexTensor;
     LocalTensor<int32_t> cumsumInfoTensor;
     // Contiguous runtime-sized ring. A slot view is built from this UB base on demand.
     uint32_t copyTmpBaseAddr;
@@ -59,7 +59,7 @@ __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &pa
         static_cast<uint64_t>(params.peermemInfo.quantTokenScalePtr - params.peermemInfo.rankSyncInWorldPtr);
     return {.maxOutputSize = params.tilingData->maxOutputSize,
             .bufferConfig = params.tilingData->dispatchBufferConfig,
-            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+            .topkValidIndexAlignSize = static_cast<uint64_t>(CalcTopkValidIndexAlignSize(params.tilingData)),
             .quantWinOffset = quantWinOffset,
             .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
             .quantScaleAlignBytes = quantProcessConfig.quantScaleAlignBytes,
@@ -126,7 +126,7 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx);
+        int32_t topkIndex = scratch.topkValidIndexTensor.GetValue(copyStartIdx + copyIdx);
         int32_t weightBits =
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(params.tilingData->topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
@@ -167,16 +167,16 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
         params.workspaceInfo.metaInfoPtr + rowDstOffset * INT32_PER_256B * sizeof(int32_t)));
 
     // The only caller enters this function for a non-empty match interval, so copyNum is at least one.
-    // DispatchRankTokens completes the compact-index MTE2-to-S synchronization before the first scalar read;
+    // DispatchRankTokens completes valid-index MTE2-to-S synchronization before the first scalar read;
     // the drain below covers cross-call reuse of the copy and metadata rings.
-    int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx);
+    int32_t firstTopkIndex = scratch.topkValidIndexTensor.GetValue(copyStartIdx);
     FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, params, scratch, 0, firstTopkIndex,
                                                               remoteRankIdx, remoteRankGlobalTensor);
 
     int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
     for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
         int32_t copyIdx = issueIdx - 1;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issueIdx);
+        int32_t topkIndex = scratch.topkValidIndexTensor.GetValue(copyStartIdx + issueIdx);
         FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, params, scratch, issueIdx, topkIndex,
                                                                   remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
@@ -188,7 +188,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
         int32_t copyIdx = issueIdx - 1;
         int32_t issueBufferIdx = issueIdx % bufferCount;
         int32_t copyBufferIdx = copyIdx % bufferCount;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issueIdx);
+        int32_t topkIndex = scratch.topkValidIndexTensor.GetValue(copyStartIdx + issueIdx);
         FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(context, params, scratch, issueBufferIdx, topkIndex,
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
@@ -232,8 +232,8 @@ __aicore__ inline void PublishGmm1TileReady(const MoeSyncWorkspaceLayout &syncLa
 }
 
 /*
- * 按单个 source rank 的 compact route-index ordinal 区间搬运 token 和 metadata。
- * compact index 已按 [expert][source rank] 分槽保存，因此这里只需按 ordinal 分批顺序读取，无需再次筛选 mask。
+ * 按单个 source rank 的 topK valid-index ordinal 区间搬运 token 和 metadata。
+ * valid index 已按 [expert][source rank] 分槽保存，因此这里只需按 ordinal 分批顺序读取，无需再次筛选。
  */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
@@ -246,24 +246,25 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context,
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     int32_t processedRouteCount = 0;
     int32_t dispatchedRowCount = 0;
-    GlobalTensor<int32_t> remoteRouteIndexGlobal;
+    GlobalTensor<int32_t> remoteTopkValidIndexGlobal;
     while (processedRouteCount < segmentMatchOrdinalEnd - segmentMatchOrdinalBegin) {
         int32_t remainingRouteCount = segmentMatchOrdinalEnd - segmentMatchOrdinalBegin - processedRouteCount;
         int32_t batchDispatchRowCount = remainingRouteCount < bufferConfig.routeItemsPerBatch ?
                                             remainingRouteCount :
                                             bufferConfig.routeItemsPerBatch;
         int32_t routeOrdinal = segmentMatchOrdinalBegin + processedRouteCount;
-        // 直接定位当前专家、source rank 的 compact ordinal，不再扫描完整 topK mask。
+        // 直接定位当前专家、source rank 的 valid-index ordinal，不再扫描完整 topK mask。
         uint64_t slotOffset =
-            (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
-        remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            params.peermemInfo.maskRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
+            (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) *
+            context.topkValidIndexAlignSize;
+        remoteTopkValidIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            params.peermemInfo.routeRecvPtr + slotOffset + static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
         DataCopyExtParams routeCopyParams{1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(int32_t)), 0U, 0U,
                                           0U};
         DataCopyPadExtParams<int32_t> routeCopyPad{false, 0U, 0U, 0U};
-        DataCopyPad(scratch.validTopkIndexTensor, remoteRouteIndexGlobal, routeCopyParams, routeCopyPad);
+        DataCopyPad(scratch.topkValidIndexTensor, remoteTopkValidIndexGlobal, routeCopyParams, routeCopyPad);
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
-        // compact ordinal 同时决定专家输出行位置，保证分批搬运后仍保持专家内连续布局。
+        // valid-index ordinal 同时决定专家输出行位置，保证分批搬运后仍保持专家内连续布局。
         int32_t dispatchDstRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + routeOrdinal;
         CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx, 0, batchDispatchRowCount);
@@ -300,7 +301,7 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
 
 /*
  * 搬运当前物理 AIV1 在一个专家内负责的连续 row。
- * 该范围先按 source-rank prefix 拆段，再从 compact index 槽搬运 token/metadata；全部 rank 段完成后，
+ * 该范围先按 source-rank prefix 拆段，再从 topK valid-index 槽搬运 token/metadata；全部 rank 段完成后，
  * 按实际覆盖行数累加 GMM1 tile ready。AtomicAdd 允许同一 tile 被多个 range 分段发布。
  */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_SEND_MASK_H
-#define MEGA_MOE_SEND_MASK_H
+#ifndef MEGA_MOE_TOPK_VALID_INDEX_H
+#define MEGA_MOE_TOPK_VALID_INDEX_H
 
 #include "../common/mega_moe_utils.h"
 
@@ -17,50 +17,49 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-struct SendMaskConfig {
+// MTE route producer configuration for topK valid-index delivery.
+
+struct TopkValidIndexConfig {
     uint64_t expertCountWinOffset;
-    uint64_t routeIndexAlignSize;
-    uint64_t routeIndexWinOffset;
-    MegaMoeSendMaskBufferConfig bufferConfig;
+    uint64_t topkValidIndexAlignSize;
+    uint64_t topkValidIndexWinOffset;
+    MegaMoeTopkValidIndexBufferConfig bufferConfig;
 };
 
-// 装配唯一的 compact route 发送配置。
-__aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint32_t aivCoreIdx)
+// 装配 topK 有效下标发送配置。
+__aicore__ inline TopkValidIndexConfig CreateTopkValidIndexConfig(const Params &params, uint32_t aivCoreIdx)
 {
-    uint64_t routeIndexWinOffset =
-        static_cast<uint64_t>(params.peermemInfo.maskRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
+    uint64_t topkValidIndexWinOffset =
+        static_cast<uint64_t>(params.peermemInfo.routeRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
     uint64_t expertCountWinOffset =
         static_cast<uint64_t>(params.peermemInfo.expertCountRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
-    const MegaMoeSendMaskBufferConfig &bufferConfig =
-        aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
-            params.tilingData->sendMaskConfigForCoreWithExtraExpert :
-            params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
+    const MegaMoeTopkValidIndexBufferConfig &bufferConfig =
+        aivCoreIdx < params.tilingData->topkValidIndexCoreCountWithExtraExpert ?
+            params.tilingData->topkValidIndexConfigForCoreWithExtraExpert :
+            params.tilingData->topkValidIndexConfigForCoreWithoutExtraExpert;
     return {.expertCountWinOffset = expertCountWinOffset,
-            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
-            .routeIndexWinOffset = routeIndexWinOffset,
+            .topkValidIndexAlignSize = static_cast<uint64_t>(CalcTopkValidIndexAlignSize(params.tilingData)),
+            .topkValidIndexWinOffset = topkValidIndexWinOffset,
             .bufferConfig = bufferConfig};
 }
 
-struct SendMaskScratch {
+struct TopkValidIndexScratch {
     LocalTensor<int32_t> topkIdsTensor;
     LocalTensor<int32_t> topkIndexTensor;
     // Contiguous runtime-sized ring. Slot i starts at i * bufferConfig.bufferBytes.
-    LocalTensor<uint8_t> sendMaskTensor;
-    LocalTensor<int32_t> sendGatherOutTensor;
+    LocalTensor<uint8_t> topkValidIndexRingTensor;
     LocalTensor<int32_t> sendCntAccTensor;
 };
 
-// MTE Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
+// MTE Wave：筛出当前 route batch 中命中某专家的全局 topK 有效下标并写入对端槽。
 // 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishExpertCounts 独立发布。
-__aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                                            const SendMaskConfig &config, SendMaskScratch &scratch,
-                                                            GlobalTensor<int32_t> &topkIdsGm,
-                                                            GlobalTensor<int32_t> &dstRouteIndexGm,
-                                                            int32_t ownedExpertBegin, int32_t ownedExpertNum,
-                                                            int32_t batchIdx)
+__aicore__ inline void GatherAndSendExpertTopkValidIndexBatch(
+    const MoeStageCommonConfig &common, GM_ADDR *winRankAddr, const TopkValidIndexConfig &config,
+    TopkValidIndexScratch &scratch, GlobalTensor<int32_t> &topkIdsGm, GlobalTensor<int32_t> &dstTopkValidIndexGm,
+    int32_t ownedExpertBegin, int32_t ownedExpertNum, int32_t batchIdx)
 {
-    const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
-    const uint32_t maskBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
+    const MegaMoeTopkValidIndexBufferConfig &bufferConfig = config.bufferConfig;
+    const uint32_t compareMaskBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) / BITS_PER_BYTE;
     const int32_t batchStart = batchIdx * bufferConfig.routeItemsPerBatch;
     const int32_t realSendTotalNum =
         static_cast<int32_t>(static_cast<uint64_t>(common.tokenNum) * static_cast<uint64_t>(common.topK));
@@ -75,9 +74,7 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
         DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
         DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
-    }
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    if (validLen > 0) {
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
         CreateVecIndex(scratch.topkIndexTensor, batchStart, validLen);
     }
 
@@ -88,16 +85,18 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
         int32_t localExpertId = globalExpertId % static_cast<int32_t>(common.moeExpertPerRank);
         int32_t bufferIdx = (batchRingBegin + ownedIdx) % bufferConfig.bufferCount;
         TEventID eventId = static_cast<TEventID>(bufferIdx);
-        LocalTensor<uint8_t> slot = scratch.sendMaskTensor[bufferIdx * bufferConfig.bufferBytes];
-        LocalTensor<uint8_t> maskBuf = slot;
-        LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
-        LocalTensor<int32_t> compactBuf = slot[maskBytes].template ReinterpretCast<int32_t>();
+        uint32_t slotOffset = bufferIdx * bufferConfig.bufferBytes;
+        LocalTensor<uint8_t> compareMaskTensor = scratch.topkValidIndexRingTensor[slotOffset];
+        LocalTensor<uint32_t> compareMaskU32Tensor = compareMaskTensor.template ReinterpretCast<uint32_t>();
+        LocalTensor<int32_t> topkValidIndexTensor =
+            scratch.topkValidIndexRingTensor[slotOffset + compareMaskBytes].template ReinterpretCast<int32_t>();
 
         WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
         uint64_t batchMatchedRouteCount = 0U;
         if (validLen > 0) {
-            CompareScalar(maskBuf, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ, validLen);
-            GatherMask(compactBuf, scratch.topkIndexTensor, maskBufU32, true, static_cast<uint32_t>(validLen),
+            CompareScalar(compareMaskTensor, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ, validLen);
+            GatherMask(topkValidIndexTensor, scratch.topkIndexTensor, compareMaskU32Tensor, true,
+                       static_cast<uint32_t>(validLen),
                        {1, 1, 0, 0}, batchMatchedRouteCount);
         }
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
@@ -112,13 +111,13 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
         SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
         if (copiedCount > 0) {
-            uint64_t dstOffset = config.routeIndexWinOffset +
+            uint64_t dstOffset = config.topkValidIndexWinOffset +
                                  static_cast<uint64_t>(localExpertId * static_cast<int32_t>(common.worldSize) +
                                                        static_cast<int32_t>(common.rankId)) *
-                                     config.routeIndexAlignSize +
+                                     config.topkValidIndexAlignSize +
                                  static_cast<uint64_t>(previousCount) * sizeof(int32_t);
-            dstRouteIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + dstOffset));
-            DataCopyPad(dstRouteIndexGm, compactBuf,
+            dstTopkValidIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + dstOffset));
+            DataCopyPad(dstTopkValidIndexGm, topkValidIndexTensor,
                         {1U, static_cast<uint32_t>(copiedCount * sizeof(int32_t)), 0U, 0U, 0U});
         }
         SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
@@ -127,7 +126,7 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
 
 // 将本核连续专家区间的 raw count 发布到各目标 rank 的 [localExpert][sourceRank] 表。
 __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                           const SendMaskConfig &config, const SendMaskScratch &scratch,
+                                           const TopkValidIndexConfig &config, const TopkValidIndexScratch &scratch,
                                            int32_t ownedExpertBegin, int32_t ownedExpertNum)
 {
     if (ownedExpertNum <= 0) {
@@ -160,13 +159,13 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
             DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, scratch.sendCntAccTensor[ownedOffset],
                                                        countCopyParams);
         } else {
-            // 跨目标 rank 后源 UB 起点可能不满足 MTE 对齐，先重排到已对齐 scratch。
+            // topK 有效下标已发送完成，复用 topkIndexTensor 将非对齐 count 段重排到对齐起点。
             for (int32_t expertIdx = 0; expertIdx < segmentExpertCount; ++expertIdx) {
-                scratch.sendGatherOutTensor.SetValue(expertIdx,
-                                                     scratch.sendCntAccTensor.GetValue(ownedOffset + expertIdx));
+                scratch.topkIndexTensor.SetValue(expertIdx,
+                                                 scratch.sendCntAccTensor.GetValue(ownedOffset + expertIdx));
             }
             SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-            DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, scratch.sendGatherOutTensor, countCopyParams);
+            DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, scratch.topkIndexTensor, countCopyParams);
             SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
         }
         ownedOffset += segmentExpertCount;
@@ -174,16 +173,17 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
 }
 
-// 三条 MTE Wave 路径的唯一 route 入口。专家 ownership 仍使用连续 quotient/remainder 分配，
+// 三条 MTE Wave 路径发送 topK 有效下标的唯一入口。专家 ownership 仍使用连续 quotient/remainder 分配，
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
-__aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                                        const Params &params, GM_ADDR *winRankAddr,
-                                                        const SendMaskConfig &config, SendMaskScratch &scratch)
+__aicore__ inline void GatherAndSendExpertTopkValidIndices(const AivJobContext &job,
+                                                           const MoeStageCommonConfig &common, const Params &params,
+                                                           GM_ADDR *winRankAddr, const TopkValidIndexConfig &config,
+                                                           TopkValidIndexScratch &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
-    const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
+    const MegaMoeTopkValidIndexBufferConfig &bufferConfig = config.bufferConfig;
     if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs) {
         return;
     }
@@ -202,7 +202,7 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
 
     GlobalTensor<int32_t> topkIdsGm;
     topkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr));
-    GlobalTensor<int32_t> dstRouteIndexGm;
+    GlobalTensor<int32_t> dstTopkValidIndexGm;
     Duplicate<int32_t>(scratch.sendCntAccTensor, 0, ownedExpertNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
@@ -210,8 +210,8 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
         SetFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
     for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
-        GatherAndSendExpertCompactRouteBatch(common, winRankAddr, config, scratch, topkIdsGm, dstRouteIndexGm,
-                                             ownedExpertBegin, ownedExpertNum, batchIdx);
+        GatherAndSendExpertTopkValidIndexBatch(common, winRankAddr, config, scratch, topkIdsGm,
+                                               dstTopkValidIndexGm, ownedExpertBegin, ownedExpertNum, batchIdx);
     }
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
@@ -221,4 +221,4 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
 
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_SEND_MASK_H
+#endif // MEGA_MOE_TOPK_VALID_INDEX_H

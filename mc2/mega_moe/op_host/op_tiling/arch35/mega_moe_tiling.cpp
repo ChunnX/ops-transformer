@@ -171,17 +171,22 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             dispatchConfig.routeItemsPerBatch, dispatchConfig.routeBatchCount, dispatchConfig.bufferCount,
             dispatchConfig.copyBufferBytes);
 
-    const auto &sendMaskConfigWithExtraExpert = tilingData->sendMaskConfigForCoreWithExtraExpert;
-    const auto &sendMaskConfigWithoutExtraExpert = tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    OP_LOGD(nodeName, "sendMask: coreCountWithExtraExpert=%u", tilingData->sendMaskCoreCountWithExtraExpert);
+    const auto &topkValidIndexConfigWithExtraExpert = tilingData->topkValidIndexConfigForCoreWithExtraExpert;
+    const auto &topkValidIndexConfigWithoutExtraExpert = tilingData->topkValidIndexConfigForCoreWithoutExtraExpert;
+    OP_LOGD(nodeName, "topkValidIndex: coreCountWithExtraExpert=%u",
+            tilingData->topkValidIndexCoreCountWithExtraExpert);
     OP_LOGD(nodeName,
-            "sendMaskWithExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
-            sendMaskConfigWithExtraExpert.routeItemsPerBatch, sendMaskConfigWithExtraExpert.routeBatchCount,
-            sendMaskConfigWithExtraExpert.bufferCount, sendMaskConfigWithExtraExpert.bufferBytes);
+            "topkValidIndexWithExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, "
+            "bufferBytes=%u",
+            topkValidIndexConfigWithExtraExpert.routeItemsPerBatch,
+            topkValidIndexConfigWithExtraExpert.routeBatchCount, topkValidIndexConfigWithExtraExpert.bufferCount,
+            topkValidIndexConfigWithExtraExpert.bufferBytes);
     OP_LOGD(nodeName,
-            "sendMaskWithoutExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
-            sendMaskConfigWithoutExtraExpert.routeItemsPerBatch, sendMaskConfigWithoutExtraExpert.routeBatchCount,
-            sendMaskConfigWithoutExtraExpert.bufferCount, sendMaskConfigWithoutExtraExpert.bufferBytes);
+            "topkValidIndexWithoutExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, "
+            "bufferBytes=%u",
+            topkValidIndexConfigWithoutExtraExpert.routeItemsPerBatch,
+            topkValidIndexConfigWithoutExtraExpert.routeBatchCount,
+            topkValidIndexConfigWithoutExtraExpert.bufferCount, topkValidIndexConfigWithoutExtraExpert.bufferBytes);
 
     const auto &unpermuteFullChunkConfig = tilingData->unpermuteConfigForFullTokenChunk;
     const auto &unpermuteTailChunkConfig = tilingData->unpermuteConfigForTailTokenChunk;
@@ -228,9 +233,9 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     // 各区尺寸取自 kernel 侧同一份布局公式（common/mega_moe_peermem.h）。
     int64_t routeRecvSize = 0;
     if (tilingData->topoType == TOPO_TYPE_MTE) {
-        routeRecvSize = CalcRouteIndexRecvSize(CalcDispatchRouteIndexAlignSize(tilingData),
-                                               static_cast<int64_t>(tilingData->moeExpertPerRank),
-                                               static_cast<int64_t>(tilingData->epWorldSize));
+        routeRecvSize = CalcTopkValidIndexRecvSize(CalcTopkValidIndexAlignSize(tilingData),
+                                                   static_cast<int64_t>(tilingData->moeExpertPerRank),
+                                                   static_cast<int64_t>(tilingData->epWorldSize));
     } else {
         routeRecvSize =
             CalcMaskRecvSize(CalcDispatchMaskAlignSize(tilingData), static_cast<int64_t>(tilingData->moeExpertPerRank),
@@ -773,7 +778,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
  * 每个 EP 分几个 block、combine 量化模式。
  * maxOutputSize 在 maxRecvTokenNum 没填时兜底 = numMaxTokensPerRank × epWorldSize × min(topK, 本卡专家数)。
  * 三个乘数都是 uint32，乘法在 32 位里做完才赋值，极端大的配置会回绕——这是现在的既有取值口径，
- * 改成 64 位算会让这些配置下的落值变大，进而改掉 flag 区和 sendMask 的尺寸，动之前先确认影响面。
+ * 改成 64 位算会让这些配置下的落值变大，进而改掉 flag 区和 route 接收区尺寸，动之前先确认影响面。
  */
 static ge::graphStatus SetBasicAttrParams(const gert::TilingContext *context, MegaMoeConfig &config,
                                           MegaMoeTilingData *tilingData, const char *nodeName, const uint32_t aicNum)
@@ -968,7 +973,7 @@ static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferC
     bufferConfig.routeBatchCount = static_cast<int32_t>(
         (sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
 
-    // compact 接收侧只保留一个 int32 route index batch，不再分配 mask 和第二个 index tensor。
+    // MTE 接收侧只保留一个 int32 topK 有效下标 batch，不再分配 mask 和第二个 index tensor。
     uint32_t routeIndexBufferBytes =
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
     uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + routeIndexBufferBytes;
@@ -988,11 +993,9 @@ static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferC
         expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
         expandedRouteItems =
             static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
-        if (expandedRouteItems > static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
-            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
-            bufferConfig.routeBatchCount = static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) /
-                                                                bufferConfig.routeItemsPerBatch);
-        }
+        bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+        bufferConfig.routeBatchCount = static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) /
+                                                            bufferConfig.routeItemsPerBatch);
     }
 }
 
@@ -1014,21 +1017,23 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     return bufferConfig;
 }
 
-static uint64_t CalcCompactRouteRingSlotBytes(uint32_t routeItemsPerBatch, uint32_t topK)
+static uint64_t CalcTopkValidIndexRingSlotBytes(uint32_t routeItemsPerBatch, uint32_t topK)
 {
     // batch 可能从一个 token 的 topK 中间开始，故额外保留 topK-1 条的边界余量。
     uint64_t maxMatchedRouteItems =
         ops::CeilDiv(static_cast<uint64_t>(routeItemsPerBatch) + topK - 1U, static_cast<uint64_t>(topK));
-    uint64_t compactBytes = ops::CeilAlign(maxMatchedRouteItems * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32));
-    return static_cast<uint64_t>(routeItemsPerBatch) / 8U + compactBytes;
+    uint64_t validIndexBytes =
+        ops::CeilAlign(maxMatchedRouteItems * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32));
+    return static_cast<uint64_t>(routeItemsPerBatch) / BITS_PER_BYTE + validIndexBytes;
 }
 
-// MTE Wave producer：ring slot 同时保存临时 compare mask 与本专家的 compact index。
-static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingData *tilingData,
-                                                            uint32_t fixedBufferBytes, uint32_t ownedExpertCount,
-                                                            uint32_t availableUbBytes)
+// MTE Wave producer：ring slot 同时保存临时 compare mask 与本专家的 topK 有效下标。
+static MegaMoeTopkValidIndexBufferConfig CalcTopkValidIndexBufferConfig(const MegaMoeTilingData *tilingData,
+                                                                       uint32_t fixedBufferBytes,
+                                                                       uint32_t ownedExpertCount,
+                                                                       uint32_t availableUbBytes)
 {
-    MegaMoeSendMaskBufferConfig bufferConfig{};
+    MegaMoeTopkValidIndexBufferConfig bufferConfig{};
     // 沿用原发送批网格，只调整每个 ring slot 中路由数据的实际大小。
     uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems =
@@ -1039,7 +1044,7 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
         static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_SEND_ROUTE_ITEMS_PER_BATCH)));
     bufferConfig.routeBatchCount = static_cast<int32_t>(
         (sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
-    bufferConfig.bufferBytes = static_cast<uint32_t>(CalcCompactRouteRingSlotBytes(
+    bufferConfig.bufferBytes = static_cast<uint32_t>(CalcTopkValidIndexRingSlotBytes(
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch), tilingData->topK));
 
     uint32_t routeIndexBufferBytes =
@@ -1048,26 +1053,29 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
     uint32_t routeBufferBudgetBytes =
         availableUbBytes > bytesWithoutRouteBuffers ? availableUbBytes - bytesWithoutRouteBuffers : 0U;
     bufferConfig.bufferCount = static_cast<int32_t>(routeBufferBudgetBytes / bufferConfig.bufferBytes);
-    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_SEND_MASK_BUFFER_COUNT);
+    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_TOPK_VALID_INDEX_BUFFER_COUNT);
 
-    uint64_t maskPushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
-    if (maskPushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > maskPushCount) {
-        bufferConfig.bufferCount = static_cast<int32_t>(maskPushCount);
+    uint64_t routePushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
+    if (routePushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > routePushCount) {
+        bufferConfig.bufferCount = static_cast<int32_t>(routePushCount);
     }
-    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_SEND_MASK_BUFFER_COUNT);
+    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_TOPK_VALID_INDEX_BUFFER_COUNT);
 
-    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。容量公式只增加 compact index 的占用。
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。容量公式包含 topK 有效下标的占用。
     if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
         uint64_t fixedBytesWithRoutePadding =
             static_cast<uint64_t>(fixedBufferBytes) +
             static_cast<uint64_t>(bufferConfig.bufferCount) * (ALIGN_32 + 2U * sizeof(int32_t));
         uint64_t routeItemBudgetBytes =
             availableUbBytes > fixedBytesWithRoutePadding ? availableUbBytes - fixedBytesWithRoutePadding : 0U;
-        // 两份 route tensor 各占 4B/item；每个 ring slot 占 1bit mask 和约 4/topK B compact index。
-        // 分子、分母同乘 8*topK，避免使用浮点数。
-        uint64_t routeItemByteNumerator =
-            64U * tilingData->topK + static_cast<uint64_t>(bufferConfig.bufferCount) * (tilingData->topK + 32U);
-        uint64_t expandedRouteItems = routeItemBudgetBytes * 8U * tilingData->topK / routeItemByteNumerator;
+        // 两份 route tensor 各占 4B/item；每个 ring slot 占 1bit mask 和约 4/topK B 有效下标。
+        // 分子、分母同乘 BITS_PER_BYTE*topK，避免使用浮点数。
+        uint64_t indexBits = sizeof(int32_t) * BITS_PER_BYTE;
+        uint64_t routeItemBitNumerator = 2U * indexBits * tilingData->topK +
+                                         static_cast<uint64_t>(bufferConfig.bufferCount) *
+                                             (tilingData->topK + indexBits);
+        uint64_t expandedRouteItems =
+            routeItemBudgetBytes * BITS_PER_BYTE * tilingData->topK / routeItemBitNumerator;
         expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
         expandedRouteItems = std::min(expandedRouteItems, alignedTotalRouteItems);
         if (expandedRouteItems > static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)) {
@@ -1075,7 +1083,7 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
             bufferConfig.routeBatchCount = static_cast<int32_t>(
                 (sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
             bufferConfig.bufferBytes = static_cast<uint32_t>(
-                CalcCompactRouteRingSlotBytes(static_cast<uint32_t>(expandedRouteItems), tilingData->topK));
+                CalcTopkValidIndexRingSlotBytes(static_cast<uint32_t>(expandedRouteItems), tilingData->topK));
         }
     }
     return bufferConfig;
@@ -1252,12 +1260,12 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 }
 
 /*
- * 设置 SendMask 两套 UB 配置：先算与 ring 深度无关的固定占用，再按 expert 分核的两类 core 各算一套。
+ * 设置 topK 有效下标发送的两套 UB 配置：先算固定占用，再按 expert 分核的两类 core 各算一套。
  * 本函数读 tilingData->combineSyncSlotCountPerExpert（经 CalcHostFlagElementCount），
  * 该字段必须在调用前写好。
  */
-static void SetSendMaskBufferConfigs(MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
-                                     uint32_t availableUbBytes)
+static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
+                                           uint32_t availableUbBytes)
 {
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
@@ -1283,25 +1291,25 @@ static void SetSendMaskBufferConfigs(MegaMoeTilingData *tilingData, uint32_t act
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
-    uint32_t sendMaskFixedBufferBytes = resetTensorBytes + 2U * 1024U + 2U * quantOutputBufferBytes +
-                                        2U * quantInputBufferBytes + sendCountAccumulatorBytes;
+    uint32_t topkValidIndexFixedBufferBytes = resetTensorBytes + 2U * 1024U + 2U * quantOutputBufferBytes +
+                                              2U * quantInputBufferBytes + sendCountAccumulatorBytes;
 
     /*
-     * 与 kernel SendMaskCal 的 expert 连续均衡分核一一对应。totalExpertCount 除以 blockAivNum 后，
+     * 与 kernel topK 有效下标发送的 expert 连续均衡分核一一对应。totalExpertCount 除以 blockAivNum 后，
      * 前 remainder 个 AIV job 各多处理一个 expert，其余 job 处理 quotient 个 expert，因此这里只需
      * 预计算两套配置。Dispatch/Combine 的 wave 内 token 轮转由各自阶段完成，与这里的一次性发送分核无关。
      *
-     * 若修改 SendMaskCal 的 expert 分核方式、ownedExpertCount 或 maskPushCount 计算，必须同步更新
+     * 若修改发送阶段的 expert 分核方式、ownedExpertCount 或 routePushCount 计算，必须同步更新
      * 这里的两类 core 划分和 kernel 配置选择条件。
      */
     uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->moeExpertPerRank;
     uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / tilingData->blockAivNum;
-    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % tilingData->blockAivNum;
+    tilingData->topkValidIndexCoreCountWithExtraExpert = totalExpertCount % tilingData->blockAivNum;
     uint32_t expertCountPerCoreWithExtraExpert = expertCountPerCoreWithoutExtraExpert + 1U;
-    tilingData->sendMaskConfigForCoreWithExtraExpert = CalcSendMaskBufferConfig(
-        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
-    tilingData->sendMaskConfigForCoreWithoutExtraExpert = CalcSendMaskBufferConfig(
-        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
+    tilingData->topkValidIndexConfigForCoreWithExtraExpert = CalcTopkValidIndexBufferConfig(
+        tilingData, topkValidIndexFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
+    tilingData->topkValidIndexConfigForCoreWithoutExtraExpert = CalcTopkValidIndexBufferConfig(
+        tilingData, topkValidIndexFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
 }
 
 /*
@@ -1351,11 +1359,11 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     tilingData->dispatchBufferConfig =
         CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
 
-    // 先于 SendMask 组写入：CalcHostFlagElementCount 会读这个字段累加 flag 区大小，
+    // 先于 topK 有效下标配置写入：CalcHostFlagElementCount 会读这个字段累加 flag 区大小，
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
-    SetSendMaskBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
+    SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, availableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
