@@ -512,6 +512,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         bool needSyncDkMM = false;
         bool needSyncDkDvFixUb = false;
         while (true) {
+            if (taskId == 0 && (IS_TND_SWIZZLE || (BaseClass::IS_NORMAL_SWIZZLE &&
+                                                   this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx))) {
+                // A direct schedule contains only valid blocks, so clear this core's invalid complement once while
+                // the AIC starts the first compute round.
+                this->vecBlock.ClearInvalidDpse(this->constInfo);
+            }
             this->isLastLoop = (blockInnerIdx == -1);
             if (taskId > 0) {
                 prevRunInfo = runInfos[(taskId + 1) & 1];
@@ -600,6 +606,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     nextValidBlockInnerIdx = this->GetNextValidIdx(
         runInfos[0], taskId, this->tilingData->s1s2BNGS1S2BlockNumList.blockStarts[this->cBlockIdx], curLoopIdx);
     if (nextValidBlockInnerIdx == -1) {
+        if (IS_TND_SWIZZLE ||
+            (BaseClass::IS_NORMAL_SWIZZLE && this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            this->vecBlock.ClearInvalidDpse(this->constInfo);
+        }
         return;
     }
 
@@ -609,6 +619,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     bool isLastTwoLoop = false;
     uint8_t lastTwoLoopCount = 0;
     while (true) {
+        if (taskId == 0 && (IS_TND_SWIZZLE || (BaseClass::IS_NORMAL_SWIZZLE &&
+                                               this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx))) {
+            this->vecBlock.ClearInvalidDpse(this->constInfo);
+        }
         if (taskId > 1) {
             prevRunInfo = runInfos[(taskId + 1) % PRELOAD_TIMES];
         }
