@@ -37,7 +37,11 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
-using HcommBatchHandle = UbcCtpBatchHandle;
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
+using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
+#else
+struct HcommBatchHandle {};
+#endif
 
 namespace CombineImpl {
 
@@ -151,8 +155,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
         // 调用方已经按目标 rank 和固定归属核完成分组，此处直接向已绑定的批量句柄追加写 WQE。
         GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
         // Combine 使用 Hcomm 默认 WQE 配置，不能复用 Dispatch 一级的无 CQE 配置。
-        params.combineCommParams.hcomm->WriteNbi(batchHandle, remoteAddr, srcAddr,
-                                                 quantTokenSize * sizeof(DataType));
+        params.combineCommParams.hcomm->WriteNbi(batchHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
     }
 #endif
 }
@@ -227,9 +230,9 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                 ubQuantSend = ubBf16;
             }
             GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
-            CombineSendTokenToRemote<SendType, IsQuantized>(
-                i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params, localSrcPtr,
-                batchState.batchHandle);
+            CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
+                                                            ubQuantSend, params, localSrcPtr, batchState.batchHandle);
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
             if (batchState.dstRankId != rankId) {
                 ++batchState.pendingTokenCount;
                 if (batchState.pendingTokenCount == L1_TILE_M_256) {
@@ -237,6 +240,7 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                     batchState.pendingTokenCount = 0U;
                 }
             }
+#endif
         } else {
             CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params,
                                              quantTokenSizeBytes);
@@ -625,8 +629,8 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 }
 
 // 执行 A8W4 GMM2 tile 循环。
-template <uint8_t CombineQuantMode, bool IsShared, bool IsLayered, typename BlockMmad, typename Scheduler, typename TensorA,
-          typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
+template <uint8_t CombineQuantMode, bool IsShared, bool IsLayered, typename BlockMmad, typename Scheduler,
+          typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                        TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
