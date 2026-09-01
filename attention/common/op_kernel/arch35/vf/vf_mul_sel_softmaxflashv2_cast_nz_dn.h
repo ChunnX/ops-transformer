@@ -3259,19 +3259,30 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
-    for (uint16_t i = originN; i < ubN; ++i) {
+    // [性能实验8] pad遍反序: 正向归纳+rev索引(编译器对i-->0循环头不支持, 指令无法hoist)
+    for (uint16_t fwd = 0; fwd < ubN - originN; ++fwd) {
+        uint16_t i = uint16_t(ubN - 1 - fwd);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
     if constexpr (hasAtten) {
         Arange(vreg_chunk0, (float)maskLine);
+        // [性能实验8] mask/scale遍反序: 保持正向归纳变量(编译器对i-->0形式不支持),
+        // 索引经rev映射到高位段实现反序访问; 谓词仍按行号递增构造(正向阈值, 配合rev行号),
+        // 语义等价。阈值初始化保持编译期常量形式(Duplicate仅支持提升/常量形式)。
+        constexpr uint16_t kRowGroups = ubN / 4;
         Duplicate(vreg_thresh, 0.0f);
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t fwd = 0; fwd < kRowGroups; ++fwd) {
+            uint16_t iter_m = uint16_t(kRowGroups - 1 - fwd); // 反序索引
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Muls(src0, src0, dScale, preg_108);
+            Muls(src1, src1, dScale, preg_108);
+            Muls(src2, src2, dScale, preg_108);
+            Muls(src3, src3, dScale, preg_108);
             Compare<T, CMPMODE::GE>(preg_compare0, vreg_chunk0, vreg_thresh, preg_135);
             Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
             Compare<T, CMPMODE::GE>(preg_compare1, vreg_chunk0, vreg_thresh, preg_135);
@@ -3294,11 +3305,22 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
             Max(max3, max3, src3, preg_108);
         }
     } else {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        // [性能实验8] 反序访问(无mask路径): 正向归纳+rev索引
+        constexpr uint16_t kRowGroupsNm = ubN / 4;
+        for (uint16_t fwd = 0; fwd < kRowGroupsNm; ++fwd) {
+            uint16_t iter_m = uint16_t(kRowGroupsNm - 1 - fwd);
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Muls(src0, src0, dScale, preg_108);
+            Muls(src1, src1, dScale, preg_108);
+            Muls(src2, src2, dScale, preg_108);
+            Muls(src3, src3, dScale, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
             Max(max0, max0, src0, preg_108);
             Max(max1, max1, src1, preg_108);
             Max(max2, max2, src2, preg_108);
@@ -3309,7 +3331,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -3324,12 +3345,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_7, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
     LoadAlign(idx_nd2nz, indexesUb);
-    uint16_t loopNum = ubN / 8; // ubN：s2BaseSize = 256
+    constexpr uint16_t loopNum = ubN / 8; // ubN：s2BaseSize = 256
 
     if constexpr (hasAtten) {
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     }
-    for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
+    // [性能实验8] exp遍反序: 正向归纳+rev索引
+    for (uint16_t fwd = 0; fwd < loopNum; ++fwd) {
+        uint16_t i0 = uint16_t(loopNum - 1 - fwd);
         LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
         LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
@@ -3338,11 +3361,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
-
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
@@ -3370,11 +3388,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-        Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-        Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-        Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-        Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -3501,6 +3514,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Muls(src0, src0, dScale, preg_108);
+            Muls(src1, src1, dScale, preg_108);
+            Muls(src2, src2, dScale, preg_108);
+            Muls(src3, src3, dScale, preg_108);
             Compare<T, CMPMODE::GE>(preg_compare0, vreg_chunk0, vreg_thresh, preg_135);
             Adds(vreg_thresh, vreg_thresh, 1.0f, preg_135);
             Compare<T, CMPMODE::GE>(preg_compare1, vreg_chunk0, vreg_thresh, preg_135);
@@ -3528,6 +3545,14 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
             LoadAlign(src3, src_ub3 + iter_m * m * 4);
+            Muls(src0, src0, dScale, preg_108);
+            Muls(src1, src1, dScale, preg_108);
+            Muls(src2, src2, dScale, preg_108);
+            Muls(src3, src3, dScale, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
             Max(max0, max0, src0, preg_108);
             Max(max1, max1, src1, preg_108);
             Max(max2, max2, src2, preg_108);
@@ -3539,7 +3564,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
 
@@ -3552,13 +3576,12 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_3, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
-    uint16_t loopNum;
+    constexpr uint16_t loopNum = ubN / 8;
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_4, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_5, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_6, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
-    loopNum = ubN / 8;
 
     if constexpr (hasAtten) {
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -3572,11 +3595,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
-
-        Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
-        Muls(vreg_x_f32_1, vreg_x_f32_1, dScale, preg_108);
-        Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
-        Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
@@ -3604,11 +3622,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
-
-        Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-        Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-        Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-        Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
 
         FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
