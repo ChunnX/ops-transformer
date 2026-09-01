@@ -774,6 +774,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
 }
 
+/*
+ * 按动态 WAVE 边界滚动执行 A8W8 MoE 流水。AIV1 启动时连续准备 W0/W1，稳态消费已准备 WAVE 的同时
+ * Dispatch 下一 WAVE，始终保持一轮 lookahead。每次先规划完整 WAVE 的 [begin, end) 范围，再通过统一的
+ * DispatchTokenRange 执行搬运和 ready 发布；GMM1、Activation、GMM2 与 Combine 复用同一 WAVE 终点。
+ */
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages()
 {
@@ -820,22 +825,29 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 if (hasPreparedWave) {
                     waveEndPosition = preparedWaveEndPosition;
                 } else {
+                    // 首轮由调度层规划完整 WAVE；Dispatch 执行层只消费明确的 [begin, end) 范围。
+                    ExpertTokenRange dispatchRange{};
                     uint32_t dispatchWaveMGroupCount = 0U;
-                    MegaMoeImpl::DispatchWaveAndAdvance<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                                        TopkWeightsPrefetch>(
-                        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
-                        syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
-                        mGroupsPerWave_, dispatchWaveMGroupCount);
+                    if (PlanRemainingWaveTokenRange<GMM1_TILE_M>(
+                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
+                            mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange)) {
+                        DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
+                            params_, g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
+                    }
                     waveEndPosition = dispatchPosition;
                 }
                 // 保持一 wave lookahead：首轮准备 W0/W1，稳态在 Combine Wn 前准备 W(n+1)。
                 if (waveEndPosition.expertIdx < moeExpertPerRank_) {
+                    ExpertTokenRange dispatchRange{};
                     uint32_t dispatchWaveMGroupCount = 0U;
-                    MegaMoeImpl::DispatchWaveAndAdvance<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                                        TopkWeightsPrefetch>(
-                        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_,
-                        syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_, dispatchPosition,
-                        mGroupsPerWave_, dispatchWaveMGroupCount);
+                    if (PlanRemainingWaveTokenRange<GMM1_TILE_M>(
+                            params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_,
+                            mGroupsPerWave_, dispatchWaveMGroupCount, dispatchPosition, dispatchRange)) {
+                        DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
+                            params_, g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
+                    }
                     preparedWaveEndPosition = dispatchPosition;
                     hasPreparedWave = true;
                 } else {
