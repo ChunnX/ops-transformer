@@ -348,8 +348,9 @@ public:
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm1Buffers_.Get().WaitCrossCore();
+            // [实验10] bmm1同步已屏蔽, 无flag可等, 跳过防挂死
+            // bmm1Buffers_.Get().WaitCrossCore();
+            // bmm1Buffers_.Get().WaitCrossCore();
         }
         if ASCEND_IS_AIC {
             bmm2Buffers_.Get().WaitCrossCore();

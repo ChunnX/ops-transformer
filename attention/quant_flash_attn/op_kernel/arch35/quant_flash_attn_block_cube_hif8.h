@@ -423,10 +423,12 @@ public:
         mm1ResL0C.Set<HardEvent::M_FIX>();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
-        outputBuf.WaitCrossCore();
+        // [实验10] 同步屏蔽: 不等AIV释放直接写(可能覆盖未读完数据, 数值错误, 仅测性能)
+        // outputBuf.WaitCrossCore();
         FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo, s2CalcSize);
         mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
+        // [实验10] 不通知写完
+        // outputBuf.SetCrossCore();
     }
 
     __aicore__ inline void IterateBmm2(MM2_DBUF_T &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)

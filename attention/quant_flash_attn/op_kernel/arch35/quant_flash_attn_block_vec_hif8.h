@@ -233,9 +233,10 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo)
     {
-        bmm1ResBuf.WaitCrossCore();
+        // [实验10] 同步屏蔽: 不等AIC写完直接读(可能读到未写完数据, 数值错误, 仅测性能)
+        // bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm1ResBuf.SetCrossCore();
+            // [实验10] bmm1ResBuf.SetCrossCore();
             outputBuf.SetCrossCore();
             return;
         }
@@ -336,7 +337,7 @@ public:
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
-
+        // [实验10] bmm1ResBuf.SetCrossCore(); // 释放信号屏蔽
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(!isSkipMask_)) {
                 FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, hasAtten, s2BaseSize>(
@@ -366,7 +367,13 @@ public:
                     maskLine);
             }
         }
-        bmm1ResBuf.SetCrossCore();
+        // [性能实验9] V1释放点前移: SetCrossCore是V pipe指令, 原位置(:369)排在VF全部指令
+        // (含exp遍之后的~200条尾段计算与寄存器收尾)之后。mmRes的最后访问是exp遍的load
+        // (VF中段)——此处插入VEC_LOAD屏障确保mmRes读取落定后立即发释放信号,
+        // 信号提前量=VF尾段计算时长。AIC收到信号即可fixpipe写本buffer, 与VF尾段
+        // 计算/stage1搬运在两条pipe上重叠。stage1 store写stage1OutQue与mmRes无关。
+        // [实验10] LocalMemBar与释放信号均屏蔽
+        
 
         this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
