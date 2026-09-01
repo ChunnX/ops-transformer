@@ -168,7 +168,7 @@ aclError RunCase(aclrtStream stream)
         sparseBlockIdxHostData[static_cast<size_t>(qIndex)] = static_cast<int32_t>(qIndex);
     }
     std::vector<int64_t> cuSeqHostData = {0, kMaxQSeqlen};
-    std::vector<int32_t> metadataHostData(static_cast<size_t>(kMetadataWords), 0);
+    std::vector<int64_t> metadataHostData(static_cast<size_t>(kMetadataWords), 0);
     std::vector<op::fp16_t> dQueryHostData(queryElements, 0.0f);
     std::vector<op::fp16_t> dKeyHostData(kvElements, 0.0f);
     std::vector<op::fp16_t> dValueHostData(kvElements, 0.0f);
@@ -198,7 +198,7 @@ aclError RunCase(aclrtStream stream)
     CHECK_ACL(CreateTensor(sparseBlockCountHostData, countShape, ACL_INT32, &sparseBlockCount));
     CHECK_ACL(CreateTensor(cuSeqHostData, cuSeqShape, ACL_INT64, &cuSeqLengthsQ));
     CHECK_ACL(CreateTensor(cuSeqHostData, cuSeqShape, ACL_INT64, &cuSeqLengthsKv));
-    CHECK_ACL(CreateTensor(metadataHostData, metadataShape, ACL_INT32, &metadata));
+    CHECK_ACL(CreateTensor(metadataHostData, metadataShape, ACL_INT64, &metadata));
     CHECK_ACL(CreateTensor(dQueryHostData, queryShape, ACL_FLOAT16, &dQuery));
     CHECK_ACL(CreateTensor(dKeyHostData, kvShape, ACL_FLOAT16, &dKey));
     CHECK_ACL(CreateTensor(dValueHostData, kvShape, ACL_FLOAT16, &dValue));

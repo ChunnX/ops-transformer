@@ -54,11 +54,11 @@ def main():
     kv_blocks = full * blocks_per_sparse + (tail + 127) // 128
     metadata_len = 32 + 64 * 8
     assert metadata.shape == (metadata_len,), (metadata.shape, metadata_len)
-    assert metadata.dtype == torch.int32
+    assert metadata.dtype == torch.int64
 
     h = metadata.cpu()
     h = h.numpy()
-    # Header ABI (int32 words, offsets per generic_block_sparse_attention_grad_metadata_layout.h)
+    # Header ABI (int64 words, offsets per generic_block_sparse_attention_grad_metadata_layout.h)
     assert int(h[0]) == 0x47425341, "magic mismatch"
     total_len = int(h[1])
     assert total_len == 32 + int(h[14]) * int(h[15]), (total_len, h[14], h[15])

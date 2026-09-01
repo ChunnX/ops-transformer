@@ -34,7 +34,7 @@ uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetOutputCapacityWord
     if (metadata_ == nullptr || metadata_->GetDataSize() == 0) {
         return 0;
     }
-    return static_cast<uint32_t>(metadata_->GetDataSize() / sizeof(int32_t));
+    return static_cast<uint32_t>(metadata_->GetDataSize() / sizeof(int64_t));
 }
 
 bool GenericBlockSparseAttentionGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
@@ -219,8 +219,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::BalanceSchedule()
     return true;
 }
 
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::FillKTask(uint32_t coreIdx, uint32_t startId,
-                                                                 uint32_t *out) const
+bool GenericBlockSparseAttentionGradMetadataCpuKernel::FillKTask(uint32_t coreIdx, uint32_t startId, int64_t *out) const
 {
     const uint32_t count = taskNumPerCore_ + (coreIdx < tailTaskNum_ ? 1U : 0U);
     const uint32_t taskId = startId;
@@ -257,16 +256,16 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::FillKTask(uint32_t coreId
     const uint64_t preKv = inputLayout_ == gbsag_meta::LAYOUT_TND ?
                                kvPrefix_[b] :
                                static_cast<uint64_t>(b) * static_cast<uint64_t>(numKvHeads_) * maxKvSeqlen_;
-    task->preQLo = static_cast<uint32_t>(preQ);
-    task->preQHi = static_cast<uint32_t>(preQ >> 32);
-    task->preKvLo = static_cast<uint32_t>(preKv);
-    task->preKvHi = static_cast<uint32_t>(preKv >> 32);
+    task->preQLo = static_cast<int64_t>(static_cast<uint32_t>(preQ));
+    task->preQHi = static_cast<int64_t>(static_cast<uint32_t>(preQ >> 32));
+    task->preKvLo = static_cast<int64_t>(static_cast<uint32_t>(preKv));
+    task->preKvHi = static_cast<int64_t>(static_cast<uint32_t>(preKv >> 32));
     return true;
 }
 
 bool GenericBlockSparseAttentionGradMetadataCpuKernel::GenMetadata()
 {
-    uint32_t *out = reinterpret_cast<uint32_t *>(metadata_->GetData());
+    int64_t *out = reinterpret_cast<int64_t *>(metadata_->GetData());
     if (GetOutputCapacityWords() < gbsag_meta::MetadataWords(std::max<uint32_t>(aicCoreNum_, 1))) {
         return false;
     }

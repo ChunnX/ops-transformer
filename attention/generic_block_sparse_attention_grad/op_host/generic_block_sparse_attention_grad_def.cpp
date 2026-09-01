@@ -51,7 +51,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("metadataOptional")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("attenMaskOptional")
             .ParamType(OPTIONAL)

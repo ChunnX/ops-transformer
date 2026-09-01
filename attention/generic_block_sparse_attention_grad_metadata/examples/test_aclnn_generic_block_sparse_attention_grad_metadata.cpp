@@ -49,10 +49,10 @@ int main()
     void *idxDev = nullptr, *countDev = nullptr, *metaDev = nullptr;
     std::vector<int32_t> idxHost(static_cast<size_t>(batch * numKvHeads * kvBlockNum * maxQSeqlen), 0);
     std::vector<int32_t> countHost(static_cast<size_t>(batch * numKvHeads * kvBlockNum), 0);
-    std::vector<int32_t> metadata(1024, 0);
+    std::vector<int64_t> metadata(544, 0);
     aclTensor *idx = MakeTensor(idxHost, {batch, numKvHeads, kvBlockNum, maxQSeqlen}, ACL_INT32, &idxDev);
     aclTensor *count = MakeTensor(countHost, {batch, numKvHeads, kvBlockNum}, ACL_INT32, &countDev);
-    aclTensor *meta = MakeTensor(metadata, {1024}, ACL_INT32, &metaDev);
+    aclTensor *meta = MakeTensor(metadata, {544}, ACL_INT64, &metaDev);
     int64_t blockShapeData[] = {blockShapeX, blockShapeY};
     aclIntArray *blockShape = aclCreateIntArray(blockShapeData, 2);
     char layoutQ[] = "BNSD";

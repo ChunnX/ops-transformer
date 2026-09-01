@@ -37,7 +37,7 @@ private:
     static uint32_t DecodeBasicBlockStart(uint32_t basicBlockIdx, uint32_t sparseBlockSize);
 
     uint32_t GetOutputCapacityWords() const;
-    bool FillKTask(uint32_t coreIdx, uint32_t startId, uint32_t *out) const;
+    bool FillKTask(uint32_t coreIdx, uint32_t startId, int64_t *out) const;
 
     // ---- input（device tensor，AICPU 侧 GetData 可直接读） ----
     Tensor *sparseBlockIdx_ = nullptr;

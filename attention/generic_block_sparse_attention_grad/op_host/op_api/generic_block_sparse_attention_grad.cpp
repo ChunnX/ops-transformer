@@ -56,7 +56,7 @@ const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
                                          executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);
     const aclTensor *metadataTensor =
         (metadataOptional != nullptr) ? metadataOptional :
-                                        executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+                                        executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     const aclTensor *cuSeqQTensor = cuSeqLengthsQOptional != nullptr ?
                                         cuSeqLengthsQOptional :
                                         executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);

@@ -103,10 +103,10 @@ static aclnnStatus CheckLayoutAndAttributes(const GenericParams &p)
 static aclnnStatus CheckOptionalInputs(const GenericParams &p)
 {
     if (p.metadataOptional != nullptr) {
-        CHECK_COND(p.metadataOptional->GetDataType() == ACL_INT32 &&
+        CHECK_COND(p.metadataOptional->GetDataType() == ACL_INT64 &&
                        p.metadataOptional->GetViewShape().GetDimNum() == 1 &&
                        p.metadataOptional->GetViewShape().GetDim(0) == 32 + 64 * 8,
-                   ACLNN_ERR_PARAM_INVALID, "metadataOptional must be INT32[544].");
+                   ACLNN_ERR_PARAM_INVALID, "metadataOptional must be INT64[544].");
     }
     auto checkSequenceTensor = [](const aclTensor *value, bool isCuSeq, const char *name) -> aclnnStatus {
         if (value == nullptr) {

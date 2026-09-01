@@ -256,7 +256,7 @@ private:
     __aicore__ inline bool InitKernelFields(Params const &params)
     {
         tilingData = reinterpret_cast<__gm__ GenericBlockSparseAttentionGradTilingData *>(params.tiling);
-        gMetadata.SetGlobalBuffer((__gm__ int32_t *)params.metadata);
+        gMetadata.SetGlobalBuffer((__gm__ int64_t *)params.metadata);
         if (params.metadata == nullptr) {
             return false;
         }
@@ -301,11 +301,12 @@ private:
         workspaceLayout.dpBase = sOutSize;
         workspaceLayout.dsBase = sOutSize + WORKSPACE_P16_OFFSET;
 
-        metadataCoreNum = gMetadata.GetValue(GBSAGMeta::OFF_CORE_NUM);
-        metadataTaskNumPerCore = gMetadata.GetValue(GBSAGMeta::OFF_TASK_NUM_PER_CORE);
-        metadataTailTaskNum = gMetadata.GetValue(GBSAGMeta::OFF_TAIL_TASK_NUM);
-        const uint32_t metadataTaskWords = gMetadata.GetValue(GBSAGMeta::OFF_TASK_WORDS);
-        const uint32_t metadataTaskTableOffset = gMetadata.GetValue(GBSAGMeta::OFF_TASK_TABLE_OFFSET);
+        metadataCoreNum = static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_CORE_NUM));
+        metadataTaskNumPerCore = static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_TASK_NUM_PER_CORE));
+        metadataTailTaskNum = static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_TAIL_TASK_NUM));
+        const uint32_t metadataTaskWords = static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_TASK_WORDS));
+        const uint32_t metadataTaskTableOffset =
+            static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_TASK_TABLE_OFFSET));
 
         if (coreIdx >= metadataCoreNum) {
             inactiveCore = true;
@@ -314,7 +315,7 @@ private:
             inactiveCore = false;
             const uint32_t taskBase = metadataTaskTableOffset + coreIdx * metadataTaskWords;
             taskLength = metadataTaskNumPerCore + (coreIdx < metadataTailTaskNum ? 1 : 0);
-            if (gMetadata.GetValue(taskBase + GBSAGMeta::TASK_RESERVED) != taskLength) {
+            if (static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_RESERVED)) != taskLength) {
                 return false;
             }
         }
@@ -338,7 +339,7 @@ private:
      */
     __aicore__ inline void InitInputGlobalTensors(Params const &params)
     {
-        gMetadata.SetGlobalBuffer((__gm__ int32_t *)params.metadata);
+        gMetadata.SetGlobalBuffer((__gm__ int64_t *)params.metadata);
         gCuSeqLengthsQ.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengthsQ);
         gCuSeqLengthsKv.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengthsKv);
         gDout.SetGlobalBuffer((__gm__ ElementInput *)params.dout);
@@ -680,11 +681,11 @@ private:
                                          uint32_t maxKvSeqlen, uint32_t blockShapeY, uint32_t basicKVBlockSize,
                                          uint32_t inputLayout, uint32_t coreIdx, TaskInfo &taskInfo)
     {
-        const uint32_t taskBase = gMetadata.GetValue(GBSAGMeta::OFF_TASK_TABLE_OFFSET) +
-                                  coreIdx * gMetadata.GetValue(GBSAGMeta::OFF_TASK_WORDS);
-        taskInfo.curBatchIdx = gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_BATCH);
-        taskInfo.curKvHeadIdx = gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_KV_HEAD);
-        taskInfo.curKSeqIdx = gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_KV_SEQ_OFFSET);
+        const uint32_t taskBase = static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_TASK_TABLE_OFFSET)) +
+                                  coreIdx * static_cast<uint32_t>(gMetadata.GetValue(GBSAGMeta::OFF_TASK_WORDS));
+        taskInfo.curBatchIdx = static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_BATCH));
+        taskInfo.curKvHeadIdx = static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_KV_HEAD));
+        taskInfo.curKSeqIdx = static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_KV_SEQ_OFFSET));
         taskInfo.qBatchBaseOffset =
             static_cast<uint64_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_PRE_Q_LO)) |
             (static_cast<uint64_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_PRE_Q_HI)) << 32);
@@ -1059,7 +1060,7 @@ private:
     AscendC::GlobalTensor<ElementInput> gQ;         // Q 输入。
     AscendC::GlobalTensor<int32_t> gRsvdBlockIdx;   // KV block 到 Q block 的稀疏索引。
     AscendC::GlobalTensor<int32_t> gRsvdBlockCount; // 每个 KV block 的有效稀疏索引数。
-    AscendC::GlobalTensor<int32_t> gMetadata;       // Metadata Header/KTask words。
+    AscendC::GlobalTensor<int64_t> gMetadata;       // Metadata Header/KTask words。
     AscendC::GlobalTensor<int32_t> gActualQseqlen;  // 各 batch 的实际 Q 序列长度。
     AscendC::GlobalTensor<int32_t> gActualKvseqlen; // 各 batch 的实际 KV 序列长度。
     AscendC::GlobalTensor<int64_t> gCuSeqLengthsQ;  // 各 batch 的 Q 前缀和。

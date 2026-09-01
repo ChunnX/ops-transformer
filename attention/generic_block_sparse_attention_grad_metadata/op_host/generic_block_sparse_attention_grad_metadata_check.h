@@ -144,9 +144,9 @@ public:
         CHECK_COND(CheckSeqUsed(sequsedKvOptional, batchSize, "sequsedKvOptional") == ACLNN_SUCCESS,
                    ACLNN_ERR_PARAM_INVALID, "sequsedKvOptional check failed");
 
-        // ---- metadata output checks: rank-1 INT32, fixed capacity for max AIC cores ----
-        CHECK_COND(metadata->GetDataType() == op::DataType::DT_INT32, ACLNN_ERR_PARAM_INVALID,
-                   "metadata must be INT32, but got %s", op::ToString(metadata->GetDataType()).GetString());
+        // ---- metadata output checks: rank-1 INT64, fixed capacity for max AIC cores ----
+        CHECK_COND(metadata->GetDataType() == op::DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
+                   "metadata must be INT64, but got %s", op::ToString(metadata->GetDataType()).GetString());
         CHECK_COND(static_cast<int64_t>(metadata->GetViewShape().GetDimNum()) == 1, ACLNN_ERR_PARAM_INVALID,
                    "the dim num of metadata must be 1, but got %ld",
                    static_cast<int64_t>(metadata->GetViewShape().GetDimNum()));
