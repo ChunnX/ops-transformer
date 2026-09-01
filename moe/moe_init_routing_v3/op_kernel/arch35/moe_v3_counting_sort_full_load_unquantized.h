@@ -332,10 +332,11 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     maxFilteredCount_ = coreEntries_;
     filteredCount_ = 0;
 
-    // expertTokens 缓冲：KEY_VALUE 输出 [expertId,count] 键值对，需 actualExpertNum*2 元素；COUNT/CUMSUM 为
-    // actualExpertNum。
-    expertTokensBufElems_ =
-        (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) ? actualExpertNum_ * EXPERT_ID_VALUE_NUM : actualExpertNum_;
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        expertTokensBufElems_ = Min(actualExpertNum_ + 1, expertNum_) * EXPERT_ID_VALUE_NUM;
+    } else {
+        expertTokensBufElems_ = actualExpertNum_;
+    }
     expertCountElements_ = expertTokensBufElems_;
 
     entriesAligned_ = Ceil(coreEntries_, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
@@ -599,6 +600,12 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeGlobalOff
 
     // 标量：本核在专家 e 全局起始位置
     LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
+    // KEY_VALUE 模式：先整块清零（含尾部哨兵 0,0），再按非零专家紧凑写入，保证末尾始终有 (0,0) 分隔。
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        Duplicate(expertTokensLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+                  static_cast<int32_t>(expertTokensBufElems_ * EXPERT_ID_VALUE_NUM));
+        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+    }
     int64_t cumulativeSum = 0;
     int64_t keyValueOffset = 0; // KEY_VALUE 模式下的紧凑写出下标（跳过 count==0 的专家）
     for (int64_t e = 0; e < actualExpertNum_; e++) {
