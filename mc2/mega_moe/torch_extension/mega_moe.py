@@ -87,8 +87,9 @@ class _MegaMoeOpBuilder(OpBuilder):
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
             'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
             "float? activation_clamp=None, Dict(str, float)? activation_params=None, "
-            "int? dispatch_quant_out_dtype=None,  "
-            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
+            "int? dispatch_quant_out_dtype=None, int? shared_expert_quant_out_dtype=None, "
+            "int? weight1_type=None, int? weight2_type=None, "
+            "int? shared_weight1_type=None, int? shared_weight2_type=None, int? topo_type=None, "
             "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
         )
 
@@ -125,8 +126,11 @@ class _MegaMoeOpBuilder(OpBuilder):
             activation_clamp=None,
             activation_params=None,
             dispatch_quant_out_dtype=None,
+            shared_expert_quant_out_dtype=None,
             weight1_type=None,
             weight2_type=None,
+            shared_weight1_type=None,
+            shared_weight2_type=None,
             topo_type=None,
             rank_num_per_server=None,
             topk_weights_type=0,
@@ -179,8 +183,11 @@ def _npu_mega_moe(
     activation_clamp=None,
     activation_params=None,
     dispatch_quant_out_dtype=None,
+    shared_expert_quant_out_dtype=None,
     weight1_type=None,
     weight2_type=None,
+    shared_weight1_type=None,
+    shared_weight2_type=None,
     topo_type=None,
     rank_num_per_server=None,
     topk_weights_type=0,
@@ -219,8 +226,11 @@ def _npu_mega_moe(
         activation,
         activation_params_list,
         dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype,
         weight1_type,
         weight2_type,
+        shared_weight1_type,
+        shared_weight2_type,
         topo_type,
         rank_num_per_server,
         topk_weights_type,
@@ -432,18 +442,16 @@ _TORCH_DTYPE_TO_INT = {  # torch枚举
 }
 
 
-def _dtype_to_int(dtype):
+def _dtype_to_int(dtype, arg_name="dispatch_quant_out_dtype"):
     if dtype is None:
         return None
     if isinstance(dtype, int):
         return dtype
     if isinstance(dtype, torch.dtype):
         if dtype not in _TORCH_DTYPE_TO_INT:
-            raise TypeError(f"Unsupported dispatch_quant_out_dtype: {dtype}.")
+            raise TypeError(f"Unsupported {arg_name}: {dtype}.")
         return _TORCH_DTYPE_TO_INT[dtype]
-    raise TypeError(
-        f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}."
-    )
+    raise TypeError(f"{arg_name} must be torch.dtype or int, got {type(dtype)}.")
 
 
 def _get_mega_moe_ccl_buffer_size(
@@ -525,6 +533,9 @@ def mega_moe(
     activation_params: Optional[Dict[str, float]] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
+    shared_expert_quant_out_dtype: Optional[torch.dtype] = None,
+    shared_weight1_type: Optional[int] = None,
+    shared_weight2_type: Optional[int] = None,
     shared_l1_weights: Optional[List[torch.Tensor]] = None,
     shared_l2_weights: Optional[List[torch.Tensor]] = None,
     shared_l1_weights_sf: Optional[List[torch.Tensor]] = None,
@@ -532,6 +543,9 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
+    shared_quant_dtype_int = _dtype_to_int(
+        shared_expert_quant_out_dtype, "shared_expert_quant_out_dtype"
+    )
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
@@ -563,8 +577,11 @@ def mega_moe(
         activation_clamp=activation_clamp,
         activation_params=activation_params,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype=shared_quant_dtype_int,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
+        shared_weight1_type=shared_weight1_type,
+        shared_weight2_type=shared_weight2_type,
         topo_type=sym_buffer.topo_type,
         rank_num_per_server=sym_buffer.rank_num_per_server,
         topk_weights_type=sym_buffer.topk_weights_type,
