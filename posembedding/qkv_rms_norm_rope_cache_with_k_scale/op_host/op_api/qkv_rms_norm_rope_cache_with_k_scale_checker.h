@@ -233,7 +233,10 @@ private:
                                "mropePositionOptional must have shape [T, 3] matching qkv token count");
     }
 
-    bool IsMropeScene() const { return scene_ == SceneType::MROPE; }
+    bool IsMropeScene() const
+    {
+        return scene_ == SceneType::MROPE;
+    }
 
     struct PointerNullRule {
         const char *paramName;
@@ -579,8 +582,8 @@ private:
                     const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be in [0, " +
                                                std::to_string(axisCapacity) +
                                                "] according to lane = 3 * r + axis within D/2";
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional",
-                                                          incorrectValue.c_str(), reason.c_str());
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValue.c_str(),
+                                                          reason.c_str());
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
