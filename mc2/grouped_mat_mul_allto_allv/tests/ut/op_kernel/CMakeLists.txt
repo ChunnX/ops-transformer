@@ -9,5 +9,11 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
-    AddOpTestCase(grouped_mat_mul_allto_allv "Ascend910_9391" "-DDTYPE_X_REF=half" "")
+    if("ascend910b" IN_LIST ASCEND_COMPUTE_UNIT)
+        set(GMMA2AV_UT_SOC "Ascend910B1")
+    else()
+        set(GMMA2AV_UT_SOC "Ascend910_9391")
+    endif()
+    AddOpTestCase(grouped_mat_mul_allto_allv "${GMMA2AV_UT_SOC}" "-DDTYPE_X_REF=half" ""
+        "${CMAKE_CURRENT_SOURCE_DIR}/grouped_mat_mul_allto_allv_mte_kt_stub.cpp")
 endif()

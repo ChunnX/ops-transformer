@@ -10,6 +10,7 @@
 #include <iostream>
 #include <gtest/gtest.h>
 #include "../../../../op_host/op_tiling/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
+#include "../../../../op_kernel/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace GroupedMatMulAlltoAllvMteUT {
@@ -18,6 +19,8 @@ constexpr uint64_t DEFAULT_CCL_BUFFER_SIZE = 6000ULL * 1024ULL * 1024ULL;
 constexpr uint64_t SAMPLE_OUTPUT_SIZE = 4096ULL * 4096ULL * sizeof(uint16_t);
 constexpr uint64_t SAMPLE_COUNT_MATRIX_SIZE = 8ULL * 4ULL * sizeof(int32_t);
 constexpr uint64_t SAMPLE_REQUIRED_CCL_BUFFER_SIZE = 200ULL * 1024ULL * 1024ULL;
+constexpr uint64_t MTE_TILING_DATA_CAPACITY =
+    sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
 
 struct TestParam {
     string testName{};
@@ -118,7 +121,7 @@ TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     auto tilingParams = TilingParams{};
     for (auto &kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
@@ -240,7 +243,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim1)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -275,7 +278,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim2)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -310,7 +313,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim3)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -345,7 +348,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim4)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -381,7 +384,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim5)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -417,7 +420,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim6)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -453,7 +456,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, TransMmWeightInvalid)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = MTE_TILING_DATA_CAPACITY;
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {

@@ -17,13 +17,15 @@
 
 #include <type_traits>
 
-#include "catlass/arch/arch.hpp"
-#include "catlass/catlass.hpp"
-#include "catlass/gemm/block/block_mmad.hpp"
-#include "catlass/gemm/block/block_swizzle.hpp"
-#include "catlass/gemm/dispatch_policy.hpp"
-#include "catlass/gemm/gemm_type.hpp"
-#include "catlass/layout/layout.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_basic_matmul.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
 #include "grouped_mat_mul_allto_allv_mte_tiling.h"
 
 namespace MC2KernelTemplate {

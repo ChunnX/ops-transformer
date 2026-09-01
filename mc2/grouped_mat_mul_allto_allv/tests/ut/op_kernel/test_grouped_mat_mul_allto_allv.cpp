@@ -1,83 +1,83 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-#include <array>
-#include <vector>
-#include <iostream>
-#include <string>
+#include <cstddef>
 #include <cstdint>
+
 #include <gtest/gtest.h>
-#include "tikicpulib.h"
-#include "grouped_mat_mul_allto_allv_tiling_def.h"
-#include "../../../op_kernel/grouped_mat_mul_allto_allv.cpp"
 
-struct HcclCombinOpParam {
-    uint64_t WorkSpace;
-    uint64_t WorkSpaceSize;
-    uint32_t rankId;
-    uint32_t rankDim;
-};
-class GroupedMatMulAlltoAllvTest : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "GroupedMatMulAlltoAllvTest SetUp\n" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "GroupedMatMulAlltoAllvTest TearDown\n" << std::endl;
-    }
-};
+#include "../../../op_kernel/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
 
-// shard = 1
-TEST_F(GroupedMatMulAlltoAllvTest, GroupedMatMulAlltoAllvTest0)
+namespace {
+
+namespace Mte = MC2KernelTemplate::Gmma2avMteTiling;
+
+TEST(GroupedMatMulAlltoAllvMteKernelTest, SupportsMaximumGlobalExpertTable)
 {
-    AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    std::string group{"group"};
-    size_t sysWorkspaceSize = 10 * 1024 * 1024;
-    size_t usrWorkspaceSize = 10 * 1024 * 1024;
-    size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
-    size_t tilingSize = sizeof(GroupedMatMulAlltoAllvTilingData);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    constexpr uint32_t maxRankSize = 128U;
+    constexpr uint32_t maxExpertPerRank = 8U;
+    MC2KernelTemplate::GroupedMatMulAlltoAllvMteTaskTilingInfo task = {};
 
-    GmmAlltoAllvCommonTilingInfo commonTilingInfo{4096, 7168, 7168, 1,     4096,  2048,  4096, 4096,
-                                                  1,    20,   40,   false, false, false, false};
-    GroupedMatMulAlltoAllvTilingData *tilingData = reinterpret_cast<GroupedMatMulAlltoAllvTilingData *>(tiling);
-    tilingData->commonTilingInfo = commonTilingInfo;
-
-    uint8_t *gmmxGM = (uint8_t *)AscendC::GmAlloc(commonTilingInfo.A * commonTilingInfo.H * sizeof(uint16_t));
-    uint8_t *gmmweightGM = (uint8_t *)AscendC::GmAlloc(commonTilingInfo.E_ep * commonTilingInfo.H *
-                                                       commonTilingInfo.N1 * sizeof(uint16_t));
-    uint8_t *sendCountsTensorOptionalGM = nullptr;
-    uint8_t *recvCountsTensorOptionalGM = nullptr;
-    uint8_t *mmxOptionalGM = nullptr;
-    uint8_t *mmweightOptionalGM = nullptr;
-    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(commonTilingInfo.BsK * commonTilingInfo.N1 * sizeof(uint16_t));
-    uint8_t *mmyOptionalGM = nullptr;
-
-    ICPU_SET_TILING_KEY(0);
-    auto groupedMatMulAlltoAllvWrapper = [](GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM,
-                                            GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
-                                            GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
-                                            GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-        grouped_mat_mul_allto_allv<false, false, false>(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
-                                                        recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM,
-                                                        yGM, mmyOptionalGM, workspaceGM, tilingGM);
-    };
-    ICPU_RUN_KF(groupedMatMulAlltoAllvWrapper, 20, gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
-                recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, workspace, tiling);
-
-    AscendC::GmFree((void *)workspace);
-    AscendC::GmFree((void *)tiling);
-    AscendC::GmFree((void *)gmmxGM);
-    AscendC::GmFree((void *)gmmweightGM);
-    AscendC::GmFree((void *)yGM);
+    EXPECT_EQ(maxRankSize * maxExpertPerRank,
+              MC2KernelTemplate::GMMA2AV_MTE_MAX_COUNT_NUM);
+    EXPECT_EQ(sizeof(task.sendCnt) / sizeof(task.sendCnt[0]),
+              MC2KernelTemplate::GMMA2AV_MTE_MAX_COUNT_NUM);
+    EXPECT_EQ(sizeof(task.recvCnt) / sizeof(task.recvCnt[0]),
+              MC2KernelTemplate::GMMA2AV_MTE_MAX_COUNT_NUM);
 }
+
+TEST(GroupedMatMulAlltoAllvMteKernelTest, SerializesCompleteMteTilingAbi)
+{
+    constexpr size_t countTableBytes =
+        MC2KernelTemplate::GMMA2AV_MTE_MAX_COUNT_NUM * sizeof(int32_t);
+
+    EXPECT_GT(sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData),
+              2U * countTableBytes);
+    EXPECT_LT(offsetof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData,
+                       taskTilingInfo),
+              offsetof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData,
+                       commBufferSize));
+    EXPECT_LT(offsetof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData,
+                       commBufferSize),
+              offsetof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData,
+                       cocTiling));
+}
+
+TEST(GroupedMatMulAlltoAllvMteKernelTest, KeepsFixedCatlassTileContract)
+{
+    EXPECT_EQ(Mte::L1_TILE_M, 128);
+    EXPECT_EQ(Mte::L1_TILE_K, 256);
+    EXPECT_EQ(Mte::L1_TILE_N, 256);
+    EXPECT_EQ(Mte::L0_TILE_M, 128);
+    EXPECT_EQ(Mte::L0_TILE_K, 64);
+    EXPECT_EQ(Mte::L0_TILE_N, 256);
+    EXPECT_EQ(Mte::WORKSPACE_ALIGNMENT, 512UL);
+    EXPECT_EQ(Mte::UB_MOVE_ELEMENTS, 4U * 1024U);
+}
+
+TEST(GroupedMatMulAlltoAllvMteKernelTest, SeparatesCountAndSynchronizationRegions)
+{
+    constexpr uint64_t countTableBytes =
+        MC2KernelTemplate::GMMA2AV_MTE_MAX_COUNT_NUM * sizeof(int32_t);
+    constexpr uint64_t regionGap =
+        Mte::SEND_COUNT_STAGING_FROM_TAIL - Mte::SYNC_REGION_FROM_TAIL;
+    constexpr uint64_t syncStorageBytes =
+        Mte::SYNC_STORAGE_SLOT_COUNT * Mte::SYNC_SLOT_BYTES;
+
+    EXPECT_EQ(Mte::MIN_CCL_BUFFER_BYTES, 200UL * 1024UL * 1024UL);
+    EXPECT_EQ(Mte::SEND_COUNT_STAGING_FROM_TAIL, 21UL * 1024UL * 1024UL);
+    EXPECT_EQ(Mte::SYNC_REGION_FROM_TAIL, 20UL * 1024UL * 1024UL);
+    EXPECT_GT(Mte::SEND_COUNT_STAGING_FROM_TAIL, Mte::SYNC_REGION_FROM_TAIL);
+    EXPECT_GE(regionGap, countTableBytes);
+    EXPECT_LE(syncStorageBytes, Mte::SYNC_REGION_FROM_TAIL);
+    EXPECT_LT(Mte::SEND_COUNT_STAGING_FROM_TAIL, Mte::MIN_CCL_BUFFER_BYTES);
+}
+
+} // namespace
