@@ -5,14 +5,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -640,7 +650,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>表示key/value的head个数</td>
         <td>
         <ul>
-            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA非量化场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
+            <li>需要满足numHeads整除numKeyValueHeads，GQA非量化场景和Prefill MLA场景下，numHeads与numKeyValueHeads的比值无限制; Decode MLA场景下，非量化场景numHeads与numKeyValueHeads的比值无限制，全量化场景仅支持numHeads与numKeyValueHeads的比值为1、2、4、8、16、32、64、128。</li>
             <li>在BSND、TND、BNSD、NTD、BSND_BNSD、BNSD_BSND、NTD_TND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。</li>
         </ul>
         </td>
@@ -977,6 +987,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - PagedAttention的开启必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
 
+<!-- npu="910b" id7 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed; width: 1354px"><colgroup>
@@ -1026,6 +1037,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </tr>
         </tbody>
     </table>
+
+<!-- end id7 -->
 
 </details>
 
@@ -1179,6 +1192,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 <summary><a id="INT8"></a>int8量化场景：</summary>
 
+<!-- npu="910b" id8 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed;  width: 1150px">
@@ -1331,6 +1345,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tbody>
     </table>
 
+<!-- end id8 -->
+
 </details>
 
 <details>
@@ -1339,6 +1355,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 - 当伪量化参数和KV分离量化参数同时传入时，以KV分离量化参数为准。
 
+<!-- npu="910b" id9 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed;  width: 2084px">
@@ -1480,6 +1497,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tbody>
     </table>
 
+<!-- end id9 -->
+
 </details>
 
 <details>
@@ -1488,6 +1507,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 - actualSeqLengths和actualSeqLengthsKv必须传入
 
+<!-- npu="910b" id10 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     <div style="overflow-x: auto;">
     <table style="undefined;table-layout: fixed; width: 1390px"><colgroup>
@@ -1505,14 +1525,10 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </thead>
     <tbody>
     <tr>
-        <td rowspan="8">当query的d等于512时</td>
-        <td rowspan="4">通用场景</td>
+        <td rowspan="7">当query的d等于512时</td>
+        <td rowspan="3">通用场景</td>
         <td>inputLayout</td>
         <td>支持TND、TND_NTD;</td>
-    </tr>
-    <tr>
-        <td>numHeads</td>
-        <td>支持1、2、4、8、16、32、64、128</td>
     </tr>
     <tr>
         <td>numKeyValueHeads</td>
@@ -1603,6 +1619,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
     </tbody>
     </table></div>
 
+<!-- end id10 -->
+
 </details>
 
 <details>
@@ -1639,7 +1657,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             <td rowspan="24">query d=512</td>
             <td rowspan="6">通用场景</td>
             <td>query</td>
-            <td>FLOAT16、BFLOAT16；Q_N=[1,2,4,8,16,32,64,128]</td>
+            <td>FLOAT16、BFLOAT16</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1676,7 +1694,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         <tr>
             <td rowspan="12">全量化</td>
             <td>query</td>
-            <td>INT8，且qs范围为1~16</td>
+            <td>INT8，且qs范围为1~16；Q_N=[1,2,4,8,16,32,64,128]</td>
             <td>-</td>
         </tr>
         <tr>
@@ -1905,6 +1923,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 <summary>当Q_S大于1时：</summary>
 
+<!-- npu="910b" id11 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
@@ -2037,12 +2056,15 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tbody>
     </table>
 
+<!-- end id11 -->
+
 </details>
 
 <details>
 
 <summary>当Q_S等于1时（IFA非MTP场景）：</summary>
 
+<!-- npu="910b" id12 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed; width: 1080px"><colgroup>
@@ -2145,6 +2167,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
         </tbody>
     </table>
+
+<!-- end id12 -->
 
 </details>
 

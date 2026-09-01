@@ -18,7 +18,8 @@
 namespace ops {
 class KvQuantSparseFlashAttention : public OpDef {
 public:
-    explicit KvQuantSparseFlashAttention(const char *name) : OpDef(name)
+    explicit KvQuantSparseFlashAttention(const char *name)
+        : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -99,13 +100,13 @@ public:
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
                        ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         aicore_config_95.Input("value")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
                        ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         aicore_config_95.Input("sparse_indices")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})

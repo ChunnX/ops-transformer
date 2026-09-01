@@ -23,9 +23,9 @@
 
 2. [算子定义](#算子定义)：确定算子功能与原型定义。
 
-3. [Tiling实现](#Tiling实现)：实现Host侧算子Tiling函数。
+3. [Tiling实现](#tiling实现)：实现Host侧算子Tiling函数。
 
-4. [Kernel实现](#Kernel实现)：实现Device侧算子核函数。
+4. [Kernel实现](#kernel实现)：实现Device侧算子核函数。
 
 5. [aclnn适配](#aclnn适配)：自定义算子推荐aclnn接口调用，需提前完成二进制发布。**如采用图模式调用算子**，请参考[图模式适配指南](./graph_develop_guide.md)。
 
@@ -88,7 +88,7 @@ foreach(EXAMPLES_OP_NAME ${ASCEND_OP_NAME})
         list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/mc2/${EXAMPLES_OP_NAME})
     # 在examples目录下新增算子分类时，参考mc2目录增加命令语句如下：
     # elseif(IS_DIRECTORY ${EXAMPLES_${op_class}_DIR})
-    #     add_subdirectory(examples/${op_class}/${EXAMPLES_OP_NAME}")
+    #     add_subdirectory(examples/${op_class}/${EXAMPLES_OP_NAME})
     #     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${op_class}/${EXAMPLES_OP_NAME})
     endif()
 endforeach()
@@ -286,7 +286,7 @@ Kernel入口文件，包含主函数和调度逻辑。
 
 如需查看详细实现，请参考[add_example.cpp](../../../examples/add_example/op_kernel/add_example.cpp)。
 
-```CPP
+```cpp
 // 1、核函数定义
 // schMode是一个模板参数，用于支持不同数据类型（如float和int32）的计算路径
 // __global__ __aicore__表示该函数是个全局函数，可以在AI Core上执行
@@ -315,7 +315,7 @@ __global__ __aicore__ void add_example(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR 
 
 如需查看详细实现，请参考[add_example.h](../../../examples/add_example/op_kernel/add_example.h)。
 
-```C++
+```cpp
 // 2、定义Kernel类
 template <typename T>
 class AddExample
@@ -456,13 +456,13 @@ __aicore__ inline void AddExample<T>::Process()
 
 算子开发过程中，可通过如下方式进行验证：
 
-1. [UT验证](#UT验证): 验证交付件代码能否正常运行。UT验证无需NPU环境。
+1. [UT验证](#ut验证): 验证交付件代码能否正常运行。UT验证无需NPU环境。
 
 2. [aclnn调用验证](#aclnn调用验证): 验证算子在NPU环境上的功能。aclnn调用验证需要NPU环境。
 
 ### UT验证
 
-主要交付件代码开发过程中，可通过UT验证方式进行快速验证，无需编译部署算子包。
+在主要交付件代码开发过程中，可通过UT验证方式进行快速验证，无需编译部署算子包。
 
 UT目录结构如下，需用户手动创建：
 

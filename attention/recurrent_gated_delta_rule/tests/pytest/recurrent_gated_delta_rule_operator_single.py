@@ -8,6 +8,10 @@
 # -----------------------------------------------------------------------------------------------------------
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from recurrent_gated_delta_rule_golden import (
     run_recurrent_gated_delta_rule_eager,
     cpu_recurrent_gated_delta_rule,
@@ -70,9 +74,10 @@ def output_operator(params):
         gamma_k_datarange,
         beta_datarange,
         state_datarange,
+        state_non_contiguous,
     ) = params
 
-    print(f"params = {params}")
+    logger.info(f"params = {params}")
 
     run_recurrent_gated_delta_rule_eager(
         batch_size,
@@ -98,4 +103,5 @@ def output_operator(params):
         gamma_k_datarange=gamma_k_datarange,
         beta_datarange=beta_datarange,
         state_datarange=state_datarange,
+        state_non_contiguous=state_non_contiguous,
     )

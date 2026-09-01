@@ -1,7 +1,7 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -35,7 +35,8 @@ struct FusedInferAttentionHostUtParamBase : public HostUtParamBase {
     int64_t pse_type;
     int64_t out_dtype;
 
-    FusedInferAttentionHostUtParamBase(const csv_map &csvMap) : HostUtParamBase(csvMap)
+    FusedInferAttentionHostUtParamBase(const csv_map &csvMap)
+        : HostUtParamBase(csvMap)
     {
         this->num_heads = std::stoll(ReadMap(csvMap, "num_heads"));
         this->scale = std::stof(ReadMap(csvMap, "scale"));
@@ -119,7 +120,8 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
         }
     }
 
-    FusedInferAttentionTilingUtParam(const csv_map &csvMap) : FusedInferAttentionHostUtParamBase(csvMap)
+    FusedInferAttentionTilingUtParam(const csv_map &csvMap)
+        : FusedInferAttentionHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "query_shape", "query_dtype", "query_format", this->query));
@@ -127,17 +129,18 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
         std::string keyShapeStr = ReadMap(csvMap, "key_shape");
         if (keyShapeStr.find('|') != std::string::npos) {
             this->isTensorList = true;
-            this->keyList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(
-                csvMap, "key_shape", "key_dtype", "key_format");
+            this->keyList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(csvMap, "key_shape",
+                                                                                        "key_dtype", "key_format");
             this->valueList = GetTensorListGE<gert::TilingContextPara::TensorDescription>(
                 csvMap, "value_shape", "value_dtype", "value_format");
             this->inputInstance.emplace_back(static_cast<uint32_t>(this->keyList.size()));
             this->inputInstance.emplace_back(static_cast<uint32_t>(this->valueList.size()));
         } else {
-            this->inputInstance.emplace_back(
-                GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
+            this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_shape", "key_dtype", "key_format", this->key));
             this->inputInstance.emplace_back(
                 GetTensorGE(csvMap, "value_shape", "value_dtype", "value_format", this->value));
+            ApplyStrideFromCsv(csvMap, "key_stride", this->key);
+            ApplyStrideFromCsv(csvMap, "value_stride", this->value);
         }
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "pse_shift_shape", "pse_shift_dtype", "pse_shift_format", this->pse_shift));
@@ -172,11 +175,13 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
                                                      "kv_padding_size_format", this->kv_padding_size));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_antiquant_scale_shape", "key_antiquant_scale_dtype",
                                                      "key_antiquant_scale_format", this->key_antiquant_scale));
+        ApplyStrideFromCsv(csvMap, "key_antiquant_scale_stride", this->key_antiquant_scale);
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "key_antiquant_offset_shape", "key_antiquant_offset_dtype",
                                                      "key_antiquant_offset_format", this->key_antiquant_offset));
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_antiquant_scale_shape",
                                                      "value_antiquant_scale_dtype", "value_antiquant_scale_format",
                                                      this->value_antiquant_scale));
+        ApplyStrideFromCsv(csvMap, "value_antiquant_scale_stride", this->value_antiquant_scale);
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "value_antiquant_offset_shape",
                                                      "value_antiquant_offset_dtype", "value_antiquant_offset_format",
                                                      this->value_antiquant_offset));
@@ -193,6 +198,7 @@ struct FusedInferAttentionTilingUtParam : public FusedInferAttentionHostUtParamB
             GetTensorGE(csvMap, "query_rope_shape", "query_rope_dtype", "query_rope_format", this->query_rope));
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "key_rope_shape", "key_rope_dtype", "key_rope_format", this->key_rope));
+        ApplyStrideFromCsv(csvMap, "key_rope_stride", this->key_rope);
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "key_rope_antiquant_scale_shape", "key_rope_antiquant_scale_dtype",
                         "key_rope_antiquant_scale_format", this->key_rope_antiquant_scale));
@@ -255,7 +261,8 @@ struct FusedInferAttentionInferShapeUtParam : public FusedInferAttentionHostUtPa
 
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    FusedInferAttentionInferShapeUtParam(const csv_map &csvMap) : FusedInferAttentionHostUtParamBase(csvMap)
+    FusedInferAttentionInferShapeUtParam(const csv_map &csvMap)
+        : FusedInferAttentionHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "query_shape", "query_dtype", "query_format", this->query));
@@ -372,7 +379,8 @@ struct FusedInferAttentionInferDTypeUtParam : public FusedInferAttentionHostUtPa
     ge::DataType attention_out = ge::DT_UNDEFINED;
     ge::DataType softmax_lse = ge::DT_UNDEFINED;
 
-    FusedInferAttentionInferDTypeUtParam(const csv_map &csvMap) : FusedInferAttentionHostUtParamBase(csvMap)
+    FusedInferAttentionInferDTypeUtParam(const csv_map &csvMap)
+        : FusedInferAttentionHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "query_dtype", this->query));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "key_dtype", this->key));

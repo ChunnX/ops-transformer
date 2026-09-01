@@ -18,7 +18,7 @@
 | protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
 | abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
 | opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://gitcode.com/cann/opbase) |
-| cann-cmake | master-026 | [cmake-master-026.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-026.tar.gz) |
+| cann-cmake | master-046 | [cmake-master-046.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-046.tar.gz) |
 | ops-tensor(自CANN 9.1.0及以后版本需要下载) | master | [ops-tensor](https://gitcode.com/cann/ops-tensor) |
 
 若您的编译环境可以访问网络，请参考[联网编译](#联网编译)，编译脚本会自动联网下载第三方软件。否则，请参考[未联网编译](#未联网编译)手动下载第三方软件。
@@ -50,7 +50,7 @@
     进入项目根目录，执行如下编译命令：
 
     ```bash
-    bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}] [--aicpu_kernel]
+    bash build.sh --pkg --soc=${soc_version} [--vendor_name=${vendor_name}] [--ops=${op_list}] [--opkernel_aicpu]
     # 以FlashAttentionScore算子编译为例
     # bash build.sh --pkg --soc=ascend910b --ops=flash_attention_score
     # 编译experimental贡献目录下的算子
@@ -61,9 +61,9 @@
     - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
     - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"apply_rotary_pos_emb,rope_quant_kvcache,..."，多算子之间用英文逗号","分隔。
     - --experimental（可选）：表示编译experimental贡献目录下的算子，${experimental_op}为新贡献算子目录名。
-    - --aicpu_kernel（可选）：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu。
+    - --opkernel_aicpu（可选）：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu。
 
-    > **说明**：编译纯AICPU算子（仅含op_kernel_aicpu目录的算子）时，必须添加--aicpu_kernel选项，否则会报"OpFileNotExistsError: File aic-*-ops-info.ini does not exist"错误，详见下方FAQ章节。
+    > **说明**：编译纯AICPU算子（仅含op_kernel_aicpu目录的算子）时，必须添加--opkernel_aicpu选项，否则会报"OpFileNotExistsError: File aic-*-ops-info.ini does not exist"错误，详见下方FAQ章节。
 
     若\$\{vendor\_name\}和\$\{op\_list\}都不传入编译的是ops-transformer包；若编译所有算子的自定义算子包，需传入\$\{vendor\_name\}。当提示如下信息，说明编译成功。
 
@@ -81,7 +81,9 @@
 
     自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。
 
-    如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install-path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
+    > 安装后执行 `grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini` 校验，预期输出含本 vendor。若无输出，通常是 `${ASCEND_HOME_PATH}/opp/vendors` 属主或权限不对，请排查后重新安装。
+
+    如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install_path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
 
 3. **（可选）删除自定义算子包**
 
@@ -96,11 +98,14 @@
     ```bash
     # 编译除experimental贡献目录外的所有算子
     bash build.sh --pkg --soc=${soc_version}
+    # 指定打包类型（run/rpm/deb/all），默认 run
+    # bash build.sh --pkg --pkg-type=deb --soc=${soc_version}
     # 编译experimental贡献目录下的所有算子
     # bash build.sh --pkg --experimental --soc=${soc_version}
     ```
 
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+    - --pkg-type（可选）：指定打包类型，取值 run/rpm/deb/all，默认为 run，仅可与 --pkg 同时使用。
     - --experimental（可选）：表示编译experimental贡献目录下的算子。
 
     若提示如下信息，说明编译成功。
@@ -293,16 +298,19 @@ ERROR: No matching distribution found for setuptools>=40.8.0
 
 ### 单独编译aicpu算子报错
 
-单独编译纯AICPU算子（仅含op_kernel_aicpu目录的算子）时，若未添加--aicpu_kernel选项，会出现如下报错：
+单独编译纯AICPU算子（仅含op_kernel_aicpu目录的算子）时，若未添加--opkernel_aicpu选项，会出现如下报错：
 
 ```bash
 OpFileNotExistsError: File aic-*-ops-info.ini does not exist in directory [...]
 make: *** [Makefile:462: prepare_build] Error 2
 ```
 
-该报错原因为未开启ENABLE_AICPU_KERNEL，导致未生成aic-*-ops-info.ini文件。请在编译命令中添加--aicpu_kernel选项，例如：
+该报错原因为未开启ENABLE_AICPU_KERNEL，导致未生成aic-*-ops-info.ini文件。请在编译命令中添加--opkernel_aicpu选项，例如：
 
 ```bash
-bash build.sh --pkg --soc=${soc_version} --ops=${op_list} --aicpu_kernel
+bash build.sh --pkg --soc=${soc_version} --ops=${op_list} --opkernel_aicpu
 ```
 
+### 编译失败或中断后恢复
+
+编译失败或强制中断可能导致 build 缓存损坏，再次编译异常时，执行 `bash build.sh --make_clean` 清理后重新编译。

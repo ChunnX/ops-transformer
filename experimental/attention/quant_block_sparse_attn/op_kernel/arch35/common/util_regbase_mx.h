@@ -19,10 +19,10 @@
 #include "../../quant_block_sparse_attn_common.h"
 
 namespace regbasemx {
-constexpr uint32_t BSA_MX_SCALE_LAST_DIM = 2U;
-constexpr uint32_t BSA_MX_S2_BASE_SIZE = 512U;
-constexpr uint32_t BSA_MX_MIN_KV_BLOCK_SIZE = 64U;
-constexpr uint32_t BSA_MX_MAX_SPARSE_BLOCK_PER_TASK = BSA_MX_S2_BASE_SIZE / BSA_MX_MIN_KV_BLOCK_SIZE;
+constexpr uint32_t QBSA_MX_SCALE_LAST_DIM = 2U;
+constexpr uint32_t QBSA_MX_S2_BASE_SIZE = 512U;
+constexpr uint32_t QBSA_MX_MIN_KV_BLOCK_SIZE = 64U;
+constexpr uint32_t QBSA_MX_MAX_SPARSE_BLOCK_PER_TASK = QBSA_MX_S2_BASE_SIZE / QBSA_MX_MIN_KV_BLOCK_SIZE;
 
 // 单个 (B, N1, S1 block, 512-token logical S2 tile) 的运行期状态。
 struct MxRunInfo {
@@ -32,6 +32,8 @@ struct MxRunInfo {
     bool isValid = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
+    // bit0/bit1分别表示256-token subLoop 0/1是否需要真实causal mask。
+    uint8_t attenMaskSubLoopBits = 0U;
 
     // Batch/head/query 坐标。
     uint32_t bIdx = 0U;
@@ -44,25 +46,23 @@ struct MxRunInfo {
     uint64_t actS1Size = 1U;
     uint64_t actS2Size = 1U;
     uint32_t actMSize = 0U;
-    uint32_t actMSizeAlign32 = 0U;
     uint32_t actVecMSize = 0U;
     uint32_t vecMbaseIdx = 0U;
 
-    // 拼接后 logical S2 tile 的有效长度及 64 对齐长度。
+    // 拼接后 logical S2 tile 的有效长度。
     uint32_t actSingleLoopS2Size = 0U;
-    uint32_t actSingleLoopS2SizeAlign = 0U;
 
     // Sparse block 索引与拼接信息，单 task 最多 8 个 block。
     uint32_t sparseBlockCount = 0U;
     // 有效 block id 升序，负 index 在末尾。
-    int64_t sparseBlockIdx[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    int64_t sparseBlockIdx[QBSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // 原始 KV token 起点，用于 PA/mask 寻址。
-    uint64_t sparseBlockTokenOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    uint64_t sparseBlockTokenOffset[QBSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // 拼接后 tile 起点，K/V/scale/mask 共用。
-    uint32_t sparseBlockTileOffset[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
-    uint32_t sparseBlockRealSize[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    uint32_t sparseBlockTileOffset[QBSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    uint32_t sparseBlockRealSize[QBSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
     // true 表示跨 causal 边界或整块不可见，需要搬压缩 mask。
-    bool sparseBlockPartialMask[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
+    bool sparseBlockPartialMask[QBSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
 
     // Q/QScale 的 TND GM offset。
     uint64_t queryTokenBase = 0U;
@@ -79,7 +79,6 @@ struct MxBaseConstInfo {
     uint32_t realN2Size = 0U;
     uint32_t coreNum = 0U;
     uint32_t aicIdx = 0U;
-    uint32_t aivIdx = 0U;
     uint8_t subBlockIdx = 0U;
     uint32_t n2GD = 0U;
     uint32_t qScaleN1D = 0U;
@@ -97,6 +96,7 @@ struct MxPageAttentionConstInfo {
     uint32_t paBlockStride = 0U;
     uint32_t qSparseBlockSize = 0U;
     uint32_t kvSparseBlockSize = 0U;
+    uint32_t paBlockSize = 0U;
 };
 
 // B_N_Qb_Kb sparse 参数。
@@ -107,23 +107,13 @@ struct MxSparseConstInfo {
 
 // QScale 为 [T,N,D/64,2]；K/V scale 为 PA BNBD 布局。
 struct MxScaleConstInfo {
-    uint32_t scaleLastDim = BSA_MX_SCALE_LAST_DIM;
+    uint32_t scaleLastDim = QBSA_MX_SCALE_LAST_DIM;
     uint32_t queryScaleDSize = 0U;
     uint32_t keyScaleDSize = 0U;
     uint32_t valueScaleDSize = 0U;
 };
 
-// MX kernel 使用的特性开关。
-struct MxFeatureConstInfo {
-    bool isActualLenDimsNull = false;
-    bool isActualLenDimsKVNull = false;
-};
-
-struct MxConstInfo : MxBaseConstInfo,
-                     MxPageAttentionConstInfo,
-                     MxSparseConstInfo,
-                     MxScaleConstInfo,
-                     MxFeatureConstInfo {};
+struct MxConstInfo : MxBaseConstInfo, MxPageAttentionConstInfo, MxSparseConstInfo, MxScaleConstInfo {};
 } // namespace regbasemx
 
 #endif // QUANT_BLOCK_SPARSE_ATTN_COMMON_UTIL_REGBASE_MX_H_

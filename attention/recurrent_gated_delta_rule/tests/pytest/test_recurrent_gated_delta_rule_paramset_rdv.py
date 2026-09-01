@@ -31,6 +31,7 @@ BASE_CONFIG = {
     "gamma_k_datarange": [[-1, 0]],
     "beta_datarange": [[0, 1]],
     "state_datarange": [[-10, 10]],
+    "state_non_contiguous": [False],
 }
 
 
@@ -62,6 +63,7 @@ def generate_test_cases(batch_sizes, mtps, dk, dv, **kwargs):
             "gamma_k_datarange": config["gamma_k_datarange"],
             "beta_datarange": config["beta_datarange"],
             "state_datarange": config["state_datarange"],
+            "state_non_contiguous": config["state_non_contiguous"],
         }
         for bs, mtp in itertools.product(batch_sizes, mtps)
     ]
@@ -92,6 +94,7 @@ SPECIAL_CASES = [
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
+        "state_non_contiguous": [False],
     },
     {
         "batch_size": [1],
@@ -117,6 +120,7 @@ SPECIAL_CASES = [
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
+        "state_non_contiguous": [False],
     },
 ]
 
@@ -157,6 +161,7 @@ GROUP_5 = [
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
+        "state_non_contiguous": [False],
     }
 ]
 
@@ -185,8 +190,78 @@ GROUP_6 = [
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
+        "state_non_contiguous": [False],
     }
 ]
+
+
+L0_L1_GAMMA_KWARGS = {
+    "gamma_datarange": [[-10, 0]],
+    "gamma_k_datarange": [[-10, 0]],
+}
+
+L0_L1_GROUP_1 = generate_test_cases(
+    batch_sizes=[1, 4, 8, 32, 128, 256],
+    mtps=[2],
+    dk=128,
+    dv=128,
+    nk=[4],
+    nv=[8],
+    **L0_L1_GAMMA_KWARGS,
+)
+
+L0_L1_GROUP_2 = generate_test_cases(
+    batch_sizes=[64],
+    mtps=[1, 3, 4, 8],
+    dk=128,
+    dv=128,
+    nk=[4],
+    nv=[8],
+    **L0_L1_GAMMA_KWARGS,
+)
+
+L0_L1_GROUP_3 = [
+    c
+    for nk, nv in [
+        (1, 1),
+        (1, 2),
+        (1, 4),
+        (2, 2),
+        (2, 4),
+        (2, 8),
+        (4, 4),
+        (4, 8),
+        (4, 16),
+        (8, 8),
+        (8, 16),
+        (8, 32),
+        (16, 16),
+        (16, 32),
+        (16, 64),
+        (32, 32),
+        (32, 64),
+        (32, 256),
+    ]
+    for c in generate_test_cases(
+        batch_sizes=[64],
+        mtps=[2],
+        dk=128,
+        dv=128,
+        nk=[nk],
+        nv=[nv],
+        **L0_L1_GAMMA_KWARGS,
+    )
+]
+
+L0_L1_GROUP_4 = [
+    c
+    for dk, dv in [(32, 32), (64, 64), (256, 256), (512, 512)]
+    for c in generate_test_cases(
+        batch_sizes=[64], mtps=[2], dk=dk, dv=dv, nk=[4], nv=[8], **L0_L1_GAMMA_KWARGS
+    )
+]
+
+L0_L1_CASES = L0_L1_GROUP_1 + L0_L1_GROUP_2 + L0_L1_GROUP_3 + L0_L1_GROUP_4
 
 
 def _gen_fp32_state_cases(cases):
@@ -198,6 +273,22 @@ def _gen_fp32_state_cases(cases):
     return result
 
 
-_ALL_BF16_CASES = GROUP_1 + GROUP_2 + GROUP_3 + GROUP_4 + GROUP_5 + GROUP_6
+def _gen_non_contiguous_state_cases(cases):
+    result = []
+    for c in cases:
+        c2 = dict(c)
+        c2["state_non_contiguous"] = [True]
+        result.append(c2)
+    return result
 
-ENABLED_PARAMS_RDV = _ALL_BF16_CASES + _gen_fp32_state_cases(_ALL_BF16_CASES)
+
+_ALL_BF16_CASES = (
+    GROUP_1 + GROUP_2 + GROUP_3 + GROUP_4 + GROUP_5 + GROUP_6 + L0_L1_CASES
+)
+
+ENABLED_PARAMS_RDV = (
+    _ALL_BF16_CASES
+    + _gen_fp32_state_cases(_ALL_BF16_CASES)
+    + _gen_non_contiguous_state_cases(_ALL_BF16_CASES)
+    + _gen_non_contiguous_state_cases(_gen_fp32_state_cases(_ALL_BF16_CASES))
+)

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
@@ -17,6 +17,9 @@ criteria are kept consistent with tests/pytest/recurrent_gated_delta_rule_golden
 check_result().
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import datetime
 import os
 import sys
@@ -33,7 +36,7 @@ _DISPLAY_THRESHOLD = 1 << 20
 
 
 def _print_log(data):
-    print(
+    logger.info(
         "[%s] [INFO]-%s:%s - %s"
         % (
             datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
@@ -157,8 +160,8 @@ def numerical_compare(npu_out, golden_out):
 
     Print format and pass/fail criteria mirror pytest check_result().
     """
-    npu = as_numpy(npu_out).reshape(-1).astype(np.float32)
-    golden = as_numpy(golden_out).reshape(-1).astype(np.float32)
+    npu = as_numpy(npu_out).reshape(-1).astype(np.float32, copy=False)
+    golden = as_numpy(golden_out).reshape(-1).astype(np.float32, copy=False)
     if npu.shape != golden.shape:
         return {
             "pass": False,

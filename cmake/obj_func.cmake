@@ -138,14 +138,12 @@ macro(add_modules_sources)
     target_sources(${OPGRAPH_NAME}_fallback_obj PRIVATE ${FALLBACK_SRCS})
   endif()
 
-  if (MODULE_OP_MC2_ENABLE)
-    file(GLOB GENTASK_SRCS
-        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
-    )
-    if(GENTASK_SRCS)
-      add_gentask_modules()
-      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
-    endif()
+  file(GLOB GENTASK_SRCS
+      ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
+  )
+  if(GENTASK_SRCS)
+    add_gentask_modules()
+    target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
   endif()
 
   if (MODULE_OPTYPE)
@@ -327,14 +325,12 @@ macro(add_modules_sources_with_soc)
     target_sources(${OPGRAPH_NAME}_fallback_obj PRIVATE ${FALLBACK_SRCS})
   endif()
 
-  if (MODULE_OP_MC2_ENABLE)
-    file(GLOB GENTASK_SRCS
-        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
-    )
-    if(GENTASK_SRCS)
-      add_gentask_modules()
-      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
-    endif()
+  file(GLOB GENTASK_SRCS
+      ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
+  )
+  if(GENTASK_SRCS)
+    add_gentask_modules()
+    target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
   endif()
 
   file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
@@ -388,15 +384,15 @@ function(add_opapi_modules)
     target_include_directories(${OPHOST_NAME}_opapi_obj
       PRIVATE
       ${OPAPI_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       ${OPAPI_UT_DEPEND_INC}
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling>>
       ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -436,10 +432,10 @@ endfunction()
 
 set(INFER_OBJ_INCLUDE
   ${OP_PROTO_INCLUDE}
+  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
   $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
-  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
@@ -569,12 +565,12 @@ function(add_tiling_modules)
     add_dependencies(${OPHOST_NAME}_tiling_obj json)
     target_include_directories(${OPHOST_NAME}_tiling_obj
       PRIVATE ${OP_TILING_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
 
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
@@ -697,10 +693,10 @@ function(add_fallback_modules)
 
     target_include_directories(${OPGRAPH_NAME}_fallback_obj
       PRIVATE
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>

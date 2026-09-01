@@ -68,6 +68,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_attn_res_prepare/README.md">block_attn_res_prepare</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>BlockAttnRes第一阶段准备算子，用于并行计算全部目标slot的块间注意力，输出softmax加权分子及统计量，供下一阶段融合当前残差。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/block_attn_res_update/README.md">block_attn_res_update</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>BlockAttnRes第二阶段更新算子，用于更新partial block并计算在线Softmax状态对应的注意力输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -85,6 +105,36 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>推理场景下线性注意力Gated Delta Rule的chunk版本，用于prefill节点。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/dense_lightning_indexer_softmax_lse_v2/README.md">dense_lightning_indexer_softmax_lse_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。相比dense_lightning_indexer_softmax_lse，新增了压缩注意力（Compressed Attention）支持，并支持通过metadata前置算子进行分核负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/dense_lightning_indexer_softmax_lse_v2_metadata/README.md">dense_lightning_indexer_softmax_lse_v2_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>dense_lightning_indexer_softmax_lse_v2算子的前置算子，用于计算dense_lightning_indexer_softmax_lse_v2的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/flash_attn/README.md">flash_attn</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>基于FlashAttention算法实现self-attention（自注意力）的计算，训练推理归一化，仅支持非量化场景。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -114,7 +164,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性，并且可以通过传入参数maxDraftTokens来指定最大投机个数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -158,6 +208,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention/README.md">generic_block_sparse_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>通过sparseBlockIdx/sparseBlockCount指定稀疏块模式的注意力正向计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/incre_flash_attention/README.md">incre_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -184,7 +244,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性，并且可以通过传入参数maxDraftTokens来指定最大投机个数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -225,6 +285,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>lightning_indexer的反向梯度计算算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_kl_loss/README.md">lightning_indexer_kl_loss</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算Lightning Indexer中teacher分布与student分布之间的KL散度损失。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -285,6 +355,26 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>mixed_quant_sparse_flash_mla算子的前置算子，用于计算mixed_quant_sparse_flash_mla的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_sparse_flash_mla/README.md">quant_sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持全量化场景下的Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_sparse_flash_mla_metadata/README.md">quant_sparse_flash_mla_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>quant_sparse_flash_mla算子的前置算子，用于计算quant_sparse_flash_mla的负载均衡。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -404,7 +494,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
+    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，并额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -425,6 +515,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>全量推理场景的FlashAttention算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_compressor/README.md">quant_compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，是Compressor的量化版本，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -468,6 +568,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/recurrent_kda/README.md">recurrent_kda</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成KDA（Kimi Delta Attention）的递归前向计算，面向decode和MTP短序列场景。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/ring_attention_update/README.md">ring_attention_update</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -501,7 +611,7 @@
     <td><a href="../../attention/sparse_flash_attention_grad/README.md">sparse_flash_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✗</td>
+    <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，计算sparse_flash_attention注意力的反向输出。</td>
@@ -578,6 +688,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/compressor_grad/README.md">compressor_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>Compressor的反向算子，用于计算输入X、权重W^KV/W^Gate与位置编码Ape的梯度，前向在gradEnabled为true时导出softmax_score与kv中间结果作为本算子输入。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/stem_oam_prep_varlen_q/README.md">stem_oam_prep_varlen_q</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -618,6 +738,36 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla_softmax_l1_norm/README.md">sparse_flash_mla_softmax_l1_norm</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，作为dense_lightning_indexer_kl_loss_grad的前置接口，用于计算attnSoftmaxL1Norm。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_flash_attn_grad/README.md">quant_flash_attn_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算量化注意力（QuantFlashAttention）的反向梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla_softmax_l1_norm_metadata/README.md">sparse_flash_mla_softmax_l1_norm_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>sparse_flash_mla_softmax_l1_norm算子的前置算子，用于计算sparse_flash_mla_softmax_l1_norm的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/stem_oam_prep_paged_kv/README.md">stem_oam_prep_paged_kv</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -644,7 +794,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>全量推理场景的FlashAttention算子。</td>
+    <td>面向Swin Transformer的注意力输出后处理融合算子，完成输出线性投影（MatMul+Bias）、窗口还原、反向循环移位以及残差加法。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -818,11 +968,31 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/ffn_to_attention_v2/README.md">ffn_to_attention_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/attention_to_ffn/README.md">attention_to_ffn</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
+    <td>AI Core</td>
+    <td>一个通信域内的Attention节点对FFN节点发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+    <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/attention_to_ffn_v2/README.md">attention_to_ffn_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>一个通信域内的Attention节点对FFN节点发送数据并写状态位，以检测通信链路是否正常。</td>
   </tr>
@@ -1148,6 +1318,16 @@
   </tr>
   <tr>
     <td>moe</td>
+    <td><a href="../../moe/moe_init_routing_v4/README.md">moe_init_routing_v4</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE的routing计算，根据<a href="../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md">aclnnMoeGatingTopKSoftmaxV2</a>的计算结果做routing处理，支持非量化、静态量化和动态量化模式。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
     <td><a href="../../moe/moe_re_routing/README.md">moe_re_routing</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -1155,6 +1335,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_re_routing_v2/README.md">moe_re_routing_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列，支持对topkWeight重排。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -1204,7 +1394,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>aclnnMoeTokenPermuteWithRoutingMap的反向传播。</td>
+    <td>MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMap将tokens和可选probsOptional广播后排序。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -1284,7 +1474,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>基于用Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
+    <td>基于Sinkhorn-Knopp迭代算法将超连接的混合矩阵投影到双随机矩阵流形，以此稳定深度网络信号传播、解决梯度消失 / 爆炸问题</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -1314,7 +1504,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向计算。</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -1378,10 +1568,20 @@
   </tr>
   <tr>
     <td>posembedding</td>
-    <td><a href="../../posembedding/dequant_rope_quant_kvcache/README.md">dequant_rope_quant_kvcache</a></td>
+    <td><a href="../../posembedding/apply_rotary_pos_emb_grad/README.md">apply_rotary_pos_emb_grad</a></td>
+    <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✗</td>
+    <td>AI Core</td>
+    <td>执行双路旋转位置编码ApplyRotaryPosEmb的反向计算，同时计算query和key的rope反向梯度，融合为一次kernel调用。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/dequant_rope_quant_kvcache/README.md">dequant_rope_quant_kvcache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
     <td>对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。</td>
@@ -1434,7 +1634,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>输入Q/K/V融合张量，拆分Q、K、V；对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出q_out和q_scale；K/V分支按slot_mapping更新k_cache、k_scale_cache和v_cache。</td>
+    <td>融合Q/K/V拆分、Q/K RMSNorm、RoPE/M-RoPE、量化和KV Cache更新，支持M-RoPE MX场景。</td>
   </tr>
   <tr>
     <td>posembedding</td>
@@ -1444,7 +1644,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对输入张量的尾轴进行切分。</td>
+    <td>对输入张量按照‘sizeSplits’对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut与kOut，之后对kOut与vOut进行量化并按照‘indices’更新到kCacheRef和vCacheRef上。</td>
   </tr>
   <tr>
     <td>posembedding</td>
@@ -1485,6 +1685,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>对输入张量(kv)的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/und_gen_qkv_rms_norm_rope_cache/README.md">und_gen_qkv_rms_norm_rope_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>输入understand段与generate段两路QKV融合张量，按cat_indices重排后拆分Q、K、V；对Q、K分别用两段各自的权重执行RMSNorm并做MRoPE多轴旋转位置编码，输出q；K、V按slot_mapping散写更新分页k_cache与v_cache。</td>
   </tr>
 </tbody>
 </table>

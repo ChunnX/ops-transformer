@@ -54,7 +54,7 @@ const std::string LAYOUT_Q_NAME = "layout_q";
 const std::string LAYOUT_Q_DESCALE_NAME = "layout_q_descale";
 const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
-const std::string QUANT_MODE_NAME = "quant_mode";
+const std::string QUANT_MODE_NAME = "quant_compute_mode";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
 const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
@@ -104,7 +104,11 @@ constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 // Enums
 // ============================================================
 
-enum class MaskMode : int32_t { NO_MASK = 0, ALL_MASK = 1, CAUSAL = 3, BAND = 4 };
+enum class MaskMode : int32_t {
+    NO_MASK = 0,
+    CAUSAL = 3,
+    SLIDING_WINDOW = 4
+};
 
 enum class QfaLayout : uint32_t {
     BSND = 0,
@@ -115,13 +119,15 @@ enum class QfaLayout : uint32_t {
     PA_NZ = 5,
     LSE_BNS = 6,
     LSE_NT = 7,
-    N2TGD = 8
+    N2TGD = 8,
+    NTD = 9,
+    NT = 10
 };
 
-const std::map<std::string, QfaLayout> qfaLayoutMap = {{"BSND", QfaLayout::BSND},       {"BNSD", QfaLayout::BNSD},
-                                                       {"TND", QfaLayout::TND},         {"PA_BBND", QfaLayout::PA_BBND},
-                                                       {"PA_BNBD", QfaLayout::PA_BNBD}, {"PA_NZ", QfaLayout::PA_NZ},
-                                                       {"N2TGD", QfaLayout::N2TGD}};
+const std::map<std::string, QfaLayout> qfaLayoutMap = {
+    {"BSND", QfaLayout::BSND},       {"BNSD", QfaLayout::BNSD},       {"TND", QfaLayout::TND},
+    {"PA_BBND", QfaLayout::PA_BBND}, {"PA_BNBD", QfaLayout::PA_BNBD}, {"PA_NZ", QfaLayout::PA_NZ},
+    {"N2TGD", QfaLayout::N2TGD},     {"NTD", QfaLayout::NTD},         {"NT", QfaLayout::NT}};
 
 enum class QfaAxis : uint32_t {
     B = 0,
@@ -139,9 +145,16 @@ enum class QfaAxis : uint32_t {
     CONST = 12
 };
 
-enum class QfaQuantMode : uint32_t { MXFP8_FP32 = 1 };
+enum class QfaQuantMode : uint32_t {
+    A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1,
+    A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 6,
+    A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 = 0
+};
 
-enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };
+enum class KvStorageMode : uint32_t {
+    BATCH_CONTINUOUS = 0,
+    PAGE_ATTENTION = 1
+};
 
 // ============================================================
 // Function declarations
@@ -227,7 +240,7 @@ public:
     uint64_t totalLseSize = 0;
 
     // Quant Param
-    QfaQuantMode quantMode = QfaQuantMode::MXFP8_FP32;
+    QfaQuantMode quantMode = QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32;
 
     // PageAttention
     bool pageAttentionFlag = false;
@@ -270,6 +283,7 @@ public:
     const gert::Stride *valueStrides = nullptr;
     const gert::Stride *kDescaleStrides = nullptr;
     const gert::Stride *vDescaleStrides = nullptr;
+    bool hasStride = false;
 };
 
 // ============================================================
@@ -350,9 +364,9 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDE
                                                                     {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
-    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
-    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {Q_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
     {K_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
     {V_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},

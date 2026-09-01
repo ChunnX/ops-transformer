@@ -31,7 +31,8 @@ class QuantCompressorKernelFullLoad {
 public:
     __aicore__ inline QuantCompressorKernelFullLoad(TPipe *pipe,
                                                     const optiling::QuantCompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
@@ -121,7 +122,8 @@ __aicore__ inline void QuantCompressorKernelFullLoad<COMP>::Init(
 
     // 剔除尾部的无效batch
     for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
+        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.batchSize - 1) :
+                                                     tools_.GetSeqLength(constInfo.batchSize - 1);
         if (bSeqUsed > 0) {
             break;
         }
@@ -186,6 +188,7 @@ __aicore__ inline void QuantCompressorKernelFullLoad<COMP>::InitTilingData()
     constInfo.mLoopNum = tilingData_->baseParams.mLoopNum;
     constInfo.kBaseNum = tilingData_->baseParams.kBaseNum;
     constInfo.kBaseSize = tilingData_->baseParams.kBaseSize;
+    constInfo.batchConsistency = tilingData_->baseParams.batchConsistency;
 }
 
 template <typename COMP>
@@ -206,7 +209,7 @@ __aicore__ inline void QuantCompressorKernelFullLoad<COMP>::SkipInvalidBatch(Bat
     if (batchInfo.bIdx < constInfo.batchSize) {
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
-        batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
+        batchInfo.headHolderSeq = batchInfo.bStartPos % constInfo.cmpRatio;
         batchInfo.tcNum = (batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio -
                           batchInfo.bStartPos / constInfo.cmpRatio;
         batchInfo.compressedTcNum = (batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio -

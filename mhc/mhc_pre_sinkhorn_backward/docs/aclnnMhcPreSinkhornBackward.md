@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -51,7 +61,7 @@
 
     - **输出组合梯度计算**：
 
-        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（支持不超过8）。
+        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小。
 
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
@@ -315,7 +325,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,C)</td>
+        <td>(B,S,C)或(T,C)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -325,7 +335,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N)</td>
+        <td>(B,S,N)或(T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -335,7 +345,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N)或(B,S,N,N)</td>
+        <td>(B,S,N*N)或(B,S,N,N)或(T,N*N)或(T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -345,14 +355,14 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,N,C)</td>
+        <td>(B,S,N,C)或(T,N,C)</td>
         <td>√</td>
     </tr>
     <tr>
         <td>phi(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数phi。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2, N*C)</td>
@@ -362,7 +372,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数alpha。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(3)</td>
@@ -372,7 +382,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>bias(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数bias。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2)</td>
@@ -385,7 +395,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N)</td>
+        <td>(B,S,N)或(T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -395,7 +405,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N+2*N)</td>
+        <td>(B,S,N*N+2*N)或(T,N*N+2*N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -405,7 +415,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,1)</td>
+        <td>(B,S,1)或(T,1)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -415,7 +425,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2*sk_iter_count,B,S,N)</td>
+        <td>(2*sk_iter_count,B,S,N)或(2*sk_iter_count,T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -425,7 +435,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2*sk_iter_count,B,S,N,N)</td>
+        <td>(2*sk_iter_count,B,S,N,N)或(2*sk_iter_count,T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -445,7 +455,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>-</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,N,C)</td>
+        <td>(B,S,N,C)或(T,N,C)</td>
         <td>-</td>
     </tr>
     <tr>
@@ -524,24 +534,27 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
                 <td>必选参数或者输出是空指针。</td>
             </tr>
             <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
+                <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
+                <td rowspan="5">161002</td>
+                <td>输入或输出tensor的维度个数(dim)与参数说明不符。</td>
+            </tr>
+            <tr>
+                <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
+            </tr>
+            <tr>
                 <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
-         <tr>
-        <td rowspan="4">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="4">561002</td>
-        <td>N大于8。</td>
-      </tr>
-      <tr>
-        <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
-      </tr>
-      <tr>
-        <td>sk_iter_count不等于20。</td>
-      </tr>
-      <tr>
-        <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
-      </tr>
+            <tr>
+                <td>N取值不符合约束要求。</td>
+            </tr>
+            <tr>
+                <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_NULLPTR</td>
+                <td>561103</td>
+                <td>sk_iter_count不等于20。</td>
+            </tr>
         </tbody>
     </table>
 
@@ -590,13 +603,38 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 ## 约束说明
 
+- **维度格式约束**
+
+  <!-- npu="950" id9 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：输入支持两种维度格式：BSND（4维）和TND（3维）。其中T = B × S，表示所有Batch序列长度的累加和。所有带B/S维度的输入需保持维度格式一致（同为4维BSND或同为3维TND）。
+  <!-- end id9 -->
+
+  <!-- npu="A3,910b" id10 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入仅支持BSND（4维）格式。
+  <!-- end id10 -->
+
 - **规格约束**
 
-  | 规格项 | 规格 | 规格说明 |
-  | :--- | :--- | :--- |
-  | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
-  | N | ≤8 | N维度支持不超过8。 |
-  | C | - | 大于0、小于100000且可以被128整除。 |
+  <!-- npu="950" id11 -->
+  - N（针对Ascend 950PR/Ascend 950DT）：N维度支持大于0且不超过8。
+  <!-- end id11 -->
+
+  <!-- npu="A3,910b" id12 -->
+  - N（针对<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>）：N维度仅支持4。
+  <!-- end id12 -->
+
+  - C：大于0、小于100000且可以被128整除。
+  - sk_iter_count：Sinkhorn迭代次数当前仅支持20。
+
+- 确定性计算
+
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：默认采用确定性实现，相同输入多次调用结果一致。
+  <!-- end id7 -->
+
+  <!-- npu="A3,910b" id8 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：默认非确定性实现，支持通过`aclrtSetSysParamOpt`开启确定性。
+  <!-- end id8 -->
 
 ## 调用示例
 

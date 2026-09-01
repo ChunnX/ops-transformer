@@ -1,7 +1,7 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -153,6 +153,10 @@ inline gert::StorageShape GetStorageShape(const std::string &shapeArrStr)
             shape = gert::StorageShape({shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4]},
                                        {shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4]});
             break;
+        case 6:
+            shape = gert::StorageShape({shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4], shapeArr[5]},
+                                       {shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4], shapeArr[5]});
+            break;
         default:
             std::cout << "[ERROR] Shape " << shapeArr.size() << " not support!" << std::endl;
             break;
@@ -176,6 +180,38 @@ inline int GetTensorGE(const csv_map &csvMap, const std::string &shapeKey, const
     ge::Format format = ReadMap(GE_FORMAT, formatStr, ge::FORMAT_NULL);
     out = T(shape, dtype, format);
     return 1;
+}
+
+inline gert::Stride ParseStride(const std::string &strideStr, const gert::StorageShape &shape)
+{
+    gert::Stride stride;
+    if (strideStr.empty()) {
+        return stride;
+    }
+    std::vector<int64_t> strides;
+    std::istringstream iss(strideStr);
+    int64_t val;
+    while (iss >> val) {
+        strides.push_back(val);
+    }
+    if (strides.empty()) {
+        return stride;
+    }
+    for (size_t i = 0; i < strides.size() && i < gert::Stride::kMaxDimNum; i++) {
+        stride.SetStride(i, strides[i]);
+    }
+    return stride;
+}
+
+template <typename T>
+inline void ApplyStrideFromCsv(const csv_map &csvMap, const std::string &strideKey, T &desc)
+{
+    std::string strideStr = ReadMap(csvMap, strideKey);
+    if (strideStr.empty()) {
+        return;
+    }
+    desc.stride_ = ParseStride(strideStr, desc.shape_);
+    desc.hasStride_ = true;
 }
 
 inline std::vector<std::string> SplitByDelim(const std::string &str, char delim)

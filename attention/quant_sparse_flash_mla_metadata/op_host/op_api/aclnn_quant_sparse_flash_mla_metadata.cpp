@@ -27,6 +27,7 @@
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "acl/acl_rt.h"
 #include "../quant_sparse_flash_mla_metadata_check.h"
 
 #ifdef __cplusplus
@@ -69,6 +70,13 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
+    int64_t batchConsistencyLevel = 0;
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &batchConsistencyLevel);
+    if (aclRet != ACL_SUCCESS) {
+        OP_LOGW("aclnnQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
+    }
+    OP_LOGD("deterministic_level=%lld", batchConsistencyLevel);
+
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ,
@@ -76,7 +84,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
                            cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
                            aicCoreNum, aivCoreNum, socVersion, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    
+
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
     if (cuSeqlensQOptional != nullptr) {
         cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
@@ -159,7 +167,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
         layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    *workspaceSize = 0;
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }

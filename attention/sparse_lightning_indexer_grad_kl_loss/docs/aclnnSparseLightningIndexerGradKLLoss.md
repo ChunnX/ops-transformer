@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|     √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -83,8 +93,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
-    int64_t              pre_tokens,
-    int64_t              next_tokens,
+    int64_t              preTokens,
+    int64_t              nextTokens,
     bool                 deterministic,
     const aclTensor     *dQueryIndex,
     const aclTensor     *dKeyIndex,
@@ -99,7 +109,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize
@@ -333,6 +343,30 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>-</td>
         </tr>
         <tr>
+            <td>preTokens</td>
+            <td>输入</td>
+            <td>左侧mask保留的token数。</td>
+            <td>
+            -
+            </td>
+            <td>INT64</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>nextTokens</td>
+            <td>输入</td>
+            <td>右侧mask保留的token数。</td>
+            <td>
+            -
+            </td>
+            <td>INT64</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
         <td>deterministic</td>
             <td>输入</td>
             <td>确定性计算。</td>
@@ -384,11 +418,34 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>(1,)</td>
             <td>x</td>
         </tr>
+        <tr>
+            <td>workspaceSize</td>
+            <td>输出</td>
+            <td>返回需要在Device侧申请的workspace大小。</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>executor</td>
+            <td>输出</td>
+            <td>返回op执行器，包含了算子计算流程。</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
         </tbody>
     </table>
+
+<!-- npu="A3,910b" id7 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
+<!-- end id7 -->
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
@@ -477,6 +534,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
         - 公共约束里入参为空的场景和FAG保持一致。
+    - sparseMode模式说明：
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -559,7 +617,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~512K</td>
+            <td>S1支持1~32K，S2支持1~1M</td>
             <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>
@@ -608,10 +666,9 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
-
-    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
-
-    <term>Ascend 950PR/Ascend 950DT</term>：B、S1、S2均支持泛化。
+    <!-- npu="950" id8 -->
+    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
+    <!-- end id8 -->
 
 ## 调用示例
 
@@ -651,6 +708,17 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
   for (int64_t i = 0; i < size; i++) {
     LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+  }
+}
+
+void PrintOutResultFp16(std::vector<int64_t> &shape, void** deviceAddr) {
+  auto size = GetShapeSize(shape);
+  std::vector<aclFloat16> resultData(size, 0);
+  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
+  for (int64_t i = 0; i < size; i++) {
+    LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
   }
 }
 
@@ -836,9 +904,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintOutResult(dQIndexShape, &dQIndexDeviceAddr);
-  PrintOutResult(dKIndexShape, &dKIndexDeviceAddr);
-  PrintOutResult(dWeightShape, &dWeightDeviceAddr);
+  PrintOutResultFp16(dQIndexShape, &dQIndexDeviceAddr);
+  PrintOutResultFp16(dKIndexShape, &dKIndexDeviceAddr);
+  PrintOutResultFp16(dWeightShape, &dWeightDeviceAddr);
   PrintOutResult(lossShape, &lossDeviceAddr);
 
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改

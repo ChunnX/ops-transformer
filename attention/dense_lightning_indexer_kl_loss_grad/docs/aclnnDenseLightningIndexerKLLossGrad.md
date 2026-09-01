@@ -264,9 +264,9 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             </tr>
             <tr>
                 <td>metadataOptional</td>
-                <td>可选输入</td>
+                <td>输入</td>
                 <td>由aclnnDenseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>传入后kernel将使用metadata中的分核切分，必须传入。</td>
+                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>layoutK</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>maskMode</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>cmpRatio</td>
@@ -310,7 +310,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>dq</td>
@@ -357,24 +357,23 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>输出</td>
                 <td>返回用户需要在Device侧申请的workspace大小。</td>
                 <td>-</td>
-                <td>UINT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>executor</td>
                 <td>输出</td>
                 <td>op执行器，包含算子计算流程。</td>
                 <td>-</td>
-                <td>aclOpExecutor*</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
         </tbody>
     </table>
-
 
 - **返回值：**
 
@@ -399,17 +398,18 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或输出为空指针。</td>
+                <td>参数中存在非法的nullptr。</td>
             </tr>
             <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
-                <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内。</td>
+                <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+                <td rowspan="3">161002</td>
+                <td>输入的数据类型不满足支持类型。</td>
             </tr>
             <tr>
-                <td>ACLNN_ERR_RUNTIME_ERROR</td>
-                <td>361001</td>
-                <td>API内存调用npu runtime的接口异常。</td>
+                <td>q、k、w、attnSoftmaxL1Norm、softmaxLse必选输入未传。</td>
+            </tr>
+            <tr>
+                <td>dq、dk、dw、softmaxOut必选输出未传。</td>
             </tr>
         </tbody>
     </table>
@@ -462,7 +462,11 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
+
+    <!-- npu="950" id7 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：aclnnDenseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    <!-- end id7 -->
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
@@ -676,7 +680,7 @@ int main() {
   const int64_t numHeadsK = 1;
   const int64_t headDim = 128;
   const int64_t maskMode = 3;
-  const int64_t cmpRatio = 4;
+  const int64_t cmpRatio = 1;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};

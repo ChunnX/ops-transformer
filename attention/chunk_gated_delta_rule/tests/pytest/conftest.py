@@ -8,11 +8,32 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import logging
+
+logger = logging.getLogger(__name__)
 import csv
 import os
 import pytest
+import torch
+import torch_npu  # noqa: F401
 
 _RESULT_ROWS = []
+_CURRENT_SEED = 0
+
+
+@pytest.fixture(autouse=True)
+def _set_random_seed():
+    global _CURRENT_SEED
+    fix_seed = os.environ.get("TORCH_SEED", "")
+    if fix_seed:
+        _CURRENT_SEED = int(fix_seed)
+        torch.manual_seed(_CURRENT_SEED)
+        torch.npu.manual_seed(_CURRENT_SEED)
+    else:
+        _CURRENT_SEED = torch.seed()
+        torch.npu.manual_seed(_CURRENT_SEED)
+    logger.info(f"[seed] {_CURRENT_SEED}")
+    yield
 
 
 def _get_model_name():
@@ -45,6 +66,7 @@ def pytest_runtest_makereport(item, call):
         error = str(report.longreprtext).replace("\n", " | ")[:2000]
 
     row = {
+        "seed": _CURRENT_SEED,
         "test_name": params.get("_name", ""),
         "model": _get_model_name(),
         "status": status,
@@ -66,7 +88,7 @@ def pytest_runtest_makereport(item, call):
 
 
 def pytest_runtest_logfinish(nodeid, location):
-    print(flush=True)
+    logger.info("")
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -75,6 +97,7 @@ def pytest_sessionfinish(session, exitstatus):
         return
 
     fields = [
+        "seed",
         "test_name",
         "model",
         "status",
@@ -100,4 +123,6 @@ def pytest_sessionfinish(session, exitstatus):
     total = len(_RESULT_ROWS)
     passed = sum(1 for r in _RESULT_ROWS if r["status"] == "PASSED")
     failed = sum(1 for r in _RESULT_ROWS if r["status"] in ("FAILED", "ERROR"))
-    print(f"\nCSV 已生成: {csv_file} (共{total}条, 通过{passed}, 失败{failed})")
+    logger.info(
+        f"\nCSV generated: {csv_file} (total {total}, passed{passed}, failed{failed})"
+    )

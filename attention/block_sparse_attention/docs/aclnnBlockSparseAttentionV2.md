@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -37,27 +47,29 @@
   - qInputLayout: "TND" "BNSD" "BSND"
   - kvInputLayout: "TND" "BNSD" "BSND"
 
+<!-- npu="950" id7 -->
 - **FP8特性说明（仅<term>Ascend 950PR/Ascend 950DT</term>支持）**：
 
   本算子新增支持FP8数据类型的输入，以提供计算效率并降低显存占用。当使用FP8输入时，需要提供相应的量化缩放因子用于反量化计算。
 
+<!-- end id7 -->
 - **量化缩放因子**：
 
   当输入的query、key、value采用FLOAT8_E4M3FN数据类型时，需要提供以下量化缩放因子参数：
 
   qDequantScale（query量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)
+  - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, blockShapeX), 1)
   - 用途：在QK矩阵乘法时对query进行反量化。
 
   kDequantScale（key量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)
   - 用途：在QK矩阵乘法时对key进行反量化。
 
   vDequantScale（value量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)
   - 用途：在PV矩阵乘法时对value进行反量化。
 
 ## 函数原型
@@ -219,7 +231,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         当配置此输入时：必须包含两个元素[blockShapeX, blockShapeY]
         <ul>
           <li>blockShapeX: Q方向块大小，值必须大于0。</li>
-          <li>blockShapeY: KV方向块大小，值必须大于0且为128的倍数。</li>
+          <li>blockShapeY: KV方向块大小，值必须大于0；在<term>Ascend 950PR/Ascend 950DT</term>上须为16的倍数，在<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>上须为128的倍数。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -280,7 +292,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, 128), 1]。</li>
+          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -300,7 +312,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
+          <li>shape为[batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -320,7 +332,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
+          <li>shape为[batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -332,7 +344,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>qInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入query的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>取值范围为 "TND"/"BNSD"/"BSND"，约束详见约束说明。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -342,7 +354,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>kvInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>取值范围为 "TND"/"BNSD"/"BSND"，约束详见约束说明。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -590,7 +602,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - 当前query、key、value的InputLayout必须保持一致。
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
-- blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY必须为128的倍数。
+- blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY在<term>Ascend 950PR/Ascend 950DT</term>上须为16的倍数，在<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>上须为128的倍数。
 - blockSparseMaskOptional当前必须传入，且shape必须为[batch, headNum, ceilDiv(maxQS, blockShapeX), ceilDiv(maxKVS, blockShapeY)]。
 - attentionMaskOptional当前只支持传入nullptr。
 - actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
@@ -604,12 +616,15 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - blockSize当前只支持输入0，表示不支持paged cache。
 - preTokens和nextTokens当前只支持输入2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
 - **FP8相关约束（新增）**：
+
+  <!-- npu="950" id8 -->
   - 仅<term>Ascend 950PR/Ascend 950DT</term>支持。
+  <!-- end id8 -->
   - 当query、key、value中任意一个数据类型为FLOAT8_E4M3FN时，query、key、value必须同时为FLOAT8_E4M3FN数据类型。
   - 使用FP8输入时，必须提供对应的量化缩放因子输入qDequantScale、kDequantScale、vDequantScale。
   - 量化缩放因子的数据类型必须为FLOAT32。
-  - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)。
-  - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)。
+  - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, blockShapeX), 1)。
+  - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)。
   - 当query、key、value中任意一个数据类型不为FLOAT8_E4M3FN时，qDequantScale、kDequantScale、vDequantScale必须传入nullptr。
   - blockShapeOptional必须传入。
   - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
@@ -624,6 +639,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 #include <cstring>
 #include <cmath>
 #include <cstdint>
+#include <string>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_block_sparse_attention.h"
@@ -784,6 +800,11 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 设置参数
+    const char *socName = aclrtGetSocName();
+    std::string socVersion = (socName != nullptr) ? std::string(socName) : std::string();
+    bool isArch22 = socVersion.find("Ascend910") != std::string::npos;
+    int64_t innerPrecise = isArch22 ? 0 : 4;
+
     int32_t batch = 1;
     int32_t qSeqlen = 128;
     int32_t kvSeqlen = 128;
@@ -798,9 +819,6 @@ int main() {
     int64_t totalKvTokens = batch * kvSeqlen;
     int32_t qBlockNum = (qSeqlen + blockShapeX - 1) / blockShapeX;  // Q块的X维度数量
     int32_t kvBlockNum = (kvSeqlen + blockShapeY - 1) / blockShapeY;  // KV块的Y维度数量
-    // totalQBlocks = qBlockNum * numHeads (每个Q块对应一个head)
-    int32_t totalQBlocks = qBlockNum * numHeads;
-    int32_t maxKvBlockNum = kvBlockNum;
 
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
@@ -828,7 +846,7 @@ int main() {
 
     // 3. 创建Query tensor (TND format: [totalQTokens, numHeads, headDim])
     std::vector<int64_t> queryShape = {totalQTokens, numHeads, headDim};
-    std::vector<op::fp16_t> queryHostData(totalQTokens * numHeads * headDim, 1.0f);
+    std::vector<op::fp16_t> queryHostData(GetShapeSize(queryShape), 1.0f);
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create query tensor\n");
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
@@ -839,8 +857,8 @@ int main() {
 
     // 4. 创建Key/Value tensor (TND format: [totalKvTokens, numKvHeads, headDim])
     std::vector<int64_t> kvShape = {totalKvTokens, numKvHeads, headDim};
-    std::vector<op::fp16_t> keyHostData(totalKvTokens * numKvHeads * headDim, 1.0f);
-    std::vector<op::fp16_t> valueHostData(totalKvTokens * numKvHeads * headDim, 1.0f);
+    std::vector<op::fp16_t> keyHostData(GetShapeSize(kvShape), 1.0f);
+    std::vector<op::fp16_t> valueHostData(GetShapeSize(kvShape), 1.0f);
     ret = CreateAclTensor(keyHostData, kvShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create key tensor\n");
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
@@ -857,9 +875,8 @@ int main() {
               return ret);
 
     // 5. 创建blockSparseMask tensor ([batch, numHeads, qBlockNum, kvBlockNum])
-    std::vector<int8_t> blockSparseMaskHostData(totalQBlocks * numHeads, 0);
-    blockSparseMaskHostData[0] = static_cast<int8_t>(1);
     std::vector<int64_t> blockSparseMaskShape = {batch, numHeads, qBlockNum, kvBlockNum};
+    std::vector<int8_t> blockSparseMaskHostData(GetShapeSize(blockSparseMaskShape), 1);
     ret = CreateAclTensor(blockSparseMaskHostData, blockSparseMaskShape, &blockSparseMaskDeviceAddr, aclDataType::ACL_INT8, &blockSparseMaskTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create block sparse mask tensor\n");
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
@@ -870,8 +887,7 @@ int main() {
 
     // 6. 创建输出tensor
     std::vector<int64_t> attentionOutShape = {totalQTokens, numHeads, headDim};
-    int64_t attentionOutElementCount = totalQTokens * numHeads * headDim;
-    std::vector<op::fp16_t> attentionOutHostData(attentionOutElementCount, 0.0f);
+    std::vector<op::fp16_t> attentionOutHostData(GetShapeSize(attentionOutShape), 0.0f);
     ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOutTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create attentionOut tensor\n");
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
@@ -972,7 +988,7 @@ int main() {
         numKvHeads,               // numKeyValueHeads
         0,                        // maskType
         scaleValue,               // scaleValue
-        4,                        // innerPrecise
+        innerPrecise,             // innerPrecise（随芯片型号自动选择）
         0,                        // blockSize
         2147483647,               // preTokens
         2147483647,               // nextTokens

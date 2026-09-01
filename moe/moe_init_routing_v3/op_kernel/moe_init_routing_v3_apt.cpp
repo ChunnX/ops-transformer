@@ -12,15 +12,15 @@
  * \file moe_init_routing_v3_apt.cpp
  * \brief
  */
-#include "arch35/moe_v3_mrgsort_out.h"
-#include "arch35/moe_v3_mrgsort.h"
-#include "arch35/moe_v3_sort_one_core.h"
-#include "arch35/moe_v3_sort_multi_core.h"
-#include "arch35/moe_v3_expert_tokens_count.h"
-#include "arch35/moe_v3_row_idx_gather.h"
-#include "arch35/moe_v3_gather_out.h"
-#include "arch35/moe_v3_gather_static_quant.h"
-#include "arch35/moe_v3_gather_dynamic_quant.h"
+#include "arch35/moe_v3_mrgsort_out_arch35.h"
+#include "arch35/moe_v3_mrgsort_arch35.h"
+#include "arch35/moe_v3_sort_one_core_arch35.h"
+#include "arch35/moe_v3_sort_multi_core_arch35.h"
+#include "arch35/moe_v3_expert_tokens_count_arch35.h"
+#include "arch35/moe_v3_row_idx_gather_arch35.h"
+#include "arch35/moe_v3_gather_out_arch35.h"
+#include "arch35/moe_v3_gather_static_quant_arch35.h"
+#include "arch35/moe_v3_gather_dynamic_quant_arch35.h"
 #include "arch35/moe_v3_gather_mxfp8_quant.h"
 #include "arch35/moe_v3_gather_fp8_perblock_quant.h"
 #include "arch35/moe_v3_gather_fp8_group_quant.h"
@@ -30,11 +30,13 @@
 #include "arch35/moe_v3_gather_out_mxfp8.h"
 #include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
-#include "arch35/moe_v3_full_load_unquantized.h"
-#include "arch35/moe_v3_full_load_dynamic_quant.h"
-#include "arch35/moe_v3_full_load_static_quant.h"
-#include "arch35/moe_v3_row_idx_gather_droppad.h"
-#include "arch35/moe_v3_gather_out_droppad.h"
+#include "arch35/moe_v3_counting_sort_full_load_unquantized.h"
+#include "arch35/moe_v3_full_load_unquantized_arch35.h"
+#include "arch35/moe_v3_full_load_dynamic_quant_arch35.h"
+#include "arch35/moe_v3_full_load_static_quant_arch35.h"
+#include "arch35/moe_v3_row_idx_gather_droppad_arch35.h"
+#include "arch35/moe_v3_gather_out_droppad_arch35.h"
+#include "arch35/moe_v3_topk_weight_out.h"
 
 /*
  * 非量化
@@ -159,6 +161,12 @@
 #define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000  // 全载、静态量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
 
+/*
+ * CountingSort 性能模板（计数排序）
+ */
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 410000   // 模板1、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 411000 // 模板1、非量化、SCATTER
+
 #define EMPTY_TENSOR 3000000
 
 using namespace AscendC;
@@ -257,7 +265,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe fullLoadPipe;
             MoeV3FullLoadUnquantized<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            userWS, t, &fullLoadPipe);
+                            nullptr, nullptr, userWS, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
@@ -273,7 +281,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum,
-                                expandedScale, userWS, t, &fullLoadPipe);
+                                expandedScale, nullptr, nullptr, userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
             }
@@ -283,7 +291,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum,
-                                expandedScale, userWS, t, &fullLoadPipe);
+                                expandedScale, nullptr, nullptr, userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
             }
@@ -299,11 +307,30 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe fullLoadPipe;
             MoeV3FullLoadStaticQuant<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            userWS, offset, t, &fullLoadPipe);
+                            nullptr, nullptr, userWS, offset, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
 
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    }
+
+    // CountingSort 全载模板
+    // 类型守卫：仅承接 X∈{bf16,fp16,fp32,int8} 的非量化场景，其余扩展类型回退到原分阶段路径。
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS,
+                      t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
 #if (__NPU_ARCH__ == 3510)
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
@@ -445,7 +472,19 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         }
     }
 
-    // 4.直接搬运或是搬运的过程中对x进行量化
+    // 4.TopkWeightOut（仅非FullLoad路径）
+    // V3 regression: isInputTopkWeight 恒为 0，此分支不会执行。
+    // topkWeight/expandedTopkWeight 传 nullptr 仅为占位，不可在 isInputTopkWeight==1 时执行，
+    // 否则 Init 内 SetGlobalBuffer 会解引用空指针。V4 通过 tiling 设置 isInputTopkWeight=1 启用此路径。
+    if (t->isInputTopkWeight == 1) {
+        TPipe topkWeightPipe;
+        MoeV3TopkWeightOut topkWeightOp;
+        topkWeightOp.Init(nullptr, expandedRowIdx, nullptr, userWS, t, &topkWeightPipe);
+        topkWeightOp.Process();
+        topkWeightPipe.Destroy();
+    }
+
+    // 5.直接搬运或是搬运的过程中对x进行量化
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
@@ -471,7 +510,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         }
-        // 4.直接搬运或是搬运的过程中对x进行量化
+        // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||

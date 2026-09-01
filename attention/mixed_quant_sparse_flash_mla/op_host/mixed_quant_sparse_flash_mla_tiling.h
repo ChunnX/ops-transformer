@@ -29,6 +29,8 @@
 
 namespace optiling {
 
+std::vector<int64_t> ToVector(const gert::Shape &shape);
+std::string ToStringRaw(const gert::Shape &shape);
 std::string MQSMLALayoutToSerialString(MQSMLALayout layout);
 
 // -----------算子TilingData定义---------------
@@ -70,7 +72,8 @@ REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMla, MixedQuantSparseFlashMlaTil
 // ---------------算子Tiling类---------------
 class MixedQuantSparseFlashMlaTiling {
 public:
-    explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
+    explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoOpTiling(MQSMLATilingInfo *tilingInfo);
 
 private:
@@ -84,5 +87,5 @@ private:
     MQSMLATilingInfo *qsmlaInfo_ = nullptr;
 };
 
-}
+} // namespace optiling
 #endif

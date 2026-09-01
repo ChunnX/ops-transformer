@@ -31,39 +31,27 @@ extern "C" {
 #endif
 
 namespace {
+// Dim Num
+constexpr uint32_t DIM_NUM_THREE = 3;
+constexpr uint32_t DIM_NUM_FOUR = 4;
 
 extern aclnnStatus aclnnInnerQuantLightningIndexerGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *weights,
-    const aclTensor *queryDequantScale, const aclTensor *keyDequantScale,
-    const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKeyOptional,
-    const aclTensor *blockTableOptional, int64_t queryQuantMode, int64_t keyQuantMode,
-    char *layoutQueryOptional, char *layoutKeyOptional, int64_t sparseCount, int64_t sparseMode,
-    int64_t preTokens, int64_t nextTokens, int64_t keyStride0, int64_t keyDequantScaleStride0,
-    const aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *query, const aclTensor *key, const aclTensor *weights, const aclTensor *queryDequantScale,
+    const aclTensor *keyDequantScale, const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *actualSeqLengthsKeyOptional, const aclTensor *blockTableOptional, int64_t queryQuantMode,
+    int64_t keyQuantMode, char *layoutQueryOptional, char *layoutKeyOptional, int64_t sparseCount, int64_t sparseMode,
+    int64_t preTokens, int64_t nextTokens, int64_t keyStride0, int64_t keyDequantScaleStride0, const aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                 const aclrtStream stream);
+                                                   const aclrtStream stream);
 
 aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *weights,
-    const aclTensor *queryDequantScale,
-    const aclTensor *keyDequantScale,
-    const aclTensor *actualSeqLengthsQueryOptional,
-    const aclTensor *actualSeqLengthsKeyOptional,
-    const aclTensor *blockTableOptional,
-    int64_t queryQuantMode,
-    int64_t keyQuantMode,
-    char *layoutQueryOptional,
-    char *layoutKeyOptional,
-    int64_t sparseCount,
-    int64_t sparseMode,
-    int64_t preTokens,
-    int64_t nextTokens,
-    const aclTensor *out,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor *query, const aclTensor *key, const aclTensor *weights, const aclTensor *queryDequantScale,
+    const aclTensor *keyDequantScale, const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *actualSeqLengthsKeyOptional, const aclTensor *blockTableOptional, int64_t queryQuantMode,
+    int64_t keyQuantMode, char *layoutQueryOptional, char *layoutKeyOptional, int64_t sparseCount, int64_t sparseMode,
+    int64_t preTokens, int64_t nextTokens, const aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (query == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Query pointer is null, cannot get data type!");
@@ -74,22 +62,54 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
     int64_t keyDequantScaleStride0 = -1;
     if (!IsContiguous(key)) {
         auto keyStride = key->GetViewStrides();
+        auto keyShape = key->GetViewShape();
+        bool isPaBsnd = (layoutKeyOptional != nullptr && std::string(layoutKeyOptional) == "PA_BSND");
+        size_t checkStartIdx = isPaBsnd ? 1 : 0;
+        if (keyShape.GetDimNum() == DIM_NUM_FOUR) {
+            int64_t expected = 1;
+            for (int64_t i = 3; i >= static_cast<int64_t>(checkStartIdx); --i) {
+                if (keyStride[i] != expected) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "Key only supports non-contiguous tensor on the 0-axis in PA scenarios. "
+                            "axis[%ld] stride=%ld, expected=%ld",
+                            i, (long)keyStride[i], (long)expected);
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+                expected *= keyShape.GetDim(i);
+            }
+        }
         keyStride0 = keyStride[0];
     }
     if (!IsContiguous(keyDequantScale)) {
-        auto keyScaleStride = keyDequantScale->GetViewStrides();
-        keyDequantScaleStride0 = keyScaleStride[0];
+        auto scaleStride = keyDequantScale->GetViewStrides();
+        auto scaleShape = keyDequantScale->GetViewShape();
+        bool isPaBsnd = (layoutKeyOptional != nullptr && std::string(layoutKeyOptional) == "PA_BSND");
+        size_t checkStartIdx = isPaBsnd ? 1 : 0;
+        if (scaleShape.GetDimNum() == DIM_NUM_THREE) {
+            int64_t expected = 1;
+            for (int64_t i = 2; i >= static_cast<int64_t>(checkStartIdx); --i) {
+                if (scaleStride[i] != expected) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "Key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios. "
+                            "axis[%ld] stride=%ld, expected=%ld",
+                            i, static_cast<long>(scaleStride[i]), static_cast<long>(expected));
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+                expected *= scaleShape.GetDim(i);
+            }
+        }
+        keyDequantScaleStride0 = scaleStride[0];
     }
 
     return aclnnInnerQuantLightningIndexerGetWorkspaceSize(
         query, key, weights, queryDequantScale, keyDequantScale, actualSeqLengthsQueryOptional,
-        actualSeqLengthsKeyOptional, blockTableOptional, queryQuantMode, keyQuantMode,
-        layoutQueryOptional, layoutKeyOptional, sparseCount, sparseMode, preTokens, nextTokens,
-        keyStride0, keyDequantScaleStride0, out, workspaceSize, executor);
+        actualSeqLengthsKeyOptional, blockTableOptional, queryQuantMode, keyQuantMode, layoutQueryOptional,
+        layoutKeyOptional, sparseCount, sparseMode, preTokens, nextTokens, keyStride0, keyDequantScaleStride0, out,
+        workspaceSize, executor);
 }
 
 aclnnStatus aclnnQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                     const aclrtStream stream)
+                                       const aclrtStream stream)
 {
     return aclnnInnerQuantLightningIndexer(workspace, workspaceSize, executor, stream);
 }

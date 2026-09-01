@@ -35,19 +35,21 @@ using namespace Ops::Base;
 
 ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QuantFlashAttnTilingInfo &qfaInfo)
 {
-    // data_type 支持 INT32；支持输入范围为 1、2、3
+    // data_type 支持 INT32；当前仅实现 quant_mode=5（MxFP4）
     // quant_mode 为属性, parser 中以 const int64_t* 存储, 此处校验其原始值范围
     if (qfaInfo.opParamInfo.quantMode == nullptr) {
         return ge::GRAPH_SUCCESS; // 存在性校验负责
     }
-    const std::vector<int64_t> supportedQuantModes = {1, 2, 3};
+    const std::vector<int64_t> supportedQuantModes = {
+        QUANT_MODE_A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16,
+    };
     int64_t quantModeVal = *qfaInfo.opParamInfo.quantMode;
-    OP_CHECK_IF(std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) ==
-                    supportedQuantModes.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
-                                                      std::to_string(quantModeVal).c_str(),
-                                                      "The value of quant_mode must be in {1, 2, 3}"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            qfaInfo.opName, QUANT_MODE_NAME.c_str(), std::to_string(quantModeVal).c_str(),
+            "The value of quant_mode must be A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 (5)"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -167,12 +169,12 @@ ge::graphStatus QuantChecker::CheckSingleParaLayoutQDescale(const QuantFlashAttn
     // data_type 支持 STRING；支持输入 BNSD/BSND/TND/N2TGD
     // FiaLayout 枚举未引入 N2TGD, parser 仅解析 BSND/BNSD/TND, checker 对齐 parser 实际值。
     const std::vector<FiaLayout> supportedLayouts = {FiaLayout::BNSD, FiaLayout::BSND, FiaLayout::TND};
-    OP_CHECK_IF(std::find(supportedLayouts.begin(), supportedLayouts.end(), qfaInfo.layoutQDescale) ==
-                    supportedLayouts.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, LAYOUT_Q_DESCALE_NAME.c_str(),
-                                                      LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
-                                                      "The value of layout_q_descale must be in BNSD/BSND/TND"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(supportedLayouts.begin(), supportedLayouts.end(), qfaInfo.layoutQDescale) == supportedLayouts.end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, LAYOUT_Q_DESCALE_NAME.c_str(),
+                                              LayoutToSerialStr(qfaInfo.layoutQDescale).c_str(),
+                                              "The value of layout_q_descale must be in BNSD/BSND/TND"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -214,8 +216,8 @@ struct QuantLayoutConstraintConfig {
 };
 
 const std::map<int64_t, QuantLayoutConstraintConfig> QUANT_LAYOUT_CONSTRAINT_TABLE = {
-    {1, {FiaLayout::TND, {FiaLayout::TND, FiaLayout::BnNBsD, FiaLayout::NZ}, FiaLayout::TND}}, // MxFP8
-    {3, {FiaLayout::BNSD, {FiaLayout::BNSD}, FiaLayout::BNSD}},                                // MxFP4
+    {QUANT_MODE_MXFP8, {FiaLayout::TND, {FiaLayout::TND, FiaLayout::BnNBsD, FiaLayout::NZ}, FiaLayout::TND}}, // MxFP8
+    {QUANT_MODE_MXFP4, {FiaLayout::BNSD, {FiaLayout::BNSD}, FiaLayout::BNSD}},                                // MxFP4
 };
 } // namespace
 
@@ -245,11 +247,11 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QuantFlashAttnTilingIn
                         quantModeVal, LayoutToSerialStr(qfaInfo.layoutKV).c_str()),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qfaInfo.layoutOut != config.supportedOutLayout,
-                OP_LOGE(qfaInfo.opName, "When quant_mode is %ld, layout_out must be %s, but got %s", quantModeVal,
-                        LayoutToSerialStr(config.supportedOutLayout).c_str(),
-                        LayoutToSerialStr(qfaInfo.layoutOut).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        qfaInfo.layoutOut != config.supportedOutLayout,
+        OP_LOGE(qfaInfo.opName, "When quant_mode is %ld, layout_out must be %s, but got %s", quantModeVal,
+                LayoutToSerialStr(config.supportedOutLayout).c_str(), LayoutToSerialStr(qfaInfo.layoutOut).c_str()),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -352,7 +354,7 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
         return ge::GRAPH_SUCCESS;
     }
     int64_t quantModeVal = *qfaInfo.opParamInfo.quantMode;
-    if (quantModeVal != 3) { // 非 MxFP4 跳过
+    if (quantModeVal != QUANT_MODE_MXFP4) { // 非 MxFP4 跳过
         return ge::GRAPH_SUCCESS;
     }
 
@@ -375,15 +377,40 @@ ge::graphStatus QuantChecker::CheckMxFp4Constraint(const QuantFlashAttnTilingInf
 
     // MxFP4: D 仅支持 128
     const std::vector<int64_t> supportedHeadDims = {128};
-    OP_CHECK_IF(CheckValueSupport(qfaInfo.qkHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of query and key",
-                                                      std::to_string(qfaInfo.qkHeadDim).c_str(),
-                                                      "MxFP4 only supports D=128"),
+    OP_CHECK_IF(
+        CheckValueSupport(qfaInfo.qkHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of query and key",
+                                              std::to_string(qfaInfo.qkHeadDim).c_str(), "MxFP4 only supports D=128"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckValueSupport(qfaInfo.vHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of value",
+                                              std::to_string(qfaInfo.vHeadDim).c_str(), "MxFP4 only supports D=128"),
+        return ge::GRAPH_FAILED);
+
+    if (CheckMxFp4QkvDtype(qfaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantChecker::CheckMxFp4QkvDtype(const QuantFlashAttnTilingInfo &qfaInfo) const
+{
+    const gert::CompileTimeTensorDesc *queryDesc = qfaInfo.opParamInfo.query.desc;
+    const gert::CompileTimeTensorDesc *keyDesc = qfaInfo.opParamInfo.key.desc;
+    const gert::CompileTimeTensorDesc *valueDesc = qfaInfo.opParamInfo.value.desc;
+    OP_CHECK_IF(queryDesc != nullptr && queryDesc->GetDataType() != ge::DT_FLOAT4_E2M1,
+                OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, QUERY_NAME.c_str(),
+                                          DataTypeToSerialStr(queryDesc->GetDataType()).c_str(), "FLOAT4_E2M1"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckValueSupport(qfaInfo.vHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of value",
-                                                      std::to_string(qfaInfo.vHeadDim).c_str(),
-                                                      "MxFP4 only supports D=128"),
+    OP_CHECK_IF(keyDesc != nullptr && keyDesc->GetDataType() != ge::DT_FLOAT4_E2M1,
+                OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, KEY_NAME.c_str(),
+                                          DataTypeToSerialStr(keyDesc->GetDataType()).c_str(), "FLOAT4_E2M1"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueDesc != nullptr && valueDesc->GetDataType() != ge::DT_FLOAT4_E2M1,
+                OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, VALUE_NAME.c_str(),
+                                          DataTypeToSerialStr(valueDesc->GetDataType()).c_str(), "FLOAT4_E2M1"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -504,8 +531,8 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QuantFlashAttnTilingInfo &
         return ge::GRAPH_SUCCESS; // 存在性校验负责
     }
     int64_t quantModeVal = *qfaInfo.opParamInfo.quantMode;
-    // MxFP8(1) 与 MxFP4(3) 场景下 descale dtype 限定为 FLOAT8_E8M0; HiF8(2) 不限制
-    if (quantModeVal != 1 && quantModeVal != 3) {
+    // MxFP8(1) 与 MxFP4(5) 场景下 descale dtype 限定为 FLOAT8_E8M0; 其他 mode 不限制
+    if (quantModeVal != QUANT_MODE_MXFP8 && quantModeVal != QUANT_MODE_MXFP4) {
         return ge::GRAPH_SUCCESS;
     }
 
