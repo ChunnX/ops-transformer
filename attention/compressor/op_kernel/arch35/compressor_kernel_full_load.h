@@ -20,7 +20,7 @@
 #include "compressor_template_tiling_key.h"
 #include "compressor_tiling_data.h"
 #include "compressor_tools.h"
-#include "compressor_block_cube_full_load.h"
+#include "compressor_block_cube.h"
 #include "compressor_block_vec_full_load.h"
 
 using namespace AscendC;
@@ -90,7 +90,7 @@ private:
     uint32_t aiCoreIdx = 0;
 
     // ==============================Service Define==============================
-    CompressorBlockCubeFullLoad<COMP> blockCube_;
+    CompressorBlockCube<COMP, true> blockCube_;
     CompressorBlockVectorFullLoad<COMP> blockVec_;
 
     uint32_t loopTimes = 0;
