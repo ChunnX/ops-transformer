@@ -296,8 +296,8 @@ BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::ComputeBasicBlockAivNdKnNzNk(const Prol
 
             auto weight4BitTensor = MakeWeight4BitTensor(mte2RealK, param.nL1Size);
             auto weight8BitTensor = MakeWeight8BitTensor(mte2RealK, param.nL1Size);
-            auto l1Tensor = l1BaseTensor.Slice(AscendC::Te::MakeCoord(l1SplitOffset, 0),
-                                               AscendC::Te::MakeShape(mte2RealK, param.nL1Size));
+            auto l1Tensor = l1BaseTensor.slice(asc::te::make_coord(l1SplitOffset, 0),
+                                               asc::te::make_shape(mte2RealK, param.nL1Size));
 
             WaitVectorToMTE2();
             CopyGmToUb(kOffset + l1SplitOffset, mte2RealK, param, gmWeightTensor, weight4BitTensor);
@@ -377,10 +377,10 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
     const GMWeightBaseTensorType &gmWeightBaseTensor, const Weight4BitTensorType &weight4BitTensor)
 {
     if (mte2RealK > 0) {
-        auto gmSliceTensor = gmWeightBaseTensor.Slice(AscendC::Te::MakeCoord(kOffset, param.nOffset),
-                                                      AscendC::Te::MakeShape(mte2RealK, param.nL1Size));
-        auto copyGM2UBWeight = AscendC::Te::MakeCopy(Blaze::Gemm::Tile::CopyGM2UBWeight{});
-        AscendC::Te::Copy(copyGM2UBWeight, weight4BitTensor, gmSliceTensor);
+        auto gmSliceTensor = gmWeightBaseTensor.slice(asc::te::make_coord(kOffset, param.nOffset),
+                                                      asc::te::make_shape(mte2RealK, param.nL1Size));
+        auto copyGM2UBWeight = asc::te::make_copy(Blaze::Gemm::Tile::CopyGM2UBWeight{});
+        asc::te::copy(copyGM2UBWeight, weight4BitTensor, gmSliceTensor);
     }
 
     // Synchronization point after copy completes
@@ -411,8 +411,8 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyWeightToL1(
 {
     if (likely(mte2RealK > 0)) {
         // Copy weight 8-bit from UB to L1 (inlined from CopyWeight8BitForAligned)
-        auto copyUB2L1 = AscendC::Te::MakeCopy(Blaze::Gemm::Tile::CopyUB2L1Weight8Bit{});
-        AscendC::Te::Copy(copyUB2L1, l1Tensor, weight8BitTensor);
+        auto copyUB2L1 = asc::te::make_copy(Blaze::Gemm::Tile::CopyUB2L1Weight8Bit{});
+        asc::te::copy(copyUB2L1, l1Tensor, weight8BitTensor);
     }
     SetFlag<HardEvent::MTE3_V>(vecEventIdMte3ToV_ + (ubComputeLoopIdx_ & (WEIGHT_8BIT_BUFFER_NUM - 1)));
     ubComputeLoopIdx_++;
@@ -436,9 +436,9 @@ BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeWeight4BitTensor(uint64_t mte2RealK,
                                                                                      uint64_t nL1Size)
 {
-    return AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, InType>(
+    return asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::ub, InType>(
                                        WEIGHT_4BIT_OFFSETS[ubMte2LoopIdx_ & (kUbMte2BufferNum - 1)]),
-                                   AscendC::Te::FrameLayoutFormat<AscendC::Te::ZNLayoutPtn, AscendC::Std::Int<32>>{}(
+                                   asc::te::frame_layout_format<asc::te::zn_layout_ptn, AscendC::Std::Int<32>>{}(
                                        static_cast<int64_t>(mte2RealK), static_cast<int64_t>(nL1Size)));
 }
 
@@ -446,8 +446,8 @@ BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeWeight8BitTensor(uint64_t mte2RealK,
                                                                                      uint64_t nL1Size)
 {
-    return AscendC::Te::MakeTensor(
-        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, OutType>(
+    return asc::te::make_tensor(
+        asc::te::make_mem_ptr<asc::te::location::ub, OutType>(
             WEIGHT_8BIT_OFFSETS[ubComputeLoopIdx_ & (WEIGHT_8BIT_BUFFER_NUM - 1)]),
         Blaze::Gemm::Weight8BitUBLayout<OutType, WEIGHT_8BIT_LAYOUT_INNER_SIZE>{}(mte2RealK, nL1Size));
 }
@@ -456,9 +456,9 @@ BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTensor(uint64_t l1RealLen, uint64_t nL1Size)
 {
     auto l1BaseLayout =
-        AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<OutType>>(l1RealLen,
+        asc::te::make_frame_layout<asc::te::zn_layout_ptn, asc::te::layout_trait_default<OutType>>(l1RealLen,
                                                                                                          nL1Size);
-    return AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, OutType>(
+    return asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::l1, OutType>(
                                        L1_WEIGHT_OFFSETS[cvLoopIdx_ & (DOUBLE_BUFFER - 1)]),
                                    l1BaseLayout);
 }
