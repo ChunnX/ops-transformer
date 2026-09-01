@@ -1,6 +1,7 @@
 # CCU AllToAll 方案分析与实施计划
 
-> 状态：**方案已确认，进入阶段1（编码）**。编码完成后飞书通知用户去编译（用户另有 agent 不可访问的编译服务器）。
+> 状态：**阶段1（编码及编译验证）已完成** ✅（2025-08-29，用户服务器编译通过）
+> 待推进：阶段2 精度验证（用户 NPU 服务器上板，用例矩阵见 §7）。
 > 基线工程：`../../ccu_all_gather_matmul/`（相对本文件 docs/ 目录；下称 AG 示例）。
 > 已确认决策：① 三阶段推进（阶段1 编码+交付编译 / 阶段2 精度验证 / 阶段3 下一步演进）；
 > ② 均匀 AllToAll（strideCount 型）；③ dtype 默认 **FP16**；④ 参数桥 11 槽；⑤ AIC kernel 保留
@@ -169,13 +170,25 @@ GroupCopy / Event / Notify 的调用写法、Loop Entity 重建、post-sync 顺�
 
 ### 5.2 阶段1 子步骤
 
-| 子步骤 | 内容 |
-|---|---|
-| 1a | 工程骨架：CMakeLists（Blaze-free）+ run.sh + README |
-| 1b | `host_launcher.h`：A2AContext + PrepareAllToAll（11 槽、FP16 校验、offsets、CalGoSize、token） |
-| 1c | `a2a_bridge_kernel.h`（AIC 参数桥预写 + wake + done 轮询，无 Blaze）+ `ccu_alltoall_kernel.asc`（CCU kernel 全量 + launch） |
-| 1d | `sample_main.cpp`：溯源编码数据 + 断言校验 + precision/perf 双模式 |
-| 1e | 静态自查（符号一致性/include/槽位索引/ASC 语法对齐 AG）→ 飞书通知 |
+| 子步骤 | 内容 | 状态 |
+|---|---|---|
+| 1a | 工程骨架：CMakeLists（Blaze-free）+ run.sh + README | ✅ |
+| 1b | `host_launcher.h`：A2AContext + PrepareAllToAll（11 槽、FP16 校验、offsets、CalGoSize、token） | ✅ |
+| 1c | `a2a_bridge_kernel.h`（AIC 参数桥预写 + wake + done 轮询，无 Blaze）+ `ccu_alltoall_kernel.asc`（CCU kernel 全量 + launch） | ✅ |
+| 1d | `sample_main.cpp`：溯源编码数据 + 断言校验 + precision/perf 双模式 | ✅ |
+| 1e | 静态自查（符号一致性/include/槽位索引/ASC 语法对齐 AG） | ✅ |
+| 1f | 用户服务器编译验证（两轮报错修复后通过） | ✅ 2025-08-29 |
+
+**阶段1 编译问题记录**（详见 §5.2.1）：
+1. `ACLCHECK` 宏返回 `aclError`，用于 `HcclResult` 返回函数导致类型不兼容（commit `1a80ff575`，含用户手改的 `aclrtFinalize`→`aclFinalize` API 名修正）
+2. 桥 kernel 无 Cube/Vector 指令，ld.lld 无法自动推导 kernel 类型 → 手动声明 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY)`（commit `1e013df40`）
+
+### 5.2.1 编译问题与修复记录
+
+| # | 报错 | 根因 | 修复 | commit |
+|---|---|---|---|---|
+| C1 | `host_launcher.h:205 cannot initialize return object of type HcclResult with an lvalue of type aclError` | `ACLCHECK` 宏内部 `return ret`（aclError），被错误用于 `HcclResult` 返回函数（重构时误替换 AG 原版的 aclRet 局部变量模式） | `ComputeAndCopyOffsets`/`ReleaseA2aContext`/`RunA2aOnce` 共 11 处改回 `aclRet` 局部变量 + `return HCCL_E_INTERNAL`；审计确认剩余 ACLCHECK 均在 int 返回函数（合法） | `1a80ff575` |
+| C2 | `ld.lld: error: the type of kernel function alltoall_bridge_kernel auto derivate failed, please manually add the function type attribute` | 桥 kernel 函数体仅含 GM 轮询读写 + Nop，无 Cube/Vector 指令，编译器无法自动推导 AIC/AIV 类型（AG 的 matmul kernel 靠 Blaze Cube 指令自动推导，无此问题） | kernel 体首行加 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);`（语法依据：AG phase2 用过同款宏 MIX_AIC_1_1 + CANN broadcast_sch.h 的 AIV_ONLY 先例；枚举全集 AIV_ONLY/AIC_ONLY/MIX_*/AICORE） | `1e013df40` |
 
 ### 5.3 飞书通知协议（每阶段完成必达）
 

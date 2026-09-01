@@ -1,4 +1,8 @@
-# CCU AllToAll 纯通信验证（阶段1）
+# CCU AllToAll 纯通信验证（阶段1 编译通过 ✅）
+
+> **阶段状态**：阶段1（编码及编译验证）完成——2025-08-29 用户服务器编译通过
+> （commits：`e255a5121` 工程初始+检视修复 → `1a80ff575` 编译修复1 → `1e013df40` 编译修复2）。
+> 下一步：阶段2 精度验证（NPU 上板，用例矩阵见 `docs/DESIGN_ANALYSIS.md` §7）。
 
 2 卡（可扩展）均匀 AllToAll + CCU 直调（FP16，strideCount 型，commTurn 多轮事件桥）。
 通信全部运行在 `__ccu_host__` CCU kernel 内（streamCcu），AIC 桥 kernel（streamAicore）
