@@ -2102,3 +2102,59 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_tiling_26)
     std::vector<size_t> expectWorkspaces = {20316160};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
+
+// Explicit invalid-line precision must be encoded in the tiling key even without an attention mask.
+TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_inner_precise_2_without_mask)
+{
+    optiling::FlashAttentionScoreCompileInfo compileInfo = {
+        64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
+    gert::TilingContextPara tilingContextPara(
+        "FlashAttentionScore",
+        {
+            {{{16, 1, 1, 1}, {16, 1, 1, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // q
+            {{{16, 1, 1, 1}, {16, 1, 1, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // k
+            {{{16, 1, 1, 1}, {16, 1, 1, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // v
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                       // real_shift
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},                         // drop_mask
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                       // padding_mask
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},                         // atten_mask
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                         // prefix
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                         // actual_seq_qlen
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                         // actual_seq_kvlen
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                         // q_start_idx
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},                         // kv_start_idx
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // dScaleQ
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // dScaleK
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // dScaleV
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                       // queryRope
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                       // keyRope
+        },
+        {
+            {{{16, 1, 1, 8}, {16, 1, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 1, 1, 8}, {16, 1, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{0, 0, 0, 0}, {0, 0, 0, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16, 1, 1, 1}, {16, 1, 1, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"keep_prob", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"pre_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+            {"next_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+            {"head_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"seed", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_out_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+        },
+        &compileInfo, "Ascend950", 64, 262144, 8192);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    const uint64_t tilingKey = static_cast<uint64_t>(tilingInfo.tilingKey);
+    EXPECT_EQ((tilingKey >> 2) & 0x3, 2);  // ImplMode
+    EXPECT_EQ((tilingKey >> 56) & 0x1, 1); // Reuse the HasAtten kernel; tiling data still records no real mask.
+}
