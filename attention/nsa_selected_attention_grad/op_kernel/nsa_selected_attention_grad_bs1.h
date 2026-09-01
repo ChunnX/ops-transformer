@@ -276,6 +276,7 @@ __aicore__ inline void SelectedAttentionGrad<NSAGT>::Init(
     InitParams(ordTilingData, actual_seq_qlen, actual_seq_kvlen);
     InitWorkspace(workspace);
     AtomicClean();
+    SyncAll();
     InitUB(pipe);
 }
 
@@ -1104,11 +1105,13 @@ template <typename NSAGT> __aicore__ inline void SelectedAttentionGrad<NSAGT>::C
     SetLastComputeInfo(mm12GmAddr, scatterDkGmAddr, scatterDvGmAddr);
 
     VectorProcess(lastMM12WorkspaceAddr, lastMM345InputAddr);
-    SendMatmulDV(lastMM345InputAddr, lastS1AGGmAddr, lastScatterDvGmAddr, false);
-    SendMatmulDQ(lastMM345InputAddr, lastSelectedKGmAddr, lastS1QGmAddr, false);
-    SendMatmulDK(lastMM345InputAddr, lastS1QGmAddr, lastScatterDkGmAddr, false);
-    mm4.WaitIterateAll();
-    mm5.WaitIterateAll();
+    SendMatmulDV(lastMM345InputAddr, lastS1AGGmAddr, lastScatterDvGmAddr, isLastBN2S1);
+    SendMatmulDQ(lastMM345InputAddr, lastSelectedKGmAddr, lastS1QGmAddr, isLastBN2S1);
+    SendMatmulDK(lastMM345InputAddr, lastS1QGmAddr, lastScatterDkGmAddr, isLastBN2S1);
+    if (!isLastBN2S1) {
+        mm4.WaitIterateAll();
+        mm5.WaitIterateAll();
+    }
     SyncAll();
 }
 
