@@ -49,7 +49,9 @@ constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
 constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
-const std::set<std::string> SUPPORT_COMM_MODE_A5{"ai_cpu", "ccu"};
+const std::set<std::string> SUPPORT_COMM_MODE_A5{
+    "ai_cpu", "ccu", "ccu_peer_only"
+};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt) const
 {
