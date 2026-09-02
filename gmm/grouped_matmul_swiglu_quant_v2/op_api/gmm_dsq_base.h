@@ -498,14 +498,6 @@ protected:
         return true;
     }
 
-    for (size_t i = 0; i < wLength; i++) {
-        const aclTensor *wScale = (*gmmDsqParams_.weightScale)[i];
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(wScale, weightScaleExpectShape, return false);
-    }
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.x, xExpectShape, return false);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.xScale, xScaleExpectShape, return false);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.output, outputExpectShape, return false);
-    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.outputScale, outputScaleExpectShape, return false);
     bool CheckGroupListAndTailLimits(int64_t e, int64_t n, int64_t k, const std::string &scenario)
     {
         // groupList的长度应小于等于weight的专家数
