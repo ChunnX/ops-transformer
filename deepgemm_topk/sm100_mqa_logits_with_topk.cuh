@@ -728,8 +728,8 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     // PHASE 2: TopK selection
     // All warps (math + specialized) participate
     // ========================================================================
-    {
-        const uint32_t total_warps = kSpecWarpStart + 4;  // math warps + 4 specialized warps
+    if (warp_idx < kSpecWarpStart) {
+        const uint32_t total_warps = kSpecWarpStart;
         const uint32_t topk_scratch_per_warp = kSparseCount * 8;
         struct TopKScratch {
             float vals[kSparseCount];
