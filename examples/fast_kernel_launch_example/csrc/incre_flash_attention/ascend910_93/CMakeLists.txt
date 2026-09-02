@@ -8,4 +8,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-add_sources("--npu-arch=dav-2201")
+if(DEFINED ENV{IFA_HEAD_TIMING_MODE})
+    set(IFA_HEAD_TIMING_MODE "$ENV{IFA_HEAD_TIMING_MODE}")
+elseif(NOT DEFINED IFA_HEAD_TIMING_MODE)
+    set(IFA_HEAD_TIMING_MODE 2)
+endif()
+if(NOT IFA_HEAD_TIMING_MODE MATCHES "^[12]$")
+    message(FATAL_ERROR "IFA_HEAD_TIMING_MODE must be 1 (entry) or 2 (before first MTE2)")
+endif()
+
+add_sources("--npu-arch=dav-2201 -DIFA_HEAD_TIMING_MODE=${IFA_HEAD_TIMING_MODE}")

@@ -119,6 +119,10 @@ public:
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1,
                                          __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
                                          __gm__ uint8_t *quantOffset2);
+    __aicore__ inline void SetHeadStartCycle(uint64_t cycle)
+    {
+        headStartCycle = cycle;
+    }
     __aicore__ inline void Process();
 
     // 中间计算数据类型为float，高精度模式
@@ -194,6 +198,11 @@ protected:
     GlobalTensor<T> accumOutGm;
     GlobalTensor<T> lseSumFdGm;
     GlobalTensor<T> lseMaxFdGm;
+    uint64_t headStartCycle = 0;
+#ifdef IFA_HEAD_TIMING_DEBUG
+    GlobalTensor<uint64_t> headTimingGm;
+    __aicore__ inline void RecordHeadTiming(uint64_t beforeFirstMte2Cycle);
+#endif
 
     // kv_left_padding
     GlobalTensor<int64_t> kvPaddingSizeGm;
@@ -980,6 +989,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     // init global buffer
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
+#ifdef IFA_HEAD_TIMING_DEBUG
+    headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
+#endif
     // batch连续时,只需要初始化一次;不连续时,需要在使用时根据batchIdx初始化
     if (batchContinuous) {
         InitKeyGm(0);
@@ -1291,6 +1303,29 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(
 
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 }
+
+#ifdef IFA_HEAD_TIMING_DEBUG
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::RecordHeadTiming(uint64_t beforeFirstMte2Cycle)
+{
+    constexpr uint64_t HEAD_TIMING_MAGIC = 0x1FA20268ULL;
+    constexpr uint64_t HEAD_TIMING_ENTRY_COMMIT = 0xE17E2026ULL;
+    constexpr uint64_t HEAD_TIMING_COMMIT = 0xC0DE2026ULL;
+    constexpr uint32_t HEAD_TIMING_SLOT_COUNT = 8;
+    constexpr uint64_t CORE_TYPE_VECTOR = 1;
+    const uint32_t base = tmpBlockIdx * HEAD_TIMING_SLOT_COUNT;
+
+    headTimingGm.SetValue(base + 5, 0);
+    headTimingGm.SetValue(base + 0, HEAD_TIMING_MAGIC);
+    headTimingGm.SetValue(base + 1, tmpBlockIdx);
+    headTimingGm.SetValue(base + 2, CORE_TYPE_VECTOR);
+    headTimingGm.SetValue(base + 3, headStartCycle);
+    headTimingGm.SetValue(base + 4, beforeFirstMte2Cycle);
+    headTimingGm.SetValue(base + 6, aiCoreIdx);
+    headTimingGm.SetValue(base + 7, 0);
+    headTimingGm.SetValue(base + 5, beforeFirstMte2Cycle == 0 ? HEAD_TIMING_ENTRY_COMMIT : HEAD_TIMING_COMMIT);
+}
+#endif
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantScale(LocalTensor<T> &castUb,
@@ -3995,13 +4030,24 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
 {
-    return ;
+#ifdef IFA_HEAD_TIMING_DEBUG
+    if ASCEND_IS_AIC {
+        return;
+    }
+    if (aiCoreIdx >= usedCoreNum) {
+        RecordHeadTiming(0);
+        return;
+    }
+#endif
+// Early return cannot leave pipeline events live across consecutive graph launches.
+#ifndef IFA_HEAD_TIMING_DEBUG
     if ASCEND_IS_AIV {
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
     }
+#endif
     if (aiCoreIdx < usedCoreNum) {
         if ASCEND_IS_AIV {
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
@@ -4054,6 +4100,11 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
 
         for (uint32_t bn2gIdx = 0; bn2gIdx < bn2LoopTimes; bn2gIdx++) {
             GetBN2Gid(bn2gIdx);
+#ifdef IFA_HEAD_TIMING_DEBUG
+            const uint64_t beforeFirstMte2Cycle = static_cast<uint64_t>(asc_get_system_cycle());
+            RecordHeadTiming(beforeFirstMte2Cycle);
+            return;
+#endif
             GetActualSeqLen(bIdx, s1Idx);
             UpdateInnerLoopCond();
             if (curActSeqLenIsZero) {

@@ -12,7 +12,40 @@
  * \file incre_flash_attention_arch22.h
  * \brief
  */
+#ifndef IFA_HEAD_TIMING_MODE
+#define IFA_HEAD_TIMING_MODE 2
+#endif
+
+#if IFA_HEAD_TIMING_MODE == 2
+#define IFA_HEAD_TIMING_DEBUG
+#endif
+
+#define asc_get_system_cycle AscendC::GetSystemCycle
 #include "incre_flash_attention_preload_dd.h"
+
+__aicore__ inline void RecordKernelEntryTiming(__gm__ uint8_t *attentionOut, uint64_t entryCycle)
+{
+    if ASCEND_IS_AIV {
+        constexpr uint64_t HEAD_TIMING_MAGIC = 0x1FA20268ULL;
+        constexpr uint64_t HEAD_TIMING_ENTRY_COMMIT = 0xE17E2026ULL;
+        constexpr uint32_t HEAD_TIMING_SLOT_COUNT = 8;
+        constexpr uint64_t CORE_TYPE_VECTOR = 1;
+        const uint32_t vectorBlockIdx = GetBlockIdx();
+        const uint32_t base = vectorBlockIdx * HEAD_TIMING_SLOT_COUNT;
+        GlobalTensor<uint64_t> headTimingGm;
+        headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
+
+        headTimingGm.SetValue(base + 5, 0);
+        headTimingGm.SetValue(base + 0, HEAD_TIMING_MAGIC);
+        headTimingGm.SetValue(base + 1, vectorBlockIdx);
+        headTimingGm.SetValue(base + 2, CORE_TYPE_VECTOR);
+        headTimingGm.SetValue(base + 3, entryCycle);
+        headTimingGm.SetValue(base + 4, 0);
+        headTimingGm.SetValue(base + 6, vectorBlockIdx / 2);
+        headTimingGm.SetValue(base + 7, 0);
+        headTimingGm.SetValue(base + 5, HEAD_TIMING_ENTRY_COMMIT);
+    }
+}
 
 template <class T>
 __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __gm__ uint8_t *p_metadata, T *metadata)
@@ -31,9 +64,10 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
 #endif
 }
 
-#define INVOKE_IFA_NO_KFC_DD_OP_IMPL(templateClass, ...)                                                               \
+#define INVOKE_IFA_NO_KFC_DD_OP_IMPL(templateClass, headStartCycle, ...)                                               \
     do {                                                                                                               \
         templateClass<IFAType<__VA_ARGS__>> op;                                                                        \
+        op.SetHeadStartCycle(headStartCycle);                                                                           \
         const optiling::IncreFlashAttentionTilingData *__restrict tiling_data = &tiling;                               \
         const IncreFlashAttentionMetaData *__restrict meta_data = nullptr;                                             \
         IncreFlashAttentionMetaData metaDataTmp;                                                                       \
@@ -49,9 +83,10 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
         op.Process();                                                                                                  \
     } while (0)
 
-#define INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(templateClass, ...)                                                            \
+#define INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(templateClass, headStartCycle, ...)                                            \
     do {                                                                                                               \
         templateClass<IFAType<__VA_ARGS__>> op;                                                                        \
+        op.SetHeadStartCycle(headStartCycle);                                                                           \
         const optiling::IncreFlashAttentionTilingData *__restrict tiling_data = &tiling;                               \
         const IncreFlashAttentionMetaData *__restrict meta_data = nullptr;                                             \
         IncreFlashAttentionMetaData metaDataTmp;                                                                       \
@@ -85,12 +120,17 @@ __global__ __mix__(1, 2) void incre_flash_attention(
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
     optiling::IncreFlashAttentionTilingData tiling)
 {
+    const uint64_t headStartCycle = static_cast<uint64_t>(asc_get_system_cycle());
+#if IFA_HEAD_TIMING_MODE == 1
+    RecordKernelEntryTiming(attentionOut, headStartCycle);
+    return;
+#endif
     TPipe tPipe;
     __gm__ uint8_t *user = workspace;
 
-    INVOKE_IFA_NO_KFC_DD_OP_IMPL(IncreFlashAttentionAttenPreloadDD, bfloat16_t, int8_t, bfloat16_t, bfloat16_t, true,
-                                 FLASH_DECODE, static_cast<LAYOUT>(LAYOUT_T), ANTIQUANT_MODE, false, LAYOUT::NZ,
-                                 AMLAMODE::NORMAL);
+    INVOKE_IFA_NO_KFC_DD_OP_IMPL(IncreFlashAttentionAttenPreloadDD, headStartCycle, bfloat16_t, int8_t, bfloat16_t,
+                                 bfloat16_t, true, FLASH_DECODE, static_cast<LAYOUT>(LAYOUT_T), ANTIQUANT_MODE, false,
+                                 LAYOUT::NZ, AMLAMODE::NORMAL);
 }
 
 // SK Adapt
@@ -133,6 +173,11 @@ struct SKArgsStruct {
 template <uint8_t FLASH_DECODE, uint8_t LAYOUT_T, uint8_t ANTIQUANT_MODE, uint32_t splitNum>
 __sk__ void incre_flash_attention_sk(const SKArgsStruct *args, const sk::SkSystemArgs *sysArgs)
 {
+    const uint64_t headStartCycle = static_cast<uint64_t>(asc_get_system_cycle());
+#if IFA_HEAD_TIMING_MODE == 1
+    RecordKernelEntryTiming(args->attentionOut, headStartCycle);
+    return;
+#endif
     GM_ADDR query = args->query;
     GM_ADDR key = args->key;
     GM_ADDR value = args->value;
@@ -170,9 +215,9 @@ __sk__ void incre_flash_attention_sk(const SKArgsStruct *args, const sk::SkSyste
     TPipe tPipe;
     __gm__ uint8_t *user = workspace;
 
-    INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(IncreFlashAttentionAttenPreloadDD, bfloat16_t, int8_t, bfloat16_t, bfloat16_t, true,
-                                    FLASH_DECODE, static_cast<LAYOUT>(LAYOUT_T), ANTIQUANT_MODE, false, LAYOUT::NZ,
-                                    AMLAMODE::NORMAL);
+    INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(IncreFlashAttentionAttenPreloadDD, headStartCycle, bfloat16_t, int8_t, bfloat16_t,
+                                    bfloat16_t, true, FLASH_DECODE, static_cast<LAYOUT>(LAYOUT_T), ANTIQUANT_MODE, false,
+                                    LAYOUT::NZ, AMLAMODE::NORMAL);
     tPipe.DestroyWithoutPipeAll();
 }
 
@@ -191,3 +236,5 @@ FA_SK_BIND(1, 0, 0);
 FA_SK_BIND(1, 0, 1);
 FA_SK_BIND(1, 1, 0);
 FA_SK_BIND(1, 1, 1);
+
+#undef asc_get_system_cycle

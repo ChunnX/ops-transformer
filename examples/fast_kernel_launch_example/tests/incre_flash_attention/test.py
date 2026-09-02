@@ -9,8 +9,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 import sys
+import csv
 import logging
+import os
+from pathlib import Path
+
 import torch
+import torch_npu
 import torch.nn as nn
 import ascend_ops
 
@@ -21,6 +26,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+HEAD_TIMING_MAGIC = 0x1FA20268
+HEAD_TIMING_ENTRY_COMMIT = 0xE17E2026
+HEAD_TIMING_COMMIT = 0xC0DE2026
+HEAD_TIMING_SLOT_COUNT = 8
+CORE_TYPE_VECTOR = 1
+EXPECTED_VECTOR_CORES = 48
+HEAD_TIMING_LAUNCHES = int(os.environ.get("HEAD_TIMING_LAUNCHES", "101"))
+HEAD_TIMING_OUTPUT = Path(
+    os.environ.get("HEAD_TIMING_OUTPUT", "ifa_head_timing_raw.csv")
+)
+NPU_DEVICE = int(os.environ.get("NPU_DEVICE", "0"))
+HEAD_TIMING_POINT = os.environ.get("HEAD_TIMING_POINT", "mte2")
+if HEAD_TIMING_POINT not in {"entry", "mte2"}:
+    raise ValueError("HEAD_TIMING_POINT must be 'entry' or 'mte2'")
+
 # =============================================
 # 🔧 CONFIGURATION CENTER (可配置化)
 # =============================================
@@ -29,7 +49,7 @@ logger = logging.getLogger(__name__)
 class AttentionConfig:
     def __init__(self):
         # Attention Dimensions
-        self.batch_size = 18
+        self.batch_size = 24
         self.q_head_num = 64
         self.kv_head_num = 1
         self.q_seq = 1
@@ -173,6 +193,68 @@ def generate_inputs(config: AttentionConfig):
     return {"metaParam": meta_param, "faParam": fa_param}
 
 
+def read_head_timing(timing_output: torch.Tensor, phase: str, launch_index: int):
+    raw = timing_output.detach().cpu().contiguous().view(torch.int64).flatten()
+    record_count = raw.numel() // HEAD_TIMING_SLOT_COUNT
+    records = raw[: record_count * HEAD_TIMING_SLOT_COUNT].view(
+        record_count, HEAD_TIMING_SLOT_COUNT
+    )
+    records = records[records[:, 0] == HEAD_TIMING_MAGIC]
+    if records.numel() == 0:
+        raise RuntimeError("No IFA head timing records were written by the kernel")
+
+    entry_valid = (
+        (records[:, 1] >= 0)
+        & (records[:, 1] < EXPECTED_VECTOR_CORES)
+        & (records[:, 2] == CORE_TYPE_VECTOR)
+        & (records[:, 3] > 0)
+        & (
+            (records[:, 5] == HEAD_TIMING_ENTRY_COMMIT)
+            | (records[:, 5] == HEAD_TIMING_COMMIT)
+        )
+    )
+    invalid_count = int((~entry_valid).sum().item())
+    records = records[entry_valid]
+    if records.numel() == 0:
+        raise RuntimeError("All IFA head timing records were incomplete")
+    if invalid_count:
+        logger.warning("Discarded %d incomplete timing records", invalid_count)
+
+    records = records[records[:, 1].argsort()]
+    if records.shape[0] != EXPECTED_VECTOR_CORES:
+        raise RuntimeError(
+            f"Expected {EXPECTED_VECTOR_CORES} Vector entry records, "
+            f"got {records.shape[0]}"
+        )
+
+    result = []
+    for record in records.tolist():
+        reached_first_mte2 = (
+            record[4] > 0 and record[5] == HEAD_TIMING_COMMIT
+        )
+        result.append(
+            {
+                "measurement_point": HEAD_TIMING_POINT,
+                "phase": phase,
+                "launch_index": launch_index,
+                "vector_block": record[1],
+                "ai_core": record[6],
+                "kernel_entry_cycle": record[3],
+                "before_first_mte2_cycle": record[4] if reached_first_mte2 else "",
+            }
+        )
+    return result
+
+
+def write_head_timing(rows):
+    HEAD_TIMING_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    with HEAD_TIMING_OUTPUT.open("w", newline="", encoding="utf-8") as output_file:
+        writer = csv.DictWriter(output_file, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    logger.info("Raw head timing written to %s", HEAD_TIMING_OUTPUT.resolve())
+
+
 # =============================================
 # 🏁 MAIN EXECUTION (主入口函数)
 # =============================================
@@ -185,6 +267,7 @@ def main():
     # 2. Reset Dynamo (for clean compile)
     logger.info("🔄 Resetting TorchDynamo...")
     torch._dynamo.reset()
+    torch.npu.set_device(NPU_DEVICE)
 
     # 3. Build model
     logger.info("🧠 Building FusedAttentionNetwork...")
@@ -197,14 +280,43 @@ def main():
     # 5. Run inference
     logger.info("🚀 Running inference...")
     try:
-        g = torch.npu.NPUGraph()
-        with torch.npu.graph(g):
-            for i in range(101):
-                logger.info(f">>>>>>执行第{i}次计算")        
-                output, softmaxlse = model(param)
+        graph = torch.npu.NPUGraph()
+        timing_outputs = []
+        logger.info("Capturing %d IFA nodes...", HEAD_TIMING_LAUNCHES)
+        with torch.npu.graph(graph):
+            for _ in range(HEAD_TIMING_LAUNCHES):
+                output, _ = model(param)
+                timing_outputs.append(output)
+
+        logger.info("Synchronizing graph capture...")
+        torch.npu.synchronize()
+        logger.info("Replaying the graph once...")
+        graph.replay()
         torch.npu.synchronize()
 
-        g.replay()
+        timing_rows = []
+        for launch_index, timing_output in enumerate(timing_outputs):
+            launch_rows = read_head_timing(timing_output, "replay", launch_index)
+            timing_rows.extend(launch_rows)
+            reached_count = sum(
+                row["before_first_mte2_cycle"] != "" for row in launch_rows
+            )
+            expected_reached_count = (
+                0 if HEAD_TIMING_POINT == "entry" else EXPECTED_VECTOR_CORES
+            )
+            if reached_count != expected_reached_count:
+                raise RuntimeError(
+                    f"{HEAD_TIMING_POINT} mode expected "
+                    f"{expected_reached_count} T2 records, got {reached_count}"
+                )
+            logger.info(
+                "Launch %d: point=%s vector_entries=%d active_vectors=%d",
+                launch_index,
+                HEAD_TIMING_POINT,
+                len(launch_rows),
+                reached_count,
+            )
+        write_head_timing(timing_rows)
 
     except Exception as e:
         logger.info(f"❌ Inference failed: {e}")
