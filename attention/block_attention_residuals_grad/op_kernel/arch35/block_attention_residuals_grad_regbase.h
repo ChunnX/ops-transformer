@@ -107,6 +107,7 @@ private:
     LocalTensor<float> scalarLocal_;
     LocalTensor<float> probs_;
     LocalTensor<float> invRms_;
+    int32_t gswKahanPos_{0};
 
     uint32_t batchSize_{0};
     uint32_t numBlocks_{0};
@@ -400,14 +401,20 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ComputeBlockGra
     Muls(scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], scalarLocal_[5U * RegBase::GRAD_ELEM_PER_BLK_FP32], -invH_,
          1);
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(eventSV_);
+    WaitFlag<HardEvent::S_V>(eventSV_);
 
     // 融合计算 gradV：out + k + var
     RegBase::FusedGradVF(outFp32_, gradOutFp32_, vRow_, scoreWeight_,
                          scalarLocal_[1U * RegBase::GRAD_ELEM_PER_BLK_FP32], hiddenSize_);
     PipeBarrier<PIPE_V>();
 
-    RegBase::KahanFusedMulAddDual(gswAcc_, gswCmp_, vRow_, scalarLocal_[4U * RegBase::GRAD_ELEM_PER_BLK_FP32],
-                                  hiddenSize_);
+    // gradScoreWeight += (v * invRms) * gradScore，与 arch22/参考同序；
+    // Kahan 保持 arch22 的 role-swap KahanSumUpdate。
+    AscendC::Muls(vRow_, vRow_, invRms_.GetValue(blk), hiddenSize_);
+    AscendC::Muls(vRow_, vRow_, gradScore_.GetValue(blk), hiddenSize_);
+    LocalTensor<float> gswSumCmp[2] = {gswAcc_, gswCmp_};
+    RegBase::KahanSumUpdate(vRow_, gswSumCmp, static_cast<int32_t>(hiddenSize_), gswKahanPos_);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
@@ -447,10 +454,14 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ProcessOneToken
 template <typename D_IN>
 __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::WriteGradScoreWeight()
 {
-    // gswAcc_ 的生命周期到阶段二结束，直接 MTE3 写 Workspace，省去独立输出队列缓冲。
+    // role-swap Kahan 的最后"和"可能落在 gswAcc_ 或 gswCmp_，按 gswKahanPos_ 写 Workspace。
     PipeBarrier<PIPE_V>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(float)), 0, 0, 0};
-    DataCopyPad(gswWkspGm_, gswAcc_, copyParams);
+    LocalTensor<float> gswResult = gswAcc_;
+    if (gswKahanPos_ != 0) {
+        gswResult = gswCmp_;
+    }
+    DataCopyPad(gswWkspGm_, gswResult, copyParams);
     SetFlag<HardEvent::MTE3_S>(eventMTE3S_);
     WaitFlag<HardEvent::MTE3_S>(eventMTE3S_);
 }
@@ -547,6 +558,7 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::Process()
     eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     Duplicate(gswAcc_, 0.0f, hiddenSizeAlignFp32_);
     Duplicate(gswCmp_, 0.0f, hiddenSizeAlignFp32_);
+    gswKahanPos_ = 0;
     PipeBarrier<PIPE_V>();
 
     for (uint32_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {

@@ -414,6 +414,8 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeGradVAndWe
         Duplicate(weightAcc, 0.0f, length);
         Duplicate(weightCmp, 0.0f, length);
         PipeBarrier<PIPE_V>();
+        int32_t kahanPos = 0;
+        LocalTensor<float> sumCmp[2] = {weightAcc, weightCmp};
         // 不同核的 batch 范围互不重叠，因此 gradV 可以直接写入最终输出，无需跨核归约。
         for (int64_t batch = coreBatchStart_; batch < coreBatchEnd_; ++batch) {
             uint64_t metaOffset = static_cast<uint64_t>(batch) * static_cast<uint64_t>(K);
@@ -445,9 +447,10 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeGradVAndWe
                 RegBase::FusedGradVF(gradV, gradHidden, v, scoreWeight, scalar, length);
                 PipeBarrier<PIPE_V>();
 
-                // gradScoreWeight += V * scoreScale，A5 RegBase 使用固定 sum/cmp 角色的 Kahan 累加。
-                RegBase::KahanFusedMulAddDual(weightAcc, weightCmp, v, scalar[3U * RegBase::GRAD_ELEM_PER_BLK_FP32],
-                                              length);
+                // gradScoreWeight += V * (gradScore * invNorm)，与 arch22 SPLIT_H 同序，
+                // Kahan 使用 role-swap KahanSumUpdate。
+                AscendC::Muls(v, v, scoreScale, length);
+                RegBase::KahanSumUpdate(v, sumCmp, static_cast<int32_t>(length), kahanPos);
                 PipeBarrier<PIPE_V>();
                 StoreGradV(block, batch, hStart, length, gradV);
             }
@@ -455,8 +458,13 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ComputeGradVAndWe
 
         // 每个核写入独立 Workspace 区域，等待阶段三进行跨核求和。
         LocalTensor<float> weightResult = wkspOutQue_.AllocTensor<float>();
+        // role-swap Kahan 的最后"和"可能落在 weightAcc 或 weightCmp，按 kahanPos 选择。
+        LocalTensor<float> gswSrc = weightAcc;
+        if (kahanPos != 0) {
+            gswSrc = weightCmp;
+        }
         const uint32_t repeatTimes = (length + RegBase::kVlFp32 - 1U) / RegBase::kVlFp32;
-        AscendC::Copy(weightResult, weightAcc, RegBase::kVlFp32, repeatTimes, {1, 1, 8, 8});
+        AscendC::Copy(weightResult, gswSrc, RegBase::kVlFp32, repeatTimes, {1, 1, 8, 8});
         wkspOutQue_.EnQue(weightResult);
         weightResult = wkspOutQue_.DeQue<float>();
         SetFlag<HardEvent::V_MTE3>(eventVMte3_);
