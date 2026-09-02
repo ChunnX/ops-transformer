@@ -77,7 +77,7 @@ static bool SetShapeAndStrideForMXFPTypeKForGMM(std::vector<int64_t> &viewShape,
     OP_CHECK_IF(viewShape.size() < MXFP_TPYEK_PER_TOKEN_SCALE_DIM_NUM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                     "GroupedMatmul aclnnfallback", "viewShape", std::to_string(viewShape.size()),
-                    "When split k, the dim num should be greater than 2 in mx quant mode."),
+                    "When split k, the dim num should be greater than 2 in mx quant mode"),
                 return false);
     std::swap(viewShape[0], viewShape[1]);
     strides[0] = MXFP_MULTI_BASE_SIZE;
@@ -91,7 +91,7 @@ static bool SetShapeAndStrideForMXFPTypeMForGMM(std::vector<int64_t> &viewShape,
     OP_CHECK_IF(viewShape.size() < MXFP_TPYEM_SCALE_DIM_NUM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                     "GroupedMatmul aclnnfallback", "viewShape", std::to_string(viewShape.size()),
-                    "When split m, the dim num should be greater than 3 in mx quant mode."),
+                    "When split m, the dim num should be greater than 3 in mx quant mode"),
                 return false);
     std::swap(viewShape[TYPEM_SCALE_K_DIM_INDEX], viewShape[TYPEM_SCALE_N_DIM_INDEX]);
     strides[TYPEM_SCALE_K_DIM_INDEX] = MXFP_MULTI_BASE_SIZE;
@@ -105,7 +105,7 @@ static bool SetShapeAndStrideForLastTwoDimForGMM(std::vector<int64_t> &viewShape
     OP_CHECK_IF(
         viewShape.size() < 2,
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("GroupedMatmul aclnnfallback", "viewShape",
-                                                 std::to_string(viewShape.size()), "The dim num must be at least 2."),
+                                                 std::to_string(viewShape.size()), "The dim num must be at least 2"),
         return false);
     // when tensor is transposed, last two dims in strides and viewShape should swap
     auto dimM = viewShape.size() - 2;
@@ -135,7 +135,7 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     OP_CHECK_IF(geTensor == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback",
                                                       ("input tensor at index " + std::to_string(index)).c_str(),
-                                                      "nullptr", "Input tensor conversion requires a non-null tensor."),
+                                                      "nullptr", "Input tensor conversion requires a non-null tensor"),
                 return nullptr);
     auto storageShape = geTensor->GetStorageShape();
     if (storageShape.GetDimNum() <= 1) {
@@ -149,7 +149,7 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
     OP_CHECK_IF(aclCreateTensor == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor lookup result",
-                                                      "nullptr", "Failed to load aclCreateTensor."),
+                                                      "nullptr", "Failed to load aclCreateTensor"),
                 return nullptr);
 
     void *deviceAddr = const_cast<void *>(geTensor->GetAddr());
@@ -194,7 +194,7 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
                                      storageShapeVec.data(), storageShapeVec.size(), deviceAddr);
     OP_CHECK_IF(out == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor result",
-                                                      "nullptr", "Failed to create an ACL tensor."),
+                                                      "nullptr", "Failed to create an ACL tensor"),
                 return nullptr);
     return out;
 }
@@ -341,7 +341,7 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
     OP_CHECK_IF(
         aclCreateTensorList == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensorList lookup result",
-                                              "nullptr", "Failed to load aclCreateTensorList."),
+                                              "nullptr", "Failed to load aclCreateTensorList"),
         return GRAPH_FAILED);
 
     std::vector<const aclTensor *> aclTensorVectorX;
@@ -386,13 +386,13 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
         OP_CHECK_IF(
             aclCreateTensor == nullptr,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor lookup result",
-                                                  "nullptr", "Failed to load aclCreateTensor."),
+                                                  "nullptr", "Failed to load aclCreateTensor"),
             return GRAPH_FAILED);
         perTokenScale = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0,
                                         aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
         OP_CHECK_IF(perTokenScale == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor result",
-                                                          "nullptr", "Failed to create the perTokenScale placeholder."),
+                                                          "nullptr", "Failed to create the perTokenScale placeholder"),
                     return GRAPH_FAILED);
     }
     if (perTokenScaleTensor != nullptr &&
@@ -427,7 +427,7 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
     OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclnnGroupedMatmulV5 status",
                                                       std::to_string(static_cast<unsigned int>(api_ret_gmm)),
-                                                      "aclnnGroupedMatmulV5 must return GRAPH_SUCCESS."),
+                                                      "aclnnGroupedMatmulV5 must return GRAPH_SUCCESS"),
                 return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }

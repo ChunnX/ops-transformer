@@ -1000,7 +1000,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             GetAclnnName(), "x, weight",
             std::string(op::ToString(xDtype_).GetString()) + ", " + op::ToString(weightDtype_).GetString(),
-            "Weight quant case with x dtype and weight dtype is not supported.");
+            "Weight quant case with x dtype and weight dtype is not supported");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
