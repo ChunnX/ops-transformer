@@ -1419,7 +1419,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
                 C0_DIRECT_UB_SLOT_ELEMS, c0DirectConsumeSlot_ * C0_DIRECT_UB_SLOT_SIZE);
             uint32_t c0TileRows =
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(MATMUL_WRITE_OFFSET_M), bsEnd - bsChunkStart));
-            c0DirectStageBuf_ = vecInQueue0_.AllocTensor<P>();
+            vecInQueue0_.AllocTensor<P>(c0DirectStageBuf_);
             Adds(c0DirectStageBuf_, c0DirectUb, ZERO, c0TileRows * copySizeND);
             PipeBarrier<PIPE_V>();
             vecInQueue0_.EnQue(c0DirectStageBuf_);
