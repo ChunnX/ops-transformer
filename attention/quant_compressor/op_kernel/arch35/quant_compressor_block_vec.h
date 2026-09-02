@@ -747,11 +747,11 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::ReadFromCacheState(cons
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
-                                 dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
+                                 dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR, coff_ * dDealSize);
             copyFinishRowCnt += copyRowCount;
             curSeqIdx += copyRowCount;
         }
@@ -767,11 +767,11 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::ReadFromCacheState(cons
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
             DataCopyWithInputQue(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
-                                 dDealSize, coff_ * constInfo_.headDim * 2, coff_ * dDealSize);
+                                 dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR, coff_ * dDealSize);
             copyFinishRowCnt += copyRowCount;
             curSeqIdx += copyRowCount;
         }
@@ -801,10 +801,10 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::WriteToCacheState(const
             }
             if (idInBlockTable != 0) { // 32
                 uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                       remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                       remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                        stateIdx * coff_ * constInfo_.headDim + dStartIdx;
                 DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
-                                      dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
+                                      dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
             }
 
             copyFinishRowCnt += copyRowCount;
@@ -822,10 +822,10 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::WriteToCacheState(const
                 copyRowCount = seqCnt - copyFinishRowCnt;
             }
             uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
-                                   remainRowCnt * 2 * coff_ * constInfo_.headDim +
+                                   remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
             DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
-                                  dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * 2);
+                                  dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
 
             copyFinishRowCnt += copyRowCount;
             curSeqIdx += copyRowCount;

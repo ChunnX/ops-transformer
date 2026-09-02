@@ -225,9 +225,8 @@ __aicore__ inline void CompressorBlockCube<COMP, IS_FULL_LOAD>::CopyXGmToL1(cons
         copySeqCnt = constInfo_.mEnd - constInfo_.mStart;    //info.dealSeqCnt; // 此基本块处理的长度
         sIdx = constInfo_.mStart;    // 起始s在整个T的起始点
     } else {
-        uint64_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
         copySeqCnt = info.dealSeqCnt; // 此基本块处理的长度
-        sIdx = tStart;    // 起始s在整个T的起始点
+        sIdx = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置，sIdx为起始s在整个T的起始点
     }
 
     uint32_t xL1Offset = 0 * BlockElementNum<X_T>();

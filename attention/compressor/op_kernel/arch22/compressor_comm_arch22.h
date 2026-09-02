@@ -277,7 +277,6 @@ struct RunInfo {
 struct Vec1RunInfo {
     // vec相关信息，一次syncAll需处理数据的起始索引
     uint32_t c1v1DbIdx = 0; // vec1 doubleBuffer索引
-    uint32_t v1v2DbIdx = 0; // v1v2 doubleBuffer索引
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
