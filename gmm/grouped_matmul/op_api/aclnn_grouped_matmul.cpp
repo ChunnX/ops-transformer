@@ -1034,11 +1034,10 @@ static aclnnStatus CheckAntiQuantPergroupSize(const gmm::GroupedMatmulParams &gm
     for (size_t i = 0; i < gmmParams.antiquantScaleOptional->Size(); ++i) {
         auto antiquantScaleShape = (*gmmParams.antiquantScaleOptional)[i]->GetViewShape();
         size_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-        CHECK_COND(
-            antiquantScaleDimNum == antiquantScale0DimNum, ACLNN_ERR_PARAM_INVALID,
-            "In op [%s], the tensor shapes of [%s...] are mismatched, the reason is: [antiquantScale[%zu] dim "
-            "num %zu should equal antiquantScale[0] dim num %zu when %s].",
-            opName, "antiquantScale", i, antiquantScaleDimNum, antiquantScale0DimNum, scenario);
+        CHECK_COND(antiquantScaleDimNum == antiquantScale0DimNum, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], the tensor shapes of [%s...] are mismatched, the reason is: [antiquantScale[%zu] dim "
+                   "num %zu should equal antiquantScale[0] dim num %zu when %s].",
+                   opName, "antiquantScale", i, antiquantScaleDimNum, antiquantScale0DimNum, scenario);
         auto wShape = (*gmmParams.weight)[i]->GetViewShape();
         int64_t pergroupSizeOfScale = GetPergroupSize(gmmParams, w0DimNum, wShape, antiquantScaleShape);
         CHECK_COND(pergroupSizeOfScale == pergroupSize, ACLNN_ERR_PARAM_INVALID,
@@ -1052,14 +1051,12 @@ static aclnnStatus CheckAntiQuantPergroupSize(const gmm::GroupedMatmulParams &gm
                 antiquantScale0DimNum == antiquantOffsetDimNum, ACLNN_ERR_PARAM_INVALID,
                 "In op [%s], the tensor shapes of [%s...] are mismatched, the reason is: [antiquantOffset[%zu] dim "
                 "num %zu should equal antiquantScale[0] dim num %zu when %s].",
-                opName, "antiquantOffset, antiquantScale", i, antiquantOffsetDimNum, antiquantScale0DimNum,
-                scenario);
+                opName, "antiquantOffset, antiquantScale", i, antiquantOffsetDimNum, antiquantScale0DimNum, scenario);
             int64_t pergroupSizeOfOffset = GetPergroupSize(gmmParams, w0DimNum, wShape, antiquantOffsetShape);
-            CHECK_COND(
-                pergroupSizeOfOffset == pergroupSize, ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the tensor shapes of [%s...] are mismatched, the reason is: [antiquantOffset[%zu] "
-                "pergroup size %ld should be %ld when %s].",
-                opName, "antiquantOffset, weight", i, pergroupSizeOfOffset, pergroupSize, scenario);
+            CHECK_COND(pergroupSizeOfOffset == pergroupSize, ACLNN_ERR_PARAM_INVALID,
+                       "In op [%s], the tensor shapes of [%s...] are mismatched, the reason is: [antiquantOffset[%zu] "
+                       "pergroup size %ld should be %ld when %s].",
+                       opName, "antiquantOffset, weight", i, pergroupSizeOfOffset, pergroupSize, scenario);
         }
     }
     return ACLNN_SUCCESS;
@@ -1771,17 +1768,14 @@ static aclnnStatus CheckSplitMDimNumAndFormat(const gmm::GroupedMatmulParams &gm
 {
     // check dim
     CHECK_COND(CheckDimNumAndFormat(gmmParams, gmmParams.x, gmm::MIN_FM_DIM, "x") == ACLNN_SUCCESS,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when %s %s, [%s] dim num or format is invalid.",
-               opName, errorMessage.c_str(), scenario.c_str(), "x");
+               ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s %s, [%s] dim num or format is invalid.", opName,
+               errorMessage.c_str(), scenario.c_str(), "x");
     CHECK_COND(CheckDimNumAndFormat(gmmParams, gmmParams.weight, SEPARATED_WEIGHT_DIM, "weight") == ACLNN_SUCCESS,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when %s %s, [%s] dim num or format is invalid.",
-               opName, errorMessage.c_str(), scenario.c_str(), "weight");
+               ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s %s, [%s] dim num or format is invalid.", opName,
+               errorMessage.c_str(), scenario.c_str(), "weight");
     CHECK_COND(CheckDimNumAndFormat(gmmParams, gmmParams.y, gmm::MIN_FM_DIM, "y") == ACLNN_SUCCESS,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when %s %s, [%s] dim num or format is invalid.",
-               opName, errorMessage.c_str(), scenario.c_str(), "y");
+               ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s %s, [%s] dim num or format is invalid.", opName,
+               errorMessage.c_str(), scenario.c_str(), "y");
     return ACLNN_SUCCESS;
 }
 
@@ -1830,8 +1824,8 @@ static aclnnStatus SplitMSingleXSeparatedWeightSingleY(const gmm::GroupedMatmulP
                "In op [%s], when %s and y is not separated, [%s] is invalid, got [%ld]. Constraint:[splitItem should "
                "be 2 or 3].",
                opName, errorMessage.c_str(), "splitItem", gmmParams.splitItem);
-    CHECK_RET(CheckSplitMDimNumAndFormat(gmmParams, opName, errorMessage, "with single x, separated weight and single y") ==
-                  ACLNN_SUCCESS,
+    CHECK_RET(CheckSplitMDimNumAndFormat(gmmParams, opName, errorMessage,
+                                         "with single x, separated weight and single y") == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckSplitMShape(gmmParams, opName, errorMessage, weightSize) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     // check groupList
@@ -1961,7 +1955,7 @@ static aclnnStatus SplitMSeparatedXSeparatedWeightSingleY(const gmm::GroupedMatm
                "mismatched, got [x size %zu, weight size %zu].",
                opName, errorMessage.c_str(), xSize, weightSize);
     CHECK_RET(CheckSplitMDimNumAndFormat(gmmParams, opName, errorMessage,
-                                        "with separated x, separated weight and single y") == ACLNN_SUCCESS,
+                                         "with separated x, separated weight and single y") == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckSeparatedXShape(gmmParams, opName, errorMessage, weightSize) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
@@ -3124,8 +3118,8 @@ static aclnnStatus CheckEmptyTensor(const aclTensorList *x, const aclTensorList 
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus PrepareGmmParams(gmm::GroupedMatmulParams &gmmParams, const aclTensorList *x,
-                                    const aclTensorList *y, int64_t splitItem, const char *opName)
+static aclnnStatus PrepareGmmParams(gmm::GroupedMatmulParams &gmmParams, const aclTensorList *x, const aclTensorList *y,
+                                    int64_t splitItem, const char *opName)
 {
     if (gmmParams.scaleOptional != nullptr) {
         for (size_t i = 0; i < gmmParams.scaleOptional->Size(); i++) {
