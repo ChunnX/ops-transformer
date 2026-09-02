@@ -867,6 +867,7 @@ class QuantSparseFlashMlaInputAdapter:
             batch_random.validate_params(filled)
             with batch_random:
                 data = pytest_golden.gen_data(filled, generate_golden=False)
+                )
             batch_random.normalize_block_tables(data)
         return data
 
