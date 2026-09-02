@@ -49,6 +49,7 @@ private:
 
     using MegaMoeBase::DispatchBuffInit;
     using MegaMoeBase::DispatchMoeExpert;
+    using MegaMoeBase::RunGmm2CombineForExpert;
     using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmmLoopCount_;
     using MegaMoeBase::commonConfig_;
@@ -72,12 +73,6 @@ private:
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                       GmmRuntimeState &runtimeState, uint32_t tokenStartIndexInExpert,
                                                       uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup);
-    __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-                                                   uint32_t sliceTokenCount,
-                                                   WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
-                                                   bool useAllAivCores);
     __aicore__ inline void ProcessMoeExpertStages();
 };
 
@@ -101,63 +96,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
                                  TopkWeightsPrefetch, false, true>(
         gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
         static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx);
-}
-
-// A4W4 的 GMM2 复用 A8W4 prologue，将 FP4 weight 解包为 FP8 后执行矩阵乘与 Combine。
-template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2CombineForExpert(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-    uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &pairwiseTileSequence, bool useAllAivCores)
-{
-    constexpr bool usePairwiseTileCombine = CombineQuantMode == COMBINE_NO_QUANT;
-    uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
-    uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
-    uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
-    if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
-        UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
-            gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
-            state, tokenStartIndexInExpert);
-        if constexpr (usePairwiseTileCombine) {
-            gmmAddrInfo.gmmToEpilogueFlag =
-                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
-        }
-        ProblemShape sliceProblemShape = state.problemShape;
-        Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true, usePairwiseTileCombine>(
-            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
-    }
-    if constexpr (usePairwiseTileCombine) {
-        return;
-    }
-    if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
-        return;
-    }
-    NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
-    UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
-    if (useAllAivCores) {
-        if constexpr (g_coreType == AIV) {
-            if (GetSubBlockIdx() == 0U) {
-                /* A4W4 复用同一 W4 prologue UB；Final Combine 覆盖前等待该 MTE3 搬运完成。 */
-                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
-            }
-            // Final Combine restores the maximum-capacity row ring on both AIVs. Drain the steady ring so
-            // rowSequence and its MTE3_MTE2 events restart from slot 0 under the new modulo.
-            DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
-        }
-        combineBufferConfig =
-            PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                                    waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                                    combineRowSequence);
-    } else {
-        RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                              waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                              combineRowSequence);
-    }
 }
 
 /*
