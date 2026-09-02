@@ -10,6 +10,7 @@
  */
 
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -122,6 +123,48 @@ bool RunTiling(const CaseParam& param, const CaseShapes& shapes, TilingInfo& til
     return ExecuteTiling(context, tilingInfo);
 }
 
+template <typename T>
+T ReadTilingField(const uint8_t* buffer, size_t& offset)
+{
+    T value = 0;
+    std::memcpy(&value, buffer + offset, sizeof(value));
+    offset += sizeof(value);
+    return value;
+}
+
+void DeserializeTilingData(const TilingInfo& info, optiling::GroupedMatmulQuantTilingData& data)
+{
+    size_t offset = 0;
+#define READ_TILING_FIELD(field) data.set_##field(ReadTilingField<uint32_t>(info.tilingData.get(), offset))
+    READ_TILING_FIELD(CoreNum);
+    READ_TILING_FIELD(dataType);
+    READ_TILING_FIELD(UBSize);
+    READ_TILING_FIELD(L1Size);
+    READ_TILING_FIELD(L0ASize);
+    READ_TILING_FIELD(L0BSize);
+    READ_TILING_FIELD(L0CSize);
+    READ_TILING_FIELD(noGroup);
+    READ_TILING_FIELD(originE);
+    READ_TILING_FIELD(originM);
+    READ_TILING_FIELD(originN);
+    READ_TILING_FIELD(originK);
+    READ_TILING_FIELD(scaleK);
+    READ_TILING_FIELD(scaleGroupSize);
+    READ_TILING_FIELD(fracN);
+    READ_TILING_FIELD(fracK);
+    READ_TILING_FIELD(splitK);
+    READ_TILING_FIELD(clearBaseN);
+    READ_TILING_FIELD(clearOutLoop);
+    READ_TILING_FIELD(clearOutTailN);
+    READ_TILING_FIELD(clearOutTailCoreNum);
+    READ_TILING_FIELD(castBaseN);
+    READ_TILING_FIELD(castOutLoop);
+    READ_TILING_FIELD(castOutTailN);
+    READ_TILING_FIELD(castOutTailCoreNum);
+#undef READ_TILING_FIELD
+    EXPECT_EQ(offset, info.tilingDataSize) << "Tiling data schema changed; update the deserializer";
+}
+
 void ExpectValidCase(const CaseParam& param, uint32_t expectedSplitK)
 {
     TilingInfo info;
@@ -129,24 +172,25 @@ void ExpectValidCase(const CaseParam& param, uint32_t expectedSplitK)
     ASSERT_NE(info.tilingData, nullptr);
     ASSERT_EQ(info.tilingKey, TILING_KEY_NORMAL);
 
-    auto* data = reinterpret_cast<optiling::GroupedMatmulQuantTilingData*>(info.tilingData.get());
-    ASSERT_NE(data, nullptr);
-    EXPECT_EQ(data->get_dataType(), static_cast<uint32_t>(param.dtype));
-    EXPECT_EQ(data->get_noGroup(), static_cast<uint32_t>(param.withGroupList ? 0U : 1U));
-    EXPECT_EQ(data->get_originE(), static_cast<uint32_t>(param.groupNum));
-    EXPECT_EQ(data->get_originM(), static_cast<uint32_t>(param.m));
-    EXPECT_EQ(data->get_originN(), static_cast<uint32_t>(param.n));
-    EXPECT_EQ(data->get_originK(), static_cast<uint32_t>(param.k));
-    EXPECT_EQ(data->get_scaleK(), static_cast<uint32_t>(param.k / param.scaleGroupSize));
-    EXPECT_EQ(data->get_scaleGroupSize(), static_cast<uint32_t>(param.scaleGroupSize));
-    EXPECT_EQ(data->get_fracN(), static_cast<uint32_t>(param.n / 16));
-    EXPECT_EQ(data->get_fracK(), static_cast<uint32_t>(param.k / 16));
-    EXPECT_EQ(data->get_splitK(), expectedSplitK);
-    EXPECT_EQ(info.blockNum, data->get_CoreNum());
+    optiling::GroupedMatmulQuantTilingData data;
+    ASSERT_EQ(info.tilingDataSize, data.GetDataSize());
+    DeserializeTilingData(info, data);
+    EXPECT_EQ(data.get_dataType(), static_cast<uint32_t>(param.dtype));
+    EXPECT_EQ(data.get_noGroup(), static_cast<uint32_t>(param.withGroupList ? 0U : 1U));
+    EXPECT_EQ(data.get_originE(), static_cast<uint32_t>(param.groupNum));
+    EXPECT_EQ(data.get_originM(), static_cast<uint32_t>(param.m));
+    EXPECT_EQ(data.get_originN(), static_cast<uint32_t>(param.n));
+    EXPECT_EQ(data.get_originK(), static_cast<uint32_t>(param.k));
+    EXPECT_EQ(data.get_scaleK(), static_cast<uint32_t>(param.k / param.scaleGroupSize));
+    EXPECT_EQ(data.get_scaleGroupSize(), static_cast<uint32_t>(param.scaleGroupSize));
+    EXPECT_EQ(data.get_fracN(), static_cast<uint32_t>(param.n / 16));
+    EXPECT_EQ(data.get_fracK(), static_cast<uint32_t>(param.k / 16));
+    EXPECT_EQ(data.get_splitK(), expectedSplitK);
+    EXPECT_EQ(info.blockNum, data.get_CoreNum());
 
     ASSERT_EQ(info.workspaceSizes.size(), 1U);
     const uint64_t expectedWorkspace =
-        SYSTEM_WORKSPACE_SIZE + static_cast<uint64_t>(data->get_L0ASize()) * 8UL * data->get_CoreNum() +
+        SYSTEM_WORKSPACE_SIZE + static_cast<uint64_t>(data.get_L0ASize()) * 8UL * data.get_CoreNum() +
         (expectedSplitK == 0U ? 0UL : static_cast<uint64_t>(param.m) * param.n * sizeof(float));
     EXPECT_EQ(info.workspaceSizes[0], expectedWorkspace);
 }
