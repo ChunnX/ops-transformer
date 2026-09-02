@@ -452,9 +452,10 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor *x1, const a
         OP_LOGD("X2 dim0 is %ld, dim1 is %ld.", x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1));
     }
     // Keep peer-only as an ACLNN-only optimization. Graph execution uses its own comm-mode marker.
-    const char *innerCommMode = (commModeEnum == CommType::CCU && std::strcmp(commMode, "ccu") == 0) ?
-                                    ACLNN_CCU_PEER_ONLY_MODE :
-                                    commMode;
+    const char *innerCommMode = commMode;
+    if (commModeEnum == CommType::CCU) {
+        innerCommMode = std::strcmp(commMode, "ccu") == 0 ? ACLNN_CCU_PEER_ONLY_MODE : "ccu";
+    }
     ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
         x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char *>(group), const_cast<char *>(reduceOp),
         transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
