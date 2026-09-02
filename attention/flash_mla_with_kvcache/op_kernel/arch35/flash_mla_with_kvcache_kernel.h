@@ -41,7 +41,7 @@ public:
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-    static constexpr uint32_t PRELOAD_N = 2;                            // C1 C1 C2 C2
+    static constexpr uint32_t PRELOAD_N = 2;                            // C1 C1 C2（对齐 fia，bmm2 落后 1 轮）
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N << 1; // 4 (power-of-2 for bitmask)
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -479,7 +479,8 @@ public:
     {
         FlashMlaWithKvcacheRunInfoX &runInfo0 = taskRunInfo[loop & (PRELOAD_TASK_CACHE_SIZE - 1)]; // 本轮任务
         FlashMlaWithKvcacheRunInfoX &runInfoNegN =
-            taskRunInfo[(loop - PRELOAD_N) & (PRELOAD_TASK_CACHE_SIZE - 1)]; // 上PRELOAD_N轮任务
+            taskRunInfo[(loop - (PRELOAD_N - 1)) &
+                        (PRELOAD_TASK_CACHE_SIZE - 1)]; // 上 PRELOAD_N-1 轮任务（对齐 fia，bmm2 落后 1 轮）
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -488,7 +489,7 @@ public:
             }
         }
 
-        if (loop >= PRELOAD_N) {
+        if (loop >= (PRELOAD_N - 1)) {
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);

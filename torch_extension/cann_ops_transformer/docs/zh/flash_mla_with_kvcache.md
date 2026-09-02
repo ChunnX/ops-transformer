@@ -38,10 +38,10 @@
   MLA前向计算由两阶段[（矩阵乘 + 注意力）]构成：先经低秩KV压缩得到潜向量，再基于潜向量执行缩放点积注意力。注意力部分的计算公式为：
 
   $$
-  O = Softmax(\frac{QK^T}{\sqrt{d_k}})V
+  O = \mathrm{Softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
   $$
 
-  其中$Q$由$q$（含RoPE）经线性变换得到，$K$与$V$均由共享的$k\_cache$（含RoPE）经线性变换得到（**MLA 复用单一 KV 缓存，接口不单独传入 $V$**），$\sqrt{d_k}$为缩放因子（可通过`softmax_scale`显式覆盖）。
+  其中 $Q$ 由 $q$（含RoPE）经线性变换得到，$K$ 与 $V$ 均来自同一份 $k\_cache$：$K$ 使用 $k\_cache$ 的全部 576 维（nope+rope），$V$ 使用 $k\_cache$ 的前 512 维（nope 部分，即 $\mathit{head\_dim\_v}$）。**MLA 复用单一 KV 缓存，接口不单独传入 $V$**。$\sqrt{d_k}$ 为缩放因子（可通过 `softmax_scale` 显式覆盖）。
 
   开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑如下所示：
 
