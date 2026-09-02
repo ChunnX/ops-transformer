@@ -162,7 +162,7 @@ cann_ops_transformer.flash_attn_grad(
 - `softmax_lse`必须为float32，shape为(B, N1, S1)（BSND/BNSD场景）或(N1, T1)（TND场景）。
 - 所有输入的数据格式均为ND。算子注册了`AutoContiguous`，传入非连续Tensor时由框架转换为连续Tensor。
 - `metadata`必须由`flash_attn_metadata`生成，并设置`is_grad_enabled=True`。生成metadata和调用本接口时，N1、N2、D、B、S1、S2、layout及mask相关参数必须一致，否则行为未定义。
-- `is_grad_enabled=True`生成的metadata只包含反向任务切分数据，不能用于`flash_attn`前向计算。前向和反向需要分别生成metadata。
+- `is_grad_enabled=True`生成的metadata同时包含正向和反向任务切分数据，前向`flash_attn`和反向`flash_attn_grad`均可使用同一份metadata，无需分别生成。
 - `softmax_lse`、`attn_out`必须来自与本次反向计算配置一致的前向调用，尤其是`softmax_scale`和layout必须一致。
 - 当前仅支持单算子模式。
 
@@ -221,6 +221,8 @@ cann_ops_transformer.flash_attn_metadata(
 
 - `flash_attn_metadata`、`flash_attn`和`flash_attn_grad`联合调用示例（BSND）
 
+  `is_grad_enabled=True`的`flash_attn_metadata`会同时生成正向和反向的任务切分数据，前向和反向均可使用该metadata，无需分别生成。
+
     ```python
     import math
     import torch
@@ -243,22 +245,7 @@ cann_ops_transformer.flash_attn_metadata(
     k = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
     v = torch.randn(B, S2, N2, Dv, dtype=dtype, device="npu")
 
-    forward_metadata = cann_ops_transformer.flash_attn_metadata(
-        N1,
-        N2,
-        D,
-        batch_size=B,
-        max_seqlen_q=S1,
-        max_seqlen_kv=S2,
-        mask_mode=0,
-        win_left=-1,
-        win_right=-1,
-        layout_q="BSND",
-        layout_kv="BSND",
-        layout_out="BSND",
-        is_grad_enabled=False,
-    )
-    grad_metadata = cann_ops_transformer.flash_attn_metadata(
+    metadata = cann_ops_transformer.flash_attn_metadata(
         N1,
         N2,
         D,
@@ -278,7 +265,7 @@ cann_ops_transformer.flash_attn_metadata(
         q,
         k,
         v,
-        metadata=forward_metadata,
+        metadata=metadata,
         softmax_scale=scale,
         mask_mode=0,
         win_left=-1,
@@ -299,7 +286,7 @@ cann_ops_transformer.flash_attn_metadata(
         dout,
         attn_out,
         softmax_lse,
-        metadata=grad_metadata,
+        metadata=metadata,
         softmax_scale=scale,
         mask_mode=0,
         win_left=-1,
