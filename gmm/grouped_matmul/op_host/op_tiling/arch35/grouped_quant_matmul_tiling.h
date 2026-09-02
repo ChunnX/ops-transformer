@@ -16,6 +16,7 @@
 #define GROUPED_QUANT_MATMUL_TILING_H
 
 #include <initializer_list>
+#include "gmm/common/op_host/log_format_util.h"
 #include "log/log.h"
 #include <sstream>
 #include <string>

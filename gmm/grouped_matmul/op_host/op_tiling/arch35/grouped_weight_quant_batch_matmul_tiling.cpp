@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_weight_quant_batch_matmul_tiling.h"
+#include "gmm/common/op_host/log_format_util.h"
 #include <limits>
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
@@ -2042,7 +2043,11 @@ bool GroupedS8S4BasicApiTiling::CheckTensorLists() const
                 return false);
     const auto outputInfo = context_->GetIrOutputInstanceInfo(Y_INDEX);
     OP_CHECK_IF(outputInfo == nullptr || outputInfo->GetInstanceNum() != 1,
-                OP_LOGE_FOR_INVALID_TENSORNUM(context_->GetNodeName(), "out", "more than 1", "1"),
+                OP_LOGE_FOR_INVALID_TENSORNUM(context_->GetNodeName(), "out",
+                                              outputInfo == nullptr
+                                                  ? 0
+                                                  : static_cast<int64_t>(outputInfo->GetInstanceNum()),
+                                              "1"),
                 return false);
     return true;
 }

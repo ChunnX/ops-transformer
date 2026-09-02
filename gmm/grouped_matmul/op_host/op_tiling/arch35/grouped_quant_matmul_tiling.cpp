@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_quant_matmul_tiling.h"
+#include "gmm/common/op_host/log_format_util.h"
 #include <sstream>
 
 #include <alog_pub.h>
@@ -1465,7 +1466,7 @@ ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
     }
     uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
     OP_CHECK_IF(leftL1Size < baseL1Size,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("L1 space overflow. Free L1Size: %lu, used space: %lu", leftL1Size, usedSize).c_str()),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("L1 space overflow. Free L1Size: %lu, used space: %lu", leftL1Size, baseL1Size).c_str()),
                 return ge::GRAPH_FAILED);
     uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
     uint64_t leftL1SizeByDepthInit = leftL1Size - depthInit * (baseL1Size);
