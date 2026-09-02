@@ -72,6 +72,10 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, topkWeight, expandedTopkWeight,
                                workspace, tilingData, tPipe);
 
+    if (this->cols_ == 0) {
+        return;
+    }
+
     colsAlign_ = Align(this->cols_, sizeof(T));
     inFactor_ = Align(this->cols_, sizeof(int8_t));
 
@@ -82,10 +86,6 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     offsetGm_.SetGlobalBuffer((__gm__ float *)offset, 1);
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
-
-    if (this->cols_ == 0) {
-        return;
-    }
 
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
 
@@ -242,13 +242,6 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Process()
         }
 
         if (this->cols_ == 0) {
-            if (this->isInputTopkWeight_) {
-                if (this->epFullload_) {
-                    this->TopkWeightScatterOut();
-                } else {
-                    this->TopkWeightGatherOut();
-                }
-            }
             this->FreeLocalTensor();
             return;
         }

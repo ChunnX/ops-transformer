@@ -79,6 +79,10 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Init(
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, topkWeight, expandedTopkWeight,
                                workspace, tilingData, tPipe);
 
+    if (this->cols_ == 0) {
+        return;
+    }
+
     colsAlign_ = Align(this->cols_, sizeof(T));
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
         colsAsInt8_ = Ceil(this->cols_, static_cast<int64_t>(2)) * sizeof(int8_t);
@@ -93,10 +97,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Init(
         quantSmoothGm_.SetGlobalBuffer((__gm__ float *)scale);
     }
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
-
-    if (this->cols_ == 0) {
-        return;
-    }
 
     if constexpr (IsSameType<T, float>::value) {
         this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
@@ -434,13 +434,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Process()
         }
 
         if (this->cols_ == 0) {
-            if (this->isInputTopkWeight_) {
-                if (this->epFullload_ || this->isInputScale_) {
-                    this->TopkWeightScatterOut();
-                } else {
-                    this->TopkWeightGatherOut();
-                }
-            }
             this->FreeLocalTensor();
             return;
         }

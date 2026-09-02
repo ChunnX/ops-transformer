@@ -64,6 +64,10 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expe
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, topkWeight, expandedTopkWeight,
                                workspace, tilingData, tPipe);
 
+    if (this->cols_ == 0) {
+        return;
+    }
+
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x);
     } else {
@@ -78,21 +82,18 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expe
 
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
 
-    if (this->cols_ > 0) {
-        if (this->epFullload_) {
-            if constexpr (IsSameType<T, hifloat8_t>::value) {
-                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(uint8_t)));
-            } else {
-                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(T)));
-            }
+    if (this->epFullload_) {
+        if constexpr (IsSameType<T, hifloat8_t>::value) {
+            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(uint8_t)));
         } else {
-            if constexpr (IsSameType<T, hifloat8_t>::value) {
-                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_,
-                                        AlignBytes(this->cols_ * rowLength, sizeof(uint8_t)));
-            } else {
-                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_,
-                                        AlignBytes(this->cols_ * rowLength, sizeof(T)));
-            }
+            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(T)));
+        }
+    } else {
+        if constexpr (IsSameType<T, hifloat8_t>::value) {
+            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_,
+                                    AlignBytes(this->cols_ * rowLength, sizeof(uint8_t)));
+        } else {
+            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_ * rowLength, sizeof(T)));
         }
     }
     this->pipe_->InitBuffer(scaleCopyInQueue_, 1, AlignBytes(1, sizeof(float)));
@@ -119,13 +120,16 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
             this->CopyExpertCountToOutput();
         }
 
+        if (this->cols_ == 0) {
+            this->FreeLocalTensor();
+            return;
+        }
+
         if (this->epFullload_) {
             if (this->isInputTopkWeight_) {
                 this->TopkWeightScatterOut();
             }
-            if (this->cols_ > 0) {
-                this->ScatterOutX();
-            }
+            this->ScatterOutX();
             if (this->isInputScale_) {
                 this->ScatterOutScale();
             }
@@ -133,9 +137,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
             if (this->isInputTopkWeight_) {
                 this->TopkWeightGatherOut();
             }
-            if (this->cols_ > 0) {
-                this->GatherOutX();
-            }
+            this->GatherOutX();
             if (this->isInputScale_) {
                 this->GatherOutScale();
             }
@@ -161,9 +163,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
             this->CopyExpertCountToOutput();
         }
 
-        if (this->cols_ > 0) {
-            this->ZeroOutX();
-        }
+        this->ZeroOutX();
         if (this->isInputScale_) {
             this->ZeroOutScale();
         }
@@ -178,9 +178,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
         if (this->isInputTopkWeight_) {
             this->TopkWeightGatherOut();
         }
-        if (this->cols_ > 0) {
-            this->GatherOutX();
-        }
+        this->GatherOutX();
         if (this->isInputScale_) {
             this->GatherOutScale();
         }
