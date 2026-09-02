@@ -24,8 +24,6 @@
 #endif
 
 namespace MicroAPI = AscendC::MicroAPI;
-using AscendC::VECTOR_REG_WIDTH;
-
 namespace GMMSQWeightQuant {
 
 template <typename xType, typename wType>
