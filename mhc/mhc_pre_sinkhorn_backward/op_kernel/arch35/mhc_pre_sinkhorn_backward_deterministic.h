@@ -530,8 +530,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::A
             AscendC::Reg::RegTensor<U> gradAlphaSumTempReg;
             AscendC::Reg::RegTensor<U> gradAlphaSumReg;
             AscendC::Reg::MaskReg maskReg;
-            AscendC::Reg::MaskReg allMaskReg =
-                AscendC::Reg::CreateMask<U, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg allMaskReg = AscendC::Reg::CreateMask<U, AscendC::Reg::MaskPattern::ALL>();
             uint32_t maskLen = static_cast<uint32_t>(usedAivNum_);
             Reg::Duplicate(gradAlphaSumReg, U(0), allMaskReg);
             for (uint16_t i = 0; i < loopCnt; i++) {
@@ -539,7 +538,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::A
                 AscendC::Reg::AddrReg gradAlphaOfst = AscendC::Reg::CreateAddrReg<U>(i, vfLen);
                 AscendC::Reg::DataCopy(gradAlphaReg, gradAlphaAddr, gradAlphaOfst);
                 AscendC::Reg::Reduce<Reg::ReduceType::SUM, U, U>(gradAlphaSumTempReg, gradAlphaReg,
-                                                                           maskReg); // reduce_sum
+                                                                 maskReg); // reduce_sum
                 AscendC::Reg::Add(gradAlphaSumReg, gradAlphaSumReg, gradAlphaSumTempReg, maskReg);
             }
             AscendC::Reg::Store(gradAlphaSumAddr, gradAlphaSumReg, 1);
@@ -762,12 +761,10 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
             for (uint16_t j = 0; j < loopCnt; j++) {
                 auto gradHInStart = gradHInAddr + i * cLenGRADHINTAlign + j * vfLen;
                 valueMaskReg = AscendC::Reg::UpdateMask<U>(maskLen);
-                AscendC::Reg::DataCopy<GRADHIN_T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(gradHInReg,
-                                                                                                     gradHInStart);
+                AscendC::Reg::DataCopy<GRADHIN_T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart);
                 AscendC::Reg::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
                 for (uint16_t k = 0; k < static_cast<uint16_t>(n_); k++) {
-                    AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                                   AscendC::Reg::MemType::SCALAR_LOAD>();
+                    AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::SCALAR_LOAD>();
                     U hPre = *(hPreAddr + i * n_ + k);
                     U gradHPre = *(gradHPreStart + k);
                     auto xCastStart = xCastAddr + (i * n_ + k) * cLenUAlign + j * vfLen;
@@ -777,11 +774,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
                     AscendC::Reg::DataCopy<X_T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(xReg, xAddrStart);
                     AscendC::Reg::Cast<U, X_T, castTrait16ToFloat>(xCastReg, xReg, valueMaskReg);
                     AscendC::Reg::Muls(gradXFromHinReg, gradHInCastReg, hPre,
-                                            valueMaskReg); // grad_h_in_f32 * h_pre
+                                       valueMaskReg);                                       // grad_h_in_f32 * h_pre
                     AscendC::Reg::Mul(gradHPreReg, xCastReg, gradHInCastReg, valueMaskReg); // x_f32 *
-                                                                                                 // grad_h_in_f32
+                                                                                            // grad_h_in_f32
                     AscendC::Reg::Reduce<Reg::ReduceType::SUM, U, U>(gradHPreReg, gradHPreReg,
-                                                                               valueMaskReg);      // reduce_sum
+                                                                     valueMaskReg);           // reduce_sum
                     AscendC::Reg::Adds(gradHPreRegSumReg, gradHPreReg, gradHPre, OneMaskReg); // 将原值进行累加
 
                     AscendC::Reg::DataCopy(gradXFromHinStart, gradXFromHinReg, valueMaskReg);

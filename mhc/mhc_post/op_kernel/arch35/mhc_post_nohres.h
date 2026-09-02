@@ -71,8 +71,8 @@ private:
     int64_t curBS_;
     uint32_t blockIdx_;
     constexpr static AscendC::Reg::CastTrait castB16ToB32 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::UNKNOWN};
 };
 
 NOHRES_TEMPLATE_DECLARE
@@ -146,8 +146,7 @@ __aicore__ inline void MhcPostNoHRes<NOHRES_TEMPLATE_ARGS>::DoMulAndAdd(LocalTen
                 pMask = AscendC::Reg::UpdateMask<float>(dNumU32);
 
                 // Load hOut[dBlock] and cast to FP32
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hOutReg,
-                                                                                             hOutAddr + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hOutReg, hOutAddr + j * VL_FP32);
                 AscendC::Reg::Cast<float, T, castB16ToB32>(hOutRegFloat, hOutReg, pMask);
 
                 // Post Mapping: out = hOut * hPost[nIndex]

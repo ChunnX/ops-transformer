@@ -117,7 +117,7 @@ __aicore__ inline void ComputeGradPreVf(LocalTensor<T> gradHPreLocal, LocalTenso
         RegTensor<T> gradHPreReg0, gradHPreReg1, gradHPreReg2, gradHPreReg3;
 
         static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                          Reg::MaskMergeMode::MERGING, RoundMode::CAST_NONE};
+                                                     Reg::MaskMergeMode::MERGING, RoundMode::CAST_NONE};
         MaskReg mask = Reg::CreateMask<T, MaskPattern::ALL>();
 
         Reg::Duplicate(gradHPreReg0, 0);
@@ -192,9 +192,9 @@ __aicore__ inline void ComputeGradXVf(LocalTensor<U> gradXLocal, LocalTensor<U> 
         MaskReg maskCast = Reg::CreateMask<U, MaskPattern::VL64>();
 
         static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                           Reg::MaskMergeMode::MERGING, RoundMode::CAST_NONE};
+                                                      Reg::MaskMergeMode::MERGING, RoundMode::CAST_NONE};
         static constexpr Reg::CastTrait castTrait2 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                           Reg::MaskMergeMode::MERGING, RoundMode::CAST_RINT};
+                                                      Reg::MaskMergeMode::MERGING, RoundMode::CAST_RINT};
 
         Reg::DataCopy<T, Reg::LoadDist::DIST_BRC_B32>(preReg, hPrePtr);
 

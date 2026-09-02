@@ -395,13 +395,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                     xInB16Reg, xB16InAddr + offsetN * lenD + vfBlockIdx * eleNumPerVf);
                 Reg::Cast<float, T, ctHalf2Fp32Zero>(xFp32Reg, xInB16Reg, mask);
 
-                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(
-                    gradHInB16InReg, gradHInB16InAddr + vfBlockIdx * eleNumPerVf);
+                Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(gradHInB16InReg,
+                                                                  gradHInB16InAddr + vfBlockIdx * eleNumPerVf);
                 Reg::Cast<float, T, ctHalf2Fp32Zero>(gradHInFp32Reg, gradHInB16InReg, mask);
 
                 Reg::Mul(mulReg, xFp32Reg, gradHInFp32Reg, mask); // mulReg[1,lenD] 0-63
                 Reg::Reduce<Reg::ReduceType::SUM>(tmpSumPerVfReg, mulReg,
-                                                            mask); // 每个vfBlockIdx循环的临时求和，每64个元素的和
+                                                  mask); // 每个vfBlockIdx循环的临时求和，每64个元素的和
                 Reg::Add(sumReg, sumReg, tmpSumPerVfReg, mask); // D方向上的reduceSum
             }
             uint32_t bufIdx = offset + offsetN;

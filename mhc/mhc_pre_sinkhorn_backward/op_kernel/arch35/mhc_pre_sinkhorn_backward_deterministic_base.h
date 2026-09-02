@@ -168,7 +168,7 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U *normOutForwardPartAddr,
             AscendC::Reg::DataCopy(gradZReg, gradZAddr, gradZOfst);
             AscendC::Reg::Mul(gradAlphaReg, normOutForwardPartReg, gradZReg, maskReg);
             AscendC::Reg::Reduce<Reg::ReduceType::SUM, U, U>(gradAlphaLoopSumReg, gradAlphaReg,
-                                                                       maskReg); // reduce_sum
+                                                             maskReg); // reduce_sum
             AscendC::Reg::Add(gradAlphaSumReg, gradAlphaSumReg, gradAlphaLoopSumReg, OneMaskReg);
         }
         AscendC::Reg::DataCopy(gradAlphaAddr, gradAlphaSumReg, OneMaskReg);
@@ -201,7 +201,7 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U *zAddr, __local_me
                 valueMaskReg = AscendC::Reg::UpdateMask<U>(maskLen);
                 AscendC::Reg::LoadUnAlignPre(unAlignNormOutForwardReg, normOutForwardAddrStart + i * vfLen);
                 AscendC::Reg::LoadUnAlign(normOutForwardReg, unAlignNormOutForwardReg,
-                                               normOutForwardAddrStart + i * vfLen);
+                                          normOutForwardAddrStart + i * vfLen);
                 AscendC::Reg::LoadUnAlignPre(unAlignBiasReg, biasAddrStart + i * vfLen);
                 AscendC::Reg::LoadUnAlign(biasReg, unAlignBiasReg, biasAddrStart + i * vfLen);
                 AscendC::Reg::Muls(zReg, normOutForwardReg, alpha, valueMaskReg);

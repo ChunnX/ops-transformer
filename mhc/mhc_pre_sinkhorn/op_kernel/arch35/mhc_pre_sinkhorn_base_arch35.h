@@ -186,7 +186,7 @@ __aicore__ inline void VFTransND2NZ(const LocalTensor<float> &yLocal, const Loca
             yLocalAddr = yLocalAddr + curRowMainCount * C0_SIZE * c1Size;
             for (uint16_t i = 0; i < loopCount; i++) {
                 LoadAlign<float, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(x, xLocalAddr + i * c1Size,
-                                                                                   dataBlockStride, pregLoop);
+                                                                              dataBlockStride, pregLoop);
                 StoreAlign(yLocalAddr + i * curRowNumAlign * c1Size, x, pregLoop);
             }
         }
@@ -273,10 +273,10 @@ __aicore__ inline void VFProcessCastAndInvRmsPart1(const LocalTensor<float> &rms
                 if constexpr (WithUbReduce) {
                     Add(y, y, sum, pregMerge);
                     StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(rmsNormLocalAddr + i, y,
-                                                                                            pregMerge);
+                                                                                       pregMerge);
                 } else {
                     StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(rmsNormLocalAddr + i, sum,
-                                                                                            pregMerge);
+                                                                                       pregMerge);
                 }
             }
         }
@@ -306,10 +306,10 @@ __aicore__ inline void VFProcessCastAndInvRmsPart1(const LocalTensor<float> &rms
                 if constexpr (WithUbReduce) {
                     Add(y, y, sum, pregMerge);
                     StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(rmsNormLocalAddr + i, y,
-                                                                                            pregMerge);
+                                                                                       pregMerge);
                 } else {
                     StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(rmsNormLocalAddr + i, sum,
-                                                                                            pregMerge);
+                                                                                       pregMerge);
                 }
             }
         }
@@ -352,11 +352,9 @@ __aicore__ inline void VFProcessInvRmsPart1(const LocalTensor<float> &yLocal, co
                 Reduce<ReduceType::SUM>(sum, sum, pregMain);
                 if constexpr (WithUbReduce) {
                     Add(y, y, sum, pregMerge);
-                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, y,
-                                                                                            pregMerge);
+                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, y, pregMerge);
                 } else {
-                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, sum,
-                                                                                            pregMerge);
+                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, sum, pregMerge);
                 }
             }
         }
@@ -383,11 +381,9 @@ __aicore__ inline void VFProcessInvRmsPart1(const LocalTensor<float> &yLocal, co
                 Reduce<ReduceType::SUM>(sum, sum, pregLoop);
                 if constexpr (WithUbReduce) {
                     Add(y, y, sum, pregMerge);
-                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, y,
-                                                                                            pregMerge);
+                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, y, pregMerge);
                 } else {
-                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, sum,
-                                                                                            pregMerge);
+                    StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(yLocalAddr + i, sum, pregMerge);
                 }
             }
         }
@@ -601,7 +597,7 @@ __aicore__ inline void VFProcessInvRmsPart3WithGroupReduceGradout(const LocalTen
                 Div(rsqrt, one, sum1, pregMerge);
                 // store invRmsOut
                 StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(invRmsOutLocalAddr + i, rsqrt,
-                                                                                        pregMerge);
+                                                                                   pregMerge);
                 Duplicate(rsqrt, rsqrt, pregLoop);
                 Mul(y, sum2, rsqrt, pregLoop);
                 // store hcBeforeNorm
@@ -685,7 +681,7 @@ __aicore__ inline void VFProcessInvRmsPart3WithGroupReduceGradout(const LocalTen
                 Div(rsqrt, one, sumX1, pregMerge);
                 // store invRmsOut
                 StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(invRmsOutLocalAddr + i, rsqrt,
-                                                                                        pregMerge);
+                                                                                   pregMerge);
                 Duplicate(rsqrt, rsqrt, pregLoop);
                 Mul(y, sumM1, rsqrt, pregLoop);
                 // store hcBeforeNorm
@@ -758,8 +754,7 @@ __aicore__ inline void VFProcessInvRmsPart3Gradout(const LocalTensor<float> &inv
             Adds(x, x, eps, pregLoop);
             Sqrt(x, x, pregLoop);
             Div(rsqrt, one, x, pregLoop);
-            StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(invRmsOutLocalAddr + i, rsqrt,
-                                                                                    pregOne);
+            StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(invRmsOutLocalAddr + i, rsqrt, pregOne);
             Mul(y, mm, rsqrt, pregLoop);
             StoreOutputData(yLocalAddr, y, pregLoop, i * hcMixAlign);
         }
@@ -1121,8 +1116,8 @@ __aicore__ inline void VFProcessCombFragRLessVLUseFourUnfoldGradout(const LocalT
                 Reduce<ReduceType::SUM>(sum, mix, pregLoop);
                 // store sumOut[0][j] j -> 1~dim1
                 Adds(sumOut, sum, eps, pregOne);
-                StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                    sumOutLocalAddr + i * dim2Align + j, sumOut, pregOne);
+                StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(sumOutLocalAddr + i * dim2Align + j,
+                                                                                   sumOut, pregOne);
                 Duplicate(sum, sum, pregLoop);
                 Div(mix, mix, sum, pregLoop);
                 Adds(mix, mix, eps, pregLoop);

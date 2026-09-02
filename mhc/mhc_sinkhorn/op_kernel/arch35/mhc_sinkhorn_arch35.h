@@ -212,8 +212,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcSoftmax(int32_t handleN
             Reg::Duplicate(sumoutReg, static_cast<float>(0));
             for (uint16_t nIdx = 0; nIdx < static_cast<uint16_t>(tilingData_.n); nIdx++) {
                 auto inputOfset = inputAddr + (i * blockCnt * nnSize_) + nIdx * tilingData_.n;
-                Reg::DataCopyGather(inputReg, inputOfset, (Reg::RegTensor<uint32_t> &)(rowIndexReg),
-                                         maskRegCalc);
+                Reg::DataCopyGather(inputReg, inputOfset, (Reg::RegTensor<uint32_t> &)(rowIndexReg), maskRegCalc);
                 Reg::ReduceMaxWithDataBlock(midReg, inputReg, maskRegCalc);
                 Reg::LocalMemBar<AscendC::Reg::MemType::VEC_LOAD, AscendC::Reg::MemType::VEC_STORE>();
                 Reg::DataCopy(midResAddr, midReg, maskReg);
@@ -364,7 +363,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcRowNorm(int32_t handleN
                     Reg::Adds(sumReg, sumReg, tilingData_.eps, maskReg);
                     /* 非对齐搬运，偏移为handleNum */
                     Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(sumOfset, sumReg, uReg,
-                                                                                           postUpdateStride);
+                                                                                 postUpdateStride);
                     Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(sumOfset, uReg, 0);
                 }
                 Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();

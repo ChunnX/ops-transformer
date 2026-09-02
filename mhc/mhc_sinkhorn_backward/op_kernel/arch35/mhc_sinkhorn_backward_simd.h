@@ -181,10 +181,10 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(
             for (uint16_t k = 0; k < static_cast<uint16_t>(nSize_); k++) {
                 // 根据索引位置将输入gradYAddr对应元素搬入gradYReg
                 Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
-                                         (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
                 Reg::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_E2B_B32>(
-                    sumReg, sumAddr + k * perloopSizePad + j * repeatSize);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_E2B_B32>(sumReg,
+                                                                  sumAddr + k * perloopSizePad + j * repeatSize);
 
                 Reg::Mul(dotProdReg, gradYReg, normReg, CalcMaskReg);
                 Reg::ReduceSumWithDataBlock(sumGradYReg, dotProdReg, CalcMaskReg);
@@ -193,7 +193,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(
                 Reg::Div(dotProdReg, dotProdReg, sumReg, CalcMaskReg);
 
                 Reg::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_, dotProdReg,
-                                          (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                     (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
             }
         }
         Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -233,18 +233,18 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(
             Reg::DataCopy(sumReg, sumAddr + j * repeatSize * nAlignSize_);
             for (uint16_t i = 0; i < static_cast<uint16_t>(n); i++) {
                 Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n,
-                                         (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
                 Reg::DataCopy(normReg, normAddr + j * repeatSize * nAlignSize_ + i * nAlignSize_ * perloopSize);
                 Reg::Mul(mulResultReg, gradYReg, normReg, CalcMaskReg);
                 Reg::Add(sumColReg, sumColReg, mulResultReg, CalcMaskReg);
             }
             for (uint16_t i = 0; i < static_cast<uint16_t>(n); i++) {
                 Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n,
-                                         (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
                 Reg::Sub(gradInputReg, gradYReg, sumColReg, CalcMaskReg);
                 Reg::Div(gradInputReg, gradInputReg, sumReg, CalcMaskReg);
                 Reg::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n, gradInputReg,
-                                          (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                     (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
             }
         }
         Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -290,7 +290,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(
 
                 // 按照indeReg中存储索引的顺序将数据搬到gradYReg,此时gradYReg [n, t, align_n]
                 Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
-                                         (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
 
                 Reg::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
 
@@ -301,7 +301,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(
                 Reg::Mul(gradInputReg, gradInputReg, normReg, CalcMaskReg);
 
                 Reg::DataCopyScatter(gradInputAddr + +j * repeatSize * nSize_ * nSize_ + k * nSize_, gradInputReg,
-                                          (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+                                     (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
             }
         }
         Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -504,11 +504,11 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CreateGatherIndex(uint32_t n)
         Reg::Duplicate(duplicateReg1, static_cast<int32_t>(INDEX_BLOCK_LEN)); // [8,8,8,...,8]
         Reg::Duplicate(duplicateReg2, static_cast<int32_t>(n * n));           // 填充n*n
         Reg::Arange(orderReg, static_cast<int32_t>(0));                       // [0,1,2,...,63]
-        Reg::Div(tmpReg1, orderReg, duplicateReg1, maskReg); // [0,0,...,0,1,1,...,1,...,7,7,...,7]
-        Reg::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg);  // [0,0,...,0,8,8,...,8,...,63,63,...,63]
-        Reg::Sub(tmpReg2, orderReg, tmpReg2, maskReg);       // [0,1,2,...,7,0,1,2,...,7,...,0,1,2,...,7]
-        Reg::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg);  // [0,0,...,0,16,16,...,16,...,112,112,...,112]
-        Reg::Add(indexReg, tmpReg2, tmpReg3, maskReg); // [0,1,2,...,7,16,17,18,...,23,...,112,113,114,...,119]
+        Reg::Div(tmpReg1, orderReg, duplicateReg1, maskReg);                  // [0,0,...,0,1,1,...,1,...,7,7,...,7]
+        Reg::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg);                   // [0,0,...,0,8,8,...,8,...,63,63,...,63]
+        Reg::Sub(tmpReg2, orderReg, tmpReg2, maskReg);      // [0,1,2,...,7,0,1,2,...,7,...,0,1,2,...,7]
+        Reg::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg); // [0,0,...,0,16,16,...,16,...,112,112,...,112]
+        Reg::Add(indexReg, tmpReg2, tmpReg3, maskReg);      // [0,1,2,...,7,16,17,18,...,23,...,112,113,114,...,119]
         Reg::DataCopy<int32_t, Reg::StoreDist::DIST_NORM>(indexAddr, indexReg, allMask);
 
         Reg::Duplicate(duplicateBrcbReg, static_cast<int32_t>(INDEX_BLOCK_LEN));
