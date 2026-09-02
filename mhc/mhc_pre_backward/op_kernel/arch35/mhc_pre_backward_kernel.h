@@ -1208,7 +1208,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 初始化
     // ==========================================================
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
-    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
+    // 统一使用64行chunk，使N=4时两个FP32主工作区各由32KB降为16KB，
+    // 从而压缩V2的TBuf峰值，并为后续输出队列双缓冲腾出UB空间。
+    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE / 2;
     uint32_t currentBsSize = static_cast<uint32_t>(bsEnd - bsStart);
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
