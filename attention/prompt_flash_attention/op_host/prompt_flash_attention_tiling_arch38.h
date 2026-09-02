@@ -177,6 +177,8 @@ protected:
     ge::graphStatus CheckCrossoverAttribute(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV,
         PromptFlashAttentionTilingData& tilingData);
+    bool CheckArch38ScenarioSupported(const ContextParamsForPFATiling& contextKeyParams,
+        const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo) const;
     ge::graphStatus AdjustTilingData(ContextParamsForPFATiling& contextKeyParams,
         PromptFlashAttentionTilingData& tilingData, const PFAShapeInfo& queryShapeInfo);
     ge::graphStatus ComputeTilingData(ContextParamsForPFATiling& contextKeyParams, std::vector<int64_t>& actualSeqLengths,
