@@ -155,6 +155,7 @@ _legacy_map = {
     "fused_causal_conv1d": "attention.fused_causal_conv1d",
     "fused_causal_conv1d_": "attention.inplace_fused_causal_conv1d",
     "block_sparse_attention": "attention.block_sparse_attention",
+    "block_attention_residuals": "attention.block_attention_residuals",
     "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
     "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
 }
@@ -168,6 +169,3 @@ if __name__ == "cann_ops_transformer.ops":
             _sys.modules["cann_ops_transformer.ops.%s" % _old_name] = _new_mod
         except (ImportError, RuntimeError, AttributeError) as _e:
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
-
-
-# Centralized operators not yet migrated to distributed structure
