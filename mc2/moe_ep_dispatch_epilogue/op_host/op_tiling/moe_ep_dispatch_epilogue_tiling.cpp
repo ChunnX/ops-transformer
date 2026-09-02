@@ -64,12 +64,14 @@ constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t META_INNER_DIM = 4; // recvSrcMetadata dim(1) = 4
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
-constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
+// shared-Jetty打桩固定32个Jetty、每个Jetty最多覆盖4个连续对端。
+constexpr int64_t MAX_EP_WORLD_SIZE = 128;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr uint32_t SHARED_JETTY_NUM = 32U;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t H_MAX = 8192;
+// constexpr int64_t H_MAX = 8192; // 打桩：放开hidden最大值限制
 constexpr uint32_t HIDDEN_ALIGN = 32U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
@@ -354,8 +356,12 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         OP_LOGE(nodeName, "recv_x dim0(A_alloc) must be in [0, ep*nmt*min(top_k,num_local_experts)=%ld], but got %ld.",
                 aUpper, aAlloc),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((hidden <= 0) || (hidden > H_MAX),
-                    OP_LOGE(nodeName, "recv_x dim1(hidden) must be in (0, %ld], but got %ld.", H_MAX, hidden),
+    // 打桩：放开hidden最大值限制，不再校验H_MAX
+    // OP_TILING_CHECK((hidden <= 0) || (hidden > H_MAX),
+    //                 OP_LOGE(nodeName, "recv_x dim1(hidden) must be in (0, %ld], but got %ld.", H_MAX, hidden),
+    //                 return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hidden <= 0,
+                    OP_LOGE(nodeName, "recv_x dim1(hidden) must be positive, but got %ld.", hidden),
                     return ge::GRAPH_FAILED);
 
     auto recvXDesc = context->GetOutputDesc(OUT_RECV_X_INDEX);
@@ -435,7 +441,10 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
                                             rankNumPerServer,
                                             serverNum};
     MoeEpWindowLayout layout{};
-    OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    // 打桩：切换为性能验证专用窗口布局
+    // OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    //                 OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CalcMoeEpWindowLayoutStub(params, layout) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check Moe EP window capacity failed."), return ge::GRAPH_FAILED);
@@ -511,6 +520,10 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     OP_TILING_CHECK(aivNum == 0U, OP_LOGE(nodeName, "Platform reports aiv_num=0."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(aivNum < SHARED_JETTY_NUM,
+                    OP_LOGE(nodeName, "shared-Jetty validation requires at least %u AIVs, but got %u.",
+                            SHARED_JETTY_NUM, aivNum),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(ubSize == 0UL, OP_LOGE(nodeName, "Platform reports ub_size=0."), return ge::GRAPH_FAILED);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(blockDim);

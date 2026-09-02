@@ -81,7 +81,28 @@ constexpr uint32_t PER_GROUP_SIZE = 40 * 1024U; // 计算count 40KB per group
 constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // 直方图每次计算0-255
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
-static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+constexpr uint32_t SLOT_NOTIFY_STRIDE = 64U;
+// 16P下每个Jetty仅生成15个数据WQE和15个flag WQE，64个WQEBB可保证整批一次提交。
+constexpr uint32_t HCOMM_BATCH_CAPACITY = 64U;
+// asc-comm要求单次BatchCommit的WQEBB数严格小于SQ深度，预留一个槽位。
+constexpr uint32_t HCOMM_BATCH_COMMIT_SIZE = HCOMM_BATCH_CAPACITY - 1U;
+constexpr uint32_t HCOMM_WRITE_NOTIFY_TASK_BYTES = 64U;
+constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_WRITE_NOTIFY_TASK_BYTES;
+constexpr uint32_t JETTY_TOTAL = 32U; // 打桩：jetty总数固定32，每个jetty连接并发送到所有远端
+constexpr struct UrmaWqeEntry DATA_CFG = {
+    .odr      = 5,
+    .fence    = 0,
+    .se       = 0,
+    .cqe      = 0,
+    .inlineEn = 0
+};
+constexpr struct UrmaWqeEntry NOTIFY_CFG = {
+    .odr      = 6,
+    .fence    = 1,
+    .se       = 0,
+    .cqe      = 0,
+    .inlineEn = 0
+};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -101,7 +122,9 @@ private:
                                                uint32_t tmpOffset);
     __aicore__ inline void CalSendCnt();
     __aicore__ inline void Communication();
+    __aicore__ inline void CommunicationStub(); // 打桩：仅发1个cnt状态位做全卡同步
     __aicore__ inline void GetRecvCount();
+    __aicore__ inline void GetRecvCountStub(); // 打桩：仅check cnt状态位
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void SetRecvNumPerRank(LocalTensor<int32_t> recvTmpTensor);
     __aicore__ inline void DedupAndSendDirect(uint32_t hitStride);
@@ -109,6 +132,10 @@ private:
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void SendPhase();
     __aicore__ inline void GetSlotStartNum();
+    __aicore__ inline void SendTokenToRemote(); // 打桩：仅通信发送token
+    __aicore__ inline uint32_t GetSharedChannelIndex(uint32_t dstRankId); // shared Jetty内逻辑通道号
+    __aicore__ inline bool GetCoreAssignment(uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
+                                             uint32_t &coreIndexInGroup, uint32_t &groupSize); // 打桩：按SplitToCore均摊对端(cnt栅栏用)
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
 
@@ -143,6 +170,7 @@ private:
     LocalTensor<int32_t> slotIdxPerRankTensor_;
     LocalTensor<int32_t> hitPerRankTensor_;
     LocalTensor<uint8_t> hcommTensor_;
+    LocalTensor<uint8_t> hcommBatchTensor_; // 打桩：WriteWithNotifyNbi批量WQE缓冲
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> perSlotQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> dstSlotQueue_;
@@ -150,12 +178,14 @@ private:
     TBuf<> tempBuf_;
     TBuf<> dstExpBuf_;
     TBuf<> hcommBuf_; // 通信
+    TBuf<TPosition::VECOUT> hcommBatchBuf_; // 打桩：通信批量WQE缓冲
     TBuf<> sendCntRankBuf_;
     TBuf<> sendCntExpertBuf_;
     TBuf<> numRecvPerRankBuf_;
     TBuf<> numRecvPerExpertBuf_;
 
     GM_ADDR workspaceGM_{nullptr};
+    GM_ADDR xAddr_{nullptr}; // 打桩：输入x地址，CommunicationStub数据源
     GM_ADDR hostPinnedCounterAddrGM_{nullptr};
     GM_ADDR scaleupCounterAddr_{nullptr};
     GM_ADDR sendCntWorkspaceAddr_{nullptr};
@@ -183,6 +213,13 @@ private:
     uint32_t startRankId_{0};
     uint32_t endRankId_{0};
     uint32_t rankNumPerCore_{0};
+    uint32_t copyRankStart_{0};   // 打桩：本核负责的起始rank
+    uint32_t copyRankNum_{0};     // 打桩：本核负责的rank数
+    uint32_t channelIndex_{0};   // 打桩：本核使用的通道号
+    uint32_t coreIndexInGroup_{0}; // 打桩：本核在rank组内的序号
+    uint32_t groupSize_{1};        // 打桩：rank组内核数
+    bool coreAssigned_{false};     // 打桩：本核是否分到通信任务
+    __ubuf__ uint8_t *batchBuffer_{nullptr}; // 打桩：批量WQE的UB物理地址
     uint32_t hAlignSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -199,6 +236,7 @@ private:
     uint32_t cntFlagWinSize_{0};
     uint32_t dispatchNotifyCount_{1};
     uint32_t metaOffset_{0};
+    uint64_t hAlign512_{0}; // 打桩：hidden按512对齐后的字节数，用于数据区slot间距
     uint64_t cntWinStateOffset_{0};
     uint64_t slotWinStateOffset_{0};
     uint64_t winDataOffset_{0};
@@ -223,10 +261,12 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     workspaceGM_ = workspaceGM;
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
-    constexpr size_t metadataOffset =
-        offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) + offsetof(MoeEpDispatchInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
-    diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH, tpipe_);
+    xAddr_ = x;                                        // 打桩：记录输入x地址
+    // 打桩：关闭win dump（无业务urma性能验证，win排布不变，仅不写入诊断区）
+    // constexpr size_t metadataOffset =
+    //     offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) + offsetof(MoeEpDispatchInfo, dumpMetadata);
+    // MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    // diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH, tpipe_);
 
     const auto &info = tilingData->moeEpDispatchInfo;
     axisBS_ = info.cfg.numTokens;
@@ -262,7 +302,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeNumPerRankAlign512_ = Ceil(moeNumPerRankSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     cntFlagWinSize_ = epWorldSize_ * WIN_ADDR_ALIGN;
-    dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_; // 目标窗口地址偏移
+    hAlign512_ = Ceil(static_cast<uint64_t>(axisH_) * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 打桩：hidden按512对齐
+    dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * hAlign512_; // 打桩：目标窗口地址偏移，rank间距用hAlign512
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -297,7 +338,33 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     sendCntPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
     sendCntPerExpertGMTensor_.SetGlobalBuffer(
         (__gm__ int32_t *)(sendCntWorkspaceAddr_ + epWorldSize_ * WIN_ADDR_ALIGN));
-    diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
+
+    // 打桩：自申请通信所需UB（不依赖BufferInit）：hcomm + cnt状态check用buf + 批量WQE缓冲
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    auto hcommInitRet = hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
+    ascendc_assert(hcommInitRet == HCOMM_SUCCESS, "Hcomm Init failed, ret=%d, aivId=%u", hcommInitRet, aivId_);
+    uint32_t recvCntBytes = Ceil(epWorldSize_ * UB_ALIGN, ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    tpipe_->InitBuffer(topkIdsBuf_, 2 * recvCntBytes);
+    tpipe_->InitBuffer(numRecvPerRankBuf_, epWorldSizeAlign_);
+    numRecvPerRankTensor_ = numRecvPerRankBuf_.Get<int32_t>();
+    tpipe_->InitBuffer(hcommBatchBuf_, HCOMM_BATCH_BUFFER_BYTES);
+    hcommBatchTensor_ = hcommBatchBuf_.Get<uint8_t>();
+    Duplicate<uint8_t>(hcommBatchTensor_, 0U, HCOMM_BATCH_BUFFER_BYTES);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    if (aivId_ == 0) {
+        LocalTensor<float> status = topkIdsBuf_.Get<float>();
+        GlobalTensor<float> statusGMTensor;
+        statusGMTensor.SetGlobalBuffer((__gm__ float *)payloadStashWinAddr_);
+        // 每个flag占32B，只使用首个float。其余位置必须为0，等待端会归约完整的32B槽位。
+        Duplicate<float>(status, 0.0F, UB_STRIDE);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        status.SetValue(0, 1.0F);
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopy(statusGMTensor, status, UB_STRIDE);
+    }
+
+    // diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE); // 打桩：关闭win dump
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -530,7 +597,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
 
         if (dstRankId != epRankId_) { // 远端 使用URMA发送 count + state
             uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId);
-            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(
+            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(
                 commHandle, remoteCountAddr, srcWorkspaceAddr, moeNumPerRankSize_, notifyAddr, notifyVal);
             continue;
         }
@@ -580,6 +647,88 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_COUNT_READY);
+}
+
+// 打桩：CommunicationStub — 仅发1个cnt状态位，数据源用xAddr，多channel分核，自申请UB
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommunicationStub()
+{
+    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_);
+    coreAssigned_ = GetCoreAssignment(copyRankStart_, copyRankNum_, channelIndex_, coreIndexInGroup_, groupSize_);
+    if (!coreAssigned_) {
+        return;
+    }
+
+    for (uint32_t dstRankId = copyRankStart_; dstRankId < copyRankStart_ + copyRankNum_; ++dstRankId) {
+        if (channelIndex_ != 0) {
+            continue;
+        }
+        GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_) +
+                             static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN;
+
+        if (dstRankId != epRankId_) {
+            uint64_t commHandle = GetCommHandle(mc2Context_, dstRankId);
+            // 打桩：直接写512B到对端cnt槽位，前32B为flag payload。
+            auto ret = hcomm_.WriteNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(
+                commHandle, notifyAddr, payloadStashWinAddr_, WIN_ADDR_ALIGN);
+            ascendc_assert(ret == HCOMM_SUCCESS, "cnt barrier WriteNbi failed, ret=%d, dstRank=%u, aivId=%u", ret,
+                           dstRankId, aivId_);
+            continue;
+        }
+
+        GlobalTensor<float> notifyGMTensor;
+        notifyGMTensor.SetGlobalBuffer((__gm__ float *)notifyAddr);
+        notifyGMTensor.SetValue(0, 1.0F);
+        for (uint32_t elemIdx = 1U; elemIdx < UB_STRIDE; ++elemIdx) {
+            notifyGMTensor.SetValue(elemIdx, 0.0F);
+        }
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(notifyGMTensor);
+    }
+}
+
+// 打桩：GetRecvCountStub — 仅check cnt状态位，不计算count/expert，自申请UB
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCountStub()
+{
+    if (aivId_ != aivNum_ - 1) {
+        return;
+    }
+
+    LocalTensor<int32_t> recvCounterTensor = topkIdsBuf_.GetWithOffset<int32_t>(epWorldSize_ * UB_STRIDE, 0);
+    LocalTensor<float> tempFp32 = topkIdsBuf_.GetWithOffset<float>(epWorldSize_ * UB_STRIDE, epWorldSize_ * UB_ALIGN);
+    LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
+    LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankBuf_.Get<float>();
+    numRecvPerRankTensor_ = numRecvPerRankBuf_.Get<int32_t>();
+
+    // 绑定本卡cnt状态位区
+    recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr_);
+
+    uint32_t mask = 1;
+    float sumOfFlag = -1.0F;
+    float compareFlag = static_cast<float>(epWorldSize_);
+    SyncFunc<AscendC::HardEvent::MTE3_V>(); // buf复用（aivNum_==1时aiv0在Init用topkIdsBuf做过MTE3写）
+    while (sumOfFlag != compareFlag) {
+        DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask,
+                  epWorldSize_ * UB_STRIDE, 1);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        sumOfFlag = numRecvPerRankTensorFp32.GetValue(0);
+    }
+    // 清理状态位
+    Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+
+    if constexpr (DoCpuSync) { // 计算actualA，并写入host pin
+        GlobalTensor<int64_t> hostPinnedCounterTensor;
+        hostPinnedCounterTensor.SetGlobalBuffer((__gm__ int64_t *)hostPinnedCounterAddrGM_);
+        // 打桩：直接写死为8
+        hostPinnedCounterTensor.SetValue(0, 8);
+        DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            hostPinnedCounterTensor);
+    }
+    // diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_COUNT_READY); // 打桩：关闭win dump
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -703,7 +852,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         for (uint32_t index = 0; index < dispatchNotifyCount_; index++) {
             uint32_t slotCnt = (index < remainder) ? slotCntPerNotify + 1 : slotCntPerNotify;
             uint64_t dataSize = (slotCnt > 0) ? static_cast<uint64_t>(perSlotBytes_) * slotCnt : UB_ALIGN;
-            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(
+            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DATA_CFG>(
                 commHandle, remoteWinAddr, localSendWinAddr, dataSize, notifyAddr, 1);
             remoteWinAddr += dataSize;
             localSendWinAddr += dataSize;
@@ -815,21 +964,152 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline uint32_t MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSharedChannelIndex(
+    uint32_t dstRankId)
+{
+    uint32_t channelIndex = dstRankId;
+    if (epRankId_ < dstRankId) {
+        --channelIndex; // Host构造逻辑通道数组时跳过本rank
+    }
+    return channelIndex;
+}
+
+// 打桩：GetCoreAssignment — cnt栅栏按SplitToCore(EP, aivNum_)均摊对端，每核串行负责copyRankNum个对端。
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssignment(
+    uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
+    uint32_t &coreIndexInGroup, uint32_t &groupSize)
+{
+    if (startRankId_ >= epWorldSize_) {
+        return false;
+    }
+    channelIndex = 0;
+    copyRankNum = rankNumPerCore_;
+    copyRankStart = startRankId_;
+    coreIndexInGroup = 0;
+    groupSize = 1;
+    return true;
+}
+
+// 打桩：核aivId与jetty一一绑定。每个jetty连接所有远端，并发送第jettyIndex片token。
+// 每个对端的连续token片合并成一个大块WQE；同一个batch混合多个逻辑对端，全部处理完后统一提交。
+// （在对端槽位区r*512*JETTY_TOTAL + jettyIdx*512处，按jetty错开）
+template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenToRemote()
+{
+    if (aivId_ >= JETTY_TOTAL) {
+        return; // jetty与核一一绑定，超出32的核不参与发送
+    }
+    uint32_t jettyIndex = aivId_;
+
+    auto multiChannelValue = mc2Context_->multiChannelHandle[jettyIndex];
+    if (multiChannelValue == 0U) {
+        return;
+    }
+    auto multiChannel = static_cast<MultiChannelHandle>(multiChannelValue);
+    auto batchHandle = hcomm_.MakeBatchHandle(multiChannel, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES);
+
+    uint32_t tokensPerJetty = Ceil(axisBS_, JETTY_TOTAL);
+    uint32_t tokenStart = jettyIndex * tokensPerJetty;
+    uint32_t tokenCnt = tokenStart < axisBS_
+                            ? ((tokenStart + tokensPerJetty > axisBS_) ? (axisBS_ - tokenStart) : tokensPerJetty)
+                            : 0U;
+    uint32_t commCnt = 0U;
+    for (uint32_t dstRankId = 0U; dstRankId < epWorldSize_; ++dstRankId) {
+        if (dstRankId == epRankId_) {
+            continue; // 本卡flag无需发送，epilogue不等待本卡
+        }
+        // 打桩：每片一个512B槽位flag，rank区间距=512*JETTY_TOTAL，rank区内按jetty错开
+        GM_ADDR notifyAddr = GetWinAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
+                             static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN * JETTY_TOTAL +
+                             static_cast<uint64_t>(jettyIndex) * WIN_ADDR_ALIGN;
+        auto channelIndex = GetSharedChannelIndex(dstRankId);
+        auto remoteBase = GetWinAddrByRankId(mc2Context_, dstRankId, 0);
+        auto &peerBatchHandle = hcomm_.GetHandleRef(batchHandle, channelIndex, remoteBase);
+
+        if (tokenCnt != 0U) {
+            uint64_t addrOffset = static_cast<uint64_t>(tokenStart) * hAlign512_;
+            GM_ADDR localSrcAddr = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_) + addrOffset;
+            GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_ +
+                                   addrOffset;
+            uint64_t transferBytes = static_cast<uint64_t>(tokenCnt) * hAlign512_;
+            if (transferBytes > 0xFFFFFFFFULL) {
+                mc2Context_->hcommStatus[jettyIndex] = HCOMM_FAILED;
+                ascendc_assert(false,
+                               "shared-Jetty transfer exceeds WriteNbi limit, bytes=%llu, jetty=%u, dstRank=%u",
+                               transferBytes, jettyIndex, dstRankId);
+                return;
+            }
+            auto ret = hcomm_.WriteNbi<DATA_CFG>(peerBatchHandle, remoteWinAddr, localSrcAddr,
+                                                 static_cast<uint32_t>(transferBytes));
+            if (ret != HCOMM_SUCCESS) {
+                mc2Context_->hcommStatus[jettyIndex] = ret;
+                ascendc_assert(false, "shared-Jetty data WriteNbi failed, ret=%d, jetty=%u, dstRank=%u", ret,
+                               jettyIndex, dstRankId);
+                return;
+            }
+            ++commCnt;
+            if (commCnt == HCOMM_BATCH_COMMIT_SIZE) {
+                ret = hcomm_.BatchCommit(batchHandle);
+                if (ret != HCOMM_SUCCESS) {
+                    mc2Context_->hcommStatus[jettyIndex] = ret;
+                    ascendc_assert(false, "shared-Jetty BatchCommit failed, ret=%d, jetty=%u", ret, jettyIndex);
+                    return;
+                }
+                commCnt = 0U;
+            }
+        }
+
+        // 无数据的Jetty也发送flag；fence保证同一对端的数据先于flag生效。
+        auto ret = hcomm_.WriteNbi<NOTIFY_CFG>(peerBatchHandle, notifyAddr, payloadStashWinAddr_, WIN_ADDR_ALIGN);
+        if (ret != HCOMM_SUCCESS) {
+            mc2Context_->hcommStatus[jettyIndex] = ret;
+            ascendc_assert(false, "shared-Jetty notify WriteNbi failed, ret=%d, jetty=%u, dstRank=%u", ret,
+                           jettyIndex, dstRankId);
+            return;
+        }
+        ++commCnt;
+        if (commCnt == HCOMM_BATCH_COMMIT_SIZE) {
+            ret = hcomm_.BatchCommit(batchHandle);
+            if (ret != HCOMM_SUCCESS) {
+                mc2Context_->hcommStatus[jettyIndex] = ret;
+                ascendc_assert(false, "shared-Jetty BatchCommit failed, ret=%d, jetty=%u", ret, jettyIndex);
+                return;
+            }
+            commCnt = 0U;
+        }
+    }
+    if (commCnt != 0U) {
+        auto ret = hcomm_.BatchCommit(batchHandle);
+        if (ret != HCOMM_SUCCESS) {
+            mc2Context_->hcommStatus[jettyIndex] = ret;
+            ascendc_assert(false, "shared-Jetty tail BatchCommit failed, ret=%d, jetty=%u", ret, jettyIndex);
+            return;
+        }
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
-        BufferInit();
-        CalSendCnt();
+        // BufferInit();
+        // CalSendCnt();
+        // SyncAll<true>();
+        // Communication();
+        // GetRecvCount();
+        // if constexpr (!IsCached) { // 计算起始slot id
+        //     GetSlotStartNum();
+        // }
+        // SendPhase();
+        // SyncAll<true>();
+        // WriteToRemoteWindow();
         SyncAll<true>();
-        Communication();
-        GetRecvCount();
-        if constexpr (!IsCached) { // 计算起始slot id
-            GetSlotStartNum();
-        }
-        SendPhase();
+        CommunicationStub(); // 打桩：全卡同步，仅发1个cnt状态位，自申请UB
+        GetRecvCountStub();  // 打桩：仅check cnt状态位，自申请UB
         SyncAll<true>();
-        WriteToRemoteWindow();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+        SendTokenToRemote(); // 打桩：仅通信发送token，内部自申请通信UB
+        // diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE); // 打桩：关闭win dump
     }
 }
 

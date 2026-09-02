@@ -32,6 +32,7 @@
 
 // HCCL types
 #include "hccl/hccl_types.h"
+#include "hcomm/hcomm_host.h"
 
 // HCCL common utilities
 #include "hccl_common.h"
@@ -60,6 +61,9 @@ constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
 constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
+// 打桩：32个物理Jetty；每个Jetty通过MultiChannelHandle连接所有远端。
+constexpr uint32_t MOE_JETTY_TOTAL = 32U;
+constexpr uint32_t MOE_JETTY_CHANNEL_NOTIFY_NUM = 3U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
 // RAII guard for multi-step host buffer allocation
@@ -130,7 +134,14 @@ struct MoeCommContext {
     uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
     ChannelHandle hcommHandle[HCCL_MAX_RANK_SIZE] = {};
     uint32_t channelsPerRank = 1;
+    uint64_t multiChannelHandle[MOE_JETTY_TOTAL] = {};
+    int32_t hcommStatus[MOE_JETTY_TOTAL] = {};
 };
+
+static_assert(sizeof(ChannelHandle) == sizeof(uint64_t),
+              "MoeCommContext requires ChannelHandle to use the same 64-bit layout as the kernel context");
+static_assert(sizeof(MultiChannelHandle) == sizeof(uint64_t),
+              "MoeCommContext requires MultiChannelHandle to use the same 64-bit layout as the kernel context");
 
 struct EngramContextResources {
     HcclComm hcclComm = nullptr;
@@ -479,6 +490,8 @@ public:
 
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         GetCommProtocol(hcclComm, protocol);
+        // 16P shared-Jetty无业务验证固定使用UBC_CTP建链，不采用拓扑探测出的协议。
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
 
         MoeCommContext context;
         rankNumPerServer_ = rankNumPerUbDomain_;
@@ -516,7 +529,7 @@ private:
 
         uint32_t rankSize = 0;
         GetRankInfo(commHandle, context->epRankId, rankSize);
-        GetHcclCommResource(commHandle, engine, protocol, *context, rankSize, hcclBufferSize);
+        GetHcclCommResource(commHandle, contextTag, engine, protocol, *context, rankSize, hcclBufferSize);
 
         CopyContextToDevice(commHandle, contextTag, engine, context, contextSize);
     }
@@ -529,6 +542,11 @@ private:
         if (hcclRet != HCCL_SUCCESS) {
             CreateContext(commHandle, contextTag, engine, protocol, ctx, &context, hcclBufferSize);
         } else {
+            TORCH_CHECK(ctx != nullptr && ctxSize >= sizeof(MoeCommContext),
+                        "Existing MoE context is invalid, ptr=", ctx, ", size=", ctxSize,
+                        ", expected at least ", sizeof(MoeCommContext));
+            auto aclRet = aclrtMemcpy(&context, sizeof(context), ctx, sizeof(context), ACL_MEMCPY_DEVICE_TO_HOST);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "Copy existing MoE context from device failed, ret: ", aclRet);
             GetHcclBufferSize(commHandle, hcclBufferSize);
         }
     }
@@ -672,7 +690,8 @@ private:
                 continue;
             }
             uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            uint32_t layerId = netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[peer];
+            // 16P shared-Jetty无业务验证固定经过第1层交换网络。
+            uint32_t layerId = 1U;
             CommLink *links = nullptr;
             GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
@@ -715,11 +734,75 @@ private:
         }
     }
 
-    void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                             MoeCommContext &context, uint32_t rankSize, uint64_t &hcclBufferSize)
+    // 每个物理Jetty连接所有远端。所有逻辑通道共享该Jetty的SQ/CQ，kernel通过GetHandleRef选择对端。
+    void GetSharedJettyHandles(const HcclComm &commHandle, const std::string &contextTag, uint32_t rankDim,
+                               uint32_t srcRankId, const CommProtocol &protocol, MoeCommContext &context)
+    {
+        TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
+        TORCH_CHECK(protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP,
+                    "16P shared-Jetty validation requires COMM_PROTOCOL_UBC_CTP, got ",
+                    static_cast<int>(protocol));
+        uint32_t netLayerNum = 0;
+        uint32_t *netLayerList = nullptr;
+        GetNetLayers(commHandle, netLayerList, netLayerNum);
+        TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
+
+        uint32_t channelNum = rankDim - 1U;
+        for (uint32_t jetty = 0; jetty < MOE_JETTY_TOTAL; ++jetty) {
+            std::vector<HcclChannelDesc> channelDesc(channelNum);
+            auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL shared channel init failed, jetty=", jetty,
+                        ", ret=", hcclRet);
+
+            uint32_t channelIndex = 0U;
+            EndpointDesc localEndpoint{};
+            bool hasLocalEndpoint = false;
+            for (uint32_t peer = 0U; peer < rankDim; ++peer) {
+                if (peer == srcRankId) {
+                    continue;
+                }
+                // 16P场景所有逻辑对端固定从第1层获取链路。
+                uint32_t layerId = 1U;
+                CommLink *links = nullptr;
+                GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
+                if (!hasLocalEndpoint) {
+                    localEndpoint = links->srcEndpointDesc;
+                    hasLocalEndpoint = true;
+                } else {
+                    TORCH_CHECK(std::memcmp(localEndpoint.commAddr.raws, links->srcEndpointDesc.commAddr.raws,
+                                            sizeof(localEndpoint.commAddr.raws)) == 0,
+                                "Peers in shared Jetty ", jetty,
+                                " do not use the same local endpoint; rank grouping must follow endpoint topology");
+                }
+                auto &desc = channelDesc[channelIndex++];
+                desc.channelProtocol = protocol;
+                desc.remoteRank = peer;
+                desc.notifyNum = MOE_JETTY_CHANNEL_NOTIFY_NUM;
+                desc.localEndpoint = links->srcEndpointDesc;
+                desc.remoteEndpoint = links->dstEndpointDesc;
+            }
+
+            std::string sharedQueueTag = contextTag + "_shared_jetty_" + std::to_string(srcRankId) + "_" +
+                                         std::to_string(jetty);
+            CheckContextTag(sharedQueueTag);
+            auto multiChannel = static_cast<MultiChannelHandle>(0U);
+            hcclRet = MakeMultiChannelHandle(commHandle, sharedQueueTag.c_str(), channelDesc.data(), channelNum,
+                                             &multiChannel);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS && multiChannel != 0U,
+                        "MakeMultiChannelHandle failed, jetty=", jetty, ", channelNum=", channelNum,
+                        ", ret=", hcclRet);
+            context.multiChannelHandle[jetty] = static_cast<uint64_t>(multiChannel);
+        }
+    }
+
+    void GetHcclCommResource(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
+                             const CommProtocol &protocol, MoeCommContext &context, uint32_t rankSize,
+                             uint64_t &hcclBufferSize)
     {
         uint32_t rankId = context.epRankId;
+        // cnt栅栏使用独立普通通道，避免和shared-Jetty batch接口混用同一SQ/CQ。
         GetHcclCommChannel(commHandle, engine, rankSize, rankId, protocol, context);
+        GetSharedJettyHandles(commHandle, contextTag, rankSize, rankId, protocol, context);
 
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
