@@ -95,7 +95,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 | `x1_scale_dtype` | int          | 可选      | `x1_scale`的dtype，默认值为-1；MX场景传293（float8_e8m0）。                                                           | int                                            | -              | -                                 |
 | `x2_scale_dtype` | int          | 可选      | `x2_scale`的dtype，默认值为-1；MX场景传293（float8_e8m0）。                                                           | int                                            | -              | -                                 |
 | `y_dtype`        | int          | 可选      | 输出`y`的数据类型，默认值为fp32；未显式传15（BF16）或5（FP16）时会被算子校验拒绝。                                           | int                                            | -              | -                                 |
-| `comm_mode`      | str          | 可选      | 通信模式，默认值为`None`；当前仅支持`"urma"`。                                                                             | string                                         | -              | -                                 |
+| `comm_mode`      | str          | 可选      | 通信模式，默认值为`None`；当前仅支持`"aiv_urma"`。                                                                             | string                                         | -              | -                                 |
 | `precision_mode` | int          | 可选      | 精度模式，默认值为0。0/1/2性能由低到高，精度由高到低。                                                                         | int                                            | -              | -                                 |
 
 ## 返回值说明
@@ -167,7 +167,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
       group_sizes=[1, 1, 32],
       x1_scale_dtype=293,      # float8_e8m0fnu
       x2_scale_dtype=293,      # float8_e8m0fnu
-      comm_mode="urma",
+      comm_mode="aiv_urma",
       precision_mode=0,
   )
   ```
