@@ -78,10 +78,8 @@ __simd_callee__ inline void ExpSumReduceStore128(RegTensor<float> &vreg_exp_sum,
                                                  __ubuf__ T *&expSumUb, MaskReg &preg_all)
 {
     Add(vreg_exp_sum, vreg_exp_even, vreg_exp_odd, preg_all);
-    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp_sum,
-                                                                                      preg_all);
-    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum,
-                                                                 1);
+    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp_sum, preg_all);
+    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum, 1);
 }
 
 template <typename T>
@@ -98,7 +96,7 @@ __simd_callee__ inline void TailScaleStoreMax128(RegTensor<float> &vreg_input_x,
     Select(vreg_input_x_unroll_new, vreg_input_x_unroll, vreg_min, preg_ori_tail_n);
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_all);
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
-                                                      vreg_input_x_unroll_new, preg_tail_n);
+                                                 vreg_input_x_unroll_new, preg_tail_n);
     Max(vreg_max_tmp, vreg_input_x, vreg_input_x_unroll_new, preg_all);
 }
 
@@ -115,7 +113,7 @@ __simd_callee__ inline void AlignedScaleStoreMax128(RegTensor<float> &vreg_input
     Muls(vreg_input_x_unroll, vreg_input_x_unroll, scale, preg_all);
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_all);
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
-                                                      vreg_input_x_unroll, preg_all);
+                                                 vreg_input_x_unroll, preg_all);
     Max(vreg_max_tmp, vreg_input_x, vreg_input_x_unroll, preg_all);
 }
 

@@ -198,10 +198,8 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockAndProcessKVF
         AscendC::Reg::MaskReg valueMaskReg;
         uint32_t maskLen = static_cast<uint32_t>(batchSize_);
         auto stemBlockSumNumAddr = totalStemBlockAddr;
-        AscendC::Reg::MaskReg allMaskReg =
-            AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
-        AscendC::Reg::MaskReg oneMaskReg =
-            AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::VL1>();
+        AscendC::Reg::MaskReg allMaskReg = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::VL1>();
         Reg::Duplicate(divNumReg, int32_t(stemBlockSize_), allMaskReg);
         Reg::Duplicate(stemBlockSumNumReg, int32_t(0), oneMaskReg);
         for (uint16_t i = 0; i < loopCnt; i++) {
@@ -212,7 +210,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockAndProcessKVF
             AscendC::Reg::Div(kvstemBlockReg, kvstemBlockReg, divNumReg, valueMaskReg);
             AscendC::Reg::Muls(kvstemBlockAllReg, kvstemBlockReg, int32_t(hKv_), valueMaskReg);
             AscendC::Reg::Reduce<Reg::ReduceType::SUM, int32_t, int32_t>(stemBlockNumReg, kvstemBlockAllReg,
-                                                                                   valueMaskReg);
+                                                                         valueMaskReg);
             AscendC::Reg::Add(stemBlockSumNumReg, stemBlockSumNumReg, stemBlockNumReg, oneMaskReg);
             AscendC::Reg::StoreAlign(kvStemBlockAddr + i * vfLen, kvstemBlockReg, valueMaskReg);
         }
@@ -379,16 +377,16 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeKFlat(void)
                 for (uint16_t k = 0; k < r_; k++) {
                     auto kCacheAddrStart = kCacheAddr + k * stemStride_ * dimQk_ + i * dimQk_ + j * vfLen;
                     float kScalarValue = *(kScalarAddr + k * stemStride_ + i);
-                    AscendC::Reg::LoadAlign<fp8_e4m3fn_t, AscendC::Reg::LoadDist::DIST_UNPACK4_B8>(
-                        kCacheReg, kCacheAddrStart);
+                    AscendC::Reg::LoadAlign<fp8_e4m3fn_t, AscendC::Reg::LoadDist::DIST_UNPACK4_B8>(kCacheReg,
+                                                                                                   kCacheAddrStart);
                     AscendC::Reg::Cast<float, fp8_e4m3fn_t, castTraitFp8ToFloat>(kCacheFp32Reg, kCacheReg,
-                                                                                      valueMaskReg);
+                                                                                 valueMaskReg);
                     AscendC::Reg::Muls(kHReg, kCacheFp32Reg, kScalarValue, valueMaskReg);
                     AscendC::Reg::Add(kGropSumReg, kGropSumReg, kHReg, valueMaskReg);
                 }
                 AscendC::Reg::Cast<bfloat16_t, float, castTraitFloatTo16>(kFlatOutReg, kGropSumReg, valueMaskReg);
-                AscendC::Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(
-                    kGropSumAddrStart, kFlatOutReg, valueMaskReg);
+                AscendC::Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(kGropSumAddrStart, kFlatOutReg,
+                                                                                    valueMaskReg);
             }
         }
     }
@@ -428,10 +426,8 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
         AscendC::Reg::MaskReg valueMaskReg;
         AscendC::Reg::MaskReg whereMaskReg;
         AscendC::Reg::MaskReg maxMaskReg;
-        AscendC::Reg::MaskReg oneMaskReg =
-            AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
-        AscendC::Reg::MaskReg allMaskReg =
-            AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
+        AscendC::Reg::MaskReg allMaskReg = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
         Reg::Duplicate(zerosReg, float(0), allMaskReg);
         auto normsAddrStart = normsAddr;
         for (uint16_t i = 0; i < static_cast<uint16_t>(r_ * stemStride_); i++) {
@@ -440,10 +436,9 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
             for (uint16_t j = 0; j < loopCnt; j++) {
                 valueMaskReg = AscendC::Reg::UpdateMask<float>(maskLen);
                 auto vCacheAddrStart = vCacheAddr + i * dimV_ + j * vfLen;
-                AscendC::Reg::LoadAlign<fp8_e4m3fn_t, AscendC::Reg::LoadDist::DIST_UNPACK4_B8>(
-                    vCacheReg, vCacheAddrStart);
-                AscendC::Reg::Cast<float, fp8_e4m3fn_t, castTraitFp8ToFloat>(vCacheFp32Reg, vCacheReg,
-                                                                                  valueMaskReg);
+                AscendC::Reg::LoadAlign<fp8_e4m3fn_t, AscendC::Reg::LoadDist::DIST_UNPACK4_B8>(vCacheReg,
+                                                                                               vCacheAddrStart);
+                AscendC::Reg::Cast<float, fp8_e4m3fn_t, castTraitFp8ToFloat>(vCacheFp32Reg, vCacheReg, valueMaskReg);
                 AscendC::Reg::Muls(vHReg, vCacheFp32Reg, vScaleH, valueMaskReg);
                 AscendC::Reg::Mul(vH2Reg, vHReg, vHReg, valueMaskReg);
                 AscendC::Reg::Reduce<Reg::ReduceType::SUM, float, float>(vHSumReg, vH2Reg, valueMaskReg);
@@ -498,8 +493,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeLogVals(int64_t numStemBlo
         AscendC::Reg::RegTensor<float> logValsSumReg;
         AscendC::Reg::RegTensor<float> vMeanReg;
         AscendC::Reg::MaskReg valueMaskReg;
-        AscendC::Reg::MaskReg oneMaskReg =
-            AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
         Reg::Duplicate(vMeanReg, float(0), oneMaskReg);
         uint32_t maskLen = static_cast<uint32_t>(numStemBlocks * r_);
         auto logValsAddrStart = vFLatOutAddr;
@@ -528,8 +522,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVStd(int64_t numStemBlocks
     {
         AscendC::Reg::RegTensor<float> sqrtReg;
         auto vStdAddrStart = vBiasOutAddr + 1;
-        AscendC::Reg::MaskReg oneMaskReg =
-            AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
         if constexpr (KDownLenFlag) {
             AscendC::Reg::RegTensor<float> logValsReg;
             AscendC::Reg::RegTensor<float> subReg;
@@ -579,8 +572,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlock
         AscendC::Reg::RegTensor<float> vFinalBlockMeanReg;
         AscendC::Reg::UnalignReg u0;
         AscendC::Reg::MaskReg valueMaskReg;
-        AscendC::Reg::MaskReg oneMaskReg =
-            AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
         uint32_t maskLen = static_cast<uint32_t>(numStemBlocks * r_);
 
         auto logValsAddrStart = logValsAddr;
@@ -606,8 +598,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlock
                 auto vFinalBlockAddrStart = logValsAddr + i * r_ + j * vfLen;
                 AscendC::Reg::LoadUnAlignPre(u0, vFinalBlockAddrStart);
                 AscendC::Reg::LoadUnAlign(vFinalBlockReg, u0, vFinalBlockAddrStart);
-                AscendC::Reg::Reduce<Reg::ReduceType::SUM, float, float>(vFinalBlockReg, vFinalBlockReg,
-                                                                                   valueMaskReg);
+                AscendC::Reg::Reduce<Reg::ReduceType::SUM, float, float>(vFinalBlockReg, vFinalBlockReg, valueMaskReg);
                 AscendC::Reg::Add(vFinalBlockSumReg, vFinalBlockSumReg, vFinalBlockReg, oneMaskReg);
             }
             AscendC::Reg::Muls(vFinalBlockMeanReg, vFinalBlockSumReg, divNum, oneMaskReg);

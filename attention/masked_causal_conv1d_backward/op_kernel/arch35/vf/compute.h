@@ -108,25 +108,19 @@ __simd_vf__ void GradXAndWeightNoTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __u
 
             // products for row r0
             Reg::Mul(tmp0B32, go0B32, in0B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmp0B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmp0B32, fullMask);
             Reg::Mul(tmp1B32, go1B32, in0B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmp1B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmp1B32, fullMask);
             Reg::Mul(tmp2B32, go2B32, in0B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmp2B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmp2B32, fullMask);
 
             // products for row r1
             Reg::Mul(tmp0B32, go3B32, in1B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmp0B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmp0B32, fullMask);
             Reg::Mul(tmp1B32, go4B32, in1B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmp1B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmp1B32, fullMask);
             Reg::Mul(tmp2B32, go5B32, in1B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmp2B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmp2B32, fullMask);
         }
         dimOff += B32_REP_SIZE;
     }
@@ -196,24 +190,18 @@ __simd_vf__ void GradXAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, _
 
             // products
             Reg::Mul(tmp0B32, go0B32, in0B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmp0B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r0 * dimLen + dimOff, tmp0B32, fullMask);
             Reg::Mul(tmp1B32, go1B32, in0B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmp1B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r0 * dimLen + dimOff, tmp1B32, fullMask);
             Reg::Mul(tmp2B32, go2B32, in0B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmp2B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r0 * dimLen + dimOff, tmp2B32, fullMask);
 
             Reg::Mul(tmp0B32, go3B32, in1B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmp0B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r1 * dimLen + dimOff, tmp0B32, fullMask);
             Reg::Mul(tmp1B32, go4B32, in1B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmp1B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r1 * dimLen + dimOff, tmp1B32, fullMask);
             Reg::Mul(tmp2B32, go5B32, in1B32, fullMask);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmp2B32,
-                                                                            fullMask);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r1 * dimLen + dimOff, tmp2B32, fullMask);
         }
 
         // Tail row
@@ -238,14 +226,11 @@ __simd_vf__ void GradXAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, _
         Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(giAddr + r * dimLen + dimOff, yB16, fullMask);
 
         Reg::Mul(tmp0B32, go0B32, inB32, fullMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r * dimLen + dimOff, tmp0B32,
-                                                                        fullMask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p2Addr + r * dimLen + dimOff, tmp0B32, fullMask);
         Reg::Mul(tmp1B32, go1B32, inB32, fullMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r * dimLen + dimOff, tmp1B32,
-                                                                        fullMask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p1Addr + r * dimLen + dimOff, tmp1B32, fullMask);
         Reg::Mul(tmp2B32, go2B32, inB32, fullMask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r * dimLen + dimOff, tmp2B32,
-                                                                        fullMask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(p0Addr + r * dimLen + dimOff, tmp2B32, fullMask);
 
         dimOff += B32_REP_SIZE;
     }

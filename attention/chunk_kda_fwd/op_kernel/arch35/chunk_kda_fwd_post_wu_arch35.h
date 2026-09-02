@@ -173,8 +173,8 @@ static __simd_vf__ inline void ComputeKdaTailWuRegbase(__ubuf__ float *wOut, __u
 
 template <typename InputT>
 __simd_callee__ inline void LoadPostKdaGateRegbasePair(AscendC::Reg::RegTensor<float> &zeroReg,
-                                                       AscendC::Reg::RegTensor<float> &oneReg,
-                                                       __ubuf__ InputT *src, AscendC::Reg::MaskReg &inputMask)
+                                                       AscendC::Reg::RegTensor<float> &oneReg, __ubuf__ InputT *src,
+                                                       AscendC::Reg::MaskReg &inputMask)
 {
     using namespace AscendC::Reg;
     if constexpr (std::is_same<InputT, float>()) {
@@ -187,8 +187,7 @@ __simd_callee__ inline void LoadPostKdaGateRegbasePair(AscendC::Reg::RegTensor<f
 }
 
 template <typename OutputT>
-__simd_callee__ inline void StorePostKdaGateRegbasePair(__ubuf__ OutputT *dst,
-                                                        AscendC::Reg::RegTensor<float> &zeroReg,
+__simd_callee__ inline void StorePostKdaGateRegbasePair(__ubuf__ OutputT *dst, AscendC::Reg::RegTensor<float> &zeroReg,
                                                         AscendC::Reg::RegTensor<float> &oneReg,
                                                         AscendC::Reg::MaskReg &inputMask,
                                                         AscendC::Reg::MaskReg &floatMask)

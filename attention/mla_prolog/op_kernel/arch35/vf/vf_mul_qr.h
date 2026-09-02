@@ -35,8 +35,7 @@ __simd_vf__ void MulQrVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *outputBuf, __ubuf
 
         Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregSrc, inputBuf + loopOffset);
         // broadcast量化系数
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregDequantScaleVrcb,
-                                                                 dequantScaleBrcbBuf + dequantLoopOffset);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregDequantScaleVrcb, dequantScaleBrcbBuf + dequantLoopOffset);
         Reg::Duplicate(vregQuantScale, quantScaleCkvRope);
 
         Reg::Div(vregMulScale, vregQuantScale, vregDequantScaleVrcb, pregAll);

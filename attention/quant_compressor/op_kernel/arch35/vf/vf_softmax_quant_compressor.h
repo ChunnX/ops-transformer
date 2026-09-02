@@ -313,53 +313,53 @@ __simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float 
             Add(vregSum33, vregExp33, vregSum33, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp00, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb01 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp01, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp01, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb02 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp02, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp02, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb03 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp03, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp03, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp10, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp10, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb11 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp11, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp11, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb12 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp12, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp12, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb13 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp13, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp13, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp20, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp20, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb21 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp21, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp21, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb22 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp22, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp22, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb23 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp23, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp23, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp30, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp30, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb31 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp31, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp31, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb32 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp32, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp32, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb33 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp33, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp33, pregAll);
         }
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize % BASE_REDUCE_SIZE); ++loopM) {
@@ -759,29 +759,29 @@ __simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum31, vregExp31, vregSum31, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp00, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb01 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp01, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp01, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp10, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp10, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb11 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp11, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp11, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp20, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp20, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb21 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp21, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp21, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp30, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp30, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb31 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp31, pregAll);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp31, pregAll);
         }
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize % BASE_REDUCE_SIZE); ++loopM) {
@@ -1090,29 +1090,29 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum31, vregExp31, vregSum31, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp00, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp00, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                 ((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                  ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                 vregExp01, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp10, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp10, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                 ((__ubuf__ T *&)srcUb10 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                  ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                 vregExp11, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp20, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp20, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                 ((__ubuf__ T *&)srcUb20 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                  ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                 vregExp21, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp30, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp30, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                 ((__ubuf__ T *&)srcUb30 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                  ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
@@ -1585,29 +1585,29 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum31, vregExp31, vregSum31, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp00, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp00, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb01 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp01, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp01, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb10 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp10, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp10, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb11 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp11, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp11, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb20 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp20, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp20, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb21 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp21, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp21, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb30 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp30, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp30, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb31 + loopM * RowSize * BASE_REDUCE_SIZE +
-                                                           ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                                                          vregExp31, pregLHalf);
+                                                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                     vregExp31, pregLHalf);
         }
 
         for (uint16_t loopM = 0; loopM < uint16_t(ReduceSize % BASE_REDUCE_SIZE); ++loopM) {
@@ -1903,34 +1903,30 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
                 Add(vregSum30, vregExp30, vregSum30, pregAll);
                 Add(vregSum31, vregExp31, vregSum31, pregAll);
 
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb0 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp00, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb0 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp00, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb0 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                     vregExp01, pregAll);
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb1 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp10, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb1 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp10, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb1 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                     vregExp11, pregAll);
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb2 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp20, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb2 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp20, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb2 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                     vregExp21, pregAll);
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb3 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp30, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb3 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp30, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb3 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
@@ -2238,34 +2234,30 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
                 Add(vregSum30, vregExp30, vregSum30, pregAll);
                 Add(vregSum31, vregExp31, vregSum31, pregAll);
 
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb0 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp00, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb0 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp00, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb0 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                     vregExp01, pregAll);
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb1 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp10, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb1 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp10, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb1 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                     vregExp11, pregAll);
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb2 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp20, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb2 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp20, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb2 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
                     vregExp21, pregAll);
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb3 + loopM * RowSize * BASE_REDUCE_SIZE +
-                     ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
-                    vregExp30, pregAll);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb3 + loopM * RowSize * BASE_REDUCE_SIZE +
+                                                          ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),
+                                                         vregExp30, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
                     ((__ubuf__ T *&)srcUb3 + RowSize + loopM * RowSize * BASE_REDUCE_SIZE +
                      ReduceSize * RowSize * loopSc * BASE_DEAL_SIZE),

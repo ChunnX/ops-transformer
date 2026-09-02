@@ -107,20 +107,20 @@ __aicore__ inline void MulsSelSimpleSoftMaxAligned256(
                 for (uint16_t n = 0; n < repeatTimes; n++) {
                     DataCopy(vregSrc, ((__ubuf__ float *&)srcLocalInt + (m * srcN + n * fullExeSize)));
                     if constexpr (IsSameType<T1, half>::value && hasPse == 1) {
-                        DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalf,
-                                                                              ((__ubuf__ T1 *&)pseLocalInt), pseStride);
+                        DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalf, ((__ubuf__ T1 *&)pseLocalInt),
+                                                                         pseStride);
                         Interleave(vregPseHalfEven, vregPseHalfOdd, vregPseHalf, vregPseHalf);
                         Cast<float, T1, castTraitB162B32Even>(vregPse, vregPseHalfEven, pregFullExeB16);
                         Add(vregSrc, vregSrc, vregPse, pregFullExe);
                     } else if constexpr (IsSameType<T1, bfloat16_t>::value && hasPse == 1) {
                         DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBf, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                              pseStride);
+                                                                         pseStride);
                         Interleave(vregPseBfEven, vregPseBfOdd, vregPseBf, vregPseBf);
                         Cast<float, T1, castTraitB162B32Even>(vregPse, vregPseBfEven, pregFullExeB16);
                         Add(vregSrc, vregSrc, vregPse, pregFullExe);
                     } else if constexpr (IsSameType<T1, float>::value && hasPse == 1) {
                         DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPse, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                              pseStride);
+                                                                         pseStride);
                         Add(vregSrc, vregSrc, vregPse, pregFullExe);
                     }
                     Muls(vregMuls, vregSrc, scale, pregFullExe);
@@ -139,20 +139,20 @@ __aicore__ inline void MulsSelSimpleSoftMaxAligned256(
                 // tailLoop
                 DataCopy(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail + m * srcN));
                 if constexpr (IsSameType<T1, half>::value && hasPse == 1) {
-                    DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(
-                        vregPseHalfTail, ((__ubuf__ T1 *&)pseLocalIntTail), pseTailStride);
+                    DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalfTail, ((__ubuf__ T1 *&)pseLocalIntTail),
+                                                                     pseTailStride);
                     Interleave(vregPseHalfTailEven, vregPseHalfTailOdd, vregPseHalfTail, vregPseHalfTail);
                     Cast<float, T1, castTraitB162B32Even>(vregPseTail, vregPseHalfTailEven, pregFullExeB16);
                     Add(vregSrcTail, vregSrcTail, vregPseTail, pregTailExe);
                 } else if constexpr (IsSameType<T1, bfloat16_t>::value && hasPse == 1) {
-                    DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(
-                        vregPseBfTail, ((__ubuf__ T1 *&)pseLocalIntTail), pseTailStride);
+                    DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBfTail, ((__ubuf__ T1 *&)pseLocalIntTail),
+                                                                     pseTailStride);
                     Interleave(vregPseBfTailEven, vregPseBfTailOdd, vregPseBfTail, vregPseBfTail);
                     Cast<float, T1, castTraitB162B32Even>(vregPseTail, vregPseBfTailEven, pregFullExeB16);
                     Add(vregSrcTail, vregSrcTail, vregPseTail, pregTailExe);
                 } else if constexpr (IsSameType<T1, float>::value && hasPse == 1) {
-                    DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(
-                        vregPseTail, ((__ubuf__ T1 *&)pseLocalIntTail), pseTailStride);
+                    DataCopy<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseTail, ((__ubuf__ T1 *&)pseLocalIntTail),
+                                                                     pseTailStride);
                     Add(vregSrcTail, vregSrcTail, vregPseTail, pregTailExe);
                 }
                 Muls(vregMulsTail, vregSrcTail, scale, pregTailExe);
@@ -166,7 +166,7 @@ __aicore__ inline void MulsSelSimpleSoftMaxAligned256(
                 }
                 Div(vregDivTail, vregExpTail, vregSum, pregTailExe);
                 DataCopy<float, Reg::StoreDist::DIST_NORM_B32>(((__ubuf__ float *&)dstLocalIntTail + m * srcN),
-                                                                    vregDivTail, pregFullExe);
+                                                               vregDivTail, pregFullExe);
             }
         }
     }

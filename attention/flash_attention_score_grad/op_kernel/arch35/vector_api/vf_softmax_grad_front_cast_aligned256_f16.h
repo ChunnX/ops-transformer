@@ -57,19 +57,16 @@ __simd_vf__ inline void CastAligned256F16VF128(uint64_t srcLocalInt, uint64_t ds
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         // 手动unroll 128个数分64个数做mul和add
         if constexpr (IsSameType<T1, half>::value) {
-            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcHalf, ((__ubuf__ T1 *&)srcLocalInt),
-                                                                   fullExeSize);
+            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcHalf, ((__ubuf__ T1 *&)srcLocalInt), fullExeSize);
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradHalf, ((__ubuf__ T1 *&)gradLocalInt),
-                                                                   fullExeSize);
+                                                              fullExeSize);
             Cast<float, T1, castTraitB162B32Even>(vregSrc, vregSrcHalf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Odd>(vregSrc1, vregSrcHalf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Even>(vregGrad, vregGradHalf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Odd>(vregGrad1, vregGradHalf, pregFullExeB16);
         } else if constexpr (IsSameType<T1, bfloat16_t>::value) {
-            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcBf, ((__ubuf__ T1 *&)srcLocalInt),
-                                                                   fullExeSize);
-            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradBf, ((__ubuf__ T1 *&)gradLocalInt),
-                                                                   fullExeSize);
+            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcBf, ((__ubuf__ T1 *&)srcLocalInt), fullExeSize);
+            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradBf, ((__ubuf__ T1 *&)gradLocalInt), fullExeSize);
             Cast<float, T1, castTraitB162B32Even>(vregSrc, vregSrcBf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Even>(vregGrad, vregGradBf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Odd>(vregSrc1, vregSrcBf, pregFullExeB16);
@@ -80,7 +77,7 @@ __simd_vf__ inline void CastAligned256F16VF128(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd, vregMul, vregMul2, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd, pregTailExe);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
-                                                                     uregReduceSum, 1);
+                                                                uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
 }
@@ -129,10 +126,9 @@ __simd_vf__ inline void CastAligned256F16VF256(uint64_t srcLocalInt, uint64_t ds
         if constexpr (IsSameType<T1, half>::value) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcHalf, ((__ubuf__ T1 *&)srcLocalInt), srcN);
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradHalf, ((__ubuf__ T1 *&)gradLocalInt), srcN);
-            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcHalfTail, ((__ubuf__ T1 *&)srcLocalIntTail),
-                                                                   srcN);
+            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcHalfTail, ((__ubuf__ T1 *&)srcLocalIntTail), srcN);
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradHalfTail, ((__ubuf__ T1 *&)gradLocalIntTail),
-                                                                   srcN);
+                                                              srcN);
             Cast<float, T1, castTraitB162B32Even>(vregSrc, vregSrcHalf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Odd>(vregSrc1, vregSrcHalf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Even>(vregGrad, vregGradHalf, pregFullExeB16);
@@ -144,10 +140,8 @@ __simd_vf__ inline void CastAligned256F16VF256(uint64_t srcLocalInt, uint64_t ds
         } else if constexpr (IsSameType<T1, bfloat16_t>::value) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcBf, ((__ubuf__ T1 *&)srcLocalInt), srcN);
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradBf, ((__ubuf__ T1 *&)gradLocalInt), srcN);
-            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcBfTail, ((__ubuf__ T1 *&)srcLocalIntTail),
-                                                                   srcN);
-            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradBfTail, ((__ubuf__ T1 *&)gradLocalIntTail),
-                                                                   srcN);
+            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcBfTail, ((__ubuf__ T1 *&)srcLocalIntTail), srcN);
+            LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradBfTail, ((__ubuf__ T1 *&)gradLocalIntTail), srcN);
             Cast<float, T1, castTraitB162B32Even>(vregSrc, vregSrcBf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Even>(vregGrad, vregGradBf, pregFullExeB16);
             Cast<float, T1, castTraitB162B32Odd>(vregSrc1, vregSrcBf, pregFullExeB16);
@@ -168,7 +162,7 @@ __simd_vf__ inline void CastAligned256F16VF256(uint64_t srcLocalInt, uint64_t ds
 
         ReduceSum(vregReduceSum, vregAddLast, pregFullExe);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
-                                                                     uregReduceSum, 1);
+                                                                uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
 }

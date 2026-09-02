@@ -228,10 +228,8 @@ __simd_callee__ inline void ExpSumReduceStore512(RegTensor<float> &vreg_exp_sum3
     Add(vreg_exp_sum1, vreg_exp_sum1, vreg_exp_sum2, preg_all);
     Add(vreg_exp_sum3, vreg_exp_sum3, vreg_exp_sum4, preg_all);
     Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum3, preg_all);
-    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3,
-                                                                                      preg_all);
-    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum3, ureg_exp_sum,
-                                                                 1);
+    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3, preg_all);
+    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum3, ureg_exp_sum, 1);
 }
 
 template <typename T2>
@@ -290,8 +288,7 @@ __simd_callee__ inline void MaxReduce4(RegTensor<float> &vreg_input_max, RegTens
     Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp2, preg_all);
     Max(vreg_max_tmp3, vreg_max_tmp3, vreg_max_tmp4, preg_all);
     Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp3, preg_all);
-    Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp3,
-                                                                                      preg_all);
+    Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp3, preg_all);
 }
 
 __simd_callee__ inline void InitAlibiOffsets8(RegTensor<float> &vreg_alibi1, RegTensor<float> &vreg_alibi2,
@@ -565,17 +562,17 @@ __simd_callee__ static inline void ProcessVec1TailLoop512(__ubuf__ T *srcUb, __u
             Select(vreg_sel8_new, vreg_sel8, vreg_min, preg_ori_tail_n4);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize * 6 + i * s2BaseSize,
-                                                              vreg_sel7_new, preg_all);
+                                                         vreg_sel7_new, preg_all);
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize * 7 + i * s2BaseSize,
-                                                              vreg_sel8_new, preg_all);
+                                                         vreg_sel8_new, preg_all);
         } else {
             Select(vreg_input_x7_new, vreg_input_x7, vreg_min, preg_ori_tail_n3);
             Select(vreg_input_x8_new, vreg_input_x8, vreg_min, preg_ori_tail_n4);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize * 6 + i * s2BaseSize,
-                                                              vreg_input_x7_new, preg_all);
+                                                         vreg_input_x7_new, preg_all);
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize * 7 + i * s2BaseSize,
-                                                              vreg_input_x8_new, preg_all);
+                                                         vreg_input_x8_new, preg_all);
         }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();

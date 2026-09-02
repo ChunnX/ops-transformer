@@ -703,16 +703,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
 
 // fp8->fp32
 static constexpr Reg::CastTrait castTraitFp8_1 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp8->fp32
 static constexpr Reg::CastTrait castTraitFp8_2 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8_3 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 // fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8_4 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 template <typename Q_T, typename KV_T>
 __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrcAddr, uint32_t dealRowCount)
 {
@@ -731,8 +731,7 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrc
         Reg::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8_1>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
         Reg::Cast<float, bfloat16_t, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
 
-        Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(ubDstAddrTmp, vScalefp32Res0, 64,
-                                                                             bf16TypeMaskAll);
+        Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(ubDstAddrTmp, vScalefp32Res0, 64, bf16TypeMaskAll);
     }
 }
 
@@ -790,10 +789,10 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
             Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
                 (Reg::RegTensor<int8_t> &)vKvData1, ubSrcTemp, combineDim - tileSize);
 
-            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>(
-                (Reg::RegTensor<bfloat16_t> &)vScale0Bf16, ubScaleSrcAddrTemp + i * (combineDim / 2));
-            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>(
-                (Reg::RegTensor<bfloat16_t> &)vScale1Bf16, ubScaleSrcAddrTemp + 1 + i * (combineDim / 2));
+            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale0Bf16,
+                                                                    ubScaleSrcAddrTemp + i * (combineDim / 2));
+            Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale1Bf16,
+                                                                    ubScaleSrcAddrTemp + 1 + i * (combineDim / 2));
 
             Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
             Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
@@ -822,8 +821,8 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T *ubKRopeNzAddr, __ubuf__ in
         // load scale
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
             (Reg::RegTensor<int8_t> &)vKvData0, ubSrcTemp, combineDim);
-        Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>(
-            (Reg::RegTensor<bfloat16_t> &)vScale0Bf16, ubScaleSrcAddrTemp + i * (combineDim / 2));
+        Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_BRC_B16>((Reg::RegTensor<bfloat16_t> &)vScale0Bf16,
+                                                                ubScaleSrcAddrTemp + i * (combineDim / 2));
         Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
         Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, fp16MaskAll);
         Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vMulRes0, vCastRes0, vScale0Bf16, fp16MaskAll);
@@ -2008,9 +2007,9 @@ __simd_vf__ void GetMixedKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf_
     for (; s2Loop > 1;) {
         for (uint16_t i = 0; i < s2Loop - 1; ++i) {
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx1,
-                                                                        sparseIdxUb + i * s2NumPerLoop);
+                                                              sparseIdxUb + i * s2NumPerLoop);
             Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx2,
-                                                                        sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
+                                                              sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
             Reg::Muls(sparseIdx1, sparseIdx1, sparseBlockSize, pregAll);
             Reg::Muls(sparseIdx2, sparseIdx2, sparseBlockSize, pregAll);
             Reg::ShiftRights(paBlockIdx1, sparseIdx1, shiftRightNum, pregAll);
@@ -2029,8 +2028,8 @@ __simd_vf__ void GetMixedKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf_
             Reg::Add(carryLow2, totalLow2, mulLow2, phyOffset2, pregAll);
             Reg::AddC(carryHigh1, totalHigh1, mulHigh1, zeroReg, carryLow1, pregAll);
             Reg::AddC(carryHigh2, totalHigh2, mulHigh2, zeroReg, carryLow2, pregAll);
-            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + i * outOffsetPerLoop,
-                                                                                totalLow1, totalHigh1, pregAll);
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + i * outOffsetPerLoop, totalLow1,
+                                                                      totalHigh1, pregAll);
             Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + outOffsetPerReg + i * outOffsetPerLoop, totalLow2, totalHigh2, pregAll);
         }
@@ -2043,9 +2042,9 @@ __simd_vf__ void GetMixedKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf_
         Reg::Not(tailNeg1, tail1, pregAll);
         Reg::Not(tailNeg2, tail2, pregAll);
         Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx1,
-                                                                    sparseIdxUb + tailLoopIdx * s2NumPerLoop);
-        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>(
-            (Reg::RegTensor<int32_t> &)sparseIdx2, sparseIdxUb + s2NumPerReg + tailLoopIdx * s2NumPerLoop);
+                                                          sparseIdxUb + tailLoopIdx * s2NumPerLoop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx2,
+                                                          sparseIdxUb + s2NumPerReg + tailLoopIdx * s2NumPerLoop);
         Reg::Muls(sparseIdx1, sparseIdx1, sparseBlockSize, tail1);
         Reg::Muls(sparseIdx2, sparseIdx2, sparseBlockSize, tail2);
         Reg::ShiftRights(paBlockIdx1, sparseIdx1, shiftRightNum, tail1);
@@ -2068,8 +2067,8 @@ __simd_vf__ void GetMixedKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf_
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalHigh1, invalidValue, tailNeg1);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalLow2, invalidValue, tailNeg2);
         Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalHigh2, invalidValue, tailNeg2);
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
-            kvPhyAddrUb + tailLoopIdx * outOffsetPerLoop, totalLow1, totalHigh1, pregAll);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + tailLoopIdx * outOffsetPerLoop,
+                                                                  totalLow1, totalHigh1, pregAll);
         Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
             kvPhyAddrUb + outOffsetPerReg + tailLoopIdx * outOffsetPerLoop, totalLow2, totalHigh2, pregAll);
     }

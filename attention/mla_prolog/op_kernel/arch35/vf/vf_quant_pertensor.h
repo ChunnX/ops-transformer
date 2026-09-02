@@ -25,16 +25,16 @@ __simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *quantSca
     Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
 
     // float -> fp8e4m3 类型转换模式结构体
-    static constexpr Reg::CastTrait CAST_TRAITF322FP8E4M3 = {
-        Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    static constexpr Reg::CastTrait CAST_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr Reg::CastTrait CAST_TRAITF322FP8E4M3 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr Reg::CastTrait CAST_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING,
+                                                  RoundMode::CAST_RINT};
     static constexpr Reg::CastTrait CAST_TRAITB162F32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     static constexpr Reg::CastTrait CAST_TRAITF322HIF8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     static constexpr Reg::CastTrait castTraitF32ToHalf = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
     Reg::RegTensor<T> vregSrc;
     Reg::RegTensor<float> vregQuantScale;
     Reg::RegTensor<float> vregFloat;

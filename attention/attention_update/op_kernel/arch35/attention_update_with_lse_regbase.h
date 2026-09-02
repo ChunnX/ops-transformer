@@ -204,7 +204,7 @@ __aicore__ inline void AttentionUpdateWithLse<goType>::ComputeMaxVF(uint32_t cur
         AscendC::Reg::MaskReg pregCompare;
         uint32_t sreg = curBlockNum;
         static constexpr AscendC::Reg::ExpSpecificMode mode = {AscendC::Reg::MaskMergeMode::ZEROING,
-                                                                    AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
+                                                               AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
         Reg::Duplicate(vreg10, NEG_INF);
         for (uint16_t i = 0; i < vfLoop; i++) {
             preg1 = AscendC::Reg::UpdateMask<float, Reg::RegTraitNumOne>(sreg);

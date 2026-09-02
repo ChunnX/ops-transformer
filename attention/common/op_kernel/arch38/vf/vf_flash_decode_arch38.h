@@ -161,22 +161,19 @@ __aicore__ inline void ComputeScaleValue_VF_8(const LocalTensor<T> &lseMaxUb, co
         Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vregLseSum, FLT_ZERO, pregTailN);
 
         for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp,
-                                                                 (__ubuf__ float *&)lseMaxTmp + i * dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, (__ubuf__ float *&)lseMaxTmp + i * dealCount);
             Reg::Max<T, Reg::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseMaxTmp, pregTailN);
         }
 
         for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp,
-                                                                 (__ubuf__ float *&)lseMaxTmp + i * dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, (__ubuf__ float *&)lseMaxTmp + i * dealCount);
             Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, vregLseMax, pregTailN);
             Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, pregTailN);
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp,
-                                                                 (__ubuf__ float *&)lseSumTmp + i * dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, (__ubuf__ float *&)lseSumTmp + i * dealCount);
             Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseMaxTmp, pregTailN);
             Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSumTmp, pregTailN);
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)lseSumTmp + i * dealCount,
-                                                                      vregLseSumTmp, pregTailN);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)lseSumTmp + i * dealCount, vregLseSumTmp,
+                                                            pregTailN);
         }
 
         if (softmaxLseFlag) {
@@ -199,8 +196,7 @@ __aicore__ inline void ComputeScaleValue_VF_8(const LocalTensor<T> &lseMaxUb, co
 
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
         for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp,
-                                                                 (__ubuf__ float *&)lseSumTmp + i * dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, (__ubuf__ float *&)lseSumTmp + i * dealCount);
             Reg::Div<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseSum, pregTailN);
             Reg::DataCopy<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                 (__ubuf__ float *&)lseSum, vregLseSumTmp, blockStride, repeatStride, pregTailN);
@@ -254,32 +250,27 @@ __aicore__ inline void ComputeScaleValue_VF_16(const LocalTensor<T> &lseMaxUb, c
 
         for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, lseMaxSrc + i * dealCountSum);
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp2,
-                                                                 lseMaxSrc + i * dealCountSum + dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp2, lseMaxSrc + i * dealCountSum + dealCount);
             Reg::Max<T, Reg::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseMaxTmp, pregTailN);
             Reg::Max<T, Reg::MaskMergeMode::ZEROING>(vregLseMax2, vregLseMax2, vregLseMaxTmp2, pregTailN2);
         }
 
         for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, lseMaxSrc + i * dealCountSum);
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp2,
-                                                                 lseMaxSrc + i * dealCountSum + dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp2, lseMaxSrc + i * dealCountSum + dealCount);
             Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, vregLseMax, pregTailN);
             Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp2, vregLseMaxTmp2, vregLseMax2, pregTailN2);
             Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, pregTailN);
             Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp2, vregLseMaxTmp2, pregTailN2);
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, lseSumSrc + i * dealCountSum);
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp2,
-                                                                 lseSumSrc + i * dealCountSum + dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp2, lseSumSrc + i * dealCountSum + dealCount);
             Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseMaxTmp, pregTailN);
-            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp2, vregLseSumTmp2, vregLseMaxTmp2,
-                                                               pregTailN2);
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp2, vregLseSumTmp2, vregLseMaxTmp2, pregTailN2);
             Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSumTmp, pregTailN);
             Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum2, vregLseSum2, vregLseSumTmp2, pregTailN2);
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum, vregLseSumTmp,
-                                                                  pregTailN);
-            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum + dealCount,
-                                                                  vregLseSumTmp2, pregTailN2);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum, vregLseSumTmp, pregTailN);
+            Reg::DataCopy<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum + dealCount, vregLseSumTmp2,
+                                                        pregTailN2);
         }
 
         if (softmaxLseFlag) {
@@ -309,8 +300,7 @@ __aicore__ inline void ComputeScaleValue_VF_16(const LocalTensor<T> &lseMaxUb, c
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
         for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, lseSumSrc + i * dealCountSum);
-            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp2,
-                                                                 lseSumSrc + i * dealCountSum + dealCount);
+            Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp2, lseSumSrc + i * dealCountSum + dealCount);
             Reg::Div<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseSum, pregTailN);
             Reg::Div<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp2, vregLseSumTmp2, vregLseSum2, pregTailN2);
             Reg::DataCopy<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(

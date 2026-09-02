@@ -63,9 +63,9 @@ __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx
 }
 
 template <typename FloatT>
-__simd_callee__ inline void FloatToSortableKey(
-    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
-    AscendC::Reg::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
+__simd_callee__ inline void FloatToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
+                                               AscendC::Reg::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx,
+                                               AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
@@ -96,9 +96,8 @@ __simd_callee__ inline void FloatToSortableKey(
 template <typename FloatT>
 __simd_callee__ inline void FloatX2ToSortableKey(
     AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
-    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1,
-    AscendC::Reg::RegTensor<FloatT> &inVal0, AscendC::Reg::RegTensor<FloatT> &inVal1,
-    FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
+    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1, AscendC::Reg::RegTensor<FloatT> &inVal0,
+    AscendC::Reg::RegTensor<FloatT> &inVal1, FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
@@ -134,8 +133,7 @@ __simd_callee__ inline void FloatX2ToSortableKey(
 }
 
 template <typename T, size_t N>
-__simd_callee__ inline void DuplicateZero(AscendC::Reg::RegTensor<T> (&regArray)[N],
-                                          AscendC::Reg::MaskReg &mask)
+__simd_callee__ inline void DuplicateZero(AscendC::Reg::RegTensor<T> (&regArray)[N], AscendC::Reg::MaskReg &mask)
 {
     static_assert(N <= 4, "N must be <= 4");
     // 不能用循环, 会导致fatal error: error in backend: Unsupported Inst must be hoisted.
@@ -155,8 +153,8 @@ __simd_callee__ inline void DuplicateZero(AscendC::Reg::RegTensor<T> (&regArray)
 
 template <typename T, size_t N, bool ApplyRelu = true>
 __simd_callee__ inline void WeightedAccum(AscendC::Reg::RegTensor<T> (&accum)[N],
-                                          AscendC::Reg::RegTensor<T> (&input)[N],
-                                          AscendC::Reg::RegTensor<T> &weight, AscendC::Reg::MaskReg &mask)
+                                          AscendC::Reg::RegTensor<T> (&input)[N], AscendC::Reg::RegTensor<T> &weight,
+                                          AscendC::Reg::MaskReg &mask)
 {
     static_assert(N <= 2, "N must be <= 2");
     // ---- Relu block ----
@@ -177,8 +175,8 @@ __simd_callee__ inline void WeightedAccum(AscendC::Reg::RegTensor<T> (&accum)[N]
     }
 }
 
-__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst,
-                                          AscendC::Reg::RegTensor<float> &src, uint16_t laneIdx)
+__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, AscendC::Reg::RegTensor<float> &src,
+                                          uint16_t laneIdx)
 {
     AscendC::Reg::RegTensor<uint32_t> brcGatherIndex;
     AscendC::Reg::Duplicate(brcGatherIndex, laneIdx);

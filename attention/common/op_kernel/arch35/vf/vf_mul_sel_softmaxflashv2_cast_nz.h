@@ -180,8 +180,7 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T *maxUb, __ubuf__ 
         LoadAlign(vreg_exp_sum_brc, (__ubuf__ float *&)tmpExpSumUb);
         Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
         Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expSumUb, vreg_exp_sum_update,
-                                                              preg_all);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expSumUb, vreg_exp_sum_update, preg_all);
     } else {
         RegTensor<float> vreg_max;
         RegTensor<float> vreg_in_max;

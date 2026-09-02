@@ -201,8 +201,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512VF(
                        vreg_in_x7_new, vreg_in_x8_new, preg_all);
         }
 
-        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max,
-                                                                     ureg_max, 1);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     PostMaxStage512<T, T2, s2BaseSize>(tmpMaxUb, ureg_max, inMaxUb, tmpMaxUb2, vreg_in_max, vreg_input_max,
                                        vreg_max_new, preg_all, vreg_max, m, srcUb, vreg_in_x1, vreg_in_x2, vreg_in_x3,
@@ -341,8 +340,7 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1UpdateGeneralImpl512VFStage2(
                        vreg_x_in7_new, vreg_x_in8_new, preg_all);
         }
 
-        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max,
-                                                                     ureg_max, 1);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     PostMaxStage512<T, T2, s2BaseSize>(tmpMaxUb, ureg_max, inMaxUb, tmpMaxUb2, vreg_in_max, vreg_input_max,
                                        vreg_max_new, preg_all, vreg_max, m, srcUb, vreg_x_in1, vreg_x_in2, vreg_x_in3,

@@ -125,7 +125,7 @@ __simd_vf__ inline void ProcessVec6BasicVF(__ubuf__ INPUT_T *dstUb, __ubuf__ T *
             }
         }
         Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_out_dw, vreg_output_dw,
-                                                                                          preg_all_b32);
+                                                                                preg_all_b32);
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_dst, (__ubuf__ T *&)dwUb);
         Add(vreg_dst, vreg_out_dw, vreg_dst, preg_all_b32);
         StoreUnAlign<T, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)dwUb), vreg_dst, ureg_dst, 1);

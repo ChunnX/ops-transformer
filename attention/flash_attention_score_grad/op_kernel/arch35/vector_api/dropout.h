@@ -51,13 +51,13 @@ __simd_vf__ inline void CalculateDropoutVF(uint64_t srcLocalInt, uint64_t dstLoc
         Select(vreg2, vreg0, vreg1, preg3);
         Muls(vreg5, vreg2, divValue, preg0);
         StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstLocalInt + i * 2 * repeatElm, vreg5,
-                                                              preg0);
+                                                         preg0);
         preg0 = UpdateMask<float>(sreg);
         LoadAlign(vreg3, (__ubuf__ float *&)srcLocalInt + (i * 2 + 1) * repeatElm);
         Select(vreg4, vreg3, vreg1, preg4);
         Muls(vreg6, vreg4, divValue, preg0);
         StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstLocalInt + (i * 2 + 1) * repeatElm,
-                                                              vreg6, preg0);
+                                                         vreg6, preg0);
     }
 
     RegTensor<float> vreg7;

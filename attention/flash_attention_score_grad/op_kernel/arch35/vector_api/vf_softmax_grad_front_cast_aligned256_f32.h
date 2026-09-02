@@ -50,7 +50,7 @@ __simd_vf__ inline void CastAligned256F32VF64(uint64_t srcLocalInt, uint64_t dst
         Mul(vregMul, vregGrad, vregSrc, pregTailExe);
         ReduceSum(vregReduceSum, vregMul, pregTailExe);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
-                                                                     uregReduceSum, 1);
+                                                                uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
 }
@@ -83,7 +83,7 @@ __simd_vf__ inline void CastAligned256F32VF128(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd, vregMul, vregMulTail, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd, pregFullExe);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
-                                                                     uregReduceSum, 1);
+                                                                uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
 }
@@ -124,7 +124,7 @@ __simd_vf__ inline void CastAligned256F32VF192(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd1, vregMul1, vregAdd, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd1, pregFullExe);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
-                                                                     uregReduceSum, 1);
+                                                                uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
 }
@@ -174,7 +174,7 @@ __simd_vf__ inline void CastAligned256F32VF256(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd2, vregAdd, vregAdd1, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd2, pregFullExe);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
-                                                                     uregReduceSum, 1);
+                                                                uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
 }
