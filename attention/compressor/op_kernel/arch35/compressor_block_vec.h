@@ -91,8 +91,8 @@ protected:
                                             uint32_t dealRowCount, uint32_t dealColCount, uint32_t srcSingleRowCount,
                                             uint32_t dstSingleRowCount, uint32_t repeatTimes, uint64_t offset);
     __aicore__ inline void FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
-                                             uint32_t preDealSeqCnt, uint32_t dealSeqCnt,
-                                             uint32_t dStartIdx, uint32_t dDealSize);
+                                             uint32_t preDealSeqCnt, uint32_t dealSeqCnt, uint32_t dStartIdx,
+                                             uint32_t dDealSize);
     __aicore__ inline void WriteToCacheState(const GlobalTensor<T> &state, const GlobalTensor<int32_t> &blockTableGm,
                                              const LocalTensor<T> &input, uint32_t batchIdx, uint32_t startSeqIdx,
                                              uint32_t endSeqIdx, uint32_t dStartIdx, uint32_t dDealSize,
@@ -200,7 +200,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::AllocEventID()
 {}
@@ -253,9 +252,6 @@ __aicore__ inline uint32_t CompressorBlockVector<COMP>::GetSeqLength(uint32_t bI
         return constInfo_.sSize;
     }
 }
-
-
-
 
 template <typename COMP>
 template <typename O>
@@ -419,7 +415,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::AddMultiDataToUb(
     }
     PipeBarrier<PIPE_V>();
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal,
@@ -751,15 +746,15 @@ __aicore__ inline void CompressorBlockVector<COMP>::PadAlign(const LocalTensor<T
         uint64_t preSrcLocalOffset = srcLocalOffset;
         uint64_t preDstUbOffset = dstUbOffset + (sliceInfo.headHolderSeqCnt + this->cmpRatio_) * dstSingleRowCount;
         this->DataCopyAlignUbToUb(dstLocal[preDstUbOffset], srcLocal[preSrcLocalOffset],
-                            copyRowCount - min(copyRowCount, this->cmpRatio_), copyColCount, srcSingleRowCount,
-                            dstSingleRowCount);
+                                  copyRowCount - min(copyRowCount, this->cmpRatio_), copyColCount, srcSingleRowCount,
+                                  dstSingleRowCount);
         dstUbOffset += dDealSize;
         srcLocalOffset += dBaseSize;
     }
     // 右侧
     dstUbOffset += sliceInfo.headHolderSeqCnt * dstSingleRowCount;
-    this->DataCopyAlignUbToUb(dstLocal[dstUbOffset], srcLocal[srcLocalOffset], copyRowCount, copyColCount, srcSingleRowCount,
-                        dstSingleRowCount);
+    this->DataCopyAlignUbToUb(dstLocal[dstUbOffset], srcLocal[srcLocalOffset], copyRowCount, copyColCount,
+                              srcSingleRowCount, dstSingleRowCount);
 }
 
 template <typename COMP>
@@ -855,11 +850,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::CopyOutVec1ResToOutput(const
     outputQue2.FreeTensor(outputUb);
 }
 
-
-
-
-
-
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::CalcTilingStrategy(Vec1SplitInfo &splitInfo)
 {
@@ -877,7 +867,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcTilingStrategy(Vec1Split
         splitInfo.tcSplitSize = maxDealColNum / splitInfo.dBaseSize;
     }
 }
-
 
 } // namespace Compressor
 #endif // COMPRESSOR_BLOCK_VEC_H

@@ -108,9 +108,8 @@ private:
 
     // ==============================Service Define==============================
     QuantCompressorBlockCube<COMP, IS_FULL_LOAD> blockCube_;
-    using VecType = typename AscendC::Conditional<IS_FULL_LOAD,
-        QuantCompressorBlockVectorFullLoad<COMP>,
-        QuantCompressorBlockVector<COMP>>::type;
+    using VecType = typename AscendC::Conditional<IS_FULL_LOAD, QuantCompressorBlockVectorFullLoad<COMP>,
+                                                  QuantCompressorBlockVector<COMP>>::type;
     VecType blockVec_;
 
     uint32_t loopTimes = 0;
@@ -288,9 +287,9 @@ __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::SkipInvalidBat
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo,
-                                                                                   BatchInfo batchInfo,
-                                                                                   uint32_t &curGroupQuota,
-                                                                                   uint32_t curDealSeq)
+                                                                                 BatchInfo batchInfo,
+                                                                                 uint32_t &curGroupQuota,
+                                                                                 uint32_t curDealSeq)
 {
     // 更新当前组的信息
     if (curGroupQuota == 0 && !isFirstUpdateCurGroup) {
@@ -513,7 +512,7 @@ __aicore__ inline bool QuantCompressorKernel<COMP, IS_FULL_LOAD>::IsNeedExcuteC1
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorKernel<COMP, IS_FULL_LOAD>::CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info,
-                                                                                  BatchInfo &batchInfo, uint32_t loopIdx)
+                                                                                 BatchInfo &batchInfo, uint32_t loopIdx)
 {
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;

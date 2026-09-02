@@ -96,7 +96,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyInApe(uint32_t d
 
     uint64_t gmOffset = dStartIdx;
 
-    this->DataCopyWithInputQue(this->apeUb, this->apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount, dstSingleRowCount);
+    this->DataCopyWithInputQue(this->apeUb, this->apeGm_[gmOffset], copyRowCount, copyColCount, srcSingleRowCount,
+                               dstSingleRowCount);
     PipeBarrier<PIPE_V>();
 }
 template <typename COMP>
@@ -108,12 +109,12 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::AddApe(const LocalTe
                                                                    uint64_t apeOffset)
 {
     if constexpr (IS_FULLLOAD) {
-        AddVF(scoreLocal[scoreOffset], this->apeUb[apeOffset], this->coff_ * dealRowCount, dealColCount, scoreSingleRowCount,
-              apeSingleRowCount);
+        AddVF(scoreLocal[scoreOffset], this->apeUb[apeOffset], this->coff_ * dealRowCount, dealColCount,
+              scoreSingleRowCount, apeSingleRowCount);
     } else {
         this->apeUb = inputQueApe.AllocTensor<T>();
-        this->DataCopyAlignGmToUb(this->apeUb, this->apeGm_[apeOffset], this->coff_ * dealRowCount, dealColCount, this->constInfo_.headDim,
-                            apeSingleRowCount);
+        this->DataCopyAlignGmToUb(this->apeUb, this->apeGm_[apeOffset], this->coff_ * dealRowCount, dealColCount,
+                                  this->constInfo_.headDim, apeSingleRowCount);
         inputQueApe.EnQue(this->apeUb);
         inputQueApe.DeQue<T>();
         AddVF(scoreLocal[scoreOffset], this->apeUb, this->coff_ * dealRowCount, dealColCount, scoreSingleRowCount,
@@ -188,14 +189,14 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLap(
     }
 
     this->template ReadState<IS_SCORE>(dstLocal, stateGm, blockTableGm, sliceInfo, dStartIdx + dBaseOffset, dDealSize,
-                        static_cast<uint32_t>(IS_SCORE));
+                                       static_cast<uint32_t>(IS_SCORE));
 
     if (sliceInfo.compressTcSize > 0) {
         this->PadAlign(dstLocal, srcLocal, sliceInfo, dBaseOffset, dDealSize, dBaseSize);
         if constexpr (COMP::coff == COFF::OVERLAP) {
             GlobalTensor<T> curCacheTcGm = cacheTcGm;
-            this->LoadFromWorkSpace(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx, globalSeqIdx,
-                              dDealSize);
+            this->LoadFromWorkSpace(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx,
+                                    globalSeqIdx, dDealSize);
         }
     }
 }
@@ -215,8 +216,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
 
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<true>(scoreLocal, scoreUb, scoreDBMm1ResGm, this->stateCacheGm_, this->stateBlockTableGm_, this->scoreCacheTcGm_,
-                      overLapSliceInfo, loopInfo, dStartIdx, dBaseOffset,
+        OverLap<true>(scoreLocal, scoreUb, scoreDBMm1ResGm, this->stateCacheGm_, this->stateBlockTableGm_,
+                      this->scoreCacheTcGm_, overLapSliceInfo, loopInfo, dStartIdx, dBaseOffset,
                       originSliceInfo.dealedSeqCnt + dealSeqStartIdx, dDealSize, dBaseSize);
         overLapSliceIterator.IteratorSlice();
     }
@@ -227,9 +228,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
 
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
-        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, this->stateCacheGm_, this->stateBlockTableGm_, this->kvCacheTcGm_, overLapSliceInfo,
-                       loopInfo, dStartIdx, dBaseOffset, originSliceInfo.dealedSeqCnt + dealSeqStartIdx, dDealSize,
-                       dBaseSize);
+        OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, this->stateCacheGm_, this->stateBlockTableGm_, this->kvCacheTcGm_,
+                       overLapSliceInfo, loopInfo, dStartIdx, dBaseOffset,
+                       originSliceInfo.dealedSeqCnt + dealSeqStartIdx, dDealSize, dBaseSize);
         overLapSliceIterator.IteratorSlice();
     }
     PipeBarrier<PIPE_V>();
@@ -254,15 +255,15 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
         PipeBarrier<PIPE_V>();
         if constexpr (COMP::gradEnabled == GRAD_ENABLED::ENABLE) {
             this->CopyOutMidResToOutput(kvLocal, scoreLocal, originSliceInfo, statisticInfo.compressorScCnt,
-                                  dStartIdx + dBaseOffset, dDealSize, this->totalCompressedCnt_);
+                                        dStartIdx + dBaseOffset, dDealSize, this->totalCompressedCnt_);
             PipeBarrier<PIPE_V>();
         }
         LocalTensor<T> comperssoredUb = scoreLocal;
         PipeBarrier<PIPE_V>();
         this->KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        this->CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
-                               dDealSize);
+        this->CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt,
+                                     dStartIdx + dBaseOffset, dDealSize);
     }
     this->compressedCnt_ += statisticInfo.compressorScCnt;
 }
@@ -283,7 +284,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1Sp
     // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(X_T)需32B对齐
     splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = this->constInfo_.headDim / splitInfo.dBaseSize;
-    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), this->constInfo_.batchSize);
+    splitInfo.vec1GroupNum =
+        min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), this->constInfo_.batchSize);
 }
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution(Vec1SplitInfo &splitInfo)
@@ -381,10 +383,10 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         uint32_t curLoopBatchNum = min(singleLoopBatchNum, splitInfo.dealBatchNum - singleLoopBatchNum * idx);
         scoreUb = this->inputQue1.template AllocTensor<T>();
         kvUb = scoreUb[BUFFER_SIZE_BYTE_16K / sizeof(T)];
-        this->FromWokrSpaceToUb(scoreUb, this->scoreMm1ResGm_, splitInfo.dealSeqStartIdx, curLoopBatchNum * this->constInfo_.sSize,
-                          baseOffset, splitInfo.dBaseSize);
-        this->FromWokrSpaceToUb(kvUb, this->kvMm1ResGm_, splitInfo.dealSeqStartIdx, curLoopBatchNum * this->constInfo_.sSize, baseOffset,
-                          splitInfo.dBaseSize);
+        this->FromWokrSpaceToUb(scoreUb, this->scoreMm1ResGm_, splitInfo.dealSeqStartIdx,
+                                curLoopBatchNum * this->constInfo_.sSize, baseOffset, splitInfo.dBaseSize);
+        this->FromWokrSpaceToUb(kvUb, this->kvMm1ResGm_, splitInfo.dealSeqStartIdx,
+                                curLoopBatchNum * this->constInfo_.sSize, baseOffset, splitInfo.dBaseSize);
         this->inputQue1.template EnQue(scoreUb);
         this->inputQue1.template DeQue<T>();
         splitInfo.dealTcNum = 0;
@@ -402,12 +404,12 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         Vec1SliceInfo &sliceInfo = sliceIterator.GetSlice();
         while (!sliceIterator.IsEnd()) {
             sliceIterator.GetSlice();
-            this->SaveState(kvUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset, splitInfo.dBaseSize,
-                      splitInfo.dBaseSize, kvStateIdx_);
+            this->SaveState(kvUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset,
+                            splitInfo.dBaseSize, splitInfo.dBaseSize, kvStateIdx_);
 
             AddApeToScore(scoreUb, sliceInfo, splitInfo.dBaseSize, splitInfo.dBaseSize, baseOffset, isApeFullLoad);
-            this->SaveState(scoreUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset, splitInfo.dBaseSize,
-                      splitInfo.dBaseSize, scoreStateIdx_);
+            this->SaveState(scoreUb, this->stateCacheGm_, this->stateBlockTableGm_, sliceInfo, baseOffset,
+                            splitInfo.dBaseSize, splitInfo.dBaseSize, scoreStateIdx_);
             sliceIterator.IteratorSlice();
         }
 

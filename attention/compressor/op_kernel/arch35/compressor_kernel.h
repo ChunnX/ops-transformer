@@ -32,7 +32,8 @@ template <typename COMP, bool IS_FULL_LOAD = false>
 class CompressorKernel {
 public:
     __aicore__ inline CompressorKernel(TPipe *pipe, const optiling::CompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
@@ -107,9 +108,8 @@ private:
 
     // ==============================Service Define==============================
     CompressorBlockCube<COMP, IS_FULL_LOAD> blockCube_;
-    using VecType = typename AscendC::Conditional<IS_FULL_LOAD,
-        CompressorBlockVectorFullLoad<COMP>,
-        CompressorBlockVectorNormal<COMP>>::type;
+    using VecType = typename AscendC::Conditional<IS_FULL_LOAD, CompressorBlockVectorFullLoad<COMP>,
+                                                  CompressorBlockVectorNormal<COMP>>::type;
     VecType blockVec_;
 
     uint32_t loopTimes = 0;
@@ -122,15 +122,10 @@ private:
 };
 
 template <typename COMP, bool IS_FULL_LOAD>
-__aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv,
-                                                                  __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
-                                                                  __gm__ uint8_t *ape, __gm__ uint8_t *stateBlockTable,
-                                                                  __gm__ uint8_t *cuSeqlens,
-                                                                  __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                                                  __gm__ uint8_t *cmpKvOut,
-                                                                  __gm__ uint8_t *softmaxScoreOut,
-                                                                  __gm__ uint8_t *kvOut,
-                                                                  __gm__ uint8_t *workspace)
+__aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::Init(
+    __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
+    __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
+    __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *softmaxScoreOut, __gm__ uint8_t *kvOut, __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
@@ -179,8 +174,8 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::Init(__gm__ uint8_t
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
         blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, stateCache, ape, stateBlockTable,
-                       cuSeqlens, seqUsed, startPos, cmpKvOut, softmaxScoreOut, kvOut);
+        blockVec_.Init(x, wKv, wGate, stateCache, ape, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut,
+                       softmaxScoreOut, kvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
     }
@@ -290,9 +285,9 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::SkipInvalidBatch(Ba
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo,
-                                                                             BatchInfo batchInfo,
-                                                                             uint32_t &curGroupQuota,
-                                                                             uint32_t curDealSeq)
+                                                                            BatchInfo batchInfo,
+                                                                            uint32_t &curGroupQuota,
+                                                                            uint32_t curDealSeq)
 {
     // 更新当前组的信息
     if (curGroupQuota == 0 && !isFirstUpdateCurGroup) {
@@ -518,7 +513,7 @@ __aicore__ inline bool CompressorKernel<COMP, IS_FULL_LOAD>::IsNeedExcuteC1(RunI
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info,
-                                                                             BatchInfo &batchInfo, uint32_t loopIdx)
+                                                                            BatchInfo &batchInfo, uint32_t loopIdx)
 {
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;

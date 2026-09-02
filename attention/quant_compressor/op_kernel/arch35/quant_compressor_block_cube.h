@@ -23,7 +23,8 @@ using namespace AscendC;
 
 namespace QuantCompressor {
 
-template<typename COMP, bool IS_FULL_LOAD = false> class QuantCompressorBlockCube {
+template <typename COMP, bool IS_FULL_LOAD = false>
+class QuantCompressorBlockCube {
     using MM1_OUT_T = float;
 
 public:
@@ -51,8 +52,8 @@ private:
     __aicore__ inline void CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor, uint32_t hIdx, uint32_t kBase, uint32_t coffId);
     __aicore__ inline void LoadAToL0(const RunInfo &info, LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> xL1Tensor,
                                      uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize);
-    __aicore__ inline void LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
-                                     uint32_t kStart, uint32_t kBase, uint32_t nStart, uint32_t nDealSize);
+    __aicore__ inline void LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor, uint32_t kStart,
+                                     uint32_t kBase, uint32_t nStart, uint32_t nDealSize);
     __aicore__ inline void MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> bL0Tensor,
                                       uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C);
     __aicore__ inline void CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor, uint32_t coffId,
@@ -117,7 +118,7 @@ private:
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::InitParams(const ConstInfo &constInfo,
-                                                                                 const QuantCompressorTools<COMP> &tools)
+                                                                                const QuantCompressorTools<COMP> &tools)
 {
     this->constInfo_ = constInfo;
     this->tools_ = tools;
@@ -209,8 +210,8 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::FreeEventID
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyXGmToL1(const RunInfo &info,
-                                                                                   LocalTensor<X_T> xL1Tensor,
-                                                                                   uint32_t hIdx, uint32_t kBase)
+                                                                                 LocalTensor<X_T> xL1Tensor,
+                                                                                 uint32_t hIdx, uint32_t kBase)
 {
     uint32_t copySeqCnt;
     uint64_t sIdx;
@@ -218,8 +219,9 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyXGmToL1
         copySeqCnt = constInfo_.mEnd - constInfo_.mStart;
         sIdx = constInfo_.mStart;
     } else {
-        copySeqCnt = info.dealSeqCnt;                                        // 此基本块处理的长度
-        sIdx = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置，sIdx为起始s在整个T的起始点
+        copySeqCnt = info.dealSeqCnt; // 此基本块处理的长度
+        sIdx =
+            tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置，sIdx为起始s在整个T的起始点
     }
     uint32_t xL1Offset = 0 * NZ_C0_SIZE;
     uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
@@ -232,8 +234,8 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyXGmToL1
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
-                                                                                       uint32_t hIdx, uint32_t kBase,
-                                                                                       uint32_t coffId)
+                                                                                      uint32_t hIdx, uint32_t kBase,
+                                                                                      uint32_t coffId)
 {
     // coffId=0, 搬运左矩阵的数据; coffId=1, 搬运右矩阵的数据
     uint64_t nOffset;
@@ -248,18 +250,18 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyWeightG
     uint32_t nValue = constInfo_.dBaseSize;
     uint32_t dValue = kBase;
     uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride =
-        Align(WEIGHT_MATRIX_NUM * constInfo_.dBaseSize, NZ_FRACTAL_DIM); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+    uint32_t dstNzC0Stride = Align(WEIGHT_MATRIX_NUM * constInfo_.dBaseSize,
+                                   NZ_FRACTAL_DIM); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
     CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
     CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::LoadAToL0(const RunInfo &info,
-                                                                                LocalTensor<X_T> aL0Tensor,
-                                                                                LocalTensor<X_T> xL1Tensor,
-                                                                                uint32_t kStart, uint32_t kBase,
-                                                                                uint32_t mStart, uint32_t mDealSize)
+                                                                               LocalTensor<X_T> aL0Tensor,
+                                                                               LocalTensor<X_T> xL1Tensor,
+                                                                               uint32_t kStart, uint32_t kBase,
+                                                                               uint32_t mStart, uint32_t mDealSize)
 {
     uint32_t mSize;
     if constexpr (IS_FULL_LOAD) {
@@ -284,9 +286,9 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::LoadAToL0(c
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::LoadBToL0(LocalTensor<X_T> bL0Tensor,
-                                                                                LocalTensor<X_T> wL1Tensor,
-                                                                                uint32_t kStart, uint32_t kBase,
-                                                                                uint32_t nStart, uint32_t nDealSize)
+                                                                               LocalTensor<X_T> wL1Tensor,
+                                                                               uint32_t kStart, uint32_t kBase,
+                                                                               uint32_t nStart, uint32_t nDealSize)
 {
     uint32_t nSize = WEIGHT_MATRIX_NUM * constInfo_.dBaseSize;
 
@@ -307,10 +309,10 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::LoadBToL0(L
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::MatrixMmad(LocalTensor<T> cL0Tensor,
-                                                                                 LocalTensor<X_T> aL0Tensor,
-                                                                                 LocalTensor<X_T> bL0Tensor,
-                                                                                 uint32_t mActSize, uint32_t nDealSize,
-                                                                                 uint32_t kActSize, bool isInitL0C)
+                                                                                LocalTensor<X_T> aL0Tensor,
+                                                                                LocalTensor<X_T> bL0Tensor,
+                                                                                uint32_t mActSize, uint32_t nDealSize,
+                                                                                uint32_t kActSize, bool isInitL0C)
 {
     MmadParams mmadParams;
     mmadParams.m = mActSize < 16 ? 16 : mActSize;
@@ -323,10 +325,10 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::MatrixMmad(
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyOutMm1Res(const RunInfo &info,
-                                                                                    LocalTensor<T> cL0Tensor,
-                                                                                    uint32_t coffId, uint32_t mStart,
-                                                                                    uint32_t mDealSize, uint32_t nStart,
-                                                                                    uint32_t nDealSize)
+                                                                                   LocalTensor<T> cL0Tensor,
+                                                                                   uint32_t coffId, uint32_t mStart,
+                                                                                   uint32_t mDealSize, uint32_t nStart,
+                                                                                   uint32_t nDealSize)
 {
     // coffId=0, 存左矩阵的数据; coffId=1, 存右矩阵的数据
     FixpipeParamsV220 fixParams;
@@ -344,7 +346,8 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyOutMm1R
     uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
     uint64_t gmOffset = nOffset + coffId * constInfo_.headDim + mStart * fixParams.dstStride + dbOffset;
     uint32_t kvOffset = (mDealSize + NZ_FRACTAL_DIM - 1) / NZ_FRACTAL_DIM * NZ_FRACTAL_DIM * nStart;
-    uint32_t scoreOffset = (mDealSize + NZ_FRACTAL_DIM - 1) / NZ_FRACTAL_DIM * NZ_FRACTAL_DIM * ((nStart + constInfo_.dBaseSize) % (WEIGHT_MATRIX_NUM * constInfo_.dBaseSize));
+    uint32_t scoreOffset = (mDealSize + NZ_FRACTAL_DIM - 1) / NZ_FRACTAL_DIM * NZ_FRACTAL_DIM *
+                           ((nStart + constInfo_.dBaseSize) % (WEIGHT_MATRIX_NUM * constInfo_.dBaseSize));
     if (nStart < constInfo_.dBaseSize) {
         fixParams.nSize = min(constInfo_.dBaseSize - nStart, nDealSize);
         Fixpipe(kvMm1ResGm[gmOffset], cL0Tensor[kvOffset], fixParams);
@@ -415,7 +418,8 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::ComputeMm1(
                 if (mL0 + M_L0_BASE > mSize) {
                     actMDealSize = mSize - mL0;
                 }
-                uint32_t nDealSize = WEIGHT_MATRIX_NUM * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+                uint32_t nDealSize =
+                    WEIGHT_MATRIX_NUM * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
                 uint32_t actNDealSize = N_L0_BASE;
                 for (uint32_t nL0 = 0; nL0 < nDealSize; nL0 += N_L0_BASE) {
                     if (nL0 + N_L0_BASE > nDealSize) {

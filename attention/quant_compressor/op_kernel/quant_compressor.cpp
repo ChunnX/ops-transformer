@@ -51,6 +51,7 @@ __global__ __aicore__ void quant_compressor(__gm__ uint8_t *x, __gm__ uint8_t *w
         INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernel, true, xLayout, xDtype, coff, cacheMode,
                                                 quantMode);
     } else {
-        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernel, false, xLayout, xDtype, coff, cacheMode, quantMode);
+        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernel, false, xLayout, xDtype, coff, cacheMode,
+                                                quantMode);
     }
 }
