@@ -161,10 +161,16 @@ _TENSOR_SPECS = [
         False,
     ),
     ("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange", "int8", False),
-    ("metadata_shape", "metadata_dtype", "metadata_datarange", "float32", False),
+    ("metadata_shape", "metadata_dtype", "metadata_datarange", "int32", False),
 ]
 
 _DRANGE_PLACEHOLDER = (0, 1)
+
+# metadata 占位 shape/dtype：主算子的 metadata 槽位由 impl/npu_preprocess.py 在主算子
+# 调用前生成并回填，占位 shape 固定 (2, max_schedule_size)。第一维固定 2（正向 FA /
+# 反向 FAG 两段调度数据，见 op_host/checkers/metadata_checker.cpp），
+# max_schedule_size=4096 与 torch_extension._calculate_max_schedule_size() 一致。
+QFA_METADATA_SHAPE = (2, 4096)
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -381,6 +387,12 @@ def _build_tensor_lists(row, cols, quant_mode):
         if shape_col == "p_scale_shape" and shape == (0,) and quant_mode in (6, 0):
             shape = (1,)
             dtype = "float32"
+
+        # metadata: 空 shape → 固定 (2, 4096) int32（由 npu_preprocess 生成后回填）。
+        # 不能用 (0,) 占位，否则主算子 metadata 槽位 shape/dtype 与生成结果不符。
+        if shape_col == "metadata_shape" and shape == (0,):
+            shape = QFA_METADATA_SHAPE
+            dtype = "int32"
 
         if drange is None:
             drange = _DRANGE_PLACEHOLDER
