@@ -30,15 +30,9 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
-                    -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/include/
-                    -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/common/
+                    -DCANN_ASC_USE_EXPERIMENTAL=ON
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../common/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/
-                    -I${OPTENSOR_INCLUDE_ROOT}
-                    -I${TENSOR_API_INCLUDE_ROOT}
-                    -I${TENSOR_API_IMPL_INCLUDE_ROOT}
-                    -I${TENSOR_API}
-                    -I${BLAZE}
         )
     endif()
 endif()
