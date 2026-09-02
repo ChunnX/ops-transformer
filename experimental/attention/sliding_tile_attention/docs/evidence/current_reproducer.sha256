@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
+
+8540acef34b0e5385fa5711cc376b393a0e6e99816c581ca3fa531cc13be2670  experimental/attention/sliding_tile_attention/examples/run_22cases.sh
+aa08176633d42000a471354c9638964f218f01312292f271d39c5427aa20410e  experimental/attention/sliding_tile_attention/examples/run_taskbook_cases.sh
+16a06b891a5021874517afab0958edfdcc37ab84ae206a0636f52be3bd6f0862  experimental/attention/sliding_tile_attention/examples/test_aclnn_sliding_tile_attention_22cases.cpp
+5b698c2bab27698c7497f64c453a46cbd4f00ed4d6d6cfe45fcec1089c5b5df5  experimental/attention/sliding_tile_attention/docs/evidence/taskbook_case_manifest.csv
+598fe28c093e6a83eddb8762366579970bfb1a3f3eb387119d1db5a509cef7ed  experimental/attention/sliding_tile_attention/tests/case_guard_test.cpp

@@ -1,0 +1,14 @@
+SLIDING_TILE_ATTENTION_A2_BUILD_SUMMARY
+date=2026-09-02
+upstream_base=5b09b0369a6ecf144d47a6473e9586cb7f9dc969
+source_tree_sha256=716922e9a9d522a2a3c768ea89935e2518630c869c90a163133de6f21a57984d
+command=bash build.sh --pkg --experimental --soc=ascend910b --ops=sliding_tile_attention --vendor_name=sta_hujunquan -j16
+catlass_arch=2201
+result=PASS
+package=cann-ops-transformer-sta_hujunquan_linux-aarch64.run
+package_size_bytes=7707286
+package_sha256=2ef7c5d4a219260d97b5c1fafec94481aa346780d3885dca1ea032c4e9bf7d99
+kernel_route_count=2
+bf16_kernel=SlidingTileAttentionFai_5fa526a7c291670d071c4b07cba49c33
+fp16_kernel=SlidingTileAttentionFai_f552fdc99fd9d004159959880d921d16
+evidence_boundary=ascend910b compile and package only; device execution was not performed on Atlas A2
