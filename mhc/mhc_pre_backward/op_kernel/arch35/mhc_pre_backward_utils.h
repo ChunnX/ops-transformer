@@ -64,7 +64,9 @@ using namespace AscendC;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024; // 151KB
+// q0保留双缓冲以支持V0提前搬运grad_h_res；q1和qout使用单缓冲。
+// 119KB TBuf可同时容纳64KB C0直连槽和约43KB V2工作区。
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 4 - 1) * 1024; // 119KB
 constexpr uint32_t C0_DIRECT_UB_SLOT_SIZE = 32 * 1024;        // 每个AIV保存128x64个FP32
 constexpr uint32_t C0_DIRECT_UB_SIZE = DOUBLE_BUFFER * C0_DIRECT_UB_SLOT_SIZE;
 constexpr uint32_t C0_DIRECT_UB_SLOT_ELEMS = C0_DIRECT_UB_SLOT_SIZE / sizeof(float);
