@@ -103,6 +103,14 @@ constexpr struct UrmaWqeEntry NOTIFY_CFG = {
     .cqe      = 0,
     .inlineEn = 0
 };
+// 每个Jetty最后一个flag请求CQE，供批量Drain确认该Jetty此前提交的全部WQE已经完成。
+constexpr struct UrmaWqeEntry FINAL_NOTIFY_CFG = {
+    .odr      = 6,
+    .fence    = 1,
+    .se       = 0,
+    .cqe      = 1,
+    .inlineEn = 0
+};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -1000,6 +1008,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
     if (aivId_ >= JETTY_TOTAL) {
         return; // jetty与核一一绑定，超出32的核不参与发送
     }
+    if (epWorldSize_ <= 1U) {
+        return;
+    }
     uint32_t jettyIndex = aivId_;
 
     auto multiChannelValue = mc2Context_->multiChannelHandle[jettyIndex];
@@ -1014,6 +1025,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
     uint32_t tokenCnt = tokenStart < axisBS_
                             ? ((tokenStart + tokensPerJetty > axisBS_) ? (axisBS_ - tokenStart) : tokensPerJetty)
                             : 0U;
+    uint32_t lastRemoteRankId =
+        epRankId_ == epWorldSize_ - 1U ? epWorldSize_ - 2U : epWorldSize_ - 1U;
     uint32_t commCnt = 0U;
     for (uint32_t dstRankId = 0U; dstRankId < epWorldSize_; ++dstRankId) {
         if (dstRankId == epRankId_) {
@@ -1061,7 +1074,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
         }
 
         // 无数据的Jetty也发送flag；fence保证同一对端的数据先于flag生效。
-        auto ret = hcomm_.WriteNbi<NOTIFY_CFG>(peerBatchHandle, notifyAddr, payloadStashWinAddr_, WIN_ADDR_ALIGN);
+        // 仅最后一个远端flag请求CQE，Drain等待该CQE即可确认本Jetty此前的全部WQE已经完成。
+        auto ret = dstRankId == lastRemoteRankId
+                       ? hcomm_.WriteNbi<FINAL_NOTIFY_CFG>(peerBatchHandle, notifyAddr, payloadStashWinAddr_,
+                                                          WIN_ADDR_ALIGN)
+                       : hcomm_.WriteNbi<NOTIFY_CFG>(peerBatchHandle, notifyAddr, payloadStashWinAddr_, WIN_ADDR_ALIGN);
         if (ret != HCOMM_SUCCESS) {
             mc2Context_->hcommStatus[jettyIndex] = ret;
             ascendc_assert(false, "shared-Jetty notify WriteNbi failed, ret=%d, jetty=%u, dstRank=%u", ret,
@@ -1086,6 +1103,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenTo
             ascendc_assert(false, "shared-Jetty tail BatchCommit failed, ret=%d, jetty=%u", ret, jettyIndex);
             return;
         }
+    }
+    auto ret = hcomm_.Drain(batchHandle);
+    if (ret != HCOMM_SUCCESS) {
+        mc2Context_->hcommStatus[jettyIndex] = ret;
+        ascendc_assert(false, "shared-Jetty Drain failed, ret=%d, jetty=%u", ret, jettyIndex);
     }
 }
 
