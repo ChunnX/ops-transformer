@@ -58,7 +58,7 @@ allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
                            DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true,
                            true>; // isLocal=true, isA2avGmm=true
     A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_WEIGHT, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-                     QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, TILING_TYPE>
+                     QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, MC2_TILING_TYPE>
         a2avGmmScheduler;
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, gmmQuantTilingData,
                                        gmmArray, gmmArrayAddr_, tilingGM);
