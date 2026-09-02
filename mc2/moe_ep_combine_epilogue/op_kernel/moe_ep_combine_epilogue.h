@@ -68,6 +68,7 @@ static constexpr uint32_t FLAG_CHUNK_RANKS = 64U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 class MoeEpCombineEpilogue {
@@ -118,6 +119,7 @@ private:
 
     uint32_t aivNum_{0};
     uint32_t aivId_{0};
+    uint32_t localmoeNum_{0};
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -153,6 +155,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     topK_ = tilingData_->cfg.topK;
     axisH_ = tilingData_->cfg.hidden;
     aivNum_ = tilingData->aivNum;
+    localmoeNum_ = tilingData_->cfg.numLocalExperts;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
@@ -161,7 +164,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (channelsPerRank == 0U || (epWorldSize_ > 0U && channelsPerRank > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank = 1U;
     }
-    combineChannelCount_ = channelsPerRank < COMBINE_CHANNEL_COUNT ? channelsPerRank : COMBINE_CHANNEL_COUNT;
+
+    uint32_t minTopKLocalExperts = (topK_ < localmoeNum_) ? topK_ : localmoeNum_;
+    combineChannelCount_ = Ceil(numMaxTokensPerRank_ * minTopKLocalExperts, HCOMM_SQ_MAX_PENDING + 1);
+    combineChannelCount_ = combineChannelCount_ < COMBINE_CHANNEL_COUNT ? combineChannelCount_ : COMBINE_CHANNEL_COUNT;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }

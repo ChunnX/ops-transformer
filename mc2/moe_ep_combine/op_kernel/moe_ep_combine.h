@@ -250,7 +250,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank_ = 1;
     }
-    combineChannelCount_ = channelsPerRank_ < COMBINE_CHANNEL_COUNT ? channelsPerRank_ : COMBINE_CHANNEL_COUNT;
+
+    uint32_t minTopKLocalExperts = (topK_ < localmoeNum_) ? topK_ : localmoeNum_;
+    combineChannelCount_ = Ceil(numMaxTokensPerRank_ * minTopKLocalExperts, HCOMM_SQ_MAX_PENDING + 1);
+    combineChannelCount_ = combineChannelCount_ < COMBINE_CHANNEL_COUNT ? combineChannelCount_ : COMBINE_CHANNEL_COUNT;
+
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
