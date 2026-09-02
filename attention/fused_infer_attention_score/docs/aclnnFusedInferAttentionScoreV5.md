@@ -1966,6 +1966,116 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - softmaxLSE且非空tensor场景下，如输出layout为TND或NTD，则lseOut输入维度应为3，且shape匹配 [Q_T，Q_N，1]
     - softmaxLSE且非空tensor场景下，如输出layout不为TND或NTD，则lseOut输入维度应为4，且shape匹配 [B，Q_N，Q_S，1]
 
+#### GQA/MHA/MQA伪量化五维key/value场景约束（D032特性）
+
+&nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 983px"><colgroup>
+    <col style="width: 96px">
+    <col style="width: 104px">
+    <col style="width: 179px">
+    <col style="width: 312px">
+    <col style="width: 340px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th colspan="2">参数所属场景和特性</th>
+            <th>参数</th>
+            <th>约束</th>
+            <th>备注</th>
+        </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td colspan="2" rowspan="5">通用场景</td>
+        <td>query</td>
+        <td>BFLOAT16,Q_S [1,16] Q_D=128</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>key</td>
+        <td>INT8，仅支持shape为五维，K_D=128</td>
+        <td>shape为[blockNum, N, D/32, blockSize, 32]</td>
+    </tr>
+    <tr>
+        <td>value</td>
+        <td>INT8，仅支持shape为五维，V_D=128</td>
+        <td>shape为[blockNum, N, D/32, blockSize, 32]</td>
+    </tr>
+    <tr>
+        <td>inputLayout</td>
+        <td>BSH、BSND、BNSD</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>innerPrecise</td>
+        <td>1</td>
+        <td>仅支持高性能模式</td>
+    </tr>
+    <tr>
+        <td colspan="2">Mask</td>
+        <td colspan="3">当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3（传入优化后的attenMask矩阵，shape为2048*2048）</td>
+    </tr>
+    <tr>
+        <td rowspan="9">伪量化</td>
+        <td colspan="4">仅支持KV分离；仅支持高性能模式；仅支持q为BF16，kv为INT8的伪量化；不支持配置queryRope和keyRope；不支持非对称量化(antiquantOffset、keyAntiquantOffset、valueAntiquantOffset)；</td>
+    </tr>
+    <tr>
+        <td rowspan="4">per-channel</td>
+        <td>keyAntiquantMode</td>
+        <td>0</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantMode</td>
+        <td>0</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>keyAntiquantScale</td>
+        <td>inputLayout为BSH时：[H]<br>inputLayout为BNSD时：[N,1,D]<br>inputLayout为BSND时：[N,D]</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantScale</td>
+        <td>同keyAntiquantScale</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td rowspan="4">per-token</td>
+        <td>keyAntiquantMode</td>
+        <td>1</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantMode</td>
+        <td>1</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>keyAntiquantScale</td>
+        <td>[B,S]</td>
+        <td>S需要大于等于blockTable的第二维*blockSize</td>
+    </tr>
+    <tr>
+        <td>valueAntiquantScale</td>
+        <td>同keyAntiquantScale</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td colspan="2" rowspan="2">PagedAttention</td>
+        <td>blockTable</td>
+        <td>不为nullptr</td>
+        <td rowspan="2">PagedAttention必须开启</td>
+    </tr>
+    <tr>
+        <td>blockSize</td>
+        <td>128或512</td>
+    </tr>
+    <tr>
+        <td colspan="5">不支持左padding、tensorlist、pse、prefix、后量化。</td>
+    </tr>
+    </tbody>
+</table>
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
