@@ -45,6 +45,7 @@ private:
     __aicore__ inline void ComputeMultiPass(LocalTensor<float> &smoothLocal);
     __aicore__ inline void ScatterOutXDynamicQuant();
     __aicore__ inline void GatherOutXDynamicQuant();
+    __aicore__ inline void ZeroOutScale();
     __aicore__ inline void StoreInt4QuantOut(__ubuf__ uint8_t *outUbAddr, MicroAPI::RegTensor<float> &inReg,
                                              MicroAPI::MaskReg &maskRegInLoop, MicroAPI::MaskReg &maskRegHalf);
 
@@ -93,6 +94,10 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Init(
         quantSmoothGm_.SetGlobalBuffer((__gm__ float *)scale);
     }
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
+
+    if (this->cols_ == 0) {
+        return;
+    }
 
     if constexpr (IsSameType<T, float>::value) {
         this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
@@ -414,6 +419,18 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::GatherOutXDynamicQu
 }
 
 template <typename T, typename QuantT>
+__aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ZeroOutScale()
+{
+    int64_t startRow = this->blockIdx_ * this->perCoreIndicesElements_;
+    if (this->coreIndicesElements_ <= 0) {
+        return;
+    }
+    GlobalTensor<float> scaleZeroGm;
+    scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, this->coreIndicesElements_);
+    InitGlobalMemory(scaleZeroGm, this->coreIndicesElements_, 0.0f);
+}
+
+template <typename T, typename QuantT>
 __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Process()
 {
     if (this->blockIdx_ < this->needCoreNum_) {
@@ -427,6 +444,19 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Process()
         if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
             this->ComputeExpertTokenCount();
             this->CopyExpertCountToOutput();
+        }
+
+        if (this->cols_ == 0) {
+            if (this->isInputTopkWeight_) {
+                if (this->epFullload_ || this->isInputScale_) {
+                    this->TopkWeightScatterOut();
+                } else {
+                    this->TopkWeightGatherOut();
+                }
+            }
+            ZeroOutScale();
+            this->FreeLocalTensor();
+            return;
         }
 
         if (this->epFullload_ || this->isInputScale_) {

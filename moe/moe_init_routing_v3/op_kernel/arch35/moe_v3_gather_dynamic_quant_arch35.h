@@ -57,6 +57,7 @@ private:
     __aicore__ inline void QuantizeToInt8(LocalTensor<float> &inLocal, LocalTensor<int8_t> &outLocal, float scaleTemp);
     __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
     __aicore__ inline void SetColTileParams(int64_t j);
+    __aicore__ inline void ZeroOutScale();
 
 private:
     TPipe *pipe_;
@@ -83,6 +84,7 @@ private:
     int64_t n_;
     int64_t k_;
     int64_t totalLength_;
+    int64_t coreNum_;
     int64_t perCoreRow_;
     int64_t currentLoopRows_;
     int64_t currentLoopRowsAlign_;
@@ -633,9 +635,15 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(
     n_ = tilingData->n;
     k_ = tilingData->k;
     totalLength_ = n_ * k_;
+    coreNum_ = tilingData->coreNum;
     isInputScale_ = tilingData->isInputScale;
     expertStart_ = tilingData->expertStart;
     rowIdxType_ = tilingData->rowIdxType;
+
+    if (cols_ == 0) {
+        needCoreNum_ = 0;
+        return;
+    }
 
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
         colsAsInt8_ = Ceil(cols_, static_cast<int64_t>(2));
@@ -690,6 +698,10 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(GM_ADDR inputX,
                                                                  TPipe *tPipe)
 {
     InitBaseData(sortedExpertIdx, tilingData, tPipe);
+    expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
+    if (cols_ == 0) {
+        return;
+    }
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
     expandedXGm_.SetGlobalBuffer((__gm__ int8_t *)expandedX);
 
@@ -708,8 +720,6 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(GM_ADDR inputX,
     if (isInputScale_) {
         quantSmoothGm_.SetGlobalBuffer((__gm__ float *)quantSmooth);
     }
-    expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
-
     int64_t actualExpertNum = tilingData->actualExpertNum;
     if (colLoops_ > 1) {
         // cols非全载 smooth*x结果临时存储
@@ -739,8 +749,26 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(GM_ADDR inputX,
 }
 
 template <typename T, typename QuantT>
+__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::ZeroOutScale()
+{
+    int64_t perCoreRows = Ceil(totalLength_, coreNum_);
+    int64_t startRow = blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, totalLength_);
+    if (startRow >= endRow) {
+        return;
+    }
+    GlobalTensor<float> scaleZeroGm;
+    scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, endRow - startRow);
+    InitGlobalMemory(scaleZeroGm, endRow - startRow, 0.0f);
+}
+
+template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Process()
 {
+    if (cols_ == 0) {
+        ZeroOutScale();
+        return;
+    }
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
         if (colLoops_ > 1) {

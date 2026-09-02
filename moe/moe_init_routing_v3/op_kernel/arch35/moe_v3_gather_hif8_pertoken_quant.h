@@ -46,6 +46,7 @@ private:
     __aicore__ inline void ComputeQuant(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
     __aicore__ inline void InitBasicParams(GM_ADDR sortedExpertIdx, const MoeInitRoutingV3Arch35TilingData *tilingData,
                                            TPipe *tPipe);
+    __aicore__ inline void ZeroOutScale();
 
 private:
     TPipe *pipe_;
@@ -68,6 +69,7 @@ private:
     int64_t n_;
     int64_t k_;
     int64_t totalLength_;
+    int64_t coreNum_;
     int64_t perCoreRow_;
     int64_t currentLoopRows_;
     int64_t currentLoopRowsAlign_;
@@ -346,12 +348,18 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::InitBasicParams(
     n_ = tilingData->n;
     k_ = tilingData->k;
     totalLength_ = n_ * k_;
+    coreNum_ = tilingData->coreNum;
     blockIdx_ = GetBlockIdx();
     expertStart_ = tilingData->expertStart;
     rowIdxType_ = tilingData->rowIdxType;
     cols_ = tilingData->cols;
     pipe_ = tPipe;
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
+
+    if (cols_ == 0) {
+        needCoreNum_ = 0;
+        return;
+    }
 
     // hif8 pertoken core split
     int64_t actualExpertNum = tilingData->actualExpertNum;
@@ -392,6 +400,10 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM
                                                               TPipe *tPipe)
 {
     InitBasicParams(sortedExpertIdx, tilingData, tPipe);
+    expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
+    if (cols_ == 0) {
+        return;
+    }
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
     expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + blockIdx_ * perCoreRow_,
                                          Align(coreRows_, sizeof(int32_t)));
@@ -405,8 +417,6 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM
             (__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
             Align(perCoreRow_, sizeof(int32_t)));
     }
-    expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
-
     int64_t actualExpertNum = tilingData->actualExpertNum;
     if (colLoops_ > 1) {
         // cols非全载 存储转成float32的额外gm空间
@@ -427,8 +437,26 @@ __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Init(GM_ADDR inputX, GM
 }
 
 template <typename T>
+__aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::ZeroOutScale()
+{
+    int64_t perCoreRows = Ceil(totalLength_, coreNum_);
+    int64_t startRow = blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, totalLength_);
+    if (startRow >= endRow) {
+        return;
+    }
+    GlobalTensor<float> scaleZeroGm;
+    scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, endRow - startRow);
+    InitGlobalMemory(scaleZeroGm, endRow - startRow, 0.0f);
+}
+
+template <typename T>
 __aicore__ inline void MoeGatherOutHif8PertokenQuant<T>::Process()
 {
+    if (cols_ == 0) {
+        ZeroOutScale();
+        return;
+    }
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
         if (colLoops_ > 1) { // 一行中token 非全载
