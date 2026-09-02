@@ -432,20 +432,6 @@ def quant_flash_attn(
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
 
-    if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        if q.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
-            )
-        if k.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
-            )
-        if v.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
-            )
-
     # 取 shape 前校验 q/v 非空及维度, 避免 None 或维度不足导致 AttributeError/IndexError
     torch._check(q is not None, lambda: "q must not be None")
     torch._check(v is not None, lambda: "v must not be None")
@@ -467,6 +453,20 @@ def quant_flash_attn(
         v.dim() == kv_expected,
         lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
     )
+
+    if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
+        if q.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
+            )
+        if k.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
+            )
+        if v.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
+            )
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
