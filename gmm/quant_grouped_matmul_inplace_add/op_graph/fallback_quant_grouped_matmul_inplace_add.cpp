@@ -71,7 +71,10 @@ static bool ApplyTranspose(size_t index, bool enableTranspose, ge::DataType data
         // dimM the second-to-last dim， dimN the last dim
         auto dimM = viewShape.size() - 2;
         auto dimN = viewShape.size() - 1;
-        if (viewShape[dimM] != 1 && viewShape[dimN] != 0) {
+        // The fused graph supplies the original (K, M) source layout. Keep
+        // exchanging the matrix axes even when K is one; skipping this case
+        // leaves the API with (K, M) instead of its required (M, K) view.
+        if (viewShape[dimN] != 0) {
             auto swap = strides[dimN];
             strides[dimN] = strides[dimM];
             strides[dimM] = swap;
