@@ -201,7 +201,7 @@ private:
         CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize);
     }
 
-    void AdjustBasicBlock()
+    void AdjustBasicBlock() const
     {
         // Re-balance the initial M/N split when the first guess underutilizes
         // cores or produces a highly skewed tile.
@@ -301,7 +301,7 @@ private:
             runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
     }
 
-    void HalveBaseMForPipeline()
+    void HalveBaseMForPipeline() const
     {
         // baseM/baseN may still be zero at this point (CHECK_COND runs later in
         // CalcBasicBlock), so guard against divide-by-zero in the CeilDiv below.
@@ -373,7 +373,7 @@ private:
         }
     }
 
-    uint64_t CalUsedCoreNum(const QuantMatmulRunInfo &runInfo, uint64_t mTile, uint64_t nTile)
+    uint64_t CalUsedCoreNum(const QuantMatmulRunInfo &runInfo, uint64_t mTile, uint64_t nTile) const
     {
         return mTile * nTile * runInfo.tailBlockCnt;
     }
@@ -398,7 +398,7 @@ private:
     }
 
     uint64_t GetDepthA1B1(const QuantMatmulRunInfo &runInfo, uint64_t leftSize, uint64_t perDepthSize,
-                          uint64_t depthInit)
+                          uint64_t depthInit) const
     {
         // The first pass grows by powers of two to find a feasible region; the
         // second pass snaps the result to a DMA-friendly K granularity.
@@ -428,7 +428,7 @@ private:
         return depthInit * depthScale;
     }
 
-    void CalStepKs(const QuantMatmulArgs &args, QuantMatmulRunInfo &runInfo)
+    void CalStepKs(const QuantMatmulArgs &args, QuantMatmulRunInfo &runInfo) const
     {
         // Convert L1 depth to step-K counts and keep A/B synchronized so both
         // sides advance through K with the same outer scheduling cadence.
@@ -458,8 +458,8 @@ private:
     }
 
     void CalScaleFactors(const QuantMatmulArgs &args, const QuantMatmulPlatformInfo &platformInfo,
-                         QuantMatmulRunInfo &runInfo, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleASize,
-                         uint64_t baseScaleBSize)
+                         QuantMatmulRunInfo &runInfo, uint64_t baseASize, uint64_t baseBSize,
+                         uint64_t baseScaleASize, uint64_t baseScaleBSize) const
     {
         // Scale reuse is solved after A/B depth is fixed. The search keeps the
         // two scale paths balanced while staying inside the leftover L1 budget.
