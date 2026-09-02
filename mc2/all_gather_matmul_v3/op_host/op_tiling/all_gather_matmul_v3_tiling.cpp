@@ -45,7 +45,6 @@ constexpr uint32_t IDX_INPUT_X2_SCALE = 5U;
 constexpr uint32_t IDX_OUTPUT_Y = 0U;
 
 // ---- attr indices (must match def order) ----
-// group(0) hccl_buffer_size(1) is_trans_a(2) is_trans_b(3) rank_size(4) group_size(5) y_dtype(6) comm_mode(7)
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;
 constexpr uint32_t ATTR_HCCL_BUFFER_SIZE_INDEX = 1U;
 constexpr uint32_t ATTR_IS_TRANS_B_INDEX = 3U;
@@ -79,8 +78,6 @@ static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value
 {
     return std::find(list.begin(), list.end(), value) != list.end();
 }
-
-// ---- shape info struct ----
 struct ShapeInfo {
     int64_t mPerRank{0};
     int64_t k{0};
@@ -736,6 +733,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     if (context->GetInputDesc(IDX_INPUT_X1)->GetDataType() == ge::DT_FLOAT4_E2M1) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+        tilingEngine.SetPlatformInfoPtr(context->GetPlatformInfo());
         tilingEngine.SetCoreLimit(ascendcPlatform.GetCoreNumAic(), ascendcPlatform.GetCoreNumAiv());
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
@@ -743,6 +741,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
         tilingEngine.GetTilingData(totalLogicalM, n, k, tilingData->mmTile);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+        tilingEngine.SetPlatformInfoPtr(context->GetPlatformInfo());
         tilingEngine.SetCoreLimit(ascendcPlatform.GetCoreNumAic(), ascendcPlatform.GetCoreNumAiv());
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
