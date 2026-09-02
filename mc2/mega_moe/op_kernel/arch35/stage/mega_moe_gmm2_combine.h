@@ -337,16 +337,6 @@ __aicore__ inline QuantTokenBufferConfig CreateQuantTokenBufferConfig(uint32_t t
     return {quantTokenSizeBytes};
 }
 
-enum class WaveCombineAivSet : uint8_t {
-    PAIRED_AIV1, // 稳态流水只使用每个 AIC 配对的 AIV1。
-    ALL_AIV,     // 最后一轮无后续 Dispatch/Activation，可使用 AIV0 和 AIV1 收尾。
-};
-
-enum class Gmm2KernelKind : uint8_t {
-    GENERIC, // A8W8 ND/NZ GMM2 scheduler。
-    W4,      // A8W4/A4W4 共用的 W4 GMM2 scheduler。
-};
-
 // Combine 范围执行所需的只读公共资源。调用方只负责给出 [begin, end)；本结构不保存调度进度。
 struct CombineRangeContext {
     const MoeStageCommonConfig &common;
@@ -363,36 +353,24 @@ struct CombineRangeRuntime {
     int32_t &pairwiseTileSequence;
 };
 
-template <WaveCombineAivSet AivSet>
-__aicore__ inline bool IsWaveCombineWorker()
-{
-    return AivSet == WaveCombineAivSet::ALL_AIV || GetSubBlockIdx() == 1U;
-}
-
-// 常规 Wave 只使用每个 AIC 配对的 AIV1；最后一轮把同组 AIV0/AIV1 展开成两个独立任务。
-template <WaveCombineAivSet AivSet>
-__aicore__ inline AivJobContext GetWaveCombineJob(const AivJobContext &job)
-{
-    if constexpr (AivSet == WaveCombineAivSet::ALL_AIV) {
-        constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
-        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
-        return {job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx, job.totalJobs * AIV_CORE_COUNT_PER_AIC};
-    }
-    return job;
-}
-
 // 按专家累计 token 行数滚动物理 AIV 起点，每个 AIV 在当前专家内仍负责一个连续均衡区间。
-template <WaveCombineAivSet AivSet = WaveCombineAivSet::PAIRED_AIV1>
+// 常规 Wave 只使用每个 AIC 配对的 AIV1；最终专家可把同组 AIV0/AIV1 展开成两个独立任务。
+template <bool IncludeAiv0 = false>
 __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, uint32_t tokenCount,
                                                      uint64_t expertRowPrefix)
 {
     if constexpr (g_coreType == AIC) {
         return {};
     }
-    if (!IsWaveCombineWorker<AivSet>()) {
+    AivJobContext combineJob = job;
+    if constexpr (IncludeAiv0) {
+        constexpr uint32_t AIV_CORE_COUNT_PER_AIC = 2U;
+        uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
+        combineJob = {job.jobIndex * AIV_CORE_COUNT_PER_AIC + subBlockIdx,
+                      job.totalJobs * AIV_CORE_COUNT_PER_AIC};
+    } else if (GetSubBlockIdx() != 1U) {
         return {};
     }
-    AivJobContext combineJob = GetWaveCombineJob<AivSet>(job);
     if (combineJob.totalJobs == 0U || combineJob.jobIndex >= combineJob.totalJobs) {
         return {};
     }
@@ -469,7 +447,7 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
 }
 
 // 使用行级流水发送当前逻辑 AIV 任务负责的已就绪 token 区间。
-template <uint8_t CombineMode, WaveCombineAivSet AivSet = WaveCombineAivSet::PAIRED_AIV1>
+template <uint8_t CombineMode>
 __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
                                              const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
                                              const Params &params, GM_ADDR gmm2OutGlobal, uint32_t tokenStart,
@@ -478,7 +456,7 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (!IsWaveCombineWorker<AivSet>() || tokenCount == 0U) {
+    if (tokenCount == 0U) {
         return;
     }
     GlobalTensor<bfloat16_t> gmm2OutGm;
@@ -1129,8 +1107,8 @@ __aicore__ inline void ConsumeGmm2TilesForCombine(const ProblemConfig &config, u
 }
 
 // AIV1 按对应 GMM2 的配置和 block scheduler 消费 AIC 已发布的非量化 Combine tile。
-template <typename ElementA, typename WeightType, typename QuantScaleType, Gmm2KernelKind KernelKind,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+template <typename ElementA, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
+          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
 __aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmConfig,
                                                  const ProblemShape &problemShape,
                                                  const GMMAddrInfo &gmmAddrInfo, const Params &params,
@@ -1142,7 +1120,7 @@ __aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmCo
     if (GetSubBlockIdx() != 1U) {
         return;
     }
-    if constexpr (KernelKind == Gmm2KernelKind::W4) {
+    if constexpr (std::is_same_v<WeightType, __fp4e2m1x2>) {
         using GmmConfig = GmmKernel::Config<true, 0, ElementA, WeightType, bfloat16_t, QuantScaleType,
                                             QuantScaleType, false, TopkWeightsPrefetch, false, false, false, true>;
         auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
@@ -1192,13 +1170,12 @@ __aicore__ inline void NotifyWaveGmm2Ready(const AivJobContext &job, const Param
 }
 
 // 一个 AIV Combine 任务等待全部 AIC 完成指定专家。
-template <WaveCombineAivSet AivSet = WaveCombineAivSet::PAIRED_AIV1>
 __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params &params, uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
-    if (!IsWaveCombineWorker<AivSet>() || job.totalJobs == 0U) {
+    if (job.totalJobs == 0U) {
         return;
     }
     uint32_t readyElements = job.totalJobs * static_cast<uint32_t>(INT_CACHELINE);
@@ -1226,17 +1203,17 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
     }
 }
 
-template <uint8_t CombineMode, WaveCombineAivSet AivSet = WaveCombineAivSet::PAIRED_AIV1>
+template <uint8_t CombineMode, bool IncludeAiv0 = false>
 __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, const AivJobContext &job,
                                            const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
                                            const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                            const ExpertLoopState &state, uint32_t expertIdx, uint32_t &rowSequence)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
-    WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<AivSet>(
+    WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<IncludeAiv0>(
         job, currentExpertTokenNum, static_cast<uint64_t>(state.globalTokenStartIndex));
     if (currentCoreTokenRange.count != 0U) {
-        WaitWaveGmm2Ready<AivSet>(job, params, expertIdx);
+        WaitWaveGmm2Ready(job, params, expertIdx);
     }
     for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
         uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
@@ -1247,7 +1224,7 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
             params, scratch,
             static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + processedTokenNum,
             chunkTokenNum, 0U);
-        CombineWaveTokenRange<CombineMode, AivSet>(
+        CombineWaveTokenRange<CombineMode>(
             common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
             currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
         processedTokenNum += chunkTokenNum;
@@ -1256,8 +1233,8 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
 
 // 非量化 Combine 的统一入口：按给定范围逐专家重放 GMM2 scheduler 并逐 tile 消费。
 // 范围边界决定地址和 M 大小；函数不规划下一段、不执行 GMM2，也不负责最终 drain。
-template <typename ElementA, typename WeightType, typename QuantScaleType, Gmm2KernelKind KernelKind,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
+template <typename ElementA, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
+          bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
 __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, const ExpertTokenRange &range,
                                          CombineRangeRuntime &runtime)
 {
@@ -1309,8 +1286,7 @@ __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, con
                 static_cast<uint64_t>(context.gmm.blockJob.jobIndex) * INT_CACHELINE;
             ProblemShape sliceProblemShape = state.problemShape;
             Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-            ReplayGmm2TilesForCombine<ElementA, WeightType, QuantScaleType, KernelKind, Gmm1TileM,
-                                      TopkWeightsPrefetch,
+            ReplayGmm2TilesForCombine<ElementA, WeightType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch,
                                       IsGmm1Interleaved>(
                 context.gmm, sliceProblemShape, gmmAddrInfo, context.params,
                 runtime.pairwiseStartBlockIdx, runtime.pairwiseTileSequence);

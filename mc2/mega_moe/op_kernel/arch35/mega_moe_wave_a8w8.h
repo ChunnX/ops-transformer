@@ -777,8 +777,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, countWorkspace_, syncWorkspaceLayout_,
                                            params_, moeWeightTensorListAddrs_};
         CombineRangeRuntime combineRuntime{startBlockIdx_, gmm2TileSequence};
-        CombineTokenRange<ActivationType, Weight1Type, QuantScaleOutType, Gmm2KernelKind::GENERIC, GMM1_TILE_M,
-                          TopkWeightsPrefetch, GMM1_INTERLEAVED>(combineContext, waveRange, combineRuntime);
+        CombineTokenRange<ActivationType, Weight1Type, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch,
+                          GMM1_INTERLEAVED>(combineContext, waveRange, combineRuntime);
     }
 }
 
@@ -800,7 +800,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, bufferConfig, waveCombineScratch_);
         UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, combineAddrInfo, allCoreCombineExpertState);
         uint32_t rowSequence = 0U;
-        RunWaveCombineStage<CombineQuantMode, WaveCombineAivSet::ALL_AIV>(
+        RunWaveCombineStage<CombineQuantMode, true>(
             commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_, params_, combineAddrInfo,
             allCoreCombineExpertState, allCoreCombineExpertIndex, rowSequence);
         DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
@@ -821,7 +821,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (useAllAivCores) {
             activeBufferConfig =
                 PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, bufferConfig, waveCombineScratch_);
-            RunWaveCombineStage<CombineQuantMode, WaveCombineAivSet::ALL_AIV>(
+            RunWaveCombineStage<CombineQuantMode, true>(
                 commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_, params_, combineAddrInfo,
                 combineState, combineState.expertIdx, rowSequence);
         } else {
