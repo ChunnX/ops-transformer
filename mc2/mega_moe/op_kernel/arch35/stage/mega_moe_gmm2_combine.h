@@ -342,22 +342,6 @@ __aicore__ inline QuantTokenBufferConfig CreateQuantTokenBufferConfig(uint32_t t
     return {quantTokenSizeBytes};
 }
 
-// Combine 范围执行所需的只读公共资源。调用方只负责给出 [begin, end)；本结构不保存调度进度。
-struct CombineRangeContext {
-    const MoeStageCommonConfig &common;
-    const GmmExecutionConfig &gmm;
-    const BlockWorkspaceContext &countWorkspace;
-    const MoeSyncWorkspaceLayout &syncLayout;
-    const Params &params;
-    const ExpertWeightTensorListAddrs &weights;
-};
-
-// 各物理核独立维护的 Combine 进度。pairwiseStartBlockIdx 用于重放与 AIC 相同的 GMM2 scheduler。
-struct CombineRangeRuntime {
-    uint32_t &pairwiseStartBlockIdx;
-    int32_t &pairwiseTileSequence;
-};
-
 // 按专家累计 token 行数滚动物理 AIV 起点，每个 AIV 在当前专家内仍负责一个连续均衡区间。
 // 常规 Wave 只使用每个 AIC 配对的 AIV1；最终专家可把同组 AIV0/AIV1 展开成两个独立任务。
 template <bool IncludeAiv0 = false>
@@ -609,13 +593,13 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
     }
 }
 
-// 非量化 Combine 的 1:1 tile consumer。它与配对 AIC 重放完全相同的 scheduler，
-// 每次只在本核序号到达后读取一个 [M tile, 256-N tile]，随即把该 tile 分段发送到目标 rank。
+// 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
+// 当前 GMM2 problem 的起始地址和 M 大小共同限定 token 范围，无需再次遍历专家或重建 scheduler。
 // UB 从 64 KiB 起步，避开 AIV1 Dispatch 跨 wave 保留在低区的 cumsum 状态。
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
-__aicore__ inline void Gmm2Aiv1EpilogueGeneric(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
-                                               const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence,
-                                               const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+__aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
+                                         const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence,
+                                         const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -775,6 +759,12 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
                 localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);
         }
+    } else if constexpr (NotifyCombineTileReady) {
+        if (GetSubBlockIdx() == 1U) {
+            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
+                                                      *gmTileSequence, config, startLoopIdx, tileNum);
+        }
     }
 }
 
@@ -828,6 +818,10 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
         if (GetSubBlockIdx() == 0U) {
             BlockPrologue blockPrologue;
             Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        } else if constexpr (NotifyCombineTileReady) {
+            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
+                                                      *gmTileSequence, config, startLoopIdx, tileNum);
         }
     }
 }
@@ -850,12 +844,6 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                   "Shared expert GMM2 has its own completion counter");
     static_assert(!IsLayered || !NotifyCombineTileReady,
                   "Layered GMM2 selects its synchronization through IsLayered");
-    if constexpr (NotifyCombineTileReady && g_coreType == AscendC::AIV) {
-        // AIV1 在独立 CombineTokenRange 中重放 scheduler；这里不能提前推进其 startBlockIdx。
-        if (GetSubBlockIdx() == 1U) {
-            return;
-        }
-    }
     using GmmConfig =
         GmmKernel::Config<false, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
                           IsWeightNZ, TopkWeightsPrefetch, IsShared, IsLayered, IsGmm1Interleaved, IsWaveFlagGrained>;
@@ -917,12 +905,6 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
                   "Shared expert GMM2 has its own completion counter");
     static_assert(!IsLayered || !NotifyCombineTileReady,
                   "Layered GMM2 selects its synchronization through IsLayered");
-    if constexpr (NotifyCombineTileReady && g_coreType == AscendC::AIV) {
-        // AIV1 在独立 CombineTokenRange 中重放 scheduler；AIV0 仍需执行 W4 prologue。
-        if (GetSubBlockIdx() == 1U) {
-            return;
-        }
-    }
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
@@ -1086,68 +1068,6 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
     }
 }
 
-// 使用 GMM2 已构造的配置重放 AIV1 tile；不同模板只需在入口选择配置类型和 scheduler N。
-template <typename ProblemConfig>
-__aicore__ inline void ConsumeGmm2TilesForCombine(const ProblemConfig &config, uint32_t schedulerN,
-                                                  const GMMAddrInfo &gmmAddrInfo, const Params &params,
-                                                  uint32_t &startBlockIdx, int32_t &tileReadySequence)
-{
-    GmmKernel::BlockScheduler scheduler({config.m, schedulerN, config.k},
-                                        GmmKernel::BlockScheduler::Params{Te::MakeCoord(
-                                            static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t tileNum = scheduler.GetTileNum();
-    uint32_t startLoopIdx =
-        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
-    if (startLoopIdx < tileNum) {
-        using KernelConfig = typename ProblemConfig::KernelConfig;
-        auto layouts = KernelConfig::BuildLayouts(config);
-        auto gmC = Te::MakeTensor(
-            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ bfloat16_t *>(gmmAddrInfo.gmm2OutGlobal)),
-            layouts.c);
-        using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-        GmmKernel::Gmm2Aiv1EpilogueGeneric<bfloat16_t, MakeLayoutC>(
-            scheduler, gmC, params, gmmAddrInfo, tileReadySequence, config, startLoopIdx, tileNum);
-    }
-    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
-}
-
-// AIV1 按对应 GMM2 的配置和 block scheduler 消费 AIC 已发布的非量化 Combine tile。
-template <typename ElementA, typename WeightType, typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
-__aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmConfig,
-                                                 const ProblemShape &problemShape,
-                                                 const GMMAddrInfo &gmmAddrInfo, const Params &params,
-                                                 uint32_t &startBlockIdx, int32_t &tileReadySequence)
-{
-    if constexpr (g_coreType == AscendC::AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-    if constexpr (EnableA8W4 || EnableA4W4) {
-        using GmmConfig = GmmKernel::Config<true, 0, ElementA, WeightType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, false, TopkWeightsPrefetch, false, false, false, true>;
-        auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
-        ConsumeGmm2TilesForCombine(config, config.outputN, gmmAddrInfo, params, startBlockIdx, tileReadySequence);
-    } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-               gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementA, bfloat16_t,
-                                            QuantScaleType, QuantScaleType, true, TopkWeightsPrefetch, false, false,
-                                            IsGmm1Interleaved, true>;
-        auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
-        ConsumeGmm2TilesForCombine(config, config.schedulerN, gmmAddrInfo, params, startBlockIdx,
-                                  tileReadySequence);
-    } else {
-        using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementA, bfloat16_t,
-                                            QuantScaleType, QuantScaleType, false, TopkWeightsPrefetch, false, false,
-                                            IsGmm1Interleaved, true>;
-        auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
-        ConsumeGmm2TilesForCombine(config, config.schedulerN, gmmAddrInfo, params, startBlockIdx,
-                                  tileReadySequence);
-    }
-}
-
 constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;
 constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES = MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
                                                         MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
@@ -1233,71 +1153,6 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
             common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
             currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
         processedTokenNum += chunkTokenNum;
-    }
-}
-
-// 非量化 Combine 的统一入口：按给定范围逐专家重放 GMM2 scheduler 并逐 tile 消费。
-// 范围边界决定地址和 M 大小；函数不规划下一段、不执行 GMM2，也不负责最终 drain。
-template <typename ElementA, typename WeightType, typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
-__aicore__ inline void CombineTokenRange(const CombineRangeContext &context, const ExpertTokenRange &range,
-                                         CombineRangeRuntime &runtime)
-{
-    if (range.end.globalTokenIndex <= range.begin.globalTokenIndex) {
-        return;
-    }
-    if constexpr (g_coreType == AscendC::AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-
-    ExpertLoopState state = CreateExpertLoopState(context.common);
-    state.expertIdx = range.begin.expertIdx;
-    state.globalTokenStartIndex = static_cast<int64_t>(range.begin.globalTokenIndex) -
-                                  static_cast<int64_t>(range.begin.tokenIndexInExpert);
-    uint32_t gmm2TilesPerMGroup =
-        Ops::Base::CeilDiv(context.common.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
-    uint32_t expertEndExclusive =
-        range.end.expertIdx + (range.end.tokenIndexInExpert == 0U ? 0U : 1U);
-    if (expertEndExclusive > context.common.moeExpertPerRank) {
-        expertEndExclusive = context.common.moeExpertPerRank;
-    }
-    for (uint32_t expertIdx = range.begin.expertIdx; expertIdx < expertEndExclusive; ++expertIdx) {
-        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
-            context.params.workspaceInfo.expertRevTokenNumsPtr, context.countWorkspace,
-            context.common.moeExpertPerRank, expertIdx);
-        UpdateExpertLoopState(state, expertIdx, expertTokenCount);
-        uint32_t sliceBeginIndexInExpert =
-            expertIdx == range.begin.expertIdx ? range.begin.tokenIndexInExpert : 0U;
-        if (expertTokenCount == 0U || sliceBeginIndexInExpert >= expertTokenCount) {
-            continue;
-        }
-
-        uint32_t sliceEndIndexInExpert = expertTokenCount;
-        if (expertIdx == range.end.expertIdx) {
-            sliceEndIndexInExpert = range.end.tokenIndexInExpert;
-        }
-        uint32_t sliceTokenCount = sliceEndIndexInExpert - sliceBeginIndexInExpert;
-        uint32_t problemTileCount =
-            GetMGroupCountForRows(sliceTokenCount, Gmm1TileM) * gmm2TilesPerMGroup;
-        if (!HandleWaveProblemWithoutWork(problemTileCount, context.gmm.blockJob,
-                                          runtime.pairwiseStartBlockIdx)) {
-            GMMAddrInfo gmmAddrInfo{};
-            UpdateMoeExpertGmm2GlobalBuffer<WeightType, ElementA, QuantScaleType>(
-                context.gmm, context.syncLayout, context.params.workspaceInfo, context.weights,
-                gmmAddrInfo, state, sliceBeginIndexInExpert);
-            gmmAddrInfo.gmmToEpilogueFlag =
-                reinterpret_cast<__gm__ int32_t *>(context.params.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(context.gmm.blockJob.jobIndex) * INT_CACHELINE;
-            ProblemShape sliceProblemShape = state.problemShape;
-            Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-            ReplayGmm2TilesForCombine<ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
-                                      TopkWeightsPrefetch, IsGmm1Interleaved>(
-                context.gmm, sliceProblemShape, gmmAddrInfo, context.params,
-                runtime.pairwiseStartBlockIdx, runtime.pairwiseTileSequence);
-        }
     }
 }
 
