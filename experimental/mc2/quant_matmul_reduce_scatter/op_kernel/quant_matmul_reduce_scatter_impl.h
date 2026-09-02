@@ -71,12 +71,8 @@ public:
         GM_ADDR hcclContext{nullptr};
     };
 
-    __aicore__ inline QuantMatmulReduceScatterImpl()
-    {
-    }
-    __aicore__ inline ~QuantMatmulReduceScatterImpl()
-    {
-    }
+    __aicore__ inline QuantMatmulReduceScatterImpl() {}
+    __aicore__ inline ~QuantMatmulReduceScatterImpl() {}
 
     __aicore__ inline void operator()(Params &params)
     {
@@ -112,9 +108,8 @@ private:
 };
 
 template <typename ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
-__aicore__ inline void
-QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>::ReduceAddInit(
-    const Params &params)
+__aicore__ inline void QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue,
+                                                    BlockScheduler>::ReduceAddInit(const Params &params)
 {
     winContext_ = (__gm__ Mc2Kernel::HcclOpParam *)params.hcclContext;
     rankId_ = Mc2Kernel::GetRankId(winContext_);
@@ -188,10 +183,10 @@ QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSchedu
         AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(0),
         AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<float>>{}(
             1, paddingN));
-    auto sumfp32UbVecTensor = asc::te::make_tensor(
-        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(0), vectorLayout);
+    auto sumfp32UbVecTensor =
+        asc::te::make_tensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(0), vectorLayout);
     for (uint32_t tileIdx = 0; tileIdx < rowNum; ++tileIdx) {
-        //AscendC::Te::Transform<AscendC::Te::Inst::MulScalar>(sumfp32UbTensor, sumfp32UbTensor, 0.0f);
+        // AscendC::Te::Transform<AscendC::Te::Inst::MulScalar>(sumfp32UbTensor, sumfp32UbTensor, 0.0f);
         float zeroNum = 0.0f;
         compute_fill(sumfp32UbVecTensor, zeroNum, paddingN);
         tokenIndex = startRowId + tileIdx;
@@ -204,7 +199,7 @@ QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSchedu
                 AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, CType>(localbf16Offset), layoutPaddingUB);
             auto ubVecTensor = asc::te::make_tensor(
                 AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, CType>(localbf16Offset), vectorLayout);
-            
+
             auto gmTensor = gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(1, n_));
             AscendC::Te::Copy(copyGM2UB_, ubTensor, gmTensor);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
@@ -216,13 +211,13 @@ QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSchedu
                     1, paddingN));
             auto fp32UbVecTensor = asc::te::make_tensor(
                 AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(localfp32Offset), vectorLayout);
-            
-            //AscendC::Te::Transform<AscendC::Te::Inst::Cast>(fp32UbTensor, ubTensor);
+
+            // AscendC::Te::Transform<AscendC::Te::Inst::Cast>(fp32UbTensor, ubTensor);
             cast_reg_loop(ubVecTensor, fp32UbVecTensor, paddingN); // src, dst
 
             AscendC::PipeBarrier<PIPE_V>();
-            //AscendC::Te::Transform<AscendC::Te::Inst::Add>(sumfp32UbTensor, sumfp32UbTensor, fp32UbTensor);
-            compute_add(sumfp32UbVecTensor, fp32UbVecTensor, sumfp32UbVecTensor);
+            // AscendC::Te::Transform<AscendC::Te::Inst::Add>(sumfp32UbTensor, sumfp32UbTensor, fp32UbTensor);
+            compute_add(sumfp32UbVecTensor, fp32UbVecTensor, sumfp32UbVecTensor, paddingN);
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
@@ -233,7 +228,7 @@ QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSchedu
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, CType>(sumbf16Offset), vectorLayout);
         auto gmOutTensor = gmY.Slice(AscendC::Te::MakeCoord(tokenIndex, 0), AscendC::Te::MakeShape(1, n_));
         AscendC::PipeBarrier<PIPE_V>();
-        //AscendC::Te::Transform<AscendC::Te::Inst::Cast, CastTraitF322Bf16>(sumbf16UbTensor, sumfp32UbTensor);
+        // AscendC::Te::Transform<AscendC::Te::Inst::Cast, CastTraitF322Bf16>(sumbf16UbTensor, sumfp32UbTensor);
         cast_reg_loop(sumfp32UbVecTensor, sumbf16UbVecTensor, paddingN); // src, dst
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);

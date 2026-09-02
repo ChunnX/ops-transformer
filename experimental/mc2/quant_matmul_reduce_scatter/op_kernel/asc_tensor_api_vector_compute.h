@@ -23,11 +23,7 @@ template <typename DstT, typename SrcT>
 __simd_callee__ inline asc::te::experimental::reg_tensor<DstT> cast_register(
     asc::te::experimental::reg_tensor<SrcT> src)
 {
-    if constexpr (sizeof(SrcT) < sizeof(DstT)) { // src:bfloat16 dst:float
-        return asc::te::experimental::cast<float>(src);
-    } else {
-        return asc::te::experimental::cast<bfloat16_t>(src);
-    }
+    return asc::te::experimental::cast<DstT>(src);
 }
 
 template <typename SrcTensor, typename DstTensor>
@@ -38,7 +34,7 @@ __simd_vf__ inline void cast_reg_loop(const SrcTensor src, DstTensor dst, uint32
     using wider_type = std::conditional_t<(sizeof(src_type) > sizeof(dst_type)), src_type, dst_type>;
     using wider_reg_type = typename asc::te::experimental::reg_tensor<wider_type>::reg_type;
     constexpr uint32_t one_repeat = sizeof(wider_reg_type) / sizeof(wider_type);
-    const uint16_t repeat = static_cast<uint16_t>(data_size / one_repeat);
+    const uint16_t repeat = static_cast<uint16_t>((data_size + one_repeat - 1) / one_repeat);
     uint32_t remain = data_size;
 
     for (uint16_t i = 0; i < repeat; ++i) {
@@ -77,27 +73,36 @@ __simd_vf__ inline void cast_reg_loop(const SrcTensor src, DstTensor dst, uint32
 
 // func for add
 template <typename InputTensor, typename OutputTensor>
-__simd_vf__ inline void compute_add(InputTensor src0_tensor, InputTensor src1_tensor, OutputTensor dst_tensor)
+__simd_vf__ inline void compute_add(InputTensor src0_tensor, InputTensor src1_tensor, OutputTensor dst_tensor,
+                                    uint32_t data_size)
 {
     using asc::te::experimental::operator+;
 
-    constexpr uint32_t offset = 0;
-    const auto coord = asc::te::make_coord(offset);
-    auto mask = asc::te::experimental::all_mask<float>();
-    auto src0 = asc::te::experimental::load(src0_tensor, coord).with_mask(mask);
-    auto src1 = asc::te::experimental::load(src1_tensor, coord).with_mask(mask);
-    auto dst = src0 + src1;
-    asc::te::experimental::store(dst_tensor, coord, dst);
+    using data_type = typename InputTensor::data_type;
+    using reg_type = typename asc::te::experimental::reg_tensor<data_type>::reg_type;
+    constexpr uint32_t one_repeat = sizeof(reg_type) / sizeof(data_type);
+    const uint16_t repeat = static_cast<uint16_t>((data_size + one_repeat - 1) / one_repeat);
+    uint32_t remain = data_size;
+
+    for (uint16_t i = 0; i < repeat; ++i) {
+        const uint32_t offset = i * one_repeat;
+        const auto coord = asc::te::make_coord(offset);
+        auto mask = asc::te::experimental::update_mask<data_type>(remain);
+        auto src0 = asc::te::experimental::load(src0_tensor, coord).with_mask(mask);
+        auto src1 = asc::te::experimental::load(src1_tensor, coord).with_mask(mask);
+        auto dst = src0 + src1;
+        asc::te::experimental::store(dst_tensor, coord, dst);
+    }
 }
 
 // func for fill
 template <typename T, typename U>
 __simd_vf__ inline void compute_fill(T y_tensor, U scalar, uint32_t data_size)
 {
-    constexpr uint32_t one_repeat_size = asc_get_vf_len() / sizeof(T);
+    using data_type = typename T::data_type;
+    constexpr uint32_t one_repeat_size = asc_get_vf_len() / sizeof(data_type);
     uint16_t repeat_times =
         static_cast<uint16_t>(AscendC::Std::ceil_align(data_size, one_repeat_size) / one_repeat_size);
-    using data_type = typename T::data_type;
     for (uint16_t i = 0; i < repeat_times; ++i) {
         auto mask = asc::te::experimental::update_mask<data_type>(data_size);
         uint32_t offset = i * one_repeat_size;
