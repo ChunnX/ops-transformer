@@ -200,7 +200,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>layoutQueryOptional为TND时，shape为(T1,N1,D)。</li>
           </ul>
       </td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>poolKey</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>layoutKeyOptional为TND时，shape为(T2, N2, D)。</li>
           </ul>
       </td>
-      <td>支持0轴非连续</td>
+      <td>支持0轴非连续（仅PA_BBND布局，需配合keyStride0属性；BSND/TND布局要求连续输入）</td>
     </tr>
     <tr>
       <td>weights</td>
@@ -238,7 +238,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>layoutQueryOptional为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>poolTailK</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>actualSeqLengthsQueryOptional</td>
@@ -269,7 +269,7 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>actualSeqLengthsKeyOptional</td>
@@ -285,7 +285,7 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>blockTableOptional</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>INT32</td>
       <td>ND</td>
       <td>(B, maxBlockNumPerSeq)</td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>qDescaleOptional</td>
@@ -320,7 +320,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>quantMode为1时（mxFP8，每32个D维度元素共享一个E8M0 scale）：layoutQueryOptional为BSND时shape为(B,S1,N1,D/64,2)；layoutQueryOptional为TND时shape为(T1,N1,D/64,2)。</li>
           </ul>
       </td>
-      <td>√</td>
+      <td>√*</td>
     </tr>
     <tr>
       <td>kDescaleOptional</td>
@@ -340,7 +340,7 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>quantMode为1时（mxFP8）：layoutKeyOptional为BSND时shape为(B,S2,N2,D/64,2)；layoutKeyOptional为TND时shape为(T2,N2,D/64,2)；layoutKeyOptional为PA_BBND时shape为(block_num, block_size, N2, D/64,2)。</li>
           </ul>
       </td>
-      <td>√</td>
+      <td>支持0轴非连续（仅PA_BBND布局且量化场景，需配合kDescaleStride0属性；BSND/TND布局要求连续输入）</td>
     </tr>
     <tr>
       <td>topk</td>
@@ -537,6 +537,12 @@ aclnnStatus aclnnPoolKeyIndexer(
 - **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
+  > **非连续Tensor标记说明**：参数表"非连续Tensor"列中，`√*` 表示该输入支持非连续输入，但支持方式因调用路径而不同——
+  > - **eager/aclnn直调路径**：由aclnn层自动连续化（aclnnContiguous，输入声明AutoContiguous）后参与计算，非连续输入可直接传入；
+  > - **图模式（torchair GE/aclgraph）路径**：由torchair runtime在图输入喂入前自动contiguous兜底（全部输入，代价为隐性拷贝）。
+  >
+  > `支持0轴非连续` 的输入（poolKey、kDescaleOptional）有额外限定：仅PA_BBND布局支持0轴非连续寻址（配合keyStride0/kDescaleStride0属性实现零拷贝），BSND/TND布局要求连续输入（非连续输入在eager路径会被拒绝）。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 

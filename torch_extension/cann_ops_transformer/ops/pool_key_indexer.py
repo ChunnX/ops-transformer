@@ -43,7 +43,7 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
             "Tensor? actual_seq_q=None, Tensor? actual_seq_k=None, "
             "Tensor? block_table=None, Tensor? q_descale=None, Tensor? k_descale=None, "
             'str layout_q="BSND", str layout_k="BSND", '
-            "int topk=128, int pool_size=1, int mask_mode=0, int quant_mode=-1, "
+            "int topk=2048, int pool_size=16, int mask_mode=3, int quant_mode=-1, "
             "bool return_value=False) -> (Tensor, Tensor)"
         )
 
@@ -67,9 +67,9 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
             k_descale=None,
             layout_q="BSND",
             layout_k="BSND",
-            topk=128,
-            pool_size=1,
-            mask_mode=0,
+            topk=2048,
+            pool_size=16,
+            mask_mode=3,
             quant_mode=-1,
             return_value=False,
         ):
@@ -109,9 +109,9 @@ def pool_key_indexer(
     k_descale=None,
     layout_q="BSND",
     layout_k="BSND",
-    topk=128,
-    pool_size=1,
-    mask_mode=0,
+    topk=2048,
+    pool_size=16,
+    mask_mode=3,
     quant_mode=-1,
     return_value=False,
 ):

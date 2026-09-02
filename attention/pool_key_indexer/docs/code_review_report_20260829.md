@@ -108,12 +108,12 @@
 
 ## P2 — 一致性 / 防御性改进
 
-### [P2-1] torch 前端默认值与 op_def 不一致，且 schema docstring 声明失实
+### [P2-1] torch 前端默认值与 op_def 不一致，且 schema docstring 声明失实（✅ 已修复 2026-09-02）
 
 - **位置**：`ops/pool_key_indexer.py:46-50`（schema：`topk=128, pool_size=1, mask_mode=0`）vs `op_host/pool_key_indexer_def.cpp:77-81`（`topk=2048, pool_size=16, mask_mode=3`）；`graph_convert_pool_key_indexer.py:83-87` 同样是 128/1/0。
 - **问题**：`pool_key_indexer.py` schema docstring 写着 "Attr defaults align with op_host/pool_key_indexer_def.cpp"——**与事实不符**（三处默认值两两不一致：aclnn 生成层 `PoolKeyIndexer.py` 用 2048/16/3，torch 前端用 128/1/0）。
 - **影响**：用户经 torch 接口与经 aclnn 直接调用的"缺省语义"不同；`mask_mode` 默认值不同还直接影响是否带因果掩码。
-- **建议**：统一为一组（建议对齐 def.cpp），修正 docstring。
+- **✅ 修复（2026-09-02）**：三处默认值统一为 **2048/16/3**（对齐 def.cpp）——`ops/pool_key_indexer.py` 的 schema 字符串 + Meta 实现签名 + PrivateUse1 dispatcher 签名，及 `graph_convert_pool_key_indexer.py` 的 converter 签名。docstring 声明随修复变为事实。实测：缺省调用输出 shape = (B,S1,2063)/(B,S1,128)，与 topk=2048/pool_size=16 一致；显式传参不受影响；全量回归通过（量化 192 + smoke/GE/aclgraph 78 + precision 133）。**注意**：此为接口默认值变更，依赖缺省调用的存量用户代码行为会改变（mask 默认从无掩码变为因果掩码）——已在规格建议值一栏登记。
 
 ### [P2-2] csrc 缺 topk 合法档位检查（错误局部性弱）
 
@@ -138,10 +138,10 @@
 - **位置**:`ops/pool_key_indexer.py:76-83`——`layout_q == "BSND"` 之外的任意字符串（含拼写错误如 "bsnd"）都走 TND 分支推导 shape，torch.compile FakeTensor 阶段不报错。
 - **建议**：Meta 补 `assert layout_q in ("BSND", "TND")`（或将非法 layout 的报错前移）。
 
-### [P2-6] 测试覆盖缺口：量化一层泛化的 n1 档位缺 48
+### [P2-6] 测试覆盖缺口：量化一层泛化的 n1 档位缺 48（✅ 已修复 2026-09-02）
 
 - **位置**：`test_quant_general.py:88`（`N1_CHOICES_QUANT = [1,2,4,8,12,16,32,64]`，无 48）；48 档在二层（`test_quant_general2.py:81`）才引入并借此抓出了 mBaseSize 半区错位 bug（蓝图 ⑦）。
-- **建议**：一层补 48（及 40），保持两层包络连续。
+- **✅ 修复（2026-09-02）**：`N1_CHOICES_QUANT` 补 48/40 → `[1,2,4,8,12,16,32,40,48,64]`，两层包络连续。重新生成的随机层含 n1=48 用例 4 个、n1=40 用例 8 个，全量回归 192 passed。
 
 ### [P2-7] 规格参数表"非连续Tensor"列语义模糊（文档问题；2026-08-31 按 P0-2 复核结论修订）
 
@@ -155,7 +155,11 @@
   | k_descale（PA_BBND） | ✅ 0 轴非连续（keyDequantScaleStride0） | ✅ 同上 |
   | k_descale（BSND/TND） | ❌ 已拒绝（非 PA 布局无属性通道） | ✅ runtime 连续化兜底（图模式 tiling 的 stride 校验实际不会遇到非连续输入） |
 | k_descale（PA_BBND，0 轴非连续） | ✅ **已支持（`k_descale_stride0` 属性，2026-08-31 终版修复；mode=0/1 双模式实测）** | ✅ 同上 |
-- **建议**：参数表按上表口径修订"k_descale 非连续支持"的布局限定；并落实 k_descale 非 PA 布局的 eager 拒绝（同 P0-1 模式）。
+- **✅ 修复（2026-09-02）**：规格参数表已按上表口径修订——
+  - 简单"√"改为"√*"，表后新增**非连续Tensor标记说明**注记块（位于"返回值"节）：√* 的两条路径语义（eager/aclnn 走 aclnnContiguous 自动连续化；图模式走 torchair runtime contiguous 兜底）；
+  - poolKey 行"支持0轴非连续"细化为"支持0轴非连续（仅PA_BBND布局，需配合keyStride0属性；BSND/TND布局要求连续输入）"；
+  - kDescaleOptional 行同步细化（仅PA_BBND布局且量化场景，需配合kDescaleStride0属性）；
+  - 约束说明-其他限制（:645-646）已有对应表述（k_descale_stride0 补充时落地）。
 
 ---
 
@@ -177,7 +181,8 @@
 1. ~~**立即**：P0-1（csrc 非 PA 布局拒绝非连续 pool_key，一行检查）；P0-2（csrc 补 query/weights/descale 连续性检查）~~
    **→ 均已完成**：P0-1 已修复（csrc 双层拦截 + tiling 属性防御 + 回归用例，2026-08-31）；P0-2 已按三次复核后的正确范围修复（**仅 k_descale 需要检查**——query/weights/q_descale 由 aclnnContiguous 兜底无需检查；k_descale 全布局非连续 csrc 拒绝 + 回归用例，2026-08-31）。
 2. **本迭代**：P1-1 需产品决策（补能力或改规格）；P1-2 def.cpp 组合表扩展；P1-3/P2-7 规格文档修订（含 k_descale eager 连续性要求的表述）。
-3. **跟进**：P1-4（kernel 防御 clamp）、P2-1（默认值统一）、P2-2/P2-5/P2-6（校验前移与测试补档）。
+3. **跟进**：P1-4（kernel 防御 clamp）、P2-2/P2-5（校验前移）。
+   已完成：~~P2-1（默认值统一，2026-09-02，对齐 def.cpp 2048/16/3）~~、~~P2-6（n1 补 48/40，2026-09-02）~~、~~P2-7（规格非连续列修订 + √* 脚注，2026-09-02）~~。
    注：原"可选增强：`k_descale_stride0` 属性机制"**已在 P0-2 终版修复中落地**（2026-08-31，PA 0 轴非连续 eager 支持含 mode=0/1）。规格文档需同步补充 `k_descale_stride0` 属性条目（与 key_stride0 同格式）。
 
 ---
