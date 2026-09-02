@@ -1867,8 +1867,9 @@ static graphStatus IsDavidQuantGMMByShape(T context)
     return (GetSizeByDataType(xDtype) == 1 && GetSizeByDataType(weightDtype) == 1) ? GRAPH_SUCCESS : GRAPH_FAILED;
 }
 
-static ge::graphStatus TryDavidInferShape(gert::InferShapeContext *context)
+static ge::graphStatus TryDavidInferShape(gert::InferShapeContext *context, bool &isDavidCase)
 {
+    isDavidCase = false;
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
@@ -1877,10 +1878,12 @@ static ge::graphStatus TryDavidInferShape(gert::InferShapeContext *context)
         return GRAPH_FAILED; // not handled by David path
     }
     if (IsDavidQuantGMMByShape(context) == GRAPH_SUCCESS) {
+        isDavidCase = true;
         OP_CHECK_IF(InferShape4DavidQuantGMM(context) != GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
         return GRAPH_SUCCESS;
     } else if (IsDavidWeightQuantGMMByShape(context) == GRAPH_SUCCESS) {
+        isDavidCase = true;
         OP_CHECK_IF(InferShape4DavidWeightQuantGMM(context) != GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
         return GRAPH_SUCCESS;
@@ -1947,8 +1950,10 @@ static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext *context
 static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    if (TryDavidInferShape(context) == GRAPH_SUCCESS) {
-        return GRAPH_SUCCESS;
+    bool isDavidCase = false;
+    ge::graphStatus davidRet = TryDavidInferShape(context, isDavidCase);
+    if (isDavidCase) {
+        return davidRet;
     }
     GMMAttrs gmmAttrs{GMM_X_Y_SEPARATED, 0, GMM_NO_SPLIT, false, false, 0, 0};
     OP_CHECK_IF(GetAttrsValue(context, gmmAttrs) != GRAPH_SUCCESS || CheckAttrs(context, gmmAttrs) != GRAPH_SUCCESS,
