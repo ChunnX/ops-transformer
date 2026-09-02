@@ -160,10 +160,10 @@ def _check_params(
         raise ValueError(
             f"x2 should be 2D, but got {x2.dim()}D."
         )
-    if comm_mode != "urma":
+    if comm_mode != "aiv_urma":
         raise ValueError(
-            f"comm_mode only supports 'urma', but got '{comm_mode}'. "
-            f"Please pass comm_mode='urma' explicitly."
+            f"comm_mode only supports 'aiv_urma', but got '{comm_mode}'. "
+            f"Please pass comm_mode='aiv_urma' explicitly."
         )
     fp4_dtype_enums = (296,)
     if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
@@ -290,8 +290,8 @@ def all_gather_quant_matmul(
         x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast, None means use tensor dtype.
         y_dtype (int, optional): Output dtype enum, None means default bfloat16.
             Only bfloat16/float16 are supported.
-        comm_mode (str, optional): Communication engine. Only ``"urma"`` is supported;
-            the default ``"ai_cpu"`` is rejected, so pass ``"urma"`` explicitly.
+        comm_mode (str, optional): Communication engine. Only ``"aiv_urma"`` is supported;
+            the default ``"ai_cpu"`` is rejected, so pass ``"aiv_urma"`` explicitly.
 
     Returns:
         Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
