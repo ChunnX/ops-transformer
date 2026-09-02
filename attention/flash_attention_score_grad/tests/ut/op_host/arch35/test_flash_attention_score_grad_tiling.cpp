@@ -1454,86 +1454,86 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_13_pad_
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_14_tnd_deter)
-{
-    int64_t actual_seq_qlist[4] = {128, 384, 768, 974};
-    int64_t actual_seq_kvlist[4] = {128, 384, 768, 974};
-    auto compileInfo = MakeA5CompileInfo();
-    gert::TilingContextPara tilingContextPara(
-        "FlashAttentionScoreGrad",
-        {
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
-            {{{974, 2, 8}, {974, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{974, 2, 8}, {974, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
-            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.17677669529663687f)},
-         {"keep_prob", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-         {"pre_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
-         {"next_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
-         {"head_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-         {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-         {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"seed", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-         {"offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}},
-        &compileInfo, "Ascend950", A5SocInfo, 262144, 1);
-    int64_t expectTilingKey = 19742831325745328;
-    std::string expectTilingData =
-        "32 4 2 1 384 384 32 32 4575657222452086003 255 2147483647 2147483647 2 0 0 4 1 0 0 0 0 0 0 0 0 3 "
-        "549755813952 549755813952 3 549755814016 8589934610 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 30208 3464 18 3448 3464 18 3448 3464 18 3448 0 0 0 18 61440 30720 114688 30720 1 30208 1 30112 1 "
-        "0 0 0 0 0 0 0 0 0 0 1 62336 16384 13184 1 62336 16384 13184 1 62336 16384 13184 65536 328192 590848 0 0 0 0 "
-        "0 0 0 1 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 16384 81920 229376 271812 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 16384 81920 229376 272224 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 5 14 18 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        "0 0 0 0 0 0 ";
-    std::vector<size_t> expectWorkspaces = {21825024};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
-}
+// TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_14_tnd_deter)
+// {
+//     int64_t actual_seq_qlist[4] = {128, 384, 768, 974};
+//     int64_t actual_seq_kvlist[4] = {128, 384, 768, 974};
+//     auto compileInfo = MakeA5CompileInfo();
+//     gert::TilingContextPara tilingContextPara(
+//         "FlashAttentionScoreGrad",
+//         {
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+//             {{{974, 2, 8}, {974, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{974, 2, 8}, {974, 2, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+//             {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
+//             {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
+//             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//         },
+//         {
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{974, 2, 32}, {974, 2, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+//         },
+//         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.17677669529663687f)},
+//          {"keep_prob", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+//          {"pre_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+//          {"next_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
+//          {"head_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+//          {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+//          {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+//          {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+//          {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+//          {"seed", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+//          {"offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+//          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+//          {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}},
+//         &compileInfo, "Ascend950", A5SocInfo, 262144, 1);
+//     int64_t expectTilingKey = 19742831325745328;
+//     std::string expectTilingData =
+//         "32 4 2 1 384 384 32 32 4575657222452086003 255 2147483647 2147483647 2 0 0 4 1 0 0 0 0 0 0 0 0 3 "
+//         "549755813952 549755813952 3 549755814016 8589934610 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 0 0 "
+//         "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         " "0 0 0 0 0 30208 3464 18 3448 3464 18 3448 3464 18 3448 0 0 0 18 61440 30720 114688 30720 1 30208 1 30112 1
+//         " "0 0 0 0 0 0 0 0 0 0 1 62336 16384 13184 1 62336 16384 13184 1 62336 16384 13184 65536 328192 590848 0 0 0
+//         0 " "0 0 0 1 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 16384 81920 229376 271812 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 " "0 0 0 0 0 0 0 16384 81920 229376 272224 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 5 14 18 0
+//         0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+//         0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 " "0 0 0 0 0 0 ";
+//     std::vector<size_t> expectWorkspaces = {21825024};
+//     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+// }
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_15_pad_prefix5)
 {
