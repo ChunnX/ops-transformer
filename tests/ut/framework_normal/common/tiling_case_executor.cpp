@@ -19,6 +19,8 @@
 #include <sstream>
 #include <iomanip>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 
 #define DO_TILING(tilingPara)                                                                                                                                                                                                                \
     auto contextFaker = gert::TilingContextFaker();                                                                                                                                                                                          \
@@ -323,6 +325,49 @@ static void GetPlatFormInfos(const char *compileInfoStr, map<string, string> &so
     }
 }
 
+static bool DumpGoldenEnabled()
+{
+    const char *env = std::getenv("OPS_UT_DUMP_GOLDEN");
+    return env != nullptr && env[0] == '1' && env[1] == '\0';
+}
+
+static void DumpTilingGolden(gert::TilingContext *tilingContext, uint64_t tilingDataReservedLen)
+{
+    const auto *info = ::testing::UnitTest::GetInstance()->current_test_info();
+    const char *testName = info != nullptr ? info->name() : "unknown";
+    auto rawTilingData = tilingContext->GetRawTilingData();
+    auto tilingDataReservedSize = tilingDataReservedLen * sizeof(uint64_t);
+    std::string tilingDataPlain;
+    std::string tilingDataHash;
+    size_t dataBytes = 0;
+    if (rawTilingData != nullptr && rawTilingData->GetDataSize() >= tilingDataReservedSize) {
+        dataBytes = rawTilingData->GetDataSize() - tilingDataReservedSize;
+        tilingDataPlain = to_string<int64_t>(rawTilingData->GetData() + tilingDataReservedSize, dataBytes);
+        tilingDataHash = to_string_fnv_hash(rawTilingData->GetData() + tilingDataReservedSize, dataBytes);
+    }
+
+    std::ostringstream ws;
+    size_t workspaceCount = tilingContext->GetWorkspaceNum();
+    if (workspaceCount > 0) {
+        auto workspaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
+        for (size_t i = 0; i < workspaceCount; i++) {
+            if (i != 0) {
+                ws << ",";
+            }
+            ws << workspaceSizes[i];
+        }
+    }
+
+    std::cout << "### GOLDEN_BEGIN\n"
+              << "test=" << testName << "\n"
+              << "tilingKey=" << tilingContext->GetTilingKey() << "\n"
+              << "workspace=" << ws.str() << "\n"
+              << "dataBytes=" << dataBytes << "\n"
+              << "tilingDataHash=" << tilingDataHash << "\n"
+              << "tilingData=" << tilingDataPlain << "\n"
+              << "### GOLDEN_END" << std::endl;
+}
+
 void ExecuteTestCase(const gert::TilingContextPara &tilingContextPara, ge::graphStatus expectResult,
                      uint64_t expectTilingKey, const string &expectTilingData,
                      const std::vector<size_t> &expectWorkspaces, uint64_t tilingDataReservedLen,
@@ -333,6 +378,11 @@ void ExecuteTestCase(const gert::TilingContextPara &tilingContextPara, ge::graph
     // check tiling func
     ASSERT_EQ(tilingRet, expectResult);
     if (expectResult == ge::GRAPH_FAILED) {
+        return;
+    }
+
+    if (DumpGoldenEnabled()) {
+        DumpTilingGolden(tilingContext, tilingDataReservedLen);
         return;
     }
 
