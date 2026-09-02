@@ -122,6 +122,7 @@ class QuantFlashAttnGradTiling:
     has_seq_used_q: bool
     has_seq_used_k: bool
     metadata_len: int
+    mask_mode: int
 
     dq_work_space_offset: int
     dk_work_space_offset: int
@@ -165,14 +166,15 @@ class QuantFlashAttnGradTiling:
 
 
 class QuantFlashAttnGradTilingKey:
-    has_attn_mask = TilingKeyField(bits=1, values=[0])
+    has_attn_mask = TilingKeyField(bits=1, values=[0, 1])
     has_sink = TilingKeyField(bits=1, values=[0])
     s1_template_num = TilingKeyField(bits=1, values=[512])
     s2_template_num = TilingKeyField(bits=1, values=[512])
     d_template_num = TilingKeyField(bits=1, values=[128])
     is_n_equal = TilingKeyField(bits=1, values=[1])
     # 0: BSND 1: BNSD 2: TND
-    layout = TilingKeyField(bits=2, values=[0, 1])
+    layout = TilingKeyField(bits=2, values=[0, 1, 2])
+    mask_mode = TilingKeyField(bits=2, values=[0, 3, 4])
 
 
 def l1_ds(i, j, task_mod2):
@@ -502,6 +504,61 @@ def cal_dense_index(k, m, n, b, j, r, coordinate):
     else:
         coordinate.batch_id = -1
 
+def cal_causal_deter_index(round_id, max_loop_num, coordinate_info, const_info, flag):
+    j = const_info.core_id_cube + 1
+    if flag == True:
+        j += 1
+    r = round_id + 1
+    k = const_info.core_num
+    res = -1
+    n1 = 0
+    if j > k:
+        return -1
+
+    b = const_info.b_size * const_info.n2_size
+    if const_info.s2_outer == 1:
+        cal_dense_index_for_single_n(
+            k, const_info.s1_outer, b, j, r, max_loop_num, coordinate_info
+        )
+    else:
+        cal_dense_index(
+            k, const_info.s1_outer, const_info.s2_outer, b, j, r, coordinate_info
+        )
+
+    w = coordinate_info.batch_id
+    n1 = const_info.g_size * const_info.n2_size
+    coordinate_info.batch_id = ceil(w, n1) - 1
+    n1_idx = w - coordinate_info.batch_id * n1 - 1
+    coordinate_info.n2_idx = n1_idx // const_info.g_size
+    coordinate_info.g_idx = n1_idx % const_info.g_size
+    coordinate_info.s1_idx -= 1
+    coordinate_info.s2_idx -= 1
+
+    if not (
+        w > 0
+        and coordinate_info.batch_id < const_info.b_size
+        and coordinate_info.n2_idx < const_info.n2_size
+        and coordinate_info.g_idx < const_info.g_size
+        and coordinate_info.s1_idx >= 0
+        and coordinate_info.s1_idx < coordinate_info.s1_outer
+        and coordinate_info.s2_idx >= 0
+        and coordinate_info.s2_idx < coordinate_info.s2_outer
+    ):
+        return -1
+    res = (
+        (
+            coordinate_info.batch_id * n1
+            + coordinate_info.n2_idx * const_info.g_size
+            + coordinate_info.g_idx
+        )
+        * const_info.s1_outer
+        * const_info.s2_outer
+        + coordinate_info.s2_idx * const_info.s1_outer
+        + coordinate_info.s1_idx
+    )
+    return res
+
+
 
 def cal_dense_deter_index(round_id, max_loop_num, coordinate_info, const_info, flag):
     j = const_info.core_id_cube + 1
@@ -559,12 +616,20 @@ def cal_dense_deter_index(round_id, max_loop_num, coordinate_info, const_info, f
 
 
 def cal_deter_index(round_id, max_loop_num, coordinate_info, const_info, flag=False):
+    coordinate_info.mask_mode = const_info.mask_mode
     next_valid_round_id = max_loop_num
     next_valid_index = -1
     for current_round_id in pl.range(round_id, max_loop_num, 1):
-        next_valid_index = cal_dense_deter_index(
-            current_round_id, max_loop_num, coordinate_info, const_info, flag
-        )
+        if mask_mode == 4:
+            next_valid_index = -1
+        elif mask_mode == 3:
+            next_valid_index = cal_causal_deter_index(
+                current_round_id, max_loop_num, coordinate_info, const_info, flag
+            )
+        elif mask_mode == 0:
+            next_valid_index = cal_dense_deter_index(
+                current_round_id, max_loop_num, coordinate_info, const_info, flag
+            )
         if next_valid_index >= 0:
             next_valid_round_id = current_round_id
             return next_valid_round_id, next_valid_index
@@ -2494,6 +2559,7 @@ def quant_flash_attn_grad(
         n2_s2_d=tiling.n2 * tiling.s2 * tiling.d,
         g_s1_d=tiling.g * tiling.s1 * tiling.d,
         n2_g_s1_d=tiling.n2 * tiling.g * tiling.s1 * tiling.d,
+        mask_mode=tiling.mask_mode,
         scale_p=scale_p_value,
         scale_ds=scale_ds_value,
         deq_scale_p_value=1.0 / scale_p_value,
@@ -2916,6 +2982,7 @@ def quant_flash_attn_grad(
         s2_outer=0,
         m_offset=0,
         n_offset=0,
+        mask_mode=0,
     )
     next_core_first_block_coordinate_info = coordinate_infos[2]
 
