@@ -42,12 +42,11 @@
 #endif
 
 #include "memory_copy_arch35.h"
-#include "../utils/flash_attn_sink_vf.h"
+#include "../utils/attn_sink_gs1.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
-using namespace AttentionCommon;
 
 namespace FlashAttnKernel {
 
@@ -244,100 +243,6 @@ public:
                                               SIZE_OF_MEMBER(UbLayout, softmaxTmpBuf));
     }
 
-    static constexpr uint32_t BRCB_NUM = 8U;
-
-    __aicore__ inline void SinkCopyInGS1(LocalTensor<INPUT_T> &sinkTmpUb, GlobalTensor<INPUT_T> &sinkGm,
-                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx,
-                                         uint32_t gSize)
-    {
-        uint32_t gStart = gs1Start / actS1Size;
-        uint32_t gs1End = gs1Start + actVecMSize - 1;
-        uint32_t gEnd = gs1End / actS1Size;
-
-        uint32_t gCount = gEnd - gStart + 1;
-        DataCopyExtParams sinkCopyParams;
-        sinkCopyParams.blockCount = 1;
-        sinkCopyParams.blockLen = gCount * sizeof(INPUT_T);
-        sinkCopyParams.srcStride = 0;
-        sinkCopyParams.dstStride = 0;
-        DataCopyPadExtParams<INPUT_T> sinkPadParams;
-        sinkPadParams.isPad = true;
-        sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
-        DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
-    }
-
-    __aicore__ inline void SinkCopyInS1G(LocalTensor<INPUT_T> &sinkTmpUb, GlobalTensor<INPUT_T> &sinkGm,
-                                         uint32_t gs1Start, uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx,
-                                         uint32_t gSize)
-    {
-        uint32_t gStart = gs1Start % gSize;
-        uint32_t s1Start = gs1Start / gSize;
-
-        uint32_t gs1End = gs1Start + actVecMSize - 1;
-        uint32_t gEnd = gs1End % gSize;
-        uint32_t s1End = gs1End / gSize;
-
-        if (s1Start == s1End) {
-            // 情况1: 只有一个头块, 此时[gStart, gEnd]之间的行就是实际处理的M轴
-            uint32_t gCount = gEnd - gStart + 1;
-            DataCopyExtParams sinkCopyParams;
-            sinkCopyParams.blockCount = 1;
-            sinkCopyParams.blockLen = gCount * sizeof(INPUT_T);
-            sinkCopyParams.srcStride = 0;
-            sinkCopyParams.dstStride = 0;
-            DataCopyPadExtParams<INPUT_T> sinkPadParams;
-            sinkPadParams.isPad = true;
-            sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
-            DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
-        } else if (s1Start + 1 == s1End) {
-            if (gStart > gEnd) {
-                // 情况2.1: 头块 + 尾块, 此时头块的[gStart, gSize)和尾块的[0, gEnd]为实际处理的M轴.
-                // 并且gStart > gEnd, 此时它们不重叠.
-                // 由于头尾块的长度都可能不对齐, 并且gSize有可能很大, 而UB要求32B对齐,
-                // 约定先拷贝尾块的GM[0, gEnd]->UB[0, Align(gEnd + 1, 16) - 1],
-                // 再拷贝头块的GM[gStart, gSize)->UB[Align(gEnd + 1, 16), Align(gEnd + 1, 16) + Align(gSize - gStart,
-                // 16))
-                DataCopyExtParams sinkCopyParams;
-                sinkCopyParams.blockCount = 1;
-                sinkCopyParams.blockLen = (gEnd + 1) * sizeof(INPUT_T);
-                sinkCopyParams.srcStride = 0;
-                sinkCopyParams.dstStride = 0;
-                DataCopyPadExtParams<INPUT_T> sinkPadParams;
-                sinkPadParams.isPad = true;
-                sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
-                DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
-
-                uint32_t ubOffset = AttentionCommon::Align(gEnd + 1, 16U);
-                sinkCopyParams.blockLen = (gSize - gStart) * sizeof(INPUT_T);
-                DataCopyPad(sinkTmpUb[ubOffset], sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
-
-            } else {
-                // 情况2.2: 头块 + 尾块, 此时头块的[gStart, gSize)和尾块的[0, gEnd]为实际处理的M轴.
-                // 并且gStart <= gEnd, 此时它们重叠, 合并后的覆盖范围为[0, gSize)
-                DataCopyExtParams sinkCopyParams;
-                sinkCopyParams.blockCount = 1;
-                sinkCopyParams.blockLen = gSize * sizeof(INPUT_T);
-                sinkCopyParams.srcStride = 0;
-                sinkCopyParams.dstStride = 0;
-                DataCopyPadExtParams<INPUT_T> sinkPadParams;
-                sinkPadParams.isPad = true;
-                sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
-                DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
-            }
-        } else {
-            // 情况3: 头块 + 中间块 + 尾块, 合并后的覆盖范围为[0, gSize)
-            DataCopyExtParams sinkCopyParams;
-            sinkCopyParams.blockCount = 1;
-            sinkCopyParams.blockLen = gSize * sizeof(INPUT_T);
-            sinkCopyParams.srcStride = 0;
-            sinkCopyParams.dstStride = 0;
-            DataCopyPadExtParams<INPUT_T> sinkPadParams;
-            sinkPadParams.isPad = true;
-            sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
-            DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
-        }
-    }
-
     __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfo &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
@@ -353,11 +258,11 @@ public:
                 LocalTensor<INPUT_T> sinkTmpUb =
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
                 if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
-                    SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size, runInfo.n2Idx,
-                                  constInfo_.gSize);
+                    AttentionCommon::SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
+                                                   runInfo.n2Idx, constInfo_.gSize);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    SinkCopyInGS1(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size, runInfo.n2Idx,
-                                  constInfo_.gSize);
+                    AttentionCommon::SinkCopyInGS1(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
+                                                   runInfo.n2Idx, constInfo_.gSize);
                 }
             }
             Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -368,11 +273,11 @@ public:
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
 
                 if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
-                                                                   runInfo.actS1Size, constInfo_.gSize);
+                    AttentionCommon::SinkExpandMaxVf<T, INPUT_T, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                       runInfo.actS1Size, constInfo_.gSize);
                 } else {
-                    FaSinkVfApi::SinkExpandMaxVf<T, INPUT_T, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
-                                                                    runInfo.actS1Size, constInfo_.gSize);
+                    AttentionCommon::SinkExpandMaxVf<T, INPUT_T, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                        runInfo.actS1Size, constInfo_.gSize);
                 }
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);

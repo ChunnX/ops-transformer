@@ -1888,8 +1888,8 @@ TestCases = {
         "D": [64],
         "Dtype": ["fp16"],
         "layout_q": ["BNSD"],
-        "layout_kv": ["BNSD_BSND"],
-        "layout_out": ["BNSD"],
+        "layout_kv": ["BNSD"],
+        "layout_out": ["BSND"],
         "mask_mode": [0],
         "seqused_kv": [
             [128, 100, 64, 33],

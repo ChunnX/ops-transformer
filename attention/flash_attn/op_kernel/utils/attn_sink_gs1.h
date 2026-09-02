@@ -9,10 +9,12 @@
  */
 
 /*!
- * \file flash_attn_sink_vf.h
- * \brief sink 注入链寄存器直写: maxUb[r] = cast(inUb[idx(r)]), r < m(<= 64)。
+ * \file attn_sink_gs1.h
+ * \brief gS1 合轴场景 sink 特性级 common: CopyIn(GM->UB 值区布局) + 注入链寄存器直写。
  *
- * idx(r) 依布局(值区布局由 SinkCopyInGS1/SinkCopyInS1G 决定, 本文件只读不写):
+ * 数学目标(Scheme B, prologue 注入): maxUb[r] = cast(inUb[idx(r)]), r < m(<= 64)。
+ *
+ * idx(r) 依布局(值区布局由 SinkCopyInGS1/SinkCopyInS1G 决定, 直写函数只读不写):
  *   GS1(BNSD):       idx = (s0 + r) / actS1Size           —— SinkGs1DirectVF;
  *   S1G gSize==1:    恒同值, BRC 单值广播                   —— SinkBrcVF;
  *   S1G case1:       idx = r(值区连续)                     —— SinkContigDirectVF;
@@ -30,17 +32,112 @@
  *
  * API 依据(asc-devkit SIMD-API): LoadAlign_continuous.md 表3(DIST_UNPACK_B16, 32B 对齐)/
  * Cast.md 表 7(b16->b32 宽转换, RegLayout::ZERO)/Gather.md(索引无符号且与 dst 位宽一致)/
- * Select.md/Arange.md/StoreAlign_continuous.md(目的侧剩余 < 256B 需 mask)。
+ * Select.md/Arange.md/StoreAlign_continuous.md(目的侧剩余 < 256B 需 mask)/
+ * DataCopyPad_GMToUB.md(CopyIn 值区布局)。
  * 设计文档: my-skills/docs/27_flash_attn_sinks_phase2_latency_hiding_plan.md。
  */
-#ifndef FLASH_ATTN_SINK_VF_H_
-#define FLASH_ATTN_SINK_VF_H_
+#ifndef ATTN_SINK_GS1_H_
+#define ATTN_SINK_GS1_H_
 
 #include "kernel_operator.h"
+#include "../../../common/op_kernel/const_def.h"
 
-namespace AscendC {
-namespace FaSinkVfApi {
+using namespace AscendC;
+
+namespace AttentionCommon {
 using namespace MicroAPI;
+
+template <typename INPUT_T>
+__aicore__ inline void SinkCopyInGS1(LocalTensor<INPUT_T> &sinkTmpUb, GlobalTensor<INPUT_T> &sinkGm, uint32_t gs1Start,
+                                     uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx, uint32_t gSize)
+{
+    uint32_t gStart = gs1Start / actS1Size;
+    uint32_t gs1End = gs1Start + actVecMSize - 1;
+    uint32_t gEnd = gs1End / actS1Size;
+
+    uint32_t gCount = gEnd - gStart + 1;
+    DataCopyExtParams sinkCopyParams;
+    sinkCopyParams.blockCount = 1;
+    sinkCopyParams.blockLen = gCount * sizeof(INPUT_T);
+    sinkCopyParams.srcStride = 0;
+    sinkCopyParams.dstStride = 0;
+    DataCopyPadExtParams<INPUT_T> sinkPadParams;
+    sinkPadParams.isPad = true;
+    sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
+    DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
+}
+
+template <typename INPUT_T>
+__aicore__ inline void SinkCopyInS1G(LocalTensor<INPUT_T> &sinkTmpUb, GlobalTensor<INPUT_T> &sinkGm, uint32_t gs1Start,
+                                     uint32_t actVecMSize, uint32_t actS1Size, uint32_t n2Idx, uint32_t gSize)
+{
+    uint32_t gStart = gs1Start % gSize;
+    uint32_t s1Start = gs1Start / gSize;
+
+    uint32_t gs1End = gs1Start + actVecMSize - 1;
+    uint32_t gEnd = gs1End % gSize;
+    uint32_t s1End = gs1End / gSize;
+
+    if (s1Start == s1End) {
+        // 情况1: 只有一个头块, 此时[gStart, gEnd]之间的行就是实际处理的M轴
+        uint32_t gCount = gEnd - gStart + 1;
+        DataCopyExtParams sinkCopyParams;
+        sinkCopyParams.blockCount = 1;
+        sinkCopyParams.blockLen = gCount * sizeof(INPUT_T);
+        sinkCopyParams.srcStride = 0;
+        sinkCopyParams.dstStride = 0;
+        DataCopyPadExtParams<INPUT_T> sinkPadParams;
+        sinkPadParams.isPad = true;
+        sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
+        DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
+    } else if (s1Start + 1 == s1End) {
+        if (gStart > gEnd) {
+            // 情况2.1: 头块 + 尾块, 此时头块的[gStart, gSize)和尾块的[0, gEnd]为实际处理的M轴.
+            // 并且gStart > gEnd, 此时它们不重叠.
+            // 由于头尾块的长度都可能不对齐, 并且gSize有可能很大, 而UB要求32B对齐,
+            // 约定先拷贝尾块的GM[0, gEnd]->UB[0, Align(gEnd + 1, 16) - 1],
+            // 再拷贝头块的GM[gStart, gSize)->UB[Align(gEnd + 1, 16), Align(gEnd + 1, 16) + Align(gSize - gStart,
+            // 16))
+            DataCopyExtParams sinkCopyParams;
+            sinkCopyParams.blockCount = 1;
+            sinkCopyParams.blockLen = (gEnd + 1) * sizeof(INPUT_T);
+            sinkCopyParams.srcStride = 0;
+            sinkCopyParams.dstStride = 0;
+            DataCopyPadExtParams<INPUT_T> sinkPadParams;
+            sinkPadParams.isPad = true;
+            sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
+            DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
+
+            uint32_t ubOffset = AttentionCommon::Align(gEnd + 1, 16U);
+            sinkCopyParams.blockLen = (gSize - gStart) * sizeof(INPUT_T);
+            DataCopyPad(sinkTmpUb[ubOffset], sinkGm[n2Idx * gSize + gStart], sinkCopyParams, sinkPadParams);
+
+        } else {
+            // 情况2.2: 头块 + 尾块, 此时头块的[gStart, gSize)和尾块的[0, gEnd]为实际处理的M轴.
+            // 并且gStart <= gEnd, 此时它们重叠, 合并后的覆盖范围为[0, gSize)
+            DataCopyExtParams sinkCopyParams;
+            sinkCopyParams.blockCount = 1;
+            sinkCopyParams.blockLen = gSize * sizeof(INPUT_T);
+            sinkCopyParams.srcStride = 0;
+            sinkCopyParams.dstStride = 0;
+            DataCopyPadExtParams<INPUT_T> sinkPadParams;
+            sinkPadParams.isPad = true;
+            sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
+            DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
+        }
+    } else {
+        // 情况3: 头块 + 中间块 + 尾块, 合并后的覆盖范围为[0, gSize)
+        DataCopyExtParams sinkCopyParams;
+        sinkCopyParams.blockCount = 1;
+        sinkCopyParams.blockLen = gSize * sizeof(INPUT_T);
+        sinkCopyParams.srcStride = 0;
+        sinkCopyParams.dstStride = 0;
+        DataCopyPadExtParams<INPUT_T> sinkPadParams;
+        sinkPadParams.isPad = true;
+        sinkPadParams.paddingValue = static_cast<INPUT_T>(0);
+        DataCopyPad(sinkTmpUb, sinkGm[n2Idx * gSize], sinkCopyParams, sinkPadParams);
+    }
+}
 
 // b16 -> b32 宽转换: roundMode 不生效(Cast.md 表 7); RegLayout::ZERO 与 UNPACK_B16 的
 // 排布配套(值位于每个 32bit 槽的低 16bit)。
@@ -276,7 +373,6 @@ __aicore__ inline void SinkExpandMaxVf(const LocalTensor<T> &maxUb, const LocalT
     // case2.2/3: 值区回绕(m 跨多个 g 周期)
     SinkRotDirectVF<T, INPUT_T>(maxUbPtr, inUb, gStart, gSize, actVecMSize);
 }
-} // namespace FaSinkVfApi
-} // namespace AscendC
+} // namespace AttentionCommon
 
-#endif // FLASH_ATTN_SINK_VF_H_
+#endif // ATTN_SINK_GS1_H_
