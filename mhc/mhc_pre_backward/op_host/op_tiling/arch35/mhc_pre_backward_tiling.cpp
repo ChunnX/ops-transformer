@@ -63,12 +63,6 @@ const constexpr uint32_t C0_SET_SHAPE_N = 128;
 const constexpr uint32_t C1_SET_SHAPE_M_BASE = 128;
 const constexpr uint32_t C1_SET_SHAPE_K = 512;
 
-const constexpr uint32_t MIX_CORE_SMALL = 8;
-const constexpr uint32_t MIX_CORE_MEDIUM = 16;
-const constexpr uint32_t MIX_CORE_LARGE = 20;
-const constexpr uint64_t MIX_CORE_MEDIUM_MIN_BS = 40;
-const constexpr uint64_t MIX_CORE_LARGE_MIN_BS = 160;
-
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
 ge::graphStatus MhcPreBackwardTiling::GetInputTensors(const gert::Tensor *&gradHInTensor,
@@ -241,16 +235,8 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
         return ge::GRAPH_FAILED;
     }
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    const uint32_t availableAicCoreNum = ascendcPlatform.GetCoreNumAic();
-    const uint32_t availableAivCoreNum = ascendcPlatform.GetCoreNumAiv();
-    const uint32_t availableMixCoreNum =
-        availableAicCoreNum < availableAivCoreNum / 2 ? availableAicCoreNum : availableAivCoreNum / 2;
-    const uint32_t requestedMixCoreNum = totalLength_ >= MIX_CORE_LARGE_MIN_BS ?
-        MIX_CORE_LARGE :
-        (totalLength_ >= MIX_CORE_MEDIUM_MIN_BS ? MIX_CORE_MEDIUM : MIX_CORE_SMALL);
-    // 小BS减少空转和对齐碎片；1C2V模式始终保持AIV核数为AIC核数的两倍。
-    blockDim_ = availableMixCoreNum < requestedMixCoreNum ? availableMixCoreNum : requestedMixCoreNum;
-    vecCoreNum_ = blockDim_ * 2;
+    blockDim_ = ascendcPlatform.GetCoreNumAic();
+    vecCoreNum_ = ascendcPlatform.GetCoreNumAiv();
 
     auto attrs = context_->GetAttrs();
     if (attrs == nullptr) {
