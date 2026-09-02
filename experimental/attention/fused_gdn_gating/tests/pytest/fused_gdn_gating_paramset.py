@@ -12,7 +12,7 @@ import itertools
 
 import torch
 
-# 测试参数取值范围（对齐 vllm-ascend PR #10785 测试用例）
+# 测试参数取值范围（覆盖numHeads/batch/dtype/beta/threshold全组合）
 NUM_HEADS_VALUES = [4, 6, 8, 12, 16, 24, 32, 48, 64, 128]
 BATCH_SIZES = [1, 7, 37, 128, 512, 4096, 16384]
 DTYPES = [torch.bfloat16, torch.float16]
