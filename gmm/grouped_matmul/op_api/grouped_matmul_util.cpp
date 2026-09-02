@@ -148,8 +148,9 @@ bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<acl
     return true;
 }
 
-std::string dTypeToString(const ge::DataType &dtype) {
-    if(DTYPE_STRING.count(dtype) != 0) {
+std::string dTypeToString(const ge::DataType &dtype)
+{
+    if (DTYPE_STRING.count(dtype) != 0) {
         return DTYPE_STRING.at(dtype);
     } else {
         return std::string(op::ToString(dtype).GetString());
