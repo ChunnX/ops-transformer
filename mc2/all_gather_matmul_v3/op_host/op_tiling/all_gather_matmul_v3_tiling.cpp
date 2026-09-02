@@ -45,7 +45,6 @@ constexpr uint32_t IDX_INPUT_X2_SCALE = 5U;
 constexpr uint32_t IDX_OUTPUT_Y = 0U;
 
 // ---- attr indices (must match def order) ----
-// group(0) hccl_buffer_size(1) is_trans_a(2) is_trans_b(3) rank_size(4) group_size(5) y_dtype(6) comm_mode(7)
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;
 constexpr uint32_t ATTR_HCCL_BUFFER_SIZE_INDEX = 1U;
 constexpr uint32_t ATTR_IS_TRANS_B_INDEX = 3U;
