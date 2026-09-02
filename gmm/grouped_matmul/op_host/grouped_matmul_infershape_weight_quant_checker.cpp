@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_infershape_weight_quant_checker.h"
+#include "gmm/common/op_host/log_format_util.h"
 #include "log/log.h"
 #include "grouped_matmul_infershape_common_util.h"
 
@@ -351,7 +352,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckCaseMultiScenario(const ge
     OP_CHECK_IF(CheckTensorListSizeMultiScenario(context, paramsInputInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON( context->GetNodeName(), "input", Ops::Transformer::Gmm::FormatString("CheckTensorListSizeMultiScenario failed").c_str()), return ge::GRAPH_FAILED);
     // check dimension
-    OP_CHECK_IF(CheckDimNumNoSplit(context, paramsInputInfo) != ge::GRAPH_SUCCESS,
+    auto dimNumCheckStatus = CheckDimNumNoSplit(context, paramsInputInfo);
+    OP_CHECK_IF(dimNumCheckStatus != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "CheckDimNumNoSplit status", std::to_string(static_cast<int64_t>(dimNumCheckStatus)), Ops::Transformer::Gmm::FormatString("Dim num of tensor in tensor lists or grouplist is invalid").c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -981,7 +983,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorListDataType(const g
             break;
         }
         OP_CHECK_IF(iDtype != dtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON( context->GetNodeName(), tensorName, ge::TypeUtils::DataTypeToAscendString(iDtype).GetString(), "Data types of tensors in a tensor list should all be the same"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON( context->GetNodeName(), Ops::Transformer::Gmm::FormatString("input index %u", index).c_str(), ge::TypeUtils::DataTypeToAscendString(iDtype).GetString(), "Data types of tensors in a tensor list should all be the same"),
                     return ge::GRAPH_FAILED);
         ++inIdx;
     }
@@ -1002,12 +1004,14 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckMatmulDataType(
     OP_CHECK_IF(CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, biasDtype) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "bias", "CheckTensorListDataType failed"),
                 return ge::GRAPH_FAILED);
+    auto antiquantScaleCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_ANTIQUANT_SCALE, antiquantScaleDtype);
     OP_CHECK_IF(
-        CheckTensorListDataType(context, GMM_INDEX_IN_ANTIQUANT_SCALE, antiquantScaleDtype) != ge::GRAPH_SUCCESS,
+        antiquantScaleCheckRet != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(antiquantScale) status", std::to_string(static_cast<int64_t>(antiquantScaleCheckRet)), "CheckTensorListDataType must return GRAPH_SUCCESS"),
         return ge::GRAPH_FAILED);
+    auto antiquantOffsetCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_ANTIQUANT_OFFSET, antiquantOffsetDtype);
     OP_CHECK_IF(
-        CheckTensorListDataType(context, GMM_INDEX_IN_ANTIQUANT_OFFSET, antiquantOffsetDtype) != ge::GRAPH_SUCCESS,
+        antiquantOffsetCheckRet != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(antiquantOffset) status", std::to_string(static_cast<int64_t>(antiquantOffsetCheckRet)), "CheckTensorListDataType must return GRAPH_SUCCESS"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

@@ -1,0 +1,430 @@
+{
+  "GroupedMatmul": {
+    "dynamicRankSupport": true,
+    "simplifiedKeyMode": 0,
+    "optionalInputMode": "gen_placeholder",
+    "optionalOutputMode": "gen_placeholder",
+    "params": {
+      "inputs": [
+        [
+          {
+            "name": "x",
+            "index": 0,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        [
+          {
+            "name": "weight",
+            "index": 1,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        [
+          {
+            "name": "bias",
+            "index": 2,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        [
+          {
+            "name": "scale",
+            "index": 3,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        [
+          {
+            "name": "offset",
+            "index": 4,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        [
+          {
+            "name": "antiquant_scale",
+            "index": 5,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        [
+          {
+            "name": "antiquant_offset",
+            "index": 6,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ],
+        {
+          "name": "group_list",
+          "index": 7,
+          "paramType": "optional",
+          "formatMode": "nd_agnostic"
+        },
+        {
+          "name": "per_token_scale",
+          "index": 8,
+          "paramType": "optional",
+          "formatMode": "nd_agnostic"
+        }
+      ],
+      "outputs": [
+        [
+          {
+            "name": "y",
+            "index": 0,
+            "paramType": "dynamic",
+            "formatMode": "nd_agnostic"
+          }
+        ]
+      ],
+      "attrs": [
+        {
+          "name": "split_item"
+        },
+        {
+          "name": "dtype"
+        },
+        {
+          "name": "transpose_weight"
+        },
+        {
+          "name": "transpose_x"
+        },
+        {
+          "name": "group_type"
+        },
+        {
+          "name": "group_list_type"
+        },
+        {
+          "name": "act_type"
+        },
+        {
+          "name": "tuning_config"
+        }
+      ]
+    },
+    "binaryList": [
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,2/3,2/10,2/0,2/1,2/1,2/3,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,2/3,2/10,2/0,2/1,2/1,2/3,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,2/3,2/10,2/0,2/1,2/1,2/3,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,2/3,2/10,2/0,2/1,2/1,2/3,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_073724674f6bc75efdc841276e0eb3cc.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_073724674f6bc75efdc841276e0eb3cc.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/27,2/27,2/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/27,2/27,2/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/27,2/27,2/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/27,2/27,2/0,2/10,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_0d2d43751f81d7f29646a862147967c9.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_0d2d43751f81d7f29646a862147967c9.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,29/27,2/0,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,29/27,2/0,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,29/27,2/0,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,29/27,2/0,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_1ce9479609277133f523d77d28f9e9a0.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_1ce9479609277133f523d77d28f9e9a0.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/29,2/29,2/1,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/29,2/29,2/1,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/29,2/29,2/1,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/29,2/29,2/1,2/10,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_1d19ea1b3c51087f9d7330d6ad55f8bf.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_1d19ea1b3c51087f9d7330d6ad55f8bf.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/27,2/2,2/0,2/10,2/0,2/27,2/27,2/27,2",
+          "GroupedMatmul/d=0,p=0/27,2/2,2/0,2/10,2/0,2/27,2/27,2/27,2",
+          "GroupedMatmul/d=1,p=1/27,2/2,2/0,2/10,2/0,2/27,2/27,2/27,2",
+          "GroupedMatmul/d=1,p=0/27,2/2,2/0,2/10,2/0,2/27,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_24b67f360ffcc2f2cdc56fc2e26f1597.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_24b67f360ffcc2f2cdc56fc2e26f1597.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,29/3,2/0,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,29/3,2/0,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,29/3,2/0,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,29/3,2/0,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_2b8ac7cb0f57ae146ee396f90b7b5f1a.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_2b8ac7cb0f57ae146ee396f90b7b5f1a.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/29,2/29,29/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/29,2/29,29/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/29,2/29,29/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/29,2/29,29/1,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_424fe8f329069b7279e853ac563c081b.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_424fe8f329069b7279e853ac563c081b.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/29,29/0,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/2,2/29,29/0,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/2,2/29,29/0,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/2,2/29,29/0,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_500962660c0078244cd84d2b54ae4087.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_500962660c0078244cd84d2b54ae4087.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,29/3,2/10,2/0,2/1,2/1,2/3,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,29/3,2/10,2/0,2/1,2/1,2/3,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,29/3,2/10,2/0,2/1,2/1,2/3,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,29/3,2/10,2/0,2/1,2/1,2/3,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_5967203db3251f8c07edb4f78a237797.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_5967203db3251f8c07edb4f78a237797.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/29,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/29,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/29,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/29,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_5ba4488ef95d121ab1e0ead5bccb0edd.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_5ba4488ef95d121ab1e0ead5bccb0edd.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/1,2/1,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/1,2/1,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/1,2/1,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/1,2/1,2/1,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_5c8920dff2d0b1eeb1386724350e9e00.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_5c8920dff2d0b1eeb1386724350e9e00.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,2/3,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,2/3,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,2/3,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,2/3,2/27,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_7027ddb93c25b26c6a749b5e1bdcd245.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_7027ddb93c25b26c6a749b5e1bdcd245.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/29,2/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/2,2/29,2/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/2,2/29,2/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/2,2/29,2/0,2/10,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_831ab5beee5550c231d34f2cc42fa4f3.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_831ab5beee5550c231d34f2cc42fa4f3.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/1,2/2,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/1,2/2,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/1,2/2,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/1,2/2,2/1,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_91bf8beb746c7eceac0e1224faf0d665.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_91bf8beb746c7eceac0e1224faf0d665.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/29,29/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/2,2/29,29/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/2,2/29,29/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/2,2/29,29/0,2/10,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_a0be48d01b162435398ed52e1b6182d4.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_a0be48d01b162435398ed52e1b6182d4.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,2/3,2/0,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,2/3,2/0,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,2/3,2/0,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,2/3,2/0,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_a39d484020b3448fac9ae38e4a1f7b86.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_a39d484020b3448fac9ae38e4a1f7b86.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/27,2/29,2/0,2/10,2/0,2/27,2/27,2/27,2",
+          "GroupedMatmul/d=0,p=0/27,2/29,2/0,2/10,2/0,2/27,2/27,2/27,2",
+          "GroupedMatmul/d=1,p=1/27,2/29,2/0,2/10,2/0,2/27,2/27,2/27,2",
+          "GroupedMatmul/d=1,p=0/27,2/29,2/0,2/10,2/0,2/27,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_ab1047da640d7e424f040904f4332806.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_ab1047da640d7e424f040904f4332806.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/27,2/27,29/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/27,2/27,29/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/27,2/27,29/0,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/27,2/27,29/0,2/10,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_b071614491ed4aaa57a33319e538212a.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_b071614491ed4aaa57a33319e538212a.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/1,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/1,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/1,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/1,2/29,2/1,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_b54f67afcee7b3419b967941a26d5f19.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_b54f67afcee7b3419b967941a26d5f19.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,29/3,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,29/3,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,29/3,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,29/3,2/27,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_b9ca047e4205cc387cd7ee5c1b2ba7a0.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_b9ca047e4205cc387cd7ee5c1b2ba7a0.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/1,2/1,29/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/1,2/1,29/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/1,2/1,29/1,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/1,2/1,29/1,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_c2d66b41a412f13fe1032e6ac542e9f5.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_c2d66b41a412f13fe1032e6ac542e9f5.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/29,2/0,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=0,p=0/2,2/29,2/0,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=1/2,2/29,2/0,2/10,2/0,2/1,2/1,2/1,2",
+          "GroupedMatmul/d=1,p=0/2,2/29,2/0,2/10,2/0,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_d68006bdc9220e3c49bb6c18ad1d8c97.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_d68006bdc9220e3c49bb6c18ad1d8c97.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,2/3,2/10,2/0,2/1,2/1,2/2,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,2/3,2/10,2/0,2/1,2/1,2/2,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,2/3,2/10,2/0,2/1,2/1,2/2,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,2/3,2/10,2/0,2/1,2/1,2/2,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_d7cb936ed9bab401e7c6fb37e410db76.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_d7cb936ed9bab401e7c6fb37e410db76.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/0,2/0,2/0,2/10,2/0,2/1,2/1,2/0,2",
+          "GroupedMatmul/d=0,p=0/0,2/0,2/0,2/10,2/0,2/1,2/1,2/0,2",
+          "GroupedMatmul/d=1,p=1/0,2/0,2/0,2/10,2/0,2/1,2/1,2/0,2",
+          "GroupedMatmul/d=1,p=0/0,2/0,2/0,2/10,2/0,2/1,2/1,2/0,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_e84aaec0eccf7b8304da51ea5f5a2076.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_e84aaec0eccf7b8304da51ea5f5a2076.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/29,2/29,29/1,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/29,2/29,29/1,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/29,2/29,29/1,2/10,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/29,2/29,29/1,2/10,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_ef4e7b01a3c8e8d4fa5a57cc74a7689e.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_ef4e7b01a3c8e8d4fa5a57cc74a7689e.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "GroupedMatmul/d=0,p=1/2,2/2,29/27,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=0,p=0/2,2/2,29/27,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=1/2,2/2,29/27,2/27,2/0,2/1,2/1,2/27,2",
+          "GroupedMatmul/d=1,p=0/2,2/2,29/27,2/27,2/0,2/1,2/1,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend910b/grouped_matmul/GroupedMatmul_fceb0a33e9cf4db7ca79fb302d103b20.o",
+        "jsonPath": "ascend910b/grouped_matmul/GroupedMatmul_fceb0a33e9cf4db7ca79fb302d103b20.json"
+      }
+    ]
+  }
+}

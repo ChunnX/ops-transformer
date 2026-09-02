@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_tiling.h"
+#include "gmm/common/op_host/log_format_util.h"
 #include "log/log.h"
 
 #include <climits>

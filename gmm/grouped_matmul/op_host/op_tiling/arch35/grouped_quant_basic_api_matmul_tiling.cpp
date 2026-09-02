@@ -13,6 +13,7 @@
  * \brief
  */
 #include <algorithm>
+#include "gmm/common/op_host/log_format_util.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 #include "grouped_quant_basic_api_matmul_tiling.h"
