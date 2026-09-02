@@ -18,6 +18,14 @@ if(BUILD_TORCH_OPS)
     add_library(${OPERATOR_TARGET} OBJECT grouped_matmul_quant_torch.cpp)
     target_compile_options(${OPERATOR_TARGET} PRIVATE ${COMMON_COMPILE_OPTIONS})
     target_include_directories(${OPERATOR_TARGET} PRIVATE ${COMMON_INCLUDE_DIRS})
+    # torch_npu wheels bundle op-plugin below include/third_party/op-plugin,
+    # while op-plugin headers include one another as "op_plugin/...".
+    # Add that directory as an include root without changing the shared
+    # npu_ops_transformer_ext build configuration.
+    if(IS_DIRECTORY "${TORCH_NPU_INCLUDE_PATH}/third_party/op-plugin")
+        target_include_directories(${OPERATOR_TARGET} PRIVATE
+            "${TORCH_NPU_INCLUDE_PATH}/third_party/op-plugin")
+    endif()
     return()
 endif()
 
