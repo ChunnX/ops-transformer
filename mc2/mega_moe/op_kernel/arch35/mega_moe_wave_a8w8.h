@@ -47,7 +47,6 @@ namespace MegaMoeImpl {
 
 constexpr uint32_t GMM2_LAG_MIN_TOKEN_NUM = 4096U;
 
-
 using namespace AscendC;
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
@@ -112,6 +111,8 @@ private:
                                            GMMAddrInfo &gmm2AddrInfo, GmmRuntimeState &runtimeState,
                                            int32_t &gmm2TileSequence, uint32_t allCoreCombineExpertIndex,
                                            ExpertLoopState &allCoreCombineExpertState);
+    __aicore__ inline void AdvanceGmm2BlockCursor(ExpertTokenPosition pos, const ExpertTokenPosition &waveEndPosition,
+                                                  uint32_t &blockCursor);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
                                                  const CombineBufferConfig &bufferConfig,
@@ -674,6 +675,38 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     return gmm1Position;
 }
 
+/*
+ * AIC 专用：沿 [pos, waveEndPosition) 按与实际执行完全相同的 problem 切分，只推进 GMM2 分核游标
+ * 而不执行。滞后模式下 AIC 用它对"被推迟的当前 wave"做等量虚推进，使主游标与未滞后的 AIV0
+ * 逐 problem 保持一致（推进公式与 HandleWaveProblemWithoutWork 的 skip 路径同源）。
+ */
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::AdvanceGmm2BlockCursor(
+    ExpertTokenPosition pos, const ExpertTokenPosition &waveEndPosition, uint32_t &blockCursor)
+{
+    while (!IsSameExpertTokenPosition(pos, waveEndPosition) && pos.expertIdx < moeExpertPerRank_) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                     countWorkspace_, moeExpertPerRank_, pos.expertIdx);
+        if (expertTokenCount == 0U || pos.tokenIndexInExpert >= expertTokenCount) {
+            ++pos.expertIdx;
+            pos.tokenIndexInExpert = 0U;
+            continue;
+        }
+        uint32_t waveEndTokenIndexInExpert = expertTokenCount;
+        if (pos.expertIdx == waveEndPosition.expertIdx) {
+            waveEndTokenIndexInExpert = waveEndPosition.tokenIndexInExpert;
+        }
+        uint32_t waveRowCount = waveEndTokenIndexInExpert - pos.tokenIndexInExpert;
+        uint32_t problemTileCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M) * gmm2TilesPerMGroup_;
+        blockCursor = (blockCursor + problemTileCount) % gmmExecutionConfig_.blockJob.totalJobs;
+        pos.tokenIndexInExpert = waveEndTokenIndexInExpert;
+        if (pos.tokenIndexInExpert >= expertTokenCount) {
+            ++pos.expertIdx;
+            pos.tokenIndexInExpert = 0U;
+        }
+    }
+}
+
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmm2Wave(
     ExpertTokenPosition &gmm2Position, const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
@@ -862,6 +895,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 阈值取中点偏保守，中间形状合入前需补测。
     const bool gmm2LagActive = commonConfig_.tokenNum >= GMM2_LAG_MIN_TOKEN_NUM;
     ExpertTokenPosition gmm2LaggedTarget{};
+    // 滞后窗口执行时的分核游标快照（= 该 wave 被 AIV0 执行时的主游标起点）。
+    uint32_t gmm2LagBlockCursor = 0U;
     uint32_t combineBeginExpertIndex = 0U;
     uint32_t allCoreCombineExpertIndex = moeExpertPerRank_;
 
@@ -914,13 +949,28 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
          * 的保存与本地行偏移推进，滞后它会让全核 combine 专家的状态晚一个 wave 才可用；
          * combine 门控走 AIC 发布的 per-expert gmm2Ready flag，自动跟随 AIC 滞后，语义不变。
          */
-        GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
         ExpertTokenPosition gmm2ConsumeTarget = waveEndPosition;
+        uint32_t gmm2LaggedExecCursor = 0U;
+        bool useLaggedCursor = false;
         if constexpr (g_coreType == AIC) {
             if (gmm2LagActive) {
                 gmm2ConsumeTarget = gmm2LaggedTarget;
+                /*
+                 * 分核游标配平：AIV0 按当前 wave 实推进 startBlockIdx_；AIC 若按滞后 wave 推进，
+                 * 两侧游标会逐 wave 发散，下一 wave GMM1 的 tile->核映射错位，非 prefetch 路径的
+                 * 逐核 ping-pong 配对随之断裂（实测大 bs 死锁：AIC 等激活计数、AIV0 等 MMAD）。
+                 * 故 AIC 对当前 wave 做等量虚推进保持主游标与 AIV0 同步；滞后窗口的实际执行
+                 * 改用上一轮快照的游标，保证每个 GMM2 problem 两侧执行时分核起点相等。
+                 */
+                uint32_t currentWaveCursor = startBlockIdx_;
+                AdvanceGmm2BlockCursor(gmm2LaggedTarget, waveEndPosition, startBlockIdx_);
+                gmm2LaggedExecCursor = gmm2LagBlockCursor;
+                gmm2LagBlockCursor = currentWaveCursor;
+                useLaggedCursor = true;
             }
         }
+        GmmRuntimeState gmm2RuntimeState{useLaggedCursor ? gmm2LaggedExecCursor : startBlockIdx_, vecSetSyncCom,
+                                         gmm2PingPongIdx_};
         ProcessGmm2Wave(gmm2Position, gmm2ConsumeTarget, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
                         gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
         gmm2LaggedTarget = waveEndPosition;
@@ -946,7 +996,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // combine 已在循环内按 per-expert flag 全量收齐）。
     if constexpr (g_coreType == AIC) {
         if (gmm2LagActive && !IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
-            GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
+            uint32_t gmm2TailCursor = gmm2LagBlockCursor;
+            GmmRuntimeState gmm2TailRuntimeState{gmm2TailCursor, vecSetSyncCom, gmm2PingPongIdx_};
             ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState,
                             gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
             UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
