@@ -83,6 +83,7 @@ public:
     using LayoutTagL0A = typename TileCopy::LayoutTagL0A;
     using LayoutTagL0B = typename TileCopy::LayoutTagL0B;
 
+    static constexpr bool rescaleOnCube = DispatchPolicy::rescaleOnCube;
     static constexpr uint32_t L0_STAGES = DispatchPolicy::L0_STAGES;
     static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape_{});
     static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape_{});
