@@ -346,13 +346,21 @@ __aicore__ inline void AllGatherQbmmMxBlockMmadKernel<AG_BMMA_KERNEL_FUNC_TEM_PA
         BlockShape singleShape =
             bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
         if ((Te::Get<IDX_M_TILEIDX>(singleShape) <= 0) || (Te::Get<IDX_N_TILEIDX>(singleShape) <= 0)) {
-            return;
+            // 尾轮拆分时部分核的 sub-tile 偏移越界（GetBlockShape 返回 0 尺寸）。
+            // 必须 break 而非 return：每核需消费完所有通信轮次（兜底 wait 在函数尾部），
+            // 提前 return 会破坏 HCCL handle 的 wait 配对导致 Finalize 挂死。
+            break;
         }
         int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
 
         bs.GetTileCoord(blockIdx, mPos, nPos);
-        // 等待当前 tile 覆盖的最后一行所依赖的通信轮次（去重：同一轮次只 wait 一次）
+        // 等待当前 tile 全部行所依赖的通信轮次（去重：同一轮次只 wait 一次）。
+        // 轮次在 rank 内随 local row 单调，但 tile 可能跨 rank 边界（m % baseM != 0 时），
+        // 跨界 tile 覆盖"前 rank 尾块行(高轮次) + 后 rank 头块行(低轮次)"，
+        // 故依赖轮次取首行/末行轮次的最大值（blockM <= m 保证至多跨一个 rank 边界）
         uint32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, local);
+        uint32_t headDependTileIdx = CalcDependTileIdx(mPos, local);
+        dependTileIdx = dependTileIdx > headDependTileIdx ? dependTileIdx : headDependTileIdx;
         while (readyTileIdx < dependTileIdx) {
             readyTileIdx++;
             commPolicy_.WaitTile(readyTileIdx);

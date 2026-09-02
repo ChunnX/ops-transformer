@@ -627,6 +627,13 @@ ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
         tilingEngine.SetAdjustBasicBlockEnable(false);
+        // bias 场景限制 baseN<=128：共享 BlockMmad 的 BT bias 通路在单 tile N 宽 > 128 时存在精度
+        // 问题（板测 bias=1 且 k>=8192 全量失败、a2a 同引擎大 K + bias 复现失败；n<=128 全量通过）。
+        // 在引擎内钳制，保证 nBlockCnt/nTailSize/totalBlockCnt 等派生量自洽计算。
+        if (args_.isBias) {
+            constexpr uint64_t biasMaxBaseN = 128;
+            tilingEngine.SetMaxBaseN(biasMaxBaseN);
+        }
         tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
                                    args_.isBTrans, hcommTilingData_.mmTile);
     } else {
@@ -635,6 +642,11 @@ ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
         tilingEngine.SetAdjustBasicBlockEnable(false);
+        // 同上：bias 场景限制 baseN<=128
+        if (args_.isBias) {
+            constexpr uint64_t biasMaxBaseN = 128;
+            tilingEngine.SetMaxBaseN(biasMaxBaseN);
+        }
         tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
                                    args_.isBTrans, hcommTilingData_.mmTile);
     }
