@@ -61,10 +61,10 @@ template <class L1TileShape_, class L0TileShape_, class ElementA_, class Element
 struct BlockMmadTla<
     // if transposedMm1, P is actually nZ in UB, and nZ in L1,
     // and is transposed to zN while loaded to L0A.
-    MmadAtlasA5BsaPV<transposedMm1>, L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, ElementBias_,
+    MmadAtlasA5BsaPV<transposedMm1, false>, L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, ElementBias_,
     TileCopy_, TileMmad_> {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaPV<transposedMm1>;
+    using DispatchPolicy = MmadAtlasA5BsaPV<transposedMm1, false>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
@@ -118,6 +118,13 @@ public:
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_HALF_BUF_SIZE +
                                                                                         L0C_PINGPONG_BUF_SIZE * i);
         }
+    }
+
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart,
+                                   uint32_t l1DiagAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
+        : BlockMmadTla(resource, l1BufAddrStart, mm2L1TileHelper)
+    {
+        (void)l1DiagAddrStart;
     }
 
     /// Destructor

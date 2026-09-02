@@ -194,6 +194,7 @@ private:
     ge::graphStatus ValidateVDequantScale(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
     // 950 exclusive
+    bool IsFp8NdRescaleOnCubeEnabled() const;
     uint32_t GetCurQSTileNum950(int64_t curQSeqlen);
     void CalcBaseTileTilingParams950();
     void CalcSplitCoreTilingParams950();
@@ -293,7 +294,6 @@ private:
 
     bool transposedMm1_ = false;
     bool transposedMm2_ = false;
-
     ge::DataType dataType_ = ge::DT_FLOAT16;
     ge::DataType attentionOutDataType_ = ge::DT_FLOAT16;
 

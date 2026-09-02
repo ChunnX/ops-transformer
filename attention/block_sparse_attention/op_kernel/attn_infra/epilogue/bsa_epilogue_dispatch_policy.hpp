@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef BSA_EPILOGUE_DISPATCH_POLICY_HPP
 #define BSA_EPILOGUE_DISPATCH_POLICY_HPP
@@ -52,10 +52,11 @@ struct EpilogueBsaMask2Idx {
     using ArchTag = Arch::AtlasA5;
 };
 
-template <bool transposedMm1_ = false>
+template <bool transposedMm1_ = false, bool rescaleOnCube_ = false>
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
     static constexpr bool transposedMm1 = transposedMm1_;
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 template <bool transposedMm1_ = false, MXQuantMode MX_QUANT_MODE_ = MXQuantMode::NONE>
@@ -76,12 +77,14 @@ struct EpilogueCopyGlobalMaxUbToL1BsaMX {
     using ArchTag = Arch::AtlasA5;
 };
 
-template <LseMode LSE_MODE_ = LseMode::NONE, LseFormat LSE_FORMAT_ = LseFormat::BNS1, bool transposedMm1_ = false>
+template <LseMode LSE_MODE_ = LseMode::NONE, LseFormat LSE_FORMAT_ = LseFormat::BNS1,
+          bool transposedMm1_ = false, bool rescaleOnCube_ = false>
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
     static constexpr bool transposedMm1 = transposedMm1_;
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 template <LseMode LSE_MODE_ = LseMode::NONE, LseFormat LSE_FORMAT_ = LseFormat::BNS1, bool transposedMm1_ = false>
@@ -94,4 +97,4 @@ struct EpilogueAtlasA5BsaRescaleOMX {
 
 } // namespace NpuArch::Epilogue
 
-#endif // EPILOGUE_DISPATCH_POLICY_HPP
+#endif // BSA_EPILOGUE_DISPATCH_POLICY_HPP

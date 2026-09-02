@@ -103,6 +103,7 @@ constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 constexpr uint32_t TILE_SIZE_16 = 16;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
+constexpr uint32_t TILE_SIZE_512 = 512;
 constexpr uint32_t D_SIZE_128 = 128;
 constexpr uint32_t D_SIZE_256 = 256;
 
@@ -1141,27 +1142,51 @@ static inline uint32_t CalcFp8KvBaseTile(uint32_t blockShapeY, uint32_t preferre
         return GetMaxDiv(blockShapeY, preferredTile);
     }
     return blockShapeY;
+bool BSATiling::IsFp8NdRescaleOnCubeEnabled() const
+{
+    if (dataType_ != ge::DT_FLOAT8_E4M3FN ||
+        embeddingSize_ > D_SIZE_128 || maskType_ != 0 ||
+        blockShapeY_ < TILE_SIZE_512 || blockShapeY_ % TILE_SIZE_512 != 0) {
+        return false;
+    }
+    uint32_t blockShapeRatio = static_cast<uint32_t>(blockShapeY_) / TILE_SIZE_512;
+    return (blockShapeRatio & (blockShapeRatio - 1)) == 0;
 }
 
 void BSATiling::CalcBaseTileTilingParams950()
 {
-    qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
-    const bool isMixedPrecision = (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        const uint32_t preferredTile = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
-        kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), preferredTile);
+    qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ?
+        TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
+
+    const bool isMixedPrecision =
+        innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED &&
+        embeddingSize_ <= D_SIZE_128;
+
+    if (IsFp8NdRescaleOnCubeEnabled()) {
+        kvBaseTile_ = TILE_SIZE_512;
+    } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+        const uint32_t preferredTile =
+            isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
+        kvBaseTile_ = CalcFp8KvBaseTile(
+            static_cast<uint32_t>(blockShapeY_), preferredTile);
     } else {
-        kvBaseTile_ = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
+        kvBaseTile_ =
+            isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
     }
 }
 
 void BSATiling::TransposedMatmulConfig950()
 {
-    if (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0) {
+    if (IsFp8NdRescaleOnCubeEnabled() ||
+        (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH &&
+         maskType_ == 0)) {
+        // FP8 ND RescaleOnCube only reuses the TRANSMM1 tiling-key slot.
+        // Its registered kernel instance still uses transposedMm1=false.
         transposedMm1_ = true;
     } else {
         transposedMm1_ = false;
     }
+
     transposedMm2_ = false;
 }
 
@@ -1295,10 +1320,9 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         mm1L1TileN_ = TILE_SIZE_256;
         mm1L1TileKRight_ = TILE_SIZE_128;
         kL1BufNum_ = DUO_BUF;
-        // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
-        // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
+        // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发。
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;
+        mm2L1TileKLeft_ = IsFp8NdRescaleOnCubeEnabled() ? TILE_SIZE_512 : TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
@@ -1481,7 +1505,8 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (transposedMm1_) {
         tilingKey += 1000000000ULL;
     }
-
+    
+    printf("tkd tilingkey: %llu\n", tilingKey);
     return tilingKey;
 }
 

@@ -176,74 +176,70 @@ __global__ __aicore__ void BsaInferIntfRegular(GM_ADDR q, GM_ADDR k, GM_ADDR v, 
     bsaRegularKernelArch35(params);
 }
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat, Epilogue::LseMode lseMode,
-          Epilogue::LseFormat lseFormat>
-__global__ __aicore__ void BsaInferInterfaceFullQuant(GM_ADDR query, GM_ADDR key, GM_ADDR value,
-                                                      GM_ADDR blockSparseMask, GM_ADDR attenMask, GM_ADDR blockTable,
-                                                      GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv,
-                                                      GM_ADDR qDequantScale, GM_ADDR kDequantScale,
-                                                      GM_ADDR vDequantScale, GM_ADDR attentionOut, GM_ADDR workspace,
-                                                      GM_ADDR lse, GM_ADDR tiling)
+template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat,
+          Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat, bool rescaleOnCube = false>
+__global__ __aicore__ void BsaInferInterfaceFullQuant(
+    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask, GM_ADDR blockTable,
+    GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv, GM_ADDR qDequantScale, GM_ADDR kDequantScale,
+    GM_ADDR vDequantScale, GM_ADDR attentionOut, GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)
 {
     using ArchTag = Arch::AtlasA5;
     using ElementSparseMask = uint8_t;
     using ElementSparseIdx = int32_t;
     using ElementSparseCount = int32_t;
-    using ElementQ = InDtype;    // fp8_e4m3fn_t
-    using ElementK = InDtype;    // fp8_e4m3fn_t
-    using ElementV = InDtype;    // fp8_e4m3fn_t
-    using ElementS = SMDtype;    // half/bfloat16_t
-    using ElementP = InDtype;    // fp8_e4m3fn_t
-    using ElementO = SMDtype;    // half/bfloat16_t
-    using ElementOTmp = REDtype; // float
-    // layout tags
+    using ElementQ = InDtype;
+    using ElementK = InDtype;
+    using ElementV = InDtype;
+    using ElementS = SMDtype;
+    using ElementP = InDtype;
+    using ElementO = SMDtype;
+    using ElementOTmp = REDtype;
+
     using LayoutQ = layout::RowMajor;
     using LayoutK = layout::ColumnMajor;
-    // S is rowMajor on UB(dst)
     using LayoutS = layout::RowMajor;
-    // P is actually zN on UB(src), since there is no nd2nz in MTE1
-    using LayoutPDummy = layout::zN;
+    using LayoutP = layout::zN;
     using LayoutV = layout::RowMajor;
+    using LayoutPvA = std::conditional_t<rescaleOnCube, layout::ColumnMajor, LayoutP>;
+    using LayoutPvB = std::conditional_t<rescaleOnCube, layout::ColumnMajor, LayoutV>;
     using LayoutO = layout::RowMajor;
-    // OTmp is rowMajor on UB(dst)
     using LayoutOTmp = layout::RowMajor;
-    using LayoutSparseIdx = layout::RowMajor;
-    using LayoutSparseCount = layout::RowMajor;
-    // block mask pre-process
+
     using DispatchPolicyMask2Idx = Epilogue::EpilogueBsaMask2Idx;
     using EpilogueMask2Idx =
         Epilogue::Block::BlockEpilogue<DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
-    // 处理单个tile内Q和K的matmul
+
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
-    // mmad qk
-    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK<false>;
-    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
-                                                         LayoutS, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
-                                                         Gemm::Tile::ScaleGranularity::PER_TENSOR>;
-    using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
-                                                  ElementS, void, TileCopyQK>;
-    // online softmax
-    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<false>;
-    using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
+    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK<false, rescaleOnCube>;
+    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
+        ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
+        Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+    using BlockMmadQK = Gemm::Block::BlockMmadTla<
+        DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
+
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<false, rescaleOnCube>;
+    using PType = Gemm::GemmType<ElementP, LayoutP>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
-    using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
-    // 处理单个tile内P和V的matmul
+    using EpilogueOnlineSoftmax =
+        Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
+
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
-    // mmad pv
-    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV<false>;
-    using TileCopyPV =
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
-                                          void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
-                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
-    using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
-                                                  ElementOTmp, void, TileCopyPV>;
-    // rescale o
-    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, false>;
-    using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
-    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS,
-                                                            ElementK, TileCopyRescaleO, Arch::PositionL0C>;
+    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV<false, rescaleOnCube>;
+    using TileCopyPV = Gemm::Tile::PackedTileCopyTlaToUB<
+        ArchTag, ElementP, LayoutPvA, ElementV, LayoutPvB, ElementOTmp, LayoutOTmp, void,
+        Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+    using BlockMmadPV = Gemm::Block::BlockMmadTla<
+        DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;
+
+    using DispatchPolicyRescaleO =
+        Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, false, rescaleOnCube>;
+    using TileCopyRescaleO =
+        Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
+    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<
+        DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, ElementK, TileCopyRescaleO, Arch::PositionL0C>;
+
     BsaFullQuantKernelParamsArch35 params{query,
                                           key,
                                           value,
@@ -259,8 +255,9 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(GM_ADDR query, GM_ADDR key
                                           workspace,
                                           lse,
                                           tiling};
-    using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
-                                                              BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
+    using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<
+        EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO,
+        qFormat, kvFormat, false>;
     BsaFullQuantKernelArch35 bsaFullQuantKernelArch35;
     bsaFullQuantKernelArch35(params);
 }
@@ -373,3 +370,4 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     bsaMXFP4FullQuantKernelArch35(params);
 }
 #endif
+

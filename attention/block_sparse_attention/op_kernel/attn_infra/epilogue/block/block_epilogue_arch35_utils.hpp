@@ -23,6 +23,7 @@ struct UBufTileHelper {
     uint32_t sStartOffset;
     uint32_t pStartOffset;
     uint32_t loStartOffset;
+    uint32_t diagStartOffset;
     uint32_t goStartOffset;
     uint32_t lmStartOffset;
     uint32_t gmStartOffset;
@@ -36,13 +37,14 @@ struct UBufTileHelper {
 
     __aicore__ inline UBufTileHelper(uint32_t qs, uint32_t kvs, uint32_t d, uint32_t s, uint32_t p, uint32_t lo,
                                      uint32_t go, uint32_t lm, uint32_t gm, uint32_t dm, uint32_t ll, uint32_t gl,
-                                     uint32_t lse, uint32_t mask)
+                                     uint32_t lse, uint32_t mask, uint32_t diag = 0)
         : qBaseTilePerSubCore(qs),
           kvBaseTilePerSubCore(kvs),
           embedPerSubCore(d),
           sStartOffset(s),
           pStartOffset(p),
           loStartOffset(lo),
+          diagStartOffset(diag),
           goStartOffset(go),
           lmStartOffset(lm),
           gmStartOffset(gm),
