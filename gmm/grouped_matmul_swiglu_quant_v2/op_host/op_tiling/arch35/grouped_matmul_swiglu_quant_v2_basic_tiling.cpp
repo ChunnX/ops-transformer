@@ -586,13 +586,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape
                             ShapeDimsToString(expectedScaleDim0, expectedScaleDim1, MXFP_MULTI_BASE_SIZE)),
                         return false);
         }
-        OP_CHECK_IF(static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize ||
-                        static_cast<uint64_t>(xScaleShape.GetDim(1)) != expectedKDimValue ||
-                        static_cast<uint64_t>(xScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
-                    OP_LOGE_FOR_INVALID_SHAPE(
-                        inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
-                        ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
-                    return false);
+        OP_CHECK_IF(
+            static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize ||
+                static_cast<uint64_t>(xScaleShape.GetDim(1)) != expectedKDimValue ||
+                static_cast<uint64_t>(xScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
+            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
+                                      ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
+            return false);
     } else {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
                     OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeM failed."), return false);
@@ -839,11 +839,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalBaseSizesAndScaleInit(ui
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
-    baseScaleASize =
-        GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
-                            inputParams_.perTokenScaleDtype);
-    baseScaleBSize = GetSizeWithDataType(
-        GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN, inputParams_.scaleDtype);
+    baseScaleASize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
+                                         inputParams_.perTokenScaleDtype);
+    baseScaleBSize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN,
+                                         inputParams_.scaleDtype);
     OP_CHECK_IF(baseScaleASize == 0 || baseScaleBSize == 0,
                 OP_LOGE(context_->GetNodeName(),
                         "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, baseScaleASize(%lu) and "

@@ -63,10 +63,10 @@ static bool ApplyTranspose(size_t index, bool enableTranspose, ge::DataType data
         auto swap = viewShape[0];
         viewShape[0] = viewShape[1];
         viewShape[1] = swap;
-        strides[0] = 2;                 // 2 in shape(k//64 + g, M, 2)
-        strides[1] = viewShape[0] * 2;  // since last dim is contiguous 2
-        strides[2] = 1;                 // last axis of stride with index 2 has velue 1
-    } else if (enableTranspose) {       // when tensor is transposed, last two dims in strides and viewShape should swap
+        strides[0] = 2;                // 2 in shape(k//64 + g, M, 2)
+        strides[1] = viewShape[0] * 2; // since last dim is contiguous 2
+        strides[2] = 1;                // last axis of stride with index 2 has velue 1
+    } else if (enableTranspose) {      // when tensor is transposed, last two dims in strides and viewShape should swap
         // dimM the second-to-last dim， dimN the last dim
         auto dimM = viewShape.size() - 2;
         auto dimN = viewShape.size() - 1;

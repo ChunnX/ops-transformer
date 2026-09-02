@@ -1362,12 +1362,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(void *workspace, uint64_t workspac
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-static aclnnStatus ValidateV2Inputs(const aclTensor *x1, const aclTensor *x2,
-                                    const aclTensor *scaleOptional, const aclTensor *biasOptional,
-                                    const aclTensor *pertokenScaleOptional, const aclTensor *groupListOptional,
-                                    const aclTensor *logitOptional, const aclTensor *rowIndexOptional,
-                                    const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
-                                    int64_t dtype, bool transposeX1, bool transposeX2)
+static aclnnStatus ValidateV2Inputs(const aclTensor *x1, const aclTensor *x2, const aclTensor *scaleOptional,
+                                    const aclTensor *biasOptional, const aclTensor *pertokenScaleOptional,
+                                    const aclTensor *groupListOptional, const aclTensor *logitOptional,
+                                    const aclTensor *rowIndexOptional, const aclTensor *antiquantScaleOptional,
+                                    const aclTensor *antiquantOffsetOptional, int64_t dtype, bool transposeX1,
+                                    bool transposeX2)
 {
     auto scene = x1 != nullptr && x2 != nullptr && scaleOptional != nullptr && pertokenScaleOptional != nullptr &&
                  groupListOptional != nullptr && logitOptional != nullptr && rowIndexOptional != nullptr &&
@@ -1378,8 +1378,8 @@ static aclnnStatus ValidateV2Inputs(const aclTensor *x1, const aclTensor *x2,
     }
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0 (FLOAT32), but is %lld.",
-                dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0 (FLOAT32), but is %lld.", dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -1396,9 +1396,8 @@ static aclnnStatus ValidateV2Inputs(const aclTensor *x1, const aclTensor *x2,
 static aclnnStatus UnpackWeightInt32ToInt4(aclTensor *&weight, const char *opName)
 {
     if (weight->GetDataType() != DataType::DT_INT32) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "%s weightNd weight type should be DT_INT32, but now is %s",
-                opName, op::ToString(weight->GetDataType()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s weightNd weight type should be DT_INT32, but now is %s", opName,
+                op::ToString(weight->GetDataType()).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
     op::Shape weightShape = weight->GetViewShape();
