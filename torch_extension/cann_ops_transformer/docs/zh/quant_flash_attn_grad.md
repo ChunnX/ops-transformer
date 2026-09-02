@@ -169,17 +169,19 @@ cann_ops_transformer.quant_flash_attn_grad(
 ) -> (Tensor, Tensor, Tensor, Tensor)
 ```
 
-## 枚举说明
+## 约束说明
+
+### 枚举说明
 
 `quant_mode` 与 `mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.quant_flash_attn_grad`：
 
-### quant_mode 枚举
+#### quant_mode 枚举
 
 | 枚举名 | 值 | 含义 |
 | :--- | :---: | :--- |
 | `HIF8_PER_TENSOR` | 0 | HIFLOAT8 per-tensor 量化 |
 
-### mask_mode 枚举
+#### mask_mode 枚举
 
 | 枚举名 | 值 | 含义 |
 | :--- | :---: | :--- |
@@ -191,7 +193,7 @@ cann_ops_transformer.quant_flash_attn_grad(
 >
 > 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前版本仅支持 mask_mode = 0（`ALL`），其他模式暂不支持。
 
-## 基准信息说明
+### 基准信息说明
 
 资料约束中，常见字段释义如下：
 
@@ -204,7 +206,34 @@ cann_ops_transformer.quant_flash_attn_grad(
 |    KV_S    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
 |     D     |          输入q/k/v tensor以及输出dq/dk/dv隐藏层最小的单元尺寸headdim         |
 
-## 参数说明
+### 参数说明
+
+#### quant_flash_attn_metadata
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| num_heads_q | int | 必选 | Query head数 | int32 | - | - | - |
+| num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
+| head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
+| quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
+| cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
+| cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | × |
+| seqused_q | Tensor | 可选 | Q的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| seqused_kv | Tensor | 可选 | KV的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
+| v_descale | Tensor | 可选 | v的反量化缩放因子 | float32 | ND | (1,) | × |
+| batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。默认值为None | int32 | - | - | - |
+| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
+| max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
+| win_left | int | 可选 | window左界限 | int32 | - | - | - |
+| win_right | int | 可选 | window右界限 | int32 | - | - | - |
+| layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
+| layout_q_descale | string | 可选 | 定义输入q_descale张量的布局格式 | string | - | - | - |
+| layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - | - |
+| layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - | - |
+| is_grad_enabled | bool | 可选 | 是否启用反向梯度场景的metadata生成。默认值为True。当为True时，metadata用于配套的反向算子quant_flash_attn_grad | BOOL | - | - | - |
+
+#### quant_flash_attn_grad
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -237,7 +266,15 @@ cann_ops_transformer.quant_flash_attn_grad(
 | layout_q | string | 可选 | 定义输入q张量的布局格式，支持"BSND"、"BNSD"，默认值为"BSND" | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k/v张量的布局格式，支持"BSND"、"BNSD"，默认值为"BSND" | string | - | - | - |
 
-## 返回值说明
+### 返回值说明
+
+#### quant_flash_attn_metadata
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| metadata | Tensor | 必选 | quant_flash_attn_grad的任务切分数据 | int32 | ND | (2, max_schedule_size) | × |
+
+#### quant_flash_attn_grad
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -245,8 +282,6 @@ cann_ops_transformer.quant_flash_attn_grad(
 | dk | Tensor | 必选 | Key的梯度 | bfloat16 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D) | × |
 | dv | Tensor | 必选 | Value的梯度 | bfloat16 | ND | BSND: (B, KV_S, KV_N, D)<br>BNSD: (B, KV_N, KV_S, D) | × |
 | dsink | Tensor | 必选 | sink的梯度 | float32 | ND | (Q_N,) | × |
-
-## 约束说明
 
 - 确定性说明：quant_flash_attn_grad默认确定性实现。
 - 入参为空处理：q为空Tensor时直接返回。
