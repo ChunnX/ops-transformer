@@ -664,6 +664,8 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     int64_t maxTokensPerSlot = (tilingData.hiddenBytes > 0) ? (tokenSlotSize / tilingData.hiddenBytes) : 0;
     if (maxTokensPerSlot < 1) {
         maxTokensPerSlot = 1;
+    } else {
+        tokenSlotSize = maxTokensPerSlot * tilingData.hiddenBytes;
     }
     int64_t slotsPerSender = static_cast<int64_t>(Mc2Kernel::NUM_SLOTS / sendersPerRank);
     if (slotsPerSender < 1) {
