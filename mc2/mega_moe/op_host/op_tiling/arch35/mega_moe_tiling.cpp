@@ -1073,14 +1073,12 @@ static MegaMoeSendMaskBufferConfig CalcTopkValidIndexBufferConfig(const MegaMoeT
             static_cast<uint64_t>(bufferConfig.bufferCount) * (ALIGN_32 + 2U * sizeof(int32_t));
         uint64_t routeItemBudgetBytes =
             availableUbBytes > fixedBytesWithRoutePadding ? availableUbBytes - fixedBytesWithRoutePadding : 0U;
-        // 两份 route tensor 各占 4B/item；每个 ring slot 占 1bit mask 和约 4/topK B 有效下标。
-        // 分子、分母同乘 BITS_PER_BYTE*topK，避免使用浮点数。
-        uint64_t indexBits = sizeof(int32_t) * BITS_PER_BYTE;
-        uint64_t routeItemBitNumerator = 2U * indexBits * tilingData->topK +
-                                         static_cast<uint64_t>(bufferConfig.bufferCount) *
-                                             (tilingData->topK + indexBits);
+        // 两份 route tensor 各占 32bit/item；每个 ring slot 占 1bit mask 和约 32/topK bit 有效下标。
         uint64_t expandedRouteItems =
-            routeItemBudgetBytes * BITS_PER_BYTE * tilingData->topK / routeItemBitNumerator;
+            routeItemBudgetBytes * BITS_PER_BYTE /
+            (2U * sizeof(int32_t) * BITS_PER_BYTE + static_cast<uint64_t>(bufferConfig.bufferCount) +
+             ops::CeilDiv(static_cast<uint64_t>(bufferConfig.bufferCount) * sizeof(int32_t) * BITS_PER_BYTE,
+                          static_cast<uint64_t>(tilingData->topK)));
         expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
         expandedRouteItems = std::min(expandedRouteItems, alignedTotalRouteItems);
         if (expandedRouteItems > static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)) {
