@@ -158,8 +158,10 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     int64_t *dstShape = nullptr;
     uint64_t dstShapeSize = 0;
     int actualFormat;
-    ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, 29, aclFormat::ACL_FORMAT_ND, &dstShape, &dstShapeSize,
-                                                   &actualFormat);
+    // aclnnNpuFormatCast private format code: 29 means FRACTAL_NZ.
+    constexpr int64_t kNpuFormatFractalNz = 29;
+    ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, kNpuFormatFractalNz, aclFormat::ACL_FORMAT_ND,
+                                                   &dstShape, &dstShapeSize, &actualFormat);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNpuFormatCastCalculateSizeAndFormat failed. ERROR: %d\n", ret);
               return ret);
 
@@ -266,7 +268,7 @@ int RunExample(int32_t deviceId, aclrtStream &stream)
 
     std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
     std::vector<float> logitHostData(GetShapeSize(logitShape));
-    std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+    std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
     std::vector<float> outHostData(GetShapeSize(outShape));
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x);
