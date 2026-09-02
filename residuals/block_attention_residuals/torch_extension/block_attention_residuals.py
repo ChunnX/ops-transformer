@@ -100,7 +100,10 @@ def _check_inputs(
         )
 
     torch_check(
-        prefix_sum.device == block_res.device == proj_weight.device == norm_weight.device,
+        prefix_sum.device
+        == block_res.device
+        == proj_weight.device
+        == norm_weight.device,
         lambda: (
             "all inputs must be on the same device, but got "
             f"prefix_sum={prefix_sum.device}, block_res={block_res.device}, "
