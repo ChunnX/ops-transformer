@@ -37,17 +37,17 @@ constexpr static AscendC::Reg::CastTrait CAST_B16_TO_B32 = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
-static constexpr AscendC::Reg::CastTrait CAST_FP16_TO_INT8 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_TRUNC};
+static constexpr AscendC::Reg::CastTrait CAST_FP16_TO_INT8 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                              AscendC::Reg::MaskMergeMode::ZEROING,
+                                                              AscendC::RoundMode::CAST_TRUNC};
 
 constexpr static AscendC::Reg::CastTrait CAST_FP32_TO_FP16 = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::Reg::CastTrait CAST_INT32_TO_FP32 = {
-    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::NO_SAT,
-    AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_INT16 = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
@@ -57,13 +57,13 @@ static constexpr AscendC::Reg::CastTrait CAST_INT16_TO_FP16 = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND};
 
-constexpr AscendC::Reg::CastTrait CAST_FP32_TO_FLOAT8 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait CAST_FP32_TO_FLOAT8 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                         AscendC::Reg::MaskMergeMode::ZEROING,
+                                                         AscendC::RoundMode::CAST_RINT};
 
-constexpr AscendC::Reg::CastTrait CAST_FP32_TO_HIFLOAT8 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND};
+constexpr AscendC::Reg::CastTrait CAST_FP32_TO_HIFLOAT8 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
+                                                           AscendC::Reg::MaskMergeMode::ZEROING,
+                                                           AscendC::RoundMode::CAST_ROUND};
 
 constexpr int64_t BLOCK_SIZE = 32;
 // Constants for buffer counts to replace magic numbers
@@ -205,8 +205,8 @@ __aicore__ inline void LoadTensorForDtypeT(__ubuf__ T *input, AscendC::Reg::RegT
 {
     if constexpr (IsSameType<T, half>::value) {
         AscendC::Reg::RegTensor<half> xFp16;
-        AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-            xFp16, ((__ubuf__ half *)(input) + (offset)));
+        AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(xFp16,
+                                                                               ((__ubuf__ half *)(input) + (offset)));
         Cast<float, half, CAST_B16_TO_B32>(dst, xFp16, preg);
     } else if constexpr (IsSameType<T, bfloat16_t>::value) {
         AscendC::Reg::RegTensor<bfloat16_t> xBf16;
@@ -282,8 +282,7 @@ __aicore__ inline void StoreUnAlignOneTensor(__ubuf__ T *&output, Reg::RegTensor
         AscendC::Reg::RegTensor<fp8_e4m3fn_t> quantFloat8E4m3fnPack;
         AscendC::Reg::RegTensor<fp8_e4m3fn_t> quantFloat8E4m3fn;
         AscendC::Reg::Cast<fp8_e4m3fn_t, float, CAST_FP32_TO_FLOAT8>(quantFloat8E4m3fn, src, preg);
-        Pack((Reg::RegTensor<uint16_t> &)quantFloat8E4m3fnPack,
-             (Reg::RegTensor<uint32_t> &)quantFloat8E4m3fn);
+        Pack((Reg::RegTensor<uint16_t> &)quantFloat8E4m3fnPack, (Reg::RegTensor<uint32_t> &)quantFloat8E4m3fn);
         Pack((Reg::RegTensor<uint8_t> &)quantFloat8E4m3fn, (Reg::RegTensor<uint16_t> &)quantFloat8E4m3fnPack);
         StoreUnAlign(output, quantFloat8E4m3fn, uValue, postUpdateStride);
     } else {
@@ -356,8 +355,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             uint32_t count = static_cast<uint32_t>(rSize);
             AscendC::Reg::RegTensor<float> reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -388,8 +386,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<T_V_CACHE> regqunat12, regqunat12_1;
             AscendC::Reg::RegTensor<T_KV> reg12, reg12_1;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行循环
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -537,8 +534,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             uint32_t count = static_cast<uint32_t>(rSize);
             AscendC::Reg::RegTensor<float> reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -575,8 +571,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
             AscendC::Reg::RegTensor<float> reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -645,8 +640,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
 
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -707,8 +701,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<int16_t> tmp_int16;
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -792,8 +785,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
 
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -852,8 +844,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<int16_t> tmp_int16;
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -935,8 +926,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<int16_t> tmp_int16;
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -995,8 +985,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<int16_t> tmp_int16;
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -1077,8 +1066,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<int16_t> tmp_int16;
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
@@ -1134,8 +1122,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::Reg::RegTensor<int16_t> tmp_int16;
             AscendC::Reg::RegTensor<T_V_CACHE> quant;
             AscendC::Reg::MaskReg pMask = AscendC::Reg::UpdateMask<float>(count);
-            AscendC::Reg::MaskReg pFull =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg pFull = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
