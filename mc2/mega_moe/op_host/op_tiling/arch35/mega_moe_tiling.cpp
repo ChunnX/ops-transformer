@@ -1365,6 +1365,11 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
     bool useMteGroupReady = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
     bool useA8W8PairwiseTileCombine = useMteGroupReady && tilingData->combineQuantMode == COMBINE_NO_QUANT;
+    bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+    bool useW4PairwiseTileCombine =
+        useMteWaveCombine && isW4Mode && tilingData->combineQuantMode == COMBINE_NO_QUANT;
     bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
@@ -1386,7 +1391,9 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
                     tilingData->combineSyncSlotCountPerExpert * moeExpertCount * static_cast<uint64_t>(INT_CACHELINE);
             }
         } else {
-            flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+            if (!useW4PairwiseTileCombine) {
+                flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+            }
         }
     }
     if (useGroupSyncCounters) {

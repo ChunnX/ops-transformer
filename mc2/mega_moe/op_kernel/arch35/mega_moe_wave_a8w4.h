@@ -76,7 +76,8 @@ private:
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
                                                    uint32_t sliceTokenCount,
                                                    WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, bool useAllAivCores);
+                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
+                                                   bool useAllAivCores);
     __aicore__ inline void ProcessMoeExpertStages(int32_t &gmm1TileReadySequence);
 };
 
@@ -108,8 +109,9 @@ template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    bool useAllAivCores)
+    int32_t &pairwiseTileSequence, bool useAllAivCores)
 {
+    constexpr bool usePairwiseTileCombine = CombineQuantMode == COMBINE_NO_QUANT;
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
@@ -117,12 +119,20 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
+        if constexpr (usePairwiseTileCombine) {
+            gmmAddrInfo.gmmToEpilogueFlag =
+                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
+                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
+        }
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true>(sliceProblemShape, gmmAddrInfo, startBlockIdx,
-                                                             gmmExecutionConfig_.blockJob, expertTokenCount,
-                                                             tokenStartIndexInExpert);
+                    TopkWeightsPrefetch, false, false, true, usePairwiseTileCombine>(
+            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+            tokenStartIndexInExpert, &params_, &pairwiseTileSequence);
+    }
+    if constexpr (usePairwiseTileCombine) {
+        return;
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
@@ -170,9 +180,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     uint64_t gmm2Count = 0U;
     DispatchBuffInit();
     PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-    WaveCombineBufferConfig combineBufferConfig =
-        InitWaveCombineBuffers<CombineQuantMode, false, WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT>(commonConfig_,
-                                                                                              waveCombineScratch_);
+    WaveCombineBufferConfig combineBufferConfig{};
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
+    }
     uint32_t combineRowSequence = 0U;
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
@@ -273,10 +284,13 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                                       expertIdx == waveLastActiveExpertIdx &&
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
                 RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence, useAllAivCores);
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence,
+                                        gmm1TileReadySequence, useAllAivCores);
             }
         }
-        DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
+        if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+            DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
+        }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
 }
