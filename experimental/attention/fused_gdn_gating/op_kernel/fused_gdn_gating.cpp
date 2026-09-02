@@ -14,6 +14,7 @@
  */
 
 #include "kernel_operator.h"
+#include "kernel_tiling/kernel_tiling.h"
 #include "fused_gdn_gating_tiling_data.h"
 #include "fused_gdn_gating_tiling_key.h"
 
