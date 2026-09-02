@@ -93,8 +93,15 @@ bash build.sh -u --experimental --ops=grouped_matmul_quant --soc=ascend910b
 Ascend 910B 真机精度测试：
 
 ```bash
+bash experimental/gmm/grouped_matmul_quant/run_precision_test.sh
+```
+
+上述脚本会从算子包构建开始执行完整流程。如果需要手动分步执行：
+
+```bash
 cd experimental/npu_ops_transformer_ext
-python3 -m pip install --no-build-isolation -e .
+NPU_OPS_TRANSFORMER_EXT_OPS=grouped_matmul_quant \
+  python3 -m pip install --no-build-isolation -e .
 
 cd experimental/gmm/grouped_matmul_quant/tests
 python3 -m pytest -sv test_grouped_matmul_quant.py

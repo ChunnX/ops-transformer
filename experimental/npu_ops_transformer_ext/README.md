@@ -123,6 +123,15 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
   pip install --no-build-isolation -e .
   ```
 
+只构建指定算子时，可以通过 `NPU_OPS_TRANSFORMER_EXT_OPS` 传入逗号或分号分隔的算子名。例如：
+
+  ```sh
+  NPU_OPS_TRANSFORMER_EXT_OPS=grouped_matmul_quant \
+    pip install --no-build-isolation -e .
+  ```
+
+此方式适合单算子开发和精度测试，不会编译默认白名单中的其他算子。
+
 ## 开发新算子 | Developing New Operators
 
 1. 编写算子调用文件，以在experimental/posembedding下添加算子my_ops为例

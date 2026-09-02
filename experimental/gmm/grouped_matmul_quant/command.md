@@ -2,6 +2,24 @@
 
 本文命令用于在 Ascend 910B 服务器上从源码构建并安装算子，然后执行 PyTorch 真机精度测试。
 
+从仓库根目录一键执行完整流程：
+
+```bash
+bash experimental/gmm/grouped_matmul_quant/run_precision_test.sh
+```
+
+脚本会根据自身路径定位仓库，日志默认保存在
+`build_out/grouped_matmul_quant_precision_logs`。可通过环境变量适配服务器，例如：
+
+```bash
+CANN_ENV_SCRIPT=/opt/Ascend/ascend-toolkit/set_env.sh \
+PYTHON_BIN=/path/to/python3 \
+OPP_INSTALL_ROOT=/opt/Ascend/opp \
+bash experimental/gmm/grouped_matmul_quant/run_precision_test.sh
+```
+
+以下内容是完整流程的分步命令。
+
 以下命令默认：
 
 - 仓库位于 `~/Projects/ops-transformer`；如果实际路径不同，请修改第一条 `cd` 命令。
@@ -16,6 +34,7 @@ cd ~/Projects/ops-transformer
 
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 set -e
+set -o pipefail
 
 echo "ASCEND_HOME_PATH=${ASCEND_HOME_PATH}"
 which python3
@@ -117,6 +136,10 @@ cd ~/Projects/ops-transformer/experimental/npu_ops_transformer_ext
 
 python3 setup.py clean
 
+# 只构建本次精度测试需要的算子，避免受其他 experimental 算子影响。
+export NPU_OPS_TRANSFORMER_EXT_OPS=grouped_matmul_quant
+set -o pipefail
+
 python3 -m pip install \
   --verbose \
   --force-reinstall \
@@ -126,18 +149,24 @@ python3 -m pip install \
   2>&1 | tee grouped_matmul_quant_extension_build.log
 ```
 
-必须确认上面的安装命令成功结束，不能只检查 pytest 是否已安装。
+必须确认上面的安装命令成功结束，不能只检查 pytest 是否已安装。构建日志中应包含：
+
+```text
+Selected torch operators: grouped_matmul_quant
+Found operator: grouped_matmul_quant
+```
 
 ## 6. 检查扩展和算子注册
 
 ```bash
-python3 -c "import torch, torch_npu, npu_ops_transformer_ext; print('package:', npu_ops_transformer_ext.__file__); print('extension:', npu_ops_transformer_ext._C.__file__); print('NPU available:', torch.npu.is_available()); print('operator:', torch.ops.npu_ops_transformer_ext.grouped_matmul_quant)"
+python3 -c "import torch, torch_npu, npu_ops_transformer_ext; op = torch.ops.npu_ops_transformer_ext.grouped_matmul_quant; print('package:', npu_ops_transformer_ext.__file__); print('extension:', npu_ops_transformer_ext._C.__file__); print('NPU available:', torch.npu.is_available()); print('operator:', op); print('PrivateUse1 kernel:', torch._C._dispatch_has_kernel_for_dispatch_key('npu_ops_transformer_ext::grouped_matmul_quant', 'PrivateUse1'))"
 ```
 
-最后一项应打印：
+最后两项应打印：
 
 ```text
 operator: npu_ops_transformer_ext.grouped_matmul_quant
+PrivateUse1 kernel: True
 ```
 
 如果这里提示 `GroupedMatmulQuant` 未注册，不要继续运行 pytest。先单独执行下面的命令以显示真实的扩展加载错误：
@@ -235,189 +264,3 @@ PR 测试说明中建议包含：
 - `6 passed` 测试汇总。
 - 四个 NPU 用例的 `matched_ratio`、`max_abs_error` 和 `max_rel_error`。
 - `grouped_matmul_quant_extension_build.log` 和 `grouped_matmul_quant_precision.log` 的摘要。
-
-
-
-error:
-root@slave19:/workspace/ops-transformer/experimental/gmm/grouped_matmul_quant/tests# set -o pipefail
-python3 -m pytest -sv test_grouped_matmul_quant.py \
-  2>&1 | tee grouped_matmul_quant_precision.log
-============================= test session starts ==============================
-platform linux -- Python 3.12.13, pytest-8.3.2, pluggy-1.6.0 -- /usr/local/python3.12.13/bin/python3
-cachedir: .pytest_cache
-rootdir: /workspace/ops-transformer/experimental/gmm/grouped_matmul_quant/tests
-plugins: xdist-3.6.1, anyio-4.14.1
-collecting ... collected 6 items
-
-test_grouped_matmul_quant.py::test_int4_pack_round_trip PASSED
-test_grouped_matmul_quant.py::test_golden_nonzero_offset_and_zero_token_expert PASSED
-test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_single_tail_split_k] FAILED
-test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[bf16_zero_token_expert] FAILED
-test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_imbalanced_groups] FAILED
-test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_non_split_k] FAILED
-
-=================================== FAILURES ===================================
-________ test_grouped_matmul_quant_precision[fp16_single_tail_split_k] _________
-
-case = TestCase(name='fp16_single_tail_split_k', m=17, k=64, n=80, group_list=None, scale_group_size=32, dtype=torch.float16, seed=20260901, int4_boundary_values=True)
-
-    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-    def test_grouped_matmul_quant_precision(case: TestCase):
-        pytest.importorskip("torch_npu")
-        if not torch.npu.is_available():
-            pytest.skip("Ascend NPU is not available")
->       op, op_path = _resolve_operator()
-
-test_grouped_matmul_quant.py:156: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    def _resolve_operator():
-        _import_registration_modules()
-        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
-        candidates = [configured] if configured else [
-            "ops.vllm.grouped_matmul_quant",
-            "ops.vllm_ascend.grouped_matmul_quant",
-            "ops._C.grouped_matmul_quant",
-            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
-        ]
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                return _resolve_attr(candidate), candidate
-            except (AttributeError, RuntimeError):
-                continue
->       pytest.fail(
-            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
-            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
-        )
-E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
-
-test_grouped_matmul_quant.py:79: Failed
-_________ test_grouped_matmul_quant_precision[bf16_zero_token_expert] __________
-
-case = TestCase(name='bf16_zero_token_expert', m=33, k=128, n=64, group_list=(0, 1, 33), scale_group_size=64, dtype=torch.bfloat16, seed=20260902, int4_boundary_values=False)
-
-    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-    def test_grouped_matmul_quant_precision(case: TestCase):
-        pytest.importorskip("torch_npu")
-        if not torch.npu.is_available():
-            pytest.skip("Ascend NPU is not available")
->       op, op_path = _resolve_operator()
-
-test_grouped_matmul_quant.py:156: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    def _resolve_operator():
-        _import_registration_modules()
-        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
-        candidates = [configured] if configured else [
-            "ops.vllm.grouped_matmul_quant",
-            "ops.vllm_ascend.grouped_matmul_quant",
-            "ops._C.grouped_matmul_quant",
-            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
-        ]
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                return _resolve_attr(candidate), candidate
-            except (AttributeError, RuntimeError):
-                continue
->       pytest.fail(
-            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
-            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
-        )
-E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
-
-test_grouped_matmul_quant.py:79: Failed
-_________ test_grouped_matmul_quant_precision[fp16_imbalanced_groups] __________
-
-case = TestCase(name='fp16_imbalanced_groups', m=257, k=96, n=48, group_list=(1, 2, 257), scale_group_size=32, dtype=torch.float16, seed=20260903, int4_boundary_values=False)
-
-    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-    def test_grouped_matmul_quant_precision(case: TestCase):
-        pytest.importorskip("torch_npu")
-        if not torch.npu.is_available():
-            pytest.skip("Ascend NPU is not available")
->       op, op_path = _resolve_operator()
-
-test_grouped_matmul_quant.py:156: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    def _resolve_operator():
-        _import_registration_modules()
-        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
-        candidates = [configured] if configured else [
-            "ops.vllm.grouped_matmul_quant",
-            "ops.vllm_ascend.grouped_matmul_quant",
-            "ops._C.grouped_matmul_quant",
-            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
-        ]
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                return _resolve_attr(candidate), candidate
-            except (AttributeError, RuntimeError):
-                continue
->       pytest.fail(
-            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
-            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
-        )
-E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
-
-test_grouped_matmul_quant.py:79: Failed
-____________ test_grouped_matmul_quant_precision[fp16_non_split_k] _____________
-
-case = TestCase(name='fp16_non_split_k', m=5760, k=32, n=1024, group_list=None, scale_group_size=32, dtype=torch.float16, seed=20260904, int4_boundary_values=False)
-
-    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
-    def test_grouped_matmul_quant_precision(case: TestCase):
-        pytest.importorskip("torch_npu")
-        if not torch.npu.is_available():
-            pytest.skip("Ascend NPU is not available")
->       op, op_path = _resolve_operator()
-
-test_grouped_matmul_quant.py:156: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-    def _resolve_operator():
-        _import_registration_modules()
-        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
-        candidates = [configured] if configured else [
-            "ops.vllm.grouped_matmul_quant",
-            "ops.vllm_ascend.grouped_matmul_quant",
-            "ops._C.grouped_matmul_quant",
-            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
-        ]
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                return _resolve_attr(candidate), candidate
-            except (AttributeError, RuntimeError):
-                continue
->       pytest.fail(
-            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
-            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
-        )
-E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
-
-test_grouped_matmul_quant.py:79: Failed
-=============================== warnings summary ===============================
-../../../../../../usr/local/python3.12.13/lib/python3.12/site-packages/torch/jit/_script.py:362: 14 warnings
-  /usr/local/python3.12.13/lib/python3.12/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
-    warnings.warn(
-
-test_grouped_matmul_quant.py:20
-  /workspace/ops-transformer/experimental/gmm/grouped_matmul_quant/tests/test_grouped_matmul_quant.py:20: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: test_grouped_matmul_quant.py)
-    @dataclass(frozen=True)
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=========================== short test summary info ============================
-FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_single_tail_split_k]
-FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[bf16_zero_token_expert]
-FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_imbalanced_groups]
-FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_non_split_k]
-=================== 4 failed, 2 passed, 15 warnings in 8.54s ===================
