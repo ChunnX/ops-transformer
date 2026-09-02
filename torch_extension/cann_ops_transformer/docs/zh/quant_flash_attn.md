@@ -43,7 +43,7 @@
 - **接口功能**：
 
   `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成量化场景下的全量化注意力计算，训练推理归一化。当前支持两类量化场景：
-  - HIF8场景：Q/K/V 均采用 HIFLOAT8 量化。
+  - HIF8场景：Q/K/V 均采用 HIFLOAT8 per-tensor 量化。
   - MxFP8场景：Q/K/V 均采用 MXFP8 量化。
 
   `quant_flash_attn_metadata`是`quant_flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
