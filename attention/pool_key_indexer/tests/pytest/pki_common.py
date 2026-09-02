@@ -163,12 +163,15 @@ def build_case_inputs(cfg):
     if need_fp32_gen:
         # float32 原值: 幅度控制在 fp8_e4m3fn 表示精度内, 保证量化-反量化
         # 往返的相对误差可控(CPU 金标直接用 float32 原值计算)
+        # weights: 量化场景规格允许 FP16/BF16, cfg["weights_dtype"] 可指定
+        # (默认 FP16); 金标侧统一转 float32 计算(两种承载 dtype 数值近似)
+        w_dtype = cfg.get("weights_dtype", torch.float16)
         if cfg["layout_q"] == "BSND":
             q_fp32 = torch.randn(batch, q_lens[0], n1, HEAD_DIM, dtype=torch.float32) * 0.25
-            weights = torch.randn(batch, q_lens[0], n1, dtype=torch.float16)
+            weights = torch.randn(batch, q_lens[0], n1, dtype=w_dtype)
         else:
             q_fp32 = torch.randn(sum(q_lens), n1, HEAD_DIM, dtype=torch.float32) * 0.25
-            weights = torch.randn(sum(q_lens), n1, dtype=torch.float16)
+            weights = torch.randn(sum(q_lens), n1, dtype=w_dtype)
         q_fp32 = q_fp32.clamp(-3.5, 3.5)
         query = q_fp32.to(dtype)
         query_fp32 = q_fp32

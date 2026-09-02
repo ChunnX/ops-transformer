@@ -376,6 +376,36 @@ __aicore__ inline void MulWeightAndReduceSumWithScale(
         AscendC::MicroAPI::StoreAlign<uint32_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAll);
     }
 }
+// mode=0 (FP8 per-token-head) weight×qScale SIMD 预乘(单 s1 行, 64 lanes)。
+// 半精度 weight(half/bfloat16_t) -> fp32 cast -> 乘 qScale -> 落 fp32 UB,
+// 参考 QLIv2 weightTemp 模式(LoadAlign+Cast+Mul+StoreAlign, 4 条向量指令),
+// 替代逐 g 标量预乘循环(gSize 次标量/行; W_T=bfloat16_t 时还触发
+// bisheng bf16 标量语义限制)。独立 __simd_vf__ 函数保证 bf16 Cast
+// 的硬件展开(内联到普通函数会报 "Do not know how to split this operator")。
+//   weight_:   [G]  半精度(行内 gSizeAlign16 布局, [gSize,64) 已补 0)
+//   qScale_:   [G]  fp32(同布局)
+//   dst_:      [G]  fp32 输出(行距 128 元素 bank 对齐)
+template <typename W_T>
+__simd_vf__ void MulWeightQScaleSIMD(__local_mem__ W_T *weight_, __local_mem__ float *qScale_,
+                                     __local_mem__ float *dst_)
+{
+    MicroAPI::MaskReg maskAllB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskAllB16 = MicroAPI::CreateMask<W_T, MicroAPI::MaskPattern::ALL>();
+
+    MicroAPI::RegTensor<W_T> regWHalf;
+    MicroAPI::RegTensor<float> regW;
+    MicroAPI::RegTensor<float> regQScale;
+
+    constexpr static MicroAPI::CastTrait castTraitWTToFP32 = {MicroAPI::RegLayout::ZERO,
+                                                              MicroAPI::SatMode::UNKNOWN,
+                                                              MicroAPI::MaskMergeMode::ZEROING,
+                                                              RoundMode::UNKNOWN};
+    MicroAPI::LoadAlign<W_T, MicroAPI::LoadDist::DIST_UNPACK_B16>(regWHalf, weight_);
+    MicroAPI::Cast<float, W_T, castTraitWTToFP32>(regW, regWHalf, maskAllB16);
+    MicroAPI::LoadAlign<float>(regQScale, qScale_);
+    MicroAPI::Mul(regW, regW, regQScale, maskAllB32);
+    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(dst_, regW, maskAllB32);
+}
 } // namespace vector1
 
 #endif

@@ -61,17 +61,26 @@ __global__ __aicore__ void pool_key_indexer(
         INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, half, half, int32_t,
                            PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
     } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
-        if constexpr (QUANT_MODE == PKI_TPL_QUANT_MXFP8) {
-            INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
-                               PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, fp8_e8m0_t);
-        } else if constexpr (QUANT_MODE == PKI_TPL_QUANT_FP8_PER_TOKEN) {
-            INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
-                               PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, float);
+        // 量化场景 weights 支持 FP16/BF16(规格+tiling 均允许), kernel 按
+        // ORIG_DTYPE_WEIGHTS 分发 WEIGHTS_T(参考 quant_lightning_indexer 的双 dtype 模式)。
+        // 注意模板参数顺序: ..., DT_W_FLAG, SCALE_T, WEIGHTS_T —— scale 在前, weights 在后
+        if constexpr (ORIG_DTYPE_WEIGHTS == DT_BF16) {
+            if constexpr (QUANT_MODE == PKI_TPL_QUANT_MXFP8) {
+                INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                                   PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, fp8_e8m0_t, bfloat16_t);
+            } else {
+                // per-token(float scale)与兜底(quantMode=-1 已被 tiling 拒绝)
+                INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                                   PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, float, bfloat16_t);
+            }
         } else {
-            // FP8 输入但 quantMode=-1: tiling 层已拒绝(descale 校验失败),
-            // 此处兜底实例化 float scale 保持类型完备
-            INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
-                               PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, float);
+            if constexpr (QUANT_MODE == PKI_TPL_QUANT_MXFP8) {
+                INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                                   PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, fp8_e8m0_t, half);
+            } else {
+                INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+                                   PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K), false, float, half);
+            }
         }
     }
 #else

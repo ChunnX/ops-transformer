@@ -59,9 +59,13 @@
   4. 实测结论：捕获/回放两轮结果均与同期 eager 连续参照一致（数据交错强对照），**无静默错算**；代价是每次回放多一次隐性 D2D 拷贝（clone_input 机制本身的固有开销，与是否非连续无关；非连续视图的 copy 为 stride gather）。
 - **残余问题（P0-2 最终版，2026-08-31 三次复核修正范围）**：eager/aclnn 直调路径的 **k_descale 非连续输入（全布局）**是真缺口，范围比此前认定的"非 PA 布局"更宽：
   - 非 PA 布局：kernel `GetKeyScale` 连续寻址，tiling 置 `keyDequantScaleStride0=0` → 静默错算（实测确认）；
-  - **PA 布局 + 0 轴非连续**：k_descale **没有 pool_key 的 `key_stride0` 属性机制**（def.cpp 无属性、csrc 无直读下传），tiling 在 eager 下 `GetDynamicInputStride` 返回 nullptr → 由 shape 推导 stride（`tiling.cpp:445-451`），与实际非连续布局不符 → 同样静默错算（此前残余描述漏掉了此半区）；
+  - **PA 布局 + 0 轴非连续**：k_descale **没有 pool_key 的 `key_stride0` 属性机制**（def.cpp 无属性、csrc 无直读下传），tiling 在 eager 下 `GetDynamicInputStride` 返回 nullptr → 由 shape 推导 stride，与实际非连续布局不符 → 同样静默错算（此前残余描述漏掉了此半区）；
   - 图模式不受影响（框架上报运行时 stride 经 CheckKeyContiguous 校验，或 torchair runtime 连续化兜底）。
-- **✅ 修复（2026-08-31 实施）**：csrc 对非连续 k_descale **全布局统一拒绝**（`TORCH_CHECK`，报错指明"eager 无 stride 传递机制，请传连续 tensor 或使用图模式"）；PA 0 轴非连续的 eager 支持（需新增 `k_descale_stride0` 属性机制）作为后续可选增强登记。回归用例：`test_quant.py::test_quant_error_noncontig_kdescale`（BSND 轴 1 非连续 + PA 0 轴非连续双布局拒绝验证）。全量回归：量化 24 + 泛化/smoke/GE 235 + precision/aclgraph 138 全过。
+- **✅ 修复（2026-08-31 实施两版，终版为"支持"而非"拒绝"）**：
+  - 第一版（已废弃）：csrc 全布局统一拒绝非连续 k_descale；
+  - **终版（按需求改为支持 PA 0 轴非连续）**：仿 `key_stride0` 机制新增 **`k_descale_stride0` 属性**——① def.cpp/proto 注册属性（默认 -1）；② csrc 直读 `k_descale.stride(0)` 下传（非 PA 布局与非 0 轴非连续仍拒绝，报错口径同 pool_key）；③ tiling 属性优先级：属性 > 运行时 stride > shape 推导，含属性-运行时冲突检测、属性值 ≥ 连续 stride 下界校验（mode=0/mode=1 分别按 blockSize×N2 / blockSize×N2×(D/32)）、非 PA 布局属性显式指定拒绝（BSND/TND 分支）；④ graph_convert converter 透传属性。
+  - 实测：PA 0 轴非连续 k_descale（mode=0 float + mode=1 E8M0 视图）结果均与连续参照一致；BSND 轴 1 / PA 轴 1 非连续正确拒绝。
+  - 回归用例：`test_quant.py::test_quant_error_noncontig_kdescale`（双拒绝 + mode=0/1 双支持验证）。全量回归：量化 24 + 泛化/smoke/GE 235 + precision/aclgraph 138 全过；ascend950/910b 编译通过。
 - **规格影响**：参数表"非连续Tensor"列的"√"对 AutoContiguous 输入在 eager/aclnn 路径同样成立（aclnnContiguous 兜底）；图模式由 torchair runtime 连续化兜底（全输入）。修订原 P2-7 中"仅图模式支持"的表述。
 
 ---
@@ -76,12 +80,17 @@
 - **结论**：规格与金标都认为 BSND 可选 actual_seq 是既定能力，tiling 一刀切拒绝属实现缺口（或规格超前）。**需要决策**：要么补 kernel 支持（BSND 每 batch 有效行/池数，涉及 CleanInvalidOutput 与 scoreGm 布局），要么修订规格删除 BSND 相关描述并同步金标。
 - **影响面**：TND 前缀和语义不受影响；当前测试套件 BSND 用例均未传 actual_seq（与算子行为一致、与规格不一致）。
 
-### [P1-2] def.cpp 950 量化组合的 weights 只声明 FP16，规格允许 BF16
+### [P1-2] def.cpp 950 量化组合的 weights 只声明 FP16，规格允许 BF16（✅ 已修复 2026-09-02）
 
 - **位置**：`op_host/pool_key_indexer_def.cpp:123-127`——950 config 的 weights `DataType({FP16, BF16, FP16, FP16})`，4 个组合按 query{FP16, BF16, FP8, FP8} 对位：量化组合（3/4）weights 仅声明 **FP16**。代码注释自认"tiling still accepts BF16 weights at runtime"。
-- **问题**：tiling（`tiling.cpp:328/358`）确实接受 FP16/BF16；但 **GE 图模式的 op-select 按 dtype 组合表匹配**——`FP8 query + BF16 weights` 无匹配组合，图编译期被拒。规格约束节明确写"量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16"。
-- **结果**：同一输入在 eager 通过、图模式被拒，行为分叉。
-- **建议**：950 config 的 weights 改为 6 组合显式枚举（FP16/BF16 × 非量化 + FP8 × {FP16, BF16} × 2 量化 mode 组合需要 8 对 query/weights dtype 对；若组合表机制不支持重复枚举，则注释中登记限制并同步规格）。
+- **问题**：tiling（`tiling.cpp:328/358`）确实接受 FP16/BF16；但 **GE 图模式的 op-select 按 dtype 组合表匹配**——`FP8 query + BF16 weights` 无匹配组合，图编译期被拒。规格约束节明确写"量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16"。同一输入在 eager 通过、图模式被拒，行为分叉。
+- **✅ 修复（2026-09-02）**：BF16 weights 完整支持——
+  1. **def.cpp**：组合表扩至 6 组合（FP8×{FP16,BF16}×quant{0,1}），weights 显式枚举 FP16/BF16；
+  2. **PkiType**（common.h）：新增 `WEIGHTS_T` 模板参数（默认 void=沿用 PkiTypeTraits 推导），量化分支显式携带 half/bfloat16_t；
+  3. **kernel entry**（pool_key_indexer.cpp）：FP8 分支按 `ORIG_DTYPE_WEIGHTS` 分发 WEIGHTS_T（参考 quant_lightning_indexer 的 `ORIG_DTYPE_WEIGHTS == DT_BF16` 双 dtype 模式）；
+  4. **arch35/arch22 service_vector + kernel.h**：W_T 推导改为"PkiType 显式 weightsType 优先，PkiTypeTraits 推导兜底"；
+  5. **arch35 标量预乘修复**：`static_cast<float>(weightUB_.GetValue(...))` 在 W_T=bfloat16_t 时触发 bisheng "not support bf16 type cast"（bf16 标量语义限制，与 fp8 同类）——**最终方案改为 SIMD 向量预乘**（参考 QLIV2 weightTemp 模式）：独立 `__simd_vf__` helper `MulWeightQScaleSIMD`（`LoadAlign<W_T> + Cast<float,W_T> + Mul + StoreAlign`，每 s1 行 4 条向量指令替代 gSize 次标量），输出落新增的 `weightScaleFp32UB_`（fp32，行距 128 bank 对齐）。bf16 的 Cast 在 `__simd_vf__` 函数内有硬件展开（内联到普通 `__aicore__` 函数会报 "Do not know how to split the result of this operator"，同为 bisheng 限制）。同时删除原标量路径的三组跨 pipe 同步（MTE2ToSSync/VToSSync/SToVSync → 同 pipe PipeBarrier），UB 缓冲重命名 weightScaleUB_ → weightScaleFp32UB_ 语义对齐。
+- **验证**：mode=0 BF16 weights 结果与 FP16 weights 一致 + 与 CPU golden 一致；mode=1（E8M0）BF16 weights 同样通过；全量回归 186（量化三层）+ 78（smoke/GE/aclgraph）+ 133（precision）全过；ascend950/910b 编译通过。
 
 ### [P1-3] 规格未记载 E8M0=0xFF 的 NaN 传播语义
 
@@ -144,8 +153,8 @@
   | pool_key（PA_BBND） | ✅ 0 轴非连续（keyStride0 属性） | ✅ runtime 连续化兜底（注：converter 读不到 stride，`key_stride0=-1`，非连续优化被绕过走连续分支） |
   | pool_key（BSND/TND） | ❌ 已拒绝（P0-1 修复） | ✅ runtime 连续化兜底（无错算，但 P0-1 的 tiling 属性拒绝在图模式不触发） |
   | k_descale（PA_BBND） | ✅ 0 轴非连续（keyDequantScaleStride0） | ✅ 同上 |
-  | k_descale（BSND/TND） | ⚠️ ~~静默错算~~ **已拒绝（P0-2 修复 2026-08-31）** | ✅ runtime 连续化兜底（图模式 tiling 的 stride 校验实际不会遇到非连续输入） |
-| k_descale（PA_BBND，0 轴非连续） | ⚠️ ~~静默错算~~ **已拒绝（同上，eager 无 stride 属性机制；图模式正常）** | ✅ 同上 |
+  | k_descale（BSND/TND） | ❌ 已拒绝（非 PA 布局无属性通道） | ✅ runtime 连续化兜底（图模式 tiling 的 stride 校验实际不会遇到非连续输入） |
+| k_descale（PA_BBND，0 轴非连续） | ✅ **已支持（`k_descale_stride0` 属性，2026-08-31 终版修复；mode=0/1 双模式实测）** | ✅ 同上 |
 - **建议**：参数表按上表口径修订"k_descale 非连续支持"的布局限定；并落实 k_descale 非 PA 布局的 eager 拒绝（同 P0-1 模式）。
 
 ---
@@ -168,7 +177,8 @@
 1. ~~**立即**：P0-1（csrc 非 PA 布局拒绝非连续 pool_key，一行检查）；P0-2（csrc 补 query/weights/descale 连续性检查）~~
    **→ 均已完成**：P0-1 已修复（csrc 双层拦截 + tiling 属性防御 + 回归用例，2026-08-31）；P0-2 已按三次复核后的正确范围修复（**仅 k_descale 需要检查**——query/weights/q_descale 由 aclnnContiguous 兜底无需检查；k_descale 全布局非连续 csrc 拒绝 + 回归用例，2026-08-31）。
 2. **本迭代**：P1-1 需产品决策（补能力或改规格）；P1-2 def.cpp 组合表扩展；P1-3/P2-7 规格文档修订（含 k_descale eager 连续性要求的表述）。
-3. **跟进**：P1-4（kernel 防御 clamp）、P2-1（默认值统一）、P2-2/P2-5/P2-6（校验前移与测试补档）；可选增强：`k_descale_stride0` 属性机制（恢复 PA 0 轴非连续的 eager 支持）。
+3. **跟进**：P1-4（kernel 防御 clamp）、P2-1（默认值统一）、P2-2/P2-5/P2-6（校验前移与测试补档）。
+   注：原"可选增强：`k_descale_stride0` 属性机制"**已在 P0-2 终版修复中落地**（2026-08-31，PA 0 轴非连续 eager 支持含 mode=0/1）。规格文档需同步补充 `k_descale_stride0` 属性条目（与 key_stride0 同格式）。
 
 ---
 

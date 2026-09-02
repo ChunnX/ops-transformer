@@ -38,13 +38,19 @@ struct PkiTypeTraits<Q_T, float> {
     using weightsType = float; // W_T=float时，强制weightsType为float
 };
 
-// FP8模式：weights张量为FP16（见op_host def.cpp dtype约束：quant_mode=0/1时 q/k=FP8_E4M3FN,
-// weights=FP16）。W_T必须绑定为half：
-// 1) 功能上weights以half解释才是正确数据
+// FP8模式：weights张量为半精度(FP16/BF16, 由 entry 按 ORIG_DTYPE_WEIGHTS 分发,
+// 见 op_host def.cpp dtype 约束: quant_mode=0/1时 q/k=FP8_E4M3FN, weights=FP16/BF16)。
+// W_T必须绑定为半精度类型：
+// 1) 功能上weights以半精度解释才是正确数据
 // 2) 若W_T=fp8_e4m3fn_t，vector侧weights搬运/加载路径（DataCopyPadExtParams<W_T>、
 //    LoadAlign<W_T>等）会实例化fp8标量语义，bisheng后端报错：
 //    "fp8...type only supports pointer operations, scalar float type semantics
 //    are not supported"
+// 量化场景的 weightsType 由 PkiType 显式携带(half/bfloat16_t), 此处泛型分发
+template <typename W_HALF_T>
+struct PkiQuantWeightsTraits {
+    using weightsType = W_HALF_T;
+};
 template <>
 struct PkiTypeTraits<fp8_e4m3fn_t> {
     using weightsType = half;
@@ -60,8 +66,13 @@ public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using SCORE_T = uint32_t;
-    using W_T = typename PkiTypeTraits<Q_T,
-                                       typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    // 量化场景: PkiType 显式携带 weightsType(half/bfloat16_t), 优先于推导;
+    // 非量化(WEIGHTS_T=void)沿用 PkiTypeTraits 推导
+    using W_DERIVED_T = typename PkiTypeTraits<Q_T,
+                                               typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_EXPLICIT_T = typename LIT::weightsType;
+    using W_T = typename std::conditional<std::is_same<W_EXPLICIT_T, void>::value,
+                                          W_DERIVED_T, W_EXPLICIT_T>::type;
 
     __aicore__ inline PoolKeyIndexerServiceVector(){};
     __aicore__ inline void ProcessVec1(const PkiCommon::RunInfo &info);
@@ -115,14 +126,6 @@ private:
         SetFlag<HardEvent::S_MTE3>(eventID);
         WaitFlag<HardEvent::S_MTE3>(eventID);
     }
-    // mode=0 预乘标量读(S pipe)前的 MTE2->S 同步: weightUB_/qScaleUB_ 由
-    // MTE2 DataCopyPad 写入, S pipe 标量 GetValue 必须等其落地
-    __aicore__ inline void MTE2ToSSync()
-    {
-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-        SetFlag<HardEvent::MTE2_S>(eventID);
-        WaitFlag<HardEvent::MTE2_S>(eventID);
-    }
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
@@ -161,14 +164,14 @@ private:
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<W_T> weightUB_;
+    // mode=0: weight(fp32 cast) × qScale 预乘结果的 fp32 UB(向量 SIMD 预乘,
+    // 参考 QLIV2 weightTempUB_; 替代逐 g 标量预乘)
+    TBuf<TPosition::VECCALC> weightScaleFp32Buf_;
+    LocalTensor<float> weightScaleFp32UB_;
 
     // mode=0 (FP8 per-token-head) scale UB(乒乓, 参考 QLIv2 qScaleBuf_/kScaleBuf_)
     TBuf<TPosition::VECCALC> qScaleBuf_;
     LocalTensor<float> qScaleUB_;
-    // mode=0: weight(fp32) × qScale 预乘结果 UB(Gather 对寄存器 Mul 产物
-    // lane 布局不兼容, 预乘落 UB 后走纯 fp32 LoadAlign+Gather 路径)
-    TBuf<TPosition::VECCALC> weightScaleBuf_;
-    LocalTensor<float> weightScaleUB_;
     TBuf<TPosition::VECCALC> kScaleBuf_;
     LocalTensor<float> kScaleUB_;
 
@@ -231,6 +234,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
                                      PkiCommon::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
     if constexpr (LIT::isFp8PerToken) {
+        // mode=0: weight×qScale SIMD 预乘输出缓冲(fp32, 行距 128 元素 bank 对齐,
+        // 与 qScaleUB 同布局)。向量预乘替代原逐 g 标量循环(gSize 次标量 ->
+        // 每行 3~4 条向量指令, W_T=bfloat16_t 也不再实例化 bf16 标量语义)
+        pipe->InitBuffer(weightScaleFp32Buf_, 2 * CeilDiv(s1BaseSize_, 2) * 128 * sizeof(float));
+        weightScaleFp32UB_ = weightScaleFp32Buf_.Get<float>();
         // mode=0 scale UB: qScale 行距固定 128 元素(512B bank 对齐)——
         // MulWeightAndReduceSumWithScale 的 LoadAlign<float> 一次取 64 lanes
         // (256B), 要求行起点 256B 对齐; 紧凑 gSizeAlign16 布局在 n1 非 64
@@ -238,9 +246,6 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
         // kScale 为 s2 维度(16 轮乒乓 × s2BaseSize, 参考 QLIv2 kScaleBuf_)
         pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * 128 * sizeof(float));
         qScaleUB_ = qScaleBuf_.Get<float>();
-        // weightScale UB: 与 qScale 同布局(行距 128 元素, 512B 对齐)
-        pipe->InitBuffer(weightScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * 128 * sizeof(float));
-        weightScaleUB_ = weightScaleBuf_.Get<float>();
         pipe->InitBuffer(kScaleBuf_, 2 * 16 * s2BaseSize_ * sizeof(float));
         kScaleUB_ = kScaleBuf_.Get<float>();
         // kScale 铺 0(参考 QLIv2): 尾部未搬运区(如 S2 尾块不足 s2BaseSize)是
@@ -623,33 +628,32 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
     if constexpr (LIT::isFp8PerToken) {
-        // mode=0: weight(fp32 cast) × qScale 预乘落 UB(每 s1 行 gSize 个,
-        // 行距 128 元素)——Gather 对寄存器 Mul 产物 lane 布局不兼容,
-        // 预乘后 WithScale 走纯 fp32 LoadAlign+Gather(与 QLIv2 口径一致)。
+        // mode=0: weight(半精度) -> fp32 cast × qScale 的 SIMD 向量预乘落 UB。
+        // 参考 QLIV2 MulWeightAndReduceSum2F32VF 的 weightTemp 模式
+        // (LoadAlign + Mul + StoreAlign, 3~4 条向量指令/行), 替代逐 g 标量
+        // 预乘循环(gSize 次/行; W_T=bfloat16_t 时还触发 bf16 标量语义限制)。
         // 行内 [gSize, 64) 补 0(LoadAlign 一次取 64 lanes, 0 与无效 g 语义一致)
         for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
             uint64_t dstOff = pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128;
-            Duplicate<float>(weightScaleUB_[dstOff], 0.0f, 128);
+            Duplicate<float>(weightScaleFp32UB_[dstOff], 0.0f, 128);
         }
-        // MTE2->S: weightUB_/qScaleUB_ 的 DataCopyPad(MTE2)必须先于
-        // 标量 GetValue(S) 落地; V->S: 向量 0 填充先于标量 SetValue
-        MTE2ToSSync();
-        VToSSync();
+        PipeBarrier<PIPE_V>();
         for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
             uint64_t srcOff = pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16;
             uint64_t dstOff = pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128;
-            // 标量预乘(逐 g: fp16 weight -> fp32, 乘 qScale)。gSize<=64,
-            // 每 s1 行最多 64 次标量, 换取 Gather lane 布局的正确性。
-            // GetValue 直接作用于 tensor(同 ExpandAndAppendIndices 的
-            // poolIndices.GetValue 模式), 不经 operator[] 视图
-            for (int64_t g = 0; g < gSize_; g++) {
-                float wv = static_cast<float>(weightUB_.GetValue(srcOff + g));
-                float qs = qScaleUB_.GetValue(dstOff + g);
-                weightScaleUB_.SetValue(dstOff + g, wv * qs);
-            }
+            // 向量预乘: 半精度 weight -> fp32 cast, 乘 qScale, 落 fp32 UB。
+            // 独立 __simd_vf__ helper(同 QLI v1 的 vector1 函数模式):
+            // bf16 的 Cast<float,bfloat16_t> 在 __simd_vf__ 内有硬件展开,
+            // 内联到普通 __aicore__ 函数会触发 bisheng
+            // "Do not know how to split the result of this operator"
+            vector1::MulWeightQScaleSIMD(
+                (__local_mem__ W_T *)weightUB_[srcOff].GetPhyAddr(),
+                (__local_mem__ float *)qScaleUB_[dstOff].GetPhyAddr(),
+                (__local_mem__ float *)weightScaleFp32UB_[dstOff].GetPhyAddr());
         }
-        // S->V: 标量写落地后, WithScale 的向量 LoadAlign 才能读
-        SToVSync();
+        // V 写落地后, WithScale 的向量 LoadAlign 才能读(同 pipe 有序性足够,
+        // 但跨 ForEachS1 循环保险起见显式 barrier)
+        PipeBarrier<PIPE_V>();
     }
 
     for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
@@ -663,7 +667,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
                 resMm1UB_[pingpong * CeilDiv(constInfo_.mBaseSize, 2) *
                               s2BaseSize_ +
                           s1IdxTmp * gSize_ * s2BaseSize_],
-                weightScaleUB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128],
+                weightScaleFp32UB_[pingpong * CeilDiv(s1BaseSize_, 2) * 128 + s1IdxTmp * 128],
                 kScaleUB_[kScalePingpong * 16 * s2BaseSize_ + kScaleBlkOff],
                 gSize_,
                 constInfo_.qkScale);

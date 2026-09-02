@@ -67,6 +67,10 @@ public:
     using W_T =
         typename PkiTypeTraits<Q_T, typename std::conditional<DT_W_FLAG,
                                                               float, void>::type>::weightsType;
+    // 量化场景: PkiType 显式携带 weightsType(half/bfloat16_t, entry 按
+    // ORIG_DTYPE_WEIGHTS 分发), 优先于 PkiTypeTraits 推导
+    using W_QUANT_T = typename LIT::weightsType;
+    using W_ACT_T = typename std::conditional<std::is_same<W_QUANT_T, void>::value, W_T, W_QUANT_T>::type;
 
     PoolKeyIndexerServiceCube<LIT> matmulService;
     PoolKeyIndexerServiceVector<LIT> vectorService;
@@ -99,7 +103,7 @@ protected:
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
-    GlobalTensor<W_T> weightsGm;
+    GlobalTensor<W_ACT_T> weightsGm;
     // 量化 descale: mode=0(float) 走 vector 融合; mode=1(E8M0 按 2 打包成
     // bf16 寻址) 走 Cube LoadData-Mx。两个模式均以 bf16 视角 SetGlobalBuffer。
     GlobalTensor<bfloat16_t> qScaleGmBf16;
@@ -490,7 +494,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
-        weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
+        weightsGm.SetGlobalBuffer((__gm__ W_ACT_T *)weights);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         if constexpr (LIT::isFp8PerToken) {
             // mode=0: q/k_descale 为 float, vector 侧融合

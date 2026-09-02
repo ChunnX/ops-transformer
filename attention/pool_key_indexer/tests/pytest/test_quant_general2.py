@@ -168,6 +168,8 @@ def _gen_quant2_random_case(case_idx, bucket, quant_mode, seed, pa_bs_cycle):
         "tail": tail,
         "seed": seed,
         "quant_mode": quant_mode,
+        # weights dtype 随机(FP16/BF16, 量化场景规格均允许; P1-2 BF16 支持)
+        "weights_dtype": rng.choice([torch.float16, torch.bfloat16]),
     }
 
 
@@ -262,6 +264,11 @@ _QUANT2_DIRECTED_CASES = [
          quant_mode=0, seed=422),
     _qc2("q2dir_n1_48_m1", "TND", "TND", [8, 8], [32, 32], 48, 128, 8, 3, True,
          quant_mode=1, seed=423),
+    # ---- BF16 weights(P1-2 支持, 定向覆盖 mode=0/1 × PA/非 PA) ----
+    _qc2("q2dir_bf16w_m0_pa", "TND", "PA_BBND", [8, 8], [48, 32], 8, 64, 8, 3, True,
+         quant_mode=0, seed=424, weights_dtype=torch.bfloat16),
+    _qc2("q2dir_bf16w_m1_s2multi", "BSND", "BSND", [8], [300], 8, 2048, 16, 3, True,
+         quant_mode=1, seed=425, weights_dtype=torch.bfloat16),
 ]
 
 QUANT2_RANDOM_CASES = _generate_quant2_random_cases()

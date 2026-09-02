@@ -62,8 +62,12 @@ public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     static constexpr PkiLayout LAYOUT_T = LIT::layout;
-    using W_T = typename PkiTypeTraits<Q_T,
-                                       typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_DERIVED_T = typename PkiTypeTraits<Q_T,
+                                               typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    // 量化场景: PkiType 显式携带 weightsType(half/bfloat16_t), 优先于推导
+    using W_EXPLICIT_T = typename LIT::weightsType;
+    using W_T = typename std::conditional<std::is_same<W_EXPLICIT_T, void>::value,
+                                          W_DERIVED_T, W_EXPLICIT_T>::type;
 
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;

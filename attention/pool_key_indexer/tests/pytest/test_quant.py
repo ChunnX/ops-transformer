@@ -106,6 +106,24 @@ _QUANT_FIXED_CASES = [
          mask_mode=0, return_value=False, pa_block_size=16, key_non_contig=False,
          tail=None, seed=110, quant_mode=0),
 
+    # ---- BF16 weights(量化场景规格允许 FP16/BF16; P1-2 修复的防回退覆盖) ----
+    dict(id="q0_bf16w_bsnd_causal", layout_q="BSND", layout_k="BSND",
+         dtype=FP8, q_lens=[16], k_pools=[64], n1=8, topk=128, pool_size=8,
+         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
+         tail=None, seed=111, quant_mode=0, weights_dtype=torch.bfloat16),
+    dict(id="q0_bf16w_tnd_pa", layout_q="TND", layout_k="PA_BBND",
+         dtype=FP8, q_lens=[8, 16], k_pools=[32, 48], n1=8, topk=64, pool_size=8,
+         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
+         tail=None, seed=112, quant_mode=0, weights_dtype=torch.bfloat16),
+    dict(id="q1_bf16w_bsnd_causal", layout_q="BSND", layout_k="BSND",
+         dtype=FP8, q_lens=[16], k_pools=[64], n1=8, topk=128, pool_size=8,
+         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
+         tail=None, seed=113, quant_mode=1, weights_dtype=torch.bfloat16),
+    dict(id="q0_bf16w_n1_48", layout_q="BSND", layout_k="BSND",
+         dtype=FP8, q_lens=[16], k_pools=[64], n1=48, topk=128, pool_size=8,
+         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
+         tail=None, seed=114, quant_mode=0, weights_dtype=torch.bfloat16),
+
     # ---- mode=1 (mxFP8, E8M0 scale) ----
     dict(id="q1_bsnd_bsnd_nomask_noval", layout_q="BSND", layout_k="BSND",
          dtype=FP8, q_lens=[8], k_pools=[64], n1=8, topk=32, pool_size=1,

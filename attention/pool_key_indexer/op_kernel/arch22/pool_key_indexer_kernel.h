@@ -66,8 +66,12 @@ public:
     static constexpr PkiLayout K_LAYOUT_T = LIT::keyLayout;
     // 编译期条件选择模板第二个参数的类型，直接声明W_T
     // 第一个模板参数：固定为Q_T；第二个模板参数：编译期选float/void
-    using W_T = typename PkiTypeTraits<Q_T,
-                                       typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_DERIVED_T = typename PkiTypeTraits<Q_T,
+                                               typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    // 量化场景: PkiType 显式携带 weightsType(half/bfloat16_t), 优先于推导
+    using W_EXPLICIT_T = typename LIT::weightsType;
+    using W_T = typename std::conditional<std::is_same<W_EXPLICIT_T, void>::value,
+                                          W_DERIVED_T, W_EXPLICIT_T>::type;
 
     using MM1_OUT_T = float;
 

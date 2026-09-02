@@ -31,13 +31,17 @@ template <typename Q_T, typename K_T, typename OUT_T,
           PkiLayout LAYOUT_T = PkiLayout::BSND,
           PkiLayout K_LAYOUT_T = PkiLayout::BSND,
           bool DT_W_FLAG = false,
-          typename SCALE_T = void>
+          typename SCALE_T = void,
+          typename WEIGHTS_T = void>
 struct PkiType {
     static constexpr bool weightsTypeFlag = DT_W_FLAG;
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
     using scaleType = SCALE_T;
+    // 量化场景的 weights 实际 dtype(半精度, 由 kernel entry 按 ORIG_DTYPE_WEIGHTS
+    // 分发传入 half/bfloat16_t); 非量化(WEIGHTS_T=void)沿用 PkiTypeTraits 推导
+    using weightsType = WEIGHTS_T;
     static constexpr bool pageAttention = (K_LAYOUT_T == PkiLayout::PA_BSND);
     static constexpr PkiLayout layout = LAYOUT_T;
     static constexpr PkiLayout keyLayout = K_LAYOUT_T;

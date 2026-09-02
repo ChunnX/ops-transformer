@@ -163,6 +163,8 @@ def _gen_quant_random_case(case_idx, bucket, quant_mode, seed, pa_bs_cycle):
         "tail": tail,
         "seed": seed,
         "quant_mode": quant_mode,
+        # weights dtype 随机(FP16/BF16, 量化场景规格均允许; P1-2 BF16 支持)
+        "weights_dtype": rng.choice([torch.float16, torch.bfloat16]),
     }
 
 

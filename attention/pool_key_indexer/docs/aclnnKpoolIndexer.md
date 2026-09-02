@@ -139,6 +139,7 @@ aclnnStatus aclnnPoolKeyIndexerGetWorkspaceSize(
     int64_t            quantMode,
     bool               returnValue,
     int64_t            keyStride0,
+    int64_t            kDescaleStride0,
     const aclTensor   *sparseIndicesOut,
     const aclTensor   *sparseValuesOut,
     uint64_t          *workspaceSize,
@@ -459,6 +460,23 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>-</td>
     </tr>
     <tr>
+      <td>kDescaleStride0</td>
+      <td>输入</td>
+      <td>kDescaleOptional第0轴的stride（元素单位），用于layoutKeyOptional为PA_BBND场景下0轴非连续kDescaleOptional的寻址。可选属性，建议值为-1。</td>
+      <td>
+          <ul>
+                <li>仅量化场景（quantMode为0或1）有效。</li>
+                <li>-1表示未指定，按连续输入由shape推导stride。</li>
+                <li>指定时取值必须不小于连续stride：quantMode为0时为block_size * N2，quantMode为1时为block_size * N2 * (D / 32)。</li>
+                <li>指定值与kDescaleOptional运行时实际stride冲突时报错。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的SparseIndices输出，展开后的稀疏token索引。</td>
@@ -615,6 +633,7 @@ aclnnStatus aclnnPoolKeyIndexer(
   - topk需满足topk % pool_size == 0，pool_size支持[1, 128]，topk支持[1, 2048]以及3072、4096、5120、6144、7168、8192。
   - block_size取值为16的倍数，最大支持1024。
   - 当layoutKeyOptional为PA_BBND且poolKey为0轴非连续输入时，keyStride0应传入poolKey的实际stride(0)（元素单位，且不小于block_size * N2 * D）；keyStride0为-1时表示未指定，按连续输入推导；keyStride0指定值与poolKey运行时实际stride冲突时报错。
+  - 当layoutKeyOptional为PA_BBND且kDescaleOptional为0轴非连续输入时（量化场景），kDescaleStride0应传入kDescaleOptional的实际stride(0)（元素单位，且不小于连续stride：quantMode为0时为block_size * N2，quantMode为1时为block_size * N2 * (D / 32)）；kDescaleStride0为-1时表示未指定，按连续输入推导；kDescaleStride0指定值与kDescaleOptional运行时实际stride冲突时报错。
 - 输入数据类型限制：
   - 参数query、poolKey的数据类型应保持一致。
   - 非量化场景（quantMode为-1）下，参数weights的数据类型应与query、poolKey保持一致；量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16。
@@ -623,7 +642,8 @@ aclnnStatus aclnnPoolKeyIndexer(
 - 输入数据布局限制：
   - 参数query、poolKey的数据布局（layoutQueryOptional与layoutKeyOptional）需保持一致，PageAttention场景（layoutKeyOptional为PA_BBND时）除外。
 - 其他限制：
-  - poolKey支持0轴非连续。
+  - poolKey支持0轴非连续（仅PA_BBND布局，需配合keyStride0属性；BSND/TND布局要求连续输入）。
+  - kDescaleOptional支持0轴非连续（仅PA_BBND布局且量化场景，需配合kDescaleStride0属性；BSND/TND布局要求连续输入）。
 
 ## 调用示例
 
@@ -793,6 +813,7 @@ int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
     int64_t quantMode = -1;
     bool returnValue = true;
     int64_t keyStride0 = -1;  // -1表示未指定，按连续输入推导stride
+    int64_t kDescaleStride0 = -1;  // -1表示未指定，按连续输入推导stride(量化场景k_descale 0轴非连续寻址)
     constexpr const char layerOutStr[] = "BSND";
     constexpr size_t layerOutLen = sizeof(layerOutStr);
     char layoutQuery[layerOutLen];
@@ -816,7 +837,7 @@ int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
                                                  resources.weightsTensor, poolTailK,
                                                  nullptr, nullptr, nullptr, nullptr, nullptr,
                                                  topk, poolSize, layoutQuery, layoutKey,
-                                                 maskMode, quantMode, returnValue, keyStride0,
+                                                 maskMode, quantMode, returnValue, keyStride0, kDescaleStride0,
                                                  resources.sparseIndicesTensor, resources.sparseValuesTensor,
                                                  workspaceSize, &executor);
 
@@ -1007,6 +1028,7 @@ int main() {
 │  │  quantMode  │      │      │  workspace + executor│                   │
 │  │  returnValue│      │      │  + stream            │                   │
 │  │  keyStride0 │      │      └──────────────────────┘                   │
+│  │  kDsStride0 │      │                                                   │
 │  └─────────────┘      │      └──────────────────────┘                   │
 │                       │                        │                         │
 │  ┌─────────────┐      │                        ▼                         │
@@ -1021,7 +1043,7 @@ int main() {
 
 | 阶段 | 接口 | 输入 | 输出 |
 |------|------|------|------|
-| 第一段（Host） | `aclnnPoolKeyIndexerGetWorkspaceSize` | 9 个输入（poolTailK/actualSeqQ/actualSeqK 为 aclIntArray*，其余为 aclTensor*）+ 8 个属性 | `workspaceSize` + `aclOpExecutor*` |
+| 第一段（Host） | `aclnnPoolKeyIndexerGetWorkspaceSize` | 9 个输入（poolTailK/actualSeqQ/actualSeqK 为 aclIntArray*，其余为 aclTensor*）+ 9 个属性 | `workspaceSize` + `aclOpExecutor*` |
 | 第二段（Device） | `aclnnPoolKeyIndexer` | `workspace` + `executor` + `stream` | 2 个 aclTensor 输出（sparseIndicesOut + sparseValuesOut） |
 
 #### 接口层输入输出关系
@@ -1039,7 +1061,7 @@ int main() {
   [8] kDescale (opt)     ─┘
 
 属性 (Attr):
-  topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue, keyStride0
+  topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue, keyStride0, kDescaleStride0
 ```
 
 #### 可选输入处理（接口层）
@@ -1051,6 +1073,7 @@ int main() {
 | blockTable | 非 PA 布局时为 null |
 | qDescale / kDescale | quantMode=-1 时为 null |
 | keyStride0（属性） | -1（未指定）时按连续输入推导 stride；PA 0 轴非连续时须与实际 stride 一致 |
+| kDescaleStride0（属性） | -1（未指定）时按连续输入推导 stride（量化场景）；PA 0 轴非连续 kDescale 时须与实际 stride 一致 |
 
 #### 输出 shape 推导（接口层）
 
