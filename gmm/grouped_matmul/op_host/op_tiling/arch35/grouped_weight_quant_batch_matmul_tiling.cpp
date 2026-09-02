@@ -1291,8 +1291,10 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
         int64_t n = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
         if (weightNzFlag_) {
             // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
-            n = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2) :     //wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
-                          wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);      //wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
+            n = transB_ ? wShape.GetDim(wDimNum - 3) *
+                              wShape.GetDim(wDimNum - 2) : // wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
+                    wShape.GetDim(wDimNum - 4) *
+                        wShape.GetDim(wDimNum - 1); // wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
         }
         // k不能单独为0
         OP_CHECK_IF(
@@ -1370,7 +1372,8 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXSingleWeightS
         // -3含义：转置N1索引；-2含义：转置N0索引
         nSize_ = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
                            // -4含义：非转置N1索引；-1含义：非转置N0索引
-                           :wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+                           :
+                           wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         const gert::StorageShape *yShapePtr = context->GetOutputShape(0);
         OP_CHECK_IF(yShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "yShapePtr is nullptr."), return false);
         const gert::Shape &yShape = yShapePtr->GetOriginShape();
@@ -1440,7 +1443,8 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXMultiWeightSi
             // -3含义：转置N1索引；-2含义：转置N0索引
             nSize = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
                               // -4含义：非转置N1索引；-1含义：非转置N0索引
-                              :wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+                              :
+                              wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         }
         if (isFp4PackType && !transB_) {
             // 一个float32/int32表示8个fp4/int4，设置为正确shape；kSize来自x，不需要考虑转置场景k轴扩大
@@ -1574,7 +1578,8 @@ bool GroupedWeightQuantBatchMatmulTiling::DeriveGroupSizeSingle(const gert::Tili
         } else {
             // (g, K, N) format: K axis index depends on transB
             groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 1) :
-                                 antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);      //- 2代表倒数第二个维度，目的是在是否转置时取得N维度
+                                 antiquantScaleShape.GetDim(antiquantScaleDimNum -
+                                                            2); //- 2代表倒数第二个维度，目的是在是否转置时取得N维度
         }
     } else if (antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM) {
         // antiquantScaleShape: (g,n,k/64,2) or (g,k/64,n,2)
@@ -2204,18 +2209,16 @@ bool GroupedS8S4BasicApiTiling::CheckWeightNzStorageShape(const gert::Shape &sto
     // a direct INT32 Host invocation as well, but reject all other physical
     // layouts instead of accepting a same-sized, differently blocked NZ.
     const uint64_t expectedC0 = weightPackedInt32_ ? 4UL : 32UL;
-    const uint64_t expectedOuter0 = specialWeightFormat_ ?
-                                        CeilDiv(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
-                                        CeilDiv(inputParams_.nSize, NZ_BASE_N_ALIGN);
-    const uint64_t expectedOuter1 = specialWeightFormat_ ?
-                                        CeilDiv(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
-                                        CeilDiv(inputParams_.kSize, NZ_BASE_K_ALIGN);
+    const uint64_t expectedOuter0 = specialWeightFormat_ ? CeilDiv(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
+                                                           CeilDiv(inputParams_.nSize, NZ_BASE_N_ALIGN);
+    const uint64_t expectedOuter1 = specialWeightFormat_ ? CeilDiv(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
+                                                           CeilDiv(inputParams_.kSize, NZ_BASE_K_ALIGN);
     const bool shapeMatches = storageShape.GetDimNum() == 5 &&
-        static_cast<uint64_t>(storageShape.GetDim(0)) == inputParams_.groupNum &&
-        static_cast<uint64_t>(storageShape.GetDim(1)) == expectedOuter0 &&
-        static_cast<uint64_t>(storageShape.GetDim(2)) == expectedOuter1 &&
-        static_cast<uint64_t>(storageShape.GetDim(3)) == NZ_BASE_K_ALIGN &&
-        static_cast<uint64_t>(storageShape.GetDim(4)) == expectedC0;
+                              static_cast<uint64_t>(storageShape.GetDim(0)) == inputParams_.groupNum &&
+                              static_cast<uint64_t>(storageShape.GetDim(1)) == expectedOuter0 &&
+                              static_cast<uint64_t>(storageShape.GetDim(2)) == expectedOuter1 &&
+                              static_cast<uint64_t>(storageShape.GetDim(3)) == NZ_BASE_K_ALIGN &&
+                              static_cast<uint64_t>(storageShape.GetDim(4)) == expectedC0;
     OP_CHECK_IF(!shapeMatches,
                 OP_LOGE(context_->GetNodeName(),
                         "A5 INT4 %s weight storage shape must be "
@@ -2420,8 +2423,7 @@ void GroupedS8S4BasicApiTiling::SetMmTilingData(uint64_t kL1)
     // sign-extends W4 directly, so it must not be injected into Cube.
     tilingData_.mmTilingData.isBias = 0U;
     const uint64_t l0cTileBytes = basicTiling_.baseM * basicTiling_.baseN * sizeof(int32_t);
-    tilingData_.mmTilingData.dbL0C =
-        l0cTileBytes * 2UL <= aicoreParams_.l0cSize ? 2U : 1U;
+    tilingData_.mmTilingData.dbL0C = l0cTileBytes * 2UL <= aicoreParams_.l0cSize ? 2U : 1U;
 }
 
 ge::graphStatus GroupedS8S4BasicApiTiling::ComputeWorkspaceLayout()
@@ -2506,9 +2508,7 @@ ge::graphStatus GroupedS8S4BasicApiTiling::ComputeWorkspaceLayout()
 ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
 {
     SetBasicBlock();
-    uint64_t kL1 = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ?
-                       S8S4_PER_GROUP_K_L1 :
-                       S8S4_PER_CHANNEL_K_L1;
+    uint64_t kL1 = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? S8S4_PER_GROUP_K_L1 : S8S4_PER_CHANNEL_K_L1;
     const uint64_t alignedK = CeilAlign(inputParams_.kSize, static_cast<uint64_t>(QUANT_GROUP_SIZE));
     kL1 = std::min(kL1, alignedK);
     OP_CHECK_IF(ValidateFixedTileResources(kL1) != ge::GRAPH_SUCCESS,

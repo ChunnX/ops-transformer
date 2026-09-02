@@ -313,8 +313,8 @@ bool GetTransposeAxesForScale(bool isMxScale, bool isMxPertokenScale, std::size_
         if (dimNum < kPermScale.size()) {
             return false;
         }
-        firstTransposeAxis = dimNum - 3;     //倒数索引，定位N轴
-        secondTransposeAxis = dimNum - 2;    //倒数索引，定位K/gs
+        firstTransposeAxis = dimNum - 3;  // 倒数索引，定位N轴
+        secondTransposeAxis = dimNum - 2; // 倒数索引，定位K/gs
     } else if (isMxPertokenScale) {
         firstTransposeAxis = 0;
         secondTransposeAxis = 1;
@@ -322,8 +322,8 @@ bool GetTransposeAxesForScale(bool isMxScale, bool isMxPertokenScale, std::size_
     return true;
 }
 
-bool IsReshapeTransForScale(
-    int32_t index, const GNodePtr& nodePerInput, bool isMxQuantMode, bool allowFullyDynamicMxFp4Scale)
+bool IsReshapeTransForScale(int32_t index, const GNodePtr &nodePerInput, bool isMxQuantMode,
+                            bool allowFullyDynamicMxFp4Scale)
 {
     if (!IsType(nodePerInput, kOpTypeReshape) || index == kXIndex || index == kWeightIndex ||
         index == kAntiquantScaleIndex) {
@@ -342,8 +342,7 @@ bool IsReshapeTransForScale(
         return false;
     }
 
-    const bool isMxScale =
-        index == kScaleIndex && (isMxQuantMode || inputDesc.GetDataType() == DT_FLOAT8_E8M0);
+    const bool isMxScale = index == kScaleIndex && (isMxQuantMode || inputDesc.GetDataType() == DT_FLOAT8_E8M0);
     const bool isMxPertokenScale = index == kPertokenScaleIndex && inputDesc.GetDataType() == DT_FLOAT8_E8M0;
     std::size_t firstTransposeAxis = 0;
     std::size_t secondTransposeAxis = 0;
