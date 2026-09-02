@@ -65,6 +65,18 @@ static inline bool CheckCacheContiguous(const aclTensor *kCacheRef, const aclTen
     return true;
 }
 
+// q 由 l0 内部分配后 ViewCopy 写回，tiling 看到的是内部张量的 format，
+// 调用方 q 的 format 只有这里能查。
+static inline bool CheckQOutFormat(const aclTensor *qOut)
+{
+    if (qOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qOut only supports ND format, got %s.",
+                op::ToString(qOut->GetStorageFormat()).GetString());
+        return false;
+    }
+    return true;
+}
+
 static inline bool CheckGenPaired(const aclTensor *genQkvOptional, const aclTensor *genWeightsQOptional,
                                   const aclTensor *genWeightsKOptional)
 {
@@ -103,6 +115,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckGenPaired(genQkvOptional, genWeightsQOptional, genWeightsKOptional),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheContiguous(kCacheRef, vCacheRef), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckQOutFormat(qOut), ACLNN_ERR_PARAM_INVALID);
 
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -144,11 +157,14 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     // 一旦走 Contiguous 拿到的就是副本，kernel 的原地写会落到副本上而调用方看不到结果。
 
     // 调用l0接口进行计算
-    auto l0Ret = l0op::UndGenQkvRmsNormRopeCache(
+    auto qResult = l0op::UndGenQkvRmsNormRopeCache(
         undQkvContiguous, undWeightsQContiguous, undWeightsKContiguous, cosSinCacheContiguous, kCacheRef, vCacheRef,
         slotMappingContiguous, positionsContiguous, genQkvContiguous, genWeightsQContiguous, genWeightsKContiguous,
-        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, qOut, uniqueExecutor.get());
-    CHECK_RET(l0Ret == ACLNN_SUCCESS, l0Ret);
+        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, uniqueExecutor.get());
+    CHECK_RET(qResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto viewCopyResult = l0op::ViewCopy(qResult, qOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 获取workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
