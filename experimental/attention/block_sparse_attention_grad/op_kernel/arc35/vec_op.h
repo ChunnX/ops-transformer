@@ -95,6 +95,7 @@ private:
     int64_t l1_offset_;
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
+    TEventID event_nz_ = EVENT_ID1; // softmax/sftg NZ 中转缓冲的 MTE3->V 空闲通知
     TEventID event_id;
 
 public:
@@ -146,12 +147,16 @@ public:
     {
         SET_FLAG(V, MTE2, event_ping_);
         SET_FLAG(V, MTE2, event_pong_);
+        // softmax/sftg NZ 中转缓冲初始视为空闲（无在途 MTE3 拷贝）
+        SET_FLAG(MTE3, V, event_nz_);
     }
 
     __aicore__ inline void WaitFlag()
     {
         WAIT_FLAG(V, MTE2, event_ping_);
         WAIT_FLAG(V, MTE2, event_pong_);
+        // 排空最后一个任务的 MTE3 拷贝，保证 set/wait 配对平衡
+        WAIT_FLAG(MTE3, V, event_nz_);
     }
 
     __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
@@ -273,6 +278,11 @@ public:
             WAIT_FLAG(V, MTE2, event_id);
             CopyInLSE(lse_tensor_, lse_gm_[lse_gm_offset_], half_s1_process_real_);
             DataCopy(sftg_front_tensor_, sftg_workspace_[sftg_gm_offset_], half_s1_process_real_ * 8);
+            // 修复：原代码误写为 SET_FLAG(MTE3, MTE2, EVENT_ID0)，置位的是 MTE3→MTE2 方向的
+            // flag，而下方 WAIT_FLAG(MTE2, V, EVENT_ID0) 等待的是 MTE2→V 方向 —— 该 flag 从未被
+            // 置位，等待立即通过，lse/sftg_front 的 MTE2 拷贝实际未被同步。blockShape=64 时
+            // mm1 计算变短，CrossCoreWaitFlag(C1_V1) 不再能覆盖 MTE2 延迟，导致 T1 起读到
+            // 未落位的 UB（lse=0，p 缺少 lse 减项，误差呈 exp(lse)≈64 倍）或前一任务的旧值。
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
         }
@@ -293,6 +303,12 @@ public:
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                       (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
 
+        // 等待上一个任务的 MTE3 DataCopy 读走 softmax_res_nz_tensor_ / sftg_res_nz_tensor_ 后才允许覆写。
+        // 该缓冲无乒乓，blockShape=64 时同一向量核会连续处理多个 base 块任务，缺失此同步会产生
+        // "前一任务 MTE3 搬运尚未完成、后一任务 V 核 CastND2NZ 已覆写" 的竞态（结果非确定性错误）。
+        // event_nz_ 由 SendVecSoftmaxGrad 末尾（本任务最后一次 MTE3 搬运之后）置位，MTE3 顺序性
+        // 保证等待它即可同时覆盖 softmax_res 与 sftg_res 两个中转缓冲。
+        WAIT_FLAG(MTE3, V, event_nz_);
         CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
@@ -335,6 +351,8 @@ public:
         dataCopyParams.dstStride =
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(dst_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
+        // 本任务对 NZ 中转缓冲的最后一次 MTE3 搬运已下发，通知下一任务可以覆写
+        SET_FLAG(MTE3, V, event_nz_);
         SET_FLAG(V, MTE2, event_id);
     }
 

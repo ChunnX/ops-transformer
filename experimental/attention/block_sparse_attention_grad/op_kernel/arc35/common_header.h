@@ -29,6 +29,29 @@ static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
 static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
 static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
 static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
+// mm1/mm2_res UB 乒乓槽的"释放"握手（双向 flag 的回程），参照 L0_minimal FA 的
+// BMM1_READY 模式：AIV SoftmaxGrad 读完该槽后 V pipe 置位；AIC 下一轮 fixpipe
+// 覆写同槽前在 FIX pipe 上直接等待。缺少该握手时覆写只受 mm345 块 MTE1 等待
+// 间接约束，实测 FIX pipe fixpipe 未与之形成有效顺序（blockShape=64 高发），
+// T+2 轮覆写早于 AIV 本轮 SoftmaxGrad 读完成 → ds 部分行读到新数据
+static constexpr uint32_t FLAG_VR = 5;        // vec(读完mm1/mm2 UB) -> cube(fixpipe覆写前等待)
+// FFTS flag id 空间中 AIV 子核 1 的事件偏移（参照 CANN buffer.h 的 AIV0_AIV1_OFFSET）：
+// 子核 0 用 flagId 本值，子核 1 用 flagId+16；AIC 侧需 wait 两个才算两子核均完成
+static constexpr uint32_t AIV_SUB_FLAG_OFFSET = 16;
+
+// 跨核 flag 等待后的写传播窗口覆盖延迟：
+// 紧耦合（1 AIC + 2 AIV）下，AIC fixpipe 写 AIV UB 的数据通路与 FFTS flag 信号通路
+// 独立传播，flag 置位可能先于 UB 写数据在 AIV 侧可见。blockShape=64 时 mm1 很短，
+// AIV 常在 flag 置位瞬间被释放并立刻读 UB，命中该窗口读到旧值。此延迟仅在
+// CrossCoreWaitFlag 返回后调用，用于覆盖该传播窗口（实测 2000 次自旋足够）。
+__aicore__ inline void CrossCoreDelay()
+{
+    volatile uint32_t spin = 0;
+    for (uint32_t i = 0; i < 2000; i++) {
+        spin += i;
+    }
+    (void)spin;
+}
 
 struct ConstInfo {
     int32_t q_head_num{0};

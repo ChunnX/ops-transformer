@@ -161,6 +161,9 @@ public:
     __aicore__ inline void SendMatmulDq(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
+        // key 与 SendMatmulQK 的写入侧一致，必须按 SingleBlock 级 kv_ping_pong_idx 选槽：
+        // KV 只在 SingleBlock 首任务搬运一次（need_copy_kv=1），同一 SingleBlock 内所有任务的
+        // key 都在同一乒乓槽；若按任务级 pp 选槽，第 2 个任务起会读到未初始化的另一槽
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 

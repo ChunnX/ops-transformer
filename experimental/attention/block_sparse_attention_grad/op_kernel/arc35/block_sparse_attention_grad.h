@@ -136,18 +136,33 @@ public:
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
 
             if (runTimeInfo_[ping_pong_idx].need_compute) {
-                // mm12
+                // mm12：AIC->AIV 的 UB 结果通知（mode4，参照生产 UB buffer 模式）：
+                // AIC set id 与 id+16（分别对应两个 AIV 子核），AIV wait 自己的 id
+                // fixpipe 覆写保护：本轮将覆写 mm1/mm2_res_ub[slot=taskId%2]，该槽上一次
+                // 被 AIV 读取是 taskId-2 轮（SoftmaxGrad 读 mm1(p)/mm2）。必须在 FIX pipe
+                // 上于 fixpipe 之前等待 AIV 的释放通知 FLAG_VR（SoftmaxGrad 完成后 V pipe
+                // 置位）——参照 L0_minimal FA 的 BMM1_READY 双向握手。此前仅靠 mm345 块
+                // 的 MTE1 等待间接覆盖，实测 fixpipe（FIX pipe）未与之形成有效顺序，
+                // blockShape=64 时 T+2 轮覆写早于 AIV 本轮 SoftmaxGrad 读完成，
+                // ds 部分行读到 T+2 新数据 → dq 部分行/ dk 全行精度错误。
+                CrossCoreWaitFlag<4, PIPE_FIX>(FLAG_VR);
+                CrossCoreWaitFlag<4, PIPE_FIX>(FLAG_VR + AIV_SUB_FLAG_OFFSET);
                 cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
+                CrossCoreSetFlag<4, PIPE_FIX>(FLAG_C1_V1);
+                CrossCoreSetFlag<4, PIPE_FIX>(FLAG_C1_V1 + AIV_SUB_FLAG_OFFSET);
                 cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
+                CrossCoreSetFlag<4, PIPE_FIX>(FLAG_C2_V2);
+                CrossCoreSetFlag<4, PIPE_FIX>(FLAG_C2_V2 + AIV_SUB_FLAG_OFFSET);
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
-                // mm345
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
+                // mm345：p/ds 的 L1 数据由两个 AIV 子核各写一半，mode4 下必须
+                // wait id 与 id+16 两个 flag（分别对应两个子核）才能启动 GEMM
+                CrossCoreWaitFlag<4, PIPE_MTE1>(FLAG_V1_C3);
+                CrossCoreWaitFlag<4, PIPE_MTE1>(FLAG_V1_C3 + AIV_SUB_FLAG_OFFSET);
                 cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
+                CrossCoreWaitFlag<4, PIPE_MTE1>(FLAG_V2_C45);
+                CrossCoreWaitFlag<4, PIPE_MTE1>(FLAG_V2_C45 + AIV_SUB_FLAG_OFFSET);
                 cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                 cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                 SET_FLAG(MTE1, MTE2, EVENT_ID0);
@@ -183,6 +198,14 @@ public:
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
 
         vecOp.SetFlag();
+        // mm1/mm2 UB 槽初始视为已释放（无在途读取），AIC 首两轮 fixpipe 的
+        // FLAG_VR 等待由该初始置位满足（mode4 下两 AIV 子核各置位 id / id+16）
+        CrossCoreSetFlag<4, PIPE_V>(FLAG_VR);
+        // AIV->AIC 的 p/ds 完成通知（参照生产 FA Buffer policy 的 L1 CROSS_CORE_SYNC 模式）：
+        // mode4 语义下两个 AIV 子核 set 同一 flag id（硬件按 sub-block 自动分账），
+        // AIC 侧 wait id 与 id+16 才代表两个子核均完成。此前 mode2 下两子核 set
+        // 同一 id，快子核置位 AIC 即通过，慢子核仍可能在读 mm1/mm2 UB，被下一轮
+        // T+2 的 fixpipe（乒乓同槽）覆写 → 非确定性精度错误（blockShape=64 高发）
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
@@ -194,14 +217,26 @@ public:
 
             if (runTimeInfo_[ping_pong_idx].need_compute) {
                 vecOp.SendVecSftPreProcess(runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
+                // AIC->AIV 的 mm1/mm2 UB 结果等待。两个要点（blockShape=64 场景实测）：
+                // 1) PIPE_S 标量队列等待：PIPE_V 向量队列等待存在返回后数据尚未对向量
+                //    指令可见的窗口（mm1 很短时高发，表现为 p≈exp(s) 丢失 lse 减项）；
+                //    标量队列阻塞可保证 wait 返回后向量指令才开始发射。
+                // 2) CrossCoreDelay：FFTS flag 信号通路与 UB 写数据通路独立传播，
+                //    flag 置位可能先于数据可见，需少量自旋覆盖该传播窗口。
+                CrossCoreWaitFlag<4, PIPE_S>(FLAG_C1_V1);
+                CrossCoreDelay();
                 vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
-                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
+                CrossCoreSetFlag<4, PIPE_MTE3>(FLAG_V1_C3);
 
-                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C2_V2);
+                CrossCoreWaitFlag<4, PIPE_S>(FLAG_C2_V2);
+                CrossCoreDelay();
                 vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
                                          runTimeInfo_[ping_pong_idx]);
-                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
+                CrossCoreSetFlag<4, PIPE_MTE3>(FLAG_V2_C45);
+                // 本任务对 mm1/mm2_res_ub[slot=taskId%2] 的全部读取（Softmax 读 s、
+                // SoftmaxGrad 读 p/mm2）已完成，在 V pipe 上向 AIC 发释放通知：
+                // AIC 在 T+2 轮 fixpipe 覆写该槽前等待 FLAG_VR（含 +16 子核分账）
+                CrossCoreSetFlag<4, PIPE_V>(FLAG_VR);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
