@@ -18,7 +18,6 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_backward_c0_copyout.h"
 
 namespace MhcPreBackwardUtils {
 
@@ -64,12 +63,9 @@ using namespace AscendC;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
-// q0保留双缓冲以支持V0提前搬运grad_h_res；q1和qout使用单缓冲。
-// 119KB TBuf可同时容纳64KB C0直连槽和约43KB V2工作区。
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 4 - 1) * 1024; // 119KB
-constexpr uint32_t C0_DIRECT_UB_SLOT_SIZE = 32 * 1024;        // 每个AIV保存128x64个FP32
-constexpr uint32_t C0_DIRECT_UB_SIZE = DOUBLE_BUFFER * C0_DIRECT_UB_SLOT_SIZE;
-constexpr uint32_t C0_DIRECT_UB_SLOT_ELEMS = C0_DIRECT_UB_SLOT_SIZE / sizeof(float);
+// V0/V1的最大占用约49.5KB；V2统一使用64行chunk后最大占用约42.75KB。
+// 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
@@ -146,11 +142,10 @@ struct V0V1Buffers {
     uint32_t gatherLength;
 };
 
-using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float, false, LayoutMode::NONE, true>;
-using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float, false, LayoutMode::NONE, true>;
-using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND, float>;
-using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, cT_C0, CFG_NORM,
-                                 MatmulCallBackFunc<nullptr, nullptr, nullptr>, MhcC0SplitNPolicy>;
+using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
