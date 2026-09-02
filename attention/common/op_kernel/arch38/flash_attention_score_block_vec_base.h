@@ -499,7 +499,7 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(LocalTenso
         }
         if (isRowInvalidNeedUpdate) {
             if constexpr (!POST_QUANT) {
-                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, runInfo.vec2S1RealSize, constInfo.dSizeV,
+                RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, runInfo.vec2S1RealSize, constInfo.dSizeV,
                                           static_cast<uint32_t>(dSizeAligned64));
             } else {
                 uint32_t dStride =

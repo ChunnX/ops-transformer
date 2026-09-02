@@ -119,7 +119,7 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl128(
                                                                              (half)quantScaleP, preg_all_b16);
                 MicroAPI::Cast<int8_t, half, castTrait>(vreg_res, vreg_muls_res, preg_all_b16);
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
-                    vreg_res, (MicroAPI::RegTensor<uint16_t> &)vreg_res);
+                    (MicroAPI::RegTensor<uint8_t> &)vreg_res, (MicroAPI::RegTensor<uint16_t> &)vreg_res);
                 MicroAPI::DataCopy<int8_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                                    MicroAPI::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int8_t *&)expUb, vreg_res,
                                                                             blockStride, repeatStride, preg_s8);
@@ -258,9 +258,9 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
                 MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_2, vreg_muls_res_2, preg_all_b16);
 
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
-                    vreg_res_1, (MicroAPI::RegTensor<uint16_t> &)vreg_res_1);
+                    (MicroAPI::RegTensor<uint8_t> &)vreg_res_1, (MicroAPI::RegTensor<uint16_t> &)vreg_res_1);
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
-                    vreg_res_2, (MicroAPI::RegTensor<uint16_t> &)vreg_res_2);
+                    (MicroAPI::RegTensor<uint8_t> &)vreg_res_2, (MicroAPI::RegTensor<uint16_t> &)vreg_res_2);
 
                 MicroAPI::DataCopy<int8_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                                    MicroAPI::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int8_t *&)expUb1, vreg_res_1,
@@ -444,7 +444,7 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl128(
 
                 MicroAPI::Cast<int8_t, half, castTrait0>(vreg_res, vreg_muls_res, preg_all_b16);
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
-                    vreg_res, (MicroAPI::RegTensor<uint16_t> &)vreg_res);
+                    (MicroAPI::RegTensor<uint8_t> &)vreg_res, (MicroAPI::RegTensor<uint16_t> &)vreg_res);
 
                 MicroAPI::DataCopy<int8_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                                    MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ int8_t *&)expUb), vreg_res,
@@ -640,9 +640,9 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
                 MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_2, vreg_muls_res_2, preg_all_b16);
 
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
-                    vreg_res_1, (MicroAPI::RegTensor<uint16_t> &)vreg_res_1);
+                    (MicroAPI::RegTensor<uint8_t> &)vreg_res_1, (MicroAPI::RegTensor<uint16_t> &)vreg_res_1);
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
-                    vreg_res_2, (MicroAPI::RegTensor<uint16_t> &)vreg_res_2);
+                    (MicroAPI::RegTensor<uint8_t> &)vreg_res_2, (MicroAPI::RegTensor<uint16_t> &)vreg_res_2);
 
                 MicroAPI::DataCopy<int8_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                                    MicroAPI::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int8_t *&)expUb1, vreg_res_1,
