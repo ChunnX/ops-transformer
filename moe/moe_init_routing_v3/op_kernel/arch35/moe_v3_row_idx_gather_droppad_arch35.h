@@ -108,20 +108,22 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutAllOutput()
 
     // DropPad padding rows may never be touched by gather_out. Pre-clear the whole output once, then
     // synchronize before valid rows are written, avoiding many small expert-gap clears.
-    if constexpr (IsSameType<T, hifloat8_t>::value) {
-        GlobalTensor<uint8_t> zeroGm;
-        zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXUint8Gm_.GetPhyAddr() + startIndex * this->cols_,
-                               rowCount * this->cols_);
-        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
-    } else {
-        GlobalTensor<T> zeroGm;
-        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startIndex * this->cols_,
-                               rowCount * this->cols_);
-        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+    if (this->cols_ > 0) {
+        if constexpr (IsSameType<T, hifloat8_t>::value) {
+            GlobalTensor<uint8_t> zeroGm;
+            zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXUint8Gm_.GetPhyAddr() + startIndex * this->cols_,
+                                   rowCount * this->cols_);
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
+        } else {
+            GlobalTensor<T> zeroGm;
+            zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startIndex * this->cols_,
+                                   rowCount * this->cols_);
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+        }
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
     }
-    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
     if (this->isInputScale_ == 1) {
         GlobalTensor<float> scaleZeroGm;
