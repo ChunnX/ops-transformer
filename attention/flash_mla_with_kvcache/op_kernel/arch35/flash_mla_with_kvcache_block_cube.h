@@ -195,6 +195,14 @@ public:
         // 仅 PA 实例化（host 强制 PA 路由），非 PA 分支已删
         InitKVBuffer(constInfo.n2Size, constInfo.blockSize, constInfo.dSize + constInfo.dSizeRope, kCacheGm, kCache,
                      constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+
+        // decode 场景 K/V 数据量远超 L2 容量，关闭 L2 Cache 避免无意义的缓存填充/驱逐开销
+        // （对齐 fia_block_cube_noquant_mla.h:152-158；MLA 默认关闭，无 tiling 下发开关）
+        if (true) {
+#ifndef ASCENDC_OOM
+            kCacheGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+#endif
+        }
     }
 
     __aicore__ inline void InitQBuffer(

@@ -88,8 +88,7 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
     KERNEL_CHECK_FALSE(CheckAttrs(), false, "Check attrs failed");
     KERNEL_CHECK_FALSE(CheckActualKvSeq(), false, "Check kv sequence failed");
     // batch size 由必传的 cacheSeqlens 长度推导（每 batch 一项），batch_size attr 已移除
-    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false,
-                       "cacheSeqlens must be provided to derive batch_size");
+    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false, "cacheSeqlens must be provided to derive batch_size");
     KERNEL_CHECK_FALSE(CheckActualQuerySeq(static_cast<int64_t>(actualSeqlenKv_.size())), false,
                        "Check query sequence failed");
     return true;
@@ -98,12 +97,12 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
 bool FlashMlaWithKvcacheMetadataCpuKernel::CheckAttrs()
 {
     KERNEL_CHECK_FALSE(numHeadsQ_ > 0, false, "numHeadsQ must be greater than 0, but got %d", numHeadsQ_);
-    KERNEL_CHECK_FALSE(numHeadsKv_ == MLA_KV_HEADS, false,
-                       "MLA kv head num must be %ld, but got %d", MLA_KV_HEADS, numHeadsKv_);
+    KERNEL_CHECK_FALSE(numHeadsKv_ == MLA_KV_HEADS, false, "MLA kv head num must be %ld, but got %d", MLA_KV_HEADS,
+                       numHeadsKv_);
     KERNEL_CHECK_FALSE(headDimQk_ == MLA_HEAD_DIM_QK, false,
                        "MLA headDimQk (nope 512 + rope 64) must be %ld, but got %d", MLA_HEAD_DIM_QK, headDimQk_);
-    KERNEL_CHECK_FALSE(headDimV_ == MLA_HEAD_DIM_V, false,
-                       "MLA headDimV (value/output width) must be %ld, but got %d", MLA_HEAD_DIM_V, headDimV_);
+    KERNEL_CHECK_FALSE(headDimV_ == MLA_HEAD_DIM_V, false, "MLA headDimV (value/output width) must be %ld, but got %d",
+                       MLA_HEAD_DIM_V, headDimV_);
     KERNEL_CHECK_FALSE((maskMode_ == 0 || maskMode_ == 3), false,
                        "maskMode only supports 0(NO_MASK), 3(RIGHT_DOWN), but got %d", maskMode_);
     KERNEL_CHECK_FALSE((layoutQ_ == "TND" || layoutQ_ == "BNSD" || layoutQ_ == "BSND"), false,
@@ -229,9 +228,18 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
 {
     param.mBaseSize = 64;
     param.s2BaseSize = 128;
-    param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
-    param.fdTolerance = 10;             // 10: tolerance block
-    param.fdLeastBlock = 3;             // 3: least block
+    // M 方向总行数 = g * S1 = (N1/N2) * maxSeqlenQ。若总行数 <= 2*mBaseSize（M 最多 2 块），
+    // 多 section 切分无收益，仅增加 metadata/re-init/SyncAll 开销，故关闭。
+    {
+        uint32_t g = numHeadsQ_ / numHeadsKv_;
+        if (g * maxSeqlenQ_ <= param.mBaseSize * 2) {
+            param.l2Byte = 0U; // 0: disable section splitting
+        } else {
+            param.l2Byte = 96U * 1024U * 1024U; // 96MB
+        }
+    }
+    param.fdTolerance = 10; // 10: tolerance block
+    param.fdLeastBlock = 3; // 3: least block
     // SectionStreamK 的 FD 调度 = 长 KV 的 s2 核间切分 + workspace 归约（decode 提速）。flash_mla
     // kernel 当前只在上板验证了 FA 单核 s2 迭代路径（fa-portion），FD 归约路径未经历跨 section
     // 真机校验（isFd 路由修正后 b8/kvS=32768 上板挂起）。暂关闭 FD 调度 → 所有 (bn2,m) 块在单核
