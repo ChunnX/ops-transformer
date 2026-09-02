@@ -66,6 +66,14 @@ def _num_heads_kv_from_shape(k, layout_kv):
     return int(k.shape[2])
 
 
+def _head_dim_v_from_shape(v, layout_kv):
+    if layout_kv == "TND":
+        return int(v.shape[2])
+    if layout_kv == "PA_NZ":
+        return int(v.shape[2]) * int(v.shape[4])
+    return int(v.shape[-1])
+
+
 def run_metadata(arguments, metadata):
     import cann_ops_transformer  # noqa: F401  (注册 torch.ops.cann_ops_transformer)
 
@@ -78,7 +86,7 @@ def run_metadata(arguments, metadata):
         cu_seqlens_kv=move_to_device(arguments.get("cu_seqlens_kv"), metadata),
         seqused_q=move_to_device(arguments.get("seqused_q"), metadata),
         seqused_kv=move_to_device(arguments.get("seqused_kv"), metadata),
-        v_descale=move_to_device(arguments.get("v_descale"), metadata),
+        head_dim_v=arguments.get("head_dim_v"),
         batch_size=arguments.get("batch_size"),
         max_seqlen_q=arguments.get("max_seqlen_q"),
         max_seqlen_kv=arguments.get("max_seqlen_kv"),
@@ -131,7 +139,7 @@ def run(
     layout_q/layout_q_descale/layout_kv/layout_out/return_softmax_lse);
     N_q/N_kv/D/batch_size 等非 schema 属性由 TTK 以 kwargs 传入。
     """
-    del v, q_descale, k_descale, block_table, p_scale, sinks, attn_mask
+    del q_descale, k_descale, v_descale, block_table, p_scale, sinks, attn_mask
     del softmax_scale, return_softmax_lse
     if metadata is None:
         raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
@@ -175,7 +183,7 @@ def run(
         "cu_seqlens_kv": cu_seqlens_kv if is_tnd_kv else None,
         "seqused_q": seqused_q,
         "seqused_kv": seqused_kv,
-        "v_descale": v_descale,
+        "head_dim_v": _head_dim_v_from_shape(v, layout_kv),
         "batch_size": None if is_tnd_q else batch_size,
         "max_seqlen_q": int(max_seqlen_q),
         "max_seqlen_kv": int(max_seqlen_kv),

@@ -319,7 +319,10 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             cu_seqlens_kv=cu_seqlens_kv if is_tnd_kv else None,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
-            v_descale=inputs["dequant_scale_v"],
+            head_dim_v=(
+                int(v.shape[2]) if layout_kv == "TND"
+                else (int(v.shape[2]) * int(v.shape[4]) if layout_kv == "PA_NZ" else int(v.shape[-1]))
+            ),
             batch_size=batch_size if not is_tnd_q else None,
             mask_mode=int(inputs["sparse_mode"]),
             layout_q=layout_q,
