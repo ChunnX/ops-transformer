@@ -388,10 +388,17 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
       <td>561101</td>
       <td>创建<code>aclOpExecutor</code>失败，或输入的Contiguous处理失败。</td>
     </tr>
+    <tr>
+      <td style="white-space: nowrap">ACLNN_ERR_INNER_NULLPTR</td>
+      <td>561103</td>
+      <td>InferShape失败。含各输入的D维取值不一致、<code>kCacheRef</code>与<code>vCacheRef</code>的Bn/Bs不一致、KV Cache的N维与<code>numHeadsK</code>/<code>numHeadsV</code>不一致等场景，具体原因见host侧日志。</td>
+    </tr>
   </tbody>
   </table>
 
-  > 数据类型、shape与属性取值的完整校验统一收敛在tiling一层实现（aclnn单算子路径与图模式最终都会走tiling，避免同一条约束在多处重复实现导致漂移）。代价是这类非法入参不在第一段接口报错，而是在第二段接口`aclnnUndGenQkvRmsNormRopeCache`执行阶段由tiling返回失败，具体原因见host侧日志。
+  > 数据类型、shape与属性取值的完整校验收敛在tiling一层实现（aclnn单算子路径与图模式最终都会走tiling，避免同一条约束在多处重复实现导致漂移）。代价是这类非法入参不在第一段接口报错，而是在第二段接口`aclnnUndGenQkvRmsNormRopeCache`执行阶段由tiling返回失败，具体原因见host侧日志。
+  >
+  > 例外是跨输入的维度一致性（D、KV Cache的Bn/Bs/N）：`k_cache`/`v_cache`原地写入、必须直接下发调用方的tensor，而InferShape会把推导结果无条件写回，tiling侧读到的已不是调用方传入的值。这类约束改由InferShape校验，在第一段接口即返回561101/561103。
 
 ## aclnnUndGenQkvRmsNormRopeCache
 

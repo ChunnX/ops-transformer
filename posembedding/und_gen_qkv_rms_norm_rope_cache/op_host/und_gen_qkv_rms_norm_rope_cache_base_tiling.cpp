@@ -91,6 +91,8 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 
     OP_CHECK_IF(CheckDtypeValid() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CheckDtypeValid failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckFormatValid() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CheckFormatValid failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckAttrsValid() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CheckAttrsValid failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckUndGenQkvValid() != ge::GRAPH_SUCCESS,
@@ -270,6 +272,32 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckSupportRange()
                         "(num_heads_q, num_heads_k, num_heads_v) only supports {(8,1,1), (16,2,2)}, got (%ld,%ld,%ld).",
                         numHeadQ_, numHeadK_, numHeadV_),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckFormatValid()
+{
+    // format 不会被 InferShape 改写，aclnn 单算子与图模式两条通路在这里统一拦
+    for (const auto& spec : INPUT_DTYPE_SPECS) {
+        auto desc = spec.optional ? context_->GetOptionalInputDesc(spec.index) : context_->GetInputDesc(spec.index);
+        if (desc == nullptr) {
+            continue; // 必选输入的空 desc 已由 CheckDtypeValid 拦下
+        }
+        auto format = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
+        OP_CHECK_IF(format != ge::FORMAT_ND,
+                    OP_LOGE(context_->GetNodeName(), "input %s only supports ND format, got %s.", spec.name,
+                            ge::TypeUtils::FormatToSerialString(format).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    for (const auto& spec : OUTPUT_DTYPE_SPECS) {
+        auto desc = context_->GetOutputDesc(spec.index);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, desc);
+        auto format = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
+        OP_CHECK_IF(format != ge::FORMAT_ND,
+                    OP_LOGE(context_->GetNodeName(), "output %s only supports ND format, got %s.", spec.name,
+                            ge::TypeUtils::FormatToSerialString(format).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

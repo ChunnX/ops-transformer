@@ -78,9 +78,11 @@
 - `slot_mapping`的取值必须唯一且落在[0, Bn*Bs)，重复slot在多核下结果不确定。
 - `positions`取值须落在[0, max_pos)、`cat_indices`取值须落在[0, T)。这三类取值属运行期数据，
   Host侧看不到tensor内容、无法校验，由调用方保证。
-- 入参校验统一收敛在tiling一层（aclnn L2只查空指针、InferShape只查推导前提），
-  因此非法入参不在`aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize`阶段报错，
-  而是在执行阶段由tiling返回失败。
+- 入参校验以tiling一层为主（aclnn L2只查空指针与KV Cache连续性），因此多数非法入参不在
+  `aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize`阶段报错，而是在执行阶段由tiling返回失败。
+  例外是跨输入的维度一致性（D、KV Cache的Bn/Bs/N）由InferShape校验：`k_cache`/`v_cache`原地写入、
+  必须直接下发调用方的tensor，而InferShape会把推导结果无条件写回，tiling侧读到的已不是调用方
+  传入的值，这类约束只能在覆盖发生之前拦下。
 - **当前实现要求`gen_qkv`、`gen_weights_q`、`gen_weights_k`、`cat_indices`四个可选输入全部提供，
   且`gen_len > 0`**；缺省的退化路径（纯prefill、单序列恒等映射）暂不支持，tiling会直接拦截。
   IR/OpDef保留OPTIONAL声明，后续放开时删掉`CheckSupportRange`中对应校验即可。

@@ -157,6 +157,33 @@ inline int64_t TryGetDim(gert::InferShapeContext* context, const DimSource& src)
     return shape->GetDim(src.dimIdx);
 }
 
+// 所有能拿到具体值的来源必须一致，不一致直接判失败：取第一个会把违规的那一维静默丢掉，
+// 而 InferShape 随后又用推导值覆盖写回输出（原地写入的 k_cache/v_cache 即调用方的入参），
+// 使 tiling 侧同名校验在 aclnn 单算子路径上恒真。
+template <size_t N>
+inline ge::graphStatus InferDimChecked(gert::InferShapeContext* context, const DimSource (&sources)[N],
+                                       const char* dimName, int64_t& dim)
+{
+    dim = UNKNOWN_DIM_VALUE;
+    size_t firstIdx = 0;
+    for (const auto& src : sources) {
+        const int64_t value = TryGetDim(context, src);
+        if (value == UNKNOWN_DIM_VALUE) {
+            continue;
+        }
+        if (dim == UNKNOWN_DIM_VALUE) {
+            dim = value;
+            firstIdx = src.inputIdx;
+            continue;
+        }
+        OP_CHECK_IF(value != dim,
+                    OP_LOGE(context, "%s mismatch: %s gives %ld but %s gives %ld.", dimName,
+                            INPUT_SPECS[firstIdx].name, dim, INPUT_SPECS[src.inputIdx].name, value),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 // 按给定顺序逐个来源尝试，先拿到具体值就返回；全都拿不到才返回 -1
 template <size_t N>
 inline int64_t InferDimFromSources(gert::InferShapeContext* context, const DimSource (&sources)[N])
@@ -188,6 +215,20 @@ inline int64_t InferTotalTokensByAdd(const gert::Shape* undQkvShape, const gert:
     }
     const int64_t genLen = genQkvShape->GetDim(DIM_ZERO);
     return genLen == UNKNOWN_DIM_VALUE ? UNKNOWN_DIM_VALUE : undLen + genLen;
+}
+
+// H 由属性给出、不在 DimSource 表里，单独校验；同样会被下面的 SetCacheShape 覆盖写回
+inline ge::graphStatus CheckCacheHeadNum(gert::InferShapeContext* context, const gert::Shape* cacheShape,
+                                         int64_t numHeads, const char* name)
+{
+    if (Ops::Base::IsUnknownRank(*cacheShape)) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const int64_t actual = cacheShape->GetDim(DIM_TWO);
+    OP_CHECK_IF(actual != UNKNOWN_DIM_VALUE && actual != numHeads,
+                OP_LOGE(context, "%s N dim must be %ld, but got %ld.", name, numHeads, actual),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 // KV Cache 输出与输入同址，shape 为 [Bn, Bs, H, D]：H 由属性给出恒可知，Bn/Bs/D 能推则推
@@ -240,8 +281,10 @@ graphStatus InferShape4UndGenQkvRmsNormRopeCache(gert::InferShapeContext* contex
     if (total == UNKNOWN_DIM_VALUE) {
         total = InferDimFromSources(context, TOTAL_TOKEN_SOURCES);
     }
-    // D：9 个输入都带 D，取第一个能给出具体值的
-    const int64_t headDim = InferDimFromSources(context, HEAD_DIM_SOURCES);
+    // D：9 个输入都带 D，取值必须一致
+    int64_t headDim = UNKNOWN_DIM_VALUE;
+    OP_CHECK_IF(InferDimChecked(context, HEAD_DIM_SOURCES, "head dim D", headDim) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "head dim check failed."), return ge::GRAPH_FAILED);
 
     // q: [T, Hq, D]
     qOutShape->SetDimNum(DIM_NUM_THREE);
@@ -250,8 +293,15 @@ graphStatus InferShape4UndGenQkvRmsNormRopeCache(gert::InferShapeContext* contex
     qOutShape->SetDim(DIM_TWO, headDim);
 
     // k_cache/v_cache 原地写入，输出与输入同址：[Bn, Bs, Hk/Hv, D]
-    const int64_t blockNum = InferDimFromSources(context, BLOCK_NUM_SOURCES);
-    const int64_t blockSize = InferDimFromSources(context, BLOCK_SIZE_SOURCES);
+    int64_t blockNum = UNKNOWN_DIM_VALUE;
+    OP_CHECK_IF(InferDimChecked(context, BLOCK_NUM_SOURCES, "KV Cache Bn", blockNum) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "KV Cache Bn check failed."), return ge::GRAPH_FAILED);
+    int64_t blockSize = UNKNOWN_DIM_VALUE;
+    OP_CHECK_IF(InferDimChecked(context, BLOCK_SIZE_SOURCES, "KV Cache Bs", blockSize) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "KV Cache Bs check failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckCacheHeadNum(context, kCacheShape, *numHeadsK, "k_cache") != ge::GRAPH_SUCCESS ||
+                    CheckCacheHeadNum(context, vCacheShape, *numHeadsV, "v_cache") != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "KV Cache head num check failed."), return ge::GRAPH_FAILED);
     SetCacheShape(kCacheOutShape, blockNum, blockSize, *numHeadsK, headDim);
     SetCacheShape(vCacheOutShape, blockNum, blockSize, *numHeadsV, headDim);
 
