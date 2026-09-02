@@ -291,9 +291,10 @@ static ge::graphStatus GetAttrsValue(T context, GMMAttrs &gmmAttrs)
     gmmAttrs.outputDtype = *dtypePtr;
     OP_LOGI(context->GetNodeName(), "Attr dtype = %ld", gmmAttrs.outputDtype);
 
-    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
-    gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
-                            tuningConfigPtr->GetData()[0] : 0;
+    const auto tuningConfigPtr =
+        attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
+    gmmAttrs.tuningConfig =
+        (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ? tuningConfigPtr->GetData()[0] : 0;
     OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig);
 
     const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);
@@ -443,7 +444,8 @@ static bool IsS8S4SpecialWeightFormat(const gert::InferShapeContext *context)
     if (attrs == nullptr) {
         return false;
     }
-    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
+    const auto tuningConfigPtr =
+        attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
     if (tuningConfigPtr == nullptr || tuningConfigPtr->GetSize() <= 1) {
         return false;
     }
@@ -1865,29 +1867,29 @@ static graphStatus IsDavidQuantGMMByShape(T context)
     return (GetSizeByDataType(xDtype) == 1 && GetSizeByDataType(weightDtype) == 1) ? GRAPH_SUCCESS : GRAPH_FAILED;
 }
 
-static ge::graphStatus TryDavidInferShape(gert::InferShapeContext* context)
+static ge::graphStatus TryDavidInferShape(gert::InferShapeContext *context)
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
     if (ret != GRAPH_SUCCESS || GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) == 0 ||
         IsS8S4PseudoQuant(context)) {
-        return GRAPH_FAILED;  // not handled by David path
+        return GRAPH_FAILED; // not handled by David path
     }
     if (IsDavidQuantGMMByShape(context) == GRAPH_SUCCESS) {
         OP_CHECK_IF(InferShape4DavidQuantGMM(context) != GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
         return GRAPH_SUCCESS;
     } else if (IsDavidWeightQuantGMMByShape(context) == GRAPH_SUCCESS) {
         OP_CHECK_IF(InferShape4DavidWeightQuantGMM(context) != GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
         return GRAPH_SUCCESS;
     }
-    return GRAPH_FAILED;  // not a David quant case
+    return GRAPH_FAILED; // not a David quant case
 }
 
-static ge::graphStatus ParseAttrsAndCountInputs(gert::InferShapeContext* context, GMMAttrs& gmmAttrs,
-                                                size_t& numX, size_t& numWeight, int64_t& lenGroupList)
+static ge::graphStatus ParseAttrsAndCountInputs(gert::InferShapeContext *context, GMMAttrs &gmmAttrs, size_t &numX,
+                                                size_t &numWeight, int64_t &lenGroupList)
 {
     numX = 0;
     numWeight = 0;
@@ -1913,10 +1915,10 @@ static ge::graphStatus ParseAttrsAndCountInputs(gert::InferShapeContext* context
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext* context, GMMAttrs& gmmAttrs,
-                                                size_t numX, size_t numWeight, int64_t lenGroupList)
+static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext *context, GMMAttrs &gmmAttrs, size_t numX,
+                                                size_t numWeight, int64_t lenGroupList)
 {
-    const gert::Shape* x0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
+    const gert::Shape *x0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, x0Shape);
     size_t xDimNum = x0Shape->GetDimNum();
     const gert::Shape *w0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
@@ -1942,7 +1944,8 @@ static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext* context
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context) {
+static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext *context)
+{
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     if (TryDavidInferShape(context) == GRAPH_SUCCESS) {
         return GRAPH_SUCCESS;
@@ -1955,8 +1958,7 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context
     size_t numWeight = 0;
     int64_t lenGroupList = 0;
     OP_CHECK_IF(ParseAttrsAndCountInputs(context, gmmAttrs, numX, numWeight, lenGroupList) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "ParseAttrsAndCountInputs failed."),
-              return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "ParseAttrsAndCountInputs failed."), return GRAPH_FAILED);
     return ComputeAndSetOutputShape(context, gmmAttrs, numX, numWeight, lenGroupList);
 }
 
