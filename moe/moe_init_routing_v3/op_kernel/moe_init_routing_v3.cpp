@@ -12,7 +12,6 @@
  * \file moe_init_routing_v3.cpp
  * \brief
  */
-
 #include "moe_v3_mrgsort_out.h"
 #include "moe_v3_mrgsort.h"
 #include "moe_v3_sort_one_core.h"
@@ -35,7 +34,6 @@
 #include "moe_v3_gather_droppad_static_quant.h"
 #include "moe_v3_full_load_cut_origin_t.h"
 #include "moe_v3_cut_origin_t.h"
-printf(hello);
 
 /*
  * 高性能模板, 全在模板
