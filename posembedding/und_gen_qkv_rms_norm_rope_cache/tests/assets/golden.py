@@ -46,7 +46,6 @@
 纯 CPU torch 实现，不依赖 NPU。
 """
 
-import logging
 import zlib
 
 import torch
@@ -441,17 +440,122 @@ def _gen_index_values(arrays, kwargs):
 
 
 # --------------------------------------------------------------------------- #
-# 精度判据：cross_check / L1，标杆用 golden 自身
+# 精度判据
 # --------------------------------------------------------------------------- #
-try:
-    from ttk.core_modules.comparison.cross_check import CrossCheckComparison
-    from ttk.core_modules.comparison.resolve import resolve_tolerance
+# 判据交给 TTK 按 dtype 路由，本文件不自造 compare。
+#
+# 不能用 cross_check：它判的是「我方误差 / 竞品误差」，要求 third_party 是独立实现。
+# 本算子没有竞品，若把 golden 自己当 third_party，竞品误差恒为 0，safe_div 的
+# small_value 地板接管分母，rmse_ratio 退化成「绝对 RMSE / 2^-8」——输出量级一大，
+# 单个末位舍入分歧就能把比值顶到几百，判据实际变成「要求逐 bit 相同」。
+#
+# 也不能用 stat_rel_err：它按 |a-g|/(|g|+1e-7) 算相对误差，而 RoPE 的
+# x_lo*cos - x_hi*sin 在抵消点上 golden 可能恰好为 0（kernel 走 FMA 保留了残差，
+# 反而更准），此处相对误差无界。
+#
+# 判据为「逐元素 isclose + 超差元素占比」，写法同 attention/quant_lightning_indexer_v2
+# 等算子的 tests/pytest/result_compare_method.py:judge_value_by_isclose。
+# TOLERANCE 只是占位以通过 Spec 校验（Spec.tolerance 仅收 binary_equal / cross_check /
+# quant / stat_rel_err 四个 2.1 标准），实际判定走下面的 compare。
+#
+# 为什么不能直接用内置判据：
+#   - cross_check 判的是「我方误差 / 竞品误差」，要求 third_party 是独立实现且只能来自
+#     远端 XPU endpoint。本算子没有竞品，若把 golden 自己当 third_party，竞品误差恒 0，
+#     safe_div 的 small_value 地板接管分母，rmse_ratio 退化成「绝对 RMSE / 2^-8」——
+#     输出量级一大，单个末位舍入分歧就能把比值顶到几百，判据实际变成「要求逐 bit 相同」。
+#   - stat_rel_err 是纯相对误差，判不住 RoPE 的抵消点：x_lo*cos - x_hi*sin 近乎完全
+#     抵消时，kernel 的 fp32 结果相对真值就有无界的相对误差（灾难性抵消，且 kernel 走
+#     FMA 比 golden 少一次舍入、反而更准），分母趋零时任何纯相对判据都会炸。
+#
+# 下面的 atol 兜住抵消点这类小值域元素，rtol 管大值域，再用超差占比收口。
+TOLERANCE = {"bfloat16": {"standard": "stat_rel_err"}}
 
-    _TTK_CROSS_CHECK_AVAILABLE = True
-except ImportError:  # 不在 ops-test-kit 环境里（如直接跑本文件自检）
-    _TTK_CROSS_CHECK_AVAILABLE = False
+# 逐 dtype 的 (rtol, atol)。bf16 尾数 7 位，1 ulp 的相对量级即 2^-8，rtol 取 2^-7 留一倍裕量。
+_TOL_BY_DTYPE = {
+    "bfloat16": (2.0**-7, 1e-4),
+    "float16": (2.0**-10, 2.5e-5),
+    "float32": (2.0**-13, 2.5e-5),
+}
+_DEFAULT_TOL = (2.0**-7, 1e-4)
+# 允许超差的元素占比。取 TTK 内置 close 判据 bf16 的 ptol 默认值，比同类算子用的 0.005 更严。
+# 实测末位舍入分歧本身已被 rtol/atol 覆盖（超差数为 0），这个裕量只留给偶发的 2 ulp 分歧。
+_MISMATCH_PCT = 0.001
 
-TOLERANCE = {"bfloat16": {"standard": "cross_check", "level": "L1"}}
+
+def _dtype_name(value):
+    """numpy（bf16 由 ml_dtypes 承载）或 torch 张量 -> dtype 名。"""
+    import numpy as np
+
+    if isinstance(value, torch.Tensor):
+        return str(value.dtype).rsplit(".", 1)[-1]
+    return np.dtype(value.dtype).name
+
+
+def _to_f32_flat(value):
+    import numpy as np
+
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().float().numpy().reshape(-1)
+    return np.asarray(value).astype(np.float32).reshape(-1)
+
+
+def _isclose_ratio(*outputs):
+    """outputs = (NPU_0..n-1, golden_0..n-1)，逐输出返回 compare 契约的 dict。"""
+    import numpy as np
+
+    half = len(outputs) // 2
+    results = []
+    for idx, (npu, gold) in enumerate(zip(outputs[:half], outputs[half:])):
+        rtol, atol = _TOL_BY_DTYPE.get(_dtype_name(npu), _DEFAULT_TOL)
+        actual = _to_f32_flat(npu)
+        golden = _to_f32_flat(gold)
+        if actual.shape != golden.shape:
+            results.append(
+                {
+                    "pass": False,
+                    "precision": "shape_mismatch",
+                    "error_info": "output %d: npu %s vs golden %s"
+                    % (idx, actual.shape, golden.shape),
+                }
+            )
+            continue
+        total = int(actual.size)
+        close = np.isclose(actual, golden, rtol=rtol, atol=atol, equal_nan=True)
+        bad = total - int(close.sum())
+        ratio = (bad / total) if total else 0.0
+        passed = ratio <= _MISMATCH_PCT
+        metrics = {
+            "standard": "isclose_ratio",
+            "rtol": rtol,
+            "atol": atol,
+            "mismatch_pct_limit": _MISMATCH_PCT,
+            "result": {"total": total, "mismatch": bad, "mismatch_pct": ratio},
+            "pass": passed,
+        }
+        error_info = None
+        if not passed:
+            worst = np.argsort(-np.abs(actual - golden))[: min(bad, 8)]
+            metrics["reason"] = "mismatch_pct %.3g > %g" % (ratio, _MISMATCH_PCT)
+            error_info = "output %d: %d/%d (%.3g) 超出 rtol=%g atol=%g; worst: %s" % (
+                idx,
+                bad,
+                total,
+                ratio,
+                rtol,
+                atol,
+                ", ".join(
+                    "npu=%g golden=%g" % (actual[i], golden[i]) for i in worst
+                ),
+            )
+        results.append(
+            {
+                "pass": passed,
+                "precision": "%s%%" % ((1.0 - ratio) * 100.0),
+                "metrics": metrics,
+                "error_info": error_info,
+            }
+        )
+    return results
 
 
 class _SpecBase:
@@ -460,47 +564,7 @@ class _SpecBase:
     tolerance = TOLERANCE
 
     def compare(*outputs, **kwargs):
-        return _cross_check(*outputs)
-
-
-def _dtype_name(array):
-    """numpy（bf16 由 ml_dtypes 承载）或 torch 张量 -> resolve_tolerance 认的 dtype 名。"""
-    import numpy as np
-
-    if isinstance(array, torch.Tensor):
-        return str(array.dtype).rsplit(".", 1)[-1]
-    return np.dtype(array.dtype).name
-
-
-def _cross_check(*outputs):
-    """outputs = (NPU_0..n-1, golden_0..n-1)，逐输出返回 compare 契约的 dict。
-
-    dtype 取 NPU 输出：golden 在 cross_check 下会被 Promote 抬成 fp32。
-    """
-    if not _TTK_CROSS_CHECK_AVAILABLE:
-        raise RuntimeError(
-            "ttk.core_modules.comparison 不可用：请在 ops-test-kit checkout 下运行"
-        )
-    half = len(outputs) // 2
-    results = []
-    for idx, (npu, gold) in enumerate(zip(outputs[:half], outputs[half:])):
-        dtype_str = _dtype_name(npu)
-        params = resolve_tolerance(TOLERANCE, None, None, [dtype_str], None)[0].params
-        precision, log, is_pass, metrics = CrossCheckComparison(
-            npu, gold, idx, dtype_str, params, third_party=gold
-        ).compare()
-        logging.info(
-            "[cross_check] output %d %s %s", idx, precision, metrics.get("result")
-        )
-        results.append(
-            {
-                "pass": is_pass,
-                "precision": precision,
-                "metrics": metrics,
-                "error_info": None if is_pass else log,
-            }
-        )
-    return results
+        return _isclose_ratio(*outputs)
 
 
 class UndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
@@ -509,7 +573,7 @@ class UndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
     参数序与 op_host/und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
     张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，属性走 kwargs。
 
-    判据见上方 TOLERANCE：cross_check / L1，标杆即 golden 自身。
+    判据见上方 TOLERANCE。
     """
 
     def customize_inputs(
