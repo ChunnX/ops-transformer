@@ -64,7 +64,16 @@ struct CaseShapes {
 
 gert::StorageShape MakeStorageShape(const std::vector<int64_t>& dims)
 {
-    return {dims, dims};
+    gert::Shape shape;
+    shape.SetDimNum(dims.size());
+    for (size_t i = 0; i < dims.size(); ++i) {
+        shape.SetDim(i, dims[i]);
+    }
+
+    gert::StorageShape storageShape;
+    storageShape.MutableOriginShape() = shape;
+    storageShape.MutableStorageShape() = shape;
+    return storageShape;
 }
 
 CaseShapes MakeValidShapes(const CaseParam& param)
