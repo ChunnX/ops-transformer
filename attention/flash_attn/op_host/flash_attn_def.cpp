@@ -30,20 +30,17 @@
          this->Input("q")
              .ParamType(REQUIRED)
              .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
-             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
              .AutoContiguous();
          this->Input("k")
              .ParamType(REQUIRED)
              .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
-             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
              .IgnoreContiguous();
          this->Input("v")
              .ParamType(REQUIRED)
              .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
-             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
              .IgnoreContiguous();
          this->Input("block_table")
              .ParamType(OPTIONAL)
@@ -72,8 +69,8 @@
              .AutoContiguous();
          this->Input("sinks")
              .ParamType(OPTIONAL)
-             .DataTypeList({ge::DT_FLOAT})
-             .FormatList({ge::FORMAT_ND})
+             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
              .AutoContiguous();
          this->Input("attn_mask")
              .ParamType(OPTIONAL)
@@ -88,8 +85,7 @@
          this->Output("attn_out")
              .ParamType(REQUIRED)
              .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
-             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
              .AutoContiguous();
          this->Output("softmax_lse")
              .ParamType(OPTIONAL)
