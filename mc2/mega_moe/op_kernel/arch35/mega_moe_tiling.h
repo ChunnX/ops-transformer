@@ -158,6 +158,7 @@ struct MegaMoeSendMaskBufferConfig {
     int32_t bufferCount;
     uint32_t bufferBytes;
 };
+
 struct MegaMoeTilingData {
     uint32_t moeExpertPerRank; // 本卡参与 topK 路由的 MoE 专家数，与 weight1 表达的专家数一致
     uint32_t bs;
@@ -203,5 +204,7 @@ struct MegaMoeTilingData {
     // 全卡一致的单卡 token 数上界（attr num_max_tokens_per_rank；attr=0 时 host 置为 bs）。
     // 跨卡窗口布局、mask 槽几何与收发批网格一律用该上界，bs 仅描述本卡真实 token 数。
     uint32_t numMaxTokensPerRank;
+    // URMA 分层拓扑；Host workspace 计算与 Device 通道映射必须使用同一个值。
+    uint32_t rankNumPerServer;
 };
 #endif
