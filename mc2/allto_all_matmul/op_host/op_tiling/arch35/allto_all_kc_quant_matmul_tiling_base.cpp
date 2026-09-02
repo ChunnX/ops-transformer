@@ -503,7 +503,6 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::PostTiling()
                     OP_LOGE(opName_, "TilingBuffer capacity too small, capacity = %zu, need = %zu.", tilingBufCap,
                             sizeof(localTilingData_)),
                     return ge::GRAPH_FAILED);
-    localTilingData_.workspaceLayout = workspaceLayout_;
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
         OP_LOGE(opName_, "AlltoAllMatmul postTiling: memcpy_s tiling data failed, ret=%d.", ret);
@@ -514,7 +513,6 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllKcQuantMatmulTilingData(*outTilingData);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -537,14 +535,10 @@ void AllToAllKcQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.permuteLen = inferredInfo_.permuteLen;
     tilingInfo.x1ScaleOptionalLen = inferredInfo_.x1ScaleOptionalLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
-    tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
     tilingInfo.hcclDataType =
         (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.hcclGeType))); // hccl数据类型
     tilingInfo.x1QuantDtype = contextInfo_.x1KcDynQuantDTypeVal;
     tilingInfo.dynamicExtraSpace = 0UL;
-    tilingInfo.x1QuantMode = static_cast<uint32_t>(X1_QUANTMODE_VALUES);
-    tilingInfo.x2QuantMode = static_cast<uint32_t>(X2_QUANTMODE_VALUES);
-    tilingInfo.tilingKey = GetTilingKey();
 }
 
 /**
@@ -593,51 +587,9 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-
-    uint64_t offset = 0;
-    uint32_t idx = 0;
-
-    // [0] 系统库预留空间，必须在第一个
-    if (libApiWorkSpaceSize_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-        offset += libApiWorkSpaceSize_;
-    }
-
-    // [1] 通信接收区 (commOut), 对应 kernel 中 commOutGM_ = workspaceGM (user workspace起始)
-    workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commLen,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_COMM_OUT), {}};
-    offset += inferredInfo_.commLen;
-
-    // [2] 转置输出区 (permuteOut), 对应 kernel 中 transOutGM_ = commOutGM_ + commLen (all2all_out为空时)
-    if (inferredInfo_.permuteLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_PERMUTE_OUT), {}};
-        offset += inferredInfo_.permuteLen;
-    }
-
-    // [3] 动态量化scale输出区 (x1Scale), 对应 kernel 中 x1ScaleGM_ = commOutGM_ + commLen + permuteLen
-    if (inferredInfo_.x1ScaleOptionalLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.x1ScaleOptionalLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
-        offset += inferredInfo_.x1ScaleOptionalLen;
-    }
-
-    // [4] 量化结果输出区 (quantOut), 对应 kernel 中 quantOutGM_ = x1ScaleGM_ + x1ScaleOptionalLen
-    if (inferredInfo_.quantOutLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.quantOutLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
-        offset += inferredInfo_.quantOutLen;
-    }
-
-    // [5] 运行时信息段 (64KB), kernel 侧后续补上 runtimeInfo 调用
-    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
-    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
-
-    workspaceLayout_.totalSize = offset;
-    workspaceLayout_.segCount = idx;
-    workspaces[0] = workspaceLayout_.totalSize;
+    uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen +
+                             +inferredInfo_.x1ScaleOptionalLen + inferredInfo_.quantOutLen;
+    workspaces[0] = workspaceSize;
     OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, x1ScaleOptionalLen=%zu, quantOutLen=%zu",
             workspaces[0], inferredInfo_.commLen, inferredInfo_.permuteLen, inferredInfo_.x1ScaleOptionalLen,
             inferredInfo_.quantOutLen);

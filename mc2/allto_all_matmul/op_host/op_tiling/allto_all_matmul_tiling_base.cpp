@@ -76,45 +76,13 @@ ge::graphStatus AllToAllMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    BuildWorkspaceLayout();
-    workspaces[0] = workspaceLayout_.totalSize;
+    uint64_t workspaceSize =
+        libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen + inferredInfo_.biasLen;
+    workspaces[0] = workspaceSize;
     OP_LOGD(opName_, "Workspaces[0] size=%ld, biasLen=%d, commlen=%d", workspaces[0], inferredInfo_.biasLen,
             inferredInfo_.commLen);
 
     return ge::GRAPH_SUCCESS;
-}
-
-void AllToAllMatmulTilingBase::BuildWorkspaceLayout()
-{
-    uint64_t offset = 0;
-    uint32_t idx = 0;
-
-    // [0] 系统库预留空间，必须在第一个
-    if (libApiWorkSpaceSize_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-        offset += libApiWorkSpaceSize_;
-    }
-
-    // [1] 通信接收区 (commOut), 对应 kernel 中 commOutGM_ = workspaceGM (user workspace起始)
-    workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commLen,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_COMM_OUT), {}};
-    offset += inferredInfo_.commLen;
-
-    // [2] 转置输出区 (permuteOut), 对应 kernel 中 transOutGM_ = commOutGM_ + commLen (all2all_out为空时)
-    if (inferredInfo_.permuteLen > 0) {
-        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.permuteLen,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_PERMUTE_OUT), {}};
-        offset += inferredInfo_.permuteLen;
-    }
-
-    // [3] 运行时信息段 (64KB)
-    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
-    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
-
-    workspaceLayout_.totalSize = offset;
-    workspaceLayout_.segCount = idx;
 }
 
 /**
