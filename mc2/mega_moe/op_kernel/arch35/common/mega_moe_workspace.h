@@ -26,22 +26,6 @@ constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
 
-// MTE WAVE 的 GMM2/Combine 同步协议只由 Combine 量化模式和 W8/W4 模板决定。
-HOST_DEVICE Gmm2CombineSyncProtocol SelectMteGmm2CombineSyncProtocol(int64_t topoType, uint8_t groupedMatmulMode,
-                                                                     uint8_t combineQuantMode)
-{
-    if (topoType != TOPO_TYPE_MTE) {
-        return Gmm2CombineSyncProtocol::NONE;
-    }
-    if (combineQuantMode == COMBINE_NO_QUANT) {
-        return Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE;
-    }
-    bool isA8W8Mode = groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                      groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    return isA8W8Mode ? Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER
-                      : Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS;
-}
-
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
     GM_ADDR dispatchRevScalePtr;
@@ -128,10 +112,6 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
-        Gmm2CombineSyncProtocol combineSyncProtocol = SelectMteGmm2CombineSyncProtocol(
-            tilingData->topoType, tilingData->groupedMatmulMode, tilingData->combineQuantMode);
-        const bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
-
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
@@ -160,19 +140,13 @@ struct WorkspaceInfo {
                         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
         if (isW4Mode ||
-            combineSyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
+            (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode == COMBINE_NO_QUANT)) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
 
-        if (combineSyncProtocol == Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER) {
-            // A8W8 量化 Combine 按 expert-local 256-token group 汇聚 GMM2 N tile。
-            gmm2CombineSyncCounterPtr = base + workspaceSize;
-            gmm2ReadyPtr = gmm2CombineSyncCounterPtr;
-            workspaceSize += SIZE_INT_32 * static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
-                             moeExpertCount * INT_CACHELINE;
-        } else if (combineSyncProtocol == Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS) {
-            // W4 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记。
+        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记。
             gmm2ReadyPtr = base + workspaceSize;
             workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
         }

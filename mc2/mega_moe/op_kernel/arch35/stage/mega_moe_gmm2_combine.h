@@ -549,19 +549,6 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
     }
 }
 
-/*
- * 每完成一个 GMM2 N tile，就向对应 expert-local 256-token group 的 Combine counter 发布一次通知。
- * FIX_S 保证通知发布前，该 tile 的 GMM2 输出已经写入 GM。
- */
-__aicore__ inline void NotifyWaveCombineGroupCompletion(uint32_t rowTileOffset, __gm__ int32_t *expertCounterBase)
-{
-    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-
-    uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
-    AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, tokenGroupIndex), int32_t(1));
-}
-
 // Notifies the AIV consumer assigned to the completed shared-expert token group.
 __aicore__ inline void NotifySharedExpertTileCompletion(uint32_t rowTileOffset, __gm__ int32_t *sharedExpertCounterBase)
 {
@@ -631,8 +618,6 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
-        } else if constexpr (SyncProtocol == Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER && !IsShared) {
-            NotifyWaveCombineGroupCompletion(rowOffsetInExpert + mLoc, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
@@ -1183,16 +1168,6 @@ __aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmCo
     }
 }
 
-// A8W8 量化 Wave 为当前专家绑定 256-token group 完成计数器；其他同步协议不需要该地址。
-__aicore__ inline void BindMoeExpertGmm2GroupCounter(const MoeSyncWorkspaceLayout &syncLayout,
-                                                     const WorkspaceInfo &workspace, uint32_t expertIdx,
-                                                     GMMAddrInfo &gmmAddrInfo)
-{
-    uint64_t syncSlotOffset = static_cast<uint64_t>(expertIdx) * syncLayout.combineSyncSlotCountPerExpert;
-    gmmAddrInfo.gmm2CombineSyncCounter = reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
-                                         syncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
-}
-
 constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;
 constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES = MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
                                                         MAX_AICORE_NUM *INT_CACHELINE * sizeof(int32_t) :
@@ -1282,55 +1257,6 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
     }
 }
 
-// 等待一个 expert-local 256-token group 的全部 GMM2 N tile 写入完成。
-__aicore__ inline void WaitWaveCombineGroupReady(const MoeStageCommonConfig &common,
-                                                 const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
-                                                 uint32_t expertIdx, uint32_t tokenGroupIdx)
-{
-    uint64_t syncSlotIdx = static_cast<uint64_t>(expertIdx) * syncLayout.combineSyncSlotCountPerExpert +
-                           static_cast<uint64_t>(tokenGroupIdx);
-    __gm__ int32_t *counterAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2CombineSyncCounterPtr) +
-                                  syncSlotIdx * static_cast<uint64_t>(INT_CACHELINE);
-    uint32_t gmm2NTileCount = Ops::Base::CeilDiv(common.tokenHiddenDim, L1_TILE_N);
-    WaitUntilGmFlagEquals(counterAddr, static_cast<int32_t>(gmm2NTileCount));
-}
-
-// 消费本核在一个专家连续行段中的数据；每次只等待当前即将读取的 256-token group。
-template <uint8_t CombineMode, WaveCombineAivSet AivSet>
-__aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
-                                             const MoeSyncWorkspaceLayout &syncLayout,
-                                             const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
-                                             const Params &params, uint32_t expertIdx, uint32_t expertLocalRowBegin,
-                                             uint32_t globalRowBegin, uint32_t tokenCount, uint32_t &rowSequence)
-{
-    uint32_t processedTokenCount = 0U;
-    while (processedTokenCount < tokenCount) {
-        uint32_t currentExpertRow = expertLocalRowBegin + processedTokenCount;
-        uint32_t tokenGroupIdx = currentExpertRow / COMBINE_TOKEN_GROUP_SIZE;
-        uint32_t groupRowEnd = (tokenGroupIdx + 1U) * COMBINE_TOKEN_GROUP_SIZE;
-        uint32_t rowsInCurrentGroup = groupRowEnd - currentExpertRow;
-        uint32_t remainingTokenCount = tokenCount - processedTokenCount;
-        if (rowsInCurrentGroup > remainingTokenCount) {
-            rowsInCurrentGroup = remainingTokenCount;
-        }
-        WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);
-
-        for (uint32_t processedGroupRows = 0U; processedGroupRows < rowsInCurrentGroup;) {
-            uint32_t remainingGroupRows = rowsInCurrentGroup - processedGroupRows;
-            uint32_t chunkTokenCount = remainingGroupRows < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
-                                           remainingGroupRows :
-                                           WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
-            uint32_t chunkGlobalRowBegin = globalRowBegin + processedTokenCount + processedGroupRows;
-            PreloadWaveCombineMetaInfo(params, scratch, chunkGlobalRowBegin, chunkTokenCount, 0U);
-            CombineWaveTokenRange<CombineMode, AivSet>(common, bufferConfig, scratch, params,
-                                                       params.workspaceInfo.gmm2MmadResPtr, chunkGlobalRowBegin,
-                                                       chunkTokenCount, 0U, rowSequence);
-            processedGroupRows += chunkTokenCount;
-        }
-        processedTokenCount += rowsInCurrentGroup;
-    }
-}
-
 // 非量化 Combine 按给定范围逐专家重放 GMM2 scheduler。范围边界决定地址和 M 大小，
 // 函数不规划下一段、不执行 GMM2，也不负责最终 drain。
 template <typename ElementA, typename WeightType, typename QuantScaleType, Gmm2KernelKind KernelKind,
@@ -1398,55 +1324,6 @@ __aicore__ inline void CombinePairwiseTokenRange(const CombineRangeContext &cont
             ++position.expertIdx;
             position.tokenIndexInExpert = 0U;
         }
-    }
-}
-
-template <uint8_t CombineMode, WaveCombineAivSet AivSet = WaveCombineAivSet::PAIRED_AIV1>
-__aicore__ inline void RunWaveCombineStage(
-    const MoeStageCommonConfig &common, const AivJobContext &job, const BlockWorkspaceContext &countWorkspace,
-    const MoeSyncWorkspaceLayout &syncLayout, const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
-    const Params &params, uint32_t waveFirstExpertIdx, uint32_t waveFirstTokenIndexInExpert,
-    uint32_t waveGlobalRowBegin, uint32_t waveRowCount, uint32_t &rowSequence)
-{
-    WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<AivSet>(job, waveRowCount, waveGlobalRowBegin);
-    if (currentCoreTokenRange.count == 0U) {
-        return;
-    }
-
-    uint32_t ownedWaveRowBegin = currentCoreTokenRange.start;
-    uint32_t ownedWaveRowEnd = ownedWaveRowBegin + currentCoreTokenRange.count;
-    uint32_t waveRowCursor = 0U;
-    uint32_t expertIdx = waveFirstExpertIdx;
-    uint32_t expertLocalRowBegin = waveFirstTokenIndexInExpert;
-
-    while (waveRowCursor < waveRowCount && expertIdx < common.moeExpertPerRank) {
-        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
-            params.workspaceInfo.expertRevTokenNumsPtr, countWorkspace, common.moeExpertPerRank, expertIdx);
-        if (expertLocalRowBegin >= expertTokenCount) {
-            ++expertIdx;
-            expertLocalRowBegin = 0U;
-            continue;
-        }
-
-        uint32_t expertRowsInWave = expertTokenCount - expertLocalRowBegin;
-        uint32_t waveRowsRemaining = waveRowCount - waveRowCursor;
-        if (expertRowsInWave > waveRowsRemaining) {
-            expertRowsInWave = waveRowsRemaining;
-        }
-        uint32_t expertWaveRowEnd = waveRowCursor + expertRowsInWave;
-        uint32_t overlapWaveRowBegin = ownedWaveRowBegin > waveRowCursor ? ownedWaveRowBegin : waveRowCursor;
-        uint32_t overlapWaveRowEnd = ownedWaveRowEnd < expertWaveRowEnd ? ownedWaveRowEnd : expertWaveRowEnd;
-        if (overlapWaveRowBegin < overlapWaveRowEnd) {
-            uint32_t overlapExpertRowBegin = expertLocalRowBegin + overlapWaveRowBegin - waveRowCursor;
-            uint32_t overlapGlobalRowBegin = waveGlobalRowBegin + overlapWaveRowBegin;
-            CombineWaveExpertRows<CombineMode, AivSet>(common, syncLayout, bufferConfig, scratch, params, expertIdx,
-                                                       overlapExpertRowBegin, overlapGlobalRowBegin,
-                                                       overlapWaveRowEnd - overlapWaveRowBegin, rowSequence);
-        }
-
-        waveRowCursor = expertWaveRowEnd;
-        ++expertIdx;
-        expertLocalRowBegin = 0U;
     }
 }
 

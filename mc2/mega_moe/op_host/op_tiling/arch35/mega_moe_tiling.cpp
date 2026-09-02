@@ -1190,25 +1190,9 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    if (tilingData->moeExpertPerRank == 0U) {
-        return 0U;
-    }
-
-    // A8W8 MTE wave 的 GMM2/Combine 依赖按 expert-local 256-token group 发布。
-    // 同一 token 的 topK expert id 不重复，因此单专家从每张卡最多接收 numMaxTokensPerRank 行；
-    // 再与整卡 maxOutputSize 取小，避免按整卡容量为每个专家重复预留 counter。
-    bool isA8W8Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                      tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    if (tilingData->topoType == TOPO_TYPE_MTE && isA8W8Mode) {
-        uint64_t maxTokenCountForOneExpert =
-            static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
-        maxTokenCountForOneExpert =
-            std::min(maxTokenCountForOneExpert, static_cast<uint64_t>(tilingData->maxOutputSize));
-        return ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
-    }
-
     // URMA group counter 仅服务 layered 量化 Combine。
-    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT) {
+    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT ||
+        tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
@@ -1229,8 +1213,6 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    Gmm2CombineSyncProtocol combineSyncProtocol = SelectMteGmm2CombineSyncProtocol(
-        tilingData->topoType, tilingData->groupedMatmulMode, tilingData->combineQuantMode);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
     uint64_t activationFlagSlotsPerExpert =
@@ -1243,13 +1225,10 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
                     tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                     tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
     if (isW4Mode ||
-        combineSyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
+        (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode == COMBINE_NO_QUANT)) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
-    if (combineSyncProtocol == Gmm2CombineSyncProtocol::TOKEN_GROUP_COUNTER) {
-        flagElementCount +=
-            tilingData->combineSyncSlotCountPerExpert * moeExpertCount * static_cast<uint64_t>(INT_CACHELINE);
-    } else if (combineSyncProtocol == Gmm2CombineSyncProtocol::EXPERT_AIC_READY_FLAGS) {
+    if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode != COMBINE_NO_QUANT) {
         flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
     if (tilingData->topoType == TOPO_TYPE_URMA) {
