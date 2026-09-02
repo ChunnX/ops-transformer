@@ -125,7 +125,7 @@ __aicore__ inline void GetExpertFreq(LocalTensor<uint16_t> &dstLocal, LocalTenso
     __local_mem__ uint8_t *src = (__local_mem__ uint8_t *)srcLocal.GetPhyAddr();
     __local_mem__ uint16_t *dst = (__local_mem__ uint16_t *)dstLocal.GetPhyAddr();
     VF_CALL<HistogramsVf<Reg::HistogramsType::FREQUENCY, uint8_t, uint16_t>>(dst, src, repeatElm, repeatElm >> 1,
-                                                                                  totalElm, repeatTimes);
+                                                                             totalElm, repeatTimes);
     PipeBarrier<PIPE_V>();
 }
 
@@ -137,7 +137,7 @@ __aicore__ inline void GetExpertCumSum(LocalTensor<uint16_t> &dstLocal, LocalTen
     __local_mem__ uint8_t *src = (__local_mem__ uint8_t *)srcLocal.GetPhyAddr();
     __local_mem__ uint16_t *dst = (__local_mem__ uint16_t *)dstLocal.GetPhyAddr();
     VF_CALL<HistogramsVf<Reg::HistogramsType::ACCUMULATE, uint8_t, uint16_t>>(dst, src, repeatElm, repeatElm >> 1,
-                                                                                   totalElm, repeatTimes);
+                                                                              totalElm, repeatTimes);
     PipeBarrier<PIPE_V>();
 }
 
@@ -158,8 +158,7 @@ static __aicore__ inline void ReduceLoop(__local_mem__ int32_t *dst, __local_mem
             Reg::ReduceSum(dstReg, srcReg, mask);
             Reg::Add(sumReg, sumReg, dstReg, maskFirst);
         }
-        Reg::DataCopy<int32_t, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(dst + i0 * repeat0DstStride, sumReg,
-                                                                                 maskFirst);
+        Reg::DataCopy<int32_t, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(dst + i0 * repeat0DstStride, sumReg, maskFirst);
     }
 }
 

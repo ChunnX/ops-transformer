@@ -201,19 +201,17 @@ public:
             AscendC::Reg::RegTensor<float> sumFinal_2;
 
             static constexpr AscendC::Reg::CastTrait castZero = {
-                AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-                AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::UNKNOWN};
             static constexpr AscendC::Reg::CastTrait castOne = {
-                AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN,
-                AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::UNKNOWN};
             static constexpr AscendC::Reg::CastTrait castRint = {
-                AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT,
-                AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+                AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::CAST_RINT};
 
-            AscendC::Reg::MaskReg maskF32All =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-            AscendC::Reg::MaskReg maskF16All =
-                AscendC::Reg::CreateMask<half, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskF32All = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskF16All = AscendC::Reg::CreateMask<half, AscendC::Reg::MaskPattern::ALL>();
             AscendC::Reg::MaskReg maskF32Tail;
             AscendC::Reg::MaskReg maskF16Tail;
             if (hasTail) {
@@ -234,12 +232,12 @@ public:
                     maskF16 = maskF16All;
                 }
 
-                Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(
-                    dyScaleFp32_1, dyScaleFp32_2, dyScaleFp32Ptr + INT8_DIVIVE * i * fp32RepeatSize);
-                Reg::DataCopy<int8_t, Reg::LoadDist::DIST_UNPACK_B8>(
-                    tokenSrcReg, tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(
-                    sumFinal_1, sumFinal_2, sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(dyScaleFp32_1, dyScaleFp32_2,
+                                                                     dyScaleFp32Ptr + INT8_DIVIVE * i * fp32RepeatSize);
+                Reg::DataCopy<int8_t, Reg::LoadDist::DIST_UNPACK_B8>(tokenSrcReg,
+                                                                     tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(sumFinal_1, sumFinal_2,
+                                                                     sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
 
                 Reg::Cast<half, int8_t, castZero>(tokenHalfReg, tokenSrcReg, maskF16);
                 Reg::Cast<float, half, castZero>(tokFp32_1, tokenHalfReg, maskF16);
@@ -263,8 +261,8 @@ public:
                     Reg::Add(sumFinal_2, sumFinal_2, deqFp32_2, maskF32);
                 }
 
-                Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(
-                    sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE, sumFinal_1, sumFinal_2, maskF32);
+                Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE,
+                                                                     sumFinal_1, sumFinal_2, maskF32);
             }
         }
     }
@@ -322,11 +320,11 @@ public:
             AscendC::Reg::RegTensor<float> sumFinalDstReg_1;
             AscendC::Reg::RegTensor<float> sumFinalDstReg_2;
             static constexpr AscendC::Reg::CastTrait castTrait0 = {
-                AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-                AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::UNKNOWN};
             static constexpr AscendC::Reg::CastTrait castTrait2 = {
-                AscendC::Reg::RegLayout::TWO, AscendC::Reg::SatMode::UNKNOWN,
-                AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                AscendC::Reg::RegLayout::TWO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::UNKNOWN};
 
             AscendC::Reg::MaskReg maskReg;
             AscendC::Reg::MaskReg maskReg2;
@@ -334,13 +332,12 @@ public:
             // read all the scales, cast all the e8m0 scale to FP32, store them
             for (uint16_t i = 0; i < repeatTimes; ++i) {
                 maskReg = AscendC::Reg::UpdateMask<float>(quantScaleNum_);
-                Reg::DataCopy<fp8_e8m0_t, Reg::LoadDist::DIST_UNPACK4_B8>(vSrcReg,
-                                                                                    srcPtr0 + i * fp32RepeatSize);
+                Reg::DataCopy<fp8_e8m0_t, Reg::LoadDist::DIST_UNPACK4_B8>(vSrcReg, srcPtr0 + i * fp32RepeatSize);
                 // cast e8m0 to FP32
                 Reg::ShiftLefts((AscendC::Reg::RegTensor<uint32_t> &)dyScaleFp32Reg,
-                                     (AscendC::Reg::RegTensor<uint32_t> &)vSrcReg, expShift, maskReg);
-                Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(
-                    dyScaleFp32Ptr + i * fp32RepeatSize * INT8_DIVIVE, dyScaleFp32Reg, dyScaleFp32Reg, maskReg);
+                                (AscendC::Reg::RegTensor<uint32_t> &)vSrcReg, expShift, maskReg);
+                Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(dyScaleFp32Ptr + i * fp32RepeatSize * INT8_DIVIVE,
+                                                                     dyScaleFp32Reg, dyScaleFp32Reg, maskReg);
             }
 
             Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -351,9 +348,9 @@ public:
                 Reg::DataCopy<float, Reg::LoadDist::DIST_E2B_B32>(dyScaleFp32Reg, dyScaleFp32Ptr + i * 8);
                 // 接收到的token float8_e5m2_t
                 Reg::DataCopy<T, Reg::LoadDist::DIST_UNPACK_B8>(tokenSrcReg,
-                                                                          tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(
-                    sumFinalDstReg_1, sumFinalDstReg_2, sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
+                                                                tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(sumFinalDstReg_1, sumFinalDstReg_2,
+                                                                     sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
                 Reg::Cast<float, T, castTrait0>(tokenFp32SrcReg_1, tokenSrcReg, maskReg3);
                 Reg::Cast<float, T, castTrait2>(tokenFp32SrcReg_2, tokenSrcReg, maskReg3);
                 // token与量化参数相乘
@@ -365,9 +362,9 @@ public:
                 }
                 Reg::Add(sumFinalDstReg_1, sumFinalDstReg_1, sumLocalDstReg_1, maskReg2); // combine累加
                 Reg::Add(sumFinalDstReg_2, sumFinalDstReg_2, sumLocalDstReg_2, maskReg2); // combine累加
-                Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(
-                    sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE, sumFinalDstReg_1, sumFinalDstReg_2,
-                    maskReg2); // 最后搬出 float类型
+                Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE,
+                                                                     sumFinalDstReg_1, sumFinalDstReg_2,
+                                                                     maskReg2); // 最后搬出 float类型
             }
         }
     }

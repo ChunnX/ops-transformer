@@ -55,8 +55,7 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
         AscendC::Reg::RegTensor<float> weightReg;
         AscendC::Reg::RegTensor<bfloat16_t> outputReg;
         AscendC::Reg::RegTensor<bfloat16_t> zeroReg;
-        AscendC::Reg::MaskReg fullMask =
-            AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
         AscendC::Reg::MaskReg tailComputeMask = AscendC::Reg::UpdateMask<float>(tailComputeMaskElementCount);
         AscendC::Reg::MaskReg tailStoreMask = AscendC::Reg::UpdateMask<float>(tailStoreMaskElementCount);
         AscendC::Reg::MaskReg additionalPaddingStoreMask =
@@ -70,10 +69,10 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
             for (uint16_t vectorIndex = 0; vectorIndex < fullVectorLoopCount; vectorIndex++) {
                 AscendC::Reg::AddrReg inputOffset = AscendC::Reg::CreateAddrReg<InputType>(
                     rowIndex, context.inputRowStrideElements, vectorIndex, VECTOR_LENGTH_FP32);
-                AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    gateReg, context.gate, inputOffset);
+                AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(gateReg, context.gate,
+                                                                                           inputOffset);
                 AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(upReg, context.up,
-                                                                                                     inputOffset);
+                                                                                           inputOffset);
                 AscendC::Reg::Cast<float, InputType, CAST_INPUT_TO_FP32>(gateFp32Reg, gateReg, fullMask);
                 AscendC::Reg::Cast<float, InputType, CAST_INPUT_TO_FP32>(upFp32Reg, upReg, fullMask);
 
@@ -93,8 +92,8 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
                 AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(outputReg, outputFp32Reg, fullMask);
                 AscendC::Reg::AddrReg outputOffset = AscendC::Reg::CreateAddrReg<bfloat16_t>(
                     rowIndex, context.outputRowStrideElements, vectorIndex, VECTOR_LENGTH_FP32);
-                AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                    context.output, outputReg, outputOffset, fullMask);
+                AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(context.output, outputReg,
+                                                                                           outputOffset, fullMask);
             }
 
             AscendC::Reg::AddrReg tailInputOffset =
@@ -102,10 +101,10 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
             AscendC::Reg::AddrReg tailOutputOffset =
                 AscendC::Reg::CreateAddrReg<bfloat16_t>(rowIndex, context.outputRowStrideElements);
             for (uint16_t tailIndex = 0; tailIndex < needTailVectorCompute; tailIndex++) {
-                AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    gateReg, context.gateTail, tailInputOffset);
-                AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    upReg, context.upTail, tailInputOffset);
+                AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(gateReg, context.gateTail,
+                                                                                           tailInputOffset);
+                AscendC::Reg::DataCopy<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(upReg, context.upTail,
+                                                                                           tailInputOffset);
                 AscendC::Reg::Cast<float, InputType, CAST_INPUT_TO_FP32>(gateFp32Reg, gateReg, tailComputeMask);
                 AscendC::Reg::Cast<float, InputType, CAST_INPUT_TO_FP32>(upFp32Reg, upReg, tailComputeMask);
 
@@ -122,8 +121,7 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
                     AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, tailComputeMask);
                 }
 
-                AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(outputReg, outputFp32Reg,
-                                                                              tailComputeMask);
+                AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(outputReg, outputFp32Reg, tailComputeMask);
                 AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
                     context.outputTail, outputReg, tailOutputOffset, tailStoreMask);
             }
@@ -131,7 +129,7 @@ __aicore__ inline void RunSwiGLUOAI(const GatedActivationTileContext<InputType> 
                  additionalPaddingIndex++) {
                 AscendC::Reg::Duplicate(zeroReg, zeroValue);
                 AscendC::Reg::DataCopy<bfloat16_t>(context.additionalPaddingOutput, zeroReg, tailOutputOffset,
-                                                        additionalPaddingStoreMask);
+                                                   additionalPaddingStoreMask);
             }
         }
     }

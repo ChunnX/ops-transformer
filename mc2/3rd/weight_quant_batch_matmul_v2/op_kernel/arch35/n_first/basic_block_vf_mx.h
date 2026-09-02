@@ -64,12 +64,10 @@ struct Fp4NzParams {
 };
 
 static constexpr Reg::CastTrait CAST_BF16_TO_FP16_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                Reg::MaskMergeMode::ZEROING,
-                                                                AscendC::RoundMode::CAST_RINT};
+                                                           Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
 static constexpr Reg::CastTrait CAST_FP4_TO_BF16_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                               Reg::MaskMergeMode::ZEROING,
-                                                               AscendC::RoundMode::UNKNOWN};
+                                                          Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 template <typename xType>
 __aicore__ inline void MxScaleVf(RegTensor<uint8_t> &antiQuantScaleE8m0Vreg0,
@@ -94,17 +92,17 @@ __aicore__ inline void MxScaleVf(RegTensor<uint8_t> &antiQuantScaleE8m0Vreg0,
         // antiQuantScaleF16Vreg1:
         // S128 S129 S130 S131 S132 S133 S134 S135 ..... S255 S256
         Reg::ShiftRights((Reg::RegTensor<uint16_t> &)antiQuantScaleF16Vreg0,
-                              (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg0, SHIFT_FOR_BF16, maskAll);
+                         (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg0, SHIFT_FOR_BF16, maskAll);
         Reg::ShiftRights((Reg::RegTensor<uint16_t> &)antiQuantScaleF16Vreg1,
-                              (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg1, SHIFT_FOR_BF16, maskAll);
+                         (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg1, SHIFT_FOR_BF16, maskAll);
     } else {
         // 需要转换为FP16格式时，先转换为BF16再转换为FP16
         RegTensor<uint16_t> antiQuantScaleBF16Vreg0;
         RegTensor<uint16_t> antiQuantScaleBF16Vreg1;
         Reg::ShiftRights((Reg::RegTensor<uint16_t> &)antiQuantScaleBF16Vreg0,
-                              (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg0, SHIFT_FOR_BF16, maskAll);
+                         (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg0, SHIFT_FOR_BF16, maskAll);
         Reg::ShiftRights((Reg::RegTensor<uint16_t> &)antiQuantScaleBF16Vreg1,
-                              (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg1, SHIFT_FOR_BF16, maskAll);
+                         (Reg::RegTensor<uint16_t> &)antiQuantScaleE8m0Vreg1, SHIFT_FOR_BF16, maskAll);
         Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(
             antiQuantScaleF16Vreg0, (Reg::RegTensor<bfloat16_t> &)antiQuantScaleBF16Vreg0, maskAll);
         Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(
@@ -296,9 +294,9 @@ __aicore__ inline void AntiQuantFp4NzKnVf(Fp4NzParams<xType, wType> &fp4NzParams
                 // Vn 0 1 2 3 4 5 6 7 8 9 a b c d e f
                 // Vd 0 1 x x x x x x 2 3 x x x x x x
                 // 4bit物理地址位移 = 逻辑索引 >> 1
-                AddrReg weightFp4AddrReg = Reg::CreateAddrReg<wType>(loopN1Idx, BLOCK_CUBE * ubMte2KSize >> 1,
-                                                                          loopGroupIdx, MX_GROUPSIZE * BLOCK_CUBE >> 1,
-                                                                          loopGroupInnerIdx, VEC_MAX_ELEM_B16 >> 1);
+                AddrReg weightFp4AddrReg =
+                    Reg::CreateAddrReg<wType>(loopN1Idx, BLOCK_CUBE * ubMte2KSize >> 1, loopGroupIdx,
+                                              MX_GROUPSIZE * BLOCK_CUBE >> 1, loopGroupInnerIdx, VEC_MAX_ELEM_B16 >> 1);
                 Reg::DataCopy<wType, Reg::LoadDist::DIST_UNPACK4_B8>(
                     weightFp4Vreg, (__local_mem__ wType *)fp4NzParams.weightLowBitPhyAddr, weightFp4AddrReg);
 
@@ -308,8 +306,8 @@ __aicore__ inline void AntiQuantFp4NzKnVf(Fp4NzParams<xType, wType> &fp4NzParams
                 AddrReg weightHighBitPhyAddrReg = Reg::CreateAddrReg<xType>(
                     loopN1Idx, fp4NzParams.loopN1DstStride, loopGroupIdx, fp4NzParams.groupDstStride, loopGroupInnerIdx,
                     fp4NzParams.innerDstStride);
-                Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(
-                    fp4NzParams.weightHighBitPhyAddr, weightF16Vreg, weightHighBitPhyAddrReg, maskAll);
+                Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(fp4NzParams.weightHighBitPhyAddr, weightF16Vreg,
+                                                                    weightHighBitPhyAddrReg, maskAll);
             }
         }
     }

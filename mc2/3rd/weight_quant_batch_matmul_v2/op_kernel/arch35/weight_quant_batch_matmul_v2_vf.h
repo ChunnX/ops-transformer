@@ -36,12 +36,11 @@ struct RegTensorActualT<AscendC::int4b_t> {
 };
 
 static constexpr Reg::CastTrait castTraitNorm = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 // CAST_RINT表示采用四舍六入五成双的舍入模式
 static constexpr Reg::CastTrait castTraitF162Bf16 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
-                                                          Reg::MaskMergeMode::ZEROING,
-                                                          AscendC::RoundMode::CAST_RINT};
+                                                     Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
 template <typename XType>
 struct ParamsW8NK {
@@ -283,11 +282,11 @@ __aicore__ inline void AntiquantW8PerGroupNK(ParamsW8NK<XType> &param)
 
                 if constexpr (AscendC::IsSameType<XType, half>::value) {
                     Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn,
-                                                                                              maskWeight);
+                                                                                         maskWeight);
                 } else {
                     Reg::RegTensor<half> weightF16;
                     Reg::Cast<half, typename RegTensorActualT<WType>::T, castTraitNorm>(weightF16, weightIn,
-                                                                                             maskWeight);
+                                                                                        maskWeight);
                     Reg::Cast<XType, half, castTraitF162Bf16>(weightOut, weightF16, maskWeight);
                 }
 
@@ -295,8 +294,7 @@ __aicore__ inline void AntiquantW8PerGroupNK(ParamsW8NK<XType> &param)
                     Reg::Add(weightOut, weightOut, offset, maskWeight);
                 }
                 Reg::Mul(weightOut, weightOut, scale, maskWeight);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     param.weightOutBaseAddr, weightOut, param.dataBlockStride, param.repeatStride, maskWeight);
             }
             param.weightOutBaseAddr += param.weightOutFixStride;
@@ -322,12 +320,10 @@ __aicore__ inline void AntiquantW8PerGroupNK(ParamsW8NK<XType> &param)
                 addRegWeightTail);
 
             if constexpr (AscendC::IsSameType<XType, half>::value) {
-                Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn,
-                                                                                          maskWeight);
+                Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn, maskWeight);
             } else {
                 Reg::RegTensor<half> weightF16;
-                Reg::Cast<half, typename RegTensorActualT<WType>::T, castTraitNorm>(weightF16, weightIn,
-                                                                                         maskWeight);
+                Reg::Cast<half, typename RegTensorActualT<WType>::T, castTraitNorm>(weightF16, weightIn, maskWeight);
                 Reg::Cast<XType, half, castTraitF162Bf16>(weightOut, weightF16, maskWeight);
             }
 
@@ -355,8 +351,7 @@ __aicore__ inline void AntiquantPerGroupKN(ParamsKN<XType> &param)
     for (uint16_t nIdx = 0; nIdx < param.nLoop; ++nIdx) {
         maskWeight = Reg::UpdateMask<XType>(maskWeightValue);
         for (uint16_t gIdx = 0; gIdx < param.groupNum; ++gIdx) {
-            Reg::AddrReg addRegScale =
-                Reg::CreateAddrReg<XType>(nIdx, param.vfElemB16, gIdx, param.nBubXTypeAlign);
+            Reg::AddrReg addRegScale = Reg::CreateAddrReg<XType>(nIdx, param.vfElemB16, gIdx, param.nBubXTypeAlign);
             if constexpr (hasAntiquantOffset) {
                 Reg::DataCopy<XType, Reg::LoadDist::DIST_NORM>(offset, param.offsetBaseAddr, addRegScale);
             }
@@ -371,11 +366,11 @@ __aicore__ inline void AntiquantPerGroupKN(ParamsKN<XType> &param)
                         addRegWeight);
                     if constexpr (AscendC::IsSameType<XType, half>::value) {
                         Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn,
-                                                                                                  maskWeight);
+                                                                                             maskWeight);
                     } else {
                         Reg::RegTensor<half> weightF16;
                         Reg::Cast<half, typename RegTensorActualT<WType>::T, castTraitNorm>(weightF16, weightIn,
-                                                                                                 maskWeight);
+                                                                                            maskWeight);
                         Reg::Cast<XType, half, castTraitF162Bf16>(weightOut, weightF16, maskWeight);
                     }
                 } else {
@@ -385,15 +380,14 @@ __aicore__ inline void AntiquantPerGroupKN(ParamsKN<XType> &param)
                         weightIn, (__local_mem__ typename RegTensorActualT<WType>::T *)(param.weightInBaseAddr),
                         addRegWeight);
                     Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn,
-                                                                                              maskWeight);
+                                                                                         maskWeight);
                 }
 
                 if constexpr (hasAntiquantOffset) {
                     Reg::Add(weightOut, weightOut, offset, maskWeight);
                 }
                 Reg::Mul(weightOut, weightOut, scale, maskWeight);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     param.weightOutBaseAddr, weightOut, param.dataBlockStride, param.repeatStride, maskWeight);
             }
         }
@@ -407,28 +401,27 @@ __aicore__ inline void AntiquantPerGroupKN(ParamsKN<XType> &param)
 
         for (uint16_t kIdx = 0; kIdx < param.groupTail; ++kIdx) {
             if constexpr (AscendC::IsSameType<WType, int8_t>::value) {
-                Reg::AddrReg addRegWeightTail = Reg::CreateAddrReg<typename RegTensorActualT<WType>::T>(
-                    nIdx, param.wNStride, kIdx, param.wKStride);
+                Reg::AddrReg addRegWeightTail =
+                    Reg::CreateAddrReg<typename RegTensorActualT<WType>::T>(nIdx, param.wNStride, kIdx, param.wKStride);
                 Reg::DataCopy<typename RegTensorActualT<WType>::T, Reg::LoadDist::DIST_UNPACK_B8>(
                     weightIn, (__local_mem__ typename RegTensorActualT<WType>::T *)(param.weightInGroupTailAddr),
                     addRegWeightTail);
                 if constexpr (AscendC::IsSameType<XType, half>::value) {
                     Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn,
-                                                                                              maskWeight);
+                                                                                         maskWeight);
                 } else {
                     Reg::RegTensor<half> weightF16Tail;
                     Reg::Cast<half, typename RegTensorActualT<WType>::T, castTraitNorm>(weightF16Tail, weightIn,
-                                                                                             maskWeight);
+                                                                                        maskWeight);
                     Reg::Cast<XType, half, castTraitF162Bf16>(weightOut, weightF16Tail, maskWeight);
                 }
             } else {
-                Reg::AddrReg addRegWeightTail = Reg::CreateAddrReg<typename RegTensorActualT<WType>::T>(
-                    nIdx, param.wNStride, kIdx, param.wKStride);
+                Reg::AddrReg addRegWeightTail =
+                    Reg::CreateAddrReg<typename RegTensorActualT<WType>::T>(nIdx, param.wNStride, kIdx, param.wKStride);
                 Reg::DataCopy<typename RegTensorActualT<WType>::T, Reg::LoadDist::DIST_UNPACK4_B8>(
                     weightIn, (__local_mem__ typename RegTensorActualT<WType>::T *)(param.weightInGroupTailAddr),
                     addRegWeightTail);
-                Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn,
-                                                                                          maskWeight);
+                Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTraitNorm>(weightOut, weightIn, maskWeight);
             }
             if constexpr (hasAntiquantOffset) {
                 Reg::Add(weightOut, weightOut, offset, maskWeight);
@@ -445,7 +438,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset, bool useVag>
 __aicore__ inline void AntiquantW4Pergroup32NK(ParamsGroupSize32<XType, WType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     Reg::RegTensor<XType> offset0;
     Reg::RegTensor<XType> offset1;
@@ -466,15 +459,13 @@ __aicore__ inline void AntiquantW4Pergroup32NK(ParamsGroupSize32<XType, WType> &
         // 按照一列一列处理
         for (uint16_t outerIdx = 0; outerIdx < (uint16_t)p.outerExtend; ++outerIdx) {
             if constexpr (useVag) {
-                Reg::AddrReg addrRegScale =
-                    Reg::CreateAddrReg<XType>(innerIdx, 8, outerIdx, p.outerStrideScale);
+                Reg::AddrReg addrRegScale = Reg::CreateAddrReg<XType>(innerIdx, 8, outerIdx, p.outerStrideScale);
                 Reg::AddrReg addrRegWeight = Reg::CreateAddrReg<typename RegTensorActualT<WType>::T>(
                     innerIdx, 128, outerIdx, p.outerStrideWeight);
 
                 // 载入scale和offset
                 if constexpr (hasAntiquantOffset) {
-                    Reg::DataCopy<XType, Reg::LoadDist::DIST_E2B_B16>(offset0, p.offsetBaseAddr0,
-                                                                                addrRegScale);
+                    Reg::DataCopy<XType, Reg::LoadDist::DIST_E2B_B16>(offset0, p.offsetBaseAddr0, addrRegScale);
                     Reg::Interleave(offset0, offset1, offset0, offset0);
                 }
                 // DIST_E2B_B16 表示搬运模式为
@@ -565,7 +556,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset, bool useVag>
 __aicore__ inline void AntiquantW4Pergroup64NK(ParamsGroupSize64<XType, WType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     Reg::RegTensor<XType> oriOffset00;
     Reg::RegTensor<XType> oriOffset01;
@@ -589,10 +580,8 @@ __aicore__ inline void AntiquantW4Pergroup64NK(ParamsGroupSize64<XType, WType> &
                 Reg::AddrReg aregWeight = Reg::CreateAddrReg<typename RegTensorActualT<WType>::T>(
                     innerIdx, 64, outerIdx, p.outerStrideWeight);
                 if constexpr (hasAntiquantOffset) {
-                    Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(oriOffset00, p.offsetBaseAddr00,
-                                                                                aregScale);
-                    Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(oriOffset01, p.offsetBaseAddr01,
-                                                                                aregScale);
+                    Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(oriOffset00, p.offsetBaseAddr00, aregScale);
+                    Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(oriOffset01, p.offsetBaseAddr01, aregScale);
                     Reg::Select(offset0, oriOffset00, oriOffset01, maskRegSelect);
                 }
                 Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(oriScale00, p.scaleBaseAddr00, aregScale);
@@ -637,7 +626,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset, bool useVag>
 __aicore__ inline void AntiquantW4Pergroup128NK(ParamsGroupSize128And256<XType, WType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     Reg::RegTensor<XType> offset;
     Reg::RegTensor<XType> scale;
@@ -690,7 +679,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset, bool useVag>
 __aicore__ inline void AntiquantW4Pergroup256NK(ParamsGroupSize128And256<XType, WType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     Reg::RegTensor<XType> offset;
     Reg::RegTensor<XType> scale;
@@ -759,7 +748,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset, bool tailInMa
 __aicore__ inline void AntiquantW4PergroupGt128NKCase1(ParamsGroupSizeGt128<XType, WType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     Reg::RegTensor<XType> offset;
     Reg::RegTensor<XType> scale;
@@ -775,8 +764,8 @@ __aicore__ inline void AntiquantW4PergroupGt128NKCase1(ParamsGroupSizeGt128<XTyp
                 Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(
                     offset, p.offsetBaseAddr + nBubIdx * p.groupNumBub + groupIdx);
             }
-            Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(
-                scale, p.scaleBaseAddr + nBubIdx * p.groupNumBub + groupIdx);
+            Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(scale,
+                                                              p.scaleBaseAddr + nBubIdx * p.groupNumBub + groupIdx);
             // 处理一个 group_size 中 128 对齐部分
             for (uint16_t vlIdx = 0; vlIdx < p.numVLInGroup; ++vlIdx) {
                 Reg::DataCopy<typename RegTensorActualT<WType>::T, Reg::LoadDist::DIST_UNPACK4_B8>(
@@ -789,8 +778,7 @@ __aicore__ inline void AntiquantW4PergroupGt128NKCase1(ParamsGroupSizeGt128<XTyp
                     Reg::Add(weightB16, weightB16, offset, maskAll);
                 }
                 Reg::Mul(weightB16, weightB16, scale, maskAll);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     p.weightOutBaseAddr0, weightB16, p.dataBlockStride, p.repeatStride0, maskAll);
             }
             // 处理一个 group_size 相对于 128 的尾块
@@ -800,14 +788,12 @@ __aicore__ inline void AntiquantW4PergroupGt128NKCase1(ParamsGroupSizeGt128<XTyp
                     (__local_mem__ typename RegTensorActualT<WType>::T *)(p.weightInBaseAddr + nBubIdx * p.innerExtend +
                                                                           groupIdx * p.groupSizeInByte +
                                                                           p.numVLInGroup * p.vlB4SizeInByte));
-                Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTrait>(weightB16, weightB4,
-                                                                                      maskGrpMod128);
+                Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTrait>(weightB16, weightB4, maskGrpMod128);
                 if constexpr (hasAntiquantOffset) {
                     Reg::Add(weightB16, weightB16, offset, maskGrpMod128);
                 }
                 Reg::Mul(weightB16, weightB16, scale, maskGrpMod128);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     p.weightOutBaseAddr0, weightB16, p.dataBlockStride, p.repeatStride1, maskGrpMod128);
             }
         }
@@ -831,8 +817,7 @@ __aicore__ inline void AntiquantW4PergroupGt128NKCase1(ParamsGroupSizeGt128<XTyp
                     Reg::Add(weightB16, weightB16, offset, maskAll);
                 }
                 Reg::Mul(weightB16, weightB16, scale, maskAll);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     p.weightOutBaseAddr1, weightB16, p.dataBlockStride, p.repeatStride0, maskAll);
             }
             // 处理一个不完整的 group 相对于 128 的尾块
@@ -843,14 +828,13 @@ __aicore__ inline void AntiquantW4PergroupGt128NKCase1(ParamsGroupSizeGt128<XTyp
                                                                           p.mainGroupNum * p.groupSizeInByte +
                                                                           p.numVLInRemainGroup * p.vlB4SizeInByte));
                 Reg::Cast<XType, typename RegTensorActualT<WType>::T, castTrait>(weightB16, weightB4,
-                                                                                      maskRemainGrpMod128);
+                                                                                 maskRemainGrpMod128);
                 if constexpr (hasAntiquantOffset) {
                     Reg::Add(weightB16, weightB16, offset, maskRemainGrpMod128);
                 }
                 Reg::Mul(weightB16, weightB16, scale, maskRemainGrpMod128);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(p.weightOutBaseAddr1, weightB16,
-                                                                            p.dataBlockStride, 0, maskRemainGrpMod128);
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    p.weightOutBaseAddr1, weightB16, p.dataBlockStride, 0, maskRemainGrpMod128);
             }
         }
         // 校正从 reg 到 ub 的搬出地址，递增 C0 (32 Byte) 大小的地址
@@ -863,7 +847,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset>
 __aicore__ inline void AntiquantW4PergroupGt128NKCase2(ParamsGroupSizeGt128<XType, WType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     Reg::RegTensor<XType> offset;
     Reg::RegTensor<XType> scale;
@@ -915,7 +899,7 @@ template <typename XType, typename WType, bool hasAntiquantOffset, bool reusePre
 __aicore__ inline void AntiquantW4Pergroup32OddNK(ParamsGroupSize32OddNK<XType> &p)
 {
     static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                 Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
     Reg::RegTensor<XType> offsetOdd;
     Reg::RegTensor<XType> scaleOdd;
     Reg::RegTensor<XType> offsetEven;
@@ -956,8 +940,7 @@ __aicore__ inline void AntiquantW4Pergroup32OddNK(ParamsGroupSize32OddNK<XType> 
                     Reg::Add(weightB16, weightB16, offsetOdd, maskWeightOdd);
                 }
                 Reg::Mul(weightB16, weightB16, scaleOdd, maskWeightOdd);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     p.weightOutOddAddr, weightB16, p.dataBlockStride, p.repeatStride, maskWeightOdd);
             }
             p.weightOutOddAddr -= p.offsetNWeightOutOdd;
@@ -965,8 +948,7 @@ __aicore__ inline void AntiquantW4Pergroup32OddNK(ParamsGroupSize32OddNK<XType> 
             // corss border part
             if constexpr (crossBorder) {
                 if constexpr (hasAntiquantOffset) {
-                    Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(offsetEven, p.offsetEvenAddr,
-                                                                                addRegScale);
+                    Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(offsetEven, p.offsetEvenAddr, addRegScale);
                 }
                 Reg::DataCopy<XType, Reg::LoadDist::DIST_BRC_B16>(scaleEven, p.scaleEvenAddr, addRegScale);
 
@@ -980,8 +962,7 @@ __aicore__ inline void AntiquantW4Pergroup32OddNK(ParamsGroupSize32OddNK<XType> 
                     Reg::Add(weightB16, weightB16, offsetEven, maskWeightBorder);
                 }
                 Reg::Mul(weightB16, weightB16, scaleEven, maskWeightBorder);
-                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(
+                Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     p.weightOutBorderAddr, weightB16, p.dataBlockStride, p.repeatStride, maskWeightBorder);
 
                 // even group part
@@ -1007,8 +988,7 @@ __aicore__ inline void AntiquantW4Pergroup32OddNK(ParamsGroupSize32OddNK<XType> 
                         Reg::Add(weightB16, weightB16, offsetEven, maskWeightEven);
                     }
                     Reg::Mul(weightB16, weightB16, scaleEven, maskWeightEven);
-                    Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                       Reg::PostLiteral::POST_MODE_UPDATE>(
+                    Reg::DataCopy<XType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                         p.weightOutEvenAddr, weightB16, p.dataBlockStride, p.repeatStride, maskWeightEven);
                 }
                 p.weightOutBorderAddr -= p.offsetNWeightOutBorder;

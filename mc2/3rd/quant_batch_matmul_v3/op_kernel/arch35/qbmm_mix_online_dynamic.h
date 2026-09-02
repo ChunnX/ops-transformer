@@ -41,21 +41,17 @@ using AscendC::TPipe;
 using AscendC::TPosition;
 using AscendC::TQue;
 
-constexpr AscendC::Reg::CastTrait ctInt322Fp32 = {
-    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN,
-    AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait ctInt322Fp32 = {AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN,
+                                                  AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
-constexpr AscendC::Reg::CastTrait ctFp322Half = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait ctFp322Half = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
+                                                 AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
-constexpr AscendC::Reg::CastTrait ctHalf2Fp32Zero = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+constexpr AscendC::Reg::CastTrait ctHalf2Fp32Zero = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
+                                                     AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
-constexpr AscendC::Reg::CastTrait ctHalf2Fp32One = {
-    AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+constexpr AscendC::Reg::CastTrait ctHalf2Fp32One = {AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN,
+                                                    AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType, CubeFormat aFormat,
           CubeFormat bFormat, CubeFormat cFormat, bool aTrans, bool bTrans, class l0cDtype,
@@ -599,8 +595,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        AscendC::Reg::MaskReg maskN4B16 =
-            AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskN4B16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
@@ -639,8 +634,8 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
                 if constexpr (x1QuantMode == BasicQuantMode::PERTENSOR_MODE) {
                     AscendC::Reg::Muls(mulPtScaleOutReg, mulScaleOutReg, pertokenScaleScalar_, maskN);
                 } else if constexpr (x1QuantMode == BasicQuantMode::PERTOKEN_MODE) {
-                    AscendC::Reg::DataCopy<ptScaleType, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                        perTokenScaleReg, perTokenScale + mIdx);
+                    AscendC::Reg::DataCopy<ptScaleType, AscendC::Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg,
+                                                                                              perTokenScale + mIdx);
                     AscendC::Reg::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
                 } else {
                     mulPtScaleOutReg = mulScaleOutReg;
@@ -669,11 +664,11 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
                 // copy out from register to ub
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf;
                 if constexpr (IsSameType<cType, float>::value) {
-                    AscendC::Reg::DataCopy<cType, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, castResultOutReg, maskN);
+                    AscendC::Reg::DataCopy<cType, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                          castResultOutReg, maskN);
                 } else {
-                    AscendC::Reg::DataCopy<cType, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                        dst + dstUbOffset, castResultOutReg, maskN);
+                    AscendC::Reg::DataCopy<cType, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst + dstUbOffset,
+                                                                                          castResultOutReg, maskN);
                 }
             }
         }
