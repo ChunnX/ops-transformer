@@ -71,7 +71,6 @@ private:
     // 从constInfo直接读取mStart/mEnd（FULL_LOAD独有）
     __aicore__ inline void CalcCubeParams(RunInfo &info);
     // 计算vec1所需的压缩TC数量（FULL_LOAD独有）
-    __aicore__ inline void CalcV1Params(Vec1RunInfo &vec1Info);
 
     // NORMAL/FULL_LOAD主循环体分离
     __aicore__ inline void ProcessNormalLoop();
@@ -545,20 +544,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcCubeParams(RunI
 }
 
 template <typename COMP, bool IS_FULL_LOAD>
-__aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcV1Params(Vec1RunInfo &vec1Info)
-{
-    vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
-    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
-        uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);
-        if (bSeqCnt == 0) {
-            continue;
-        }
-        uint64_t bStartPos = tools_.GetStartPos(bIdx);
-        vec1Info.dealScSize += (bStartPos + bSeqCnt) / constInfo.cmpRatio - bStartPos / constInfo.cmpRatio;
-    }
-}
-
-template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ProcessNormalLoop()
 {
     BatchInfo batchInfo{};
@@ -583,18 +568,13 @@ template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ProcessFullLoadLoop()
 {
     RunInfo extraInfo[1];
-    Vec1RunInfo vec1Info{};
     for (uint32_t i = 0; i < loopTimes; ++i) {
         RunInfo &extraInfo0 = extraInfo[0];
-        if ASCEND_IS_AIV {
-            CalcV1Params(vec1Info);
-        } else {
-            CalcCubeParams(extraInfo0);
-        }
         if ASCEND_IS_AIC {
+            CalcCubeParams(extraInfo0);
             ComputeMm1(extraInfo0);
         } else {
-            ComputeVec1(vec1Info);
+            ComputeVec1(Vec1RunInfo{});
         }
     }
 }

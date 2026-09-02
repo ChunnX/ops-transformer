@@ -51,7 +51,7 @@ private:
     __aicore__ inline void CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor, uint32_t hIdx, uint32_t kBase, uint32_t coffId);
     __aicore__ inline void LoadAToL0(const RunInfo &info, LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> xL1Tensor,
                                      uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize);
-    __aicore__ inline void LoadBToL0(const RunInfo &info, LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
+    __aicore__ inline void LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
                                      uint32_t kStart, uint32_t kBase, uint32_t nStart, uint32_t nDealSize);
     __aicore__ inline void MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> bL0Tensor,
                                       uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C);
@@ -218,16 +218,15 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyXGmToL1
         copySeqCnt = constInfo_.mEnd - constInfo_.mStart;
         sIdx = constInfo_.mStart;
     } else {
-        uint32_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
         copySeqCnt = info.dealSeqCnt;                                        // 此基本块处理的长度
-        sIdx = tStart;                                                       // 起始s在整个T的起始点
+        sIdx = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置，sIdx为起始s在整个T的起始点
     }
     uint32_t xL1Offset = 0 * NZ_C0_SIZE;
     uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
     uint32_t nValue = copySeqCnt;
     uint32_t dValue = kBase; // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
-    uint32_t dstNzC0Stride = Align(copySeqCnt, 16U);
+    uint32_t dstNzC0Stride = Align(copySeqCnt, NZ_FRACTAL_DIM);
     CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
@@ -250,7 +249,7 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyWeightG
     uint32_t dValue = kBase;
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride =
-        Align(2 * constInfo_.dBaseSize, 16U); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+        Align(WEIGHT_MATRIX_NUM * constInfo_.dBaseSize, NZ_FRACTAL_DIM); // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
     CopySingleMatrixNDToNZ(wL1Tensor[wkvL1Offset], wkvGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
     CopySingleMatrixNDToNZ(wL1Tensor[wgateL1Offset], wgateGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
@@ -268,16 +267,16 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::LoadAToL0(c
     } else {
         mSize = info.dealSeqCnt;
     }
-    uint32_t mSizeAlign = Align(mSize, 16U);
+    uint32_t mSizeAlign = Align(mSize, NZ_FRACTAL_DIM);
     uint32_t xTensorOffset = kStart * mSizeAlign + mStart * NZ_C0_SIZE;
-    uint32_t mDealSizeAlign = Align(mDealSize, 16U);
+    uint32_t mDealSizeAlign = Align(mDealSize, NZ_FRACTAL_DIM);
 
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = 0;
     loadData2DParamsV2.kStartPosition = 0;
-    loadData2DParamsV2.mStep = mDealSizeAlign / 16;
+    loadData2DParamsV2.mStep = mDealSizeAlign / NZ_FRACTAL_DIM;
     loadData2DParamsV2.kStep = kBase / NZ_C0_SIZE;
-    loadData2DParamsV2.srcStride = mSizeAlign / 16;
+    loadData2DParamsV2.srcStride = mSizeAlign / NZ_FRACTAL_DIM;
     loadData2DParamsV2.dstStride = loadData2DParamsV2.mStep;
     loadData2DParamsV2.ifTranspose = false;
     LoadData(aL0Tensor, xL1Tensor[xTensorOffset], loadData2DParamsV2);
@@ -289,18 +288,18 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::LoadBToL0(L
                                                                                 uint32_t kStart, uint32_t kBase,
                                                                                 uint32_t nStart, uint32_t nDealSize)
 {
-    uint32_t nSize = 2 * constInfo_.dBaseSize;
+    uint32_t nSize = WEIGHT_MATRIX_NUM * constInfo_.dBaseSize;
 
-    uint32_t nSizeAlign = Align(nSize, 16U);
+    uint32_t nSizeAlign = Align(nSize, NZ_FRACTAL_DIM);
     uint64_t wTensorOffset = nSizeAlign * kStart + nStart * NZ_C0_SIZE;
-    uint32_t nDealSizeAlign = Align(nDealSize, 16U);
+    uint32_t nDealSizeAlign = Align(nDealSize, NZ_FRACTAL_DIM);
 
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = 0;
     loadData2DParamsV2.kStartPosition = 0;
-    loadData2DParamsV2.mStep = nDealSizeAlign / 16;
+    loadData2DParamsV2.mStep = nDealSizeAlign / NZ_FRACTAL_DIM;
     loadData2DParamsV2.kStep = kBase / NZ_C0_SIZE;
-    loadData2DParamsV2.srcStride = nSizeAlign / 16;
+    loadData2DParamsV2.srcStride = nSizeAlign / NZ_FRACTAL_DIM;
     loadData2DParamsV2.dstStride = loadData2DParamsV2.mStep;
     loadData2DParamsV2.ifTranspose = false;
     LoadData(bL0Tensor, wL1Tensor[wTensorOffset], loadData2DParamsV2);
@@ -332,7 +331,7 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyOutMm1R
     // coffId=0, 存左矩阵的数据; coffId=1, 存右矩阵的数据
     FixpipeParamsV220 fixParams;
     fixParams.mSize = mDealSize;
-    fixParams.srcStride = (mDealSize + 15) / 16 * 16; // 需要16对齐
+    fixParams.srcStride = (mDealSize + NZ_FRACTAL_DIM - 1) / NZ_FRACTAL_DIM * NZ_FRACTAL_DIM; // 需要16对齐
     fixParams.dstStride = (uint32_t)COMP::coff * constInfo_.headDim;
     fixParams.ndNum = 1;
 
@@ -344,8 +343,8 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyOutMm1R
     }
     uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
     uint64_t gmOffset = nOffset + coffId * constInfo_.headDim + mStart * fixParams.dstStride + dbOffset;
-    uint32_t kvOffset = (mDealSize + 15) / 16 * 16 * nStart;
-    uint32_t scoreOffset = (mDealSize + 15) / 16 * 16 * ((nStart + constInfo_.dBaseSize) % (2 * constInfo_.dBaseSize));
+    uint32_t kvOffset = (mDealSize + NZ_FRACTAL_DIM - 1) / NZ_FRACTAL_DIM * NZ_FRACTAL_DIM * nStart;
+    uint32_t scoreOffset = (mDealSize + NZ_FRACTAL_DIM - 1) / NZ_FRACTAL_DIM * NZ_FRACTAL_DIM * ((nStart + constInfo_.dBaseSize) % (WEIGHT_MATRIX_NUM * constInfo_.dBaseSize));
     if (nStart < constInfo_.dBaseSize) {
         fixParams.nSize = min(constInfo_.dBaseSize - nStart, nDealSize);
         Fixpipe(kvMm1ResGm[gmOffset], cL0Tensor[kvOffset], fixParams);
@@ -369,9 +368,7 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::ComputeMm1(
     if (mSize == 0) {
         return;
     }
-    static constexpr uint32_t K_L1_BASE_NORMAL = 512;
-    static constexpr uint32_t K_L1_BASE_FULL = 256;
-    static constexpr uint32_t K_L1_BASE = IS_FULL_LOAD ? K_L1_BASE_FULL : K_L1_BASE_NORMAL;
+    static constexpr uint32_t K_L1_BASE = IS_FULL_LOAD ? 256 : 512;
     static constexpr uint32_t M_L0_BASE = 128;
     static constexpr uint32_t K_L0_BASE = 256;
     static constexpr uint32_t N_L0_BASE = 128;
@@ -418,7 +415,7 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::ComputeMm1(
                 if (mL0 + M_L0_BASE > mSize) {
                     actMDealSize = mSize - mL0;
                 }
-                uint32_t nDealSize = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+                uint32_t nDealSize = WEIGHT_MATRIX_NUM * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
                 uint32_t actNDealSize = N_L0_BASE;
                 for (uint32_t nL0 = 0; nL0 < nDealSize; nL0 += N_L0_BASE) {
                     if (nL0 + N_L0_BASE > nDealSize) {
@@ -441,7 +438,7 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::ComputeMm1(
                         LocalTensor<X_T> bL0Tensor =
                             tmpBufL0B.GetWithOffset<X_T>(L0B_PP_SIZE / sizeof(X_T), l0abBufId * L0B_PP_SIZE);
                         LoadAToL0(info, aL0Tensor, xL1Tensor, kL0, actKDealSize, mL0, actMDealSize);
-                        LoadBToL0(info, bL0Tensor, wL1Tensor, kL0, actKDealSize, nL0, actNDealSize);
+                        LoadBToL0(bL0Tensor, wL1Tensor, kL0, actKDealSize, nL0, actNDealSize);
                         SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
                         WaitFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);
                         bool isInitL0C = isFirst && (kL0 == 0);
