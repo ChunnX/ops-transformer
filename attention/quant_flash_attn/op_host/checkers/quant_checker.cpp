@@ -744,6 +744,19 @@ const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TA
       {QfaLayout::BSND},
       true}},
 };
+
+// 按 quant_mode 的支持列表动态拼接报错文案, 避免硬编码误导 (如 HIF8 打印 mxfp8 的列表)
+std::string JoinSupportedLayouts(const std::vector<QfaLayout> &layouts)
+{
+    std::string result = "{";
+    for (size_t i = 0; i < layouts.size(); i++) {
+        if (i > 0) {
+            result += ", ";
+        }
+        result += QfaLayoutToSerialString(layouts[i]);
+    }
+    return result + "}";
+}
 } // namespace
 
 ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo) const
@@ -760,37 +773,38 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
     const std::string quantModeStr = std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)) + " (" +
                                      QfaQuantModeToSerialString(qfaInfo.quantMode) + ")";
 
-    OP_CHECK_IF(std::find(config.supportedQLayouts.begin(), config.supportedQLayouts.end(), qfaInfo.qLayout) ==
-                    config.supportedQLayouts.end(),
-                OP_LOGE(qfaInfo.opName, "When quant_mode is %s, layout_q must be in supported list, but got %s",
-                        quantModeStr.c_str(), qLayoutStr.c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(config.supportedQLayouts.begin(), config.supportedQLayouts.end(), qfaInfo.qLayout) ==
+            config.supportedQLayouts.end(),
+        OP_LOGE(qfaInfo.opName, "When quant_mode is %s, layout_q must be in %s, but got %s", quantModeStr.c_str(),
+                JoinSupportedLayouts(config.supportedQLayouts).c_str(), qLayoutStr.c_str()),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), qfaInfo.kvLayout) ==
                     config.supportedKvLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
                     ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
-                     ", layout_kv must be in {TND, PA_BBND, PA_BNBD, PA_NZ}")
+                     ", layout_kv must be in " + JoinSupportedLayouts(config.supportedKvLayouts))
                         .c_str()),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), qfaInfo.outLayout) ==
-            config.supportedOutLayouts.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            qfaInfo.opName, "layout_out", QfaLayoutToSerialString(qfaInfo.outLayout).c_str(),
-            ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr + ", layout_out must be TND")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), qfaInfo.outLayout) ==
+                    config.supportedOutLayouts.end(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "layout_out", QfaLayoutToSerialString(qfaInfo.outLayout).c_str(),
+                    ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
+                     ", layout_out must be in " + JoinSupportedLayouts(config.supportedOutLayouts))
+                        .c_str()),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(std::find(config.supportedQDescaleLayouts.begin(), config.supportedQDescaleLayouts.end(),
                           qfaInfo.layoutQDescale) == config.supportedQDescaleLayouts.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q_descale",
-                                                      QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
-                                                      ("When quant_mode is " + quantModeStr + " and layout_q is " +
-                                                       qLayoutStr + ", layout_q_descale must be in {TND, N2TGD}")
-                                                          .c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "layout_q_descale", QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
+                    ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
+                     ", layout_q_descale must be in " + JoinSupportedLayouts(config.supportedQDescaleLayouts))
+                        .c_str()),
                 return ge::GRAPH_FAILED);
 
     if (config.requireLayoutConsistent) {
