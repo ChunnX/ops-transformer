@@ -220,7 +220,7 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t *outBuf, _
     }
 }
 
-// 输入float，输出uint16；使用bf16可排序键值匹配uint16 TopK。
+// float in uint16 out, use bf16 sortable key to match uint16 topk.
 template <typename QK_T>
 __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, __ubuf__ QK_T *qkBuf,
                                                     __ubuf__ float *vBiasBuf, const float rSquare,

@@ -60,7 +60,7 @@ public:
 protected:
     TPipe *pipe = nullptr;
 
-    // 偏移
+    // offset
     uint64_t queryCoreOffset = 0ULL;
     uint64_t keyCoreOffset = 0ULL;
     uint64_t vbiasCoreOffset = 0ULL;
@@ -73,7 +73,7 @@ protected:
     uint32_t s2BlockNum = 0U;
     bool isUsedCoreEqZero = false;
     bool needCleanOutput = false;
-    // ================================全局缓存区=================================
+    // ================================Global Buffer区=================================
 
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<Q_T> queryGm;
@@ -96,19 +96,19 @@ protected:
     SICommon::TempLoopInfo tempLoopInfo{};
     SICommon::SplitCoreInfo splitCoreInfo{};
 
-    // ================================初始化函数==================================
+    // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     __aicore__ inline bool NeedCleanOutput();
-    // ================================分核================================
+    // ================================Split Core================================
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
-    // ================================处理函数================================
+    // ================================Process functions================================
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, SICommon::RunInfo &runInfo);
-    // ================================参数计算=====================================
+    // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, GlobalTensor<int32_t> &seqLensGm,
@@ -258,8 +258,8 @@ __aicore__ inline uint32_t SIPreload<SIT>::CalcS2ValidSize(uint32_t gS1Idx, uint
         uint32_t maxS1Idx = (mBlockLen >= actS1Size || lastS1Idx < firstS1Idx) ? (actS1Size - 1U) : lastS1Idx;
         uint32_t qBlockEnd = maxS1Idx + 1U;
 
-        // causal模式下，KV可能在当前Q范围之前包含前缀或缓存块。
-        // 使用KV与Q的块偏移修正qBlockEnd，得到可见的K块数量。
+        // For causal mode, KV may contain prefix/cache blocks before the current Q range.
+        // Shift qBlockEnd by the KV-Q block offset to get the visible K block count.
         int64_t validS2Size =
             static_cast<int64_t>(actS2Size) - static_cast<int64_t>(actS1Size) + static_cast<int64_t>(qBlockEnd);
         validS2SizeWithWindow = static_cast<uint32_t>(Max(validS2Size, static_cast<int64_t>(0)));
@@ -325,8 +325,8 @@ SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_
                      __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *workspace,
                      const StemIndexerTilingData *__restrict tiling, TPipe *tPipe)
 {
-    // V121为1C:1V。opc上报的任务比例为1，ccec可能上报为2，并交错分配原始核编号。
-    // 对两种编译形态统一归一化，确保配对的Cube和Vector使用相同的逻辑核编号（0到63）。
+    // V121 is 1C:1V. opc reports task ratio 1 while ccec may report 2 and interleave raw block ids.
+    // Normalize both compiler forms so the paired Cube and Vector use the same logical core index (0..63).
     tmpBlockIdx = GetBlockIdx();
     aiCoreIdx = tmpBlockIdx / GetTaskRation();
 

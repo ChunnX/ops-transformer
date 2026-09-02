@@ -573,11 +573,13 @@ __simd_callee__ inline void HistogramsLastProcessRow(__ubuf__ uint32_t *histogra
 template <typename T>
 __simd_vf__ void HistogramsLastVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint32_t *inputBuf,
                                       __ubuf__ uint32_t *idx0Buf, __ubuf__ uint32_t *idx1Buf,
-                                      __ubuf__ uint32_t *idx2Buf, uint16_t vfLoop, uint32_t offset, uint32_t rowSlot,
-                                      uint32_t realRowIdx)
+                                      __ubuf__ uint32_t *idx2Buf, uint16_t vfLoop, uint32_t offset, uint32_t rowIdx0,
+                                      uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3)
 {
-    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, rowSlot,
-                                realRowIdx);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 0, rowIdx0);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 1, rowIdx1);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 2, rowIdx2);
+    HistogramsLastProcessRow<T>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, vfLoop, offset, 3, rowIdx3);
 }
 
 __simd_callee__ inline void FindKthProcessRow(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *histogramsBuf,
@@ -881,13 +883,7 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t> &tmpIdxLocal, const 
                                     rowIdx1, rowIdx2, rowIdx3);
     FindThirdTargetBinVFImpl(idx2Buf, nkValueBuf, nkValueBuf, histogramsBuf);
     HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, offset,
-                                   0U, rowIdx0);
-    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, offset,
-                                   1U, rowIdx1);
-    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, offset,
-                                   2U, rowIdx2);
-    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, offset,
-                                   3U, rowIdx3);
+                                   rowIdx0, rowIdx1, rowIdx2, rowIdx3);
     FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
 
     // filter
