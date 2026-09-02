@@ -68,8 +68,10 @@ constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
+// shared-Jetty打桩固定32个Jetty、每个Jetty最多覆盖4个连续对端。
+constexpr int64_t MAX_EP_WORLD_SIZE = 128;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr uint32_t SHARED_JETTY_NUM = 32U;
 constexpr int64_t MAX_NUM_EXPERTS = 2048;
 constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
@@ -148,8 +150,12 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
         (xDim0 <= 0) || (xDim0 > numMaxTokensPerRank),
         OP_LOGE(nodeName, "x dim0 is invalid, should be in [1, %ld], but got %ld.", numMaxTokensPerRank, xDim0),
         return false);
-    OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > H_MAX),
-                    OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1),
+    // 打桩：放开hidden最大值限制，不再校验H_MAX
+    // OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > H_MAX),
+    //                 OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1),
+    //                 return false);
+    OP_TILING_CHECK(xDim1 <= 0,
+                    OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be positive, but got %ld.", xDim1),
                     return false);
     OP_TILING_CHECK(
         xDim0 != topkDim0,
@@ -776,7 +782,10 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
         info.cfg.epWorldSize, info.cfg.numLocalExperts, info.cfg.numMaxTokensPerRank, info.cfg.topK,
         info.cfg.hidden,      info.networkMode,         info.hybrid.rankNumPerServer, info.hybrid.serverNum};
     MoeEpWindowLayout layout{};
-    OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    // 打桩：切换为性能验证专用窗口布局
+    // OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    //                 OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CalcMoeEpWindowLayoutStub(params, layout) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check Moe EP window capacity failed."), return ge::GRAPH_FAILED);
@@ -884,6 +893,10 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "Check output tensor failed."), return ge::GRAPH_FAILED);
 
     SetPlatformAndNetworkInfo(context, info, nodeName);
+    OP_TILING_CHECK(info.aivNum < SHARED_JETTY_NUM,
+                    OP_LOGE(nodeName, "shared-Jetty validation requires at least %u AIVs, but got %u.",
+                            SHARED_JETTY_NUM, info.aivNum),
+                    return ge::GRAPH_FAILED);
     if (info.networkMode == NETWORK_HYBRID) {
         SetSendEntryLayout(info);
     } else {
@@ -896,7 +909,8 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "Set workspace failed."), return ge::GRAPH_FAILED);
 
     uint64_t tilingKey =
-        CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.isMxQuant, info.networkMode);
+        // 打桩：强制走DIRECT路径，hybrid kernel未打桩
+        CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.isMxQuant, NETWORK_DIRECT);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     PrintTilingDataInfo(nodeName, info);

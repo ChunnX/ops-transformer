@@ -61,6 +61,7 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 static constexpr uint8_t BUFFER_NUM = 2;
 static constexpr uint32_t ELEM_ALIGN = 8U;
+static constexpr uint32_t FLAG_ELEMS_PER_SLOT = UB_ALIGN / sizeof(float);
 static constexpr uint32_t META_TOPK_SECTION = 2U;
 static constexpr uint32_t META_EXTRA_FIELDS = 2U;
 static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
@@ -73,6 +74,8 @@ static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 8192U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
+// 打桩：多jetty切片性能验证专用常量（与dispatch侧JETTY_TOTAL保持一致）
+constexpr uint32_t JETTY_TOTAL = 32U; // 打桩：jetty总数固定32（win槽位区每rank按32槽预留）
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -88,6 +91,7 @@ private:
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
     __aicore__ inline void WaitDispatch();
+    __aicore__ inline void WaitDispatchStub(); // 打桩：仅等待dispatch槽位flag，自申请UB
     __aicore__ inline void CopyFromWindowByExpert();
     __aicore__ inline void CopyFromWindowByCachedMeta();
 
@@ -223,10 +227,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
-    constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
-                                      offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
-    MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
-    diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE, tpipe_);
+    // 打桩：关闭win dump（无业务urma性能验证，win排布不变，仅不写入诊断区）
+    // constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
+    //                                   offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
+    // MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    // diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE, tpipe_);
     localSlotStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_);
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
@@ -244,64 +249,66 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
-    totalNotifyCnt_ = epWorldSize_ * dispatchNotifyCount_;
+    // 每个远端rank都会收到全部Jetty的flag，单个等待任务最多处理JETTY_TOTAL个槽位。
+    totalNotifyCnt_ = JETTY_TOTAL;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
     uint32_t statusReduceTmpBytes =
-        ReduceSumWorkNeedSize(static_cast<int32_t>(totalNotifyCnt_), sizeof(float)) * sizeof(float);
+        ReduceSumWorkNeedSize(static_cast<int32_t>(totalNotifyCnt_ * FLAG_ELEMS_PER_SLOT), sizeof(float)) *
+        sizeof(float);
     uint32_t sharedBytes = expertReduceTmpBytes > statusReduceTmpBytes ? expertReduceTmpBytes : statusReduceTmpBytes;
-    tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
+    // tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(waitStatusBuf_, totalNotifyCnt_ * UB_ALIGN);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
     tpipe_->InitBuffer(sharedTmpBuf_, sharedBytes);
-    ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
+    // ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubWaitStatus_ = waitStatusBuf_.Get<int32_t>();
     ubWaitSum_ = waitSumBuf_.Get<int32_t>();
 
-    if constexpr (!IsCached) {
-        hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
-        paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
-        paddedTopkElems_ = axisKAlign_;
-        uint32_t ubHitCountBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubRowStartBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubMetaBytes = Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubTopkIdsBytes =
-            Ceil((uint32_t)(SLOTS_TILE * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN * 2;
-        uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN * 2;
-        uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    // if constexpr (!IsCached) {
+    //     hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
+    //     paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
+    //     paddedTopkElems_ = axisKAlign_;
+    //     uint32_t ubHitCountBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubRowStartBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubMetaBytes = Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubTopkIdsBytes =
+    //         Ceil((uint32_t)(SLOTS_TILE * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN * 2;
+    //     uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN * 2;
+    //     uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+    //     uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
-        tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
-        tpipe_->InitBuffer(ubHitCountBuf_, ubHitCountBytes);
-        tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
-        tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
-        tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
-        tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
-        tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
-        tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
-        tpipe_->InitBuffer(ubHitListBuf_, ubHitListBytes);
-        tpipe_->InitBuffer(ubLocalCursorBuf_, ubLocalCursorBytes);
-        ubRecvCnt_ = ubRecvCntBuf_.Get<int32_t>();
-        ubHitCount_ = ubHitCountBuf_.Get<int32_t>();
-        ubRowStart_ = ubRowStartBuf_.Get<int64_t>();
-        ubMeta_ = ubMetaBuf_.Get<int32_t>();
-        ubTopkIds_ = ubTopkIdsBuf_.Get<int32_t>();
-        ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
-        ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
-        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
-        ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
-        ubHitList_ = ubHitListBuf_.Get<int64_t>();
-        ubLocalCursor_ = ubLocalCursorBuf_.Get<int32_t>();
-        ppEvtSToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
-        ppEvtSToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
-        ppEvtMte3ToS_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
-        ppEvtMte3ToS_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
-    }
+    //     tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
+    //     tpipe_->InitBuffer(ubHitCountBuf_, ubHitCountBytes);
+    //     tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
+    //     tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
+    //     tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
+    //     tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
+    //     tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
+    //     tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
+    //     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
+    //     tpipe_->InitBuffer(ubHitListBuf_, ubHitListBytes);
+    //     tpipe_->InitBuffer(ubLocalCursorBuf_, ubLocalCursorBytes);
+    //     ubRecvCnt_ = ubRecvCntBuf_.Get<int32_t>();
+    //     ubHitCount_ = ubHitCountBuf_.Get<int32_t>();
+    //     ubRowStart_ = ubRowStartBuf_.Get<int64_t>();
+    //     ubMeta_ = ubMetaBuf_.Get<int32_t>();
+    //     ubTopkIds_ = ubTopkIdsBuf_.Get<int32_t>();
+    //     ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
+    //     ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
+    //     ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
+    //     ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
+    //     ubHitList_ = ubHitListBuf_.Get<int64_t>();
+    //     ubLocalCursor_ = ubLocalCursorBuf_.Get<int32_t>();
+    //     ppEvtSToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
+    //     ppEvtSToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
+    //     ppEvtMte3ToS_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
+    //     ppEvtMte3ToS_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
+    // }
 
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         scalesOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
@@ -314,47 +321,93 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     tokenQueueBufBytes_ = metaOffset_;
 
-    tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, tokenQueueBufBytes_);
+    // tpipe_->InitBuffer(tokenQueue_, BUFFER_NUM, tokenQueueBufBytes_);
 
-    DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int64_t> expertPfxPadParams{false, 0U, 0U, 0};
-    DataCopyPad(ubExpertPfx_, numRecvPerExpertGm_, expertPfxCopyParams, expertPfxPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    // DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
+    // DataCopyPadExtParams<int64_t> expertPfxPadParams{false, 0U, 0U, 0};
+    // DataCopyPad(ubExpertPfx_, numRecvPerExpertGm_, expertPfxCopyParams, expertPfxPadParams);
+    // SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-    LocalTensor<int64_t> expertReduceTmp = sharedTmpBuf_.Get<int64_t>();
-    LocalTensor<int64_t> expertSumOut = waitSumBuf_.Get<int64_t>();
-    ReduceSum<int64_t>(expertSumOut, ubExpertPfx_, expertReduceTmp, static_cast<int32_t>(numLocalExperts_));
-    SyncFunc<AscendC::HardEvent::V_S>();
-    expertSum_ = static_cast<uint32_t>(expertSumOut.GetValue(0));
-    diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_INIT_DONE);
+    // LocalTensor<int64_t> expertReduceTmp = sharedTmpBuf_.Get<int64_t>();
+    // LocalTensor<int64_t> expertSumOut = waitSumBuf_.Get<int64_t>();
+    // ReduceSum<int64_t>(expertSumOut, ubExpertPfx_, expertReduceTmp, static_cast<int32_t>(numLocalExperts_));
+    // SyncFunc<AscendC::HardEvent::V_S>();
+    // expertSum_ = static_cast<uint32_t>(expertSumOut.GetValue(0));
+    // diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_INIT_DONE);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
-    if constexpr (!IsCached) {
-        ComputePrefixSums();
-        WaitDispatch();
-        SyncAll<true>();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
-        CountHits();
-        SyncAll<true>();
+    // 打桩：无业务urma性能验证，仅做通信等待，旁路全部业务逻辑
+    // if constexpr (!IsCached) {
+    //     ComputePrefixSums();
+    //     WaitDispatch();
+    //     SyncAll<true>();
+    //     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+    //     CountHits();
+    //     SyncAll<true>();
+    //     uint32_t totalHits = 0;
+    //     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
+    //         totalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
+    //     }
+    //     if (totalHits != 0) {
+    //         CopyFromWindowByExpert();
+    //     }
+    //     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
+    // } else {
+    //     WaitDispatch();
+    //     SyncAll<true>();
+    //     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+    //     CopyFromWindowByCachedMeta();
+    //     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
+    // }
+    // 打桩：仅做通信等待
+    WaitDispatchStub();
+}
 
-        uint32_t totalHits = 0;
-        for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
-            totalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
-        }
+// 打桩：WaitDispatchStub — 多核分摊+批量等待：每个远端srcRank一个等待项，SplitToCore均摊到各核；
+// 同srcRank的JETTY_TOTAL个flag槽按512B间距排布，一次DataCopy批量搬入并ReduceSum判满，
+// 等满后一次DataCopy批量清零；MTE3_MTE2确保清零落盘后再读下一个rank。本卡flag无需等待
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::WaitDispatchStub()
+{
+    // 多核分摊：每个远端srcRank一个等待项
+    uint32_t remoteRankCnt = epWorldSize_ - 1U;
+    uint32_t waitStart, waitEnd, waitNum;
+    SplitToCore(remoteRankCnt, aivNum_, waitStart, waitEnd, waitNum);
+    if (waitStart >= waitEnd) {
+        return;
+    }
 
-        if (totalHits != 0) {
-            CopyFromWindowByExpert();
+    GlobalTensor<int32_t> statusGMTensor;
+    LocalTensor<float> sharedTmp = sharedTmpBuf_.Get<float>();
+    LocalTensor<float> ubWaitStatusFp32 = ubWaitStatus_.template ReinterpretCast<float>();
+    LocalTensor<float> ubWaitSumFp32 = ubWaitSum_.template ReinterpretCast<float>();
+    uint32_t mask = 1;
+    float compareFlag = static_cast<float>(JETTY_TOTAL);
+    // 同srcRank相邻flag槽间距=512B；块单位(32B)间隔=15。
+    DataCopyParams statusCopyParams = {static_cast<uint16_t>(JETTY_TOTAL), 1U, 15U, 0U};
+    DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(JETTY_TOTAL), 1U, 0U, 15U};
+
+    for (uint32_t idx = waitStart; idx < waitEnd; ++idx) {
+        uint32_t srcRankId = idx < epRankId_ ? idx : idx + 1U;
+        statusGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            localSlotStateWinAddr_ + static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN * JETTY_TOTAL));
+        float sumOfFlag = -1.0F;
+        while (sumOfFlag != compareFlag) {
+            DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, JETTY_TOTAL * FLAG_ELEMS_PER_SLOT, 1);
+            SyncFunc<AscendC::HardEvent::V_S>();
+            sumOfFlag = ubWaitSumFp32.GetValue(0);
         }
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
-    } else {
-        WaitDispatch();
-        SyncAll<true>();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
-        CopyFromWindowByCachedMeta();
-        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
+        Duplicate<int32_t>(ubWaitStatus_, 0, JETTY_TOTAL * UB_ALIGN / sizeof(int32_t));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
+        if (idx + 1U < waitEnd) {
+            SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 清零落盘后再读下一个rank
+        }
     }
 }
 

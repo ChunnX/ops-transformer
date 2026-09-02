@@ -83,6 +83,9 @@ ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetw
 
 ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout);
 
+// 打桩：性能验证专用窗口布局（cnt状态位 + 按token的64B槽位状态 + 数据区），旁路hybrid/combine原始排布
+ge::graphStatus CalcMoeEpWindowLayoutStub(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout);
+
 ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char *nodeName);
 
 MoeEpDumpMetadata BuildMoeEpDumpMetadata(const MoeEpWindowLayoutParams &params, const MoeEpWindowLayout &layout,
