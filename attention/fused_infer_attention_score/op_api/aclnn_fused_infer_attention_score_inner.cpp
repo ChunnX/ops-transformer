@@ -461,6 +461,11 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
             tensors.emplace_back(nullptr);
             continue;
         }
+        if (IsContiguous(tensor)) {
+            // 连续输入无需调用 l0op::Contiguous，避免在入图场景插入额外的连续化节点
+            tensors.emplace_back(tensor);
+            continue;
+        }
         auto contiguousTensor = l0op::Contiguous(tensor, executor);
         if (contiguousTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s[%lu] contiguous failed.", name, i);
@@ -489,6 +494,11 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
 aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
 {
     if (tensor == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    if (IsContiguous(tensor)) {
+        // 连续输入无需调用 l0op::Contiguous，避免在入图场景插入额外的连续化节点
+        SetTensorFormatToND(tensor);
         return ACLNN_SUCCESS;
     }
 
