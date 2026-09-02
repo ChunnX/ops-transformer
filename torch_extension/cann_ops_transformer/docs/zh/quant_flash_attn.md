@@ -1187,7 +1187,8 @@ mask_mode参数解释：
   # descale (4D, prefill场景)
   q_descale = torch.randn(Q_T, Q_N, D // 64, 2, dtype=torch.float8_e8m0, device="npu")
   k_descale = torch.randn(KV_T, KV_N, D // 64, 2, dtype=torch.float8_e8m0, device="npu")
-  v_descale = torch.randn(KV_T // 64, KV_N, D, 2, dtype=torch.float8_e8m0, device="npu")
+  # v_descale第一维为各batch序列长度按64向上取整后求和
+  v_descale = torch.randn(B * ((KV_S + 63) // 64), KV_N, D, 2, dtype=torch.float8_e8m0, device="npu")
 
   # 累计序列长度（带前导0）
   cu_seqlens_q = torch.tensor([0, Q_S, Q_S * 2], dtype=torch.int32, device="npu")
@@ -1200,7 +1201,6 @@ mask_mode参数解释：
       quant_mode=1,
       cu_seqlens_q=cu_seqlens_q,
       cu_seqlens_kv=cu_seqlens_kv,
-      batch_size=B,
       max_seqlen_q=Q_S,
       max_seqlen_kv=KV_S,
       mask_mode=0,
@@ -1287,7 +1287,6 @@ mask_mode参数解释：
       quant_mode=1,
       cu_seqlens_q=cu_seqlens_q,
       seqused_kv=seqused_kv,
-      batch_size=B,
       max_seqlen_q=Q_S,
       max_seqlen_kv=KV_S,
       mask_mode=3,
