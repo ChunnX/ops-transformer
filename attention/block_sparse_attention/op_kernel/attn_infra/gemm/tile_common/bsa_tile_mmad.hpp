@@ -120,10 +120,7 @@ struct TileMmadTla {
         }
 #endif
 
-        auto cOffset = l0CTensor.layout()(l0CTensor.coord());
-        auto aOffset = l0ATensor.layout()(l0ATensor.coord());
-        auto bOffset = l0BTensor.layout()(l0BTensor.coord());
-        AscendC::Mmad(l0CTensor.data()[cOffset], l0ATensor.data()[aOffset], l0BTensor.data()[bOffset], mmadParams);
+        AscendC::Mmad(l0CTensor.data(), l0ATensor.data(), l0BTensor.data(), mmadParams);
 
         const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
         if ((m / C0_NUM_PER_FRACTAL) * (n / C0_NUM_PER_FRACTAL) < PIPE_M_BARRIER_THRESHOLD) {
@@ -151,11 +148,7 @@ struct TileMmadTla {
         }
 #endif
 
-        auto cOffset = l0CTensor.layout()(l0CTensor.coord());
-        auto aOffset = l0ATensor.layout()(l0ATensor.coord());
-        auto bOffset = l0BTensor.layout()(l0BTensor.coord());
-        AscendC::Mmad(l0CTensor.data()[cOffset], l0ATensor.data()[aOffset], l0BTensor.data()[bOffset],
-                      l0BiasTensor.data(), mmadParams);
+        AscendC::Mmad(l0CTensor.data(), l0ATensor.data(), l0BTensor.data(), l0BiasTensor.data(), mmadParams);
 
         const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
         if ((m / C0_NUM_PER_FRACTAL) * (n / C0_NUM_PER_FRACTAL) < PIPE_M_BARRIER_THRESHOLD) {

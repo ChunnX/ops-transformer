@@ -1164,7 +1164,7 @@ void BSATiling::CalcBaseTileTilingParams950()
         innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED &&
         embeddingSize_ <= D_SIZE_128;
 
-    if (IsFp8NdRescaleOnCubeEnabled()) {
+    if (rescaleOnCube_) {
         kvBaseTile_ = TILE_SIZE_512;
     } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         const uint32_t preferredTile =
@@ -1179,17 +1179,23 @@ void BSATiling::CalcBaseTileTilingParams950()
 
 void BSATiling::TransposedMatmulConfig950()
 {
-    if (IsFp8NdRescaleOnCubeEnabled() ||
-        (innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH &&
-         maskType_ == 0)) {
-        // FP8 ND RescaleOnCube only reuses the TRANSMM1 tiling-key slot.
-        // Its registered kernel instance still uses transposedMm1=false.
+    bool isNonQuant = dataType_ == ge::DT_FLOAT16 || dataType_ == ge::DT_BF16;
+    if (isNonQuant && innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH && maskType_ == 0) {
         transposedMm1_ = true;
     } else {
         transposedMm1_ = false;
     }
 
     transposedMm2_ = false;
+}
+
+void BSATiling::RescaleOnCubeConfig950()
+{
+    if (IsFp8NdRescaleOnCubeEnabled()) {
+        rescaleOnCube_ = true;
+    } else {
+        rescaleOnCube_ = false;
+    }
 }
 
 void BSATiling::CalcSplitCoreTilingParams950()
@@ -1324,7 +1330,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         kL1BufNum_ = DUO_BUF;
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发。
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = IsFp8NdRescaleOnCubeEnabled() ? TILE_SIZE_512 : TILE_SIZE_256;
+        mm2L1TileKLeft_ = rescaleOnCube_ ? TILE_SIZE_512 : TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
@@ -1503,9 +1509,12 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 100000000ULL; // 1 for lse out
     }
 
-    // matmul是否转置
+    // Kernel feature mode: 1 means transposed MM1, 2 means RescaleOnCube.
     if (transposedMm1_) {
         tilingKey += 1000000000ULL;
+    }
+    if (rescaleOnCube_) {
+        tilingKey += 2000000000ULL;
     }
     
     printf("tkd tilingkey: %llu\n", tilingKey);
@@ -1541,9 +1550,10 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
     }
 
     if (socVer_ == SOC_VER_950_CODE) {
+        TransposedMatmulConfig950();
+        RescaleOnCubeConfig950();
         CalcSplitCoreTilingParams950();
         CalcMatmulPhaseL1TileInfo950();
-        TransposedMatmulConfig950();
         CalcWorkspaceTilingParams950(bsaContext);
     } else {
         ret = CalculateTaskSplit(bsaContext);

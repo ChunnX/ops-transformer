@@ -201,6 +201,7 @@ private:
     void CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext);
     void CalcMatmulPhaseL1TileInfo950();
     void TransposedMatmulConfig950();
+    void RescaleOnCubeConfig950();
     // 910 exclusive
     ge::graphStatus CalculateTaskSplit(gert::TilingContext *bsaContext);
     ge::graphStatus CalculateWorkSpace(gert::TilingContext *bsaContext);
@@ -294,6 +295,7 @@ private:
 
     bool transposedMm1_ = false;
     bool transposedMm2_ = false;
+    bool rescaleOnCube_ = false;
     ge::DataType dataType_ = ge::DT_FLOAT16;
     ge::DataType attentionOutDataType_ = ge::DT_FLOAT16;
 
