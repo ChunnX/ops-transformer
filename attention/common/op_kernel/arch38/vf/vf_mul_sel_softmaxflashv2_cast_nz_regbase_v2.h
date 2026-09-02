@@ -255,7 +255,7 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
                                                                              (half)quantScaleP, preg_all_b16);
 
                 MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_1, vreg_muls_res_1, preg_all_b16);
-                MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_2, vreg_muls_res, preg_all_b16);
+                MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_2, vreg_muls_res_2, preg_all_b16);
 
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
                     vreg_res_1, (MicroAPI::RegTensor<uint16_t> &)vreg_res_1);
@@ -636,8 +636,8 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(
                 MicroAPI::Muls<half, half, MicroAPI::MaskMergeMode::ZEROING>(vreg_muls_res_2, vreg_exp_res_2,
                                                                              (half)quantScaleP, preg_all_b16);
 
-                MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_1, vreg_muls_res, preg_all_b16);
-                MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_2, vreg_muls_res, preg_all_b16);
+                MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_1, vreg_muls_res_1, preg_all_b16);
+                MicroAPI::Cast<int8_t, half, castTrait>(vreg_res_2, vreg_muls_res_2, preg_all_b16);
 
                 MicroAPI::Pack<uint8_t, uint16_t, MicroAPI::HighLowPart::LOWEST>(
                     vreg_res_1, (MicroAPI::RegTensor<uint16_t> &)vreg_res_1);
