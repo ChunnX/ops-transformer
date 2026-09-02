@@ -25,6 +25,22 @@ constexpr uint32_t ALIGN_32B = 32;
 constexpr uint64_t UB_RESERVE_BYTES = 8UL * 1024UL;
 // FULL_H kernel 的 H 轴 buffer 至少预留 64 个元素（归约尾部清零需要）。
 constexpr int64_t H_REDUCE_LANE_NUM = 64;
+// 各路径 Buffer 构成，与 kernel InitBuffer 逐项对应，避免 UB 估算公式散落魔鬼数字。
+constexpr uint64_t A22_H_FP32_BUF_NUM = 6UL;
+constexpr uint64_t A22_FULL_H_META_BUF_NUM = 4UL;
+constexpr uint64_t A22_SPLIT_H_META_BUF_NUM = 6UL;
+constexpr uint64_t A35_FULL_H_FP32_BUF_NUM = 6UL;
+constexpr uint64_t A35_FULL_H_INPUT_BUF_NUM = 4UL;
+constexpr uint64_t A35_FULL_H_META_BUF_NUM = 4UL;
+constexpr uint64_t A35_SPLIT_H_FP32_BUF_NUM = 7UL;
+constexpr uint64_t A35_SPLIT_H_INPUT_BUF_NUM = 4UL;
+constexpr uint64_t A35_SPLIT_H_META_BUF_NUM = 6UL;
+constexpr uint64_t SCALAR_SLOT_NUM = 6UL;
+constexpr uint64_t SCALAR_ELEM_PER_SLOT = 8UL;
+constexpr uint64_t A35_H_INPUT_ALIGN_ELEMS = 16UL;
+constexpr int64_t FP32_ELEM_PER_32B = 8;
+constexpr int64_t FP16_ELEM_PER_32B = 16;
+constexpr int64_t MAX_NUM_BLOCKS = 128;
 
 static uint64_t AlignUp(uint64_t value, uint64_t alignment)
 {
@@ -37,7 +53,7 @@ static uint64_t CalcArch22FullHUbBytes(int64_t H, int64_t totalBlocks, uint32_t 
     const uint64_t hFloatBytes = AlignUp(static_cast<uint64_t>(hBufElems) * sizeof(float), ALIGN_32B);
     const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(hBufElems) * dtypeBytes, ALIGN_32B);
     const uint64_t metaBytes = AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_32B);
-    return 6UL * hFloatBytes + hInputBytes + 4UL * metaBytes + ALIGN_32B;
+    return A22_H_FP32_BUF_NUM * hFloatBytes + hInputBytes + A22_FULL_H_META_BUF_NUM * metaBytes + ALIGN_32B;
 }
 
 // A2/A3 SPLIT_H 比 FULL_H 多两个 K 轴 Kahan 补偿 Buffer。
@@ -46,7 +62,7 @@ static uint64_t CalcArch22SplitHUbBytes(int64_t hiddenTileSize, int64_t totalBlo
     const uint64_t hFloatBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * sizeof(float), ALIGN_32B);
     const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * dtypeBytes, ALIGN_32B);
     const uint64_t metaBytes = AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_32B);
-    return 6UL * hFloatBytes + hInputBytes + 6UL * metaBytes + ALIGN_32B;
+    return A22_H_FP32_BUF_NUM * hFloatBytes + hInputBytes + A22_SPLIT_H_META_BUF_NUM * metaBytes + ALIGN_32B;
 }
 
 // A5 FULL_H 用 6 个 H 轴 FP32 Buffer（gswAcc 直接 MTE3 写 Workspace）+ 4 个输入 Buffer
@@ -54,10 +70,11 @@ static uint64_t CalcArch22SplitHUbBytes(int64_t hiddenTileSize, int64_t totalBlo
 static uint64_t CalcArch35FullHUbBytes(int64_t H, int64_t totalBlocks, uint32_t dtypeBytes)
 {
     const uint64_t hFloatBytes = AlignUp(static_cast<uint64_t>(H) * sizeof(float), ALIGN_256B);
-    const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(H), 16UL) * dtypeBytes;
+    const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(H), A35_H_INPUT_ALIGN_ELEMS) * dtypeBytes;
     const uint64_t metaBytes = AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_256B);
-    constexpr uint64_t scalarBytes = 6UL * 8UL * sizeof(float);
-    return 6UL * hFloatBytes + 4UL * hInputBytes + 4UL * metaBytes + scalarBytes;
+    constexpr uint64_t scalarBytes = SCALAR_SLOT_NUM * SCALAR_ELEM_PER_SLOT * sizeof(float);
+    return A35_FULL_H_FP32_BUF_NUM * hFloatBytes + A35_FULL_H_INPUT_BUF_NUM * hInputBytes +
+           A35_FULL_H_META_BUF_NUM * metaBytes + scalarBytes;
 }
 
 static int64_t CalcArch22HiddenTileSize(uint64_t ubSize, int64_t H, int64_t totalBlocks, uint32_t dtypeBytes)
@@ -70,16 +87,16 @@ static int64_t CalcArch22HiddenTileSize(uint64_t ubSize, int64_t H, int64_t tota
 
     // K 轴 Buffer 必须整段驻留 UB，不能随 H 切分缩小。
     const uint64_t fixedBytes =
-        6UL * AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_32B) + ALIGN_32B;
+        A22_SPLIT_H_META_BUF_NUM * AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_32B) + ALIGN_32B;
     if (availableUb <= fixedBytes) {
         return 0;
     }
 
     // 每个 H 元素占 6 个 FP32 Buffer + 1 个 T 输入/输出 Buffer，仅这部分随 H 切分缩小。
-    const uint64_t bytesPerH = 6UL * sizeof(float) + dtypeBytes;
+    const uint64_t bytesPerH = A22_H_FP32_BUF_NUM * sizeof(float) + dtypeBytes;
 
     // FP32 每 32 字节包含 8 个元素，FP16/BF16 每 32 字节包含 16 个元素。
-    const int64_t alignElements = dtypeBytes == sizeof(float) ? 8 : 16;
+    const int64_t alignElements = dtypeBytes == sizeof(float) ? FP32_ELEM_PER_32B : FP16_ELEM_PER_32B;
 
     // 先根据线性 UB 模型计算能够容纳的最大对齐 H tile：
     // fixedBytes + maxTile * bytesPerH <= availableUb。
@@ -110,8 +127,9 @@ static uint64_t CalcArch35SplitHUbBytes(int64_t hiddenTileSize, int64_t totalBlo
     const uint64_t hFloatBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * sizeof(float), ALIGN_256B);
     const uint64_t hInputBytes = AlignUp(static_cast<uint64_t>(hiddenTileSize) * dtypeBytes, ALIGN_256B);
     const uint64_t metaBytes = AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_256B);
-    constexpr uint64_t scalarBytes = 6UL * 8UL * sizeof(float);
-    return 7UL * hFloatBytes + 4UL * hInputBytes + 6UL * metaBytes + scalarBytes;
+    constexpr uint64_t scalarBytes = SCALAR_SLOT_NUM * SCALAR_ELEM_PER_SLOT * sizeof(float);
+    return A35_SPLIT_H_FP32_BUF_NUM * hFloatBytes + A35_SPLIT_H_INPUT_BUF_NUM * hInputBytes +
+           A35_SPLIT_H_META_BUF_NUM * metaBytes + scalarBytes;
 }
 
 static int64_t CalcArch35HiddenTileSize(uint64_t ubSize, int64_t H, int64_t totalBlocks, uint32_t dtypeBytes)
@@ -120,14 +138,15 @@ static int64_t CalcArch35HiddenTileSize(uint64_t ubSize, int64_t H, int64_t tota
         return 0;
     }
     const uint64_t availableUb = ubSize - UB_RESERVE_BYTES;
-    constexpr uint64_t scalarBytes = 6UL * 8UL * sizeof(float);
+    constexpr uint64_t scalarBytes = SCALAR_SLOT_NUM * SCALAR_ELEM_PER_SLOT * sizeof(float);
     const uint64_t fixedBytes =
-        6UL * AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_256B) + scalarBytes;
+        A35_SPLIT_H_META_BUF_NUM * AlignUp(static_cast<uint64_t>(totalBlocks) * sizeof(float), ALIGN_256B) +
+        scalarBytes;
     if (availableUb <= fixedBytes) {
         return 0;
     }
 
-    const uint64_t bytesPerH = 7UL * sizeof(float) + 4UL * dtypeBytes;
+    const uint64_t bytesPerH = A35_SPLIT_H_FP32_BUF_NUM * sizeof(float) + A35_SPLIT_H_INPUT_BUF_NUM * dtypeBytes;
     // tile 同时满足 FP32 和原始 dtype Buffer 的 256B 对齐。
     // FP16/BF16 为 128 元素，FP32 为 64 元素。
     const int64_t alignElements = static_cast<int64_t>(ALIGN_256B / dtypeBytes);
@@ -212,6 +231,9 @@ static ge::graphStatus Check(gert::TilingContext *ctx)
     OP_CHECK_IF(B <= 0 || N < 0 || H <= 0, OP_LOGE(ctx, "B and H must be positive and N must be non-negative"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(B != Bb || H != Hb, OP_LOGE(ctx, "shape mismatch"), return ge::GRAPH_FAILED);
+    // K 轴 meta Buffer 按 totalBlocks = N + 1 驻留 UB，N > MAX_NUM_BLOCKS 时超出设计上限。
+    OP_CHECK_IF(N > MAX_NUM_BLOCKS, OP_LOGE(ctx, "numBlocks N must be <= %ld, got %ld", MAX_NUM_BLOCKS, N),
+                return ge::GRAPH_FAILED);
 
     OP_LOGD(ctx, "shape: B=%ld N=%ld H=%ld", B, N, H);
     return ge::GRAPH_SUCCESS;

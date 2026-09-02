@@ -19,7 +19,6 @@
 
 - 计算公式：
 
-  反向计算：
 
   $$
   g_{t,i} = \sum_{h=0}^{H-1} grad\_output_{t,h} \cdot v_{t,i,h}
@@ -446,7 +445,7 @@ int main()
     std::vector<int64_t> blockResShape  = {T, N, H};
     std::vector<int64_t> projWeightShape     = {1, H};
     std::vector<int64_t> normWeightShape     = {H};
-    std::vector<int64_t> gradHiddenStateShape     = {T, H};
+    std::vector<int64_t> gradHiddenStatesShape     = {T, H};
     std::vector<int64_t> invNormShape         = {T, N1};
     std::vector<int64_t> probsShape          = {T, N1};
 
@@ -454,7 +453,7 @@ int main()
     std::vector<uint16_t> blockResData (GetShapeSize(blockResShape),  0x3C00);
     std::vector<uint16_t> projWeightData    (GetShapeSize(projWeightShape),     0x3C00);
     std::vector<uint16_t> normWeightData    (GetShapeSize(normWeightShape),     0x3C00);
-    std::vector<uint16_t> gradHiddenStateData    (GetShapeSize(gradHiddenStateShape),     0x3C00);
+    std::vector<uint16_t> gradHiddenStatesData    (GetShapeSize(gradHiddenStatesShape),     0x3C00);
     std::vector<float> invNormData           (GetShapeSize(invNormShape),         1.0f);
     std::vector<float> probsData            (GetShapeSize(probsShape),          1.0f);
     int64_t validBlockNums = 0; // 预留属性，当前版本不参与计算
@@ -468,7 +467,7 @@ int main()
     ret = CreateAclTensor(blockResData, blockResShape, &d_block_res, aclDataType::ACL_FLOAT16, &block_res); CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(projWeightData, projWeightShape, &d_proj_weight, aclDataType::ACL_FLOAT16, &proj_weight); CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normWeightData, normWeightShape, &d_norm_weight, aclDataType::ACL_FLOAT16, &norm_weight); CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gradHiddenStateData, gradHiddenStateShape, &d_grad_hidden_states, aclDataType::ACL_FLOAT16, &grad_hidden_states); CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(gradHiddenStatesData, gradHiddenStatesShape, &d_grad_hidden_states, aclDataType::ACL_FLOAT16, &grad_hidden_states); CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(invNormData, invNormShape, &d_inv_norm, aclDataType::ACL_FLOAT, &inv_norm); CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(probsData, probsShape, &d_probs, aclDataType::ACL_FLOAT, &probs); CHECK_RET(ret == ACL_SUCCESS, return ret);
 

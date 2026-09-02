@@ -41,6 +41,8 @@ constexpr int32_t ARG_INDEX_TWO = 2;
 constexpr int32_t ARG_INDEX_FOUR = 4;
 constexpr int32_t ARG_INDEX_EIGHT = 8;
 constexpr int32_t ARG_INDEX_SIXTEEN = 16;
+// K 轴元数据按 32B 对齐搬入 UB。
+constexpr uint32_t META_ALIGN_BYTES = 32U;
 
 __aicore__ inline int32_t ArgFindPowerTwo(int32_t n)
 {
@@ -245,7 +247,7 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::Init(GM_ADDR prefixSum, G
 
     // H 轴 buffer 至少预留 64 个元素，保证 64-lane 的 WholeReduceSum 不越界。
     const uint32_t hBufElements = (HU > ARG_ELEM_PER_REP_FP32) ? HU : ARG_ELEM_PER_REP_FP32;
-    uint32_t n1FloatBytes = (N1U * sizeof(float) + 31U) / 32U * 32U;
+    uint32_t n1FloatBytes = (N1U * sizeof(float) + META_ALIGN_BYTES - 1U) / META_ALIGN_BYTES * META_ALIGN_BYTES;
     uint32_t n1AlignedFloats = n1FloatBytes / sizeof(float);
     // floatBuf2 在 SoftmaxBackwardN1 中按 N1 长度使用，容量不能小于 N1。
     const uint32_t maxBufFloats = (hBufElements > n1AlignedFloats) ? hBufElements : n1AlignedFloats;
@@ -313,7 +315,10 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::CopyInToken(int64_t batch
 
     DataCopyExtParams cpH(1, H * sizeof(T), 0, 0, 0);
     DataCopyExtParams cpN1(1, N1U * sizeof(float), 0, 0, 0);
-    uint32_t n1RightPad = ((N1U * sizeof(float) + 31U) / 32U * 32U - N1U * sizeof(float)) / sizeof(float);
+    uint32_t n1RightPad =
+        ((N1U * sizeof(float) + META_ALIGN_BYTES - 1U) / META_ALIGN_BYTES * META_ALIGN_BYTES -
+         N1U * sizeof(float)) /
+        sizeof(float);
 
     DataCopyPad(hb, gradOutGm[static_cast<uint64_t>(batch) * hiddenSize_], cpH, {false, 0U, 0U, 0U});
     SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
@@ -374,7 +379,8 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::PrecomputeGradProbs(int64
     LocalTensor<float> gp = gradProbBuf.Get<float>();
 
     // grad_out was copied to hb in CopyInToken.
-    uint32_t n1AlignedFloats = (N1U * sizeof(float) + 31U) / 32U * 32U / sizeof(float);
+    uint32_t n1AlignedFloats =
+        (N1U * sizeof(float) + META_ALIGN_BYTES - 1U) / META_ALIGN_BYTES * META_ALIGN_BYTES / sizeof(float);
     Duplicate(gp, 0.0f, static_cast<int32_t>(n1AlignedFloats));
     SetFlag<HardEvent::V_S>(eventVS_); // Duplicate -> scalar SetValue
     WaitFlag<HardEvent::V_S>(eventVS_);
@@ -429,7 +435,8 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::SoftmaxBackwardN1()
     LocalTensor<float> tmp = floatBuf2.Get<float>();
 
     WaitFlag<HardEvent::S_V>(eventSV_); // Wait for scalar writes to gp.
-    uint32_t n1AlignedFloats = (N1 * sizeof(float) + 31U) / 32U * 32U / sizeof(float);
+    uint32_t n1AlignedFloats =
+        (N1 * sizeof(float) + META_ALIGN_BYTES - 1U) / META_ALIGN_BYTES * META_ALIGN_BYTES / sizeof(float);
     Duplicate(gs, 0.0f, static_cast<int32_t>(n1AlignedFloats));
     Duplicate(tmp, 0.0f, static_cast<int32_t>(n1AlignedFloats));
     Mul(tmp, probsF, gp, N1);

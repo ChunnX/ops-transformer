@@ -24,6 +24,9 @@
 namespace NsBlockAttentionResidualsGrad {
 using namespace AscendC;
 
+// K 轴元数据按 32B 对齐搬入 UB。
+constexpr uint32_t META_ALIGN_BYTES = 32U;
+
 // SPLIT_H 仅在单核 UB 内按 H 轴分块，多核任务仍按 B 轴分配。
 // 由于 gradScore 依赖完整 H 轴上的点积，Kernel 分为三个阶段：
 // 1. 分块遍历 H，计算并保存 gradScore[B, N+1] 和 varianceScale[B, N+1]；
@@ -152,7 +155,7 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::LoadMeta(const Gl
 {
     // K=N+1 轴元数据保持完整搬入 UB，尾部通过 DataCopyPad 补齐到 32 字节。
     DataCopyExtParams copyParams(1, length * sizeof(float), 0, 0, 0);
-    uint32_t alignedBytes = (length * sizeof(float) + 31U) / 32U * 32U;
+    uint32_t alignedBytes = (length * sizeof(float) + META_ALIGN_BYTES - 1U) / META_ALIGN_BYTES * META_ALIGN_BYTES;
     uint32_t rightPad = (alignedBytes - length * sizeof(float)) / sizeof(float);
     DataCopyPad(dst, src[offset], copyParams, {true, 0U, static_cast<uint8_t>(rightPad), 0U});
     SetFlag<HardEvent::MTE2_V>(eventMte2V_);

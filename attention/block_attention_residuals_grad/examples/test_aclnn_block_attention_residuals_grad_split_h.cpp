@@ -86,7 +86,7 @@ int main()
     std::vector<int64_t> blockResShape = {B, N, H};
     std::vector<int64_t> projWeightShape = {1, H};
     std::vector<int64_t> normWeightShape = {H};
-    std::vector<int64_t> gradHiddenStateShape = {B, H};
+    std::vector<int64_t> gradHiddenStatesShape = {B, H};
     std::vector<int64_t> invNormShape = {B, N1};
     std::vector<int64_t> probsShape = {B, N1};
 
@@ -94,7 +94,7 @@ int main()
     std::vector<uint16_t> blockResData(GetShapeSize(blockResShape), 0x0000);
     std::vector<uint16_t> projWeightData(GetShapeSize(projWeightShape), 0x3C00);
     std::vector<uint16_t> normWeightData(GetShapeSize(normWeightShape), 0x3C00);
-    std::vector<uint16_t> gradHiddenStateData(GetShapeSize(gradHiddenStateShape), 0x3C00);
+    std::vector<uint16_t> gradHiddenStatesData(GetShapeSize(gradHiddenStatesShape), 0x3C00);
     std::vector<float> invNormData(GetShapeSize(invNormShape), 1.0f);
     std::vector<float> probsData(GetShapeSize(probsShape), 0.0f);
 
@@ -122,7 +122,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normWeightData, normWeightShape, &d_norm_weight, aclDataType::ACL_FLOAT16, &norm_weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gradHiddenStateData, gradHiddenStateShape, &d_grad_hidden_states, aclDataType::ACL_FLOAT16,
+    ret = CreateAclTensor(gradHiddenStatesData, gradHiddenStatesShape, &d_grad_hidden_states, aclDataType::ACL_FLOAT16,
                           &grad_hidden_states);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(invNormData, invNormShape, &d_inv_norm, aclDataType::ACL_FLOAT, &inv_norm);
