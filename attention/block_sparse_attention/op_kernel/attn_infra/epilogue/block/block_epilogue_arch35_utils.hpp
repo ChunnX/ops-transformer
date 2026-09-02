@@ -32,30 +32,44 @@ struct UBufTileHelper {
     uint32_t lseStartOffset;
     uint32_t maskStartOffset;
 
-    __aicore__ inline UBufTileHelper() {}
+    __aicore__ inline
+    UBufTileHelper() {}
 
-    __aicore__ inline UBufTileHelper(uint32_t qs, uint32_t kvs, uint32_t d, uint32_t s, uint32_t p, uint32_t lo,
-                                     uint32_t go, uint32_t lm, uint32_t gm, uint32_t dm, uint32_t ll, uint32_t gl,
-                                     uint32_t lse, uint32_t mask)
-        : qBaseTilePerSubCore(qs),
-          kvBaseTilePerSubCore(kvs),
-          embedPerSubCore(d),
-          sStartOffset(s),
-          pStartOffset(p),
-          loStartOffset(lo),
-          goStartOffset(go),
-          lmStartOffset(lm),
-          gmStartOffset(gm),
-          dmStartOffset(dm),
-          llStartOffset(ll),
-          glStartOffset(gl),
-          lseStartOffset(lse),
-          maskStartOffset(mask)
-    {}
+    __aicore__ inline
+    UBufTileHelper(
+        uint32_t qs,
+        uint32_t kvs,
+        uint32_t d,
+        uint32_t s,
+        uint32_t p,
+        uint32_t lo,
+        uint32_t go,
+        uint32_t lm,
+        uint32_t gm,
+        uint32_t dm,
+        uint32_t ll,
+        uint32_t gl,
+        uint32_t lse,
+        uint32_t mask) :
+        qBaseTilePerSubCore(qs),
+        kvBaseTilePerSubCore(kvs),
+        embedPerSubCore(d),
+        sStartOffset(s),
+        pStartOffset(p),
+        loStartOffset(lo),
+        goStartOffset(go),
+        lmStartOffset(lm),
+        gmStartOffset(gm),
+        dmStartOffset(dm),
+        llStartOffset(ll),
+        glStartOffset(gl),
+        lseStartOffset(lse),
+        maskStartOffset(mask) {}
 };
 
 template <uint32_t MODE, pipe_t PIPE>
-__aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+__aicore__ inline
+void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
 {
     // in mode 4, AIC set for 2 AIVs seperately
     if constexpr (MODE == 4U) {
@@ -64,13 +78,55 @@ __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
 }
 
 template <uint32_t MODE, pipe_t PIPE>
-__aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+__aicore__ inline
+void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
 {
     // in mode 4, AIC wait for 2 AIVs seperately
     if constexpr (MODE == 4U) {
         Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
     }
 }
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitRintZero = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitRintOne = {
+    AscendC::MicroAPI::RegLayout::ONE,
+    AscendC::MicroAPI::SatMode::SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+ 
+constexpr static AscendC::MicroAPI::CastTrait castTraitRintTwo = {
+    AscendC::MicroAPI::RegLayout::TWO,
+    AscendC::MicroAPI::SatMode::SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitRintThree = {
+    AscendC::MicroAPI::RegLayout::THREE,
+    AscendC::MicroAPI::SatMode::SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitZero = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
+};
+constexpr static AscendC::MicroAPI::CastTrait castTraitOne = {
+    AscendC::MicroAPI::RegLayout::ONE,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
+};
 
 namespace MXFP4 {
 static constexpr uint32_t KB_BYTE = 1024;
