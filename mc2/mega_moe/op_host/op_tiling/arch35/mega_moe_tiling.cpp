@@ -994,9 +994,11 @@ static void SelectDispatchRingAndRouteBatch(MegaMoeDispatchBufferConfig &bufferC
         expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
         expandedRouteItems =
             static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
-        bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
-        bufferConfig.routeBatchCount = static_cast<int32_t>(
-            ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
+        if (expandedRouteItems > static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
+            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            bufferConfig.routeBatchCount = static_cast<int32_t>(
+                ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
+        }
     }
 }
 
@@ -1020,7 +1022,9 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
 
 static uint64_t CalcTopkValidIndexRingSlotBytes(uint32_t routeItemsPerBatch, uint32_t topK)
 {
-    // batch 可能从一个 token 的 topK 中间开始，故额外保留 topK-1 条的边界余量。
+    // routeItemsPerBatch 按 256 个 item 对齐，但 topK 不一定整除 256，因此后续 batch 可能从某个
+    // token 的 topK 段中间开始。同一 token 的 topK 专家不重复，单个专家每个 token 至多匹配一个下标；
+    // 一个 batch 最多跨越 CeilDiv(routeItemsPerBatch + topK - 1, topK) 个 token，slot 按此上界预留空间。
     uint64_t maxMatchedRouteItems =
         ops::CeilDiv(static_cast<uint64_t>(routeItemsPerBatch) + topK - 1U, static_cast<uint64_t>(topK));
     uint64_t validIndexBytes =
@@ -1035,8 +1039,9 @@ static MegaMoeSendMaskBufferConfig CalcTopkValidIndexBufferConfig(const MegaMoeT
                                                                  uint32_t availableUbBytes)
 {
     MegaMoeSendMaskBufferConfig bufferConfig{};
-    // 发送批网格按 numMaxTokensPerRank * topK 的容量上界划分，确保各 Rank 使用一致的批次数；
-    // Kernel 按本 Rank 的实际 bs * topK 对每批有效长度进行裁剪。
+    // sendTotalNum 表示所有专家合计最多发送的 topK 有效下标数，不是 token 数。发送批网格按
+    // numMaxTokensPerRank * topK 的容量上界划分，确保各 Rank 使用一致批次数；Kernel 再按本 Rank
+    // 的实际 bs * topK 对每批有效长度进行裁剪。
     uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems = ops::CeilAlign(sendTotalNum, static_cast<uint64_t>(ALIGN_256));
 
