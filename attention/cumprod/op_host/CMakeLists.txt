@@ -46,7 +46,7 @@ else()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE cumprod ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE cumprod ACLNNTYPE aclnn_exclude)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
