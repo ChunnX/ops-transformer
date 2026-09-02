@@ -22,6 +22,7 @@
 #include "quant_compressor_tools.h"
 #include "quant_compressor_block_cube.h"
 #include "quant_compressor_block_vec.h"
+#include "quant_compressor_block_vec_normal.h"
 #include "quant_compressor_block_vec_full_load.h"
 
 using namespace AscendC;
@@ -109,7 +110,7 @@ private:
     // ==============================Service Define==============================
     QuantCompressorBlockCube<COMP, IS_FULL_LOAD> blockCube_;
     using VecType = typename AscendC::Conditional<IS_FULL_LOAD, QuantCompressorBlockVectorFullLoad<COMP>,
-                                                  QuantCompressorBlockVector<COMP>>::type;
+                                                  QuantCompressorBlockVectorNormal<COMP>>::type;
     VecType blockVec_;
 
     uint32_t loopTimes = 0;
