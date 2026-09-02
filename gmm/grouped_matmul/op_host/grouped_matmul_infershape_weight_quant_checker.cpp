@@ -329,7 +329,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
     auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, index);
     OP_CHECK_NULL_WITH_CONTEXT(context, antiquantScaleShape);
     int64_t antiquantScaleNDim;
-    //返回维度数量
+    // 返回维度数量
     if (IsA16W4(xDtype_, weightDtype_) && antiquantScaleShape->GetDimNum() == 2) {
         antiquantScaleNDim = antiquantScaleShape->GetDim(antiquantScaleShape->GetDimNum() - 1);
     } else {
@@ -357,7 +357,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
         auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, index);
         OP_CHECK_NULL_WITH_CONTEXT(context, antiquantOffsetShape);
         int64_t antiquantOffsetNDim;
-        //返回维度数量
+        // 返回维度数量
         if (IsA16W4(xDtype_, weightDtype_) && antiquantOffsetShape->GetDimNum() == 2) {
             antiquantOffsetNDim = antiquantOffsetShape->GetDim(antiquantOffsetShape->GetDimNum() - 1);
         } else {
@@ -372,9 +372,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulWeightQuantChecker::CheckPerTensorShapeMultiScenario(const gert::InferShapeContext *context,
-                                                                                  size_t wKDimIdx, size_t wNDimIdx,
-                                                                                  size_t xSize) const
+ge::graphStatus GroupedMatmulWeightQuantChecker::CheckPerTensorShapeMultiScenario(
+    const gert::InferShapeContext *context, size_t wKDimIdx, size_t wNDimIdx, size_t xSize) const
 {
     auto xShape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
     auto wShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
@@ -432,9 +431,10 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckA16W4PergroupMultiScenario
         OP_CHECK_NULL_WITH_CONTEXT(context, wShape_i);
         int64_t kSize = wShape_i->GetDim(wKDimIdx);
         int64_t groupNum = antiquantScaleShape->GetDim(0);
-        OP_CHECK_IF(groupNum <= 0,
-                    OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0, but current value is %ld.", groupNum),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            groupNum <= 0,
+            OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0, but current value is %ld.", groupNum),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(kSize % groupNum != 0,
                     OP_LOGE(context->GetNodeName(), "GroupNum must be multiple of the k axis of weight."),
                     return ge::GRAPH_FAILED);
@@ -651,7 +651,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorListAtIndex(
                                                                                 const GMMAttrs &gmmAttrs,
                                                                                 size_t tensorIdx) const
 {
-    (void)gmmAttrs;  // 保留传参以保持接口一致性，当前逻辑暂未使用
+    (void)gmmAttrs; // 保留传参以保持接口一致性，当前逻辑暂未使用
     auto tensorShape = context->GetDynamicInputShape(gmm_index, tensorIdx);
     if (IsNonEmpty(tensorShape)) {
         size_t tensorDimNum = tensorShape->GetDimNum();
@@ -889,10 +889,10 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeValidSplitM(const ger
                 OP_LOGE(context->GetNodeName(), "CheckShapeForXAndWeight failed."), return ge::GRAPH_FAILED);
     if (isMultiTensorWeight_) {
         for (size_t i = 0; i < numWeight_; i++) {
-            OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_BIAS, "bias", gmmAttrs, i) !=
-                            ge::GRAPH_SUCCESS,
-                        OP_LOGE(context->GetNodeName(), "CheckShapeForBias at index [%zu] failed.", i),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_BIAS, "bias", gmmAttrs, i) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "CheckShapeForBias at index [%zu] failed.", i),
+                return ge::GRAPH_FAILED);
             OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_ANTIQUANT_SCALE, "antiquantScale",
                                                        gmmAttrs, i) != ge::GRAPH_SUCCESS,
                         OP_LOGE(context->GetNodeName(), "CheckShapeForAntiquantScale at index [%zu] failed.", i),
@@ -908,8 +908,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeValidSplitM(const ger
         OP_CHECK_IF(CheckShapeForTensorList(context, GMM_INDEX_IN_BIAS, "bias", gmmAttrs) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "CheckShapeForBias failed."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(CheckShapeForWeightQuantParam(context, gmmAttrs) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "CheckShapeForWeightQuantParam failed."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context->GetNodeName(), "CheckShapeForWeightQuantParam failed."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(CheckGroupSize(context, gmmAttrs, 0) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "CheckGroupSize failed."), return ge::GRAPH_FAILED);
     }
