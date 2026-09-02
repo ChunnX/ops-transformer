@@ -38,6 +38,16 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>残差注意力的反向传播算子，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention/README.md">block_sparse_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -717,6 +727,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>mhc_sinkhorn的反向算子。</td>
   </tr>
   <tr>
+    <td>mhc</td>
     <td>moe</td>
     <td><a href="../../moe/moe_compute_expert_tokens/README.md">moe_compute_expert_tokens</a></td>
     <td>✓</td>
