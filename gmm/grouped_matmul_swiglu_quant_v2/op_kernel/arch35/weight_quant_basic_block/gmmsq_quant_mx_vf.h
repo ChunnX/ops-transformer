@@ -94,8 +94,8 @@ __simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ Data
             // 5. Cast to BF16 and store
             AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg4, verg3, mask);
             uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat;
-            AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                gluResAddr + dstUbOffset, verg4, mask);
+            AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(gluResAddr + dstUbOffset,
+                                                                                         verg4, mask);
         }
     }
 }
@@ -127,19 +127,16 @@ __simd_vf__ inline void ComputeMaxExpVf(__ubuf__ bfloat16_t *srcAddr, __ubuf__ u
         scaleMask1 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
 
         AscendC::Reg::LoadAlign<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                     AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
-                                                                                   vlForHalfNumber * 2);
+                                AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr, vlForHalfNumber * 2);
 
-        AscendC::Reg::And(vdExpExtract0, (AscendC::Reg::RegTensor<uint16_t> &)vdExp0, expMaskBF16,
-                               scaleMask1);
-        AscendC::Reg::And(vdExpExtract1, (AscendC::Reg::RegTensor<uint16_t> &)vdExp1, expMaskBF16,
-                               scaleMask1);
+        AscendC::Reg::And(vdExpExtract0, (AscendC::Reg::RegTensor<uint16_t> &)vdExp0, expMaskBF16, scaleMask1);
+        AscendC::Reg::And(vdExpExtract1, (AscendC::Reg::RegTensor<uint16_t> &)vdExp1, expMaskBF16, scaleMask1);
 
         AscendC::Reg::Max(vdMaxExp, vdExpExtract0, vdExpExtract1, scaleMask1);
         AscendC::Reg::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, scaleMask1);
 
-        AscendC::Reg::StoreUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-            maxExpAddr, vdMaxExp, u1, elementAfterReduce);
+        AscendC::Reg::StoreUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(maxExpAddr, vdMaxExp, u1,
+                                                                                          elementAfterReduce);
     }
     AscendC::Reg::StoreUnAlignPost(maxExpAddr, u1, 0);
 }
@@ -176,12 +173,11 @@ __simd_vf__ inline void ComputeScaleVf(__ubuf__ uint16_t *maxExpAddr, __ubuf__ u
         preMaskScale = AscendC::Reg::UpdateMask<uint16_t>(totalScaleInUB);
 
         AscendC::Reg::LoadAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(vdMaxExp, maxExpAddr,
-                                                                                                 vlForHalfNumber);
+                                                                                       vlForHalfNumber);
         // 检测 INF/NAN 和 zero
         AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(cmpResult, vdMaxExp, expMask, preMaskScale);
         AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(zeroMask, vdMaxExp, zeroRegTensor, preMaskScale);
-        AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::LE>(invalidDataMask, vdMaxExp, maxExpValue,
-                                                                   preMaskScale);
+        AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::LE>(invalidDataMask, vdMaxExp, maxExpValue, preMaskScale);
         AscendC::Reg::Select<uint16_t>(vdMaxExp, maxExpValue, vdMaxExp, invalidDataMask);
 
         AscendC::Reg::Sub(sharedExp, vdMaxExp, maxExpValue, preMaskScale);
@@ -191,19 +187,18 @@ __simd_vf__ inline void ComputeScaleVf(__ubuf__ uint16_t *maxExpAddr, __ubuf__ u
         AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, zeroRegTensor, zeroMask);
 
         AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::Reg::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr, scaleValue,
-                                                                                   vlForHalfNumber >> 1, preMaskScale);
+                                 AscendC::Reg::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr, scaleValue,
+                                                                         vlForHalfNumber >> 1, preMaskScale);
 
-        AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialDataMask, sharedExp, scaleOffset,
-                                                                   preMaskScale);
+        AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialDataMask, sharedExp, scaleOffset, preMaskScale);
 
         AscendC::Reg::Sub(halfScale, scaleOffset, sharedExp, preMaskScale);
         AscendC::Reg::Select<uint16_t>(halfScale, halfScale, nanRegTensor, cmpResult);
         AscendC::Reg::Select<uint16_t>(halfScale, halfScale, zeroRegTensor, zeroMask);
         AscendC::Reg::Select<uint16_t>(halfScale, specialExpRegTensor, halfScale, specialDataMask);
 
-        AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-            halfScaleLocalAddr, halfScale, vlForHalfNumber, preMaskScale);
+        AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(halfScaleLocalAddr, halfScale,
+                                                                                        vlForHalfNumber, preMaskScale);
     }
 }
 
@@ -260,11 +255,11 @@ __simd_vf__ inline void ComputeDataForQuantTargetFp8Vf(__ubuf__ bfloat16_t *srcA
     AscendC::Reg::RegTensor<DataTypeOut> vdExp0FP8Zero, vdExp0FP8One, vdExp1FP8Zero, vdExp1FP8One;
 
     static constexpr AscendC::Reg::CastTrait castTraitZero = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::UNKNOWN};
     static constexpr AscendC::Reg::CastTrait castTraitOne = {
-        AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::UNKNOWN};
     static constexpr AscendC::Reg::CastTrait castTrait32to8 = {
         AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
         AscendC::RoundMode::CAST_RINT};
@@ -276,12 +271,11 @@ __simd_vf__ inline void ComputeDataForQuantTargetFp8Vf(__ubuf__ bfloat16_t *srcA
         dataMask4 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB2);
 
         AscendC::Reg::LoadAlign<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                     AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
-                                                                                   vlForHalfNumber * 2);
+                                AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr, vlForHalfNumber * 2);
 
         AscendC::Reg::LoadAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                     AscendC::Reg::LoadDist::DIST_E2B_B16>(halfScaleForMul, halfScaleLocalAddr,
-                                                                                elementAfterReduce);
+                                AscendC::Reg::LoadDist::DIST_E2B_B16>(halfScaleForMul, halfScaleLocalAddr,
+                                                                      elementAfterReduce);
 
         AscendC::Reg::Mul(vdExp0, vdExp0, (AscendC::Reg::RegTensor<bfloat16_t> &)halfScaleForMul, dataMask1);
         AscendC::Reg::Mul(vdExp1, vdExp1, (AscendC::Reg::RegTensor<bfloat16_t> &)halfScaleForMul, dataMask1);
@@ -302,16 +296,16 @@ __simd_vf__ inline void ComputeDataForQuantTargetFp8Vf(__ubuf__ bfloat16_t *srcA
 
         // 64：使用DIST_PACK4_B32进行搬运4个float8拼成一个float32，256 / 4 = 64
         AscendC::Reg::StoreAlign<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                                 AscendC::Reg::StoreDist::DIST_PACK4_B32>(
             outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp0FP8Zero, static_cast<int64_t>(64), dataMask3);
         AscendC::Reg::StoreAlign<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                                 AscendC::Reg::StoreDist::DIST_PACK4_B32>(
             outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp0FP8One, static_cast<int64_t>(64), dataMask3);
         AscendC::Reg::StoreAlign<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                                 AscendC::Reg::StoreDist::DIST_PACK4_B32>(
             outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp1FP8Zero, static_cast<int64_t>(64), dataMask4);
         AscendC::Reg::StoreAlign<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                      AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                                 AscendC::Reg::StoreDist::DIST_PACK4_B32>(
             outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp1FP8One, static_cast<int64_t>(64), dataMask4);
     }
 }
@@ -331,9 +325,9 @@ __simd_vf__ inline void GmmsqAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType> 
         for (uint16_t innerLoopIdx = 0; innerLoopIdx < mxA8W4NzParams.innerLoopNum; ++innerLoopIdx) {
             Reg::AddrReg aregWeightB8In = Reg::CreateAddrReg<uint8_t>(
                 loopKIdx, (C0_SIZE_B8 * mxA8W4NzParams.nRealSizeAlign) >> 1, innerLoopIdx, VECTOR_REG_WIDTH >> 1);
-            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_US_B8>(
-                (Reg::RegTensor<uint8_t> &)wLoad, (__ubuf__ uint8_t *&)mxA8W4NzParams.weightLowBitPhyAddr,
-                aregWeightB8In);
+            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_US_B8>((Reg::RegTensor<uint8_t> &)wLoad,
+                                                               (__ubuf__ uint8_t *&)mxA8W4NzParams.weightLowBitPhyAddr,
+                                                               aregWeightB8In);
 
             Reg::ShiftRight(wShr0, wLoad, wShrReg, preg);
             Reg::ShiftLeft(wShl, wLoad, wShlReg, preg);
@@ -341,8 +335,8 @@ __simd_vf__ inline void GmmsqAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType> 
             Reg::Select(wSel, wShr1, wShr0, pregVsel);
             Reg::And(wAnd, wSel, wAndReg, preg);
 
-            Reg::AddrReg aregWeightB8Out = Reg::CreateAddrReg<uint8_t>(
-                loopKIdx, mxA8W4NzParams.loopKDstStride, innerLoopIdx, mxA8W4NzParams.innerDstStride);
+            Reg::AddrReg aregWeightB8Out = Reg::CreateAddrReg<uint8_t>(loopKIdx, mxA8W4NzParams.loopKDstStride,
+                                                                       innerLoopIdx, mxA8W4NzParams.innerDstStride);
             Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_NORM_B8>(
                 (__ubuf__ uint8_t *&)mxA8W4NzParams.weightHighBitPhyAddr, (Reg::RegTensor<uint8_t> &)wAnd,
                 aregWeightB8Out, preg);

@@ -35,8 +35,8 @@ constexpr uint32_t MAX_SCALE_NUM = 256;
 } // namespace
 
 static constexpr AscendC::Reg::CastTrait ctInt322Fp32S = {
-    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN,
-    AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::Reg::CastTrait ctHalf2Fp32ZeroS = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
@@ -254,8 +254,7 @@ __aicore__ inline void BlockEpilogueDequantSwiglu<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        AscendC::Reg::MaskReg maskN4B16 =
-            AscendC::Reg::CreateMask<DataTypeX2Scale, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskN4B16 = AscendC::Reg::CreateMask<DataTypeX2Scale, AscendC::Reg::MaskPattern::ALL>();
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
@@ -278,21 +277,20 @@ __aicore__ inline void BlockEpilogueDequantSwiglu<QMM_BLOCK_EPILOGUE_DEQUANT_FUN
                 if constexpr (IsSameType<DataTypeX2Scale, bfloat16_t>::value ||
                               IsSameType<DataTypeX2Scale, half>::value) {
                     AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32ZeroS>(castScaleReg, scaleReg, maskN);
-                    AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneS>(castScaleOneReg, scaleReg,
-                                                                                     maskN4B16);
+                    AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneS>(castScaleOneReg, scaleReg, maskN4B16);
                     AscendC::Reg::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                 } else if constexpr (IsSameType<DataTypeX2Scale, float>::value) {
                     castScaleReg = scaleReg;
                 }
                 AscendC::Reg::Mul(mulScaleOutReg, l0cOutRegFloat, castScaleReg, maskN);
                 // out * x1Scale
-                AscendC::Reg::DataCopy<DataTypeX1Scale, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                    perTokenScaleReg, x1Scale + mIdx);
+                AscendC::Reg::DataCopy<DataTypeX1Scale, AscendC::Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg,
+                                                                                              x1Scale + mIdx);
                 AscendC::Reg::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
                 // copy out from register to ub
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf;
-                AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                    dst + dstUbOffset, mulPtScaleOutReg, maskN);
+                AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                      mulPtScaleOutReg, maskN);
             }
         }
     }

@@ -55,25 +55,19 @@ struct CalculateParam {
 };
 
 static constexpr Reg::CastTrait FP8_TO_FP32_TRAIT_0 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                            Reg::MaskMergeMode::ZEROING,
-                                                            AscendC::RoundMode::UNKNOWN};
+                                                       Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 static constexpr Reg::CastTrait FP8_TO_FP32_TRAIT_2 = {Reg::RegLayout::TWO, Reg::SatMode::UNKNOWN,
-                                                            Reg::MaskMergeMode::ZEROING,
-                                                            AscendC::RoundMode::UNKNOWN};
+                                                       Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 static constexpr Reg::CastTrait FP32_TO_F16_ODD = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                        Reg::MaskMergeMode::ZEROING,
-                                                        AscendC::RoundMode::CAST_ROUND};
+                                                   Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
 static constexpr Reg::CastTrait FP32_TO_F16_EVEN = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                         Reg::MaskMergeMode::ZEROING,
-                                                         AscendC::RoundMode::CAST_ROUND};
+                                                    Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
 
 static constexpr Reg::CastTrait S8_TO_FP16_TRAIT_ODD = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 static constexpr Reg::CastTrait FP16_TO_BF16_TRAIT = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
-                                                           Reg::MaskMergeMode::ZEROING,
-                                                           AscendC::RoundMode::CAST_RINT};
+                                                      Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
 template <typename xType, typename wType, bool hasAntiQuantOffset, QuantType antiQuantType>
 __aicore__ inline void AntiQuantFP8NdNkVfLoadScaleOffset(RegTensor<xType> &antiQuantScaleVreg,
@@ -82,14 +76,14 @@ __aicore__ inline void AntiQuantFP8NdNkVfLoadScaleOffset(RegTensor<xType> &antiQ
                                                          const CalculateParam<xType> &calculateParam, uint16_t nIdx)
 {
     if constexpr (hasAntiQuantOffset) {
-        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(
-            antiQuantOffsetVreg, localAddressParam.antiQuantOffsetBasePhyAddr + nIdx);
+        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantOffsetVreg,
+                                                          localAddressParam.antiQuantOffsetBasePhyAddr + nIdx);
     }
     if constexpr (antiQuantType == QuantType::PER_TENSOR) {
         Reg::Duplicate(antiQuantScaleVreg, calculateParam.scaleValue);
     } else {
         Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantScaleVreg,
-                                                                    localAddressParam.antiQuantScaleBasePhyAddr + nIdx);
+                                                          localAddressParam.antiQuantScaleBasePhyAddr + nIdx);
     }
 }
 
@@ -133,11 +127,11 @@ __aicore__ inline void AntiQuantFP8NdNkVf(LocalAddressParam<xType, wType> &local
         Reg::Cast<xType, float, FP32_TO_F16_EVEN>(weightF16Vreg3, weightF32Vreg3, maskAll);
 
         Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((RegTensor<uint16_t> &)weightF16Vreg2,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg2,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg3, maskAll);
+                                                       (RegTensor<uint16_t> &)weightF16Vreg2,
+                                                       (RegTensor<uint16_t> &)weightF16Vreg3, maskAll);
         Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((RegTensor<uint16_t> &)weightF16Vreg0,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg0,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg1, maskAll);
+                                                       (RegTensor<uint16_t> &)weightF16Vreg0,
+                                                       (RegTensor<uint16_t> &)weightF16Vreg1, maskAll);
 
         if constexpr (hasAntiQuantOffset) {
             if constexpr (antiQuantType == QuantType::PER_TENSOR) {
@@ -166,9 +160,9 @@ __aicore__ inline void AntiQuantFP8NdKnVfLoadOffset(RegTensor<xType> &antiQuantO
 {
     if constexpr (hasAntiQuantOffset) {
         Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantOffsetVreg0,
-                                                                 localAddressParam.antiQuantOffsetBasePhyAddr);
+                                                       localAddressParam.antiQuantOffsetBasePhyAddr);
         Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantOffsetVreg1,
-                                                                 localAddressParam.antiQuantOffsetBasePhyAddr1);
+                                                       localAddressParam.antiQuantOffsetBasePhyAddr1);
     }
 }
 
@@ -183,9 +177,9 @@ __aicore__ inline void AntiQuantFP8NdKnVfLoadScale(RegTensor<xType> &antiQuantSc
         Reg::Duplicate(antiQuantScaleVreg1, calculateParam.scaleValue);
     } else {
         Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantScaleVreg0,
-                                                                 localAddressParam.antiQuantScaleBasePhyAddr);
+                                                       localAddressParam.antiQuantScaleBasePhyAddr);
         Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantScaleVreg1,
-                                                                 localAddressParam.antiQuantScaleBasePhyAddr1);
+                                                       localAddressParam.antiQuantScaleBasePhyAddr1);
     }
 }
 
@@ -237,11 +231,11 @@ __aicore__ inline void AntiQuantFP8NdKnVf(LocalAddressParam<xType, wType> &local
         Reg::Cast<xType, float, FP32_TO_F16_ODD>(weightF16Vreg2, weightF32Vreg2, maskAll);
         Reg::Cast<xType, float, FP32_TO_F16_EVEN>(weightF16Vreg3, weightF32Vreg3, maskAll);
         Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((RegTensor<uint16_t> &)weightF16Vreg0,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg0,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg1, maskAll);
+                                                       (RegTensor<uint16_t> &)weightF16Vreg0,
+                                                       (RegTensor<uint16_t> &)weightF16Vreg1, maskAll);
         Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((RegTensor<uint16_t> &)weightF16Vreg2,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg2,
-                                                                 (RegTensor<uint16_t> &)weightF16Vreg3, maskAll);
+                                                       (RegTensor<uint16_t> &)weightF16Vreg2,
+                                                       (RegTensor<uint16_t> &)weightF16Vreg3, maskAll);
         if constexpr (hasAntiQuantOffset) {
             if constexpr (antiQuantType == QuantType::PER_TENSOR) {
                 Reg::Adds(weightF16Vreg0, weightF16Vreg0, calculateParam.offsetValue, maskAll);
@@ -333,14 +327,12 @@ __aicore__ inline void NdNkLoadScaleOffset(__local_mem__ xType *antiQuantScaleBa
                                            xType scaleValue, uint64_t ubLoopNIdx)
 {
     if constexpr (wqmmConfig.hasAntiQuantOffset) {
-        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantOffsetVreg,
-                                                                    antiQuantOffsetBasePhyAddr + ubLoopNIdx);
+        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantOffsetVreg, antiQuantOffsetBasePhyAddr + ubLoopNIdx);
     }
     if constexpr (wqmmConfig.antiQuantType == QuantType::PER_TENSOR) {
         Reg::Duplicate(antiQuantScaleVreg, scaleValue);
     } else {
-        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantScaleVreg,
-                                                                    antiQuantScaleBasePhyAddr + ubLoopNIdx);
+        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantScaleVreg, antiQuantScaleBasePhyAddr + ubLoopNIdx);
     }
 }
 
@@ -486,8 +478,7 @@ __aicore__ inline void AntiQuantInt4NdNk(__local_mem__ xType *antiQuantScaleBase
 
         Reg::MaskReg maskAll = Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
         static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                 Reg::MaskMergeMode::ZEROING,
-                                                                 AscendC::RoundMode::UNKNOWN};
+                                                            Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
         for (uint16_t ubLoopNIdx = 0; ubLoopNIdx < static_cast<uint16_t>(ubLoopN); ubLoopNIdx++) {
             NdNkLoadScaleOffset<xType, wqmmConfig>(antiQuantScaleBasePhyAddr, antiQuantOffsetBasePhyAddr,
                                                    antiQuantScaleVreg, antiQuantOffsetVreg, scaleValue, ubLoopNIdx);
@@ -534,8 +525,7 @@ __aicore__ inline void AntiQuantInt4NdKn(__local_mem__ xType *antiQuantScaleBase
         RegTensor<xType> weightF16Vreg0, weightF16Vreg1;
         Reg::MaskReg maskAll = Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
         static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                 Reg::MaskMergeMode::ZEROING,
-                                                                 AscendC::RoundMode::UNKNOWN};
+                                                            Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
         NdKnLoadScaleOffset<xType, wqmmConfig>(antiQuantScaleBasePhyAddr, antiQuantScaleBasePhyAddr1,
                                                antiQuantOffsetBasePhyAddr, antiQuantOffsetBasePhyAddr1,
                                                antiQuantScaleVreg, antiQuantScaleVreg1, antiQuantOffsetVreg,
@@ -599,23 +589,21 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdKn(__local_mem__ xType *antiQuant
     RegTensor<int4x2_t> weightS4Vreg;
     RegTensor<xType> weightF16Vreg;
     static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     for (uint16_t nIdx = 0; nIdx < nLoop; ++nIdx) {
         Reg::MaskReg maskWeight = Reg::UpdateMask<xType>(maskWeightValue);
         for (uint16_t gIdx = 0; gIdx < groupNum; ++gIdx) {
             AddrReg scaleAddrReg = Reg::CreateAddrReg<xType>(nIdx, VEC_MAX_ELEM_B16, gIdx, antiQuantParamNStride);
             if constexpr (wqmmConfig.hasAntiQuantOffset) {
-                Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantOffsetVreg,
-                                                                         antiQuantOffsetBasePhyAddr, scaleAddrReg);
+                Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantOffsetVreg, antiQuantOffsetBasePhyAddr,
+                                                               scaleAddrReg);
             }
-            Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantScaleVreg, antiQuantScaleBasePhyAddr,
-                                                                     scaleAddrReg);
+            Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantScaleVreg, antiQuantScaleBasePhyAddr, scaleAddrReg);
 
             for (uint16_t kIdx = 0; kIdx < groupSize; ++kIdx) {
-                AddrReg weightAddrReg = Reg::CreateAddrReg<int4x2_t>(nIdx, weightNStride, gIdx, weightGroupStride,
-                                                                          kIdx, weightKStride);
+                AddrReg weightAddrReg =
+                    Reg::CreateAddrReg<int4x2_t>(nIdx, weightNStride, gIdx, weightGroupStride, kIdx, weightKStride);
                 Reg::DataCopy<int4x2_t, Reg::LoadDist::DIST_UNPACK4_B8>(
                     weightS4Vreg, (__local_mem__ int4x2_t *)weightLowBitPhyAddr0, weightAddrReg);
                 Reg::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg, weightS4Vreg, maskWeight);
@@ -623,16 +611,14 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdKn(__local_mem__ xType *antiQuant
                     Reg::Add(weightF16Vreg, weightF16Vreg, antiQuantOffsetVreg, maskWeight);
                 }
                 Reg::Mul(weightF16Vreg, weightF16Vreg, antiQuantScaleVreg, maskWeight);
-                Reg::DataCopy<xType, Reg::DataCopyMode::DATA_BLOCK_COPY,
-                                   Reg::PostLiteral::POST_MODE_UPDATE>(weightOutBaseAddr, weightF16Vreg,
-                                                                            dataBlockStride, 1, maskWeight);
+                Reg::DataCopy<xType, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    weightOutBaseAddr, weightF16Vreg, dataBlockStride, 1, maskWeight);
             }
         }
 
         AddrReg scaleTailAddrReg = Reg::CreateAddrReg<xType>(nIdx, VEC_MAX_ELEM_B16);
         if constexpr (wqmmConfig.hasAntiQuantOffset) {
-            Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantOffsetVreg, offsetTailAddr,
-                                                                     scaleTailAddrReg);
+            Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantOffsetVreg, offsetTailAddr, scaleTailAddrReg);
         }
         Reg::DataCopy<xType, Reg::LoadDist::DIST_NORM>(antiQuantScaleVreg, scaleTailAddr, scaleTailAddrReg);
         for (uint16_t kIdx = 0; kIdx < groupTail; ++kIdx) {
@@ -669,8 +655,7 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *anti
 
     Reg::MaskReg maskAll = Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
     static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     constexpr uint16_t GROUP_SIZE = 128;
     constexpr uint16_t INNER_STRIDE_WEIGHT = GROUP_SIZE >> 1;
@@ -730,8 +715,7 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *anti
 
     Reg::MaskReg maskAll = Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
     static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     constexpr uint16_t GROUP_SIZE = 256;
     uint16_t groupNum = static_cast<uint16_t>((bubKLen + GROUP_SIZE - 1) / GROUP_SIZE);
@@ -744,11 +728,10 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *anti
     Reg::MaskReg maskWeight1 = Reg::UpdateMask<xType>(maskLen);
 
     for (uint16_t nBubIdx = 0; nBubIdx < bubNLen; ++nBubIdx) {
-        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantScaleVreg,
-                                                                    antiQuantScaleBasePhyAddr + nBubIdx);
+        Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantScaleVreg, antiQuantScaleBasePhyAddr + nBubIdx);
         if constexpr (wqmmConfig.hasAntiQuantOffset) {
             Reg::DataCopy<xType, Reg::LoadDist::DIST_BRC_B16>(antiQuantOffsetVreg,
-                                                                        antiQuantOffsetBasePhyAddr + nBubIdx);
+                                                              antiQuantOffsetBasePhyAddr + nBubIdx);
         }
 
         Reg::DataCopy<int4x2_t, Reg::LoadDist::DIST_UNPACK4_B8>(
@@ -794,8 +777,7 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQ
     Reg::MaskReg maskAll = Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
     Reg::MaskReg maskRegSelect = Reg::CreateMask<xType, Reg::MaskPattern::H>();
     static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     constexpr uint16_t GROUP_SIZE = 64;
     constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
@@ -855,8 +837,7 @@ __simd_callee__ inline void SelectNdNkGs32FourGroups(RegTensor<xType> &dstVreg, 
                                                      RegTensor<xType> &tmp23Vreg, RegTensor<xType> &group0Vreg,
                                                      RegTensor<xType> &group1Vreg, RegTensor<xType> &group2Vreg,
                                                      RegTensor<xType> &group3Vreg, Reg::MaskReg &maskRegSelect32,
-                                                     Reg::MaskReg &maskRegSelect96,
-                                                     Reg::MaskReg &maskRegSelectH)
+                                                     Reg::MaskReg &maskRegSelect96, Reg::MaskReg &maskRegSelectH)
 {
     // tmp01: [group0 x 32, group1 x 96], tmp23: [group2 x 96, group3 x 32].
     Reg::Select(tmp01Vreg, group0Vreg, group1Vreg, maskRegSelect32);
@@ -890,8 +871,7 @@ __simd_vf__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *antiQ
     Reg::MaskReg maskRegSelect32 = Reg::UpdateMask<xType>(selectLen32);
     Reg::MaskReg maskRegSelect96 = Reg::UpdateMask<xType>(selectLen96);
     static constexpr Reg::CastTrait castS4ToF16Trait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
     constexpr uint16_t GROUP_SIZE = 32;
     constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
