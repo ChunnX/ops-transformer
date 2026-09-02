@@ -185,8 +185,7 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     const char *nodeName = context->GetNodeName();
 
     auto contextDesc = context->GetInputDesc(IDX_INPUT_CONTEXT);
-    ge::Format contextFormat = static_cast<ge::Format>(
-        ge::GetPrimaryFormat(contextDesc->GetStorageFormat()));
+    ge::Format contextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat()));
     OP_TILING_CHECK(contextFormat != ge::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "context", Ops::Base::ToString(contextFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
@@ -323,12 +322,12 @@ static ge::graphStatus CheckInputShape(const gert::TilingContext *context, Shape
                         "The k-axis of x1 and x2 must be the same"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(kX1 < K_MIN_VAL || kX1 >= K_MAX_VAL,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "K", std::to_string(kX1).c_str(),
-                                              (std::string("in range [") + std::to_string(K_MIN_VAL) + ", " +
-                                               std::to_string(K_MAX_VAL) + ")")
-                                                  .c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        kX1 < K_MIN_VAL || kX1 >= K_MAX_VAL,
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "K", std::to_string(kX1).c_str(),
+            (std::string("in range [") + std::to_string(K_MIN_VAL) + ", " + std::to_string(K_MAX_VAL) + ")").c_str()),
+        return ge::GRAPH_FAILED);
 
     // fp4 要求 K 为偶数
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
@@ -508,10 +507,8 @@ static ge::graphStatus CheckIsTransBAttr(const gert::TilingContext *context)
     auto attrs = context->GetAttrs();
 
     auto isTransBPtr = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_B_INDEX);
-    OP_TILING_CHECK(
-        isTransBPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "is_trans_b"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(isTransBPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "is_trans_b"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!(*isTransBPtr),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "is_trans_b", "false", "true (x2 must be [N,K] layout)"),
                     return ge::GRAPH_FAILED);
@@ -681,8 +678,8 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const Shap
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckCommModeAttr(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check comm_mode attr failed"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckGroupSizeAttr(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check group_size attr failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckGroupSizeAttr(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "check group_size attr failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckHcclBufferSizeAttr(context, shapeInfo) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check hccl_buffer_size attr failed"), return ge::GRAPH_FAILED);
 
@@ -827,8 +824,8 @@ static ge::graphStatus AllGatherMatmulV3TilingFunc(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
 
     // 3. set tiling data
-    OP_TILING_CHECK(SetTilingData(context, shapeInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "set tiling data failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetTilingData(context, shapeInfo) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "set tiling data failed"),
+                    return ge::GRAPH_FAILED);
 
     // 4. set tiling key
     SetTilingKey(context);

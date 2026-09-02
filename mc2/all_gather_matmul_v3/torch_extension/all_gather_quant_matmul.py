@@ -67,17 +67,11 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             comm_mode="ai_cpu",
         ):
             if rank_size <= 0:
-                raise ValueError(
-                    f"rank_size should be greater than 0."
-                )
+                raise ValueError("rank_size should be greater than 0.")
             if x1.dim() != 2:
-                raise ValueError(
-                    f"x1 should be 2D, but got {x1.dim()}D."
-                )
+                raise ValueError(f"x1 should be 2D, but got {x1.dim()}D.")
             if x2.dim() != 2:
-                raise ValueError(
-                    f"x2 should be 2D, but got {x2.dim()}D."
-                )
+                raise ValueError(f"x2 should be 2D, but got {x2.dim()}D.")
             m_per_rank = x1.size(0)
             k = x1.size(1)
             n = x2.size(1)
@@ -153,13 +147,9 @@ def _check_params(
     if x2 is None:
         raise ValueError("x2 must not be None.")
     if x1.dim() != 2:
-        raise ValueError(
-            f"x1 should be 2D, but got {x1.dim()}D."
-        )
+        raise ValueError(f"x1 should be 2D, but got {x1.dim()}D.")
     if x2.dim() != 2:
-        raise ValueError(
-            f"x2 should be 2D, but got {x2.dim()}D."
-        )
+        raise ValueError(f"x2 should be 2D, but got {x2.dim()}D.")
     if comm_mode != "aiv_urma":
         raise ValueError(
             f"comm_mode only supports 'aiv_urma', but got '{comm_mode}'. "
