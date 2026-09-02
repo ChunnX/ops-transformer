@@ -68,15 +68,15 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
         ):
             if rank_size <= 0:
                 raise ValueError(
-                    f"rank_size should be greater than 0, {ops_error(ErrCode.VALUE)}."
+                    f"rank_size should be greater than 0."
                 )
             if x1.dim() != 2:
                 raise ValueError(
-                    f"x1 should be 2D, but got {x1.dim()}D, {ops_error(ErrCode.VALUE)}."
+                    f"x1 should be 2D, but got {x1.dim()}D."
                 )
             if x2.dim() != 2:
                 raise ValueError(
-                    f"x2 should be 2D, but got {x2.dim()}D, {ops_error(ErrCode.VALUE)}."
+                    f"x2 should be 2D, but got {x2.dim()}D."
                 )
             m_per_rank = x1.size(0)
             k = x1.size(1)
@@ -148,10 +148,22 @@ def _check_params(
     comm_mode,
 ):
     """Validate input parameters."""
-    if comm_mode != "urma":
+    if x1 is None:
+        raise ValueError("x1 must not be None.")
+    if x2 is None:
+        raise ValueError("x2 must not be None.")
+    if x1.dim() != 2:
         raise ValueError(
-            f"comm_mode only supports 'urma', but got '{comm_mode}'. "
-            f"Please pass comm_mode='urma' explicitly."
+            f"x1 should be 2D, but got {x1.dim()}D."
+        )
+    if x2.dim() != 2:
+        raise ValueError(
+            f"x2 should be 2D, but got {x2.dim()}D."
+        )
+    if comm_mode != "aiv_urma":
+        raise ValueError(
+            f"comm_mode only supports 'aiv_urma', but got '{comm_mode}'. "
+            f"Please pass comm_mode='aiv_urma' explicitly."
         )
     fp4_dtype_enums = (296,)
     if x1.dtype == torch.uint8 and x1_dtype not in fp4_dtype_enums:
@@ -278,8 +290,8 @@ def all_gather_quant_matmul(
         x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast, None means use tensor dtype.
         y_dtype (int, optional): Output dtype enum, None means default bfloat16.
             Only bfloat16/float16 are supported.
-        comm_mode (str, optional): Communication engine. Only ``"urma"`` is supported;
-            the default ``"ai_cpu"`` is rejected, so pass ``"urma"`` explicitly.
+        comm_mode (str, optional): Communication engine. Only ``"aiv_urma"`` is supported;
+            the default ``"ai_cpu"`` is rejected, so pass ``"aiv_urma"`` explicitly.
 
     Returns:
         Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
