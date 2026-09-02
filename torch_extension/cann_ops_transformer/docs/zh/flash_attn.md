@@ -171,7 +171,7 @@ cann_ops_transformer.flash_attn(
 | cu_seqlens_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) |
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) |
-| sinks | Tensor | 可选 | 注意力汇聚（sink）参数，用于改善自注意力计算的数值稳定性 | float32 | ND | (Q_N,) |
+| sinks | Tensor | 可选 | 注意力汇聚（sink）参数，用于改善自注意力计算的数值稳定性 | bfloat16/float16 | ND | (Q_N,) |
 | metadata | Tensor | 可选 | `flash_attn_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
 | mask_mode | int | 可选 | 掩码模式 | int32 | - | - |
@@ -680,12 +680,13 @@ mask_mode参数解释
             <td>sinks</td>
             <td>
                 <ul>
-                    <li>暂不支持</li>
+                    <li>data_type仅支持bfloat16/float16，且必须与q的数据类型一致</li>
+                    <li>shape必须为1D，且长度等于Q_N（q的头数，GQA分组前的头数）</li>
                 </ul>
             </td>
             <td> 可选参数 </td>
             <td> 无 </td>
-            <td> 暂不支持 </td>
+            <td> 无 </td>
         </tr>
     </tbody>
 </table>
