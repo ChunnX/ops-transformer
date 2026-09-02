@@ -241,17 +241,18 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
     const uint32_t availableMixCoreNum =
         availableAicCoreNum < availableAivCoreNum / 2 ? availableAicCoreNum : availableAivCoreNum / 2;
     blockDim_ = availableMixCoreNum;
+    usedBlockDim_ = availableMixCoreNum;
     const char *forcedMixCoreNum = std::getenv("MHC_PRE_BACKWARD_FORCE_MIX_CORE_NUM");
     if (forcedMixCoreNum != nullptr) {
         char *parseEnd = nullptr;
         const unsigned long requestedMixCoreNum = std::strtoul(forcedMixCoreNum, &parseEnd, 10);
         if (parseEnd != forcedMixCoreNum && *parseEnd == '\0' && requestedMixCoreNum > 0) {
-            blockDim_ = requestedMixCoreNum < availableMixCoreNum ?
+            usedBlockDim_ = requestedMixCoreNum < availableMixCoreNum ?
                 static_cast<uint32_t>(requestedMixCoreNum) : availableMixCoreNum;
         }
     }
     // 扫核实验始终保持1C2V配比；未设置环境变量时完全使用平台API给出的可用核数。
-    vecCoreNum_ = blockDim_ * 2;
+    vecCoreNum_ = usedBlockDim_ * 2;
 
     auto attrs = context_->GetAttrs();
     if (attrs == nullptr) {
@@ -294,7 +295,7 @@ void MhcPreBackwardTiling::SetC1TilingParams()
 
 void MhcPreBackwardTiling::SetCommonTilingParams()
 {
-    tilingData_.set_coreNum(blockDim_);
+    tilingData_.set_coreNum(usedBlockDim_);
     tilingData_.set_vecCoreNum(vecCoreNum_);
     tilingData_.set_totalLength(totalLength_);
     tilingData_.set_nD(N_ * D_);
@@ -369,7 +370,8 @@ ge::graphStatus MhcPreBackwardTiling::GetMatmulTiling(matmul_tiling::MatmulApiTi
 
 ge::graphStatus MhcPreBackwardTiling::TilingProcess()
 {
-    size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, fusionSize_, blockDim_, vecCoreNum_, sizeof(float));
+    size_t userWorkspaceSize =
+        CalculateWorkspaceSize(totalLength_, fusionSize_, usedBlockDim_, vecCoreNum_, sizeof(float));
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE_SIZE;
 
     auto platformInfo = context_->GetPlatformInfo();
@@ -443,7 +445,8 @@ ge::graphStatus MhcPreBackwardTiling::PostTiling()
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-    context_->SetBlockDim(tilingData_.get_coreNum());
+    // 全部平台MIX核参与SyncAll，tilingData中的coreNum只控制实际计算分工。
+    context_->SetBlockDim(blockDim_);
     context_->SetScheduleMode(SCHEDULE_MODE);
 
     size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
