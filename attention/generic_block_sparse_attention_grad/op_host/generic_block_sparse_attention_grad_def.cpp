@@ -73,10 +73,6 @@ public:
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Input("blockShape")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
         this->Output("dq")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -90,6 +86,7 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
 
+        this->Attr("block_shape").AttrType(OPTIONAL).ListInt({1, 128});
         this->Attr("isPackedGQA").AttrType(OPTIONAL).Int(1);
         this->Attr("layoutQ").AttrType(OPTIONAL).String();
         this->Attr("layoutKv").AttrType(OPTIONAL).String();

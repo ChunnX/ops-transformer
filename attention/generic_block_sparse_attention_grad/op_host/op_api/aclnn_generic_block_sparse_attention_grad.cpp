@@ -79,6 +79,10 @@ static aclnnStatus CheckDtypeAndRank(const GenericParams &p)
 static aclnnStatus CheckLayoutAndAttributes(const GenericParams &p)
 {
     CHECK_COND(p.blockShape != nullptr, ACLNN_ERR_PARAM_NULLPTR, "blockShape must not be null.");
+    CHECK_COND(p.blockShape->Size() == 2U, ACLNN_ERR_PARAM_INVALID, "blockShape must contain two elements [x, y].");
+    CHECK_COND(p.blockShape->GetData() != nullptr, ACLNN_ERR_PARAM_INVALID, "blockShape data is null.");
+    CHECK_COND(p.blockShape->GetData()[0] > 0 && p.blockShape->GetData()[1] > 0, ACLNN_ERR_PARAM_INVALID,
+               "blockShape values must be positive.");
     CHECK_COND(p.layoutQ != nullptr && p.layoutKv != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "layoutQ/layoutKv must not be null.");
     const std::string qLayout = op::ToString(p.layoutQ).GetString();
@@ -105,8 +109,8 @@ static aclnnStatus CheckOptionalInputs(const GenericParams &p)
     if (p.metadataOptional != nullptr) {
         CHECK_COND(p.metadataOptional->GetDataType() == ACL_INT64 &&
                        p.metadataOptional->GetViewShape().GetDimNum() == 1 &&
-                       p.metadataOptional->GetViewShape().GetDim(0) == 32 + 64 * 8,
-                   ACLNN_ERR_PARAM_INVALID, "metadataOptional must be INT64[544].");
+                       p.metadataOptional->GetViewShape().GetDim(0) >= 16 + 64 * 8,
+                   ACLNN_ERR_PARAM_INVALID, "metadataOptional must be INT64 with at least 528 words.");
     }
     auto checkSequenceTensor = [](const aclTensor *value, bool isCuSeq, const char *name) -> aclnnStatus {
         if (value == nullptr) {

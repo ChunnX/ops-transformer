@@ -32,7 +32,7 @@ TILING_DATA_FIELD_DEF(uint32_t, softmaxPrecision);
 TILING_DATA_FIELD_DEF(int64_t, winLeft);
 TILING_DATA_FIELD_DEF(int64_t, winRight);
 
-// 稀疏分块参数 (blockShapeOptional)
+// 稀疏分块参数 (block_shape 属性, 默认 {1, 128})
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block的x维度(Q方向)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
 
@@ -134,7 +134,6 @@ private:
     int64_t winLeft_ = -1;
     int64_t winRight_ = -1;
 
-    const int64_t *blockShapeList = nullptr;
     bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
     bool useUniformKvSeqlen_ = false; // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
 

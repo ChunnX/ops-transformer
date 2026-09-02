@@ -7,7 +7,7 @@
 namespace gbsag_meta {
 
 constexpr uint32_t MAGIC = 0x47425341U; // "GBSA"
-constexpr uint32_t HEADER_WORDS = 32;
+constexpr uint32_t HEADER_WORDS = 16;
 constexpr uint32_t KTASK_WORDS = 8;
 constexpr uint32_t BASIC_BLOCK_SIZE = 128;
 constexpr uint32_t MAX_AIC_CORE_NUM = 64;
@@ -59,7 +59,6 @@ struct Header {
     int64_t taskTableOffset;
     int64_t coreNum;
     int64_t taskWords;
-    int64_t reserved[16];
 };
 
 struct KTask {

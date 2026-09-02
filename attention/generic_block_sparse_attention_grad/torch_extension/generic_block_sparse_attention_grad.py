@@ -12,14 +12,22 @@ from torch.library import impl
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-GSAG_METADATA_SIZE = 16464  # legacy fallback; actual size is dynamic via calc_gsag_metadata_size
+GSAG_METADATA_SIZE = (
+    16464  # legacy fallback; actual size is dynamic via calc_gsag_metadata_size
+)
 GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
 GSAG_TASK_ENTRY_SIZE = 4
+ARC22_GBSAG_TASK_LIST_SIZE = 528  # 16 + 64 * 8
 GSAG_METADATA_OP_NAME = "generic_block_sparse_attention_grad_metadata"
 
+
 def calc_gsag_metadata_size(batch_size: int, num_q_heads: int, num_j: int) -> int:
-    """Required metadata int64 length: TASK_LIST_OFFSET + B * N1 * J * TASK_ENTRY_SIZE."""
-    return GSAG_TASK_LIST_OFFSET + batch_size * num_q_heads * num_j * GSAG_TASK_ENTRY_SIZE
+    """Required metadata int64 length: max(A5 dynamic, A2/A3 fixed capacity 528)."""
+    a5_size = (
+        GSAG_TASK_LIST_OFFSET + batch_size * num_q_heads * num_j * GSAG_TASK_ENTRY_SIZE
+    )
+    return max(a5_size, ARC22_GBSAG_TASK_LIST_SIZE)
+
 
 class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
     def __init__(self):
@@ -99,9 +107,13 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             if num_j <= 0 and max_kv_seqlen > 0:
                 num_j = (int(max_kv_seqlen) + block_y - 1) // block_y
             meta_size = calc_gsag_metadata_size(batch, int(num_q_heads), max(num_j, 0))
-            return torch.empty((meta_size,), dtype=torch.int64, device=rsvd_block_idx.device)
+            return torch.empty(
+                (meta_size,), dtype=torch.int64, device=rsvd_block_idx.device
+            )
 
-        @torch.library.register_fake("cann_ops_transformer::generic_block_sparse_attention_grad")
+        @torch.library.register_fake(
+            "cann_ops_transformer::generic_block_sparse_attention_grad"
+        )
         def generic_block_sparse_attention_grad_meta(
             query: torch.Tensor,
             key: torch.Tensor,
@@ -155,8 +167,12 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
                 torch.empty_like(value, device="meta"),
             )
 
-generic_block_sparse_attention_grad_op_builder = GenericBlockSparseAttentionGradOpBuilder()
+
+generic_block_sparse_attention_grad_op_builder = (
+    GenericBlockSparseAttentionGradOpBuilder()
+)
 generic_block_sparse_attention_grad_op_builder._ensure_initialized()
+
 
 @impl(get_as_library(), GSAG_METADATA_OP_NAME, "PrivateUse1")
 def generic_block_sparse_attention_grad_metadata(
@@ -204,6 +220,7 @@ def generic_block_sparse_attention_grad_metadata(
         window_size_left,
         window_size_right,
     )
+
 
 @impl(get_as_library(), "generic_block_sparse_attention_grad", "PrivateUse1")
 def generic_block_sparse_attention_grad(
@@ -260,13 +277,18 @@ def generic_block_sparse_attention_grad(
         window_size_right,
     )
 
-@torch.library.register_kernel("cann_ops_transformer::generic_block_sparse_attention_grad", None)
+
+@torch.library.register_kernel(
+    "cann_ops_transformer::generic_block_sparse_attention_grad", None
+)
 def generic_block_sparse_attention_grad_fallback(*args, **kwargs):
     return generic_block_sparse_attention_grad(*args, **kwargs)
+
 
 @torch.library.register_kernel("cann_ops_transformer::" + GSAG_METADATA_OP_NAME, None)
 def generic_block_sparse_attention_grad_metadata_fallback(*args, **kwargs):
     return generic_block_sparse_attention_grad_metadata(*args, **kwargs)
+
 
 torch.compiler.allow_in_graph(generic_block_sparse_attention_grad_metadata)
 torch.compiler.allow_in_graph(generic_block_sparse_attention_grad)

@@ -49,18 +49,19 @@ enum class InputId : uint32_t {
     CuSeqLengthsKv = 11,
     ActualSeqLengths = 12,
     ActualSeqLengthsKv = 13,
-    BlockShape = 14,
 };
 
+// attr 索引与 def.cpp 中 Attr 声明顺序一致（block_shape 为首个 attr）。
 enum class AttrId : uint32_t {
-    IsPackedGqa = 0,
-    QInputLayout = 1,
-    KvInputLayout = 2,
-    ScaleValue = 3,
-    MaskType = 4,
-    SoftmaxPrecision = 5,
-    WinLeft = 6,
-    WinRight = 7,
+    BlockShape = 0,
+    IsPackedGqa = 1,
+    QInputLayout = 2,
+    KvInputLayout = 3,
+    ScaleValue = 4,
+    MaskType = 5,
+    SoftmaxPrecision = 6,
+    WinLeft = 7,
+    WinRight = 8,
 };
 
 constexpr uint32_t ToIndex(InputId id)
@@ -277,21 +278,20 @@ ge::graphStatus GBSAGTiling::ProcessBSND(gert::TilingContext *context)
 
 ge::graphStatus GBSAGTiling::ProcessAttrs(gert::TilingContext *context)
 {
-    auto blockShapeOptional = context->GetInputTensor(ToIndex(InputId::BlockShape));
-    if (blockShapeOptional == nullptr) {
-        OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
+    // block_shape 为 def 级 OPTIONAL ListInt 属性（默认 {1, 128}），与前向算子一致；
+    // aclnn 路径总是显式传入，图模式缺省时框架会落地 def 默认值。
+    const auto *blockShapeArr = context->GetAttrs()->GetListInt(ToIndex(AttrId::BlockShape));
+    if (blockShapeArr == nullptr) {
+        OP_LOGE(context->GetNodeName(), "block_shape attr is missing");
         return ge::GRAPH_FAILED;
     }
-    blockShapeList = blockShapeOptional->GetData<int64_t>();
-    if (blockShapeList != nullptr) {
-        // 真实的 NPU 环境：GE 框架自动将张量放到 Host 侧，正常读取
-        blockShapeX_ = blockShapeList[0];
-        blockShapeY_ = blockShapeList[1];
-    } else {
-        // 这里提供默认切块大小，保证 UT 测试环境的后续切分逻辑能顺利验证
-        blockShapeX_ = 64;
-        blockShapeY_ = 64;
+    if (blockShapeArr->GetSize() != 2) {
+        OP_LOGE(context->GetNodeName(), "block_shape must contain two elements [x, y], got size %zu.",
+                blockShapeArr->GetSize());
+        return ge::GRAPH_FAILED;
     }
+    blockShapeX_ = blockShapeArr->GetData()[0];
+    blockShapeY_ = blockShapeArr->GetData()[1];
     if (blockShapeX_ != 1) {
         OP_LOGW(context->GetNodeName(), "blockShapeX=%ld is unsupported; using 1", blockShapeX_);
         blockShapeX_ = 1;

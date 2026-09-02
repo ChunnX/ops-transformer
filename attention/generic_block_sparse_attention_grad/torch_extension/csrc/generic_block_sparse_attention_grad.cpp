@@ -18,21 +18,23 @@ namespace {
 // Keep in sync with generic_block_sparse_attention_grad_metadata.h
 constexpr int64_t GSAG_TASK_LIST_OFFSET = 80; // 8 + 2 * 36
 constexpr int64_t GSAG_TASK_ENTRY_SIZE = 4;
+constexpr int64_t ARC22_GBSAG_TASK_LIST_SIZE = 528; // 16 + 64 * 8
 
 inline int64_t CalcGsagMetadataSize(int64_t batchSize, int64_t numQHeads, int64_t numJ)
 {
-    return GSAG_TASK_LIST_OFFSET + batchSize * numQHeads * numJ * GSAG_TASK_ENTRY_SIZE;
+    // Take the larger of the A5 dynamic size and the A2/A3 fixed capacity.
+    const int64_t a5Size = GSAG_TASK_LIST_OFFSET + batchSize * numQHeads * numJ * GSAG_TASK_ENTRY_SIZE;
+    return a5Size > ARC22_GBSAG_TASK_LIST_SIZE ? a5Size : ARC22_GBSAG_TASK_LIST_SIZE;
 }
 } // namespace
 
-at::Tensor GenericSparseAttentionGradMetadata(
-    const at::Tensor &rsvdBlockIdx, const at::Tensor &rsvdBlockCount,
-    const c10::optional<at::Tensor> &cuSeqLengths, const c10::optional<at::Tensor> &cuSeqLengthsKv,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-    int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t numQHeads, int64_t numKvHeads, int64_t headDim,
-    at::IntArrayRef blockShape, int64_t isPackedGqa, const std::string &qInputLayout,
-    const std::string &kvInputLayout, int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft,
-    int64_t windowSizeRight)
+at::Tensor GenericBlockSparseAttentionGradMetadata(
+    const at::Tensor &rsvdBlockIdx, const at::Tensor &rsvdBlockCount, const c10::optional<at::Tensor> &cuSeqLengths,
+    const c10::optional<at::Tensor> &cuSeqLengthsKv, const c10::optional<at::Tensor> &sequsedQ,
+    const c10::optional<at::Tensor> &sequsedKv, int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t numQHeads,
+    int64_t numKvHeads, int64_t headDim, at::IntArrayRef blockShape, int64_t isPackedGqa,
+    const std::string &qInputLayout, const std::string &kvInputLayout, int64_t maskType, int64_t softmaxPrecision,
+    int64_t windowSizeLeft, int64_t windowSizeRight)
 {
     TORCH_CHECK(rsvdBlockIdx.dim() == 4, "rsvd_block_idx must be 4D [B, N2, J, maxS1]");
     TORCH_CHECK(numQHeads > 0, "num_q_heads must be > 0");
@@ -40,9 +42,8 @@ at::Tensor GenericSparseAttentionGradMetadata(
     const int64_t numJ = rsvdBlockIdx.size(2);
     const int64_t metadataSize = CalcGsagMetadataSize(batchSize, numQHeads, numJ);
 
-    at::Tensor metadata = torch::empty(
-        {metadataSize},
-        torch::TensorOptions().dtype(torch::kInt64).device(rsvdBlockIdx.device()));
+    at::Tensor metadata =
+        torch::empty({metadataSize}, torch::TensorOptions().dtype(torch::kInt64).device(rsvdBlockIdx.device()));
 
     const at::Tensor &cuSeqLengthsValue = cuSeqLengths.value_or(at::Tensor());
     const at::Tensor &cuSeqLengthsKvValue = cuSeqLengthsKv.value_or(at::Tensor());
@@ -52,7 +53,7 @@ at::Tensor GenericSparseAttentionGradMetadata(
     char *qInputLayoutPtr = const_cast<char *>(qInputLayout.c_str());
     char *kvInputLayoutPtr = const_cast<char *>(kvInputLayout.c_str());
 
-    ACLNN_CMD(aclnnGenericSparseAttentionGradMetadata, rsvdBlockIdx, rsvdBlockCount, cuSeqLengthsValue,
+    ACLNN_CMD(aclnnGenericBlockSparseAttentionGradMetadata, rsvdBlockIdx, rsvdBlockCount, cuSeqLengthsValue,
               cuSeqLengthsKvValue, sequsedQValue, sequsedKvValue, maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads,
               headDim, blockShape, isPackedGqa, qInputLayoutPtr, kvInputLayoutPtr, maskType, softmaxPrecision,
               windowSizeLeft, windowSizeRight, metadata);
@@ -62,13 +63,12 @@ at::Tensor GenericSparseAttentionGradMetadata(
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> GenericBlockSparseAttentionGrad(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &dout,
-    const at::Tensor &out, const at::Tensor &lse, const at::Tensor &rsvdBlockIdx,
-    const at::Tensor &rsvdBlockCount, const at::Tensor &metadata, const c10::optional<at::Tensor> &attenMask,
+    const at::Tensor &out, const at::Tensor &lse, const at::Tensor &rsvdBlockIdx, const at::Tensor &rsvdBlockCount,
+    const at::Tensor &metadata, const c10::optional<at::Tensor> &attenMask,
     const c10::optional<at::Tensor> &cuSeqLengths, const c10::optional<at::Tensor> &cuSeqLengthsKv,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-    at::IntArrayRef blockShape, int64_t isPackedGqa, const std::string &qInputLayout,
-    const std::string &kvInputLayout, double scaleValue, int64_t maskType, int64_t softmaxPrecision,
-    int64_t windowSizeLeft, int64_t windowSizeRight)
+    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv, at::IntArrayRef blockShape,
+    int64_t isPackedGqa, const std::string &qInputLayout, const std::string &kvInputLayout, double scaleValue,
+    int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft, int64_t windowSizeRight)
 {
     const at::Tensor &attenMaskValue = attenMask.value_or(at::Tensor());
     const at::Tensor &cuSeqLengthsValue = cuSeqLengths.value_or(at::Tensor());
@@ -83,7 +83,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> GenericBlockSparseAttentionGrad(
     char *qInputLayoutPtr = const_cast<char *>(qInputLayout.c_str());
     char *kvInputLayoutPtr = const_cast<char *>(kvInputLayout.c_str());
 
-    ACLNN_CMD(aclnnGenericSparseAttentionGrad, query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount,
+    ACLNN_CMD(aclnnGenericBlockSparseAttentionGrad, query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount,
               metadata, attenMaskValue, cuSeqLengthsValue, cuSeqLengthsKvValue, sequsedQValue, sequsedKvValue,
               blockShape, isPackedGqa, qInputLayoutPtr, kvInputLayoutPtr, scaleValue, maskType, softmaxPrecision,
               windowSizeLeft, windowSizeRight, dQuery, dKey, dValue);
@@ -93,8 +93,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> GenericBlockSparseAttentionGrad(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("generic_block_sparse_attention_grad_metadata", &GenericSparseAttentionGradMetadata,
+    m.def("generic_block_sparse_attention_grad_metadata", &GenericBlockSparseAttentionGradMetadata,
           "generic_block_sparse_attention_grad_metadata");
-    m.def("generic_block_sparse_attention_grad", &GenericBlockSparseAttentionGrad, "generic_block_sparse_attention_grad");
+    m.def("generic_block_sparse_attention_grad", &GenericBlockSparseAttentionGrad,
+          "generic_block_sparse_attention_grad");
 }
 } // namespace op_api

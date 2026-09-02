@@ -20,7 +20,7 @@ public:
     static constexpr int64_t BLOCK_SHAPE_Y_MIN = 128;
     static constexpr int64_t BLOCK_SHAPE_Y_ALIGN = 64;
     // metadata 布局常量（与 op_kernel_aicpu 的 metadata_layout.h 逐字对齐）。
-    static constexpr int64_t METADATA_HEADER_WORDS = 32;
+    static constexpr int64_t METADATA_HEADER_WORDS = 16;
     static constexpr int64_t METADATA_KTASK_WORDS = 8;
     static constexpr int64_t METADATA_MAX_AIC_CORE_NUM = 64;
 
@@ -61,8 +61,8 @@ public:
         CHECK_COND(headDim == HEAD_DIM_SUPPORTED, ACLNN_ERR_PARAM_INVALID, "headDim only supports %ld, but got %ld",
                    HEAD_DIM_SUPPORTED, headDim);
         CHECK_COND(isPackedGQA == 1, ACLNN_ERR_PARAM_INVALID, "isPackedGQA only supports 1, but got %ld", isPackedGQA);
-        CHECK_COND(maskType == 1, ACLNN_ERR_PARAM_INVALID, "maskType only supports 1 (causal mask), but got %ld",
-                   maskType);
+        CHECK_COND(maskType == 0 || maskType == 1, ACLNN_ERR_PARAM_INVALID,
+                   "maskType only supports 0 or 1, but got %ld", maskType);
         CHECK_COND(softmaxPrecision == 0 || softmaxPrecision == 1, ACLNN_ERR_PARAM_INVALID,
                    "softmaxPrecision only supports 0 or 1, but got %ld", softmaxPrecision);
         if (softmaxPrecision != 0) {
@@ -151,8 +151,8 @@ public:
                    "the dim num of metadata must be 1, but got %ld",
                    static_cast<int64_t>(metadata->GetViewShape().GetDimNum()));
         const int64_t metadataCapacity = METADATA_HEADER_WORDS + METADATA_MAX_AIC_CORE_NUM * METADATA_KTASK_WORDS;
-        CHECK_COND(metadata->GetViewShape().GetDim(0) == metadataCapacity, ACLNN_ERR_PARAM_INVALID,
-                   "metadata length must be fixed capacity %ld words, but got %ld", metadataCapacity,
+        CHECK_COND(metadata->GetViewShape().GetDim(0) >= metadataCapacity, ACLNN_ERR_PARAM_INVALID,
+                   "metadata length must be at least %ld words, but got %ld", metadataCapacity,
                    metadata->GetViewShape().GetDim(0));
         return ACLNN_SUCCESS;
     }

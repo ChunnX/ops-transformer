@@ -37,7 +37,6 @@ TEST_F(GenericBlockSparseAttentionGradTilingTest, tiling_bnsd_case0)
     int64_t ceilQ = (s + blockX - 1) / blockX;
     int64_t ceilKv = (s_kv + blockY - 1) / blockY;
 
-    int64_t blockShapeData[2] = {blockX, blockY};
     int64_t actualSeqData[1] = {s};
     int64_t actualSeqKvData[1] = {s_kv};
 
@@ -58,14 +57,15 @@ TEST_F(GenericBlockSparseAttentionGradTilingTest, tiling_bnsd_case0)
          {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
          {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
          {{{b}, {b}}, ge::DT_INT32, ge::FORMAT_ND, (void *)actualSeqData},
-         {{{b}, {b}}, ge::DT_INT32, ge::FORMAT_ND, (void *)actualSeqKvData},
-         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, (void *)blockShapeData}},
+         {{{b}, {b}}, ge::DT_INT32, ge::FORMAT_ND, (void *)actualSeqKvData}},
         {// --- Output Info ---
          {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
         {// --- Attr Info ---
 
+         {"block_shape",
+          Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{blockX, blockY})},
          {"isPackedGQA", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layoutQ", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
          {"layoutKv", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},

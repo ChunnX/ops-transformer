@@ -24,19 +24,6 @@ namespace l0op {
 
 OP_TYPE_REGISTER(GenericBlockSparseAttentionGrad);
 
-static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray, aclOpExecutor *executor, DataType dtype)
-{
-    if (intArray != nullptr) {
-        const aclTensor *tensor = executor->ConvertToTensor(intArray, dtype);
-        auto mutableTensor = const_cast<aclTensor *>(tensor);
-        mutableTensor->SetStorageFormat(Format::FORMAT_ND);
-        mutableTensor->SetViewFormat(Format::FORMAT_ND);
-        mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
-        return tensor;
-    }
-    return executor->AllocTensor(dtype, Format::FORMAT_ND, Format::FORMAT_ND);
-}
-
 const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout, const aclTensor *out,
     const aclTensor *lse, const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
@@ -70,7 +57,6 @@ const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
     const aclTensor *sequsedKvTensor =
         sequsedKvOptional != nullptr ? sequsedKvOptional :
                                        executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
-    const aclTensor *blockShapeTensor = ConvertIntArrayToTensor(blockShape, executor, DataType::DT_INT64);
 
     auto dqTensor = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto dkTensor = executor->AllocTensor(key->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
@@ -80,9 +66,9 @@ const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
     auto ret = INFER_SHAPE(
         GenericBlockSparseAttentionGrad,
         OP_INPUT(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataTensor, attenMaskTensor,
-                 cuSeqQTensor, cuSeqKvTensor, sequsedQTensor, sequsedKvTensor, blockShapeTensor),
+                 cuSeqQTensor, cuSeqKvTensor, sequsedQTensor, sequsedKvTensor),
         OP_OUTPUT(dqTensor, dkTensor, dvTensor),
-        OP_ATTR(static_cast<uint32_t>(isPackedGQA), layoutQ, safeLayoutKv, static_cast<float>(scaleValue),
+        OP_ATTR(blockShape, static_cast<uint32_t>(isPackedGQA), layoutQ, safeLayoutKv, static_cast<float>(scaleValue),
                 static_cast<uint32_t>(maskType), static_cast<uint32_t>(softmaxPrecision), winLeft, winRight));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GenericBlockSparseAttentionGrad infer shape failed, scaleValue: %f.",
@@ -93,9 +79,9 @@ const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
     ADD_TO_LAUNCHER_LIST_AICORE(
         GenericBlockSparseAttentionGrad,
         OP_INPUT(query, key, value, dout, out, lse, sparseBlockIdx, sparseBlockCount, metadataTensor, attenMaskTensor,
-                 cuSeqQTensor, cuSeqKvTensor, sequsedQTensor, sequsedKvTensor, blockShapeTensor),
+                 cuSeqQTensor, cuSeqKvTensor, sequsedQTensor, sequsedKvTensor),
         OP_OUTPUT(dqTensor, dkTensor, dvTensor),
-        OP_ATTR(static_cast<uint32_t>(isPackedGQA), layoutQ, safeLayoutKv, static_cast<float>(scaleValue),
+        OP_ATTR(blockShape, static_cast<uint32_t>(isPackedGQA), layoutQ, safeLayoutKv, static_cast<float>(scaleValue),
                 static_cast<uint32_t>(maskType), static_cast<uint32_t>(softmaxPrecision), winLeft, winRight));
 
     return {dqTensor, dkTensor, dvTensor};

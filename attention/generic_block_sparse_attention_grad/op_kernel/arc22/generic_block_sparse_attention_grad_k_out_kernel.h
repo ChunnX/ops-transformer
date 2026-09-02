@@ -99,7 +99,6 @@ public:
         GM_ADDR rsvdBlockIdx;
         GM_ADDR rsvdBlockCount;
         GM_ADDR metadata;
-        GM_ADDR blockShape;
         GM_ADDR attentionMask;
         GM_ADDR cuSeqLengthsQ;
         GM_ADDR cuSeqLengthsKv;
@@ -115,7 +114,7 @@ public:
         __aicore__ inline Params() {}
 
         __aicore__ inline Params(GM_ADDR dout_, GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR out_, GM_ADDR softmaxLse_,
-                                 GM_ADDR rsvdBlockIdx_, GM_ADDR rsvdBlockCount_, GM_ADDR metadata_, GM_ADDR blockShape_,
+                                 GM_ADDR rsvdBlockIdx_, GM_ADDR rsvdBlockCount_, GM_ADDR metadata_,
                                  GM_ADDR attentionMask_, GM_ADDR cuSeqLengthsQ_, GM_ADDR cuSeqLengthsKv_,
                                  GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR dq_, GM_ADDR dk_, GM_ADDR dv_,
                                  GM_ADDR workspace_, GM_ADDR tiling_data_)
@@ -128,7 +127,6 @@ public:
               rsvdBlockIdx(rsvdBlockIdx_),
               rsvdBlockCount(rsvdBlockCount_),
               metadata(metadata_),
-              blockShape(blockShape_),
               cuSeqLengthsQ(cuSeqLengthsQ_),
               cuSeqLengthsKv(cuSeqLengthsKv_),
               attentionMask(attentionMask_),
@@ -855,7 +853,7 @@ private:
         LayoutA1 layoutA1;
         LayoutB1 layoutB1;
         LayoutC1 layoutC1(curInfo.curCalQSize, curInfo.curCalKVSize);
-        if (inputLayout == 0) {
+        if (inputLayout != 1) {
             layoutA1 = LayoutA1(curInfo.curCalQSize, headDim);
             layoutB1 = LayoutB1(headDim, curInfo.curCalKVSize, kvHeads * headDim);
         } else {
@@ -927,7 +925,7 @@ private:
         LayoutA3 layoutA3(curInfo.curCalKVSize, curInfo.curCalQSize);
         LayoutB3 layoutB3;
         LayoutC3 layoutC3;
-        if (inputLayout == 0) {
+        if (inputLayout != 1) {
             layoutB2 = LayoutB2(curInfo.curCalKVSize, headDim, kvHeads * headDim);
             layoutC2 = LayoutC2(curInfo.curCalQSize, headDim);
             layoutB3 = LayoutB3(curInfo.curCalQSize, headDim);

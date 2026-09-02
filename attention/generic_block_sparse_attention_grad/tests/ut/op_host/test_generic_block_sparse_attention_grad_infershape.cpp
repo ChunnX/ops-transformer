@@ -33,14 +33,15 @@ TEST_F(GenericBlockSparseAttentionGradInferShapeTest, infershape_bnsd_layout)
 
     gert::InfershapeContextPara infershapeContextPara(
         "GenericBlockSparseAttentionGrad",
-        {// 0: dout [B, N, S, D]
+        {// 输入顺序必须与 def.cpp 一致：query, key, value, dOut, out, lse, ...
+         // 0: query [B, N, S, D]
          {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 1: query [B, N, S, D]
+         // 1: key [B, N_kv, S_kv, D]
+         {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 2: value [B, N_kv, S_kv, D]
+         {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         // 3: dout [B, N, S, D]
          {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 2: key [B, N_kv, S_kv, D]
-         {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         // 3: value [B, N_kv, S_kv, D]
-         {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // 4: attentionOut (REQUIRED)
          {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // 5: softmaxLse (REQUIRED, Float32)
@@ -57,14 +58,13 @@ TEST_F(GenericBlockSparseAttentionGradInferShapeTest, infershape_bnsd_layout)
          {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
          // 12-13: sequsedQ/KvOptional
          {{{b}, {b}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{b}, {b}}, ge::DT_INT32, ge::FORMAT_ND},
-         // 14: blockShape
-         {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND}},
+         {{{b}, {b}}, ge::DT_INT32, ge::FORMAT_ND}},
         {// 预期的输出列表占位 (dq, dk, dv)
          {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{"isPackedGQA", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {{"block_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{1, 128})},
+         {"isPackedGQA", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layoutQ", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
          {"layoutKv", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
          {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.088388f)},
@@ -94,11 +94,11 @@ TEST_F(GenericBlockSparseAttentionGradInferShapeTest, infershape_tnd_layout)
     gert::InfershapeContextPara infershapeContextPara(
         "GenericBlockSparseAttentionGrad",
         {
-            // 补齐 15 个输入
-            {{{total_q, n, d}, {total_q, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // 0: dout
-            {{{total_q, n, d}, {total_q, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // 1: query
-            {{{total_kv, n_kv, d}, {total_kv, n_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // 2: key
-            {{{total_kv, n_kv, d}, {total_kv, n_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // 3: value
+            // 输入顺序与 def.cpp 一致（query, key, value, dOut, ...）；block_shape 已改为属性
+            {{{total_q, n, d}, {total_q, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // 0: query
+            {{{total_kv, n_kv, d}, {total_kv, n_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // 1: key
+            {{{total_kv, n_kv, d}, {total_kv, n_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // 2: value
+            {{{total_q, n, d}, {total_q, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // 3: dout
             {{{total_q, n, d}, {total_q, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},         // 4: attentionOut (REQUIRED)
             {{{total_q, n}, {total_q, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                 // 5: softmaxLse (REQUIRED)
             {{{batch, n, 16, 8}, {batch, n, 16, 8}}, ge::DT_INT32, ge::FORMAT_ND},       // 6: rsvdBlockIdx
@@ -108,13 +108,13 @@ TEST_F(GenericBlockSparseAttentionGradInferShapeTest, infershape_tnd_layout)
             {{{batch + 1}, {batch + 1}}, ge::DT_INT64, ge::FORMAT_ND},                   // 10: cuSeqLengthsQOptional
             {{{batch + 1}, {batch + 1}}, ge::DT_INT64, ge::FORMAT_ND},                   // 11: cuSeqLengthsKvOptional
             {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},                             // 12: sequsedQOptional
-            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},                             // 13: sequsedKvOptional
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND}                                    // 14: blockShape
+            {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND}                              // 13: sequsedKvOptional
         },
         {{{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{-1}, {-1}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{"isPackedGQA", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {{"block_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{1, 128})},
+         {"isPackedGQA", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layoutQ", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
          {"layoutKv", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
          {"scaleValue", Ops::Transformer::AnyValue::CreateFrom<float>(0.125f)},

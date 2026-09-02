@@ -24,13 +24,10 @@ using namespace NpuArch;
 namespace GBSAG {
 template <typename InputDtype = half,
           uint32_t InputLayout = 0> // 0=TND, 1=BNSD, 2=BSND
-__aicore__ inline void GenericBlockSparseAttentionGradInfer(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR dout, GM_ADDR out,
-                                                            GM_ADDR softmaxLse, GM_ADDR rsvdBlockIdx,
-                                                            GM_ADDR rsvdBlockCount, GM_ADDR metadata,
-                                                            GM_ADDR attentionMask, GM_ADDR cuSeqLengthsQ,
-                                                            GM_ADDR cuSeqLengthsKv, GM_ADDR sequsedQ, GM_ADDR sequsedKv,
-                                                            GM_ADDR blockShape, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
-                                                            GM_ADDR workspace, GM_ADDR tiling)
+__aicore__ inline void GenericBlockSparseAttentionGradInfer(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR dout, GM_ADDR out, GM_ADDR softmaxLse, GM_ADDR rsvdBlockIdx,
+    GM_ADDR rsvdBlockCount, GM_ADDR metadata, GM_ADDR attentionMask, GM_ADDR cuSeqLengthsQ, GM_ADDR cuSeqLengthsKv,
+    GM_ADDR sequsedQ, GM_ADDR sequsedKv, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, GM_ADDR tiling)
 {
     (void)cuSeqLengthsQ;
     (void)cuSeqLengthsKv;
@@ -123,7 +120,6 @@ __aicore__ inline void GenericBlockSparseAttentionGradInfer(GM_ADDR q, GM_ADDR k
                                         rsvdBlockIdx,
                                         rsvdBlockCount,
                                         metadata,
-                                        blockShape,
                                         attentionMask,
                                         cuSeqLengthsQ,
                                         cuSeqLengthsKv,
