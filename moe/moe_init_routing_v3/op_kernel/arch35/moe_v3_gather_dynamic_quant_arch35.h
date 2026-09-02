@@ -107,11 +107,11 @@ private:
     TBuf<AscendC::TPosition::VECCALC> tempCalcBuf_;
 
     constexpr static Reg::CastTrait castTraitF32ToF16 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
     constexpr static Reg::CastTrait castTraitF16ToI8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     constexpr static Reg::CastTrait castTraitF16ToI4 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
 template <typename T, typename QuantT>
@@ -127,7 +127,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::StoreInt4QuantOut(__
     Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
     Reg::Pack(outRegPackedHalf, (Reg::RegTensor<uint32_t> &)outRegF16);
     Reg::Cast<int4x2_t, half, castTraitF16ToI4>((Reg::RegTensor<int4x2_t> &)outRegI4,
-                                                     (Reg::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
+                                                (Reg::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
     Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr, outRegI4, maskRegHalf);
 }
 
@@ -307,8 +307,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::ComputeMultiPass(Loc
                 Reg::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
                 Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
                 Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
-                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(
-                    outUbAddr + i * FLOAT_REG_TENSOR_LENGTH, outRegI8, maskRegInLoop);
+                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
+                                                                        outRegI8, maskRegInLoop);
             }
         }
     }
@@ -526,8 +526,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt8(Local
             Reg::Div(tempReg, inReg, tempReg, maskRegLoop);
             Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, tempReg, maskRegLoop);
             Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegLoop);
-            Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
-                                                                              outRegI8, maskRegLoop);
+            Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH, outRegI8,
+                                                                    maskRegLoop);
         }
     }
 }

@@ -30,17 +30,17 @@ using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 
 namespace AscendC {
 
-constexpr Reg::CastTrait ctInt322Fp32 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
-                                              Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+constexpr Reg::CastTrait ctInt322Fp32 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                         RoundMode::CAST_RINT};
 
-constexpr Reg::CastTrait ctFp322Half = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+constexpr Reg::CastTrait ctFp322Half = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
+                                        RoundMode::CAST_RINT};
 
-constexpr Reg::CastTrait ctHalf2Fp32Zero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                 Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+constexpr Reg::CastTrait ctHalf2Fp32Zero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                            RoundMode::UNKNOWN};
 
-constexpr Reg::CastTrait ctHalf2Fp32One = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+constexpr Reg::CastTrait ctHalf2Fp32One = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                           RoundMode::UNKNOWN};
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 class GQmmMixRegbaseKernel {
@@ -812,8 +812,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
                 Reg::RegTensor<scaleType> scaleReg;
                 Reg::RegTensor<ptScaleType> perTokenScaleReg;
                 Reg::RegTensor<biasType> biasReg;
-                Reg::RegTensor<float> castSrcOutReg, castScaleReg, castScaleOneReg, mulScaleOutReg,
-                    mulPtScaleOutReg, castBiasReg, castBiasOneReg, addBiasOutReg, actOutReg;
+                Reg::RegTensor<float> castSrcOutReg, castScaleReg, castScaleOneReg, mulScaleOutReg, mulPtScaleOutReg,
+                    castBiasReg, castBiasOneReg, addBiasOutReg, actOutReg;
                 Reg::RegTensor<yType> castResultOutReg;
                 Reg::MaskReg maskN = Reg::UpdateMask<l0cType>(elementNum);
                 // copy input from ub to register, addr of ub should align to 32B
@@ -843,8 +843,7 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
                 if constexpr (aQuantMode == QuantUtils::QuantMode::PERTENSOR_MODE) {
                     AscendC::Reg::Muls(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleScalar_, maskN);
                 } else if constexpr (aQuantMode == QuantUtils::QuantMode::PERTOKEN_MODE) {
-                    Reg::DataCopy<ptScaleType, Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg,
-                                                                                      perTokenScale + mIdx);
+                    Reg::DataCopy<ptScaleType, Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg, perTokenScale + mIdx);
                     Reg::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
                 } else {
                     mulPtScaleOutReg = mulScaleOutReg;
@@ -906,11 +905,9 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
                 // copy out from register to ub
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf;
                 if constexpr (IsSameType<yType, float>::value) {
-                    Reg::DataCopy<yType, Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, castResultOutReg,
-                                                                                  maskN);
+                    Reg::DataCopy<yType, Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, castResultOutReg, maskN);
                 } else {
-                    Reg::DataCopy<yType, Reg::StoreDist::DIST_PACK_B32>(dst + dstUbOffset, castResultOutReg,
-                                                                                  maskN);
+                    Reg::DataCopy<yType, Reg::StoreDist::DIST_PACK_B32>(dst + dstUbOffset, castResultOutReg, maskN);
                 }
             }
         }

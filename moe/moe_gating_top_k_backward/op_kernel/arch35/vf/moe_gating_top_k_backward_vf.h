@@ -175,8 +175,8 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
 
             // Broadcast D (lane0) to every lane for this chunk's w'/D.
             Reg::RegTensor<float> bcastDReg1b;
-            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(
-                bcastDReg1b, globalD, chunkMask);
+            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(bcastDReg1b, globalD,
+                                                                                         chunkMask);
             Reg::Div(wNormReg, wPrimeReg, bcastDReg1b, chunkMask);
 
             Reg::LoadAlign(gradYReg, gradYRow + chunkOffset);
@@ -202,11 +202,10 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
             // Broadcast the row-global D/betaNum (lane0) to every lane of this chunk.
             // betaNum already includes /D from Phase 1b.
             Reg::RegTensor<float> bcastDReg;
-            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(
-                bcastDReg, globalD, chunkMask);
+            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(bcastDReg, globalD, chunkMask);
             Reg::RegTensor<float> gradWPrimeReg;
-            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(
-                gradWPrimeReg, globalBetaNum, chunkMask);
+            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(gradWPrimeReg, globalBetaNum,
+                                                                                         chunkMask);
             Reg::Sub(gradWPrimeReg, gradYReg, gradWPrimeReg, chunkMask);
             Reg::Div(gradWPrimeReg, gradWPrimeReg, bcastDReg, chunkMask);
 

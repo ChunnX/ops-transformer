@@ -24,7 +24,7 @@
 
 using namespace AscendC;
 static constexpr Reg::CastTrait castTraitInt16ToFp32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 /*
  * 用于计算
  */

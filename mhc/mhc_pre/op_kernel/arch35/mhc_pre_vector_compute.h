@@ -34,9 +34,9 @@ class MhcPreSplitND;
 
 // Vector cast and division traits shared by all templates.
 constexpr Reg::CastTrait MHC_PRE_CAST_FP32_TO_B16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                     Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 constexpr Reg::CastTrait MHC_PRE_CAST_B16_TO_FP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                          Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                     Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr Reg::DivSpecificMode MHC_PRE_DIV_ZEROING_MODE = {Reg::MaskMergeMode::ZEROING, true};
 
 template <class P>
@@ -46,9 +46,8 @@ __aicore__ inline void MhcPreLoadHInValue(Reg::RegTensor<P> &dst, __ubuf__ P *sr
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreAccumulateHIn(Reg::RegTensor<P> &acc, Reg::RegTensor<P> &xFp32,
-                                           Reg::RegTensor<T> &xIn, Reg::RegTensor<P> &hPre, __ubuf__ T *x,
-                                           uint32_t offset, Reg::MaskReg mask)
+__aicore__ inline void MhcPreAccumulateHIn(Reg::RegTensor<P> &acc, Reg::RegTensor<P> &xFp32, Reg::RegTensor<T> &xIn,
+                                           Reg::RegTensor<P> &hPre, __ubuf__ T *x, uint32_t offset, Reg::MaskReg mask)
 {
     Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xIn, x + offset);
     Reg::Cast<P, T, MHC_PRE_CAST_B16_TO_FP32>(xFp32, xIn, mask);
@@ -719,8 +718,8 @@ public:
                                                   xRowOffset + 7U * localStride + dOffset, mask);
                     }
                     Reg::Cast<T, P, MHC_PRE_CAST_FP32_TO_B16>(outB16Reg, accFp32Reg, mask);
-                    Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(hinOutAddr + outRowOffset + dOffset,
-                                                                                outB16Reg, mask);
+                    Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(hinOutAddr + outRowOffset + dOffset, outB16Reg,
+                                                                      mask);
                 }
             }
         }

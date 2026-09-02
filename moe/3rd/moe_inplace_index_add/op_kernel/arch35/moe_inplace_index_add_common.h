@@ -52,7 +52,7 @@ constexpr int64_t VFLEN_UINT8 = Ops::Base::GetVRegSize() / sizeof(uint8_t);
 constexpr int64_t VFLEN_UINT8HALFHALF = Ops::Base::GetVRegSize() / sizeof(uint8_t) / FOUR;
 
 static constexpr Reg::CastTrait castTraitB8B162B32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                      Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 template <typename T>
 struct MulsSelType {
     using type = typename std::conditional<
@@ -158,11 +158,9 @@ __aicore__ inline void CastToOrigin(LocalTensor<T> &dstLocal, LocalTensor<CAST_T
             preg = Reg::UpdateMask<uint32_t>(sregMask);
             Reg::DataCopy<CAST_T, Reg::LoadDist::DIST_NORM>(srcValue, srcAddr, srcReg);
             if constexpr (IsSameType<T, int16_t>::value) {
-                Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr, (Reg::RegTensor<T> &)srcValue,
-                                                                          dstReg, preg);
+                Reg::DataCopy<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr, (Reg::RegTensor<T> &)srcValue, dstReg, preg);
             } else {
-                Reg::DataCopy<T, Reg::StoreDist::DIST_PACK4_B32>(dstAddr, (Reg::RegTensor<T> &)srcValue,
-                                                                           dstReg, preg);
+                Reg::DataCopy<T, Reg::StoreDist::DIST_PACK4_B32>(dstAddr, (Reg::RegTensor<T> &)srcValue, dstReg, preg);
             }
         }
     }
@@ -173,10 +171,10 @@ __aicore__ inline void LoadOneTensorForDtypeInt(__local_mem__ T *input, Reg::Reg
 {
     if constexpr (IsSameType<T, int8_t>::value) {
         DataCopy<int8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<int8_t> &)(dst),
-                                                             ((__local_mem__ int8_t *)(input) + (offset)));
+                                                        ((__local_mem__ int8_t *)(input) + (offset)));
     } else if constexpr (IsSameType<T, bool>::value) {
         DataCopy<bool, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<bool> &)(dst),
-                                                           ((__local_mem__ bool *)(input) + (offset)));
+                                                      ((__local_mem__ bool *)(input) + (offset)));
     } else {
         DataCopy(dst, ((__local_mem__ int16_t *)(input) + (offset)));
     }
@@ -188,10 +186,10 @@ __aicore__ inline void StoreOneTensorForDtypeInt(__local_mem__ T *output, Reg::R
 {
     if constexpr (IsSameType<T, int8_t>::value) {
         DataCopy<int8_t, Reg::StoreDist::DIST_PACK_B16>(((__local_mem__ int8_t *)output + offset),
-                                                             (Reg::RegTensor<int8_t> &)src, preg);
+                                                        (Reg::RegTensor<int8_t> &)src, preg);
     } else if constexpr (IsSameType<T, bool>::value) {
         DataCopy<bool, Reg::StoreDist::DIST_PACK_B16>(((__local_mem__ bool *)output + offset),
-                                                           (Reg::RegTensor<bool> &)src, preg);
+                                                      (Reg::RegTensor<bool> &)src, preg);
     } else {
         DataCopy(((__local_mem__ int16_t *)output + offset), src, preg);
     }
@@ -308,10 +306,9 @@ public:
             AscendC::Reg::DataCopyUnAlign<CAST_T>(sortedIdxShiftOneReg, u0, startAddr - 1);
             AscendC::Reg::Compare<CAST_T, CMPMODE::NE>(cmpMask, sortedIdxReg, sortedIdxShiftOneReg, maskReg);
             AscendC::Reg::MaskPack<AscendC::Reg::HighLowPart::LOWEST>(maskHalf, cmpMask);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg,
-                                                                                                 maskHalf);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg, uOut);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg, maskHalf);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg, uOut);
         }
         AscendC::Reg::DataCopyUnAlignPost(uniqueIdCountsAddr, uOut);
     }
@@ -333,10 +330,9 @@ public:
             AscendC::Reg::DataCopyUnAlignPre(u0, startAddr - 1);
             AscendC::Reg::DataCopyUnAlign<CAST_T>(sortedIdxShiftOneReg, u0, startAddr - 1);
             AscendC::Reg::Compare<CAST_T, CMPMODE::NE>(cmpMask, sortedIdxReg, sortedIdxShiftOneReg, maskReg);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg,
-                                                                                                 cmpMask);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg, uOut);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg, cmpMask);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg, uOut);
         }
         AscendC::Reg::DataCopyUnAlignPost(uniqueIdCountsAddr, uOut);
     }
@@ -361,14 +357,12 @@ public:
             AscendC::Reg::Compare<CAST_T, CMPMODE::NE>(cmpMask, sortedIdxReg, sortedIdxShiftOneReg, maskReg);
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::LOWEST>(maskDouble1, cmpMask);
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(maskDouble2, cmpMask);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg,
-                                                                                                 maskDouble1);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg2, orderReg2,
-                                                                                                 maskDouble2);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg, uOut);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg2, uOut);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg, maskDouble1);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg2, orderReg2, maskDouble2);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg, uOut);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg2, uOut);
         }
         AscendC::Reg::DataCopyUnAlignPost(uniqueIdCountsAddr, uOut);
     }
@@ -400,22 +394,18 @@ public:
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(maskFour2, maskFour3);
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::LOWEST>(maskFour3, maskFour4);
             AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(maskFour4, maskFour4);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg,
-                                                                                                 maskFour1);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg2, orderReg2,
-                                                                                                 maskFour2);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg3, orderReg3,
-                                                                                                 maskFour3);
-            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg4, orderReg4,
-                                                                                                 maskFour4);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg, uOut);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg2, uOut);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg3, uOut);
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg4, uOut);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg, maskFour1);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg2, orderReg2, maskFour2);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg3, orderReg3, maskFour3);
+            AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg4, orderReg4, maskFour4);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg, uOut);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg2, uOut);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg3, uOut);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg4, uOut);
         }
         AscendC::Reg::DataCopyUnAlignPost(uniqueIdCountsAddr, uOut);
     }

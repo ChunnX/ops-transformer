@@ -191,8 +191,8 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputeSingleLoopPrefixSum(ui
         AscendC::Reg::RegTensor<uint8_t> mask;
         auto prefixSumTmpAddr = prefixSumAddr;
         for (uint16_t i = 0; i < size0; ++i) {
-            AscendC::Reg::DataCopy<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE,
-                                        Reg::LoadDist::DIST_UNPACK4_B8>(mask, maskAddr, vfLen);
+            AscendC::Reg::DataCopy<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
+                mask, maskAddr, vfLen);
             AscendC::Reg::DataCopy<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(
                 prefixSumTmpAddr, (AscendC::Reg::RegTensor<int32_t> &)mask, vfLen, p0);
         }
@@ -224,8 +224,7 @@ __aicore__ inline void MoeMaskedScatterImpl<T, U>::ComputeSingleLoopPrefixSum(ui
 
         AscendC::Reg::Arange(tmp, 0);
         sequence = (AscendC::Reg::RegTensor<uint32_t> &)tmp;
-        AscendC::Reg::MaskReg pregFull =
-            AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg pregFull = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
         AscendC::Reg::Muls(sequence, sequence, rows, pregFull);
         uint32_t spReg1 = tailSize1 - 1;
         AscendC::Reg::MaskReg sp1 = AscendC::Reg::UpdateMask<int32_t>(spReg1);

@@ -56,9 +56,9 @@ private:
     float offset_;
 
     constexpr static Reg::CastTrait castTraitF32ToF16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     constexpr static Reg::CastTrait castTraitF16ToI8 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
 template <typename T>
@@ -126,8 +126,8 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
             Reg::Muls(outRegF16, outRegF16, static_cast<half>(scale_), maskRegInLoop);
             Reg::Adds(outRegF16, outRegF16, static_cast<half>(offset_), maskRegInLoop);
             Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
-            Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
-                                                                              outRegI8, maskRegInLoop);
+            Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH, outRegI8,
+                                                                    maskRegInLoop);
         }
     }
 

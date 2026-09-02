@@ -161,7 +161,7 @@ __aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = Reg::UpdateMask<uint32_t>(k);
             Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vregSortValue, vregExpertIdx,
-                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                     mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             Reg::Gather(vregGathered, inputAddr, vregExpertIdx, preg0);
             Reg::Muls(vregGathered, vregGathered, routedScalingFactor, preg0);
             ops::StoreOneTensorForDtypeT<T>(outputAddr, vregGathered, preg0, i * VL_FLOAT_SIZE);
@@ -192,7 +192,7 @@ __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = Reg::UpdateMask<uint32_t>(k);
             Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vregSortValue, vregExpertIdx,
-                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                     mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             Reg::Duplicate(vregGathered, static_cast<float>(0), preg1);
             Reg::Gather(vregGathered, inputAddr, vregExpertIdx, preg0);
             Reg::Add(vregSum, vregSum, vregGathered, preg1);
@@ -204,7 +204,7 @@ __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg1 = Reg::UpdateMask<uint32_t>(k);
             Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vregSortValue, vregExpertIdx,
-                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+                                                                     mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             Reg::Gather(vregGathered, inputAddr, vregExpertIdx, preg1);
             Reg::Div(vregOutput, vregGathered, vregSumBcast, preg1);
             Reg::Muls(vregOutput, vregOutput, routedScalingFactor, preg1);
