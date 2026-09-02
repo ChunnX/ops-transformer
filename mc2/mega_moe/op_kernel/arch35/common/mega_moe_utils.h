@@ -465,39 +465,33 @@ __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenC
 }
 
 /*
- * 在当前 WAVE 的剩余容量内，将下一个非空专家 slice 追加到左闭右开 token 范围。
- * 单次调用最多推进一个非空专家：W4 稳态调用一次得到专家 slice；整 WAVE 调度由调用方循环调用，
- * 直到 M-group 容量用完。该函数只规划范围和推进位置，不执行 Dispatch。
+ * 在当前 WAVE 的剩余容量内规划下一个非空专家 slice。
+ * 单次调用最多返回一个非空专家范围；空专家会被跳过。函数只更新当前 WAVE 的 M-group 计数，
+ * 不修改调用方持有的 Dispatch 位置；调用方在 Dispatch 完成后使用返回范围的 end 提交进度。
  */
 template <uint32_t TileM>
-__aicore__ inline void PlanTokenRangeInWave(
+__aicore__ inline ExpertTokenRange PlanNextExpertTokenRangeInWave(
     GM_ADDR expertTokenCountWorkspace, const BlockWorkspaceContext &countWorkspace, uint32_t expertCount,
-    uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, ExpertTokenPosition &position, ExpertTokenRange &range)
+    uint32_t waveMGroupTarget, uint32_t &waveMGroupCount, const ExpertTokenPosition &position)
 {
-    bool rangeIsEmpty = range.end.globalTokenIndex <= range.begin.globalTokenIndex;
-    if (rangeIsEmpty) {
-        // 新范围先锚定当前位置；若后续只有空专家，则保持为显式空范围。
-        range.begin = position;
-        range.end = position;
-    }
-    while (position.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
+    ExpertTokenPosition plannedPosition = position;
+    while (plannedPosition.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
         uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
-            expertTokenCountWorkspace, countWorkspace, expertCount, position.expertIdx);
+            expertTokenCountWorkspace, countWorkspace, expertCount, plannedPosition.expertIdx);
         // 空专家或已完成专家不占用 WAVE 容量，继续寻找下一个非空专家。
-        if (expertTokenCount == 0U || position.tokenIndexInExpert >= expertTokenCount) {
-            ++position.expertIdx;
-            position.tokenIndexInExpert = 0U;
+        if (expertTokenCount == 0U || plannedPosition.tokenIndexInExpert >= expertTokenCount) {
+            ++plannedPosition.expertIdx;
+            plannedPosition.tokenIndexInExpert = 0U;
             continue;
         }
 
-        // 首个有效 slice 确定范围起点；后续调用只延伸同一范围的终点。
-        if (rangeIsEmpty) {
-            range.begin = position;
-        }
-        AdvanceExpertTokenPositionInWave<TileM>(expertTokenCount, waveMGroupTarget, waveMGroupCount, position);
-        range.end = position;
-        return;
+        ExpertTokenRange range{plannedPosition, plannedPosition};
+        AdvanceExpertTokenPositionInWave<TileM>(expertTokenCount, waveMGroupTarget, waveMGroupCount,
+                                                plannedPosition);
+        range.end = plannedPosition;
+        return range;
     }
+    return {plannedPosition, plannedPosition};
 }
 
 // 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。

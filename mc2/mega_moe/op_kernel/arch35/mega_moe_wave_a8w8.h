@@ -544,16 +544,21 @@ template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DispatchNextWave(
     ExpertTokenPosition &dispatchPosition)
 {
-    ExpertTokenRange dispatchRange{};
+    ExpertTokenRange dispatchRange{dispatchPosition, dispatchPosition};
+    ExpertTokenPosition plannedDispatchPosition = dispatchPosition;
     uint32_t dispatchWaveMGroupCount = 0U;
-    while (dispatchPosition.expertIdx < moeExpertPerRank_ && dispatchWaveMGroupCount < mGroupsPerWave_) {
-        PlanTokenRangeInWave<GMM1_TILE_M>(
+    while (plannedDispatchPosition.expertIdx < moeExpertPerRank_ && dispatchWaveMGroupCount < mGroupsPerWave_) {
+        ExpertTokenRange nextDispatchRange = PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
             params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, moeExpertPerRank_, mGroupsPerWave_,
-            dispatchWaveMGroupCount, dispatchPosition, dispatchRange);
+            dispatchWaveMGroupCount, plannedDispatchPosition);
+        plannedDispatchPosition = nextDispatchRange.end;
+        dispatchRange.end = nextDispatchRange.end;
     }
     DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
         g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
+    // 整 WAVE 的数据和 ready flag 发布完成后，再提交 Dispatch 进度。
+    dispatchPosition = plannedDispatchPosition;
     return dispatchPosition;
 }
 

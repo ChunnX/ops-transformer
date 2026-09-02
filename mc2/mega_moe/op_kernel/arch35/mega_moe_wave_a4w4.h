@@ -141,18 +141,22 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
-            ExpertTokenRange firstDispatchRange{};
+            ExpertTokenRange firstDispatchRange{dispatchPosition, dispatchPosition};
+            ExpertTokenPosition plannedDispatchPosition = dispatchPosition;
             uint32_t firstDispatchWaveMGroupCount = 0U;
-            while (IsPositionWithinWave(dispatchPosition, firstDispatchWaveMGroupCount)) {
-                // 启动 WAVE 重复追加专家 slice；稳态复用同一规划函数但每轮只调用一次。
-                PlanTokenRangeInWave<GMM1_TILE_M>(
+            while (IsPositionWithinWave(plannedDispatchPosition, firstDispatchWaveMGroupCount)) {
+                ExpertTokenRange nextDispatchRange = PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
                     params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
-                    mGroupsPerWave_, firstDispatchWaveMGroupCount, dispatchPosition, firstDispatchRange);
+                    mGroupsPerWave_, firstDispatchWaveMGroupCount, plannedDispatchPosition);
+                plannedDispatchPosition = nextDispatchRange.end;
+                firstDispatchRange.end = nextDispatchRange.end;
             }
             // count-table 准备刚完成，UB prefix 仍有效；首 WAVE 无需从 GM 备份重复恢复。
             DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                 tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                 g_winRankAddr_, tokenDispatchScratch_, firstDispatchRange);
+            // 首 WAVE 的全部数据和 ready flag 发布完成后，再提交 Dispatch 进度。
+            dispatchPosition = plannedDispatchPosition;
         }
     }
 
@@ -177,10 +181,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             // AIV1 每轮先发送下一 Wave 的一个专家 slice，再处理当前 Wave 的一个专家 slice。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    ExpertTokenRange nextExpertDispatchRange{};
-                    PlanTokenRangeInWave<GMM1_TILE_M>(
+                    ExpertTokenRange nextExpertDispatchRange = PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
                         params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank,
-                        mGroupsPerWave_, nextDispatchWaveMGroupCount, dispatchPosition, nextExpertDispatchRange);
+                        mGroupsPerWave_, nextDispatchWaveMGroupCount, dispatchPosition);
                     // 规划完成后再判断是否得到有效专家 slice，调度函数本身不参与流程分支。
                     if (nextExpertDispatchRange.end.globalTokenIndex >
                         nextExpertDispatchRange.begin.globalTokenIndex) {
@@ -192,6 +195,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
                             params_, g_winRankAddr_, tokenDispatchScratch_, nextExpertDispatchRange);
                     }
+                    // 有效 slice 完成 Dispatch，或仅跳过空专家后，提交本次规划的末尾位置。
+                    dispatchPosition = nextExpertDispatchRange.end;
                     nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
                 }
             }
