@@ -44,8 +44,14 @@ npu_preprocess_module = load_impl_module("npu_preprocess")
 # ==============================================================================
 
 
+def _resolve_quant_mode(args, kwargs):
+    """直调 op 后 quant_mode 是位置参数 (args[6])，不再出现在 kwargs。"""
+    qm = args[6] if len(args) > 6 else kwargs.get("quant_mode", 1)
+    return int(qm) if qm is not None else 1
+
+
 def _golden_dispatch(*args, **kwargs):
-    qm = kwargs.get("quant_mode", 1)
+    qm = _resolve_quant_mode(args, kwargs)
     if qm == 6:
         return golden_module.cpu_qfa_gqa_fp8(*args, **kwargs)
     if qm == 0:
@@ -54,7 +60,7 @@ def _golden_dispatch(*args, **kwargs):
 
 
 def _inputs_dispatch(*args, **kwargs):
-    qm = kwargs.get("quant_mode", 1)
+    qm = _resolve_quant_mode(args, kwargs)
     if qm == 6:
         return inputs_module.generate_qfa_gqa_fp8_inputs(*args, **kwargs)
     if qm == 0:

@@ -212,8 +212,7 @@ def run(
     q_descale,
     k_descale,
     v_descale,
-    *,
-    quant_mode=None,
+    quant_mode,
     block_table=None,
     p_scale=None,
     cu_seqlens_q=None,
@@ -223,14 +222,40 @@ def run(
     sinks=None,
     attn_mask=None,
     metadata=None,
+    softmax_scale=1.0,
+    mask_mode=0,
+    win_left=-1,
+    win_right=-1,
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
+    layout_q="BSND",
+    layout_q_descale="BSND",
+    layout_kv="BSND",
+    layout_out="BSND",
+    return_softmax_lse=False,
     **kwargs,
 ):
-    """Generate and copy metadata for a main QuantFlashAttn invocation."""
+    """Generate and copy metadata for a main QuantFlashAttn invocation.
+
+    Signature mirrors ``torch.ops.cann_ops_transformer.quant_flash_attn`` so TTK
+    delivers the op-schema-ordered positional args; extra sidecar attributes
+    (batch_size / N_q / N_kv / D / head_dim_v / *_values ...) arrive via kwargs.
+    """
     if metadata is None:
         raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
     if quant_mode is None:
         quant_mode = get_attribute(kwargs, "quant_mode", 1)
-    testcase_name = kwargs.get("testcase_name")
+    # 位置标量参数桥接进 kwargs, 供 build_metadata_arguments 统一读取。
+    hook_kwargs = dict(kwargs)
+    hook_kwargs.setdefault("quant_mode", quant_mode)
+    hook_kwargs.setdefault("mask_mode", mask_mode)
+    hook_kwargs.setdefault("max_seqlen_q", max_seqlen_q)
+    hook_kwargs.setdefault("max_seqlen_kv", max_seqlen_kv)
+    hook_kwargs.setdefault("layout_q", layout_q)
+    hook_kwargs.setdefault("layout_q_descale", layout_q_descale)
+    hook_kwargs.setdefault("layout_kv", layout_kv)
+    hook_kwargs.setdefault("layout_out", layout_out)
+    testcase_name = hook_kwargs.get("testcase_name")
     logging.info("[%s] build QuantFlashAttn metadata (quant_mode=%s)", testcase_name, quant_mode)
 
     arguments = build_metadata_arguments(
@@ -241,7 +266,7 @@ def run(
         cu_seqlens_kv,
         seqused_q,
         seqused_kv,
-        kwargs,
+        hook_kwargs,
     )
     generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):

@@ -29,7 +29,11 @@ import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+__input__ = {
+    "e2e": {
+        "torch.ops.cann_ops_transformer.quant_flash_attn": "generate_qfa_mxfp8_inputs"
+    }
+}
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
 
@@ -83,8 +87,9 @@ def generate_qfa_mxfp8_inputs(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
+    quant_mode: int,
     block_table: torch.Tensor,
+    p_scale: torch.Tensor,
     cu_seqlens_q_t: torch.Tensor,
     cu_seqlens_kv_t: torch.Tensor,
     seqused_q_t: torch.Tensor,
@@ -92,38 +97,39 @@ def generate_qfa_mxfp8_inputs(
     sinks_t: torch.Tensor,
     attn_mask_t: torch.Tensor,
     metadata_t: torch.Tensor,
-    *,
-    batch_size: int,
-    N_q: int,
-    N_kv: int,
-    D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
-    max_seqlen_q: int,
-    max_seqlen_kv: int,
-    enable_pa: bool,
-    kv_cache_layout: str,
-    block_size: int,
-    mask_mode: int,
-    q_scale_layout: str,
-    quant_mode: int = 1,
-    enable_lse: bool = False,
-    graph_path: int = 0,
-    input_layout: str = "TND",
-    is_contiguous: bool = True,
-    device_id: int = 0,
-    softmax_scale: float = None,
-    data_range_q: float = 1.0,
-    data_range_k: float = 1.0,
-    data_range_v: float = 1.0,
-    layout_q: str = "TND",
-    layout_q_descale: str = "TND",
-    layout_kv: str = "TND",
-    layout_out: str = "TND",
+    softmax_scale: float = 1.0,
+    mask_mode: int = 0,
+    win_left: int = -1,
+    win_right: int = -1,
+    max_seqlen_q: int = -1,
+    max_seqlen_kv: int = -1,
+    layout_q: str = "BSND",
+    layout_q_descale: str = "BSND",
+    layout_kv: str = "BSND",
+    layout_out: str = "BSND",
+    return_softmax_lse: bool = False,
     **kwargs,
 ):
+    # —— op-schema 直调: 额外适配参数与真实值 sidecar 经 kwargs 传入 ——
+    batch_size = kwargs.get("batch_size")
+    N_q = kwargs.get("N_q")
+    N_kv = kwargs.get("N_kv")
+    D = kwargs.get("D")
+    enable_pa = bool(kwargs.get("enable_pa", False))
+    kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
+    block_size = kwargs.get("block_size", 0)
+    q_scale_layout = kwargs.get("q_scale_layout") or layout_q_descale
+    cu_seqlens_q = kwargs.get("cu_seqlens_q_values")
+    cu_seqlens_kv = kwargs.get("cu_seqlens_kv_values")
+    seqused_q = kwargs.get("seqused_q_values")
+    seqused_kv = kwargs.get("seqused_kv_values")
+    input_layout = kwargs.get("input_layout", "TND")
+    is_contiguous = kwargs.get("is_contiguous", True)
+    device_id = kwargs.get("device_id", 0)
+    graph_path = kwargs.get("graph_path", 0)
+    data_range_q = kwargs.get("data_range_q", 1.0)
+    data_range_k = kwargs.get("data_range_k", 1.0)
+    data_range_v = kwargs.get("data_range_v", 1.0)
     # cu_seqlens -> actual_seq (差分还原)
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
@@ -427,8 +433,9 @@ def generate_qfa_gqa_fp8_inputs(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
+    quant_mode: int,
     block_table: torch.Tensor,
+    p_scale: torch.Tensor,
     cu_seqlens_q_t: torch.Tensor,
     cu_seqlens_kv_t: torch.Tensor,
     seqused_q_t: torch.Tensor,
@@ -436,34 +443,39 @@ def generate_qfa_gqa_fp8_inputs(
     sinks_t: torch.Tensor,
     attn_mask_t: torch.Tensor,
     metadata_t: torch.Tensor,
-    *,
-    batch_size: int,
-    N_q: int,
-    N_kv: int,
-    D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
-    max_seqlen_q: int,
-    max_seqlen_kv: int,
-    enable_pa: bool,
-    kv_cache_layout: str,
-    block_size: int,
-    mask_mode: int,
-    q_scale_layout: str,
-    quant_mode: int = 6,
-    enable_lse: bool = False,
-    graph_path: int = 0,
-    input_layout: str = "NTD",
-    is_contiguous: bool = True,
-    device_id: int = 0,
-    softmax_scale: float = None,
-    data_range_q: float = 1.0,
-    data_range_k: float = 1.0,
-    data_range_v: float = 1.0,
+    softmax_scale: float = 1.0,
+    mask_mode: int = 0,
+    win_left: int = -1,
+    win_right: int = -1,
+    max_seqlen_q: int = -1,
+    max_seqlen_kv: int = -1,
+    layout_q: str = "BSND",
+    layout_q_descale: str = "BSND",
+    layout_kv: str = "BSND",
+    layout_out: str = "BSND",
+    return_softmax_lse: bool = False,
     **kwargs,
 ):
+    # —— op-schema 直调: 额外适配参数与真实值 sidecar 经 kwargs 传入 ——
+    batch_size = kwargs.get("batch_size")
+    N_q = kwargs.get("N_q")
+    N_kv = kwargs.get("N_kv")
+    D = kwargs.get("D")
+    enable_pa = bool(kwargs.get("enable_pa", False))
+    kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
+    block_size = kwargs.get("block_size", 0)
+    q_scale_layout = kwargs.get("q_scale_layout") or layout_q_descale
+    cu_seqlens_q = kwargs.get("cu_seqlens_q_values")
+    cu_seqlens_kv = kwargs.get("cu_seqlens_kv_values")
+    seqused_q = kwargs.get("seqused_q_values")
+    seqused_kv = kwargs.get("seqused_kv_values")
+    input_layout = kwargs.get("input_layout", "NTD")
+    is_contiguous = kwargs.get("is_contiguous", True)
+    device_id = kwargs.get("device_id", 0)
+    graph_path = kwargs.get("graph_path", 0)
+    data_range_q = kwargs.get("data_range_q", 1.0)
+    data_range_k = kwargs.get("data_range_k", 1.0)
+    data_range_v = kwargs.get("data_range_v", 1.0)
     """GQA FP8 输入生成 (quant_mode=6, 仅 PA)
 
     输出 slot 约定 (in-place 写入 ttk 分配的 numpy slot):
@@ -710,8 +722,9 @@ def generate_qfa_hif8_inputs(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
+    quant_mode: int,
     block_table: torch.Tensor,
+    p_scale: torch.Tensor,
     cu_seqlens_q_t: torch.Tensor,
     cu_seqlens_kv_t: torch.Tensor,
     seqused_q_t: torch.Tensor,
@@ -719,37 +732,39 @@ def generate_qfa_hif8_inputs(
     sinks_t: torch.Tensor,
     attn_mask_t: torch.Tensor,
     metadata_t: torch.Tensor,
-    *,
-    batch_size: int,
-    N_q: int,
-    N_kv: int,
-    D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
-    max_seqlen_q: int,
-    max_seqlen_kv: int,
-    enable_pa: bool,
-    kv_cache_layout: str,
-    block_size: int,
-    mask_mode: int,
-    q_scale_layout: str,
-    quant_mode: int = 0,
-    enable_lse: bool = False,
-    graph_path: int = 0,
-    input_layout: str = "TND",
-    layout_q: str = None,
-    layout_kv: str = None,
-    layout_out: str = None,
-    is_contiguous: bool = True,
-    device_id: int = 0,
-    softmax_scale: float = None,
-    data_range_q: float = 1.0,
-    data_range_k: float = 1.0,
-    data_range_v: float = 1.0,
+    softmax_scale: float = 1.0,
+    mask_mode: int = 0,
+    win_left: int = -1,
+    win_right: int = -1,
+    max_seqlen_q: int = -1,
+    max_seqlen_kv: int = -1,
+    layout_q: str = "BSND",
+    layout_q_descale: str = "BSND",
+    layout_kv: str = "BSND",
+    layout_out: str = "BSND",
+    return_softmax_lse: bool = False,
     **kwargs,
 ):
+    # —— op-schema 直调: 额外适配参数与真实值 sidecar 经 kwargs 传入 ——
+    batch_size = kwargs.get("batch_size")
+    N_q = kwargs.get("N_q")
+    N_kv = kwargs.get("N_kv")
+    D = kwargs.get("D")
+    enable_pa = bool(kwargs.get("enable_pa", False))
+    kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
+    block_size = kwargs.get("block_size", 0)
+    q_scale_layout = kwargs.get("q_scale_layout") or layout_q_descale
+    cu_seqlens_q = kwargs.get("cu_seqlens_q_values")
+    cu_seqlens_kv = kwargs.get("cu_seqlens_kv_values")
+    seqused_q = kwargs.get("seqused_q_values")
+    seqused_kv = kwargs.get("seqused_kv_values")
+    input_layout = kwargs.get("input_layout", "TND")
+    is_contiguous = kwargs.get("is_contiguous", True)
+    device_id = kwargs.get("device_id", 0)
+    graph_path = kwargs.get("graph_path", 0)
+    data_range_q = kwargs.get("data_range_q", 1.0)
+    data_range_k = kwargs.get("data_range_k", 1.0)
+    data_range_v = kwargs.get("data_range_v", 1.0)
     """HIF8 输入生成 (quant_mode=0, per-tensor, 仅 TND, 无 PA)。
 
     输出 slot 约定 (in-place 写入 ttk 分配的 numpy slot):

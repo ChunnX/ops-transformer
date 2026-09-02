@@ -25,15 +25,15 @@
   按表头语义名查列索引（_Columns + _norm_name + _HEADER_ALIASES），不再用写死的
   COL 列字母表，对列顺序变化稳健。
 
-tensor 顺序（共 15 个，与 wrapper 签名位置参数对齐）：
+tensor 顺序（共 15 个，对齐算子 schema 位置参数顺序）：
   0  q               q_shape / q_dtype / q_datarange
   1  k               k_shape / k_dtype / k_datarange
   2  v               v_shape / v_dtype / v_datarange
   3  q_descale       q_descale_shape / q_descale_dtype / q_descale_datarange
   4  k_descale       k_descale_shape / k_descale_dtype / k_descale_datarange
   5  v_descale       v_descale_shape / v_descale_dtype / v_descale_datarange
-  6  p_scale         p_scale_shape / p_scale_dtype / p_scale_datarange（标量）
-  7  block_table     block_table_shape / block_table_dtype / block_table_datarange
+  6  block_table     block_table_shape / block_table_dtype / block_table_datarange
+  7  p_scale         p_scale_shape / p_scale_dtype / p_scale_datarange（标量）
   8  cu_seqlens_q    cu_seqlens_q_shape / cu_seqlens_q_dtype / cu_seqlens_q_datarange
   9  cu_seqlens_kv   cu_seqlens_kv_shape / cu_seqlens_kv_dtype / cu_seqlens_kv_datarange
   10 seqused_q       seqused_q_shape / seqused_q_dtype / seqused_q_datarange
@@ -43,9 +43,10 @@ tensor 顺序（共 15 个，与 wrapper 签名位置参数对齐）：
   14 metadata        metadata_shape / metadata_dtype / metadata_datarange
 
   上述 shape 从 attributes 抽出成为 tensor 入参；无 shape（Excel 空）→ (0,)。
-  cu_seqlens_q/kv、seqused_q/kv 的真实 value 属性仍保留在 attributes
-  （ttk 按 tensor_view_shapes 生成随机 tensor，wrapper 需用 attributes 里的
-  真实值覆盖，因此 value 属性不能删，只删 shape）。
+  cu_seqlens_q/kv、seqused_q/kv 的真实 value 以 `*_values` 属性保留在 attributes
+  （不与算子 schema 的同名 Tensor 参数撞名，避免 ttk match_overload 的
+  scalar_cover 重复计数；npu_preprocess/inputs 用 `*_values` 覆盖随机 tensor），
+  因此 value 属性不能删，只删 shape。
   datarange：q/k/v 取 Excel 真实值；descale/p_scale/block_table/cu_seqlens/
   seqused/sinks/attn_mask/metadata 用 (0,1) 占位（这些 tensor 不参与真实数据生成）。
 
@@ -124,7 +125,7 @@ DTYPE_MAP = {
 
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
 
-# tensor 顺序（15 个），与 wrapper 位置参数 / tensor_view_shapes 一致。
+# tensor 顺序（15 个），对齐算子 schema 位置参数顺序 / tensor_view_shapes。
 # 每项：(shape 列名, dtype 列名, datarange 列名, dtype 缺省值, 是否读 Excel datarange)。
 #   use_real_drange=True  → 取 Excel datarange（q/k/v 参与真实数据生成）
 #   use_real_drange=False → 用 (0,1) 占位（descale/p_scale/block_table/cu_seqlens/
@@ -136,8 +137,8 @@ _TENSOR_SPECS = [
     ("q_descale_shape", "q_descale_dtype", "q_descale_datarange", "float8_e8m0", False),
     ("k_descale_shape", "k_descale_dtype", "k_descale_datarange", "float8_e8m0", False),
     ("v_descale_shape", "v_descale_dtype", "v_descale_datarange", "float8_e8m0", False),
-    ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     ("block_table_shape", "block_table_dtype", "block_table_datarange", "int32", False),
+    ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     (
         "cu_seqlens_q_shape",
         "cu_seqlens_q_dtype",
@@ -428,16 +429,23 @@ def _build_attributes(row, cols):
     _set("absolute_precision", ABSOLUTE_PRECISION_DEFAULT)
     _set("p_scale_value", _str_to_float(row.get(cols.get("p_scale_value"))))
     # cu_seqlens value → list，shape/dtype 不传（由 tensor_view_shapes 表达）
-    # shape 已抽出为 tensor；value 保留供 wrapper 覆盖随机生成。
+    # shape 已抽出为 tensor；value 以 `*_values` 保留（不与算子 schema 同名 Tensor
+    # 参数撞名），供 inputs.py/npu_preprocess 覆盖随机 tensor。
     _set_force(
-        "cu_seqlens_q", _str_to_int_list(row.get(cols.get("cu_seqlens_q_value")))
+        "cu_seqlens_q_values",
+        _str_to_int_list(row.get(cols.get("cu_seqlens_q_value"))),
     )
     _set_force(
-        "cu_seqlens_kv", _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value")))
+        "cu_seqlens_kv_values",
+        _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value"))),
     )
-    # seqused_q/kv：空则写 None（wrapper 无默认值，需要 key 存在，golden 透传 None 给 NPU）
-    _set_force("seqused_q", _str_to_int_list(row.get(cols.get("seqused_q_value"))))
-    _set_force("seqused_kv", _str_to_int_list(row.get(cols.get("seqused_kv_value"))))
+    # seqused_q/kv：空则写 None（需 key 存在，golden 透传 None 给 NPU）
+    _set_force(
+        "seqused_q_values", _str_to_int_list(row.get(cols.get("seqused_q_value")))
+    )
+    _set_force(
+        "seqused_kv_values", _str_to_int_list(row.get(cols.get("seqused_kv_value")))
+    )
     # attn_mask 的 shape/dtype 也写入 attributes：mask 由 golden _build_causal_mask()
     # 按此 shape 重建（如 (1,2048,2048)）；同时 attn_mask 仍是 tensor slot 13（shape 信息双份）。
     # attn_mask_dtype 缺省 int8（golden causal mask 用 int8）。
@@ -455,7 +463,7 @@ def _build_attributes(row, cols):
     _set("layout_q_descale", _strip_or_none(row.get(cols.get("layout_q_descale"))))
     _set("layout_kv", _strip_or_none(row.get(cols.get("layout_kv"))))
     _set("layout_out", _strip_or_none(row.get(cols.get("layout_out"))))
-    _set("enable_lse", _bool_to_int(row.get(cols.get("return_softmax_lse"))))
+    _set("return_softmax_lse", _bool_to_int(row.get(cols.get("return_softmax_lse"))))
     _set("N_q", _str_to_int(row.get(cols.get("num_heads_q"))))
     _set("N_kv", _str_to_int(row.get(cols.get("num_heads_kv"))))
     _set("D", _str_to_int(row.get(cols.get("head_dim"))))

@@ -74,53 +74,80 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        dequant_scale_q: torch.Tensor,
-        dequant_scale_k: torch.Tensor,
-        dequant_scale_v: torch.Tensor,
-        p_scale: torch.Tensor,
+        q_descale: torch.Tensor,
+        k_descale: torch.Tensor,
+        v_descale: torch.Tensor,
+        quant_mode: int,
         block_table: torch.Tensor,
-        cu_seqlens_q_t: torch.Tensor,
-        cu_seqlens_kv_t: torch.Tensor,
-        seqused_q_t: torch.Tensor,
-        seqused_kv_t: torch.Tensor,
-        sinks_t: torch.Tensor,
-        attn_mask_t: torch.Tensor,
-        metadata_t: torch.Tensor,
-        *,
-        batch_size: int,
-        N_q: int,
-        N_kv: int,
-        D: int,
-        cu_seqlens_q: Optional[List[int]] = None,
-        cu_seqlens_kv: Optional[List[int]] = None,
-        seqused_q: Optional[List[int]] = None,
-        seqused_kv: Optional[List[int]] = None,
+        p_scale: torch.Tensor,
+        cu_seqlens_q: torch.Tensor,
+        cu_seqlens_kv: torch.Tensor,
+        seqused_q: torch.Tensor,
+        seqused_kv: torch.Tensor,
+        sinks: torch.Tensor,
+        attn_mask: torch.Tensor,
+        metadata: torch.Tensor,
+        softmax_scale: float = 1.0,
+        mask_mode: int = 0,
+        win_left: int = -1,
+        win_right: int = -1,
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
-        enable_pa: bool = False,
-        kv_cache_layout: str = "BnNBsD",
-        block_size: int = 0,
-        mask_mode: int = 0,
-        q_scale_layout: str = "TND",
-        quant_mode: int = 1,
-        enable_lse: bool = False,
-        graph_path: int = 0,
-        input_layout: str = "TND",
-        layout_q: str = "TND",
-        layout_q_descale: str = "TND",
-        layout_kv: str = "TND",
-        layout_out: str = "TND",
-        is_contiguous: bool = True,
-        device_id: int = 0,
-        softmax_scale: Optional[float] = None,
-        head_dim_v: Optional[int] = None,
-        data_range_q: float = 1.0,
-        data_range_k: float = 1.0,
-        data_range_v: float = 1.0,
+        layout_q: str = "BSND",
+        layout_q_descale: str = "BSND",
+        layout_kv: str = "BSND",
+        layout_out: str = "BSND",
+        return_softmax_lse: bool = False,
         **kwargs,
     ):
         super().__init__()
-        torch_npu.npu.set_device(int(device_id))
+        torch_npu.npu.set_device(int(kwargs.get("device_id", 0)))
+
+        # ---- 0. 从 op-schema 入参推导配置 (graph 路径拿不到额外 attr) ----
+        dequant_scale_q = q_descale
+        dequant_scale_k = k_descale
+        dequant_scale_v = v_descale
+        cu_seqlens_q_t = cu_seqlens_q
+        cu_seqlens_kv_t = cu_seqlens_kv
+        seqused_q_t = seqused_q
+        seqused_kv_t = seqused_kv
+        sinks_t = sinks
+        attn_mask_t = attn_mask
+        metadata_t = metadata
+
+        layout_q = str(layout_q)
+        layout_q_descale = str(layout_q_descale)
+        layout_kv = str(layout_kv)
+        layout_out = str(layout_out)
+
+        q_shape = tuple(int(value) for value in q.shape)
+        k_shape = tuple(int(value) for value in k.shape)
+        D = int(kwargs.get("D") or q_shape[-1])
+        N_q = int(kwargs.get("N_q") or (q_shape[2] if layout_q == "BSND" else q_shape[1]))
+        N_kv = int(kwargs.get("N_kv") or (k_shape[2] if layout_kv == "PA_BBND" else k_shape[1]))
+        head_dim_v = kwargs.get("head_dim_v")
+        enable_pa = bool(kwargs.get("enable_pa")) or layout_kv.startswith("PA_")
+        kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
+        q_scale_layout = kwargs.get("q_scale_layout") or layout_q_descale
+        input_layout = kwargs.get("input_layout") or layout_q
+        is_contiguous = bool(kwargs.get("is_contiguous", True))
+        graph_path = kwargs.get("graph_path", 0)
+        device_id = kwargs.get("device_id", 0)
+        enable_lse = return_softmax_lse
+        batch_size = kwargs.get("batch_size")
+        quant_mode = int(quant_mode) if quant_mode is not None else 1
+        if enable_pa:
+            if layout_kv == "PA_NZ":
+                bs_idx = 3
+            elif layout_kv == "PA_BBND":
+                bs_idx = 1
+            else:
+                bs_idx = 2
+            raw_bs = k_shape[bs_idx] if len(k_shape) > bs_idx else 0
+            block_size = max(0, raw_bs - 4) if quant_mode == 6 else raw_bs
+        else:
+            block_size = 0
+        block_size = kwargs.get("block_size", block_size)
 
         # ---- 1. 从函数参数取 final-layout fp8 + e8m0  ----
         # q, k, v 是 torch.float8_e4m3fn, final layout (TND / PA paged)
@@ -199,9 +226,9 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "SEED_Q": kwargs.get("seed_q"),
                 "SEED_K": kwargs.get("seed_k"),
                 "SEED_V": kwargs.get("seed_v"),
-                "DATA_RANGE_Q": kwargs.get("data_range_q", data_range_q),
-                "DATA_RANGE_K": kwargs.get("data_range_k", data_range_k),
-                "DATA_RANGE_V": kwargs.get("data_range_v", data_range_v),
+                "DATA_RANGE_Q": kwargs.get("data_range_q", 1.0),
+                "DATA_RANGE_K": kwargs.get("data_range_k", 1.0),
+                "DATA_RANGE_V": kwargs.get("data_range_v", 1.0),
             },
             quant_mode=quant_mode,
         )
@@ -324,15 +351,15 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=inputs["dequant_scale_v"],
             batch_size=batch_size if not is_tnd_q else None,
+            max_seqlen_q=int(inputs["max_seqlen_q"]),
+            max_seqlen_kv=int(inputs["max_seqlen_kv"]),
+            head_dim_v=head_dim_v,
             mask_mode=int(inputs["sparse_mode"]),
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],
             layout_kv=layout_kv,
             layout_out=inputs["layout_out"],
-            max_seqlen_q=int(inputs["max_seqlen_q"]),
-            max_seqlen_kv=int(inputs["max_seqlen_kv"]),
         )
         # metadata 可能建在错误的 device 上, 对齐 q.device
         if self.metadata.device != inputs["q"].device:
