@@ -12,7 +12,8 @@
  */
 /*!
  * \file vf_softmax_dn_cast_nz_mxfp8.h
- * \brief
+ * \brief qs128 热路径：OCP 后用 3510 vexpdif（FusedExpSub half→float ZERO/ONE）
+ *        替换 Sub+fp16 Exp+Cast；Interleave 仍收成连续 qs64 再 RINT pack。
  */
 
 #ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP8_QS128_KVS128_H_
@@ -25,7 +26,16 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-
+// 3510：dst 只能 float；src half 时 ZERO/ONE = PART_EVEN/ODD。
+// 代替 Sub + fp16 Exp + SPLIT 里的两次 Cast；Interleave 语义与 SPLIT_CONSEC64 相同。
+#define BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(fLo, fHi, srcHalf, maxHalf, preg16)          \
+    do {                                                                                 \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ZERO, MicroAPI::MaskMergeMode::ZEROING>( \
+            (fLo), (srcHalf), (maxHalf), (preg16));                                      \
+        FusedExpSub<float, half, MicroAPI::RegLayout::ONE, MicroAPI::MaskMergeMode::ZEROING>( \
+            (fHi), (srcHalf), (maxHalf), (preg16));                                      \
+        Interleave((fLo), (fHi), (fLo), (fHi));                                          \
+    } while (0)
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBase = 128, uint16_t QsBase = 128>
@@ -124,19 +134,10 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs128_vf(__ubuf__ T2 *pDes
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
 
 
-            Sub(src_c0, src_c0, curr_group_max, preg_all_16bit);
-            Sub(src_c1, src_c1, curr_group_max, preg_all_16bit);
-            Sub(src_c2, src_c2, curr_group_max, preg_all_16bit);
-            Sub(src_c3, src_c3, curr_group_max, preg_all_16bit);
-
-            Exp(src_c0, src_c0, preg_all_16bit);
-            Exp(src_c1, src_c1, preg_all_16bit);
-            Exp(src_c2, src_c2, preg_all_16bit);
-            Exp(src_c3, src_c3, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f0, src_f4, src_c0, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f1, src_f5, src_c1, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f2, src_f6, src_c2, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f3, src_f7, src_c3, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f0, src_f4, src_c0, curr_group_max, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f1, src_f5, src_c1, curr_group_max, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f2, src_f6, src_c2, curr_group_max, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f3, src_f7, src_c3, curr_group_max, preg_all_16bit);
             uint32_t pOff = i * 2048 + j * 256;
             // K-outer：C0=0,1 占 TLA 0-15 / 16-31（高平面 +8064，vl128_not 落到 +8192）
             BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff, pOff + 8064, src_f0, src_f1, src_f2, src_f3,
@@ -163,19 +164,10 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs128_vf(__ubuf__ T2 *pDes
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
 
 
-            Sub(src_c0, src_c0, curr_group_max, preg_all_16bit);
-            Sub(src_c1, src_c1, curr_group_max, preg_all_16bit);
-            Sub(src_c2, src_c2, curr_group_max, preg_all_16bit);
-            Sub(src_c3, src_c3, curr_group_max, preg_all_16bit);
-
-            Exp(src_c0, src_c0, preg_all_16bit);
-            Exp(src_c1, src_c1, preg_all_16bit);
-            Exp(src_c2, src_c2, preg_all_16bit);
-            Exp(src_c3, src_c3, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f0, src_f4, src_c0, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f1, src_f5, src_c1, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f2, src_f6, src_c2, preg_all_16bit);
-            BSA_MXFP8_FP16_SPLIT_CONSEC64(src_f3, src_f7, src_c3, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f0, src_f4, src_c0, curr_group_max, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f1, src_f5, src_c1, curr_group_max, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f2, src_f6, src_c2, curr_group_max, preg_all_16bit);
+            BSA_MXFP8_FUSED_EXPSUB_SPLIT_CONSEC64(src_f3, src_f7, src_c3, curr_group_max, preg_all_16bit);
             uint32_t pOff = i * 2048 + j * 256;
             BSA_MXFP8_PACK_STORE_E4M3_VL128(pDest, pOff + 128, pOff + 8192, src_f0, src_f1, src_f2, src_f3,
                 idx_nd2nz, preg_all_fp32, preg_all_8bit, preg_vl128, preg_vl128_not);
