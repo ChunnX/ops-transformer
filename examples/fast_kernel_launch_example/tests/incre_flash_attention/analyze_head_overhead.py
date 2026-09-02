@@ -8,11 +8,13 @@ from pathlib import Path
 
 
 STARS_RECORD_SIZE_A3 = 64
-STARS_PAYLOAD = struct.Struct("<IHHQIIII")
+STARS_RECORD_A3 = struct.Struct("<IHHQIIII")
+STARS_RECORD_A5 = struct.Struct("<IIQIIII")
 STARS_DISPATCH = 0
 FFTS_RECORD_A3 = struct.Struct("<HHHHQIIII12Q")
 FFTS_TASK_PMU = 40
 FFTS_BLOCK_PMU = 41
+FFTS_MIX_PMU_A5 = 42
 
 
 def find_one(root: Path, pattern: str) -> Path:
@@ -59,7 +61,7 @@ def load_stars_dispatches(profile_dir: Path, ifa_task_keys):
                 f"{STARS_RECORD_SIZE_A3}-byte A3 STARS records"
             )
         for offset in range(0, len(content), STARS_RECORD_SIZE_A3):
-            fields = STARS_PAYLOAD.unpack_from(content, offset)
+            fields = STARS_RECORD_A3.unpack_from(content, offset)
             header, task_id_raw, stream_id, sys_cycle = fields[:4]
             func_type = header & 0x3F
             task_id = task_id_raw & 0x7FFF
@@ -75,6 +77,35 @@ def load_stars_dispatches(profile_dir: Path, ifa_task_keys):
                         "stars_dispatch_cycle": sys_cycle,
                     }
                 )
+    if not dispatches:
+        task_streams = {}
+        for stream_id, task_id in ifa_task_keys:
+            if task_id in task_streams and task_streams[task_id] != stream_id:
+                raise RuntimeError(
+                    f"IFA task ID {task_id} appears on multiple streams"
+                )
+            task_streams[task_id] = stream_id
+        for data_file in data_files:
+            content = data_file.read_bytes()
+            if len(content) % STARS_RECORD_A5.size:
+                raise RuntimeError(
+                    f"{data_file} size {len(content)} is not aligned to "
+                    f"{STARS_RECORD_A5.size}-byte A5 STARS records"
+                )
+            for offset in range(0, len(content), STARS_RECORD_A5.size):
+                header, task_id, sys_cycle, _, _, _, _ = (
+                    STARS_RECORD_A5.unpack_from(content, offset)
+                )
+                if (header & 0x3F) == STARS_DISPATCH and task_id in task_streams:
+                    dispatches.append(
+                        {
+                            "stream_id": task_streams[task_id],
+                            "task_id": task_id,
+                            "task_id_raw": task_id,
+                            "stars_dispatch_cycle": sys_cycle,
+                        }
+                    )
+
     dispatches.sort(key=lambda row: row["stars_dispatch_cycle"])
     if not dispatches:
         raise RuntimeError("No STARS dispatch records matched IFA tasks")
@@ -91,6 +122,7 @@ def load_ffts_kicks(profile_dir: Path, ifa_task_keys):
     if not data_files:
         raise RuntimeError(f"No ffts_profile.data files found under {data_dir}")
 
+    task_streams = {task_id: stream_id for stream_id, task_id in ifa_task_keys}
     starts = {}
     for data_file in data_files:
         content = data_file.read_bytes()
@@ -107,8 +139,10 @@ def load_ffts_kicks(profile_dir: Path, ifa_task_keys):
             task_id = task_id_raw & 0x7FFF
             pmu_start = fields[19]
             key = (stream_id, task_id)
+            if key not in ifa_task_keys and task_id in task_streams:
+                key = (task_streams[task_id], task_id)
             if (
-                func_type in {FFTS_TASK_PMU, FFTS_BLOCK_PMU}
+                func_type in {FFTS_TASK_PMU, FFTS_BLOCK_PMU, FFTS_MIX_PMU_A5}
                 and key in ifa_task_keys
                 and pmu_start > 0
             ):
@@ -116,12 +150,9 @@ def load_ffts_kicks(profile_dir: Path, ifa_task_keys):
 
     kicks = {}
     for key, values in starts.items():
-        if len(values) != 1:
-            raise RuntimeError(
-                f"IFA task {key} has multiple FFTS pmu_start values: "
-                f"{sorted(values)}"
-            )
-        kicks[key] = next(iter(values))
+        # A5 emits separate AIC/AIV PMU records whose starts can differ
+        # by a few cycles. The first PMU start is the task kick boundary.
+        kicks[key] = min(values)
     if not kicks:
         raise RuntimeError("No FFTS pmu_start records matched IFA tasks")
     return kicks

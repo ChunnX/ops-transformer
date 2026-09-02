@@ -31,7 +31,10 @@ HEAD_TIMING_ENTRY_COMMIT = 0xE17E2026
 HEAD_TIMING_COMMIT = 0xC0DE2026
 HEAD_TIMING_SLOT_COUNT = 8
 CORE_TYPE_VECTOR = 1
-EXPECTED_VECTOR_CORES = 48
+MAX_CUBE_CORES_950 = 32
+MAX_VECTOR_CORES_950 = 64
+EXPECTED_CUBE_CORES = 0
+EXPECTED_VECTOR_CORES = 0
 HEAD_TIMING_LAUNCHES = int(os.environ.get("HEAD_TIMING_LAUNCHES", "101"))
 HEAD_TIMING_OUTPUT = Path(
     os.environ.get("HEAD_TIMING_OUTPUT", "ifa_head_timing_raw.csv")
@@ -49,7 +52,7 @@ if HEAD_TIMING_POINT not in {"entry", "mte2"}:
 class AttentionConfig:
     def __init__(self):
         # Attention Dimensions
-        self.batch_size = 24
+        self.batch_size = EXPECTED_CUBE_CORES
         self.q_head_num = 64
         self.kv_head_num = 1
         self.q_seq = 1
@@ -261,13 +264,43 @@ def write_head_timing(rows):
 
 
 def main():
-    # 1. Load config
-    config = AttentionConfig()
+    global EXPECTED_CUBE_CORES, EXPECTED_VECTOR_CORES
 
-    # 2. Reset Dynamo (for clean compile)
+    # 1. Select the device and use all cores available on this 950 SKU.
     logger.info("🔄 Resetting TorchDynamo...")
     torch._dynamo.reset()
     torch.npu.set_device(NPU_DEVICE)
+    properties = torch.npu.get_device_properties(NPU_DEVICE)
+    EXPECTED_CUBE_CORES = int(
+        os.environ.get("HEAD_TIMING_CUBE_CORES", properties.cube_core_num)
+    )
+    EXPECTED_VECTOR_CORES = int(
+        os.environ.get("HEAD_TIMING_VECTOR_CORES", properties.vector_core_num)
+    )
+    if not 0 < EXPECTED_CUBE_CORES <= MAX_CUBE_CORES_950:
+        raise ValueError(
+            f"950 Cube core count must be in [1, {MAX_CUBE_CORES_950}], "
+            f"got {EXPECTED_CUBE_CORES}"
+        )
+    if not 0 < EXPECTED_VECTOR_CORES <= MAX_VECTOR_CORES_950:
+        raise ValueError(
+            f"950 Vector core count must be in [1, {MAX_VECTOR_CORES_950}], "
+            f"got {EXPECTED_VECTOR_CORES}"
+        )
+    if EXPECTED_VECTOR_CORES != 2 * EXPECTED_CUBE_CORES:
+        raise ValueError(
+            "This IFA mix-kernel test requires a 1:2 Cube/Vector core ratio, "
+            f"got {EXPECTED_CUBE_CORES}/{EXPECTED_VECTOR_CORES}"
+        )
+    logger.info(
+        "Using %d Cube cores and %d Vector cores on %s",
+        EXPECTED_CUBE_CORES,
+        EXPECTED_VECTOR_CORES,
+        properties.name,
+    )
+
+    # 2. Load config
+    config = AttentionConfig()
 
     # 3. Build model
     logger.info("🧠 Building FusedAttentionNetwork...")
