@@ -54,7 +54,9 @@ gert::TilingContextPara MakeBsndPara(optiling::LIGCompileInfo &compileInfo,
                                      int64_t sparseMode = 3,
                                      int64_t headNumQ = 64,
                                      int64_t headNumK = 1,
-                                     int64_t headDim = 128)
+                                     int64_t headDim = 128,
+                                     uint32_t coreNum = kCoreNum,
+                                     bool deterministic = false)
 {
     return gert::TilingContextPara(
         kOpName,
@@ -72,12 +74,12 @@ gert::TilingContextPara MakeBsndPara(optiling::LIGCompileInfo &compileInfo,
             {{{2, 16, headNumK, headDim}, {2, 16, headNumK, headDim}}, dataType, ge::FORMAT_ND},
             {{{2, 8, headNumQ}, {2, 8, headNumQ}}, dataType, ge::FORMAT_ND}
         },
-        MakeAttrs(layout, sparseMode),
+        MakeAttrs(layout, sparseMode, deterministic),
         std::vector<uint32_t>{1, 1, 1, 1, 1, 0, 0},
         std::vector<uint32_t>{1, 1, 1},
         &compileInfo,
         "Ascend910B",
-        kCoreNum,
+        coreNum,
         kUbSize,
         kTilingDataSize);
 }
@@ -90,7 +92,9 @@ gert::TilingContextPara MakeTndPara(optiling::LIGCompileInfo &compileInfo,
                                     int64_t sparseMode = 3,
                                     int64_t headNumQ = 64,
                                     int64_t headNumK = 1,
-                                    int64_t headDim = 128)
+                                    int64_t headDim = 128,
+                                    uint32_t actualSeqCount = 1,
+                                    uint32_t coreNum = kCoreNum)
 {
     if (withActualSeq) {
         return gert::TilingContextPara(
@@ -101,8 +105,8 @@ gert::TilingContextPara MakeTndPara(optiling::LIGCompileInfo &compileInfo,
                 {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
                 {{{64, 2048}, {64, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
                 {{{64, headNumQ}, {64, headNumQ}}, dataType, ge::FORMAT_ND},
-                {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQ},
-                {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqK}
+                {{{actualSeqCount}, {actualSeqCount}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQ},
+                {{{actualSeqCount}, {actualSeqCount}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqK}
             },
             {
                 {{{64, headNumQ, headDim}, {64, headNumQ, headDim}}, dataType, ge::FORMAT_ND},
@@ -114,7 +118,7 @@ gert::TilingContextPara MakeTndPara(optiling::LIGCompileInfo &compileInfo,
             std::vector<uint32_t>{1, 1, 1},
             &compileInfo,
             "Ascend910B",
-            kCoreNum,
+            coreNum,
             kUbSize,
             kTilingDataSize);
     }
@@ -140,7 +144,7 @@ gert::TilingContextPara MakeTndPara(optiling::LIGCompileInfo &compileInfo,
         std::vector<uint32_t>{1, 1, 1},
         &compileInfo,
         "Ascend910B",
-        kCoreNum,
+        coreNum,
         kUbSize,
         kTilingDataSize);
 }
@@ -166,6 +170,38 @@ TEST_F(LightningIndexerGradTiling, tiling_bsnd_fp16_success)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyBsndFp16);
 }
 
+TEST_F(LightningIndexerGradTiling, tiling_bsnd_uniform_global_s1_split_success)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeBsndPara(compileInfo, ge::DT_FLOAT16, "BSND", 0, 64, 1, 128, 4);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(optiling::LIGTilingData));
+
+    auto tilingData = reinterpret_cast<const optiling::LIGTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingInfo.blockNum, 4U);
+    EXPECT_EQ(tilingData->get_totalS1(), 16U);
+    EXPECT_EQ(tilingData->get_usedCoreNum(), 8U);
+    const uint64_t expectedCoreStart[] = {0U, 4U, 8U, 12U, 16U};
+    for (uint32_t coreIdx = 0; coreIdx <= 4; coreIdx++) {
+        EXPECT_EQ(tilingData->coreS1StartIdx[coreIdx], expectedCoreStart[coreIdx]);
+    }
+}
+
+TEST_F(LightningIndexerGradTiling, tiling_bsnd_deterministic_keeps_original_core_count_success)
+{
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeBsndPara(compileInfo, ge::DT_FLOAT16, "BSND", 0, 64, 1, 128, 20, true);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(optiling::LIGTilingData));
+
+    auto tilingData = reinterpret_cast<const optiling::LIGTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingInfo.blockNum, 20U);
+    EXPECT_EQ(tilingData->get_usedCoreNum(), 40U);
+    EXPECT_EQ(tilingData->get_totalS1(), 0U);
+}
+
 TEST_F(LightningIndexerGradTiling, tiling_tnd_bf16_success)
 {
     auto compileInfo = MakeCompileInfo();
@@ -173,6 +209,26 @@ TEST_F(LightningIndexerGradTiling, tiling_tnd_bf16_success)
     int32_t actualSeqK[] = {128};
     auto para = MakeTndPara(compileInfo, actualSeqQ, actualSeqK);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kTilingKeyTndBf16);
+}
+
+TEST_F(LightningIndexerGradTiling, tiling_tnd_uniform_global_t1_split_success)
+{
+    auto compileInfo = MakeCompileInfo();
+    int32_t actualSeqQ[] = {16, 64};
+    int32_t actualSeqK[] = {32, 128};
+    auto para = MakeTndPara(compileInfo, actualSeqQ, actualSeqK, true, ge::DT_BF16, 0, 64, 1, 128, 2, 4);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(optiling::LIGTilingData));
+
+    auto tilingData = reinterpret_cast<const optiling::LIGTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingInfo.blockNum, 4U);
+    EXPECT_EQ(tilingData->get_totalS1(), 64U);
+    EXPECT_EQ(tilingData->get_usedCoreNum(), 8U);
+    const uint64_t expectedCoreStart[] = {0U, 16U, 32U, 48U, 64U};
+    for (uint32_t coreIdx = 0; coreIdx <= 4; coreIdx++) {
+        EXPECT_EQ(tilingData->coreS1StartIdx[coreIdx], expectedCoreStart[coreIdx]);
+    }
 }
 
 TEST_F(LightningIndexerGradTiling, tiling_invalid_layout_failed)
