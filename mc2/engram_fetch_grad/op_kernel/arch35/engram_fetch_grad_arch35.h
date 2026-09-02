@@ -140,6 +140,7 @@ private:
     uint64_t ubSize_{0};
     uint32_t tileBytes_{0};
     uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
+    bool deferRecv_{false};
     uint32_t uniqueEntryBytes_{0};
 
     uint64_t barrierFlagOffset_{0};
@@ -494,6 +495,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         }
         gradSubBatch_ = (rowsPerPing < Mc2Kernel::GRAD_SUB_BATCH) ? rowsPerPing : Mc2Kernel::GRAD_SUB_BATCH;
     }
+    deferRecv_ = (tilingData->deferRecv != 0U);
 
     winSize_ = tilingData->commBufferSize;
 
@@ -841,6 +843,12 @@ __aicore__ inline void EngramFetchGradArch35::FinishExchangeGrad()
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
 
     DrainAndSendFlags();
+
+    // deferRecv=1：接收延后至此，grad 飞行与 sort/count/zero 重叠；
+    // deferRecv=0：接收已在 Process 前段完成，此处仅 drain
+    if (deferRecv_) {
+        RecvGradFromPeers();
+    }
 
     SyncAll<true>();
 }
@@ -1264,10 +1272,14 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
         SendGradToPeers();
 
-        // RecvGradFromPeers 必须先于 entry 阶段的 SyncAll 执行：其内部的 tokenRead 计数器推进是
-        // 发送核流控自旋（SendGradRemote）唯一的解锁来源；若延后到 sort 之后的 FinishExchangeGrad，
-        // 发送核会因无法到达 SyncAll 而与接收核形成跨 rank 进度依赖环（超窗口场景死锁）。
-        RecvGradFromPeers();
+        // 双流控布局（deferRecv 由 Host tiling 按窗口容量判定）：
+        // deferRecv=1（窗口可容纳任一 rank-pair 数据）：发送核在 SendGradRemote 中永不触发流控
+        //   自旋，RecvGradFromPeers 延后至 FinishExchangeGrad，grad 飞行与 sort/count/zero 重叠；
+        // deferRecv=0（超窗口）：先收后算，接收核及时推进 tokenRead 解锁发送核流控自旋，避免
+        //   "发送核等 tokenRead ↔ 接收核等 SyncAll" 的跨 rank 依赖环死锁。
+        if (!deferRecv_) {
+            RecvGradFromPeers();
+        }
 
         // PR10464 flow: receivers pull grad right after senders finish issuing, so the
         // flow-control tokenRead advance never depends on a full-core barrier; the
@@ -1277,6 +1289,10 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
+        if (numRecv > static_cast<uint64_t>(totalRecv_)) {
+            RUNTIME_ABORT("numRecv %u exceeds totalRecv %lld, rankId=%u, aivId=%u", numRecv, totalRecv_, rankId_,
+                          aivId_);
+        }
         if (numRecv == 0) {
             FinishExchangeGrad();
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
