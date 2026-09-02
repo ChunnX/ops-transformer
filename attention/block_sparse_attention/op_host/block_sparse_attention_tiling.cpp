@@ -1142,6 +1142,8 @@ static inline uint32_t CalcFp8KvBaseTile(uint32_t blockShapeY, uint32_t preferre
         return GetMaxDiv(blockShapeY, preferredTile);
     }
     return blockShapeY;
+}
+
 bool BSATiling::IsFp8NdRescaleOnCubeEnabled() const
 {
     if (dataType_ != ge::DT_FLOAT8_E4M3FN ||
