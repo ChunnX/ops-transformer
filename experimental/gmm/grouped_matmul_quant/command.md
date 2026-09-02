@@ -239,181 +239,185 @@ PR 测试说明中建议包含：
 
 
 error:
-(base) j50061995@slave19:~/Projects/ops-transformer/experimental/npu_ops_transformer_ext$ python3 -m pip install \
-  --verbose \
-  --force-reinstall \
-  --no-build-isolation \
-  --no-deps \
-  -e . \
-  2>&1 | tee grouped_matmul_quant_extension_build.log
-Using pip 26.1.2 from /home/j50061995/miniconda3/lib/python3.14/site-packages/pip (python 3.14)
-Obtaining file:///home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext
-  Checking if build backend supports build_editable: started
-  Running command Checking if build backend supports build_editable
-  Checking if build backend supports build_editable: finished with status 'done'
-  Preparing editable metadata (pyproject.toml): started
-  Running command Preparing editable metadata (pyproject.toml)
-  running dist_info
-  creating /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info
-  writing /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/PKG-INFO
-  writing dependency_links to /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/dependency_links.txt
-  writing requirements to /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/requires.txt
-  writing top-level names to /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/top_level.txt
-  writing manifest file '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/SOURCES.txt'
-  reading manifest file '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/SOURCES.txt'
-  writing manifest file '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/SOURCES.txt'
-  creating '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext-0.0.1.dist-info'
-  Preparing editable metadata (pyproject.toml): finished with status 'done'
-Building wheels for collected packages: npu_ops_transformer_ext
-  Building editable for npu_ops_transformer_ext (pyproject.toml): started
-  Running command Building editable for npu_ops_transformer_ext (pyproject.toml)
-  running editable_wheel
-  creating /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info
-  writing /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/PKG-INFO
-  writing dependency_links to /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/dependency_links.txt
-  writing requirements to /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/requires.txt
-  writing top-level names to /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/top_level.txt
-  writing manifest file '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/SOURCES.txt'
-  reading manifest file '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/SOURCES.txt'
-  writing manifest file '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/SOURCES.txt'
-  creating '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext-0.0.1.dist-info'
-  creating /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext-0.0.1.dist-info/WHEEL
-  running build_py
-  running build_ext
-  -- The C compiler identification is GNU 11.4.0
-  -- The CXX compiler identification is GNU 11.4.0
-  -- Detecting C compiler ABI info
-  -- Detecting C compiler ABI info - done
-  -- Check for working C compiler: /usr/bin/cc - skipped
-  -- Detecting C compile features
-  -- Detecting C compile features - done
-  -- Detecting CXX compiler ABI info
-  -- Detecting CXX compiler ABI info - done
-  -- Check for working CXX compiler: /usr/bin/c++ - skipped
-  -- Detecting CXX compile features
-  -- Detecting CXX compile features - done
-  -- Build torch ops: ON
-  -- /home/j50061995/Ascend/cann-9.0.0
-  -- ASCEND_HOME = /home/j50061995/Ascend/cann-9.0.0
-  -- BISHENG     = /home/j50061995/Ascend/cann-9.0.0/bin/bisheng
-  -- Found Python3: /home/j50061995/miniconda3/bin/python3.1 (found version "3.14.6") found components: Interpreter Development Development.Module Development.Embed
-  -- Python3_EXECUTABLE   = /home/j50061995/miniconda3/bin/python3.1
-  -- Python3_INCLUDE_DIRS = /home/j50061995/miniconda3/include/python3.14
-  -- Python3_LIBRARIES    = /home/j50061995/miniconda3/lib/libpython3.14.so
-  Traceback (most recent call last):
-    File "<string>", line 1, in <module>
-      import torch; print(torch.utils.cmake_prefix_path)
-      ^^^^^^^^^^^^
-  ModuleNotFoundError: No module named 'torch'
-  CMake Error at CMakeLists.txt:85 (find_package):
-    By not providing "FindTorch.cmake" in CMAKE_MODULE_PATH this project has
-    asked CMake to find a package configuration file provided by "Torch", but
-    CMake did not find one.
+root@slave19:/workspace/ops-transformer/experimental/gmm/grouped_matmul_quant/tests# set -o pipefail
+python3 -m pytest -sv test_grouped_matmul_quant.py \
+  2>&1 | tee grouped_matmul_quant_precision.log
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-8.3.2, pluggy-1.6.0 -- /usr/local/python3.12.13/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/ops-transformer/experimental/gmm/grouped_matmul_quant/tests
+plugins: xdist-3.6.1, anyio-4.14.1
+collecting ... collected 6 items
 
-    Could not find a package configuration file provided by "Torch" with any of
-    the following names:
+test_grouped_matmul_quant.py::test_int4_pack_round_trip PASSED
+test_grouped_matmul_quant.py::test_golden_nonzero_offset_and_zero_token_expert PASSED
+test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_single_tail_split_k] FAILED
+test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[bf16_zero_token_expert] FAILED
+test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_imbalanced_groups] FAILED
+test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_non_split_k] FAILED
 
-      TorchConfig.cmake
-      torch-config.cmake
+=================================== FAILURES ===================================
+________ test_grouped_matmul_quant_precision[fp16_single_tail_split_k] _________
 
-    Add the installation prefix of "Torch" to CMAKE_PREFIX_PATH or set
-    "Torch_DIR" to a directory containing one of the above files.  If "Torch"
-    provides a separate development package or SDK, be sure it has been
-    installed.
+case = TestCase(name='fp16_single_tail_split_k', m=17, k=64, n=80, group_list=None, scale_group_size=32, dtype=torch.float16, seed=20260901, int4_boundary_values=True)
 
+    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+    def test_grouped_matmul_quant_precision(case: TestCase):
+        pytest.importorskip("torch_npu")
+        if not torch.npu.is_available():
+            pytest.skip("Ascend NPU is not available")
+>       op, op_path = _resolve_operator()
 
-  -- Configuring incomplete, errors occurred!
-  See also "/tmp/tmp2xk83lok.build-temp/npu_ops_transformer_ext._C/CMakeFiles/CMakeOutput.log".
-  Traceback (most recent call last):
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 389, in <module>
-      main()
-      ~~~~^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 373, in main
-      json_out["return_val"] = hook(**hook_input["kwargs"])
-                               ~~~~^^^^^^^^^^^^^^^^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 303, in build_editable
-      return hook(wheel_directory, config_settings, metadata_directory)
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 474, in build_editable
-      return self._build_with_temp_dir(
-             ~~~~~~~~~~~~~~~~~~~~~~~~~^
-          cmd, ".whl", wheel_directory, config_settings
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-      )
-      ^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 410, in _build_with_temp_dir
-      self.run_setup()
-      ~~~~~~~~~~~~~~^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 520, in run_setup
-      super().run_setup(setup_script=setup_script)
-      ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 317, in run_setup
-      exec(code, locals())
-      ~~~~^^^^^^^^^^^^^^^^
-    File "<string>", line 118, in <module>
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/__init__.py", line 117, in setup
-      return distutils.core.setup(**attrs)  # type: ignore[return-value]
-             ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/core.py", line 186, in setup
-      return run_commands(dist)
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/core.py", line 202, in run_commands
-      dist.run_commands()
-      ~~~~~~~~~~~~~~~~~^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/dist.py", line 1000, in run_commands
-      self.run_command(cmd)
-      ~~~~~~~~~~~~~~~~^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/dist.py", line 1107, in run_command
-      super().run_command(command)
-      ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command
-      cmd_obj.run()
-      ~~~~~~~~~~~^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 140, in run
-      self._create_wheel_file(bdist_wheel)
-      ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 350, in _create_wheel_file
-      files, mapping = self._run_build_commands(dist_name, unpacked, lib, tmp)
-                       ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 273, in _run_build_commands
-      self._run_build_subcommands()
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 300, in _run_build_subcommands
-      self.run_command(name)
-      ~~~~~~~~~~~~~~~~^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/cmd.py", line 341, in run_command
-      self.distribution.run_command(command)
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/dist.py", line 1107, in run_command
-      super().run_command(command)
-      ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
-    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command
-      cmd_obj.run()
-      ~~~~~~~~~~~^^
-    File "<string>", line 86, in run
-    File "<string>", line 114, in build_cmake
-    File "/home/j50061995/miniconda3/lib/python3.14/subprocess.py", line 420, in check_call
-      raise CalledProcessError(retcode, cmd)
-  subprocess.CalledProcessError: Command '['cmake', '/home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext', '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext/npu_ops_transformer_ext', '-DPYTHON_EXECUTABLE=/home/j50061995/miniconda3/bin/python3', '-DBUILD_TORCH_OPS=ON', '-DPYTHON_EXTENSION_USE_ABI3=ON', '-DPYTHON_INCLUDE_DIR=/home/j50061995/miniconda3/include/python3.14', '-DPYTHON_LIBRARIES=/home/j50061995/miniconda3/lib', '-DPy_LIMITED_API_VERSION=0x03080000']' returned non-zero exit status 1.
-  An error occurred when building editable wheel for npu_ops_transformer_ext.
-  See debugging tips in: https://setuptools.pypa.io/en/latest/userguide/development_mode.html#debugging-tips
-  error: subprocess-exited-with-error
-  
-  × Building editable for npu_ops_transformer_ext (pyproject.toml) did not run successfully.
-  │ exit code: 1
-  ╰─> No available output.
-  
-  note: This error originates from a subprocess, and is likely not a problem with pip.
-  full command: /home/j50061995/miniconda3/bin/python3 /home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py build_editable /tmp/tmp5zzvebgd
-  cwd: /home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext
-  Building editable for npu_ops_transformer_ext (pyproject.toml): finished with status 'error'
-  ERROR: Failed building editable for npu_ops_transformer_ext
-Failed to build npu_ops_transformer_ext
-error: failed-wheel-build-for-install
+test_grouped_matmul_quant.py:156: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-× Failed to build installable wheels for some pyproject.toml based projects
-╰─> npu_ops_transformer_ext
-(base) j50061995@slave19:~/Projects/ops-transformer/experimental/npu_ops_transformer_ext$ python3 -c "import torch, torch_npu, npu_ops_transformer_ext; print('package:', npu_ops_transformer_ext.__file__); print('extension:', npu_ops_transformer_ext._C.__file__); print('NPU available:', torch.npu.is_available()); print('operator:', torch.ops.npu_ops_transformer_ext.grouped_matmul_quant)"
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-    import torch, torch_npu, npu_ops_transformer_ext; print('package:', npu_ops_transformer_ext.__file__); print('extension:', npu_ops_transformer_ext._C.__file__); print('NPU available:', torch.npu.is_available()); print('operator:', torch.ops.npu_ops_transformer_ext.grouped_matmul_quant)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ModuleNotFoundError: No module named 'torch'
+    def _resolve_operator():
+        _import_registration_modules()
+        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
+        candidates = [configured] if configured else [
+            "ops.vllm.grouped_matmul_quant",
+            "ops.vllm_ascend.grouped_matmul_quant",
+            "ops._C.grouped_matmul_quant",
+            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                return _resolve_attr(candidate), candidate
+            except (AttributeError, RuntimeError):
+                continue
+>       pytest.fail(
+            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
+            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
+        )
+E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
+
+test_grouped_matmul_quant.py:79: Failed
+_________ test_grouped_matmul_quant_precision[bf16_zero_token_expert] __________
+
+case = TestCase(name='bf16_zero_token_expert', m=33, k=128, n=64, group_list=(0, 1, 33), scale_group_size=64, dtype=torch.bfloat16, seed=20260902, int4_boundary_values=False)
+
+    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+    def test_grouped_matmul_quant_precision(case: TestCase):
+        pytest.importorskip("torch_npu")
+        if not torch.npu.is_available():
+            pytest.skip("Ascend NPU is not available")
+>       op, op_path = _resolve_operator()
+
+test_grouped_matmul_quant.py:156: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _resolve_operator():
+        _import_registration_modules()
+        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
+        candidates = [configured] if configured else [
+            "ops.vllm.grouped_matmul_quant",
+            "ops.vllm_ascend.grouped_matmul_quant",
+            "ops._C.grouped_matmul_quant",
+            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                return _resolve_attr(candidate), candidate
+            except (AttributeError, RuntimeError):
+                continue
+>       pytest.fail(
+            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
+            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
+        )
+E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
+
+test_grouped_matmul_quant.py:79: Failed
+_________ test_grouped_matmul_quant_precision[fp16_imbalanced_groups] __________
+
+case = TestCase(name='fp16_imbalanced_groups', m=257, k=96, n=48, group_list=(1, 2, 257), scale_group_size=32, dtype=torch.float16, seed=20260903, int4_boundary_values=False)
+
+    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+    def test_grouped_matmul_quant_precision(case: TestCase):
+        pytest.importorskip("torch_npu")
+        if not torch.npu.is_available():
+            pytest.skip("Ascend NPU is not available")
+>       op, op_path = _resolve_operator()
+
+test_grouped_matmul_quant.py:156: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _resolve_operator():
+        _import_registration_modules()
+        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
+        candidates = [configured] if configured else [
+            "ops.vllm.grouped_matmul_quant",
+            "ops.vllm_ascend.grouped_matmul_quant",
+            "ops._C.grouped_matmul_quant",
+            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                return _resolve_attr(candidate), candidate
+            except (AttributeError, RuntimeError):
+                continue
+>       pytest.fail(
+            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
+            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
+        )
+E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
+
+test_grouped_matmul_quant.py:79: Failed
+____________ test_grouped_matmul_quant_precision[fp16_non_split_k] _____________
+
+case = TestCase(name='fp16_non_split_k', m=5760, k=32, n=1024, group_list=None, scale_group_size=32, dtype=torch.float16, seed=20260904, int4_boundary_values=False)
+
+    @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
+    def test_grouped_matmul_quant_precision(case: TestCase):
+        pytest.importorskip("torch_npu")
+        if not torch.npu.is_available():
+            pytest.skip("Ascend NPU is not available")
+>       op, op_path = _resolve_operator()
+
+test_grouped_matmul_quant.py:156: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _resolve_operator():
+        _import_registration_modules()
+        configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
+        candidates = [configured] if configured else [
+            "ops.vllm.grouped_matmul_quant",
+            "ops.vllm_ascend.grouped_matmul_quant",
+            "ops._C.grouped_matmul_quant",
+            "ops.npu_ops_transformer_ext.grouped_matmul_quant",
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                return _resolve_attr(candidate), candidate
+            except (AttributeError, RuntimeError):
+                continue
+>       pytest.fail(
+            "GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set "
+            "GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch)."
+        )
+E       Failed: GroupedMatmulQuant torch operator is not registered. Build/import its adapter, or set GROUPED_MATMUL_QUANT_MODULES and GROUPED_MATMUL_QUANT_OP (path relative to torch).
+
+test_grouped_matmul_quant.py:79: Failed
+=============================== warnings summary ===============================
+../../../../../../usr/local/python3.12.13/lib/python3.12/site-packages/torch/jit/_script.py:362: 14 warnings
+  /usr/local/python3.12.13/lib/python3.12/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+test_grouped_matmul_quant.py:20
+  /workspace/ops-transformer/experimental/gmm/grouped_matmul_quant/tests/test_grouped_matmul_quant.py:20: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: test_grouped_matmul_quant.py)
+    @dataclass(frozen=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_single_tail_split_k]
+FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[bf16_zero_token_expert]
+FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_imbalanced_groups]
+FAILED test_grouped_matmul_quant.py::test_grouped_matmul_quant_precision[fp16_non_split_k]
+=================== 4 failed, 2 passed, 15 warnings in 8.54s ===================
