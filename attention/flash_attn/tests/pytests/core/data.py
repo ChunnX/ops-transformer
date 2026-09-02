@@ -111,11 +111,18 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
     )
 
+    # === sinks ===
+    sinks = None
+    if p.get("sinks") is not None:
+        sinks = inputs.get("sinks")
+        if sinks is not None:
+            sinks = sinks.to(device)
+
     # === kernel kwargs ===
     kernel_kwargs = dict(
         softmax_scale=scale, mask_mode=mask_mode,
         win_left=wl, win_right=wr,
-        block_table=bt, sinks=None, attn_mask=attn_mask,
+        block_table=bt, sinks=sinks, attn_mask=attn_mask,
         cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
         seqused_q=sq, seqused_kv=skv,
         max_seqlen_q=msq,
