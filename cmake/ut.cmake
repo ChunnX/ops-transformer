@@ -408,7 +408,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     if(ARGN)
       list(GET ARGN 0 KernelFile)
     else()
-      file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp")
+      file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp" "${PROJECT_SOURCE_DIR}/*/*/${opName}/op_kernel/${opName}.cpp")
     endif()
 
     # find case file
@@ -505,13 +505,16 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       set(gen_cmd "bash ${gen_tiling_head_file} ${opType} ${opName} ${gen_tiling_so_path} ${CUSTOM_TILING_DATA_KEYS}")
       message("gen tiling head file to ${tilingFile}, command:")
       message("${gen_cmd}")
-      add_custom_command(
-        OUTPUT ${tilingFile}
-        COMMAND rm -f ${tilingFile}
-        COMMAND bash -c ${gen_cmd}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        DEPENDS ${opName}_${socVersion}_tiling_tmp
-        )
+      if(NOT TARGET ${opName}_tiling_data_header)
+        add_custom_command(
+          OUTPUT ${tilingFile}
+          COMMAND rm -f ${tilingFile}
+          COMMAND bash -c ${gen_cmd}
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          DEPENDS ${opName}_${socVersion}_tiling_tmp
+          )
+        add_custom_target(${opName}_tiling_data_header ALL DEPENDS ${tilingFile})
+      endif()
       add_custom_target(${gen_tiling_head_tag} ALL DEPENDS ${tilingFile})
 
       # add object: ${opName}_${socVersion}_cases_obj

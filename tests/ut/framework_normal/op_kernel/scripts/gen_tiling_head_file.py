@@ -163,6 +163,15 @@ def get_asc_file_path(opname: str):
                         os.path.join(repo_dir_path, op_dir) + f"/op_kernel/{opname}.cpp"
                     )
                     return asc_file_path
+                op_subdir_path = os.path.join(repo_dir_path, op_dir)
+                if os.path.isdir(op_subdir_path):
+                    for nested_op_dir in os.listdir(op_subdir_path):
+                        if nested_op_dir == opname:
+                            asc_file_path = (
+                                os.path.join(op_subdir_path, nested_op_dir)
+                                + f"/op_kernel/{opname}.cpp"
+                            )
+                            return asc_file_path
     return asc_file_path
 
 
