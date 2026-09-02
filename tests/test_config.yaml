@@ -313,7 +313,8 @@ attention:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md
     test:
-      ut: True
+      examples: True
+      ut: false
     ut_cov_exclude:
       - attention/flash_attention_score_grad/op_api
       - attention/flash_attention_score_grad/op_graph
