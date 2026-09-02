@@ -77,8 +77,8 @@ public:
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(false)
-            .DynamicRankSupportFlag(false)
-            .DynamicShapeSupportFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "moe_token_unpermute_with_ep_grad");
         this->AICore().AddConfig("ascend950", aicore_config);
