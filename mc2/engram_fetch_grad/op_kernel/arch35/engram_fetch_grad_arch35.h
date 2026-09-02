@@ -32,6 +32,7 @@
 #include "../engram_fetch_grad_tiling_data.h"
 #include "../engram_fetch_grad_utils.h"
 #include "adv_api/hccl/hccl.h"
+#include "adv_api/index/arithprogression.h"
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
 #endif
@@ -142,6 +143,12 @@ private:
     uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
     bool deferRecv_{false};
     uint32_t uniqueEntryBytes_{0};
+    uint64_t recvSpinCycles_{0};
+    uint64_t sendWspinCycles_{0};
+    uint64_t sendWnbCycles_{0};
+    uint64_t sendLocalCycles_{0};
+    uint64_t barDrainCycles_{0};
+    uint64_t barFlagwCycles_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -547,6 +554,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     maxTokensPerSlot_ = static_cast<uint32_t>(tokenSlotSize_ / static_cast<uint64_t>(hiddenBytes_));
     if (maxTokensPerSlot_ == 0U) {
         maxTokensPerSlot_ = 1U;
+    } else {
+        tokenSlotSize_ = static_cast<uint64_t>(maxTokensPerSlot_) * static_cast<uint64_t>(hiddenBytes_);
     }
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
@@ -855,6 +864,9 @@ __aicore__ inline void EngramFetchGradArch35::FinishExchangeGrad()
 __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
 {
     pendingHandleCount_ = 0;
+    sendWspinCycles_ = 0;
+    sendWnbCycles_ = 0;
+    sendLocalCycles_ = 0;
     if (!isSender_) {
         return;
     }
@@ -898,8 +910,10 @@ __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
             int64_t rdispl = rDisplSlotGM.GetValue(0);
             int64_t myRdispl = rdispl + static_cast<int64_t>(senderIdx) * baseShare;
+            uint64_t localStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
             LocalCopySlice(recvGradGM_ + myRdispl * hiddenBytes_, gradSortedGM_ + mySdispl * hiddenBytes_,
                            static_cast<uint64_t>(mySendCount) * hiddenBytes_);
+            sendLocalCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - localStart;
             continue;
         }
 
@@ -921,6 +935,7 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
 
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
+            uint64_t spinStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
             if (!creditReadInFlight_ && localWriteCnt + 1U >= static_cast<uint32_t>(remoteReadCnt) + slotsPerSender) {
                 PrefetchCreditCounter(dstRank, senderIdx);
@@ -931,6 +946,7 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
                 remoteReadCnt = CompleteCreditCounter(startTime);
                 TimeoutCheck(startTime, TIMEOUT_SEND_CREDIT_WAIT);
             }
+            sendWspinCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - spinStart;
         }
 
         uint32_t remaining = static_cast<uint32_t>(sendCount) - totalSent;
@@ -947,10 +963,24 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
 
         GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, tokenWriteOffset_) +
                                     (static_cast<uint64_t>(rankId_) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
+        uint64_t wnbStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
                                                 static_cast<uint64_t>(localWriteCnt + 1));
-        ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
-                       rankId_, dstRank);
+        if (ret != 0) {
+            for (uint32_t i = 0; i < COMM_RETRY_COUNT; i++) {
+                ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
+                                                static_cast<uint64_t>(localWriteCnt + 1));
+                if (ret == 0) {
+                    break;
+                }
+            }
+            if (ret != 0) {
+                RUNTIME_ABORT(
+                    "WriteWithNotifyNbi failed after %u retries, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u",
+                    COMM_RETRY_COUNT, ret, rankId_, dstRank);
+            }
+        }
+        sendWnbCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - wnbStart;
 
         localWriteCnt++;
         totalSent += chunkLen;
@@ -978,6 +1008,7 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
     if (!isReceiver_) {
         return;
     }
+    recvSpinCycles_ = 0;
 
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
     uint32_t recvIdx = (aivId_ > numSendCores_) ? (aivId_ - numSendCores_) : 0U;
@@ -1026,12 +1057,14 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
         uint32_t localReadCnt = 0;
 
         while (senderReceived < senderRecvCount) {
+            uint64_t spinStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
             int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
             while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
                 remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
                 TimeoutCheck(startTime, TIMEOUT_RECV_COUNTER_WAIT);
             }
+            recvSpinCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - spinStart;
 
             uint32_t availSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
             uint32_t remaining = senderRecvCount - senderReceived;
@@ -1107,19 +1140,24 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
     GlobalTensor<int32_t> compGM;
     compGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
 
+    uint32_t batchCap = indicesBufElements_;
+    constexpr uint32_t MAX_COPY_ELEMS = 65535U / sizeof(int32_t);
+    if (batchCap > MAX_COPY_ELEMS) {
+        batchCap = MAX_COPY_ELEMS;
+    }
+
     uint32_t cur = start;
     while (cur < end) {
         uint32_t batchLen = end - cur;
-        if (batchLen > ENTRY_BATCH_CAP) {
-            batchLen = ENTRY_BATCH_CAP;
+        if (batchLen > batchCap) {
+            batchLen = batchCap;
         }
-        for (uint32_t i = 0; i < batchLen; i++) {
-            idxLocal.SetValue(i, static_cast<int32_t>(cur + i));
-        }
+        AscendC::Arange<int32_t>(idxLocal, static_cast<int32_t>(cur), static_cast<int32_t>(1),
+                                 static_cast<int32_t>(batchLen));
         EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
         DataCopyParams cp = {1U, static_cast<uint16_t>(batchLen * sizeof(int32_t)), 0U, 0U};
         DataCopyPad(compGM[cur], idxLocal, cp);
-        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
+        EngramFetchGradSyncFunc<HardEvent::MTE3_V>();
         cur += batchLen;
     }
 }
@@ -1242,7 +1280,9 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
         uint32_t senderIdx = aivId_ / numRanks_;
         if (senderIdx == 0U && dstRank != rankId_) {
             uint64_t handle = GetCommHandle(dstRank, 0U);
+            uint64_t drainStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
             DrainChecked(handle);
+            barDrainCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - drainStart;
         }
     }
     SyncAll<true>();
@@ -1250,7 +1290,9 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
     if (isFlagCore_) {
         GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
         GM_ADDR localFlagBase = localWinBase + barrierFlagOffset_;
+        uint64_t flagStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         WaitAllStatusFlags(localFlagBase, numRanks_);
+        barFlagwCycles_ = static_cast<uint64_t>(AscendC::GetSystemCycle()) - flagStart;
         ClearStatusFlags(localFlagBase);
     }
     SyncAll<true>();
@@ -1259,46 +1301,65 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        uint64_t processStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        barDrainCycles_ = 0;
+        barFlagwCycles_ = 0;
         InitFlagsAndDispls();
+        uint64_t iflagEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         ClearWinCounters();
         SyncAll<true>();
+        uint64_t clearEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
         // Barrier split: issue the cross-rank flag writes, then run the local 10MB
         // UnsortGrad while the flags fly; the wait phase drains + spins, and its trailing
         // SyncAll doubles as the gradSorted-completion barrier before SendGradToPeers.
         CrossRankBarrierIssue();
+        uint64_t issueEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        uint64_t unsortStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UnsortGrad();
+        uint64_t unsortEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         CrossRankBarrierWait();
 
+        uint64_t sendStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
+        uint64_t sendEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        // 双流控布局（deferRecv 由 Host tiling 按窗口容量判定）：
-        // deferRecv=1（窗口可容纳任一 rank-pair 数据）：发送核在 SendGradRemote 中永不触发流控
-        //   自旋，RecvGradFromPeers 延后至 FinishExchangeGrad，grad 飞行与 sort/count/zero 重叠；
-        // deferRecv=0（超窗口）：先收后算，接收核及时推进 tokenRead 解锁发送核流控自旋，避免
-        //   "发送核等 tokenRead ↔ 接收核等 SyncAll" 的跨 rank 依赖环死锁。
         if (!deferRecv_) {
             RecvGradFromPeers();
         }
 
-        // PR10464 flow: receivers pull grad right after senders finish issuing, so the
-        // flow-control tokenRead advance never depends on a full-core barrier; the
-        // entry-only phases (initCompanion/sort/count/zero) then run on the received
-        // entries, and scatterCast is the only consumer of recvGradGM_.
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
+        uint64_t dataReadyCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         if (numRecv > static_cast<uint64_t>(totalRecv_)) {
             RUNTIME_ABORT("numRecv %u exceeds totalRecv %lld, rankId=%u, aivId=%u", numRecv, totalRecv_, rankId_,
                           aivId_);
         }
         if (numRecv == 0) {
+            uint64_t gapCycles = dataReadyCycle - sendEndCycle;
+            uint64_t copyCycles = (recvSpinCycles_ < gapCycles) ? (gapCycles - recvSpinCycles_) : 0U;
+            AscendC::printf("ENGRAM core=%u numRecv=0 "
+                            "pre=%lluu(iflag=%lluu,clear=%lluu,issue=%lluu,unsort=%lluu,barw=%lluu,"
+                            "drain=%lluu,flagw=%lluu) "
+                            "send=%lluu(wspin=%lluu,wnb=%lluu,local=%lluu) gap=%lluu(rspin=%lluu,copy=%lluu)\n",
+                            aivId_, (sendStartCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (iflagEndCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (clearEndCycle - iflagEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (issueEndCycle - clearEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (unsortEndCycle - unsortStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (sendStartCycle - unsortEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            barDrainCycles_ / ENGRAM_GRAD_CYCLES_PER_US, barFlagwCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
+                            (sendEndCycle - sendStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            sendWspinCycles_ / ENGRAM_GRAD_CYCLES_PER_US, sendWnbCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
+                            sendLocalCycles_ / ENGRAM_GRAD_CYCLES_PER_US, gapCycles / ENGRAM_GRAD_CYCLES_PER_US,
+                            recvSpinCycles_ / ENGRAM_GRAD_CYCLES_PER_US, copyCycles / ENGRAM_GRAD_CYCLES_PER_US);
             FinishExchangeGrad();
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
         } else {
             InitCompanion(numRecv);
-            SyncAll<true>();
+            uint64_t initEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             sortPool_.Reset();
             uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
@@ -1318,12 +1379,54 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.SetAccumBuf(accumBuf_);
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
             uniqueScatter_.SetEntryBufBytes(uniqueEntryBytes_);
+            uint64_t sortEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
+            uint64_t countEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
             FinishExchangeGrad();
+            uint64_t drainEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                                           gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
+            uint64_t processEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uint64_t histCycles = 0;
+            uint64_t prefixCycles = 0;
+            uint64_t scatCycles = 0;
+            uint64_t cpCycles = 0;
+            sorter_.GetPhaseCycles(histCycles, prefixCycles, scatCycles, cpCycles);
+            uint64_t gapCycles = dataReadyCycle - sendEndCycle;
+            uint64_t copyCycles = (recvSpinCycles_ < gapCycles) ? (gapCycles - recvSpinCycles_) : 0U;
+
+            AscendC::printf("ENGRAM core=%u dr=%u total=%lluu "
+                            "pre=%lluu(iflag=%lluu,clear=%lluu,issue=%lluu,unsort=%lluu,barw=%lluu,"
+                            "drain=%lluu,flagw=%lluu) "
+                            "send=%lluu(wspin=%lluu,wnb=%lluu,local=%lluu) "
+                            "gap=%lluu(rspin=%lluu,copy=%lluu) "
+                            "init=%lluu sort=%lluu(hist=%lluu,prefix=%lluu,scat=%lluu,cp=%lluu) "
+                            "count=%lluu drain2=%lluu scatterCast=%lluu\n",
+                            aivId_, static_cast<uint32_t>(deferRecv_),
+                            (processEndCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (sendStartCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (iflagEndCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (clearEndCycle - iflagEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (issueEndCycle - clearEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (unsortEndCycle - unsortStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (sendStartCycle - unsortEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            barDrainCycles_ / ENGRAM_GRAD_CYCLES_PER_US, barFlagwCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
+                            (sendEndCycle - sendStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            sendWspinCycles_ / ENGRAM_GRAD_CYCLES_PER_US, sendWnbCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
+                            sendLocalCycles_ / ENGRAM_GRAD_CYCLES_PER_US, gapCycles / ENGRAM_GRAD_CYCLES_PER_US,
+                            recvSpinCycles_ / ENGRAM_GRAD_CYCLES_PER_US, copyCycles / ENGRAM_GRAD_CYCLES_PER_US,
+                            (initEndCycle - dataReadyCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (sortEndCycle - initEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            histCycles / ENGRAM_GRAD_CYCLES_PER_US, prefixCycles / ENGRAM_GRAD_CYCLES_PER_US,
+                            scatCycles / ENGRAM_GRAD_CYCLES_PER_US, cpCycles / ENGRAM_GRAD_CYCLES_PER_US,
+                            (countEndCycle - sortEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (drainEndCycle - countEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
+                            (processEndCycle - drainEndCycle) / ENGRAM_GRAD_CYCLES_PER_US);
         }
     }
 }
