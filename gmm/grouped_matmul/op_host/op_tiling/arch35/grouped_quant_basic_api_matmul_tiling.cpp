@@ -943,7 +943,8 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
 
 ge::graphStatus GroupedS4S4IntQuantTiling::DoLibApiTiling()
 {
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
+    auto l1TilingStatus = CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "CalL1Tiling status",
                                                       std::to_string(static_cast<int64_t>(l1TilingStatus)),
                                                       "CalL1Tiling must return GRAPH_SUCCESS"),

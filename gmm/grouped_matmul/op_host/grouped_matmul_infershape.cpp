@@ -1787,8 +1787,9 @@ static ge::graphStatus XNotSingleYSeparated(gert::InferShapeContext *context, si
                         Ops::Transformer::Gmm::FormatString("Failed to update shape of y").c_str()),
                     return GRAPH_FAILED);
     } else {
+        auto multiRet = MultiInMultiOutWithoutGroupList(context);
         OP_CHECK_IF(
-            MultiInMultiOutWithoutGroupList(context) != GRAPH_SUCCESS,
+            multiRet != GRAPH_SUCCESS,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context->GetNodeName(), "MultiInMultiOutWithoutGroupList status",
                 std::to_string(static_cast<int64_t>(multiRet)),
@@ -1833,7 +1834,8 @@ static ge::graphStatus GMMSetOutputShape(gert::InferShapeContext *context, GMMAt
                             Ops::Transformer::Gmm::FormatString("Failed to update shape of y").c_str()),
                         return GRAPH_FAILED);
         } else {
-            OP_CHECK_IF(MultiWeightMultiOutWithoutGroupList(context) != GRAPH_SUCCESS,
+            auto multiRet = MultiWeightMultiOutWithoutGroupList(context);
+            OP_CHECK_IF(multiRet != GRAPH_SUCCESS,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                             context->GetNodeName(), "MultiWeightMultiOutWithoutGroupList status",
                             std::to_string(static_cast<int64_t>(multiRet)),
@@ -2083,17 +2085,20 @@ static graphStatus CheckTensorListDataType(const gert::InferDataTypeContext *con
 static graphStatus CheckMatmulDataType(gert::InferDataTypeContext *context, const DataType xDtype,
                                        const DataType weightDtype, const DataType biasDtype)
 {
-    OP_CHECK_IF(CheckTensorListDataType(context, GMM_INDEX_IN_X, xDtype) != GRAPH_SUCCESS,
+    auto xCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_X, xDtype);
+    OP_CHECK_IF(xCheckRet != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(x) status",
                                                       std::to_string(static_cast<int64_t>(xCheckRet)),
                                                       "CheckTensorListDataType must return GRAPH_SUCCESS"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(CheckTensorListDataType(context, GMM_INDEX_IN_WEIGHT, weightDtype) != GRAPH_SUCCESS,
+    auto weightCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_WEIGHT, weightDtype);
+    OP_CHECK_IF(weightCheckRet != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(weight) status",
                                                       std::to_string(static_cast<int64_t>(weightCheckRet)),
                                                       "CheckTensorListDataType must return GRAPH_SUCCESS"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, biasDtype) != GRAPH_SUCCESS,
+    auto biasCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, biasDtype);
+    OP_CHECK_IF(biasCheckRet != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(bias) status",
                                                       std::to_string(static_cast<int64_t>(biasCheckRet)),
                                                       "CheckTensorListDataType must return GRAPH_SUCCESS"),
@@ -2129,18 +2134,21 @@ static graphStatus CheckNonQuantMatmulParams(fe::PlatformInfo &platformInfo, ger
 
 static graphStatus CheckFunctionQuantParams(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(CheckTensorListDataType(context, GMM_INDEX_IN_X, DataType::DT_INT8) != GRAPH_SUCCESS,
+    auto xCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_X, DataType::DT_INT8);
+    OP_CHECK_IF(xCheckRet != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(x) status",
                                                       std::to_string(static_cast<int64_t>(xCheckRet)),
                                                       "CheckTensorListDataType must return GRAPH_SUCCESS"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF(CheckTensorListDataType(context, GMM_INDEX_IN_WEIGHT, DataType::DT_INT8) != GRAPH_SUCCESS,
+    auto weightCheckRet = CheckTensorListDataType(context, GMM_INDEX_IN_WEIGHT, DataType::DT_INT8);
+    OP_CHECK_IF(weightCheckRet != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckTensorListDataType(weight) status",
                                                       std::to_string(static_cast<int64_t>(weightCheckRet)),
                                                       "CheckTensorListDataType must return GRAPH_SUCCESS"),
                 return GRAPH_FAILED);
-    OP_CHECK_IF((CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, DataType::DT_INT32) != GRAPH_SUCCESS) &&
-                    (CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, DataType::DT_BF16) != GRAPH_SUCCESS),
+    auto biasInt32Ret = CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, DataType::DT_INT32);
+    auto biasBf16Ret = CheckTensorListDataType(context, GMM_INDEX_IN_BIAS, DataType::DT_BF16);
+    OP_CHECK_IF((biasInt32Ret != GRAPH_SUCCESS) && (biasBf16Ret != GRAPH_SUCCESS),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context->GetNodeName(), "CheckTensorListDataType(bias) status",
                     Ops::Transformer::Gmm::FormatString("%ld, %ld", static_cast<int64_t>(biasInt32Ret),
