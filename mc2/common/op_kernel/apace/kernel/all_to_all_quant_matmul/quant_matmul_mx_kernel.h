@@ -25,6 +25,7 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "apace/basic/buffer/buffer_channel.h"
 #define WINDOW_LEN 1L   // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #undef WINDOW_LEN
@@ -332,6 +333,11 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     uint64_t winTotalM = static_cast<uint64_t>(effBufferCount) * winPerRound;
     uint64_t scaleWinTotalM = static_cast<uint64_t>(totalTiles) * winPerRound;
 
+    Apace::Basic::BufferChannel dataChannel;
+    Apace::Basic::BufferChannel scaleChannel;
+    dataChannel.Init(0, winPerRound, effBufferCount, totalTiles);
+    scaleChannel.Init(0, winPerRound, totalTiles, totalTiles);
+
     // 构建各 Tensor 的全局布局
     auto layoutA = MakeLayoutA{}(winTotalM, Te::Get<MNK_K>(params.problemShape));
     auto layoutALocal = MakeLayoutA{}(rankSize * oriM, Te::Get<MNK_K>(params.problemShape));
@@ -375,6 +381,8 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
     constexpr int64_t kPos = 0L;
     int32_t readyTileIdx = -1;
     int32_t releasedTileIdx = -1;
+    uint64_t dataSlotOffset = 0;
+    uint64_t scaleSlotOffset = 0;
     // 遍历当前块的调度任务
     while (bs.GetTileIdx(blockIdx)) {
         BlockShape singleShape =
@@ -428,17 +436,16 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
                 commPolicy_.WaitTile(readyTileIdx);
+                dataSlotOffset = dataChannel.GetNextSlotAddr();
+                scaleSlotOffset = scaleChannel.GetNextSlotAddr();
             }
             // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
             uint32_t remoteRankCnt = 1;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 if (rank == rankId) continue;
-                uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
-                uint64_t slotIdx = tileIdx % static_cast<uint64_t>(effBufferCount);
-                uint64_t tileOffset = static_cast<uint64_t>(mPos) -
-                    tileIdx * params.localParams.headTileSize;
-                uint64_t actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
-                uint64_t scaleActualMPos = tileIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
+                uint64_t tileOffset = static_cast<uint64_t>(mPos) % params.localParams.headTileSize;
+                uint64_t actualMPos = dataSlotOffset + rank * params.localParams.headTileSize + tileOffset;
+                uint64_t scaleActualMPos = scaleSlotOffset + rank * params.localParams.headTileSize + tileOffset;
                 auto gmBlockA_remote =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                         AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
@@ -459,15 +466,14 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
                 commPolicy_.WaitTile(readyTileIdx);
+                dataSlotOffset = dataChannel.GetNextSlotAddr();
+                scaleSlotOffset = scaleChannel.GetNextSlotAddr();
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto denseMPos = rank * oriM + static_cast<uint64_t>(mPos);
-                uint64_t tileIdx = static_cast<uint64_t>(mPos) / params.localParams.headTileSize;
-                uint64_t slotIdx = tileIdx % static_cast<uint64_t>(effBufferCount);
-                uint64_t tileOffset = static_cast<uint64_t>(mPos) -
-                    tileIdx * params.localParams.headTileSize;
-                uint64_t actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
-                uint64_t scaleActualMPos = tileIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
+                uint64_t tileOffset = static_cast<uint64_t>(mPos) % params.localParams.headTileSize;
+                uint64_t actualMPos = dataSlotOffset + rank * params.localParams.headTileSize + tileOffset;
+                uint64_t scaleActualMPos = scaleSlotOffset + rank * params.localParams.headTileSize + tileOffset;
                 // 从通信buffer上切片
                 auto gmBlockA =
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
@@ -498,13 +504,11 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             }
         }
         // win buffer 复用：本核 dependTileIdx 单调不减，≤ dependTileIdx-1 的 tile 本核不再访问，
-        // 逐 tile 释放（去重：每 tile 每核只 release 一次），flag 打在 PIPE_FIX 上保证本 block 读已完成
-        if (!localFirst && bufferCount > 0) {
+        // 逐 tile 释放（去重：每 tile 每核只 release 一次），上限判断收进 SetRelease 内部
+        if (!localFirst) {
             while (releasedTileIdx < dependTileIdx - 1) {
                 releasedTileIdx++;
-                if (releasedTileIdx < totalTiles - bufferCount) {
-                    commPolicy_.ReleaseTile(static_cast<uint32_t>(releasedTileIdx));
-                }
+                dataChannel.SetRelease(static_cast<uint32_t>(releasedTileIdx));
             }
         }
     }
@@ -516,12 +520,10 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
             commPolicy_.WaitTile(readyTileIdx);
         }
         // release 兜底：每个 AIC 核（包括未分到 block 的核）都要把 flag 补齐，
-        // AIV 复用等待最大需要 flag totalTiles-bufferCount-1，补到 totalTiles-2 覆盖
-        if (bufferCount > 0) {
-            while (releasedTileIdx < totalTiles - bufferCount - 1) {
-                releasedTileIdx++;
-                commPolicy_.ReleaseTile(static_cast<uint32_t>(releasedTileIdx));
-            }
+        // AIV 复用等待最大需要 flag totalTiles-slotNum-1，补到 totalTiles-2 覆盖
+        while (releasedTileIdx < static_cast<int64_t>(totalTiles) - static_cast<int64_t>(dataChannel.GetSlotNum()) - 1) {
+            releasedTileIdx++;
+            dataChannel.SetRelease(static_cast<uint32_t>(releasedTileIdx));
         }
     }
 }
