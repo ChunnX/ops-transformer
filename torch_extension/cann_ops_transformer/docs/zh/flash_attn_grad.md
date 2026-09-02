@@ -120,24 +120,24 @@ cann_ops_transformer.flash_attn_grad(
 | softmax_lse | Tensor | 必选 | 前向接口在`return_softmax_lse=True`时返回的log-sum-exp结果 | float32 | ND | <ul><li>BSND/BNSD：(B, N1, S1)</li><li>TND：(N1, T1)</li></ul> |
 | cu_seqlens_q | Tensor | 可选 | TND布局下Q的累积序列长度，第一个元素必须为0，最后一个元素等于T1。`layout_q`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
 | cu_seqlens_kv | Tensor | 可选 | TND布局下KV的累积序列长度，第一个元素必须为0，最后一个元素等于T2。`layout_kv`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
-| seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度；当前kernel暂不支持，必须为None。默认值为None | int32 | ND | - |
-| seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度；当前kernel暂不支持，必须为None。默认值为None | int32 | ND | - |
-| sinks | Tensor | 可选 | Sink参数；当前kernel暂不支持，必须为None。默认值为None | float32 | ND | - |
-| attn_mask | Tensor | 可选 | Attention mask；当前kernel暂不支持，必须为None。默认值为None | int8 | ND | - |
-| metadata | Tensor | 可选 | `flash_attn_metadata`生成的FAG任务切分数据。schema中为可选参数，但当前kernel会读取该数据，因此实际调用时必须传入 | int32 | ND | shape根据batch大小和N2动态计算 |
+| seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度。默认值为None | int32 | ND | (B,) |
+| seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度。默认值为None | int32 | ND | (B,) |
+| sinks | Tensor | 可选 | Sink参数，用于改善自注意力计算的数值稳定性。默认值为None | float32 | ND | (N1,) |
+| attn_mask | Tensor | 可选 | 掩码矩阵。默认值为None | int8 | ND | (2048, 2048) |
+| metadata | Tensor | 可选 | `flash_attn_metadata`生成的FAG任务切分数据。schema中为可选参数，但实际调用时必须传入 | int32 | ND | shape根据batch大小和N2动态计算 |
 | softmax_scale | float | 可选 | Softmax缩放系数。默认值为0.0，表示使用$1/\sqrt{D}$ | float32 | - | - |
-| mask_mode | int | 可选 | 掩码模式。当前kernel仅支持0，表示不使用mask。默认值为0 | int32 | - | - |
-| win_left | int | 可选 | Window mask左窗口。当前支持场景必须为-1。默认值为-1 | int32 | - | - |
-| win_right | int | 可选 | Window mask右窗口。当前支持场景必须为-1。默认值为-1 | int32 | - | - |
-| max_seqlen_q | int | 可选 | Q最大序列长度，必须大于等于-1。当前Dense反向计算可保持默认值-1，由输入shape推导S1 | int32 | - | - |
-| max_seqlen_kv | int | 可选 | KV最大序列长度，必须大于等于-1。当前Dense反向计算可保持默认值-1，由输入shape推导S2 | int32 | - | - |
+| mask_mode | int | 可选 | 掩码模式。0表示全计算，3表示Causal，4表示Window。默认值为0 | int32 | - | - |
+| win_left | int | 可选 | Window mask左窗口，值需大于等于-1，-1表示正无穷。默认值为-1 | int32 | - | - |
+| win_right | int | 可选 | Window mask右窗口，值需大于等于-1，-1表示正无穷。默认值为-1 | int32 | - | - |
+| max_seqlen_q | int | 可选 | Q最大序列长度，必须大于等于-1。BSND/BNSD场景可保持默认值-1，由输入shape推导S1 | int32 | - | - |
+| max_seqlen_kv | int | 可选 | KV最大序列长度，必须大于等于-1。BSND/BNSD场景可保持默认值-1，由输入shape推导S2 | int32 | - | - |
 | layout_q | string | 可选 | q的布局。当前支持BSND、BNSD、TND。默认值为"BSND" | string | - | - |
 | layout_kv | string | 可选 | k和v的布局，必须与`layout_q`相同。默认值为"BSND" | string | - | - |
 | layout_out | string | 可选 | `dout`和`attn_out`的布局，必须与`layout_q`相同。默认值为"BSND" | string | - | - |
 
 > [!NOTE]
 >
-> `q`、`k`、`v`、`dout`、`attn_out`及输出`dq`、`dk`、`dv`支持float16和bfloat16，数据类型必须一致。当前经过功能验证的数据类型仅为float16。
+> `q`、`k`、`v`、`dout`、`attn_out`及输出`dq`、`dk`、`dv`支持float16和bfloat16，数据类型必须一致。
 
 ## 返回值说明
 
@@ -149,11 +149,11 @@ cann_ops_transformer.flash_attn_grad(
 
 ## 约束说明
 
-- 接口支持以下组合，当前经过功能验证的场景见本节末尾说明：
+- 接口支持以下组合：
   - 数据类型为float16或bfloat16。
   - `layout_q`、`layout_kv`、`layout_out`支持BSND、BNSD、TND，且必须相同。
   - Dense Attention，`mask_mode=0`、`attn_mask=None`、`win_left=-1`、`win_right=-1`。
-  - TND布局下`cu_seqlens_q`、`cu_seqlens_kv`必须传入；非TND布局下不支持传入。`seqused_q`、`seqused_kv`、`sinks`当前不支持，必须为None。
+  - TND布局下`cu_seqlens_q`、`cu_seqlens_kv`必须传入；非TND布局下不支持传入。
 - `q`、`k`、`v`、`dout`、`attn_out`的数据类型必须一致。
 - B、S1、S2、N1、N2、D和Dv必须为正数，其中B的取值范围为(0, 65536)。
 - N1必须能被N2整除，支持MHA（N1=N2）和GQA（N1>N2）。
@@ -164,8 +164,7 @@ cann_ops_transformer.flash_attn_grad(
 - `metadata`必须由`flash_attn_metadata`生成，并设置`is_grad_enabled=True`。生成metadata和调用本接口时，N1、N2、D、B、S1、S2、layout及mask相关参数必须一致，否则行为未定义。
 - `is_grad_enabled=True`生成的metadata只包含反向任务切分数据，不能用于`flash_attn`前向计算。前向和反向需要分别生成metadata。
 - `softmax_lse`、`attn_out`必须来自与本次反向计算配置一致的前向调用，尤其是`softmax_scale`和layout必须一致。
-- 当前仅支持单算子模式，暂不支持图模式调用。
-- 当前kernel经过功能验证的场景为：数据类型float16、布局BSND/BNSD的Dense Attention。bfloat16和TND布局已在接口注册，kernel尚未实现，暂不支持。
+- 当前仅支持单算子模式。
 
 ## 配套接口说明
 
@@ -203,14 +202,14 @@ cann_ops_transformer.flash_attn_metadata(
 | head_dim | int | 必选 | Query/Key的head dim，即D | int32 | - | - |
 | cu_seqlens_q | Tensor | 可选 | TND布局下Q的累积序列长度。`layout_q`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
 | cu_seqlens_kv | Tensor | 可选 | TND布局下KV的累积序列长度。`layout_kv`为TND时必须传入，非TND时不支持传入。默认值为None | int32 | ND | (B+1,) |
-| seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度。当前kernel暂不支持，必须为None。默认值为None | int32 | ND | - |
-| seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度。当前kernel暂不支持，必须为None。默认值为None | int32 | ND | - |
+| seqused_q | Tensor | 可选 | 每个batch实际使用的Q序列长度。默认值为None | int32 | ND | (B,) |
+| seqused_kv | Tensor | 可选 | 每个batch实际使用的KV序列长度。默认值为None | int32 | ND | (B,) |
 | batch_size | int | 可选 | batch大小。BSND/BNSD场景必须传入实际B，取值范围为(0, 65536) | int32 | - | - |
 | max_seqlen_q | int | 可选 | Q最大序列长度。BSND/BNSD场景必须传入实际S1，且大于0 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | KV最大序列长度。BSND/BNSD场景必须传入实际S2，且大于0 | int32 | - | - |
-| mask_mode | int | 可选 | 必须与`flash_attn_grad`一致。当前支持场景传0 | int32 | - | - |
-| win_left | int | 可选 | 必须与`flash_attn_grad`一致。当前支持场景传-1 | int32 | - | - |
-| win_right | int | 可选 | 必须与`flash_attn_grad`一致。当前支持场景传-1 | int32 | - | - |
+| mask_mode | int | 可选 | 必须与`flash_attn_grad`一致 | int32 | - | - |
+| win_left | int | 可选 | 必须与`flash_attn_grad`一致 | int32 | - | - |
+| win_right | int | 可选 | 必须与`flash_attn_grad`一致 | int32 | - | - |
 | layout_q | string | 可选 | 必须与`flash_attn_grad`一致 | string | - | - |
 | layout_kv | string | 可选 | 必须与`flash_attn_grad`一致 | string | - | - |
 | layout_out | string | 可选 | 必须与`flash_attn_grad`一致 | string | - | - |
@@ -318,4 +317,4 @@ cann_ops_transformer.flash_attn_metadata(
     assert dv.shape == v.shape
     ```
 
-- 图模式调用（暂不支持）
+- 图模式调用
