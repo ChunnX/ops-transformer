@@ -262,7 +262,7 @@ class SymmBuffer:
             combine_quant_mode,
             comm_alg,
             topk_weights_type,
-        )
+        ) * 2
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
