@@ -133,7 +133,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         )
 
         # cu_seqlens/seqused 真实值由 inputs.py 写入 _t tensor slot (8-11)；
-        # 这里从 tensor 读回 list（与 qfa_wrapper/qfa_main_wrapper 一致）。
+        # 这里从 tensor 读回 list（与 qfa_wrapper 一致）。
         # _t 端可能是 NPU tensor，.cpu().tolist() 读回；空 tensor (numel==0) → None。
         def _tolist_t(t, default=None):
             if t is None:

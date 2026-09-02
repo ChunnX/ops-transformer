@@ -1,0 +1,253 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+"""Populate the QuantFlashAttn metadata slot before the main API call.
+
+This module is intentionally independent from TTK.  The framework passes the
+main API arguments after H2D; this hook invokes the companion torch operator
+``quant_flash_attn_metadata`` and updates ``metadata`` in place.  Profiling and
+result handling remain in TTK, and the hook always returns ``None``.
+
+The metadata construction was extracted from the two-phase ``npu_*_fa`` golden
+implementations (``npu_mxfp8_fa`` / ``npu_gqa_fp8_fa`` / ``npu_hif8_fa``) that
+previously called ``quant_flash_attn_metadata`` followed by ``quant_flash_attn``.
+"""
+
+import logging
+
+import torch
+
+
+def get_attribute(kwargs, name, default=None):
+    """Resolve an attribute from ``kwargs`` with an optional ``pytest_`` alias."""
+    value = kwargs.get(name)
+    if value is None:
+        value = kwargs.get(f"pytest_{name}")
+    return default if value is None else value
+
+
+def get_values(kwargs, name):
+    """Read a ``*_values`` sidecar list, if present, into a python list."""
+    value = kwargs.get(f"{name}_values")
+    if value is None:
+        return None
+    if torch.is_tensor(value):
+        return value.detach().cpu().reshape(-1).tolist()
+    return [int(item) for item in value]
+
+
+def _num_heads_q(q_shape, layout_q):
+    if layout_q == "BSND":
+        return int(q_shape[2])
+    return int(q_shape[1])
+
+
+def _num_heads_kv(k_shape, layout_kv):
+    if layout_kv == "PA_BBND":
+        return int(k_shape[2])
+    return int(k_shape[1])
+
+
+def _derive_batch_size(q_shape, layout_q, cu_seqlens_q, seqused_q, kwargs):
+    """Priority mirrors torch_extension._calculate_batch_size.
+
+    seqused_q.numel() -> cu_seqlens_q.numel() - 1 -> explicit batch_size ->
+    shape fallback.  The ``*_values`` lists sit between the live tensors and the
+    explicit attribute for compatibility with TTK small-integer delivery.
+    """
+    if seqused_q is not None:
+        return int(torch.as_tensor(seqused_q).numel())
+    if cu_seqlens_q is not None:
+        return max(int(torch.as_tensor(cu_seqlens_q).numel()) - 1, 0)
+    seq_q_values = get_values(kwargs, "seqused_q")
+    if seq_q_values is not None:
+        return len(seq_q_values)
+    cu_q_values = get_values(kwargs, "cu_seqlens_q")
+    if cu_q_values is not None:
+        return max(len(cu_q_values) - 1, 0)
+    explicit = get_attribute(kwargs, "batch_size")
+    if explicit is not None:
+        return int(explicit)
+    if layout_q == "BSND":
+        return int(q_shape[0])
+    return 0
+
+
+def _max_seqlen(kwargs, name, used, prefix, fallback):
+    """Resolve one max_seqlen: explicit attr -> max(seqused) -> cu diff -> fallback."""
+    explicit = get_attribute(kwargs, f"max_seqlen_{name}")
+    if explicit is not None:
+        return int(explicit)
+    if used is not None:
+        values = torch.as_tensor(used).detach().reshape(-1)
+        if values.numel():
+            return int(values.max().item())
+    if prefix is not None:
+        values = torch.as_tensor(prefix).detach().reshape(-1)
+        if values.numel() > 1:
+            return int((values[1:] - values[:-1]).max().item())
+    return int(fallback)
+
+
+def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, kwargs):
+    """Derive ``quant_flash_attn_metadata`` arguments from the main invocation."""
+    layout_q = str(get_attribute(kwargs, "layout_q", "BSND"))
+    layout_q_descale = str(get_attribute(kwargs, "layout_q_descale", layout_q))
+    layout_kv = str(get_attribute(kwargs, "layout_kv", "BSND"))
+    layout_out = str(get_attribute(kwargs, "layout_out", layout_q))
+
+    q_shape = tuple(int(value) for value in q.shape)
+    k_shape = tuple(int(value) for value in k.shape)
+    head_dim = int(get_attribute(kwargs, "head_dim", q_shape[-1]))
+
+    num_heads_q = int(
+        get_attribute(
+            kwargs,
+            "num_heads_q",
+            get_attribute(kwargs, "N_q", _num_heads_q(q_shape, layout_q)),
+        )
+    )
+    num_heads_kv = int(
+        get_attribute(
+            kwargs,
+            "num_heads_kv",
+            get_attribute(kwargs, "N_kv", _num_heads_kv(k_shape, layout_kv)),
+        )
+    )
+
+    is_tnd_q = layout_q == "TND"
+    is_tnd_kv = layout_kv == "TND"
+
+    # Mirror the original two-phase golden implementations:
+    #   - cu_seqlens only feeds the metadata op for TND layouts (otherwise None),
+    #     and batch_size is only provided for non-TND layouts.
+    cu_q = cu_seqlens_q if is_tnd_q else None
+    cu_kv = cu_seqlens_kv if is_tnd_kv else None
+    batch_size = None if is_tnd_q else _derive_batch_size(
+        q_shape, layout_q, cu_seqlens_q, seqused_q, kwargs
+    )
+
+    q_fallback = q_shape[1] if layout_q != "BSND" else q_shape[1]
+    kv_fallback = -1
+    if layout_kv == "TND":
+        kv_fallback = int(k_shape[0])
+    elif layout_kv in ("BNSD", "BSND"):
+        kv_fallback = int(k_shape[2] if layout_kv == "BNSD" else k_shape[1])
+
+    return {
+        "num_heads_q": num_heads_q,
+        "num_heads_kv": num_heads_kv,
+        "head_dim": head_dim,
+        "quant_mode": int(get_attribute(kwargs, "quant_mode", 1)),
+        "cu_seqlens_q": cu_q,
+        "cu_seqlens_kv": cu_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
+        "batch_size": None if batch_size is None else int(batch_size),
+        "max_seqlen_q": _max_seqlen(
+            kwargs, "q", seqused_q, cu_seqlens_q, q_fallback
+        ),
+        "max_seqlen_kv": _max_seqlen(
+            kwargs, "kv", seqused_kv, cu_seqlens_kv, kv_fallback
+        ),
+        "head_dim_v": get_attribute(kwargs, "head_dim_v"),
+        "mask_mode": int(get_attribute(kwargs, "mask_mode", 0)),
+        "layout_q": layout_q,
+        "layout_q_descale": layout_q_descale,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+    }
+
+
+def move_to_device(value, target):
+    if value is None:
+        return None
+    if torch.is_tensor(value):
+        return value.to(device=target.device)
+    return torch.as_tensor(value, device=target.device)
+
+
+def run_metadata(arguments, metadata):
+    import cann_ops_transformer  # noqa: F401  (ensure op registration)
+
+    return torch.ops.cann_ops_transformer.quant_flash_attn_metadata(
+        int(arguments["num_heads_q"]),
+        int(arguments["num_heads_kv"]),
+        int(arguments["head_dim"]),
+        int(arguments["quant_mode"]),
+        cu_seqlens_q=move_to_device(arguments.get("cu_seqlens_q"), metadata),
+        cu_seqlens_kv=move_to_device(arguments.get("cu_seqlens_kv"), metadata),
+        seqused_q=move_to_device(arguments.get("seqused_q"), metadata),
+        seqused_kv=move_to_device(arguments.get("seqused_kv"), metadata),
+        batch_size=None
+        if arguments.get("batch_size") is None
+        else int(arguments["batch_size"]),
+        max_seqlen_q=int(arguments["max_seqlen_q"]),
+        max_seqlen_kv=int(arguments["max_seqlen_kv"]),
+        head_dim_v=(
+            None
+            if arguments.get("head_dim_v") is None
+            else int(arguments["head_dim_v"])
+        ),
+        mask_mode=int(arguments["mask_mode"]),
+        layout_q=str(arguments["layout_q"]),
+        layout_q_descale=str(arguments["layout_q_descale"]),
+        layout_kv=str(arguments["layout_kv"]),
+        layout_out=str(arguments["layout_out"]),
+    )
+
+
+def run(
+    q,
+    k,
+    v,
+    q_descale,
+    k_descale,
+    v_descale,
+    *,
+    quant_mode=None,
+    block_table=None,
+    p_scale=None,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
+    sinks=None,
+    attn_mask=None,
+    metadata=None,
+    **kwargs,
+):
+    """Generate and copy metadata for a main QuantFlashAttn invocation."""
+    if metadata is None:
+        raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
+    if quant_mode is None:
+        quant_mode = get_attribute(kwargs, "quant_mode", 1)
+    testcase_name = kwargs.get("testcase_name")
+    logging.info("[%s] build QuantFlashAttn metadata (quant_mode=%s)", testcase_name, quant_mode)
+
+    arguments = build_metadata_arguments(
+        q,
+        k,
+        v,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        kwargs,
+    )
+    generated = run_metadata(arguments, metadata)
+    if tuple(metadata.shape) != tuple(generated.shape):
+        raise ValueError(
+            "QuantFlashAttn metadata shape mismatch: "
+            f"placeholder={tuple(metadata.shape)}, generated={tuple(generated.shape)}"
+        )
+    metadata.copy_(generated.to(dtype=metadata.dtype, device=metadata.device))
+    return None

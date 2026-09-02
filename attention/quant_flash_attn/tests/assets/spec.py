@@ -31,6 +31,7 @@ golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 graph_module = load_impl_module("graph")
+npu_preprocess_module = load_impl_module("npu_preprocess")
 
 
 # ==============================================================================
@@ -61,16 +62,21 @@ def _inputs_dispatch(*args, **kwargs):
     return inputs_module.generate_qfa_mxfp8_inputs(*args, **kwargs)
 
 
-class QfaMxfp8Spec:
-    """quant_flash_attn 测试规范 (MXFP8 + GQA FP8, 按 quant_mode 派发)。
+class QuantFlashAttnSpec:
+    """quant_flash_attn 测试规范 (MXFP8 + GQA FP8 + HIF8, 按 quant_mode 派发)。
 
     quant_mode=1: MXFP8 (Q/K per-token-group, V per-channel-group, descale=e8m0)
     quant_mode=6: GQA FP8 全量化 (Q/K per-token-head, V per-head, descale=FP32)
+    quant_mode=0: HIF8 per-tensor 量化
+
+    metadata 由 npu_preprocess 在主算子调用前生成并回填 metadata slot,
+    主算子直接由 ttk 调用 torch.ops.cann_ops_transformer.quant_flash_attn。
     """
 
     golden = _golden_dispatch
     customize_inputs = _inputs_dispatch
     compare = compare_module.compare
+    npu_preprocess = npu_preprocess_module.run
 
     torch_graph = graph_module.QuantFlashAttnAclGraph
 
@@ -88,60 +94,6 @@ class QfaMxfp8Spec:
     }
 
 
-class QfaMetadataSpec:
-    """quant_flash_attn_metadata 独立测试规范 (T4 metadata/main 分离)。
-
-    复用 QfaMxfp8Spec 的 golden / customize_inputs / compare / tolerance:
-    输入生成与 golden 计算路径与合并测试一致, 仅 wrapper 分流到 metadata-only op。
-    按 quant_mode 派发到 MXFP8 或 GQA FP8 路径。
-    """
-
-    golden = _golden_dispatch
-    customize_inputs = _inputs_dispatch
-    compare = compare_module.compare
-
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
-
-
-class QfaMainSpec:
-    """quant_flash_attn 主算子独立测试规范 (T4 metadata/main 分离)。
-
-    run_main 内部重建 metadata 后调主算子; golden / customize_inputs / compare
-    与合并测试一致, 仅 wrapper 分流到 main-only 路径。
-    按 quant_mode 派发到 MXFP8 或 GQA FP8 路径。
-    """
-
-    golden = _golden_dispatch
-    customize_inputs = _inputs_dispatch
-    compare = compare_module.compare
-
-    tolerance = {
-        "float16": {
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-        "bfloat16": {
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-    }
-
-
 __spec__ = {
-    "qfa_wrapper.npu_qfa": "QfaMxfp8Spec",
-    "qfa_metadata_wrapper.run_metadata": "QfaMetadataSpec",
-    "qfa_main_wrapper.run_main": "QfaMainSpec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn": "QuantFlashAttnSpec",
 }

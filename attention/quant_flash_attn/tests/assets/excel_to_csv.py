@@ -15,10 +15,9 @@
 环境：无 openpyxl/pandas，xlsx 解析走 _xlsx_minireader（zipfile + minidom）。
 
 输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
-输出：3 个 csv 到同目录
-  - qfa_mxfp8_excel.csv            api_name=qfa_wrapper.npu_qfa
-  - qfa_mxfp8_excel_metadata.csv   api_name=qfa_metadata_wrapper.run_metadata
-  - qfa_mxfp8_excel_main.csv       api_name=qfa_main_wrapper.run_main
+输出：每个 mode 1 个 csv 到同目录（metadata 在主算子调用前由 spec 的
+  npu_preprocess 生成并回填 metadata slot，主算子直接由 ttk 调用）
+  - qfa_mxfp8_excel.csv            api_name=torch.ops.cann_ops_transformer.quant_flash_attn
 
 空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
 
@@ -81,35 +80,23 @@ HEADER = [
     "absolute_precision",
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
+API_NAME = "torch.ops.cann_ops_transformer.quant_flash_attn"
+
+# 每个 mode 1 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
 CSV_PROFILES_MXFP8 = [
-    ("qfa_mxfp8_excel.csv", "qfa_wrapper.npu_qfa", ""),
-    ("qfa_mxfp8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_metadata"),
-    ("qfa_mxfp8_excel_main.csv", "qfa_main_wrapper.run_main", "_main"),
+    ("qfa_mxfp8_excel.csv", API_NAME, ""),
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (GQA FP8 全量化, quant_mode=6)
-# api_name 与 MXFP8 相同 (wrapper 复用, 内部按 quant_mode 分支),
+# 每个 mode 1 个 csv 的 api_name 和 testcase_name 后缀 (GQA FP8 全量化, quant_mode=6)
+# api_name 与 MXFP8 相同 (内部按 quant_mode 分支),
 # 仅 CSV 文件名和 testcase 后缀区分, 避免与 mxfp8 testcase 重名。
 CSV_PROFILES_GQA_FP8 = [
-    ("qfa_gqa_fp8_excel.csv", "qfa_wrapper.npu_qfa", "_gqa_fp8"),
-    (
-        "qfa_gqa_fp8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
-        "_gqa_fp8_metadata",
-    ),
-    ("qfa_gqa_fp8_excel_main.csv", "qfa_main_wrapper.run_main", "_gqa_fp8_main"),
+    ("qfa_gqa_fp8_excel.csv", API_NAME, "_gqa_fp8"),
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=0)
+# 每个 mode 1 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=0)
 CSV_PROFILES_HIF8 = [
-    ("qfa_hif8_excel.csv", "qfa_wrapper.npu_qfa", "_hif8"),
-    (
-        "qfa_hif8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
-        "_hif8_metadata",
-    ),
-    ("qfa_hif8_excel_main.csv", "qfa_main_wrapper.run_main", "_hif8_main"),
+    ("qfa_hif8_excel.csv", API_NAME, "_hif8"),
 ]
 
 # 向后兼容别名 (现有脚本若 import CSV_PROFILES)
@@ -586,7 +573,7 @@ def _parse_sheet_arg(s):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="redline.xlsx → 3 个 ttk 标准 CSV (mxfp8 / gqa_fp8 / hif8)"
+        description="redline.xlsx → 每个 mode 1 个 ttk 标准 CSV (mxfp8 / gqa_fp8 / hif8)"
     )
     parser.add_argument(
         "--sheet",
@@ -662,7 +649,7 @@ def main():
                 written += 1
         print(f"wrote {out_path} ({written} case rows)")
 
-    print(f"\n3 csv files written ({mode_label}), each with {written} case rows.")
+    print(f"\n1 csv file written ({mode_label}) with {written} case rows.")
 
 
 if __name__ == "__main__":
