@@ -97,7 +97,6 @@ private:
     int64_t chunkAligned_;
     int64_t maskBytes_;
 
-    // dropPad（500100）专用：下游 srcToDst 分核参数（Stage3 RowIdxGatherDropPad 按此分块读）
     int64_t dropPadNeedCoreNum_;
     int64_t dropPadPerCoreRows_;
     int64_t dropPadLastCoreRows_;
@@ -253,9 +252,9 @@ template <typename T>
 __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Process()
 {
     if (blockIdx_ >= filterNeedCoreNum_) {
-        SyncAll();
-        SyncAll();
-        SyncAll();
+        SyncAll(); // 等 Phase A：各核计数写回 GM 完成
+        SyncAll(); // 等 Phase B：离散搬出 sortedRowIdx 完成
+        SyncAll(); // 等收尾：dropPad 桥接产物 / ExpertTokens 写 GM 完成
         return;
     }
     // ===== Phase A: filter + count =====
