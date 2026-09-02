@@ -66,7 +66,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
     x2_scale=None,
     x1_quant_mode=None,
     x2_quant_mode=None,
-    group_sizes=[],
+    group_sizes=None,
     x1_dtype=None,
     x2_dtype=None,
     x1_scale_dtype=None,
