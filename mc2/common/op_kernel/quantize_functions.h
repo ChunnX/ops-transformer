@@ -364,15 +364,18 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T);
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch();
-    uint32_t totalCountInUB2 = totalCountInUB * DIGIT_TWO;
     uint16_t loopNum = CeilDiv(totalCountInUB, 2 * vlForHalfNumber);
+    uint32_t evenInputCount = CeilDiv(totalCountInUB, static_cast<uint32_t>(DIGIT_TWO));
+    uint32_t oddInputCount = totalCountInUB / DIGIT_TWO;
+    uint32_t outputCount = totalCountInUB;
     __VEC_SCOPE__
     {
-        MicroAPI::MaskReg dataMask1;
-        MicroAPI::MaskReg dataMask2;
-        MicroAPI::MaskReg dataMask3;
-        MicroAPI::MaskReg dataMask4;
-        MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg evenInputMask;
+        MicroAPI::MaskReg oddInputMask;
+        MicroAPI::MaskReg outputMask;
+        MicroAPI::MaskReg maskAllB8 = MicroAPI::CreateMask<uint8_t, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskAllB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskAllB32 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
         MicroAPI::RegTensor<uint16_t> halfScaleForMul;
         MicroAPI::RegTensor<float> floatScaleForMul;
         MicroAPI::RegTensor<T> vdExp0;
@@ -383,22 +386,31 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
         MicroAPI::RegTensor<float> vdExp1FP32Zero;
         MicroAPI::RegTensor<float> vdExp1FP32One;
         MicroAPI::RegTensor<U> vdExp0FP8Zero;
-        MicroAPI::RegTensor<U> vdExp0FP8One;
-        MicroAPI::RegTensor<U> vdExp1FP8Zero;
+        MicroAPI::RegTensor<U> vdExp0FP8Two;
         MicroAPI::RegTensor<U> vdExp1FP8One;
+        MicroAPI::RegTensor<U> vdExp1FP8Three;
         // 放到索引位置0
         static constexpr MicroAPI::CastTrait castTraitZero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         // 放到索引位置1
         static constexpr MicroAPI::CastTrait castTraitOne = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN,
                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-        static constexpr MicroAPI::CastTrait castTrait32to8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
-                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+        static constexpr MicroAPI::CastTrait castTrait32to8Zero = {
+            MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
+        static constexpr MicroAPI::CastTrait castTrait32to8One = {
+            MicroAPI::RegLayout::ONE, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
+        static constexpr MicroAPI::CastTrait castTrait32to8Two = {
+            MicroAPI::RegLayout::TWO, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
+        static constexpr MicroAPI::CastTrait castTrait32to8Three = {
+            MicroAPI::RegLayout::THREE, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < loopNum; i++) {
-            dataMask1 = MicroAPI::UpdateMask<T>(totalCountInUB);
-            dataMask2 = MicroAPI::UpdateMask<T>(totalCountInUB);
-            dataMask3 = MicroAPI::UpdateMask<T>(totalCountInUB2);
-            dataMask4 = MicroAPI::UpdateMask<T>(totalCountInUB2);
+            evenInputMask = MicroAPI::UpdateMask<T>(evenInputCount);
+            oddInputMask = MicroAPI::UpdateMask<T>(oddInputCount);
+            outputMask = MicroAPI::UpdateMask<uint8_t>(outputCount);
             MicroAPI::DataCopy<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, vlForHalfNumber * DIGIT_TWO);
             // 这里DIST_E2B_B16是将每个16bit元素广播到一个DataBlock(32B)中
@@ -407,49 +419,46 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
             // 因为前面scale计算用的BF16类型，所以对于fp16需要先cast到float再计算
             if constexpr (Std::IsSame<T, half>::value) {
                 // 取偶数索引的元素Cast到vdExp0FP32Zero
-                MicroAPI::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, dataMask1);
+                MicroAPI::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, evenInputMask);
                 // 取奇数索引的元素Cast到vdExp0FP32One
-                MicroAPI::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, dataMask1);
+                MicroAPI::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, evenInputMask);
                 // 由于前面搬入是一个广播操作，所以直接取偶数索引元素即可
                 MicroAPI::Cast<float, bfloat16_t, castTraitZero>(
-                    floatScaleForMul, (MicroAPI::RegTensor<bfloat16_t> &)halfScaleForMul, maskAll);
-                MicroAPI::Mul(vdExp0FP32Zero, vdExp0FP32Zero, floatScaleForMul, dataMask3);
-                MicroAPI::Mul(vdExp0FP32One, vdExp0FP32One, floatScaleForMul, dataMask4);
-                MicroAPI::Interleave(vdExp0FP32Zero, vdExp0FP32One, vdExp0FP32Zero, vdExp0FP32One);
-                MicroAPI::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, dataMask1);
-                MicroAPI::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, dataMask1);
-                MicroAPI::Mul(vdExp1FP32Zero, vdExp1FP32Zero, floatScaleForMul, dataMask3);
-                MicroAPI::Mul(vdExp1FP32One, vdExp1FP32One, floatScaleForMul, dataMask4);
-                MicroAPI::Interleave(vdExp1FP32Zero, vdExp1FP32One, vdExp1FP32Zero, vdExp1FP32One);
-                MicroAPI::Interleave(vdExp0FP32Zero, vdExp1FP32Zero, vdExp0FP32Zero, vdExp1FP32Zero);
-                MicroAPI::Interleave(vdExp0FP32One, vdExp1FP32One, vdExp0FP32One, vdExp1FP32One);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp0FP8Zero, vdExp0FP32Zero, dataMask3);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp0FP8One, vdExp1FP32Zero, dataMask3);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp1FP8Zero, vdExp0FP32One, dataMask4);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp1FP8One, vdExp1FP32One, dataMask4);
+                    floatScaleForMul, (MicroAPI::RegTensor<bfloat16_t> &)halfScaleForMul, maskAllB16);
+                MicroAPI::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, oddInputMask);
+                MicroAPI::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, oddInputMask);
+                MicroAPI::Mul(vdExp0FP32Zero, vdExp0FP32Zero, floatScaleForMul, maskAllB32);
+                MicroAPI::Mul(vdExp0FP32One, vdExp0FP32One, floatScaleForMul, maskAllB32);
+                MicroAPI::Mul(vdExp1FP32Zero, vdExp1FP32Zero, floatScaleForMul, maskAllB32);
+                MicroAPI::Mul(vdExp1FP32One, vdExp1FP32One, floatScaleForMul, maskAllB32);
             } else {
-                MicroAPI::Mul(vdExp0, vdExp0, (MicroAPI::RegTensor<T> &)halfScaleForMul, dataMask1);
-                MicroAPI::Mul(vdExp1, vdExp1, (MicroAPI::RegTensor<T> &)halfScaleForMul, dataMask1);
-                MicroAPI::Interleave(vdExp0, vdExp1, vdExp0, vdExp1);
-                MicroAPI::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, dataMask1);
-                MicroAPI::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, dataMask1);
-                MicroAPI::Interleave(vdExp0FP32Zero, vdExp0FP32One, vdExp0FP32Zero, vdExp0FP32One);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp0FP8Zero, vdExp0FP32Zero, dataMask3);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp0FP8One, vdExp0FP32One, dataMask3);
-                MicroAPI::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, dataMask2);
-                MicroAPI::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, dataMask2);
-                MicroAPI::Interleave(vdExp1FP32Zero, vdExp1FP32One, vdExp1FP32Zero, vdExp1FP32One);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp1FP8Zero, vdExp1FP32Zero, dataMask4);
-                MicroAPI::Cast<U, float, castTrait32to8>(vdExp1FP8One, vdExp1FP32One, dataMask4);
+                MicroAPI::Mul(vdExp0, vdExp0, (MicroAPI::RegTensor<T> &)halfScaleForMul, evenInputMask);
+                MicroAPI::Mul(vdExp1, vdExp1, (MicroAPI::RegTensor<T> &)halfScaleForMul, oddInputMask);
+                MicroAPI::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, evenInputMask);
+                MicroAPI::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, evenInputMask);
+                MicroAPI::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, oddInputMask);
+                MicroAPI::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, oddInputMask);
             }
-            MicroAPI::DataCopy<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (MicroAPI::RegTensor<int8_t> &)vdExp0FP8Zero, OUT_ELE_NUM_ONE_BLK, dataMask3);
-            MicroAPI::DataCopy<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (MicroAPI::RegTensor<int8_t> &)vdExp0FP8One, OUT_ELE_NUM_ONE_BLK, dataMask3);
-            MicroAPI::DataCopy<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (MicroAPI::RegTensor<int8_t> &)vdExp1FP8Zero, OUT_ELE_NUM_ONE_BLK, dataMask4);
-            MicroAPI::DataCopy<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (MicroAPI::RegTensor<int8_t> &)vdExp1FP8One, OUT_ELE_NUM_ONE_BLK, dataMask4);
+
+            MicroAPI::Cast<U, float, castTrait32to8Zero>(vdExp0FP8Zero, vdExp0FP32Zero, maskAllB32);
+            MicroAPI::Cast<U, float, castTrait32to8Two>(vdExp0FP8Two, vdExp0FP32One, maskAllB32);
+            MicroAPI::Cast<U, float, castTrait32to8One>(vdExp1FP8One, vdExp1FP32Zero, maskAllB32);
+            MicroAPI::Cast<U, float, castTrait32to8Three>(vdExp1FP8Three, vdExp1FP32One, maskAllB32);
+
+            MicroAPI::Add((MicroAPI::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (MicroAPI::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (MicroAPI::RegTensor<uint8_t> &)vdExp0FP8Two, outputMask);
+            MicroAPI::Add((MicroAPI::RegTensor<uint8_t> &)vdExp1FP8One,
+                          (MicroAPI::RegTensor<uint8_t> &)vdExp1FP8One,
+                          (MicroAPI::RegTensor<uint8_t> &)vdExp1FP8Three, outputMask);
+            MicroAPI::Add((MicroAPI::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (MicroAPI::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (MicroAPI::RegTensor<uint8_t> &)vdExp1FP8One, outputMask);
+
+            // Add采用ZEROING模式将尾块无效字节清零，整VL写回以保持Align256 padding确定。
+            MicroAPI::DataCopy<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                               MicroAPI::StoreDist::DIST_NORM_B8>(
+                outLocalAddr, (MicroAPI::RegTensor<int8_t> &)vdExp0FP8Zero, vlForHalfNumber * DIGIT_TWO, maskAllB8);
         }
     }
 }
