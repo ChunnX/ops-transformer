@@ -21,16 +21,8 @@ QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
 class QuantMode(IntEnum):
     """quant_mode 枚举：对外字符串/int 经由本枚举映射为传给算子侧的 int。"""
 
-    A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
-    A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32 = 2
-    A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16 = 3
-    A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16 = 4
-    A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 = 5
-    A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 6
     A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 0
-    A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16 = 8
-    A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16 = 9
-    A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16 = 10
+    A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
 
 
 class MaskMode(IntEnum):
@@ -292,10 +284,9 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5, 0),
-        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
-        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
-        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+        quant_mode in (0, 1),
+        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) "
+        f"or 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -431,10 +422,9 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5, 0),
-        lambda: f"The quant_mode of quant_flash_attn only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
-        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
-        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+        quant_mode in (0, 1),
+        lambda: f"The quant_mode of quant_flash_attn only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) "
+        f"or 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
@@ -460,20 +450,6 @@ def quant_flash_attn(
         v.dim() == kv_expected,
         lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
     )
-
-    if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        if q.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
-            )
-        if k.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
-            )
-        if v.dtype != torch.uint8:
-            raise ValueError(
-                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
-            )
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(

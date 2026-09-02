@@ -357,8 +357,8 @@ cann_ops_transformer.quant_flash_attn(
                 <li>轴校验：
                     <ul>
                         <li>65536 > B > 0</li>
-                        <li>Q_S ≥ 0；KV_S ≥ 0</li>
-                        <li>Q_T ≥ 0、KV_T ≥ 0</li>
+                        <li>Q_S > 0；KV_S > 0</li>
+                        <li>Q_T > 0、KV_T > 0</li>
                         <li>D仅支持64、72、128或256；HIF8场景仅支持D=128</li>
                         <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
                         <li>Q_N ≤ 256；KV_N ≤ 256；Q_N / KV_N ≤ 64</li>
@@ -1025,7 +1025,7 @@ mask_mode参数解释：
 
 > [!NOTE]
 >
-> 算子不校验 `seqused_kv` 中的最大值是否与 `max_seqlen_kv` 一致。若同时传入这两个参数，用户需自行保证 `max(seqused_kv) <= max_seqlen_kv`。
+> 算子不校验 `seqused_q`/`seqused_kv` 中的最大值是否与 `max_seqlen_q`/`max_seqlen_kv` 一致。若同时传入，用户需自行保证 `max(seqused_q) <= max_seqlen_q`、`max(seqused_kv) <= max_seqlen_kv`。
 
 #### Paged Attention参数组 <a name="Paged Attention参数组"></a>
 
