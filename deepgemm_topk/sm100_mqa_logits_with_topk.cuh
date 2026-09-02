@@ -135,6 +135,13 @@ CUTLASS_DEVICE void warp_bucket_topk(
             lc[b] = v;
         }
 
+        if (lane_idx == 0 && k_start == 0) {
+            uint32_t dbg_sum = 0;
+            for (int i = 0; i < 8; i++) dbg_sum += lc[i];
+            printf("Round %d: lc[0]=%u lc[1]=%u sum=%u total_should_be=%u remaining=%u\n",
+                   round, lc[0], lc[1], dbg_sum, k_len, remaining);
+        }
+
         // Find cutoff: scan from high bucket to low
         uint32_t my_sum = 0;
         #pragma unroll
