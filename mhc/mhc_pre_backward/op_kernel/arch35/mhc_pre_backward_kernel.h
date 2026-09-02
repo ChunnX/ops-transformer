@@ -199,6 +199,7 @@ private:
     LocalTensor<T> bf16InputBuf_;
     LocalTensor<P> gammaOutUb_;
     LocalTensor<P> xRsGradMmInBuf_;
+    LocalTensor<P> c0DirectStageBuf_;
     LocalTensor<T> bf16OutputBuf_;
     LocalTensor<T> gradXPostBuf_;
 
@@ -239,7 +240,6 @@ private:
     uint32_t c0DirectReclaimCount_;
     uint32_t c0DirectConsumeCount_;
     uint32_t c0DirectConsumeSlot_;
-    bool c0DirectReleaseAfterChunk_;
     float scaleMean_;
 };
 
@@ -344,7 +344,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
     c0DirectReclaimCount_ = 0;
     c0DirectConsumeCount_ = 0;
     c0DirectConsumeSlot_ = 0;
-    c0DirectReleaseAfterChunk_ = false;
     cubeDealnDPeCore_ = nD_ / GetBlockNum();
     if (cubeDealnDPeCore_ == 0) {
         cubeDealnDPeCore_ = nD_;
@@ -1414,13 +1413,30 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
             } else {
                 AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_READY_PONG);
             }
+
+            // 将C0结果快速接力到q0暂存槽，复制完成后立即允许C0复用直连槽。
+            LocalTensor<P> c0DirectUb = fp32TBuf_.GetWithOffset<P>(
+                C0_DIRECT_UB_SLOT_ELEMS, c0DirectConsumeSlot_ * C0_DIRECT_UB_SLOT_SIZE);
+            uint32_t c0TileRows =
+                static_cast<uint32_t>(Min(static_cast<uint64_t>(MATMUL_WRITE_OFFSET_M), bsEnd - bsChunkStart));
+            c0DirectStageBuf_ = vecInQueue0_.AllocTensor<P>();
+            Adds(c0DirectStageBuf_, c0DirectUb, ZERO, c0TileRows * copySizeND);
+            PipeBarrier<PIPE_V>();
+            vecInQueue0_.EnQue(c0DirectStageBuf_);
+            c0DirectStageBuf_ = vecInQueue0_.DeQue<P>();
+            if (c0DirectConsumeSlot_ == 0) {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PING);
+            } else {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PONG);
+            }
         }
-        c0DirectReleaseAfterChunk_ =
+        bool releaseC0DirectStage =
             (((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M) + currentChunkSize == MATMUL_WRITE_OFFSET_M) ||
             (bsChunkEnd == bsEnd);
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
                            sumBuf);
-        if (c0DirectReleaseAfterChunk_) {
+        if (releaseC0DirectStage) {
+            vecInQueue0_.FreeTensor(c0DirectStageBuf_);
             ++c0DirectConsumeCount_;
         }
     }
@@ -1440,15 +1456,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
 
     // 4. 融合计算xRsGrad并处理xRsGradMm
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
-
-    // xRsGradMm在步骤4后不再使用，立即通知C0回收当前槽。
-    if (c0DirectReleaseAfterChunk_) {
-        if (c0DirectConsumeSlot_ == 0) {
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PING);
-        } else {
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PONG);
-        }
-    }
 
     // 5. 融合处理gradXPost并输出grad_x
     ProcessV2ChunkOutputXGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, chunkNDSize);
@@ -1574,10 +1581,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t buffId,
                                                            LocalTensor<P> &sumBuf)
 {
-    LocalTensor<P> c0DirectUb = fp32TBuf_.GetWithOffset<P>(
-        C0_DIRECT_UB_SLOT_ELEMS, c0DirectConsumeSlot_ * C0_DIRECT_UB_SLOT_SIZE);
     uint32_t rowInC0Tile = static_cast<uint32_t>((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M);
-    xRsGradMmInBuf_ = c0DirectUb[rowInC0Tile * copySizeND];
+    xRsGradMmInBuf_ = c0DirectStageBuf_[rowInC0Tile * copySizeND];
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
