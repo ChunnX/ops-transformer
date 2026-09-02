@@ -416,7 +416,10 @@ protected:
         return hasInitialStateMode ? (this->initialStateModeGm_.GetValue(batchId) != 0) : false;
     }
 
-    __aicore__ inline const CausalConv1dTilingData *GetTilingData() const { return tilingData_; }
+    __aicore__ inline const CausalConv1dTilingData *GetTilingData() const
+    {
+        return tilingData_;
+    }
 
 protected:
     TPipe pipe_;
