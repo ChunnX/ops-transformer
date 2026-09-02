@@ -15,7 +15,7 @@
 #ifndef MC2_QBMM_ASW_BLOCK_H
 #define MC2_QBMM_ASW_BLOCK_H
 
-#include "quant_batch_matmul_v3_tiling_data.h"
+#include "qbmv3_arch35_tiling_data.h"
 #include "../quant_batch_matmul_v3_base.h"
 
 namespace Mc2QuantBatchMatmulV3 {
@@ -92,9 +92,7 @@ __aicore__ inline constexpr uint32_t GetVectorRegSize()
 
 class Mc2QuantBmmAswBlock {
 public:
-    __aicore__ inline Mc2QuantBmmAswBlock()
-    {
-    }
+    __aicore__ inline Mc2QuantBmmAswBlock() {}
     __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx);
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx);
     __aicore__ inline void UpdateBasicIndex4AL1FullLoad(uint64_t roundIdx);
