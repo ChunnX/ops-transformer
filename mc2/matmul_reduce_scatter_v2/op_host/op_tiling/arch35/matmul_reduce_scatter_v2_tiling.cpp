@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "mc2_hcom_topo_info.h"
@@ -39,6 +40,10 @@ using namespace Mc2Log;
 using namespace Mc2Tiling;
 
 namespace optiling {
+namespace {
+constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
+}
+
 constexpr uint32_t X1SCALE_INDEX = 3;
 constexpr uint32_t X2SCALE_INDEX = 4;
 // 新功能从这里开始
@@ -115,7 +120,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
     }
-    isPeerOnly_ = !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
+    const auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    const bool enablePeerOnly = std::strcmp(commMode, ACLNN_CCU_PEER_ONLY_MODE) == 0;
+    isPeerOnly_ = enablePeerOnly && !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
                   args_.rankDim == PEER_ONLY_RANK_SIZE && args_.geAType == ge::DataType::DT_BF16 &&
                   mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {

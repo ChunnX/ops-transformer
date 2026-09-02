@@ -16,6 +16,7 @@
 #ifndef _QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_
 #define _QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_
 
+#include <cstring>
 #include "quant_bmm_reduce_scatter_tiling.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
@@ -32,6 +33,7 @@ using namespace Mc2Tiling;
 namespace optiling {
 namespace {
 const gert::Shape defaultShape = gert::Shape();
+constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
 
 constexpr uint32_t DTYPE_ENUM_FLOAT = 0;
 constexpr uint32_t DTYPE_ENUM_FLOAT16 = 1;
@@ -449,7 +451,9 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE &&
         (args_.geAType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geAType == ge::DataType::DT_FLOAT8_E5M2) &&
         (args_.geBType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geBType == ge::DataType::DT_FLOAT8_E5M2);
-    isPeerOnly_ = !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
+    const auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    const bool enablePeerOnly = std::strcmp(commMode, ACLNN_CCU_PEER_ONLY_MODE) == 0;
+    isPeerOnly_ = enablePeerOnly && !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
                   args_.rankDim == PEER_ONLY_RANK_SIZE && isFp8Pertensor &&
                   mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
