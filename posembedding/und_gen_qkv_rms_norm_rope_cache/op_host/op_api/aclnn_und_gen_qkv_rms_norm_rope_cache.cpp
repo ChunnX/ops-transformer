@@ -36,6 +36,13 @@ extern "C" {
 
 namespace und_gen_qkv_rms_norm_rope_cache {
 
+constexpr size_t UND_QKV_DIM_NUM = 3;
+constexpr size_t KV_CACHE_DIM_NUM = 4;
+constexpr size_t DIM_ZERO = 0;
+constexpr size_t DIM_ONE = 1;
+constexpr size_t DIM_TWO = 2;
+constexpr size_t DIM_THREE = 3;
+
 static inline bool CheckNotNull(const aclTensor *undQkv, const aclTensor *undWeightsQ, const aclTensor *undWeightsK,
                                 const aclTensor *cosSinCache, aclTensor *kCacheRef, aclTensor *vCacheRef,
                                 const aclTensor *slotMapping, const aclTensor *positions, aclTensor *qOut)
@@ -60,6 +67,59 @@ static inline bool CheckCacheContiguous(const aclTensor *kCacheRef, const aclTen
     if (!IsContiguous(kCacheRef) || !IsContiguous(vCacheRef)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kCacheRef/vCacheRef must be contiguous [Bn, Bs, N, D] tensors, "
                                          "non-contiguous KV Cache is not supported.");
+        return false;
+    }
+    return true;
+}
+
+// InferShape 会把推导出的 shape 无条件写回 OP_OUTPUT 里的张量，而 k_cache/v_cache 原地写入、
+// 必须直接下发调用方的张量，因此它们的 shape 与 format 在 tiling 侧看到的已是推导值。
+// 下面两项校验只能放在这里——L2 是唯一还能看到调用方原始 shape/format 的位置。
+static inline bool CheckFormatNd(const aclTensor *tensor, const char *name)
+{
+    if (tensor != nullptr && tensor->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s only supports ND format, got %s.", name,
+                op::ToString(tensor->GetStorageFormat()).GetString());
+        return false;
+    }
+    return true;
+}
+
+static inline bool CheckCacheShape(const aclTensor *undQkv, const aclTensor *kCacheRef, const aclTensor *vCacheRef,
+                                   int64_t numHeadsK, int64_t numHeadsV)
+{
+    const auto &undShape = undQkv->GetViewShape();
+    if (undShape.GetDimNum() != UND_QKV_DIM_NUM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "undQkv must be a 3D tensor [und_len, N, D], got %zuD.", undShape.GetDimNum());
+        return false;
+    }
+    const int64_t headDim = undShape.GetDim(DIM_TWO);
+    const aclTensor *caches[] = {kCacheRef, vCacheRef};
+    const char *names[] = {"kCacheRef", "vCacheRef"};
+    const int64_t heads[] = {numHeadsK, numHeadsV};
+    for (size_t i = 0; i < sizeof(caches) / sizeof(caches[0]); ++i) {
+        const auto &shape = caches[i]->GetViewShape();
+        if (shape.GetDimNum() != KV_CACHE_DIM_NUM) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s must be a 4D tensor [Bn, Bs, N, D], got %zuD.", names[i],
+                    shape.GetDimNum());
+            return false;
+        }
+        if (shape.GetDim(DIM_TWO) != heads[i] || shape.GetDim(DIM_THREE) != headDim) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s N/D dims must be [%ld, %ld], got [%ld, %ld].", names[i], heads[i],
+                    headDim, shape.GetDim(DIM_TWO), shape.GetDim(DIM_THREE));
+            return false;
+        }
+    }
+    const auto &kShape = kCacheRef->GetViewShape();
+    const auto &vShape = vCacheRef->GetViewShape();
+    if (kShape.GetDim(DIM_ZERO) != vShape.GetDim(DIM_ZERO) || kShape.GetDim(DIM_ONE) != vShape.GetDim(DIM_ONE)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "vCacheRef Bn/Bs must match kCacheRef [%ld, %ld], got [%ld, %ld].",
+                kShape.GetDim(DIM_ZERO), kShape.GetDim(DIM_ONE), vShape.GetDim(DIM_ZERO), vShape.GetDim(DIM_ONE));
+        return false;
+    }
+    if (kShape.GetDim(DIM_ZERO) <= 0 || kShape.GetDim(DIM_ONE) <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "KV Cache Bn(%ld) and Bs(%ld) must be positive.", kShape.GetDim(DIM_ZERO),
+                kShape.GetDim(DIM_ONE));
         return false;
     }
     return true;
@@ -94,15 +154,25 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
                           numHeadsK, numHeadsV, normEps, mropeSection),
                    DFX_OUT(qOut, kCacheRef, vCacheRef));
 
-    // 参数检查：L2 只做空指针与 KV Cache 连续性校验（后者 tiling 侧看不到 view stride，只能在这里拦），
-    // dtype/shape/属性取值的完整校验统一在 tiling 侧
-    // （aclnn 单算子路径与图模式都会走 tiling，避免两处重复实现导致漂移）
+    // dtype 与属性取值的校验统一在 tiling 侧；此处只拦 tiling 看不到的东西：
+    // view stride（连续性）、format，以及会被 InferShape 覆盖写回的 KV Cache shape。
     auto notNull = und_gen_qkv_rms_norm_rope_cache::CheckNotNull(undQkv, undWeightsQ, undWeightsK, cosSinCache,
                                                                  kCacheRef, vCacheRef, slotMapping, positions, qOut);
     CHECK_RET(notNull, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckGenPaired(genQkvOptional, genWeightsQOptional, genWeightsKOptional),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheContiguous(kCacheRef, vCacheRef), ACLNN_ERR_PARAM_INVALID);
+    const aclTensor *ndTensors[] = {
+        undQkv,    undWeightsQ,    undWeightsK,         cosSinCache,         kCacheRef,          vCacheRef, slotMapping,
+        positions, genQkvOptional, genWeightsQOptional, genWeightsKOptional, catIndicesOptional, qOut};
+    const char *ndNames[] = {"undQkv",      "undWeightsQ", "undWeightsK", "cosSinCache", "kCacheRef",
+                             "vCacheRef",   "slotMapping", "positions",   "genQkv",      "genWeightsQ",
+                             "genWeightsK", "catIndices",  "qOut"};
+    for (size_t i = 0; i < sizeof(ndTensors) / sizeof(ndTensors[0]); ++i) {
+        CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckFormatNd(ndTensors[i], ndNames[i]), ACLNN_ERR_PARAM_INVALID);
+    }
+    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheShape(undQkv, kCacheRef, vCacheRef, numHeadsK, numHeadsV),
+              ACLNN_ERR_PARAM_INVALID);
 
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -144,11 +214,14 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     // 一旦走 Contiguous 拿到的就是副本，kernel 的原地写会落到副本上而调用方看不到结果。
 
     // 调用l0接口进行计算
-    auto l0Ret = l0op::UndGenQkvRmsNormRopeCache(
+    auto qResult = l0op::UndGenQkvRmsNormRopeCache(
         undQkvContiguous, undWeightsQContiguous, undWeightsKContiguous, cosSinCacheContiguous, kCacheRef, vCacheRef,
         slotMappingContiguous, positionsContiguous, genQkvContiguous, genWeightsQContiguous, genWeightsKContiguous,
-        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, qOut, uniqueExecutor.get());
-    CHECK_RET(l0Ret == ACLNN_SUCCESS, l0Ret);
+        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, uniqueExecutor.get());
+    CHECK_RET(qResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto viewCopyResult = l0op::ViewCopy(qResult, qOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 获取workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
