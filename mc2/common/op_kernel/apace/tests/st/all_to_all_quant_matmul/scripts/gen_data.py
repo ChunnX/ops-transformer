@@ -56,7 +56,7 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
     b_scale_broadcast_transpose = np.swapaxes(b_scale_broadcast, -1, -2)
     b_dequant = b_ori_transpose.astype(np.float32) * b_scale_broadcast_transpose.astype(np.float32)
 
-    # [FIX] 2026-06-22: TransB=true 时 kernel 用 ScaleBDNLayoutPtn (column-major)
+    # [FIX] 2026-06-22: TransB=true 时 kernel 用 scaleb_dn_layout_ptn (column-major)
     # 访问 scaleB，layoutScaleB = (rankDim*kScaleSize, N) = (K/32, N) 按列主序读。
     # host 必须写成 [N, K/32] C-order (= [K/32, N] 列主序) 才能被正确解读。
     # 之前 .transpose(1, 0, 2).reshape(K//32, N) 写的是行主序，被 kernel 按列主序
@@ -112,7 +112,7 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num):
         out = torch.matmul(a_cpu, b_cpu).to(torch.bfloat16)
         out_all_ranks.append(out)
 
-    # [FIX] 2026-06-22: TransB=true 时 kernel 用 DNExtLayoutPtn (column-major)
+    # [FIX] 2026-06-22: TransB=true 时 kernel 用 dn_ext_layout_ptn (column-major)
     # 访问 B，layoutB = (rankDim*Ka, N) = (K, N) 按列主序读。
     # host 必须写成 [N, K] C-order (= [K, N] 列主序)，即直接写 b_ori 不转置。
     # 之前传 b_ori_transpose 写的是 [K, N] 行主序，被 kernel 按列主序读成乱序字节。
