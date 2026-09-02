@@ -81,8 +81,8 @@ private:
     int64_t curBS_;
     uint32_t blockIdx_;
     constexpr static AscendC::Reg::CastTrait castB16ToB32 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::UNKNOWN};
 };
 
 REGBASE_TEMPLATE_DECLARE
@@ -162,16 +162,15 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(LocalT
             AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hPostReg, hPostAddr + nIndex);
             for (uint16_t j = 0; j < dRepeatTimes; j++) {
                 pMask = AscendC::Reg::UpdateMask<float>(dNumU32);
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hOutReg,
-                                                                                             hOutAddr + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hOutReg, hOutAddr + j * VL_FP32);
                 AscendC::Reg::Cast<float, T, castB16ToB32>(hOutRegFloat, hOutReg, pMask);
                 AscendC::Reg::Mul(outRegFloat, hOutRegFloat, hPostReg, pMask);
                 for (uint16_t i = 0; i < nTotal; i++) {
                     AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
                         xReg, xAddr + i * dAlign + j * VL_FP32);
                     AscendC::Reg::Cast<float, T, castB16ToB32>(xRegFloat, xReg, pMask);
-                    AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                        hResReg, hResAddr + i * nAlign + nIndex);
+                    AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResReg,
+                                                                                        hResAddr + i * nAlign + nIndex);
                     AscendC::Reg::MulAddDst(outRegFloat, xRegFloat, hResReg, pMask);
                 }
                 AscendC::Reg::DataCopy(yAddr + nIndex * dAlign + j * VL_FP32, outRegFloat, pMask);
@@ -220,31 +219,30 @@ __aicore__ inline void MhcPostRegbase<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd_N4(Loc
         for (uint16_t nIndex = 0; nIndex < nTimes; nIndex++) {
             uint32_t dNumU32 = static_cast<uint32_t>(dAlign);
 
-            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                hResReg0, hResAddr + 0 * nAlign + nIndex);
-            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                hResReg1, hResAddr + 1 * nAlign + nIndex);
-            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                hResReg2, hResAddr + 2 * nAlign + nIndex);
-            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                hResReg3, hResAddr + 3 * nAlign + nIndex);
+            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResReg0,
+                                                                                hResAddr + 0 * nAlign + nIndex);
+            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResReg1,
+                                                                                hResAddr + 1 * nAlign + nIndex);
+            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResReg2,
+                                                                                hResAddr + 2 * nAlign + nIndex);
+            AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResReg3,
+                                                                                hResAddr + 3 * nAlign + nIndex);
             AscendC::Reg::DataCopy<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hPostReg, hPostAddr + nIndex);
 
             for (uint16_t j = 0; j < repeatTimes; j++) {
                 pMask = AscendC::Reg::UpdateMask<float>(dNumU32);
 
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hOutReg,
-                                                                                             hOutAddr + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hOutReg, hOutAddr + j * VL_FP32);
                 AscendC::Reg::Cast<float, T, castB16ToB32>(hOutRegFloat, hOutReg, pMask);
 
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    xReg0, xAddr + 0 * dAlign + j * VL_FP32);
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    xReg1, xAddr + 1 * dAlign + j * VL_FP32);
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    xReg2, xAddr + 2 * dAlign + j * VL_FP32);
-                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                    xReg3, xAddr + 3 * dAlign + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(xReg0,
+                                                                                   xAddr + 0 * dAlign + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(xReg1,
+                                                                                   xAddr + 1 * dAlign + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(xReg2,
+                                                                                   xAddr + 2 * dAlign + j * VL_FP32);
+                AscendC::Reg::DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(xReg3,
+                                                                                   xAddr + 3 * dAlign + j * VL_FP32);
 
                 AscendC::Reg::Cast<float, T, castB16ToB32>(xRegFloat0, xReg0, pMask);
                 AscendC::Reg::Cast<float, T, castB16ToB32>(xRegFloat1, xReg1, pMask);
