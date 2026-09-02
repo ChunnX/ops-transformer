@@ -629,7 +629,7 @@ def analyze_gmm(prof_dir, label):
     return result, three_metrics(prof_dir, 'gemm', freq_gmm)
 
 def fmt(v):
-    return f"{v:.3f}" if v is not None else "N/A"
+    return f"{v:.2f}" if v is not None else "N/A"
 
 print()
 print("============================================")
@@ -644,7 +644,7 @@ def seg_line(name, formula, mn, mean, mx, extra=""):
 
 def print_op_result(op, typ, cores, r, m, fm):
     shots = m.get('shots', 1) if m else 1
-    print(f"{op} ({typ}, {cores}核, {shots}拍)  TaskDur={r['mean']:.3f}us")
+    print(f"{op} ({typ}, {cores}核, {shots}拍)  TaskDur={r['mean']:.2f}us")
     if not m:
         print("  [无 kernel 打点数据]")
         print()
@@ -659,10 +659,10 @@ def print_op_result(op, typ, cores, r, m, fm):
                    m['t2_stars']))
     per = m.get('t1_stars_per_shot')
     if per and len(per) > 1:
-        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.3f}' for v in per)}  ({m['n']} blocks, 拍间波动观测)")
+        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.2f}' for v in per)}  ({m['n']} blocks, 拍间波动观测)")
     if fm:
-        print(f"  [ffts PMU] T2->核结束(硬件尾)={fm['hw_tail']:.3f}us  "
-              f"dispatch->最慢核结束={fm['pmuend_stars']:.3f}us")
+        print(f"  [ffts PMU] T2->核结束(硬件尾)={fm['hw_tail']:.2f}us  "
+              f"dispatch->最慢核结束={fm['pmuend_stars']:.2f}us")
     print()
 
 results = []
@@ -694,7 +694,7 @@ with open(summary_path, 'w') as f:
                 'T2-stars(us)'])
     for op, typ, cores, r, m, fm in results:
         base = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1,
-                m['n'] if m else '', f"{r['mean']:.3f}"]
+                m['n'] if m else '', f"{r['mean']:.2f}"]
         for stat in ('min', 'mean', 'max'):
             row = list(base) + [stat]
             if m:
