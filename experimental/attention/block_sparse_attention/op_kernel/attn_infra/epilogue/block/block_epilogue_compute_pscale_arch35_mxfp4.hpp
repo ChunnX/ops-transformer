@@ -68,7 +68,8 @@ public:
     __aicore__ inline ~BlockEpilogue() {}
 
     template <class TensorL1Pscale>
-    __aicore__ inline void operator()(TensorL1Pscale &l1PScaleTensor, TileInfo const &tileInfo, TaskInfo &taskInfo)
+    __aicore__ inline void operator()(TensorL1Pscale &l1PScaleTensor, TileInfo const &tileInfo, TaskInfo &taskInfo,
+                                      AscendC::GlobalTensor<ElementGroupMax> &gSoftmaxMax)
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementGroupMax> localGlobalMax = localGlobalMaxUBTensor[tileInfo.tileMaxIdx];
@@ -123,6 +124,20 @@ public:
                     pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
+        }
+
+        // 尾块: 把本 task 的 gmax(per-query) 从 softmaxMax UB 快照到 GM 流水槽位(taskIdx % 20)。
+        // VF 刚把 gmax 存入 softmaxMaxOld(ugmax_old); 此处仅主路径 sub-block 写一次。
+        // 后续 V_MTE3 set/wait 对排空 MTE3, 保证 GM 写完成; delay20 侧(rescale O)读同槽位做 O 写回门控。
+        // QS64 的 VF 以 VL64 掩码只写前 64 lane(上 64 lane 为 UB 垃圾), 故 lane 数按 QS 对齐数截取。
+        if (tileInfo.isLastKvsTile) {
+            constexpr uint32_t SM_MAX_SLOT_NUM = 20; // 与 kernel/host 侧 workspace 槽数一致
+            const uint32_t smMaxLaneNum =
+                (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) ? MXFP4::QS_BASE_SIZE
+                                                                        : (MXFP4::QS_BASE_SIZE / 2);
+            uint64_t smMaxOffset =
+                static_cast<uint64_t>(taskInfo.taskIdx % SM_MAX_SLOT_NUM) * MXFP4::QS_BASE_SIZE;
+            AscendC::DataCopy(gSoftmaxMax[smMaxOffset], softmaxMaxOld, smMaxLaneNum);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);

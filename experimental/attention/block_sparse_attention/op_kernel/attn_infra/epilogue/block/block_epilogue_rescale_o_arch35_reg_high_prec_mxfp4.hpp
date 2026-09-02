@@ -60,7 +60,7 @@ public:
 
     template <class TensorO>
     __aicore__ inline void operator()(TensorO &gOTensor, GemmCoord &actualOriShape, TaskInfo &taskInfo,
-                                      TileInfo &tileInfo)
+                                      TileInfo &tileInfo, AscendC::GlobalTensor<half> &gSoftmaxMax)
     {
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         AscendC::LocalTensor<ElementDm> dm = dmUBTensor[tileInfo.updateScaleIdx];
@@ -102,15 +102,28 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
 
                 // copyUBOToGm
-                uint32_t embdingSize = actualOriShape.m();
-                uint32_t rowOffsetCurSubCore = subBlockIdx * splitMSizePerCore;
-                uint32_t colNumCurSubCore = tla::get<1>(gOTensor.shape());
-                auto gOTensorTlaTile = GetTile(gOTensor, tla::MakeCoord(rowOffsetCurSubCore, 0),
-                                               tla::MakeShape(actMSizeThisCore, colNumCurSubCore));
-                auto ubOLayoutTla = tla::MakeLayout(tla::MakeShape(actMSizeThisCore, embdingSize),
-                                                    tla::MakeStride(embedColumnCnt, tla::Int<1>{}));
-                auto ubOTensorTla = tla::MakeTensor(oUBTensorB16, ubOLayoutTla, Arch::PositionUB{});
-                copyUbToGmO(gOTensorTlaTile, ubOTensorTla);
+                // O 写回门控: 读 GM softmaxMax 槽位(delay3 侧 pscale 写入的本 task gmax 快照)的首个 lane。
+                // 有效/无效是 task 级语义(effrows 作用于整 task 的 KV): 全无效 task 的 gmax 停留在 init
+                // 哨兵 -60000(InitGlobalMaxCallVF 初值, 未被有效数据推进); 有效 task 的 gmax = 真实 max,
+                // 远大于 -60000。故首 lane > -60000 即有效; 否则跳过搬运, 拦截垃圾 O 写入 GM。
+                // 注: 门限须与 init 哨兵一致而非 MIN_VALUE(-65504)——pscale 的 gmax-125 在 -65504 下会
+                // fp16 下溢, -60000 正是保证该减法有限的兜底初值。
+                constexpr uint32_t SM_MAX_SLOT_NUM = 20; // 与 pscale 侧槽位数一致
+                constexpr float SM_MAX_SENTINEL = -60000.0f; // InitGlobalMax 哨兵初值
+                uint64_t smMaxBase =
+                    static_cast<uint64_t>(taskInfo.taskIdx % SM_MAX_SLOT_NUM) * MXFP4::QS_BASE_SIZE;
+                bool taskValid = static_cast<float>(gSoftmaxMax.GetValue(smMaxBase)) > SM_MAX_SENTINEL;
+                if (taskValid) {
+                    uint32_t embdingSize = actualOriShape.m();
+                    uint32_t rowOffsetCurSubCore = subBlockIdx * splitMSizePerCore;
+                    uint32_t colNumCurSubCore = tla::get<1>(gOTensor.shape());
+                    auto gOTensorTlaTile = GetTile(gOTensor, tla::MakeCoord(rowOffsetCurSubCore, 0),
+                                                   tla::MakeShape(actMSizeThisCore, colNumCurSubCore));
+                    auto ubOLayoutTla = tla::MakeLayout(tla::MakeShape(actMSizeThisCore, embdingSize),
+                                                        tla::MakeStride(embedColumnCnt, tla::Int<1>{}));
+                    auto ubOTensorTla = tla::MakeTensor(oUBTensorB16, ubOLayoutTla, Arch::PositionUB{});
+                    copyUbToGmO(gOTensorTlaTile, ubOTensorTla);
+                }
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_ATTNOUT_BUF_FLAG);
         }

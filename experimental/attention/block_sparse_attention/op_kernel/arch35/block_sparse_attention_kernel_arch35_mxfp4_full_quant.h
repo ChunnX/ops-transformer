@@ -78,6 +78,10 @@ public:
 
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
 
+    // softmaxMax GM 快照槽位: 槽数 = 流水深度 20, 每槽 128 half(per-query gmax), 与 host 侧 workspace 对齐
+    static constexpr uint32_t SM_MAX_SLOT_NUM = 20;
+    static constexpr uint32_t SM_MAX_QS_NUM = 128;
+
     // Methods
     __aicore__ inline BsaMXFP4FullQuantKernelArch35() {}
 
@@ -114,6 +118,10 @@ public:
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
+        // softmaxMax GM 快照: 20 槽 × 128 half(per-query gmax)，布局 [taskIdx%20][128]
+        AscendC::GlobalTensor<half> gSoftmaxMax;
+        gSoftmaxMax.SetGlobalBuffer((__gm__ half *)(params.workSpace + sparseIdxSize_ + selectNumIdxSize_),
+                                     SM_MAX_SLOT_NUM * SM_MAX_QS_NUM);
         AscendC::GlobalTensor<int32_t> gAttenMask;
         if (params.attenMask != nullptr) {
             gAttenMask.SetGlobalBuffer((__gm__ int32_t *)params.attenMask);
@@ -263,7 +271,8 @@ public:
                             tla::MakeTensor(gO[delay20TaskInfo.gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
                         GemmCoord actualBlockShapeVPT{embed_, delay20TaskInfo.qsActBaseTile,
                                                       delay20TileInfo.kvsActBaseTile};
-                        epilogueRescaleO(gmOTensorTla, actualBlockShapeVPT, delay20TaskInfo, delay20TileInfo);
+                        epilogueRescaleO(gmOTensorTla, actualBlockShapeVPT, delay20TaskInfo, delay20TileInfo,
+                                         gSoftmaxMax);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     }
                 }
@@ -293,7 +302,7 @@ public:
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 +
                                                                         delay3TileInfo.tileMaxIdx / 2);
-                        epilogueComputePScale(l1PScaleTensorTla, delay3TileInfo, delay3TaskInfo);
+                        epilogueComputePScale(l1PScaleTensorTla, delay3TileInfo, delay3TaskInfo, gSoftmaxMax);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 +
                                                                           delay3TileInfo.pscaleNum);
                     }
@@ -420,6 +429,7 @@ public:
         // whether actual seqlen is provided
         actSeqAval_ = (!bsaTilingData->useUniformQSeqlen) && (!bsaTilingData->useUniformKvSeqlen);
         sparseIdxSize_ = bsaTilingData->selectIdxSize;
+        selectNumIdxSize_ = bsaTilingData->selectNumIdxSize; // softmaxMax GM 快照紧跟 sparseCount 之后
         // aligned seqlen q & kv
         qSeqlenAligned_ = bsaTilingData->maxQSeqlen;
         kvSeqlenAligned_ = bsaTilingData->maxKvSeqlen;
@@ -613,6 +623,7 @@ public:
         info.kvHeadIdx = kvHeadIdx;
         info.qSTileIdx = qSTileIdx;
         info.xBlockIdx = xBlockIdx;
+        info.taskIdx = taskIdx; // 全局 task 序号，GM softmaxMax 槽位 = taskIdx % 20
         info.gatheredKvSeqlen = gatheredKvSeqlen;
         info.qsActBaseTile = qsActBaseTile;
 
@@ -806,6 +817,7 @@ private:
     uint32_t actSeqAval_;
     // workspace size
     uint64_t sparseIdxSize_;
+    uint64_t selectNumIdxSize_;
     // aligned seqlen q & kv
     int64_t qSeqlenAligned_;
     int64_t kvSeqlenAligned_;

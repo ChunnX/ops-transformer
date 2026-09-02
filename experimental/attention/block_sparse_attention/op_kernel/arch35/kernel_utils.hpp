@@ -28,6 +28,7 @@ namespace MXFP4Kernel {
 static constexpr uint32_t TILE_GROUP_N = 16;
 
 struct TaskInfo {
+    uint32_t taskIdx = 0; // 全局 task 序号 (= coreTaskId * coreNum + coreIdx)，用于 GM softmaxMax 槽位编址
     uint32_t batchIdx = 0;
     uint32_t qHeadIdx = 0;
     uint32_t kvHeadIdx = 0;

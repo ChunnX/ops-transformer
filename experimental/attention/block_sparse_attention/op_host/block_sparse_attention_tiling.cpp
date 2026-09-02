@@ -1259,7 +1259,10 @@ void BSATiling::CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext)
     selectIdxSize_ =
         static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
     selectNumIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
-    workSpaceSize_ = libapiSize_ + selectIdxSize_ + selectNumIdxSize_;
+    // softmaxMax GM 快照: 20 槽(PV_RE_DELAY_N 流水深度内每 task 一片) × 128 half(per-query gmax)，
+    // 供 delay20 侧 O 写回前做有效行门控(全哨兵=整 task 无有效 KV 则跳过搬运)
+    constexpr uint64_t SM_MAX_WORKSPACE_SIZE = 20 * 128 * sizeof(uint16_t);
+    workSpaceSize_ = libapiSize_ + selectIdxSize_ + selectNumIdxSize_ + SM_MAX_WORKSPACE_SIZE;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
 }
 
