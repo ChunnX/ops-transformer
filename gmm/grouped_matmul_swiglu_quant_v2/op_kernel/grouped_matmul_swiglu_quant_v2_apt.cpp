@@ -122,7 +122,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             } else {
-                GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                GmmTensorApiSwigluQuantMxFp8Kernel<asc::te::nd_ext_layout_ptn, asc::te::nd_ext_layout_ptn>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             }
@@ -132,7 +132,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             } else {
-                GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
+                GmmTensorApiSwigluQuantMxFp8Kernel<asc::te::nd_ext_layout_ptn, asc::te::dn_ext_layout_ptn>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             }
