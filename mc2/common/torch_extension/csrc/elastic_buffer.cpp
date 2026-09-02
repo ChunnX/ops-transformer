@@ -489,7 +489,7 @@ public:
 
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         GetCommProtocol(hcclComm, protocol);
-        // 16P shared-Jetty无业务验证固定使用UBC_CTP建链，不采用拓扑探测出的协议。
+        // shared-Jetty无业务验证固定使用UBC_CTP建链，不采用拓扑探测出的协议。
         protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
 
         MoeCommContext context;
@@ -668,6 +668,17 @@ private:
                     static_cast<int>(protocol));
     }
 
+    uint32_t ResolveLayerId(const uint32_t *netLayerList, uint32_t netLayerNum, uint32_t peer) const
+    {
+        if (netLayerNum == 1U) {
+            return netLayerList[HCCL_COMM_LAYERS_UB_MEM];
+        }
+        auto layerIt = layerMap_.find(peer);
+        TORCH_CHECK(layerIt != layerMap_.end(), "No HCCL layer mapping found for peer ", peer,
+                    ", net layer count ", netLayerNum);
+        return layerIt->second;
+    }
+
     void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
                          const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
     {
@@ -685,8 +696,7 @@ private:
                 continue;
             }
             uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            uint32_t layerId =
-                netLayerNum == 1U ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_.at(peer);
+            uint32_t layerId = ResolveLayerId(netLayerList, netLayerNum, peer);
             CommLink *links = nullptr;
             GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
@@ -756,8 +766,7 @@ private:
                 if (peer == srcRankId) {
                     continue;
                 }
-                uint32_t layerId =
-                    netLayerNum == 1U ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_.at(peer);
+                uint32_t layerId = ResolveLayerId(netLayerList, netLayerNum, peer);
                 CommLink *links = nullptr;
                 GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
                 if (!hasLocalEndpoint) {
