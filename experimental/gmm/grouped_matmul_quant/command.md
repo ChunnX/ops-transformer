@@ -235,3 +235,185 @@ PR 测试说明中建议包含：
 - `6 passed` 测试汇总。
 - 四个 NPU 用例的 `matched_ratio`、`max_abs_error` 和 `max_rel_error`。
 - `grouped_matmul_quant_extension_build.log` 和 `grouped_matmul_quant_precision.log` 的摘要。
+
+
+
+error:
+(base) j50061995@slave19:~/Projects/ops-transformer/experimental/npu_ops_transformer_ext$ python3 -m pip install \
+  --verbose \
+  --force-reinstall \
+  --no-build-isolation \
+  --no-deps \
+  -e . \
+  2>&1 | tee grouped_matmul_quant_extension_build.log
+Using pip 26.1.2 from /home/j50061995/miniconda3/lib/python3.14/site-packages/pip (python 3.14)
+Obtaining file:///home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext
+  Checking if build backend supports build_editable: started
+  Running command Checking if build backend supports build_editable
+  Checking if build backend supports build_editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Running command Preparing editable metadata (pyproject.toml)
+  running dist_info
+  creating /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info
+  writing /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/PKG-INFO
+  writing dependency_links to /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/dependency_links.txt
+  writing requirements to /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/requires.txt
+  writing top-level names to /tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/top_level.txt
+  writing manifest file '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/SOURCES.txt'
+  reading manifest file '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/SOURCES.txt'
+  writing manifest file '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext.egg-info/SOURCES.txt'
+  creating '/tmp/pip-modern-metadata-2csmroy4/npu_ops_transformer_ext-0.0.1.dist-info'
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: npu_ops_transformer_ext
+  Building editable for npu_ops_transformer_ext (pyproject.toml): started
+  Running command Building editable for npu_ops_transformer_ext (pyproject.toml)
+  running editable_wheel
+  creating /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info
+  writing /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/PKG-INFO
+  writing dependency_links to /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/dependency_links.txt
+  writing requirements to /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/requires.txt
+  writing top-level names to /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/top_level.txt
+  writing manifest file '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/SOURCES.txt'
+  reading manifest file '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/SOURCES.txt'
+  writing manifest file '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext.egg-info/SOURCES.txt'
+  creating '/tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext-0.0.1.dist-info'
+  creating /tmp/pip-ephem-wheel-cache-j6g9u28h/wheels/9c/65/0d/8333df6c7bb9e37fb79554516ec89d2087a972a51dca4ce8bc/tmp1nqu0h7e/.tmp-v22p0ya7/npu_ops_transformer_ext-0.0.1.dist-info/WHEEL
+  running build_py
+  running build_ext
+  -- The C compiler identification is GNU 11.4.0
+  -- The CXX compiler identification is GNU 11.4.0
+  -- Detecting C compiler ABI info
+  -- Detecting C compiler ABI info - done
+  -- Check for working C compiler: /usr/bin/cc - skipped
+  -- Detecting C compile features
+  -- Detecting C compile features - done
+  -- Detecting CXX compiler ABI info
+  -- Detecting CXX compiler ABI info - done
+  -- Check for working CXX compiler: /usr/bin/c++ - skipped
+  -- Detecting CXX compile features
+  -- Detecting CXX compile features - done
+  -- Build torch ops: ON
+  -- /home/j50061995/Ascend/cann-9.0.0
+  -- ASCEND_HOME = /home/j50061995/Ascend/cann-9.0.0
+  -- BISHENG     = /home/j50061995/Ascend/cann-9.0.0/bin/bisheng
+  -- Found Python3: /home/j50061995/miniconda3/bin/python3.1 (found version "3.14.6") found components: Interpreter Development Development.Module Development.Embed
+  -- Python3_EXECUTABLE   = /home/j50061995/miniconda3/bin/python3.1
+  -- Python3_INCLUDE_DIRS = /home/j50061995/miniconda3/include/python3.14
+  -- Python3_LIBRARIES    = /home/j50061995/miniconda3/lib/libpython3.14.so
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+      import torch; print(torch.utils.cmake_prefix_path)
+      ^^^^^^^^^^^^
+  ModuleNotFoundError: No module named 'torch'
+  CMake Error at CMakeLists.txt:85 (find_package):
+    By not providing "FindTorch.cmake" in CMAKE_MODULE_PATH this project has
+    asked CMake to find a package configuration file provided by "Torch", but
+    CMake did not find one.
+
+    Could not find a package configuration file provided by "Torch" with any of
+    the following names:
+
+      TorchConfig.cmake
+      torch-config.cmake
+
+    Add the installation prefix of "Torch" to CMAKE_PREFIX_PATH or set
+    "Torch_DIR" to a directory containing one of the above files.  If "Torch"
+    provides a separate development package or SDK, be sure it has been
+    installed.
+
+
+  -- Configuring incomplete, errors occurred!
+  See also "/tmp/tmp2xk83lok.build-temp/npu_ops_transformer_ext._C/CMakeFiles/CMakeOutput.log".
+  Traceback (most recent call last):
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 389, in <module>
+      main()
+      ~~~~^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 373, in main
+      json_out["return_val"] = hook(**hook_input["kwargs"])
+                               ~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 303, in build_editable
+      return hook(wheel_directory, config_settings, metadata_directory)
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 474, in build_editable
+      return self._build_with_temp_dir(
+             ~~~~~~~~~~~~~~~~~~~~~~~~~^
+          cmd, ".whl", wheel_directory, config_settings
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      )
+      ^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 410, in _build_with_temp_dir
+      self.run_setup()
+      ~~~~~~~~~~~~~~^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 520, in run_setup
+      super().run_setup(setup_script=setup_script)
+      ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/build_meta.py", line 317, in run_setup
+      exec(code, locals())
+      ~~~~^^^^^^^^^^^^^^^^
+    File "<string>", line 118, in <module>
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/__init__.py", line 117, in setup
+      return distutils.core.setup(**attrs)  # type: ignore[return-value]
+             ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/core.py", line 186, in setup
+      return run_commands(dist)
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/core.py", line 202, in run_commands
+      dist.run_commands()
+      ~~~~~~~~~~~~~~~~~^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/dist.py", line 1000, in run_commands
+      self.run_command(cmd)
+      ~~~~~~~~~~~~~~~~^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/dist.py", line 1107, in run_command
+      super().run_command(command)
+      ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command
+      cmd_obj.run()
+      ~~~~~~~~~~~^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 140, in run
+      self._create_wheel_file(bdist_wheel)
+      ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 350, in _create_wheel_file
+      files, mapping = self._run_build_commands(dist_name, unpacked, lib, tmp)
+                       ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 273, in _run_build_commands
+      self._run_build_subcommands()
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/command/editable_wheel.py", line 300, in _run_build_subcommands
+      self.run_command(name)
+      ~~~~~~~~~~~~~~~~^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/cmd.py", line 341, in run_command
+      self.distribution.run_command(command)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/dist.py", line 1107, in run_command
+      super().run_command(command)
+      ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+    File "/home/j50061995/miniconda3/lib/python3.14/site-packages/setuptools/_distutils/dist.py", line 1019, in run_command
+      cmd_obj.run()
+      ~~~~~~~~~~~^^
+    File "<string>", line 86, in run
+    File "<string>", line 114, in build_cmake
+    File "/home/j50061995/miniconda3/lib/python3.14/subprocess.py", line 420, in check_call
+      raise CalledProcessError(retcode, cmd)
+  subprocess.CalledProcessError: Command '['cmake', '/home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext', '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext/npu_ops_transformer_ext', '-DPYTHON_EXECUTABLE=/home/j50061995/miniconda3/bin/python3', '-DBUILD_TORCH_OPS=ON', '-DPYTHON_EXTENSION_USE_ABI3=ON', '-DPYTHON_INCLUDE_DIR=/home/j50061995/miniconda3/include/python3.14', '-DPYTHON_LIBRARIES=/home/j50061995/miniconda3/lib', '-DPy_LIMITED_API_VERSION=0x03080000']' returned non-zero exit status 1.
+  An error occurred when building editable wheel for npu_ops_transformer_ext.
+  See debugging tips in: https://setuptools.pypa.io/en/latest/userguide/development_mode.html#debugging-tips
+  error: subprocess-exited-with-error
+  
+  × Building editable for npu_ops_transformer_ext (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> No available output.
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  full command: /home/j50061995/miniconda3/bin/python3 /home/j50061995/miniconda3/lib/python3.14/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py build_editable /tmp/tmp5zzvebgd
+  cwd: /home/j50061995/Projects/ops-transformer/experimental/npu_ops_transformer_ext
+  Building editable for npu_ops_transformer_ext (pyproject.toml): finished with status 'error'
+  ERROR: Failed building editable for npu_ops_transformer_ext
+Failed to build npu_ops_transformer_ext
+error: failed-wheel-build-for-install
+
+× Failed to build installable wheels for some pyproject.toml based projects
+╰─> npu_ops_transformer_ext
+(base) j50061995@slave19:~/Projects/ops-transformer/experimental/npu_ops_transformer_ext$ python3 -c "import torch, torch_npu, npu_ops_transformer_ext; print('package:', npu_ops_transformer_ext.__file__); print('extension:', npu_ops_transformer_ext._C.__file__); print('NPU available:', torch.npu.is_available()); print('operator:', torch.ops.npu_ops_transformer_ext.grouped_matmul_quant)"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import torch, torch_npu, npu_ops_transformer_ext; print('package:', npu_ops_transformer_ext.__file__); print('extension:', npu_ops_transformer_ext._C.__file__); print('NPU available:', torch.npu.is_available()); print('operator:', torch.ops.npu_ops_transformer_ext.grouped_matmul_quant)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'torch'
