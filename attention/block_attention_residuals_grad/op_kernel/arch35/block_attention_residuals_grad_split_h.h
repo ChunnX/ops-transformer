@@ -501,8 +501,10 @@ __aicore__ inline void BlockAttentionResidualsGradA5SplitH<T>::ReduceAndWriteWei
         int32_t kahanPos = 0;
         LocalTensor<float> sumCmp[2] = {total, totalCmp};
         uint64_t stride = perCoreWkspBytes_ / sizeof(float);
+        // 只归约真正分到 token 的核；空闲核的全 0 部分和会破坏 Kahan 补偿。
+        const int64_t reduceCores = (coreNum_ < batchSize_) ? coreNum_ : batchSize_;
         // 对所有核产生的 gradScoreWeight 部分执行 Kahan 补偿跨核归约，与 arch22 一致。
-        for (int64_t core = 0; core < coreNum_; ++core) {
+        for (int64_t core = 0; core < reduceCores; ++core) {
             LoadMeta(allWeightWkspGm_, static_cast<uint64_t>(core) * stride + hStart, length, temp);
             RegBase::KahanSumUpdate(temp, sumCmp, static_cast<int32_t>(length), kahanPos);
             SetFlag<HardEvent::V_MTE2>(eventVMte2_);

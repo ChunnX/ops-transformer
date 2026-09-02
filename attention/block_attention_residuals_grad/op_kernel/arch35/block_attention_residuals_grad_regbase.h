@@ -482,7 +482,11 @@ __aicore__ inline void BlockAttentionResidualsGradRegbase<D_IN>::ReduceAndWriteW
     const uint64_t strideFloats = perCoreWkspBytes_ / sizeof(float);
     DataCopyExtParams cpF{1, static_cast<uint32_t>(hiddenSize_ * sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-    for (uint32_t c = 0; c < coreNum_; ++c) {
+    // 只归约真正分到 token 的核：A5 核数可能大于 batch，空闲核会把全 0 部分和写进
+    // Workspace，而 KahanSumUpdate 对全 0 输入不是 no-op，会把补偿折进和并清零补偿，
+    // 使 output_2/3 在抵消点差几个 ulp。
+    const uint32_t reduceCores = (coreNum_ < batchSize_) ? coreNum_ : batchSize_;
+    for (uint32_t c = 0; c < reduceCores; ++c) {
         DataCopyPad(outFp32_, wkspAllGm_[static_cast<uint64_t>(c) * strideFloats], cpF, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
         WaitFlag<HardEvent::MTE2_V>(eventMTE2V_);

@@ -587,7 +587,10 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::ReduceAndWriteWeights()
     // cross-core reduce: Kahan 补偿累加各核的 gradScoreWeight 部分和
     uint64_t strideFloats = perCoreWkspBytes_ / sizeof(float);
     DataCopyPadExtParams<float> padParams{false, 0U, 0U, 0U};
-    for (int64_t c = 0; c < coreNum_; c++) {
+    // 只归约真正分到 token 的核：核数大于 batch 时，空闲核的全 0 部分和会破坏
+    // KahanSumUpdate 的补偿，导致权重梯度在抵消点差几个 ulp。
+    const int64_t reduceCores = (coreNum_ < batchSize_) ? coreNum_ : batchSize_;
+    for (int64_t c = 0; c < reduceCores; c++) {
         uint64_t cOff = static_cast<uint64_t>(c) * strideFloats;
         DataCopyPad(temp, wkspAllGm[cOff], cpF, padParams);
         SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
