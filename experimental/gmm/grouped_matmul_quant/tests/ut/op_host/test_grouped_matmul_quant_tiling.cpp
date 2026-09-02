@@ -120,7 +120,7 @@ void ExpectValidCase(const CaseParam& param, uint32_t expectedSplitK)
     ASSERT_NE(info.tilingData, nullptr);
     ASSERT_EQ(info.tilingKey, TILING_KEY_NORMAL);
 
-    const auto* data = reinterpret_cast<const optiling::GroupedMatmulQuantTilingData*>(info.tilingData.get());
+    auto* data = reinterpret_cast<optiling::GroupedMatmulQuantTilingData*>(info.tilingData.get());
     ASSERT_NE(data, nullptr);
     EXPECT_EQ(data->get_dataType(), static_cast<uint32_t>(param.dtype));
     EXPECT_EQ(data->get_noGroup(), static_cast<uint32_t>(param.withGroupList ? 0U : 1U));
