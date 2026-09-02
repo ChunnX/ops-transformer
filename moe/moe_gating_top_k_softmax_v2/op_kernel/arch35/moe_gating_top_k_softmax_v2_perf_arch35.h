@@ -41,7 +41,7 @@ constexpr int32_t MERGE_TWO = 0b0011;
 constexpr int32_t MERGE_FOUR = 0b1111;
 constexpr int32_t VL_FP32 = Ops::Base::GetVRegSize() / sizeof(float);
 constexpr Reg::CastTrait castTraitINT82INT32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                     Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
 template <typename T, int32_t renorm>
 class MoeGatingTopKSoftmaxV2Perf {

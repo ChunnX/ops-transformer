@@ -825,13 +825,12 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SelectTopKInGroup(LocalT
             __ubuf__ float *outputAddr = (__ubuf__ float *)top2InGroupTensor.GetPhyAddr();
             Reg::Duplicate(vregPad, *((float *)&MIN_FP32));
             for (uint16_t i = 0; i < groupCount0; i++) {
-                Reg::LoadAlign<float, Reg::LoadDist::DIST_DINTLV_B32>(
-                    vreg0, vreg1, inputAddr + i * perGroupExpertCountAlign0 * 2);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                      inputAddr + i * perGroupExpertCountAlign0 * 2);
                 Reg::PairReduceElem<Reg::PairReduce::SUM>(vreg2, vreg0, preg0);
                 Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(outputAddr, vreg2, u0, 1);
             }
-            Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0,
-                                                                                   padNegInfNum);
+            Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0, padNegInfNum);
             Reg::StoreUnAlignPost(outputAddr, u0, 0);
         }
     } else {
@@ -845,12 +844,11 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SelectTopKInGroup(LocalT
             __ubuf__ float *outputAddr = (__ubuf__ float *)top2InGroupTensor.GetPhyAddr();
             Reg::Duplicate(vregPad, *((float *)&MIN_FP32));
             for (uint16_t i = 0; i < groupCount0; i++) {
-                Reg::LoadAlign<float, Reg::LoadDist::DIST_DINTLV_B32>(
-                    vreg0, vreg1, inputAddr + i * perGroupExpertCountAlign0 * 2);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                      inputAddr + i * perGroupExpertCountAlign0 * 2);
                 Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(outputAddr, vreg0, u0, 1);
             }
-            Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0,
-                                                                                   padNegInfNum);
+            Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(outputAddr, vregPad, u0, padNegInfNum);
             Reg::StoreUnAlignPost(outputAddr, u0, 0);
         }
     }
@@ -878,8 +876,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SelectTopKAfterSort(Loca
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = Reg::UpdateMask<int32_t>(size);
-            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                              inputAddr + i * 2 * VL_FLOAT_SIZE);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, inputAddr + i * 2 * VL_FLOAT_SIZE);
             Reg::StoreAlign(outputAddr + i * VL_FLOAT_SIZE, vreg1, preg0);
         }
         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_STORE>();
@@ -1240,8 +1237,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKNotAlignEVFNoNorm(
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = Reg::UpdateMask<uint32_t>(k);
-            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                               mrgSortAddr + 2 * i * VL_FLOAT_SIZE);
+            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr + 2 * i * VL_FLOAT_SIZE);
             Reg::Duplicate(vreg2, static_cast<float>(0), preg1);
             Reg::Gather(vreg2, inputAddr, vreg1, preg0);
             Reg::Add(vregSum, vregSum, vreg2, preg1);
@@ -1249,8 +1245,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKNotAlignEVFNoNorm(
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg1 = Reg::UpdateMask<uint32_t>(k1);
-            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                               mrgSortAddr + VL_FLOAT_SIZE * i * 2);
+            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr + VL_FLOAT_SIZE * i * 2);
             Reg::Gather(vreg2, inputAddr, vreg1, preg1);
             Reg::Muls(vreg2, vreg2, routedScalingFactor, preg1);
 
@@ -1294,8 +1289,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKNotAlignEVFWithNor
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = Reg::UpdateMask<uint32_t>(k);
-            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                               2 * i * VL_FLOAT_SIZE + mrgSortAddr);
+            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, 2 * i * VL_FLOAT_SIZE + mrgSortAddr);
             Reg::Duplicate(vreg2, static_cast<float>(0), preg1);
             Reg::Gather(vreg2, inputAddr, vreg1, preg0);
             Reg::Add(vregSum, vregSum, vreg2, preg1);
@@ -1305,8 +1299,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKNotAlignEVFWithNor
         Reg::Duplicate(vreg4, vregSum, preg1);
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg1 = Reg::UpdateMask<uint32_t>(k1);
-            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                               mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+            Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             Reg::Gather(vreg2, inputAddr, vreg1, preg1);
             Reg::Div(vregOutput, vreg2, vreg4, preg1);
             Reg::Muls(vregOutput, vregOutput, routedScalingFactor, preg1);

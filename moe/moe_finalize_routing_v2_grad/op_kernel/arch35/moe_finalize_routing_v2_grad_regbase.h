@@ -189,7 +189,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
             Copy<float, Reg::MaskMergeMode::MERGING>(vregBiasQ, tempBias, pregLoop);
             Reg::Reduce<Reg::ReduceType::SUM>(vregSumBias, vregBiasQ, pregMain);
             StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(ubAddSum + remainderGeneral, vregSumBias,
-                                                                           pregMerge);
+                                                                      pregMerge);
         }
         // step3: non-overlapping portions of the first half reduce by 64, this part always 64 align
         for (uint16_t i = 0; i < static_cast<uint16_t>(quotientLoop - remainderLoop); i++) {
@@ -198,7 +198,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
             Mul(vregBias, vregBias, vregGradY, pregMain);
             Reg::Reduce<Reg::ReduceType::SUM>(vregSumBias, vregBias, pregMain);
             StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(ubAddSum + remainderLoop + i, vregSumBias,
-                                                                           pregMerge);
+                                                                      pregMerge);
         }
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
         BinaryAddVF(ubbinaryAddCache, ubAddSum, binaryAddKLoop, binaryAddLoop, binaryAddLastNum, pos);

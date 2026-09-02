@@ -24,11 +24,11 @@ namespace MoeInplaceIndexAdd {
 using namespace AscendC;
 
 static constexpr Reg::CastTrait castTraitFp32ToInt32 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::SAT,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 static constexpr Reg::CastTrait castTraitInt32ToFp32 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 static constexpr Reg::CastTrait castTraitFp32ToVarT = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
 template <typename VAR_T, typename IDX_T>
 class MoeInplaceIndexAddDeterminstic {
@@ -235,14 +235,12 @@ __aicore__ void MoeInplaceIndexAddDeterminstic<VAR_T, IDX_T>::ComputeUniqueIdNum
             if constexpr (std::is_same<int64_t, IDX_T>::value) {
                 AscendC::Reg::MaskReg maskHalf;
                 AscendC::Reg::MaskPack<AscendC::Reg::HighLowPart::LOWEST>(maskHalf, cmpMask);
-                AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg,
-                                                                                                     maskHalf);
+                AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg, maskHalf);
             } else {
-                AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg,
-                                                                                                     cmpMask);
+                AscendC::Reg::GatherMask<int32_t, AscendC::Reg::GatherMaskMode::STORE_REG>(selReg, orderReg, cmpMask);
             }
-            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                uniqueIdCountsAddr, selReg, uOut);
+            AscendC::Reg::DataCopyUnAlign<int32_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(uniqueIdCountsAddr,
+                                                                                                selReg, uOut);
         }
         AscendC::Reg::DataCopyUnAlignPost(uniqueIdCountsAddr, uOut);
     }

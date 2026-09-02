@@ -35,9 +35,9 @@ constexpr int64_t CONSTANT_THREE = 3;
 constexpr int64_t CONSTANT_TWO = 2;
 constexpr int64_t B32_VF_COUNT = Ops::Base::GetVRegSize() / sizeof(int32_t);
 
-static constexpr AscendC::Reg::CastTrait castTrait = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+static constexpr AscendC::Reg::CastTrait castTrait = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
+                                                      AscendC::Reg::MaskMergeMode::ZEROING,
+                                                      AscendC::RoundMode::UNKNOWN};
 
 template <typename T, bool hasFinished = false, bool needPadNegInf = false>
 class MoeGatingTopKSoftmaxFullloadGenerlized {
@@ -175,8 +175,8 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
             uint16_t expertCountloopsOffset = i * repeatCount;
             AscendC::Reg::Arange(vreg0, expertCountloopsOffset);
             for (uint16_t j = 0; j < rowLoops; j++) {
-                AscendC::Reg::StoreAlign(expertIdxTensorAddr + (j * expertCountAlign_) + expertCountloopsOffset,
-                                              vreg0, mask);
+                AscendC::Reg::StoreAlign(expertIdxTensorAddr + (j * expertCountAlign_) + expertCountloopsOffset, vreg0,
+                                         mask);
             }
         }
     }
@@ -195,8 +195,7 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
             AscendC::Reg::LoadAlign(vreg0, rowIdxBaseTensorAddr + kLoopsOffset);
             for (uint16_t j = 1; j < rowLoops; j++) {
                 AscendC::Reg::Adds(vreg1, vreg0, j, mask);
-                AscendC::Reg::StoreAlign(rowIdxBaseTensorAddr + (j * expertCountAlign_) + kLoopsOffset, vreg1,
-                                              mask);
+                AscendC::Reg::StoreAlign(rowIdxBaseTensorAddr + (j * expertCountAlign_) + kLoopsOffset, vreg1, mask);
             }
         }
     }
@@ -259,8 +258,8 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
                 mask = AscendC::Reg::UpdateMask<int32_t>(remain);
                 offset = rowLoopsOffset + j * repeatCount;
                 ops::LoadOneTensorForDtypeT<T>(xTensorAddr, vreg0, mask, offset);
-                AscendC::Reg::Max<float, AscendC::Reg::MaskMergeMode::MERGING>(reduceMidRreg, reduceMidRreg,
-                                                                                         vreg0, mask);
+                AscendC::Reg::Max<float, AscendC::Reg::MaskMergeMode::MERGING>(reduceMidRreg, reduceMidRreg, vreg0,
+                                                                               mask);
             }
             remain = expertCount_;
             mask = AscendC::Reg::UpdateMask<int32_t>(remain);

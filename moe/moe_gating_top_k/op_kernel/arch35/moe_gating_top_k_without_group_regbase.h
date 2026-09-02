@@ -410,7 +410,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreNo
         Reg::MaskReg preg0 = Reg::UpdateMask<float>(kU32);
 
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vregSortValue, vregExpertIdx,
-                                                                           (__ubuf__ uint32_t *)sortedAddr);
+                                                                 (__ubuf__ uint32_t *)sortedAddr);
         Reg::Gather(vregGathered, xNormAddr, vregExpertIdx, preg0);
         Reg::Muls(vregOutput, vregGathered, routedScalingFactor_, preg0);
         ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg0, 0);
@@ -456,7 +456,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScoreWi
         Reg::MaskReg preg0 = Reg::UpdateMask<float>(kU32);
 
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vregSortValue, vregExpertIdx,
-                                                                           (__ubuf__ uint32_t *)sortedAddr);
+                                                                 (__ubuf__ uint32_t *)sortedAddr);
         Reg::Gather(vregGathered, xNormAddr, vregExpertIdx, preg0);
         Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregGathered, preg0);
         Reg::Adds(vregSum, vregSum, eps_, preg0);
