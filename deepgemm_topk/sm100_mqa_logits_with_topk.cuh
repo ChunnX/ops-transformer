@@ -107,52 +107,38 @@ CUTLASS_DEVICE void warp_bucket_topk(
     uint32_t remaining = kSparseCount;
 
     // === 4 rounds of 8-bit radix select ===
+    long long dbg_t0 = clock64();
     for (int round = 0; round < 4 && remaining > 0; ++round) {
         const int shift = (3 - round) * 8;
         const uint32_t prefix_mask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
         const uint32_t prefix_val = kth_value & prefix_mask;
 
-        // Build histogram: each lane owns 8 buckets [lane*8 .. lane*8+7]
-        // Use scalar variables instead of array to prevent register spill
-        const uint32_t my_base = lane_idx * 8;
-        uint32_t c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
+        long long dbg_rc0 = clock64();
+        // Clear histogram via SMEM
+        for (uint32_t i = lane_idx; i < 256; i += 32)
+            histogram[i] = 0;
+        __syncwarp();
+
+        // Build histogram with SMEM atomicAdd
         for (uint32_t i = lane_idx; i < k_len; i += 32) {
             uint32_t u = to_sortable(logits[k_start + i]);
             if ((u & prefix_mask) == prefix_val) {
-                uint32_t b = (u >> shift) & 0xFF;
-                uint32_t bi = b - my_base;
-                if (bi == 0) c0++;
-                else if (bi == 1) c1++;
-                else if (bi == 2) c2++;
-                else if (bi == 3) c3++;
-                else if (bi == 4) c4++;
-                else if (bi == 5) c5++;
-                else if (bi == 6) c6++;
-                else if (bi == 7) c7++;
+                uint32_t bucket = (u >> shift) & 0xFF;
+                atomicAdd(&histogram[bucket], 1u);
             }
         }
+        __syncwarp();
+        long long dbg_rc1 = clock64();
 
-        // Warp reduce: lane i gets total for buckets [i*8..i*8+7]
+        // Find cutoff: each lane reads 8 buckets [lane*8 .. lane*8+7]
+        uint32_t my_counts[8];
         #pragma unroll
-        for (int s = 16; s > 0; s >>= 1) {
-            c0 += __shfl_xor_sync(0xFFFFFFFF, c0, s);
-            c1 += __shfl_xor_sync(0xFFFFFFFF, c1, s);
-            c2 += __shfl_xor_sync(0xFFFFFFFF, c2, s);
-            c3 += __shfl_xor_sync(0xFFFFFFFF, c3, s);
-            c4 += __shfl_xor_sync(0xFFFFFFFF, c4, s);
-            c5 += __shfl_xor_sync(0xFFFFFFFF, c5, s);
-            c6 += __shfl_xor_sync(0xFFFFFFFF, c6, s);
-            c7 += __shfl_xor_sync(0xFFFFFFFF, c7, s);
-        }
+        for (int i = 0; i < 8; i++)
+            my_counts[i] = histogram[lane_idx * 8 + i];
 
-        if (lane_idx == 0 && k_start == 0) {
-            printf("Round %d: c0=%u c1=%u sum=%u remaining=%u\n",
-                   round, c0, c1, c0+c1+c2+c3+c4+c5+c6+c7, remaining);
-        }
-
-        // Find cutoff: scan from high bucket to low
-        uint32_t my_counts[8] = {c0, c1, c2, c3, c4, c5, c6, c7};
-        uint32_t my_sum = c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7;
+        uint32_t my_sum = 0;
+        #pragma unroll
+        for (int i = 0; i < 8; i++) my_sum += my_counts[i];
 
         // Inclusive prefix sum across lanes
         uint32_t incl = my_sum;
@@ -189,7 +175,12 @@ CUTLASS_DEVICE void warp_bucket_topk(
         kth_value |= (cutoff_bucket << shift);
         definite_count += count_above_cutoff;
         remaining = kSparseCount - definite_count;
+
+        if (threadIdx.x == 0 && blockIdx.x == 0 && lane_idx == 0)
+            printf("[TOPK] token=%p round=%d hist=%lld find=%lld\n",
+                   (void*)logits, round, dbg_rc1 - dbg_rc0, clock64() - dbg_rc1);
     }
+    long long dbg_fin0 = clock64();
 
     // === Final pass: write definite (value > kth) + boundary (value == kth) ===
     const uint32_t kth_full = kth_value;
@@ -254,6 +245,10 @@ CUTLASS_DEVICE void warp_bucket_topk(
             out_indices[i] = -1;
     }
     __syncwarp();
+
+    if (threadIdx.x == 0 && blockIdx.x == 0 && lane_idx == 0)
+        printf("[TOPK] token=%p rounds_total=%lld final=%lld\n",
+               (void*)logits, dbg_fin0 - dbg_t0, clock64() - dbg_fin0);
 }
 
 // =============================================================================
