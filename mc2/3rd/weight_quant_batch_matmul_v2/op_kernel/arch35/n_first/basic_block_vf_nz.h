@@ -48,12 +48,10 @@ struct Int4NzParams {
 };
 
 static constexpr Reg::CastTrait CAST_S4_TO_F16_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 static constexpr Reg::CastTrait CAST_F16_TO_S8_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::CAST_RINT};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
 static constexpr int64_t ONE_BLK_ELEM_B16 = ONE_BLK_SIZE / sizeof(half);
 
@@ -69,8 +67,8 @@ __aicore__ inline void AntiQuantInt4NzKnVf(Int4NzParams<xType, wType, antiQuantS
 
     for (uint16_t LoopN1Idx = 0; LoopN1Idx < int4NzParams.loopN1; LoopN1Idx++) {
         // DIST_BLK 的含义为读取一个32B(即16个数)的数据，广播到256B(即128个数)
-        Reg::DataCopy<xType, Reg::LoadDist::DIST_BLK>(
-            antiQuantScaleVreg, int4NzParams.antiQuantScaleBasePhyAddr + LoopN1Idx * BLOCK_CUBE);
+        Reg::DataCopy<xType, Reg::LoadDist::DIST_BLK>(antiQuantScaleVreg,
+                                                      int4NzParams.antiQuantScaleBasePhyAddr + LoopN1Idx * BLOCK_CUBE);
         if constexpr (hasAntiQuantOffset) {
             Reg::DataCopy<xType, Reg::LoadDist::DIST_BLK>(
                 antiQuantOffsetVreg, int4NzParams.antiQuantOffsetBasePhyAddr + LoopN1Idx * BLOCK_CUBE);
@@ -94,15 +92,15 @@ __aicore__ inline void AntiQuantInt4NzKnVf(Int4NzParams<xType, wType, antiQuantS
             Reg::Mul(weightF16Vreg, weightF16Vreg, antiQuantScaleVreg, maskAll);
 
             if constexpr (useVag) {
-                AddrReg weightF16PhyAddrReg = Reg::CreateAddrReg<xType>(
-                    LoopN1Idx, int4NzParams.loopN1DstStride, LoopInnerNumIdx, int4NzParams.innerDstStride);
-                Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(
-                    int4NzParams.weightHighBitPhyAddr, weightF16Vreg, weightF16PhyAddrReg, maskAll);
+                AddrReg weightF16PhyAddrReg = Reg::CreateAddrReg<xType>(LoopN1Idx, int4NzParams.loopN1DstStride,
+                                                                        LoopInnerNumIdx, int4NzParams.innerDstStride);
+                Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(int4NzParams.weightHighBitPhyAddr, weightF16Vreg,
+                                                                    weightF16PhyAddrReg, maskAll);
             } else {
-                Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(
-                    int4NzParams.weightHighBitPhyAddr + LoopN1Idx * int4NzParams.loopN1DstStride +
-                        LoopInnerNumIdx * int4NzParams.innerDstStride,
-                    weightF16Vreg, maskAll);
+                Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(int4NzParams.weightHighBitPhyAddr +
+                                                                        LoopN1Idx * int4NzParams.loopN1DstStride +
+                                                                        LoopInnerNumIdx * int4NzParams.innerDstStride,
+                                                                    weightF16Vreg, maskAll);
             }
         }
     }
@@ -127,10 +125,9 @@ __aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQ
             // DIST_BLK 的含义为读取一个32B(即16个数)的数据，广播到256B(即128个数)
             antiQuantScaleBasePhyAddr =
                 int4NzParams.antiQuantScaleBasePhyAddr + loopN1Idx * C0_SIZE_B8 + loopGroupIdx * VEC_MAX_ELEM_B16;
-            Reg::DataCopy<antiQuantScaleType, Reg::LoadDist::DIST_BLK>(antiQuantScaleVreg,
-                                                                                 antiQuantScaleBasePhyAddr);
-            Reg::DataCopy<antiQuantScaleType, Reg::LoadDist::DIST_BLK>(
-                antiQuantScaleVreg1, antiQuantScaleBasePhyAddr + ONE_BLK_ELEM_B16);
+            Reg::DataCopy<antiQuantScaleType, Reg::LoadDist::DIST_BLK>(antiQuantScaleVreg, antiQuantScaleBasePhyAddr);
+            Reg::DataCopy<antiQuantScaleType, Reg::LoadDist::DIST_BLK>(antiQuantScaleVreg1,
+                                                                       antiQuantScaleBasePhyAddr + ONE_BLK_ELEM_B16);
             Reg::Select(antiQuantScaleVreg, antiQuantScaleVreg, antiQuantScaleVreg1, maskSelect);
             for (uint16_t loopGroupInnerIdx = 0; loopGroupInnerIdx < int4NzParams.loopInnerNum; loopGroupInnerIdx++) {
                 // DIST_UNPACK4_B8 表示搬运模式如下，Vn中一个数字4bit(0.5Byte)：
@@ -156,8 +153,8 @@ __aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQ
                 AddrReg weightHighBitPhyAddrReg = Reg::CreateAddrReg<xType>(
                     loopN1Idx, int4NzParams.loopN1DstStride, loopGroupIdx, int4NzParams.groupDstStride,
                     loopGroupInnerIdx, int4NzParams.innerDstStride);
-                Reg::DataCopy<xType, Reg::StoreDist::DIST_PACK_B16>(
-                    int4NzParams.weightHighBitPhyAddr, weightS8Vreg, weightHighBitPhyAddrReg, maskAll);
+                Reg::DataCopy<xType, Reg::StoreDist::DIST_PACK_B16>(int4NzParams.weightHighBitPhyAddr, weightS8Vreg,
+                                                                    weightHighBitPhyAddrReg, maskAll);
             }
         }
     }

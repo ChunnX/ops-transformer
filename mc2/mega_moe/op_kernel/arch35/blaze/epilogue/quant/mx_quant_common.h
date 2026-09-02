@@ -62,9 +62,9 @@ constexpr AscendC::Reg::CastTrait CAST_FP32_TO_FP8_LAYOUT_TWO = {
 constexpr AscendC::Reg::CastTrait CAST_FP32_TO_FP8_LAYOUT_THREE = {
     AscendC::Reg::RegLayout::THREE, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
-constexpr AscendC::Reg::CastTrait CAST_BF16_TO_FP4 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait CAST_BF16_TO_FP4 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
+                                                      AscendC::Reg::MaskMergeMode::ZEROING,
+                                                      AscendC::RoundMode::CAST_RINT};
 
 template <typename OutputType>
 __aicore__ inline uint16_t GetOutputMaxExponent()

@@ -106,9 +106,8 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T *srcAddr, __ubuf__ uint16_t *max
         Reg::MaskReg invalidDataMask0;
         Reg::MaskReg invalidDataMask1;
         Reg::UnalignReg u1;
-        static constexpr Reg::CastTrait castTraitHalf2Bf16 = {
-            Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
-            RoundMode::CAST_TRUNC};
+        static constexpr Reg::CastTrait castTraitHalf2Bf16 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
+                                                              Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
         for (uint16_t i = 0; i < loopNum; i++) {
             scaleMask1 = Reg::UpdateMask<T>(totalCountInUB);
             scaleMask2 = Reg::UpdateMask<T>(totalCountInUB);
@@ -117,7 +116,7 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T *srcAddr, __ubuf__ uint16_t *max
                 vdExp0, vdExp1, srcAddr, vlForHalfNumber * DIGIT_TWO);
             if constexpr (Std::IsSame<T, half>::value) {
                 Reg::And(vdExpSelect0, (Reg::RegTensor<uint16_t> &)vdExp0, invalidMaskFP16,
-                              scaleMask1); // 将FP16非正常指数位与每个元素的指数位进行与操作，消除尾数位
+                         scaleMask1); // 将FP16非正常指数位与每个元素的指数位进行与操作，消除尾数位
                 Reg::And(vdExpSelect1, (Reg::RegTensor<uint16_t> &)vdExp1, invalidMaskFP16, scaleMask1);
                 // 将FP16非正常指数位与实际指数位作对比，生成非正常指数位掩码
                 Reg::Compare<uint16_t, CMPMODE::NE>(invalidDataMask0, vdExpSelect0, invalidMaskFP16, scaleMask1);
@@ -125,7 +124,7 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T *srcAddr, __ubuf__ uint16_t *max
                 Reg::Cast<bfloat16_t, T, castTraitHalf2Bf16>(vdExp0BF16, vdExp0, scaleMask1);
                 Reg::Cast<bfloat16_t, T, castTraitHalf2Bf16>(vdExp1BF16, vdExp1, scaleMask1);
                 Reg::And(vdExpExtract0, (Reg::RegTensor<uint16_t> &)vdExp0BF16, expMaskBF16,
-                              scaleMask1); // 与操作保留指数位
+                         scaleMask1); // 与操作保留指数位
                 Reg::And(vdExpExtract1, (Reg::RegTensor<uint16_t> &)vdExp1BF16, expMaskBF16, scaleMask1);
                 // 筛选正常指数位，非正常值则使用expMaskBF16替代
                 Reg::Select<uint16_t>(vdExpExtract0, vdExpExtract0, expMaskBF16, invalidDataMask0);
@@ -140,7 +139,7 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T *srcAddr, __ubuf__ uint16_t *max
             Reg::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, scaleMask1);
 
             Reg::DataCopyUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(maxExpAddr, vdMaxExp, u1,
-                                                                                         elementAfterReduce);
+                                                                               elementAfterReduce);
         }
         Reg::DataCopyUnAlignPost(maxExpAddr, u1, 0);
     }
@@ -167,15 +166,12 @@ __aicore__ inline void ComputeMaxExpClip(__ubuf__ T *srcAddr, __ubuf__ uint16_t 
         for (uint16_t i = 0; i < loopNum; i++) {
             Reg::LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, vlForHalfNumber * DIGIT_TWO);
-            Reg::And((Reg::RegTensor<uint16_t> &)vdExp0, (Reg::RegTensor<uint16_t> &)vdExp0,
-                          absMask16Bit, Mask);
-            Reg::And((Reg::RegTensor<uint16_t> &)vdExp1, (Reg::RegTensor<uint16_t> &)vdExp1,
-                          absMask16Bit, Mask);
-            Reg::Max(vdMaxExp, (Reg::RegTensor<uint16_t> &)vdExp0, (Reg::RegTensor<uint16_t> &)vdExp1,
-                          Mask);
+            Reg::And((Reg::RegTensor<uint16_t> &)vdExp0, (Reg::RegTensor<uint16_t> &)vdExp0, absMask16Bit, Mask);
+            Reg::And((Reg::RegTensor<uint16_t> &)vdExp1, (Reg::RegTensor<uint16_t> &)vdExp1, absMask16Bit, Mask);
+            Reg::Max(vdMaxExp, (Reg::RegTensor<uint16_t> &)vdExp0, (Reg::RegTensor<uint16_t> &)vdExp1, Mask);
             Reg::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, Mask);
             Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(maxExpAddr, vdMaxExp, ureg,
-                                                                                      elementAfterReduce);
+                                                                            elementAfterReduce);
         }
         Reg::StoreUnAlignPost(maxExpAddr, ureg, 0);
     }
@@ -218,8 +214,7 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint
         Reg::Duplicate(specialExpRegTensor, SPECIAL_EXP_THRESHOLD);
         for (uint16_t i = 0; i < loopNumScale; i++) {
             preMaskScale = Reg::UpdateMask<uint16_t>(totalScaleInUB);
-            Reg::DataCopy<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(vdMaxExp, maxExpAddr,
-                                                                                  vlForHalfNumber);
+            Reg::DataCopy<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(vdMaxExp, maxExpAddr, vlForHalfNumber);
             // 检测非正常值
             Reg::Compare<uint16_t, CMPMODE::NE>(cmpResult, vdMaxExp, expMask, preMaskScale);
             // 检测零值
@@ -245,8 +240,8 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint
             Reg::Select<uint16_t>(halfScale, halfScale, zeroRegTensor, zeroMask);
             Reg::Select<uint16_t>(halfScale, specialExpRegTensor, halfScale, specialDataMask);
 
-            Reg::DataCopy<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(halfScaleLocalAddr, halfScale,
-                                                                                  vlForHalfNumber, preMaskScale);
+            Reg::DataCopy<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(halfScaleLocalAddr, halfScale, vlForHalfNumber,
+                                                                        preMaskScale);
         }
     }
 }
@@ -303,28 +298,27 @@ __aicore__ inline void ComputeScaleClip(__ubuf__ uint16_t *maxExpAddr, __ubuf__ 
         Reg::MaskReg dataMaskB16Half = Reg::UpdateMask<uint16_t>(B16_HALF_MASK_ELEMENT_NUM);
         Reg::MaskReg maskFloat = Reg::CreateMask<uint32_t>();
 
-        static constexpr Reg::CastTrait castTraitHalf2Float = {
-            Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
-            RoundMode::UNKNOWN};
+        static constexpr Reg::CastTrait castTraitHalf2Float = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+                                                               Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         for (uint16_t i = 0; i < loopNumScale; i++) {
             // 单搬 64 个数
             Reg::LoadAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK_B16>(
                 max16, maxExpAddr, vlForHalfNumber);
 
-            Reg::Cast<float, U, castTraitHalf2Float>((Reg::RegTensor<float> &)max32,
-                                                          (Reg::RegTensor<U> &)max16, maskFloat);
+            Reg::Cast<float, U, castTraitHalf2Float>((Reg::RegTensor<float> &)max32, (Reg::RegTensor<U> &)max16,
+                                                     maskFloat);
             Reg::Compare<uint32_t, CMPMODE::LT>(cmpResult, max32, expMask, maskFloat);
             Reg::Compare<uint32_t, CMPMODE::NE>(zeroMask, max32, zeroRegTensor32, maskFloat);
 
             // 1e-4 下限 clamp：抑制 block 内 max_abs 过小导致 scale 噪声放大
             // 注意：cmpResult/zeroMask 已在 clamp 前用原始 max32 算好，特殊路径不受影响
-            Reg::Max((Reg::RegTensor<float> &)max32, (Reg::RegTensor<float> &)max32,
-                          (Reg::RegTensor<float> &)epsTensor, maskFloat);
+            Reg::Max((Reg::RegTensor<float> &)max32, (Reg::RegTensor<float> &)max32, (Reg::RegTensor<float> &)epsTensor,
+                     maskFloat);
             // 等价的整数 Max 版本（max32 来自 |x|，非负 IEEE 浮点 bit pattern 与值序一致）：
             // Reg::Max(max32, max32, epsTensor, maskFloat);
 
-            Reg::Mul((Reg::RegTensor<float> &)max32, (Reg::RegTensor<float> &)max32,
-                          (Reg::RegTensor<float> &)invMax, maskFloat);
+            Reg::Mul((Reg::RegTensor<float> &)max32, (Reg::RegTensor<float> &)max32, (Reg::RegTensor<float> &)invMax,
+                     maskFloat);
             Reg::ShiftRights(exp32, max32, SHR_NUM_FOR_FP32, maskFloat);
             Reg::And(man32, max32, manMaskFP32, maskFloat);
 
@@ -346,7 +340,7 @@ __aicore__ inline void ComputeScaleClip(__ubuf__ uint16_t *maxExpAddr, __ubuf__ 
             Reg::Pack<uint16_t, uint32_t, Reg::HighLowPart::LOWEST>(expOut, extractExp);
             // 64 个 max 计算得到 64 * 1 Bytes = 32 * sizeof(uint16_t) Bytes
             Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_PACK_B16>(mxScaleLocalAddr + i * 32, expOut,
-                                                                               dataMaskB16Half);
+                                                                     dataMaskB16Half);
 
             Reg::ShiftLefts(extractExp, extractExp, SHR_NUM_FOR_BF16, maskFloat);
             Reg::Sub(halfScale, scaleBias, extractExp, maskFloat);
@@ -389,12 +383,12 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
         Reg::RegTensor<U> vdExp1FP8One;
         // 放到索引位置0
         static constexpr Reg::CastTrait castTraitZero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         // 放到索引位置1
         static constexpr Reg::CastTrait castTraitOne = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr Reg::CastTrait castTrait32to8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = Reg::UpdateMask<T>(totalCountInUB);
             dataMask2 = Reg::UpdateMask<T>(totalCountInUB);
@@ -412,8 +406,8 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
                 // 取奇数索引的元素Cast到vdExp0FP32One
                 Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, dataMask1);
                 // 由于前面搬入是一个广播操作，所以直接取偶数索引元素即可
-                Reg::Cast<float, bfloat16_t, castTraitZero>(
-                    floatScaleForMul, (Reg::RegTensor<bfloat16_t> &)halfScaleForMul, maskAll);
+                Reg::Cast<float, bfloat16_t, castTraitZero>(floatScaleForMul,
+                                                            (Reg::RegTensor<bfloat16_t> &)halfScaleForMul, maskAll);
                 Reg::Mul(vdExp0FP32Zero, vdExp0FP32Zero, floatScaleForMul, dataMask3);
                 Reg::Mul(vdExp0FP32One, vdExp0FP32One, floatScaleForMul, dataMask4);
                 Reg::Interleave(vdExp0FP32Zero, vdExp0FP32One, vdExp0FP32Zero, vdExp0FP32One);
@@ -456,8 +450,7 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
 }
 
 template <typename T, typename U>
-__aicore__ inline void FP16Convert(Reg::RegTensor<half> &output, Reg::RegTensor<half> &input,
-                                   Reg::MaskReg &mask)
+__aicore__ inline void FP16Convert(Reg::RegTensor<half> &output, Reg::RegTensor<half> &input, Reg::MaskReg &mask)
 {
     __VEC_SCOPE__
     {
@@ -478,8 +471,8 @@ __aicore__ inline void FP16Convert(Reg::RegTensor<half> &output, Reg::RegTensor<
         Reg::CompareScalar<uint16_t, CMPMODE::LT>(specialMask, andResult, NEW_MANTISSA, mask);
         Reg::MaskAnd(specialMask, specialMask, nonzeroMask, mask);
         Reg::Or(newValue, (Reg::RegTensor<uint16_t> &)input, newMantissa, mask);
-        Reg::Select<uint16_t>((Reg::RegTensor<uint16_t> &)output, newValue,
-                                   (Reg::RegTensor<uint16_t> &)input, specialMask);
+        Reg::Select<uint16_t>((Reg::RegTensor<uint16_t> &)output, newValue, (Reg::RegTensor<uint16_t> &)input,
+                              specialMask);
     }
 }
 
@@ -504,16 +497,15 @@ __aicore__ inline void ComputeFp4Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
         Reg::RegTensor<U> vdExp1FP4;
 
         static constexpr Reg::CastTrait castTraitZero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                              Reg::MaskMergeMode::ZEROING, roundMode};
+                                                         Reg::MaskMergeMode::ZEROING, roundMode};
         static constexpr Reg::CastTrait castTraitOne = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, roundMode};
-        static constexpr Reg::CastTrait castTraitHalf2Bf16 = {Reg::RegLayout::UNKNOWN,
-                                                                   Reg::SatMode::UNKNOWN,
-                                                                   Reg::MaskMergeMode::ZEROING, toBf16RoundMode};
+                                                        Reg::MaskMergeMode::ZEROING, roundMode};
+        static constexpr Reg::CastTrait castTraitHalf2Bf16 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
+                                                              Reg::MaskMergeMode::ZEROING, toBf16RoundMode};
         for (uint16_t i = 0; i < loopNum; i++) {
             Reg::DataCopy<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
-                (Reg::RegTensor<uint32_t> &)vdExp0, (Reg::RegTensor<uint32_t> &)vdExp1,
-                (__ubuf__ uint32_t *&)srcAddr, vlForHalfNumber);
+                (Reg::RegTensor<uint32_t> &)vdExp0, (Reg::RegTensor<uint32_t> &)vdExp1, (__ubuf__ uint32_t *&)srcAddr,
+                vlForHalfNumber);
             Reg::DataCopy<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_E2B_B16>(
                 halfScaleForMul, halfScaleLocalAddr, elementAfterReduce);
             if constexpr (Std::IsSame<T, half>::value) {
@@ -534,7 +526,7 @@ __aicore__ inline void ComputeFp4Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
                 Reg::Cast<U, T, castTraitOne>(vdExp1FP4, vdExp1, dataMask1);
             }
             Reg::Add((Reg::RegTensor<uint8_t> &)vdExp0FP4, (Reg::RegTensor<uint8_t> &)vdExp0FP4,
-                          (Reg::RegTensor<uint8_t> &)vdExp1FP4, dataMask1);
+                     (Reg::RegTensor<uint8_t> &)vdExp1FP4, dataMask1);
             Reg::DataCopy<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK_B32>(
                 outLocalAddr, (Reg::RegTensor<int8_t> &)vdExp0FP4, OUT_ELE_NUM_PER_LOOP_FP4, dataMask1);
         }
@@ -595,18 +587,18 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T *srcAddr, __ubuf__ float
         static constexpr Reg::DivSpecificMode divMode = {Reg::MaskMergeMode::ZEROING, true};
 
         static constexpr Reg::CastTrait castTraitZero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr Reg::CastTrait castTraitOne = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
         constexpr static Reg::CastTrait castTrait32tof8 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                Reg::MaskMergeMode::ZEROING, RMode};
+                                                           Reg::MaskMergeMode::ZEROING, RMode};
 
-        constexpr static Reg::CastTrait castTrait32tof16 = {
-            Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+        constexpr static Reg::CastTrait castTrait32tof16 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
-        constexpr static Reg::CastTrait castTrait16toi8 = {
-            Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+        constexpr static Reg::CastTrait castTrait16toi8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
 
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = Reg::UpdateMask<T>(totalCountInUB);
@@ -650,8 +642,7 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T *srcAddr, __ubuf__ float
                 outLocalAddr, (Reg::RegTensor<int8_t> &)vOut1, OUT_ELE_NUM_ONE_BLK, dataMask3);
 
             Reg::Mul(vOutputScale, vTileMax, vInvMaxVal, maskOne);
-            Reg::DataCopy<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleOutLocalAddr + i, vOutputScale,
-                                                                                   maskOne);
+            Reg::DataCopy<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleOutLocalAddr + i, vOutputScale, maskOne);
         }
     }
 }
@@ -680,9 +671,9 @@ __aicore__ inline void ComputePerTileGroupMax(__ubuf__ T *srcAddr, __ubuf__ floa
         Reg::RegTensor<float> vTileMax;
 
         static constexpr Reg::CastTrait castTraitZero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr Reg::CastTrait castTraitOne = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = Reg::UpdateMask<T>(totalCountInUB);
@@ -694,7 +685,7 @@ __aicore__ inline void ComputePerTileGroupMax(__ubuf__ T *srcAddr, __ubuf__ floa
             Reg::Cast<float, T, castTraitOne>(vInFP32One, vInB16, dataMask1);
             if constexpr (HasSmooth) {
                 Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(vSmooth0, vSmooth1,
-                                                                               smoothLocalAddr + i * vlB32 * DIGIT_TWO);
+                                                                     smoothLocalAddr + i * vlB32 * DIGIT_TWO);
                 Reg::Mul(vInFP32Zero, vInFP32Zero, vSmooth0, maskAll);
                 Reg::Mul(vInFP32One, vInFP32One, vSmooth1, maskAll);
             }
@@ -703,8 +694,7 @@ __aicore__ inline void ComputePerTileGroupMax(__ubuf__ T *srcAddr, __ubuf__ floa
             Reg::Abs(vInFP32One, vSmooth1, maskAll);
             Reg::Max(vTileMax, vInFP32Zero, vInFP32One, maskAll);
             Reg::ReduceMax(vTileMax, vTileMax, dataMask2);
-            Reg::DataCopy<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(groupScaleLocalAddr + i, vTileMax,
-                                                                                   maskOne);
+            Reg::DataCopy<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(groupScaleLocalAddr + i, vTileMax, maskOne);
         }
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     }
@@ -754,9 +744,9 @@ __aicore__ inline void ComputePerTileGroupScale(__ubuf__ float *groupScaleLocalA
             Reg::Div<float, &divMode>(vDynScale, vMaxVal, vTileMax, groupMask);
             Reg::Mul(vOutputScale, vTileMax, vInvMaxVal, groupMask);
             Reg::DataCopy<float, Reg::StoreDist::DIST_NORM_B32>(groupScaleLocalAddr + groupOffset, vDynScale,
-                                                                          groupMask);
+                                                                groupMask);
             Reg::DataCopy<float, Reg::StoreDist::DIST_NORM_B32>(scaleOutLocalAddr + groupOffset, vOutputScale,
-                                                                          groupMask);
+                                                                groupMask);
         }
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     }
@@ -789,15 +779,15 @@ __aicore__ inline void QuantizePerTileWithGroupScale(__ubuf__ T *srcAddr, __ubuf
         Reg::RegTensor<U> vOut1;
 
         static constexpr Reg::CastTrait castTraitZero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                              Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         static constexpr Reg::CastTrait castTraitOne = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         constexpr static Reg::CastTrait castTrait32tof8 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                Reg::MaskMergeMode::ZEROING, RMode};
-        constexpr static Reg::CastTrait castTrait32tof16 = {
-            Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-        constexpr static Reg::CastTrait castTrait16toi8 = {
-            Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+                                                           Reg::MaskMergeMode::ZEROING, RMode};
+        constexpr static Reg::CastTrait castTrait32tof16 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+        constexpr static Reg::CastTrait castTrait16toi8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
 
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = Reg::UpdateMask<T>(totalCountInUB);
@@ -809,7 +799,7 @@ __aicore__ inline void QuantizePerTileWithGroupScale(__ubuf__ T *srcAddr, __ubuf
             Reg::Cast<float, T, castTraitOne>(vInFP32One, vInB16, dataMask1);
             if constexpr (HasSmooth) {
                 Reg::DataCopy<float, Reg::LoadDist::DIST_DINTLV_B32>(vSmooth0, vSmooth1,
-                                                                               smoothLocalAddr + i * vlB32 * DIGIT_TWO);
+                                                                     smoothLocalAddr + i * vlB32 * DIGIT_TWO);
                 Reg::Mul(vInFP32Zero, vInFP32Zero, vSmooth0, maskAll);
                 Reg::Mul(vInFP32One, vInFP32One, vSmooth1, maskAll);
             }

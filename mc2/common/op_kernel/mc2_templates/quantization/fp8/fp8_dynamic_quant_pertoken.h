@@ -53,23 +53,23 @@ protected:
     static constexpr float FP8_E4M3FN_MAX_VALUE = 448.0f;
 
     constexpr static AscendC::Reg::CastTrait castTraitB16ToB32 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::UNKNOWN};
     constexpr static AscendC::Reg::CastTrait castTraitF32ToI16 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::CAST_RINT};
     constexpr static AscendC::Reg::CastTrait castTraitI16ToF16 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::CAST_ROUND};
     constexpr static AscendC::Reg::CastTrait castTraitF16ToI8 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_TRUNC};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::CAST_TRUNC};
     constexpr static AscendC::Reg::CastTrait castTraitF32tofp8 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
-        AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        RoundMode::CAST_RINT};
     constexpr static AscendC::Reg::CastTrait castTraitF32toh8 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
-        AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        RoundMode::CAST_ROUND};
 
     template <typename T>
     __aicore__ static inline T Max(T a, T b)
@@ -504,15 +504,14 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
 
         for (uint16_t j = 0; j < vfLoop; j++) {
             preg0 = AscendC::Reg::UpdateMask<float>(sreg0);
-            AscendC::Reg::DataCopy<quantInputDataType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                vregX, xAddr + j * VL);
+            AscendC::Reg::DataCopy<quantInputDataType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(vregX, xAddr + j * VL);
             AscendC::Reg::Cast<float, quantInputDataType, castTraitB16ToB32>(vregFloatX, vregX, preg0);
             AscendC::Reg::Abs(vregAbsX, vregFloatX, preg0);
             AscendC::Reg::Max(vregMaxAbsX, vregAbsX, vregMaxAbsX, preg1);
         }
         AscendC::Reg::ReduceMax(vregReduceMax, vregMaxAbsX, preg1);
-        AscendC::Reg::DataCopyUnAlign<float, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-            maxAddr, vregReduceMax, ureg0, 1);
+        AscendC::Reg::DataCopyUnAlign<float, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(maxAddr, vregReduceMax, ureg0,
+                                                                                          1);
         AscendC::Reg::DataCopyUnAlignPost(maxAddr, ureg0, 0);
     }
 }
@@ -547,8 +546,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
             auto addr = yAddr + j * VL;
             preg2 = AscendC::Reg::UpdateMask<float>(sreg1);
             // 1. 重新加载数据（或可以重用之前加载的）
-            AscendC::Reg::DataCopy<quantInputDataType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                vregX, xAddr + j * VL);
+            AscendC::Reg::DataCopy<quantInputDataType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(vregX, xAddr + j * VL);
             // 2. 转换为float并应用平滑缩放
             AscendC::Reg::Cast<float, quantInputDataType, castTraitB16ToB32>(vregFloatX, vregX, preg2);
             // 3. 除以scale进行缩放
@@ -569,17 +567,16 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
                 AscendC::Reg::Cast<half, int16_t, castTraitI16ToF16>(vregYFp16, vregYInt16, preg2);
                 AscendC::Reg::Pack(vregPackedHalf, (AscendC::Reg::RegTensor<uint32_t> &)vregYFp16);
                 AscendC::Reg::Cast<int4x2_t, half, castTraitF16ToI8>(
-                    (AscendC::Reg::RegTensor<int4x2_t> &)vregY,
-                    (AscendC::Reg::RegTensor<half> &)vregPackedHalf, preg2);
+                    (AscendC::Reg::RegTensor<int4x2_t> &)vregY, (AscendC::Reg::RegTensor<half> &)vregPackedHalf, preg2);
                 addr = yAddr + (j * VL) / 2;
             }
             // 5. 存储量化结果
             if constexpr (IsSameType<quantOutputDataType, int4b_t>::value) {
-                AscendC::Reg::DataCopy<quantOutputDataType, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                    addr, vregY, preg3);
+                AscendC::Reg::DataCopy<quantOutputDataType, AscendC::Reg::StoreDist::DIST_PACK4_B32>(addr, vregY,
+                                                                                                     preg3);
             } else {
-                AscendC::Reg::DataCopy<quantOutputDataType, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                    addr, vregY, preg2);
+                AscendC::Reg::DataCopy<quantOutputDataType, AscendC::Reg::StoreDist::DIST_PACK4_B32>(addr, vregY,
+                                                                                                     preg2);
             }
         }
     }

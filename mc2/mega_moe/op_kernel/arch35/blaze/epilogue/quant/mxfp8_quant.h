@@ -37,50 +37,47 @@ __aicore__ inline void QuantizeMxFp8Data(__ubuf__ bfloat16_t *input, __ubuf__ ui
         AscendC::Reg::RegTensor<float> inputFp32Layout0Reg1, inputFp32Layout1Reg1;
         AscendC::Reg::RegTensor<OutputType> outputLayout0Reg0, outputLayout1Reg0;
         AscendC::Reg::RegTensor<OutputType> outputLayout0Reg1, outputLayout1Reg1;
-        AscendC::Reg::MaskReg fullB16Mask =
-            AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
-        AscendC::Reg::MaskReg fullB8Mask =
-            AscendC::Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg fullB16Mask = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg fullB8Mask = AscendC::Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
         for (uint16_t loopIndex = 0; loopIndex < dataLoopCount; loopIndex++) {
             AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::Reg::LoadDist::DIST_DINTLV_B16>(inputReg0, inputReg1, input,
-                                                                                      inputElementCountPerLoop);
+                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(inputReg0, inputReg1, input,
+                                                                            inputElementCountPerLoop);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::Reg::LoadDist::DIST_E2B_B16>(reciprocalScaleReg, reciprocalScale,
-                                                                                   scaleElementCountPerLoop);
+                                   AscendC::Reg::LoadDist::DIST_E2B_B16>(reciprocalScaleReg, reciprocalScale,
+                                                                         scaleElementCountPerLoop);
             AscendC::Reg::Mul(inputReg0, inputReg0, (AscendC::Reg::RegTensor<bfloat16_t> &)reciprocalScaleReg,
-                                   fullB16Mask);
+                              fullB16Mask);
             AscendC::Reg::Mul(inputReg1, inputReg1, (AscendC::Reg::RegTensor<bfloat16_t> &)reciprocalScaleReg,
-                                   fullB16Mask);
+                              fullB16Mask);
             AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32_ZERO_LAYOUT>(inputFp32Layout0Reg0, inputReg0,
-                                                                                      fullB16Mask);
+                                                                                 fullB16Mask);
             AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32_ONE_LAYOUT>(inputFp32Layout1Reg0, inputReg0,
-                                                                                     fullB16Mask);
+                                                                                fullB16Mask);
             AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32_ZERO_LAYOUT>(inputFp32Layout0Reg1, inputReg1,
-                                                                                      fullB16Mask);
+                                                                                 fullB16Mask);
             AscendC::Reg::Cast<float, bfloat16_t, CAST_BF16_TO_FP32_ONE_LAYOUT>(inputFp32Layout1Reg1, inputReg1,
-                                                                                     fullB16Mask);
-            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_ZERO>(outputLayout0Reg0,
-                                                                                     inputFp32Layout0Reg0, fullB16Mask);
-            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_TWO>(outputLayout1Reg0,
-                                                                                    inputFp32Layout1Reg0, fullB16Mask);
-            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_ONE>(outputLayout0Reg1,
-                                                                                    inputFp32Layout0Reg1, fullB16Mask);
-            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_THREE>(
-                outputLayout1Reg1, inputFp32Layout1Reg1, fullB16Mask);
+                                                                                fullB16Mask);
+            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_ZERO>(outputLayout0Reg0, inputFp32Layout0Reg0,
+                                                                                fullB16Mask);
+            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_TWO>(outputLayout1Reg0, inputFp32Layout1Reg0,
+                                                                               fullB16Mask);
+            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_ONE>(outputLayout0Reg1, inputFp32Layout0Reg1,
+                                                                               fullB16Mask);
+            AscendC::Reg::Cast<OutputType, float, CAST_FP32_TO_FP8_LAYOUT_THREE>(outputLayout1Reg1,
+                                                                                 inputFp32Layout1Reg1, fullB16Mask);
             AscendC::Reg::Add((AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
-                                   (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
-                                   (AscendC::Reg::RegTensor<uint8_t> &)outputLayout1Reg0, fullB8Mask);
+                              (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
+                              (AscendC::Reg::RegTensor<uint8_t> &)outputLayout1Reg0, fullB8Mask);
             AscendC::Reg::Add((AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
-                                   (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
-                                   (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg1, fullB8Mask);
+                              (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
+                              (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg1, fullB8Mask);
             AscendC::Reg::Add((AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
-                                   (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
-                                   (AscendC::Reg::RegTensor<uint8_t> &)outputLayout1Reg1, fullB8Mask);
+                              (AscendC::Reg::RegTensor<uint8_t> &)outputLayout0Reg0,
+                              (AscendC::Reg::RegTensor<uint8_t> &)outputLayout1Reg1, fullB8Mask);
             AscendC::Reg::DataCopy<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::Reg::StoreDist::DIST_NORM_B8>(
-                output, (AscendC::Reg::RegTensor<int8_t> &)outputLayout0Reg0, inputElementCountPerLoop,
-                fullB8Mask);
+                                   AscendC::Reg::StoreDist::DIST_NORM_B8>(
+                output, (AscendC::Reg::RegTensor<int8_t> &)outputLayout0Reg0, inputElementCountPerLoop, fullB8Mask);
         }
     }
 }

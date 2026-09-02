@@ -1095,9 +1095,9 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
                                 // FP4-->FP16指令不支持，需要转换为BF16再转换为FP16
                                 RegTensor<bfloat16_t> weightBF16Vreg0;
                                 Reg::Cast<bfloat16_t, wType, CAST_FP4_TO_BF16_TRAIT>(weightBF16Vreg0, wNz4BitPart0,
-                                                                                          preg);
+                                                                                     preg);
                                 Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(wNzF16Part0, weightBF16Vreg0,
-                                                                                           preg);
+                                                                                      preg);
                             }
                         } else {
                             Reg::Cast<xType, int4x2_t, CAST_S4_TO_F16_TRAIT>(wNzF16Part0, wNz4BitPart0, preg);
@@ -1106,17 +1106,16 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
                             Reg::Add(wNzF16Part0, wNzF16Part0, offset, preg);
                         }
                         Reg::Mul(wNzF16Part0, wNzF16Part0, scale, preg);
-                        Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(
-                            weightOutUbBaseAddr + n1Idx * n1DstExtend + groupIdx * mainGroupNumDstExtend +
-                                innerIdx * innerDstExtend,
-                            wNzF16Part0, preg);
+                        Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(weightOutUbBaseAddr + n1Idx * n1DstExtend +
+                                                                                groupIdx * mainGroupNumDstExtend +
+                                                                                innerIdx * innerDstExtend,
+                                                                            wNzF16Part0, preg);
                     }
                 }
                 // 每次处理 128 个数, scale broadcast 为 128 个数 (256B)
                 Reg::DataCopy<xType, Reg::LoadDist::DIST_BLK>(scale, tailScaleBaseAddr + n1Idx * BLOCK_CUBE);
                 if constexpr (hasAntiQuantOffset) {
-                    Reg::DataCopy<xType, Reg::LoadDist::DIST_BLK>(offset,
-                                                                            tailOffsetBaseAddr + n1Idx * BLOCK_CUBE);
+                    Reg::DataCopy<xType, Reg::LoadDist::DIST_BLK>(offset, tailOffsetBaseAddr + n1Idx * BLOCK_CUBE);
                 }
                 for (uint16_t innerIdx = 0; innerIdx < (uint16_t)tailInnerNum; ++innerIdx) { // 按 128 个数迭代
                     // UNPK4_B8 表示按照如下形式载入：
@@ -1131,10 +1130,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
                             Reg::Cast<xType, wType, CAST_FP4_TO_BF16_TRAIT>(wNzF16Part0, wNz4BitPart0, preg);
                         } else {
                             RegTensor<bfloat16_t> weightBF16Vreg0;
-                            Reg::Cast<bfloat16_t, wType, CAST_FP4_TO_BF16_TRAIT>(weightBF16Vreg0, wNz4BitPart0,
-                                                                                      preg);
-                            Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(wNzF16Part0, weightBF16Vreg0,
-                                                                                       preg);
+                            Reg::Cast<bfloat16_t, wType, CAST_FP4_TO_BF16_TRAIT>(weightBF16Vreg0, wNz4BitPart0, preg);
+                            Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(wNzF16Part0, weightBF16Vreg0, preg);
                         }
                     } else {
                         Reg::Cast<xType, int4x2_t, CAST_S4_TO_F16_TRAIT>(wNzF16Part0, wNz4BitPart0, preg);
@@ -1191,10 +1188,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
                                 Reg::Cast<xType, wType, CAST_FP4_TO_BF16_TRAIT>(wNzF16, wNz4Bit, preg);
                             } else {
                                 RegTensor<bfloat16_t> weightBF16Vreg0;
-                                Reg::Cast<bfloat16_t, wType, CAST_FP4_TO_BF16_TRAIT>(weightBF16Vreg0, wNz4Bit,
-                                                                                          preg);
-                                Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(wNzF16, weightBF16Vreg0,
-                                                                                           preg);
+                                Reg::Cast<bfloat16_t, wType, CAST_FP4_TO_BF16_TRAIT>(weightBF16Vreg0, wNz4Bit, preg);
+                                Reg::Cast<xType, bfloat16_t, CAST_BF16_TO_FP16_TRAIT>(wNzF16, weightBF16Vreg0, preg);
                             }
                         } else {
                             Reg::Cast<xType, int4x2_t, CAST_S4_TO_F16_TRAIT>(wNzF16, wNz4Bit, preg);
@@ -1203,8 +1198,8 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
                             Reg::Add(wNzF16, wNzF16, offset, preg);
                         }
                         Reg::Mul(wNzF16, wNzF16, scale, preg);
-                        Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(weightOutUbBaseAddr, wNzF16,
-                                                                                      aregWeightOut, preg);
+                        Reg::DataCopy<xType, Reg::StoreDist::DIST_NORM_B16>(weightOutUbBaseAddr, wNzF16, aregWeightOut,
+                                                                            preg);
                     }
                 }
             }
