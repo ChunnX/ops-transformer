@@ -17,10 +17,7 @@ if(BUILD_TORCH_OPS)
 
     add_library(${OPERATOR_TARGET} OBJECT grouped_matmul_quant_torch.cpp)
     target_compile_options(${OPERATOR_TARGET} PRIVATE ${COMMON_COMPILE_OPTIONS})
-    target_include_directories(${OPERATOR_TARGET} PRIVATE
-        ${COMMON_INCLUDE_DIRS}
-        ${TORCH_NPU_INCLUDE_PATH}/third_party/op-plugin
-    )
+    target_include_directories(${OPERATOR_TARGET} PRIVATE ${COMMON_INCLUDE_DIRS})
     return()
 endif()
 

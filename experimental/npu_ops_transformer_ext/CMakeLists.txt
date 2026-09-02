@@ -129,6 +129,7 @@ set(COMMON_LINK_LIBS
     register
     tiling_api
     runtime
+    ${CMAKE_DL_LIBS}
     ${Python3_LIBRARIES}
 )
 
