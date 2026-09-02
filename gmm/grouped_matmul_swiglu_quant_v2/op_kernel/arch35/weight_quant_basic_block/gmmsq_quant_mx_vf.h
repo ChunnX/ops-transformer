@@ -28,7 +28,6 @@
 namespace GMMSQWeightQuant {
 
 namespace MicroAPI = AscendC::MicroAPI;
-using AscendC::BLOCK_CUBE;
 using AscendC::VECTOR_REG_WIDTH;
 using AscendC::MicroAPI::AddrReg;
 using AscendC::MicroAPI::MaskReg;
