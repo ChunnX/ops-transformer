@@ -93,9 +93,15 @@ bash build.sh -u --experimental --ops=grouped_matmul_quant --soc=ascend910b
 Ascend 910B 真机精度测试：
 
 ```bash
+cd experimental/npu_ops_transformer_ext
+python3 -m pip install --no-build-isolation -e .
+
 cd experimental/gmm/grouped_matmul_quant/tests
-pytest -sv test_grouped_matmul_quant.py
+python3 -m pytest -sv test_grouped_matmul_quant.py
 ```
+
+运行测试前，需要先安装包含 GroupedMatmulQuant 的 experimental 自定义算子包；随后构建上述 PyTorch 扩展。
+默认注册路径为 `torch.ops.npu_ops_transformer_ext.grouped_matmul_quant`。
 
 如果集成工程注册的 PyTorch 路径不是测试中的默认候选路径，可通过环境变量指定。路径相对于 `torch`，例如
 `ops.vllm.grouped_matmul_quant`：

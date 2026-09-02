@@ -8,12 +8,37 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
-if(NOT ENABLE_TEST AND NOT BENCHMARK)
-    list(REMOVE_ITEM CURRENT_DIRS tests)
+if(BUILD_TORCH_OPS)
+    set(OPERATOR_NAME "grouped_matmul_quant")
+    message(STATUS "BUILD_TORCH_OPS ON in ${OPERATOR_NAME}")
+
+    set(OPERATOR_TARGET "${OPERATOR_NAME}_objects")
+    set(OPERATOR_CONFIG "${OPERATOR_NAME}:${OPERATOR_TARGET}" PARENT_SCOPE)
+
+    add_library(${OPERATOR_TARGET} OBJECT grouped_matmul_quant_torch.cpp)
+    target_compile_options(${OPERATOR_TARGET} PRIVATE ${COMMON_COMPILE_OPTIONS})
+    target_include_directories(${OPERATOR_TARGET} PRIVATE
+        ${COMMON_INCLUDE_DIRS}
+        ${TORCH_NPU_INCLUDE_PATH}/third_party/op-plugin
+    )
+    return()
 endif()
+
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+# The normal experimental build discovers this operator through op_host rather
+# than this top-level file. Tests are therefore added from op_host/CMakeLists.txt
+# as well. Keep the guarded fallback here for direct subdirectory builds.
+list(REMOVE_ITEM CURRENT_DIRS tests)
 foreach(SUB_DIR ${CURRENT_DIRS})
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
         add_subdirectory(${SUB_DIR})
     endif()
 endforeach()
+
+if(ENABLE_TEST OR BENCHMARK)
+    get_property(GROUPED_MATMUL_QUANT_TESTS_ADDED GLOBAL PROPERTY GROUPED_MATMUL_QUANT_TESTS_ADDED)
+    if(NOT GROUPED_MATMUL_QUANT_TESTS_ADDED)
+        set_property(GLOBAL PROPERTY GROUPED_MATMUL_QUANT_TESTS_ADDED TRUE)
+        add_subdirectory(tests)
+    endif()
+endif()
