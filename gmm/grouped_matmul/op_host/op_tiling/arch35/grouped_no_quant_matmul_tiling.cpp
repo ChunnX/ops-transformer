@@ -57,7 +57,7 @@ bool GroupedNoQuantMatmulTiling::CalBaseMMTiling(const gert::TilingContext *cont
     baseK_ = (compileInfoPtr->l0BSize / DB_SIZE) / (baseN_ * GetSizeByDataType(xDType_));
     baseK_ = baseK_ & ~ALIGN_DOWN_16; // 16 bytes down-align
     OP_CHECK_IF(baseK_ == 0,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "baseK_ cannot be 0."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "baseK_ cannot be 0"),
                 return false);
     // according to the double buffer enabled L0A/L0C, compute baseM(cube)
     uint32_t maxBaseM = static_cast<uint32_t>(compileInfoPtr->l0CSize / (baseN_ * FP32_DTYPE_SIZE));
@@ -66,7 +66,7 @@ bool GroupedNoQuantMatmulTiling::CalBaseMMTiling(const gert::TilingContext *cont
         baseM_ = BASE_M_DEFAULT;
     }
     OP_CHECK_IF(baseM_ == 0,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "baseM_ cannot be 0."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "baseM_ cannot be 0"),
                 return false);
     return CalL1Tiling(context, compileInfoPtr);
 }
@@ -246,7 +246,7 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         }
         OP_CHECK_IF(!CheckWeightNZShape(context, static_cast<int64_t>(c0)),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight",
-                                                             "The shape of nz weight is invalid."),
+                                                             "The shape of nz weight is invalid"),
                     return false);
     }
 
@@ -371,7 +371,7 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
         return false);
     OP_CHECK_IF(
         !CalBaseMMTiling(context, compileInfoPtr),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "Unable to calculate BaseMMTiling."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "Unable to calculate BaseMMTiling"),
         return false);
     if (groupNum_ == 1U) {
         FormulateBasicBlock(compileInfoPtr, usedCoreNum_);

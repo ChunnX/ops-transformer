@@ -1963,7 +1963,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 context->GetNodeName(), "weight", Ops::Transformer::Gmm::FormatString("%zu", wDimNum).c_str(),
                 Ops::Transformer::Gmm::FormatString("A8W4 MSD high performance path only support single tensor input, "
-                                                    "but current weight dim num is %zu.",
+                                                    "but current weight dim num is %zu",
                                                     wDimNum)
                     .c_str());
             return ge::GRAPH_FAILED;
@@ -2175,7 +2175,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                 context->GetNodeName(), "K, quantGroupNum",
                 Ops::Transformer::Gmm::FormatString("%u, %u", k, quantGroupNum).c_str(),
-                "GMM_tiling: K should be divisible by quantGroupNum.");
+                "GMM_tiling: K should be divisible by quantGroupNum");
             return ge::GRAPH_FAILED;
         }
         const uint32_t K_UNIT = 64; // 64: int4 in 32B

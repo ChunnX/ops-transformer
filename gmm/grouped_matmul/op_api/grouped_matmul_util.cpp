@@ -76,7 +76,7 @@ bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std:
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
-                                                  "Failed to create the contiguous per-token scale view.");
+                                                  "Failed to create the contiguous per-token scale view");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -109,7 +109,7 @@ bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
-                                                  "Failed to create the contiguous MX scale view.");
+                                                  "Failed to create the contiguous MX scale view");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -139,7 +139,7 @@ bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<acl
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
-                                                  "Failed to create the contiguous tensor view.");
+                                                  "Failed to create the contiguous tensor view");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
