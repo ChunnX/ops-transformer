@@ -51,7 +51,7 @@ __aicore__ inline void MC2MatmulAswKernelDerive<A_TYPE, B_TYPE, C_TYPE, BIAS_TYP
     this->block_.InitForMC2(tilingData, cfg, isTail, isGather);
     InitInputs(aGM, bGM, cGM, biasGM, isGather);
     if (offsetGM != nullptr) {
-        this->cOwnGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ typename C_TYPE::T*>(offsetGM),
+        this->cOwnGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ typename C_TYPE::T *>(offsetGM),
                                           static_cast<uint64_t>(this->block_.rankMN_));
         this->ownRedirect_ = true;
     }
@@ -119,9 +119,9 @@ __aicore__ inline void MC2MatmulAswKernelDerive<A_TYPE, B_TYPE, C_TYPE, BIAS_TYP
                 this->mm_.Iterate();
                 uint32_t mc2MIdx = this->block_.params_.mCntIndex / this->block_.mSliceCnt_;
                 if (this->ownRedirect_ && (mc2MIdx == this->block_.cfg_.rankID)) {
-                    this->mm_.GetTensorC(
-                        this->cOwnGlobal_[this->block_.offset_.offsetC - this->block_.cfg_.rankID * this->block_.rankMN_],
-                        enAtomic);
+                    this->mm_.GetTensorC(this->cOwnGlobal_[this->block_.offset_.offsetC -
+                                                           this->block_.cfg_.rankID * this->block_.rankMN_],
+                                         enAtomic);
                 } else {
                     this->mm_.GetTensorC(this->cGlobal_[this->block_.offset_.offsetC], enAtomic);
                 }

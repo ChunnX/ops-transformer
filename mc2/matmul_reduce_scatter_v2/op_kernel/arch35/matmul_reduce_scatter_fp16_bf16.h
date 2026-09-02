@@ -29,8 +29,7 @@
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE,
-          bool PeerOnly = false>
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE, bool PeerOnly = false>
 class MatmulReduceScatterFP16BF16 {
 public:
     __aicore__ inline MatmulReduceScatterFP16BF16() {}
@@ -91,7 +90,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE, bool PeerOnly>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE, PeerOnly>::PostProcess()
+__aicore__ inline void
+MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE, PeerOnly>::PostProcess()
 {
     auto &&cfg = tilingData_->param;
     // 等待reducescatter执行完成
@@ -112,7 +112,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE, bool PeerOnly>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE, PeerOnly>::InnerProcess()
+__aicore__ inline void
+MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE, PeerOnly>::InnerProcess()
 {
     auto &&tiling = tilingData_->mC2Mmv3TileTilingData.tCubeTiling;
     auto &&cfg = tilingData_->param;
@@ -150,8 +151,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE, bool PeerOnly>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE,
-                                                   PeerOnly>::MatMulV3Compute(
+__aicore__ inline void
+MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE, PeerOnly>::MatMulV3Compute(
     GM_ADDR cGM, Mc2MatMulV3TilingData &tiling, uint32_t count, GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
     using cDataType = typename CType::T;

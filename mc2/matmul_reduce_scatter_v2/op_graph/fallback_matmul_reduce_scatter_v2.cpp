@@ -79,8 +79,9 @@ static ge::graphStatus MatmulReduceScatterV2ExecuteFunc(gert::OpExecuteContext *
 
     // Do not let graph fallback be identified as a direct ACLNN peer-only call.
     const char *graphCommMode = (std::strcmp(commMode, "ccu") == 0) ? GRAPH_CCU_MODE : commMode;
-    const auto apiRet = EXEC_OPAPI_CMD(aclnnMatmulReduceScatterV2, x1Acl, x2Acl, bias, x1Scale, x2Scale, quantScale,
-                                       blockSize, group, op, commTurn, streamMode, groupSize, graphCommMode, y, amaxOut);
+    const auto apiRet =
+        EXEC_OPAPI_CMD(aclnnMatmulReduceScatterV2, x1Acl, x2Acl, bias, x1Scale, x2Scale, quantScale, blockSize, group,
+                       op, commTurn, streamMode, groupSize, graphCommMode, y, amaxOut);
     OPS_CHECK(apiRet != ge::GRAPH_SUCCESS, OPS_LOG_E(reduceScatterV2Info, "Aclnn api error code %d", apiRet),
               return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

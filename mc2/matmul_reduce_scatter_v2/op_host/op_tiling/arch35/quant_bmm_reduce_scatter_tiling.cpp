@@ -512,7 +512,10 @@ void QuantBmmReduceScatterTiling::SetScene()
     return;
 }
 
-bool QuantBmmReduceScatterTiling::CheckPerblockM() { return args_.orgMValue % (PERBLOCK_SIZE * args_.rankDim) == 0; }
+bool QuantBmmReduceScatterTiling::CheckPerblockM()
+{
+    return args_.orgMValue % (PERBLOCK_SIZE * args_.rankDim) == 0;
+}
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 {
@@ -570,8 +573,8 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     }
 
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
-    uint8_t commAlg = isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY :
-        (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
+    uint8_t commAlg =
+        isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY : (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType,
                                             scaleType, commAlg, commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);

@@ -95,7 +95,7 @@ __aicore__ inline void Mc2QuantBatchMatmulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>:
     block_.InitForMC2(cfg, isTail, isGather, preCoreNum);
     UpdateGlobalAddr(aGM, bGM, bias, scale, perTokenScale, cGM, workSpace);
     if (offsetGM != nullptr) {
-        cOwnGlobal_.SetGlobalBuffer((__gm__ YType*)offsetGM, block_.rankMN_);
+        cOwnGlobal_.SetGlobalBuffer((__gm__ YType *)offsetGM, block_.rankMN_);
         ownRedirect_ = true;
     }
     mm_.SetSubBlockIdx(0);

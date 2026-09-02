@@ -25,13 +25,13 @@
 #include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 
-#define QUANT_RS_TEMPLATE_CLASS_PARAMS                                                                                 \
-    template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock,      \
+#define QUANT_RS_TEMPLATE_CLASS_PARAMS \
+    template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock, \
               bool ATrans, bool BTrans, int TPL_COMM_MODE, bool PeerOnly = false>
-#define QUANT_RS_TEMPLATE_IMPL_PARAMS                                                                                  \
-    template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock,      \
+#define QUANT_RS_TEMPLATE_IMPL_PARAMS \
+    template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock, \
               bool ATrans, bool BTrans, int TPL_COMM_MODE, bool PeerOnly>
-#define QUANT_RS_TEMPLATE_FUNC_PARAMS                                                                                  \
+#define QUANT_RS_TEMPLATE_FUNC_PARAMS \
     AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE, PeerOnly
 
 namespace MatmulReduceScatterV2Impl {
@@ -247,8 +247,8 @@ __aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Mat
         mmv3;
     cfg.rankID = rankId_;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
-    mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(),
-        cfg, isTail, false, preCoreNum_, PeerOnly ? cGM_ : nullptr);
+    mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(), cfg,
+              isTail, false, preCoreNum_, PeerOnly ? cGM_ : nullptr);
     for (uint32_t i = 0; i < tileCnt; i++) {
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
