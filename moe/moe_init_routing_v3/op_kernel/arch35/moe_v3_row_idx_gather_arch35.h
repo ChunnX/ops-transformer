@@ -28,6 +28,7 @@ public:
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR workspace,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData);
     __aicore__ inline void Process();
+    __aicore__ inline void ProcessScale(GM_ADDR scale, GM_ADDR expandedScale, int64_t k);
 
 private:
     GlobalTensor<int32_t> expandedRowIdxGm_;
@@ -55,6 +56,19 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeSimt(int
     }
 }
 
+__simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void GatherScaleSimt(int64_t elements, uint32_t m0,
+                                                                                 uint32_t shift0,
+                                                                                 __gm__ int32_t *sortedRowIdxAddr,
+                                                                                 __gm__ float *inputScaleAddr,
+                                                                                 __gm__ float *expandedScaleAddr)
+{
+    for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(elements);
+         index += static_cast<int32_t>(blockDim.x)) {
+        uint32_t sourceRow = Simt::UintDiv(static_cast<uint32_t>(sortedRowIdxAddr[index]), m0, shift0);
+        expandedScaleAddr[index] = inputScaleAddr[sourceRow];
+    }
+}
+
 __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR workspace,
                                           const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
@@ -68,7 +82,7 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
                                             Align(tilingData->actualExpertNum, sizeof(int32_t)),
                                         1);
-    int64_t expertTotalCount = expertTotalCountGm_.GetValue(0);
+    int64_t expertTotalCount = tilingData->cols == 0 ? tilingData->n * tilingData->k : expertTotalCountGm_.GetValue(0);
 
     perCoreElements_ = Ceil(expertTotalCount, needCoreNum_);
     needCoreNum_ = Ceil(expertTotalCount, perCoreElements_);
@@ -102,6 +116,29 @@ __aicore__ inline void RowIdxGather::Process()
     if (useGatherCopy_) {
         SyncAll();
     }
+}
+
+__aicore__ inline void RowIdxGather::ProcessScale(GM_ADDR scale, GM_ADDR expandedScale, int64_t k)
+{
+    if (blockIdx_ >= needCoreNum_) {
+        return;
+    }
+
+    uint32_t m0 = 0;
+    uint32_t shift0 = 0;
+    GetUintDivMagicAndShift(m0, shift0, static_cast<uint32_t>(k));
+    __gm__ int32_t *sortedRowIdxAddr;
+    if (rowIdxType_ == SCATTER) {
+        sortedRowIdxAddr = (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr();
+        if (!useGatherCopy_) {
+            sortedRowIdxAddr += blockIdx_ * perCoreElements_;
+        }
+    } else {
+        sortedRowIdxAddr = (__gm__ int32_t *)sortedExpertIndicesGm_.GetPhyAddr();
+    }
+    __gm__ float *expandedScaleAddr = (__gm__ float *)expandedScale + blockIdx_ * perCoreElements_;
+    asc_vf_call<GatherScaleSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, curElements_, m0, shift0, sortedRowIdxAddr,
+                                 (__gm__ float *)scale, expandedScaleAddr);
 }
 
 } // namespace MoeInitRoutingV3
