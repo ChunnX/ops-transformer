@@ -39,8 +39,7 @@ private:
                                  const std::string &tensorType) const;
     aclnnStatus CheckTensorShape(const aclTensorList *tensorList, size_t idx, const std::string &tensorType) const;
     static aclnnStatus GetExpectedDimNum(const AclnnGroupedMatmulWeightQuantDAV3510Checker &checker,
-                                         const std::string &tensorType, size_t tensorDimNum,
-                                         size_t &expectedDimNum);
+                                         const std::string &tensorType, size_t tensorDimNum, size_t &expectedDimNum);
     static aclnnStatus CheckBatchSizeConsistency(const AclnnGroupedMatmulWeightQuantDAV3510Checker &checker,
                                                  const op::Shape &tensorShape, const op::Shape &weightShape,
                                                  const std::string &tensorType);
@@ -67,8 +66,7 @@ private:
     aclnnStatus CheckS8S4GroupListType() const;
     aclnnStatus CheckS8S4GroupSize(size_t idx) const;
     static aclnnStatus CheckOptionalListSize(const aclTensorList *optional, const aclTensorList *reference,
-                                             const char *optionalName, const char *referenceName,
-                                             const char *opName);
+                                             const char *optionalName, const char *referenceName, const char *opName);
     aclnnStatus CheckGroupSize(size_t idx) const;
     aclnnStatus CheckDimValueAllOne(const aclTensorList *tensorList, const size_t idx,
                                     const std::string &paramName) const;

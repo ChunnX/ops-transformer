@@ -18,7 +18,8 @@ namespace gmm {
 template <typename T>
 class AclnnGroupedMatmulDAV3510Checker {
 public:
-    explicit AclnnGroupedMatmulDAV3510Checker(const GroupedMatmulParamsBase<T> &gmmParams) : gmmParams_(gmmParams) {};
+    explicit AclnnGroupedMatmulDAV3510Checker(const GroupedMatmulParamsBase<T> &gmmParams)
+        : gmmParams_(gmmParams) {};
     ~AclnnGroupedMatmulDAV3510Checker() {};
     aclnnStatus CheckGroupedMatmulDAV3510() const;
     bool IsPerTileQuantMode() const;
@@ -118,8 +119,7 @@ private:
     aclnnStatus CheckMxTypeMCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     MxTypeMDims ExtractMxTypeMDims(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxTypeMScaleShape(const MxTypeMDims &dims, const TensorIndexInfo &tensorIndex) const;
-    aclnnStatus CheckMxTypeMPerTokenAndScaleLastDim(const MxTypeMDims &dims,
-                                                    const TensorIndexInfo &tensorIndex) const;
+    aclnnStatus CheckMxTypeMPerTokenAndScaleLastDim(const MxTypeMDims &dims, const TensorIndexInfo &tensorIndex) const;
     aclnnStatus CheckMxBiasInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     bool LastTwoDimValueIsOne(const aclTensor *tensor) const;
     bool IsSpecialperTileScene(int64_t groupNum, int64_t weightNDim, int64_t weightKDim, int64_t xMDim,
