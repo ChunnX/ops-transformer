@@ -407,13 +407,12 @@ __aicore__ inline void BlockEpiloguePertokenQuant<QMM_BLOCK_EPILOGUE_PERTOKEN_QU
             AscendC::Reg::Cast<int16_t, float, castTraitF32ToI16>(vregYInt16, vregYFp32, preg2);
             AscendC::Reg::Cast<half, int16_t, castTraitI16ToF16>(vregYFp16, vregYInt16, preg2);
             AscendC::Reg::Pack(vreg20, (AscendC::Reg::RegTensor<uint32_t> &)vregYFp16);
-            AscendC::Reg::Cast<int4x2_t, half, castTraitF16ToI8>(
-                (AscendC::Reg::RegTensor<int4x2_t> &)vregY, (AscendC::Reg::RegTensor<half> &)vreg20, preg2);
+            AscendC::Reg::Cast<int4x2_t, half, castTraitF16ToI8>((AscendC::Reg::RegTensor<int4x2_t> &)vregY,
+                                                                 (AscendC::Reg::RegTensor<half> &)vreg20, preg2);
             addr = yAddr + (indexRow * outAlignLen_ + j * vlForHalfNumber_) / 2;
         }
         if constexpr (IsSameType<YDtype, int4b_t>::value) {
-            AscendC::Reg::DataCopy<YCopyDtype, AscendC::Reg::StoreDist::DIST_PACK4_B32>(addr, vregY,
-                                                                                                  pregHalf);
+            AscendC::Reg::DataCopy<YCopyDtype, AscendC::Reg::StoreDist::DIST_PACK4_B32>(addr, vregY, pregHalf);
         } else {
             AscendC::Reg::DataCopy<YCopyDtype, AscendC::Reg::StoreDist::DIST_PACK4_B32>(addr, vregY, preg2);
         }
@@ -463,8 +462,7 @@ __aicore__ inline void BlockEpiloguePertokenQuant<QMM_BLOCK_EPILOGUE_PERTOKEN_QU
     AscendC::Reg::ReduceMax(vregReduceMaxX, vregMaxX, preg1);
     AscendC::Reg::Muls(vregScale, vregReduceMaxX, maxValue_, preg1);
     AscendC::Reg::Duplicate(vregDupScale, vregScale, preg1);
-    AscendC::Reg::DataCopyUnAlign<float, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(scaleAddr, vregScale,
-                                                                                                ureg0, 1);
+    AscendC::Reg::DataCopyUnAlign<float, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(scaleAddr, vregScale, ureg0, 1);
     AscendC::Reg::DataCopyUnAlignPost(scaleAddr, ureg0, 0);
 }
 

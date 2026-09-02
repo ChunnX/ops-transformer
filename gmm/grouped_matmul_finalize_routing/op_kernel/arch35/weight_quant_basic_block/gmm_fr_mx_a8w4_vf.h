@@ -43,9 +43,9 @@ __simd_vf__ inline void InitZeroVf(__ubuf__ float *ubAddr, uint16_t loopCount)
     }
 }
 
-static constexpr Reg::CastTrait CAST_B16_TO_B32_TRAIT = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+static constexpr Reg::CastTrait CAST_B16_TO_B32_TRAIT = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
+                                                         AscendC::Reg::MaskMergeMode::ZEROING,
+                                                         AscendC::RoundMode::UNKNOWN};
 ;
 
 template <typename sharedInputType>
@@ -57,13 +57,11 @@ __simd_vf__ inline void CastAndMulWithSharedWeightVf(__ubuf__ float *dstAddr, __
     MaskReg maskAll = Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
     for (uint16_t loopIdx = 0; loopIdx < loopCount; loopIdx++) {
         Reg::AddrReg sharedInputAreg = Reg::CreateAddrReg<sharedInputType>(loopIdx, VEC_MAX_ELEM_B32);
-        Reg::LoadAlign<sharedInputType, Reg::LoadDist::DIST_UNPACK_B16>(sharedInputB16Vreg, srcAddr,
-                                                                                  sharedInputAreg);
+        Reg::LoadAlign<sharedInputType, Reg::LoadDist::DIST_UNPACK_B16>(sharedInputB16Vreg, srcAddr, sharedInputAreg);
         Reg::Cast<float, sharedInputType, CAST_B16_TO_B32_TRAIT>(sharedInputB32Vreg, sharedInputB16Vreg, maskAll);
         Reg::Muls(sharedInputB32Vreg, sharedInputB32Vreg, weight, maskAll);
         Reg::AddrReg outAddrReg = Reg::CreateAddrReg<float>(loopIdx, QUADRUPLE_BUFFER_NUM * VEC_MAX_ELEM_B32);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dstAddr, sharedInputB32Vreg, outAddrReg,
-                                                                        maskAll);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dstAddr, sharedInputB32Vreg, outAddrReg, maskAll);
     }
 }
 
@@ -74,15 +72,12 @@ __simd_callee__ inline void FrMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ b
     static constexpr biasType MX_BIAS_FACTOR = static_cast<biasType>(0.015625f);
     Reg::RegTensor<biasType> biasVreg, biasFactorVreg;
     Reg::MaskReg maskBiasAll = Reg::CreateMask<biasType, AscendC::Reg::MaskPattern::ALL>();
-    Reg::Duplicate<biasType, AscendC::Reg::MaskMergeMode::ZEROING>(biasFactorVreg, MX_BIAS_FACTOR,
-                                                                             maskBiasAll);
+    Reg::Duplicate<biasType, AscendC::Reg::MaskMergeMode::ZEROING>(biasFactorVreg, MX_BIAS_FACTOR, maskBiasAll);
     for (uint16_t loopBiasIdx = 0; loopBiasIdx < biasLoopNum; ++loopBiasIdx) {
         Reg::AddrReg biasAreg = Reg::CreateAddrReg<biasType>(loopBiasIdx, VEC_MAX_ELEM_B16);
         Reg::LoadAlign<biasType, Reg::LoadDist::DIST_NORM>(biasVreg, biasInUbAddr, biasAreg);
-        Reg::Mul<biasType, AscendC::Reg::MaskMergeMode::ZEROING>(biasVreg, biasVreg, biasFactorVreg,
-                                                                           maskBiasAll);
-        Reg::StoreAlign<biasType, Reg::StoreDist::DIST_NORM_B16>(biasOutUbAddr, biasVreg, biasAreg,
-                                                                           maskBiasAll);
+        Reg::Mul<biasType, AscendC::Reg::MaskMergeMode::ZEROING>(biasVreg, biasVreg, biasFactorVreg, maskBiasAll);
+        Reg::StoreAlign<biasType, Reg::StoreDist::DIST_NORM_B16>(biasOutUbAddr, biasVreg, biasAreg, maskBiasAll);
     }
 }
 
@@ -109,9 +104,9 @@ __simd_vf__ inline void FrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, bia
             // 4bit物理地址位移 = 逻辑索引 >> 1
             Reg::AddrReg aregWeightB8In = Reg::CreateAddrReg<uint8_t>(
                 loopKIdx, (C0_SIZE_B8 * mxA8W4NzParams.nRealSizeAlign) >> 1, innerLoopIdx, VECTOR_REG_WIDTH >> 1);
-            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_US_B8>(
-                (Reg::RegTensor<uint8_t> &)wLoad, (__ubuf__ uint8_t *&)mxA8W4NzParams.weightLowBitPhyAddr,
-                aregWeightB8In);
+            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_US_B8>((Reg::RegTensor<uint8_t> &)wLoad,
+                                                               (__ubuf__ uint8_t *&)mxA8W4NzParams.weightLowBitPhyAddr,
+                                                               aregWeightB8In);
 
             Reg::ShiftRight(wShr0, wLoad, wShrReg, preg);
             Reg::ShiftLeft(wShl, wLoad, wShlReg, preg);
@@ -119,8 +114,8 @@ __simd_vf__ inline void FrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, bia
             Reg::Select(wSel, wShr1, wShr0, pregVsel);
             Reg::And(wAnd, wSel, wAndReg, preg);
 
-            Reg::AddrReg aregWeightB8Out = Reg::CreateAddrReg<uint8_t>(
-                loopKIdx, mxA8W4NzParams.loopKDstStride, innerLoopIdx, mxA8W4NzParams.innerDstStride);
+            Reg::AddrReg aregWeightB8Out = Reg::CreateAddrReg<uint8_t>(loopKIdx, mxA8W4NzParams.loopKDstStride,
+                                                                       innerLoopIdx, mxA8W4NzParams.innerDstStride);
             Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_NORM_B8>(
                 (__ubuf__ uint8_t *&)mxA8W4NzParams.weightHighBitPhyAddr, (Reg::RegTensor<uint8_t> &)wAnd,
                 aregWeightB8Out, preg);
@@ -138,8 +133,7 @@ __simd_vf__ inline void FrMulLogitsVf(uint16_t mSize, uint64_t nLoopCnt, __ubuf_
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(logits, logitsUbAddr + mIdx);
 
         for (uint16_t nLoopIdx = 0; nLoopIdx < nLoopCnt; ++nLoopIdx) {
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                yFp32, yUbAddr + mIdx * 256 + nLoopIdx * VEC_MAX_ELEM_B32);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(yFp32, yUbAddr + mIdx * 256 + nLoopIdx * VEC_MAX_ELEM_B32);
 
             Reg::Muls(yFp32, yFp32, 64.0f, maskAll);
             Reg::Mul(yFp32, yFp32, logits, maskAll);

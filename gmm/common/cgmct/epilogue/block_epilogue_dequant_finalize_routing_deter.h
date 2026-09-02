@@ -42,8 +42,8 @@ constexpr uint32_t DETER_UB_SIZED = 12 * 1024U;
 } // namespace
 
 static constexpr AscendC::Reg::CastTrait ctInt322Fp32ESD = {
-    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN,
-    AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+    AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT};
 
 static constexpr AscendC::Reg::CastTrait ctInt642Fp32SD = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
@@ -352,8 +352,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        AscendC::Reg::MaskReg maskN4B16 =
-            AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskN4B16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
@@ -374,8 +373,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                 AscendC::Reg::DataCopy(scaleReg, x2Scale + vfBlockIdx * eleNumPerVf);
                 if constexpr (IsSameType<DataTypeX2Scale, bfloat16_t>::value) {
                     AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32ZeroESD>(castScaleReg, scaleReg, maskN);
-                    AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneESD>(castScaleOneReg, scaleReg,
-                                                                                       maskN4B16);
+                    AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneESD>(castScaleOneReg, scaleReg, maskN4B16);
                     AscendC::Reg::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                 } else if constexpr (IsSameType<DataTypeX2Scale, float>::value) {
                     castScaleReg = scaleReg;
@@ -385,8 +383,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                     AscendC::Reg::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
                     if constexpr (IsSameType<BiasDtype, bfloat16_t>::value) {
                         AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32ZeroESD>(castBiasReg, biasReg, maskN);
-                        AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg,
-                                                                                     maskN4B16);
+                        AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg, maskN4B16);
                         AscendC::Reg::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
                     } else {
                         castBiasReg = biasReg;
@@ -396,8 +393,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                     addBiasOutReg = mulScaleOutReg;
                 }
                 uint32_t dstUbOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf;
-                AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                addBiasOutReg, maskN);
+                AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, addBiasOutReg,
+                                                                                      maskN);
             }
         }
     }
@@ -418,8 +415,7 @@ __aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        AscendC::Reg::MaskReg maskN4B16 =
-            AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskN4B16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
@@ -441,22 +437,20 @@ __aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
                 AscendC::Reg::DataCopy(scaleReg, x2Scale + vfBlockIdx * eleNumPerVf);
                 if constexpr (IsSameType<DataTypeX2Scale, bfloat16_t>::value) {
                     AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32ZeroESD>(castScaleReg, scaleReg, maskN);
-                    AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneESD>(castScaleOneReg, scaleReg,
-                                                                                       maskN4B16);
+                    AscendC::Reg::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneESD>(castScaleOneReg, scaleReg, maskN4B16);
                     AscendC::Reg::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                 } else if constexpr (IsSameType<DataTypeX2Scale, float>::value) {
                     castScaleReg = scaleReg;
                 }
                 AscendC::Reg::Mul(mulScaleOutReg, l0cOutRegFloat, castScaleReg, maskN);
-                AscendC::Reg::DataCopy<DataTypeX1Scale, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                    perTokenScaleReg, x1Scale + mIdx);
+                AscendC::Reg::DataCopy<DataTypeX1Scale, AscendC::Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg,
+                                                                                              x1Scale + mIdx);
                 AscendC::Reg::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
                 if constexpr (isBiasEpilogue) {
                     AscendC::Reg::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
                     if constexpr (IsSameType<BiasDtype, bfloat16_t>::value) {
                         AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32ZeroESD>(castBiasReg, biasReg, maskN);
-                        AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg,
-                                                                                     maskN4B16);
+                        AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg, maskN4B16);
                         AscendC::Reg::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
                     } else {
                         castBiasReg = biasReg;
@@ -466,8 +460,8 @@ __aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
                     addBiasOutReg = mulPtScaleOutReg;
                 }
                 uint32_t dstUbOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf;
-                AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
-                                                                                                addBiasOutReg, maskN);
+                AscendC::Reg::DataCopy<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, addBiasOutReg,
+                                                                                      maskN);
             }
         }
     }
