@@ -532,8 +532,8 @@ static ge::graphStatus CheckCommModeAttr(const gert::TilingContext *context)
 
     auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     OP_TILING_CHECK(commModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "comm_mode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(std::strcmp(commModePtr, "urma") != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_mode", commModePtr, "urma"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::strcmp(commModePtr, "aiv_urma") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_mode", commModePtr, "aiv_urma"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
