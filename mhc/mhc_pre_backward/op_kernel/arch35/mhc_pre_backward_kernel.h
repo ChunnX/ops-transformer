@@ -1644,6 +1644,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3AlphaGrad()
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3BiasGrad()
 {
+    LocalTensor<uint8_t> tmpLocal = fp32TBuf_.GetWithOffset<uint8_t>(hFusionBufLen_ / 4, 0);
+    constexpr bool isReuse = false;
     LocalTensor<P> biasGradInLocal = vecInQueue1_.AllocTensor<P>();
     LocalTensor<P> biasGradOutLocal = vecOutQueueSmall_.AllocTensor<P>();
     DataCopyParams dataCopyParams;
@@ -1656,14 +1658,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3BiasGrad()
     DataCopyPad(biasGradInLocal, workSpaceGm_[workspaceBuf_.GetBiasGradOffset(0)], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(biasGradInLocal);
     biasGradInLocal = vecInQueue1_.DeQue<P>();
-    // fusionSize仅有24/48/80三种小维，直接在寄存器中按核累加，避免通用RA归约的临时空间和调度开销。
-    if (N_ == 8) {
-        VFDoV1ProcessBiasGradForN8((__ubuf__ P *)biasGradOutLocal.GetPhyAddr(),
-                                    (__ubuf__ P *)biasGradInLocal.GetPhyAddr(), usedVecCoreNum_);
-    } else {
-        VFDoV1ProcessBiasGradForN4N6((__ubuf__ P *)biasGradOutLocal.GetPhyAddr(),
-                                      (__ubuf__ P *)biasGradInLocal.GetPhyAddr(), usedVecCoreNum_);
-    }
+    uint32_t biasGradShapeSrc[] = {usedVecCoreNum_, static_cast<uint32_t>(fusionSize_)};
+    ReduceSum<P, AscendC::Pattern::Reduce::RA, isReuse>(biasGradOutLocal, biasGradInLocal, tmpLocal, biasGradShapeSrc,
+                                                        true);
     vecOutQueueSmall_.EnQue(biasGradOutLocal);
     biasGradOutLocal = vecOutQueueSmall_.DeQue<P>();
     dataCopyParams.blockCount = 1;
