@@ -174,7 +174,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性，并且可以通过传入参数maxDraftTokens来指定最大投机个数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -218,6 +218,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_metadata/README.md">generic_block_sparse_attention_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>generic_block_sparse_attention接口的前置接口，用于计算generic_block_sparse_attention的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/generic_block_sparse_attention/README.md">generic_block_sparse_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -254,7 +264,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性，并且可以通过传入参数maxDraftTokens来指定最大投机个数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -758,6 +768,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/quant_flash_attn_grad/README.md">quant_flash_attn_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算量化注意力（QuantFlashAttention）的反向梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/sparse_flash_mla_softmax_l1_norm_metadata/README.md">sparse_flash_mla_softmax_l1_norm_metadata</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -983,6 +1003,16 @@
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
+    <td>AI Core</td>
+    <td>一个通信域内的Attention节点对FFN节点发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+    <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/attention_to_ffn_v2/README.md">attention_to_ffn_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>一个通信域内的Attention节点对FFN节点发送数据并写状态位，以检测通信链路是否正常。</td>
   </tr>
@@ -1625,7 +1655,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>输入Q/K/V融合张量，拆分Q、K、V；对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出q_out和q_scale；K/V分支按slot_mapping更新k_cache、k_scale_cache和v_cache。</td>
+    <td>融合Q/K/V拆分、Q/K RMSNorm、RoPE/M-RoPE、量化和KV Cache更新，支持M-RoPE MX场景。</td>
   </tr>
   <tr>
     <td>posembedding</td>
