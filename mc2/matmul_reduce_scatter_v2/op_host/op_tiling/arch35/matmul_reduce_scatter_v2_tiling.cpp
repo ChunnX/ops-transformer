@@ -46,6 +46,7 @@ constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
 
 constexpr uint32_t X1SCALE_INDEX = 3;
 constexpr uint32_t X2SCALE_INDEX = 4;
+constexpr uint32_t COMMMODE_INDEX = 10;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
