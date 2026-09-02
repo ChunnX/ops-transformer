@@ -169,6 +169,12 @@ if __name__ == "cann_ops_transformer.ops":
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
 
 
+try:
+    from .block_attention_residuals_grad import block_attention_residuals_grad
+    from .attn_res import attn_res
+except (ImportError, RuntimeError, AttributeError):
+    pass
+
 # Centralized operators not yet migrated to distributed structure
 
 try:
