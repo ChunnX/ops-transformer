@@ -685,8 +685,8 @@ private:
                 continue;
             }
             uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            // 16P shared-Jetty无业务验证固定经过第1层交换网络。
-            uint32_t layerId = 1U;
+            uint32_t layerId =
+                netLayerNum == 1U ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_.at(peer);
             CommLink *links = nullptr;
             GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
@@ -735,7 +735,7 @@ private:
     {
         TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
         TORCH_CHECK(protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP,
-                    "16P shared-Jetty validation requires COMM_PROTOCOL_UBC_CTP, got ",
+                    "Shared-Jetty validation requires COMM_PROTOCOL_UBC_CTP, got ",
                     static_cast<int>(protocol));
         uint32_t netLayerNum = 0;
         uint32_t *netLayerList = nullptr;
@@ -756,8 +756,8 @@ private:
                 if (peer == srcRankId) {
                     continue;
                 }
-                // 16P场景所有逻辑对端固定从第1层获取链路。
-                uint32_t layerId = 1U;
+                uint32_t layerId =
+                    netLayerNum == 1U ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_.at(peer);
                 CommLink *links = nullptr;
                 GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
                 if (!hasLocalEndpoint) {
