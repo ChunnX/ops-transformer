@@ -62,31 +62,31 @@ cann_ops_transformer.all_to_all_quant_matmul(
 
 ## 参数说明
 
-| 参数名             | 参数类型     | 可选/必选 | 描述                                                                                                                           | 数据类型                                       | 维度(shape)                       |
-| ------------------ | ------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | --------------------------------- |
-| `x1`             | Tensor       | 必选      | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），实际传入的K轴大小为`H/2`，需配合`x1_dtype=296`（`torch.float4_e2m1`）。 | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | `(BS, H)`                       |
-| `x2`             | Tensor       | 必选      | 右矩阵，对应公式中X2，需以转置视图（非连续tensor）传入，即先构造`(N, H*rankSize)`再`.t()`。MXFP4场景以uint8打包存储，实际传入的K轴大小为`H*rankSize/2`，需配合`x2_dtype=296`（`torch.float4_e2m1`）。                  | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | `(H*rankSize, N)`（转置视图）               |
-| `group`          | ProcessGroup | 必选      | torch.distributed通信域，用于All-to-All通信。                                                                                  | -                                              | -                                 |
-| `bias`           | Tensor       | 可选      | 偏置项，矩阵乘后累加，默认值为`None`。                                                                                       | `torch.float32`                              | `(N,)`                          |
-| `x1_scale`       | Tensor       | 可选      | `x1`的MX量化scale，默认值为`None`。                                                                                        | `torch.float8_e8m0fnu`                       | `(BS, ceil(H / 64), 2)`         |
-| `x2_scale`       | Tensor       | 可选      | `x2`的MX量化scale，默认值为`None`。                                                                                        | `torch.float8_e8m0fnu`                       | `(N, ceil(H*rankSize / 64), 2)` |
-| `x1_quant_mode`  | int          | 可选      | `x1`量化模式，默认值为0；MX量化传6。                                                                                         | int                                            | -                                 |
-| `x2_quant_mode`  | int          | 可选      | `x2`量化模式，默认值为0；MX量化传6。                                                                                         | int                                            | -                                 |
-| `group_sizes`    | List[int]    | 可选      | MX量化group大小，默认值为`None`；MX场景传`[1, 1, 32]`。                                                                    | int                                            | -                                 |
-| `x1_dtype`       | int          | 可选      | `x1`的dtype，默认值为-1（使用tensor的dtype）；MXFP4场景传296（torch_npu.float4_e2m1）。                                                 | int                                            | -                                 |
-| `x2_dtype`       | int          | 可选      | `x2`的dtype，默认值为-1（使用tensor的dtype）；MXFP4场景传296（torch_npu.float4_e2m1）。                                                 | int                                            | -                                 |
-| `x1_scale_dtype` | int          | 可选      | `x1_scale`的dtype，默认值为-1；MX场景传293（torch_npu.float8_e8m0）。                                                           | int                                            | -                                 |
-| `x2_scale_dtype` | int          | 可选      | `x2_scale`的dtype，默认值为-1；MX场景传293（torch_npu.float8_e8m0）。                                                           | int                                            | -                                 |
-| `y_dtype`        | int          | 可选      | 输出`y`的数据类型，默认值为fp32；未显式传15（BF16）或5（FP16）时会被算子校验拒绝。                                           | int                                            | -                                 |
-| `comm_mode`      | str          | 可选      | 通信模式，默认值为`None`；当前仅支持`"urma"`。                                                                             | string                                         | -                                 |
-| `precision_mode` | int          | 可选      | 精度模式，默认值为0。0/1/2性能由低到高，精度由高到低。                                                                         | int                                            | -                                 |
+| 参数名             | 参数类型     | 可选/必选 | 描述                                                                                                                           | 数据类型                                       | 数据格式       | 维度(shape)                       |
+| ------------------ | ------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | -------------- | --------------------------------- |
+| `x1`             | Tensor       | 必选      | 左矩阵，对应各卡本地的A_local。MXFP4场景以uint8打包存储（2个fp4占1字节），实际传入的K轴大小为`H/2`，需配合`x1_dtype=296`（`torch.float4_e2m1`）。 | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | ND             | `(BS, H)`                       |
+| `x2`             | Tensor       | 必选      | 右矩阵，对应公式中X2，需以转置视图（非连续tensor）传入，即先构造`(N, H*rankSize)`再`.t()`。MXFP4场景以uint8打包存储，实际传入的K轴大小为`H*rankSize/2`，需配合`x2_dtype=296`（`torch.float4_e2m1`）。                  | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch.float4_e2m1` | ND             | `(H*rankSize, N)`（转置视图）               |
+| `group`          | ProcessGroup | 必选      | torch.distributed通信域，用于All-to-All通信。                                                                                  | -                                              | -              | -                                 |
+| `bias`           | Tensor       | 可选      | 偏置项，矩阵乘后累加，默认值为`None`。                                                                                       | `torch.float32`                              | ND             | `(N,)`                          |
+| `x1_scale`       | Tensor       | 可选      | `x1`的MX量化scale，默认值为`None`。                                                                                        | `torch.float8_e8m0fnu`                       | ND、NCL        | `(BS, ceil(H / 64), 2)`         |
+| `x2_scale`       | Tensor       | 可选      | `x2`的MX量化scale，默认值为`None`。                                                                                        | `torch.float8_e8m0fnu`                       | ND、NCL        | `(N, ceil(H*rankSize / 64), 2)` |
+| `x1_quant_mode`  | int          | 可选      | `x1`量化模式，默认值为0；MX量化传6。                                                                                         | int                                            | -              | -                                 |
+| `x2_quant_mode`  | int          | 可选      | `x2`量化模式，默认值为0；MX量化传6。                                                                                         | int                                            | -              | -                                 |
+| `group_sizes`    | List[int]    | 可选      | MX量化group大小，默认值为`None`；MX场景传`[1, 1, 32]`。                                                                    | int                                            | -              | -                                 |
+| `x1_dtype`       | int          | 可选      | `x1`的dtype，默认值为-1（使用tensor的dtype）；MXFP4场景传296（torch_npu.float4_e2m1）。                                                 | int                                            | -              | -                                 |
+| `x2_dtype`       | int          | 可选      | `x2`的dtype，默认值为-1（使用tensor的dtype）；MXFP4场景传296（torch_npu.float4_e2m1）。                                                 | int                                            | -              | -                                 |
+| `x1_scale_dtype` | int          | 可选      | `x1_scale`的dtype，默认值为-1；MX场景传293（torch_npu.float8_e8m0）。                                                           | int                                            | -              | -                                 |
+| `x2_scale_dtype` | int          | 可选      | `x2_scale`的dtype，默认值为-1；MX场景传293（torch_npu.float8_e8m0）。                                                           | int                                            | -              | -                                 |
+| `y_dtype`        | int          | 可选      | 输出`y`的数据类型，默认值为fp32；未显式传15（BF16）或5（FP16）时会被算子校验拒绝。                                           | int                                            | -              | -                                 |
+| `comm_mode`      | str          | 可选      | 通信模式，默认值为`None`；当前仅支持`"urma"`。                                                                             | string                                         | -              | -                                 |
+| `precision_mode` | int          | 可选      | 精度模式，默认值为0。0/1/2性能由低到高，精度由高到低。                                                                         | int                                            | -              | -                                 |
 
 ## 返回值说明
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
-| --- | --- | --- | --- | --- | --- |
-| `y` | Tensor | 必选 | 矩阵乘输出。 | 由`y_dtype`指定（BF16或FP16） | `(BS/rankSize, N)` |
-| `all2all_out` | Tensor | 可选 | all-to-all通信中间输出，预留参数，暂不支持（返回`None`）。 | - | `None` |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度(shape) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `y` | Tensor | 必选 | 矩阵乘输出。 | 由`y_dtype`指定（BF16或FP16） | ND | `(BS/rankSize, N)` |
+| `all2all_out` | Tensor | 可选 | all-to-all通信中间输出，预留参数，暂不支持（返回`None`）。 | - | - | `None` |
 
 ## 约束说明
 
