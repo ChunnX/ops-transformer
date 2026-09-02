@@ -153,15 +153,15 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
             // rowSequence and its MTE3_MTE2 events restart from slot 0 under the new modulo.
             DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         }
-        combineBufferConfig = PrepareFinalWaveCombineBuffers<CombineQuantMode, true>(commonConfig_, combineBufferConfig,
-                                                                                     waveCombineScratch_);
-        RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                                          waveCombineScratch_, params_, gmmAddrInfo, state,
-                                                          state.expertIdx, combineRowSequence);
-    } else {
-        RunWaveExpertCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
+        combineBufferConfig =
+            PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
+        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                     waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
                                                     combineRowSequence);
+    } else {
+        RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
+                                              waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
+                                              combineRowSequence);
     }
 }
 
