@@ -1,6 +1,7 @@
 # Transformer类接口
 
 - [Transformer类torch接口列表](torch_api_list.md)
+- [block_attn_res_prepare](../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_prepare.md)
 - [block_attn_res_update](../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_update.md)
 - [apply_rotary_pos_emb](../../torch_extension/cann_ops_transformer/docs/zh/apply_rotary_pos_emb.md)
 - [apply_rotary_pos_emb_grad](../../torch_extension/cann_ops_transformer/docs/zh/apply_rotary_pos_emb_grad.md)
@@ -9,6 +10,8 @@
 - [compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)
 - [ElasticBuffer](../../torch_extension/cann_ops_transformer/docs/zh/ElasticBuffer.md)
 - [flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)
+- [fused_causal_conv1d](../../torch_extension/cann_ops_transformer/docs/zh/fused_causal_conv1d.md)
+- [fused_causal_conv1d_](../../torch_extension/cann_ops_transformer/docs/zh/fused_causal_conv1d_.md)
 - [get_low_latency_ccl_buffer_size](../../torch_extension/cann_ops_transformer/docs/zh/get_low_latency_ccl_buffer_size.md)
 - [grouped_matmul_activation_quant](../../torch_extension/cann_ops_transformer/docs/zh/grouped_matmul_activation_quant.md)
 - [indexer_quant_cache](../../torch_extension/cann_ops_transformer/docs/zh/indexer_quant_cache.md)
