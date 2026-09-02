@@ -68,6 +68,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>残差注意力的反向传播算子，根据前向保存的inv_norm、probs和上游梯度grad_hidden_states，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_attn_res_prepare/README.md">block_attn_res_prepare</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -1557,6 +1567,7 @@
     <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
+    <td>mhc</td>
     <td>mamba</td>
     <td><a href="../../mamba/causal_conv1d/README.md">causal_conv1d</a></td>
     <td>✓</td>
