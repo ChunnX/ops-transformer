@@ -20,6 +20,11 @@
 constexpr float FLT_ZERO = 0;
 constexpr float FLT_MAX_NEW = 3.402823466e+38F;
 
+enum class SinkInjectStage : uint8_t {
+    AT_FA_PROLOGUE,
+    AT_FD_EPILOGUE,
+};
+
 namespace FaVectorApi {
 // bf16->fp32
 static constexpr MicroAPI::CastTrait castTraitFp16_32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
@@ -38,8 +43,8 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubu
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
 
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BLK>(vregLse, (__ubuf__ float *&)lseUb +
-                                                                          splitKVIndex * dealRowCount * 8 + k * 8);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BLK>(
+            vregLse, (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex=0的场景，vregDst不需要load，直接置0
             MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vregDst, FLT_ZERO, pregTailN);
@@ -87,12 +92,12 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __
     uint32_t stride = (0x1 << 16) | 0x8;
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BLK>(vregLse, (__ubuf__ float *&)lseUb +
-                                                                          splitKVIndex * dealRowCount * 8 + k * 8);
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BLK>(
+            vregLse, (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex>0的场景，reg_dst需要先从dstUb中load之前的结果，再进行add
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregDst, (__ubuf__ float *&)dstUb +
-                                                                               k * repStride * 8 + z * floatRepSize);
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
+                vregDst, (__ubuf__ float *&)dstUb + k * repStride * 8 + z * floatRepSize);
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
                 vregAccumOut, (__ubuf__ float *&)accumOutUb + k * repStride * 8 + z * floatRepSize);
             MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
@@ -247,7 +252,7 @@ __aicore__ inline void ComputeScaleValue_8(const LocalTensor<SINK_T> &tmpSinkUb,
 }
 
 // //lseUb作为scale最终输出
-template <typename T, typename SINK_T>
+template <typename T, typename SINK_T, SinkInjectStage SINK_INJECT_STAGE = SinkInjectStage::AT_FD_EPILOGUE>
 __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseMax, __ubuf__ T *lseMaxTmp,
                                            __ubuf__ T *lseSum, __ubuf__ T *lseSumTmp, __ubuf__ T *lseOutUb,
                                            __ubuf__ T *lseUb, __ubuf__ T *lseMaxReduce, uint32_t dealCount, uint16_t i,
@@ -289,11 +294,13 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
                                                                     vregLseSumTmp, pregTailN);
     }
 
-    for (i = 0; i < static_cast<uint16_t>(learnableSinkFlag); ++i) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregLseSinkCast, (__ubuf__ float *&)lseSink);
-        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, vregLseMax, pregTailN);
-        MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, pregTailN);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);
+    if constexpr (SINK_INJECT_STAGE == SinkInjectStage::AT_FD_EPILOGUE) {
+        for (i = 0; i < static_cast<uint16_t>(learnableSinkFlag); ++i) {
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregLseSinkCast, (__ubuf__ float *&)lseSink);
+            MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, vregLseMax, pregTailN);
+            MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, pregTailN);
+            MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);
+        }
     }
 
     for (i = 0; i < static_cast<uint16_t>(softmaxLseFlag); ++i) {
@@ -324,7 +331,7 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
     }
 }
 
-template <typename T, typename SINK_T>
+template <typename T, typename SINK_T, SinkInjectStage SINK_INJECT_STAGE = SinkInjectStage::AT_FD_EPILOGUE>
 __aicore__ inline void ComputeScaleValue_8_FD(const LocalTensor<SINK_T> &tmpSinkUb, const LocalTensor<T> &lseMaxUb,
                                               const LocalTensor<T> &lseSumUb, const LocalTensor<T> &lseResUb,
                                               const LocalTensor<T> &lseOutputUb, const LocalTensor<T> &lseMaxReduceUb,
@@ -351,9 +358,9 @@ __aicore__ inline void ComputeScaleValue_8_FD(const LocalTensor<SINK_T> &tmpSink
     if (learnableSinkFlag) {
         learnableSinkFlagUint = 1;
     }
-    ComputeScaleValue_8_VF_FD<T, SINK_T>(lseSink, lseMax, lseMaxTmp, lseSum, lseSumTmp, lseOutUb, lseUb, lseMaxReduce,
-                                         dealCount, i, dealRowCount, actualCombineLoopSize, softmaxLseFlagUint,
-                                         learnableSinkFlagUint);
+    ComputeScaleValue_8_VF_FD<T, SINK_T, SINK_INJECT_STAGE>(
+        lseSink, lseMax, lseMaxTmp, lseSum, lseSumTmp, lseOutUb, lseUb, lseMaxReduce, dealCount, i, dealRowCount,
+        actualCombineLoopSize, softmaxLseFlagUint, learnableSinkFlagUint);
 }
 
 // 处理8<g<=16的场景
@@ -518,15 +525,16 @@ __aicore__ inline void ComputeScaleValue_VF(const LocalTensor<SINK_T> &tmpSinkUb
 
 // gqa 非量化走这个模板函数，目前dealRowCount默认为8
 // lseResUb为ScaleValue的计算结果UB
-template <typename T, typename SINK_T>
+template <typename T, typename SINK_T, SinkInjectStage SINK_INJECT_STAGE = SinkInjectStage::AT_FD_EPILOGUE>
 __aicore__ inline void ComputeScaleValue_VF_FD(const LocalTensor<SINK_T> &tmpSinkUb, const LocalTensor<T> &lseMaxUb,
                                                const LocalTensor<T> &lseSumUb, const LocalTensor<T> &lseResUb,
                                                const LocalTensor<T> &lseOutputUb, const LocalTensor<T> &lseMaxUbTmp,
                                                uint32_t dealRowCount, uint32_t actualCombineLoopSize,
                                                bool softmaxLseFlag, bool learnableSinkFlag)
 {
-    ComputeScaleValue_8_FD(tmpSinkUb, lseMaxUb, lseSumUb, lseResUb, lseOutputUb, lseMaxUbTmp, dealRowCount,
-                           actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
+    ComputeScaleValue_8_FD<T, SINK_T, SINK_INJECT_STAGE>(tmpSinkUb, lseMaxUb, lseSumUb, lseResUb, lseOutputUb,
+                                                         lseMaxUbTmp, dealRowCount, actualCombineLoopSize,
+                                                         softmaxLseFlag, learnableSinkFlag);
 }
 
 // 处理g<=8的场景
