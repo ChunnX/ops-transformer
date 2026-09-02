@@ -18,8 +18,14 @@
 #include "quant_block_sparse_attn_template_tiling_key.h"
 #include "quant_block_sparse_attn_common.h"
 #include "quant_block_sparse_attn_mx_tiling_data.h"
+#include "quant_block_sparse_attn_arch_select.h"
+#if QBSA_ARCH_9102R1
+#include "arch-9102r1/quant_block_sparse_attn_kernel.h"
+#include "arch-9102r1/quant_block_sparse_attn_mx_kernel.h"
+#else
 #include "arch35/quant_block_sparse_attn_kernel.h"
 #include "arch35/quant_block_sparse_attn_mx_kernel.h"
+#endif
 
 using namespace AscendC;
 using namespace optiling;
@@ -80,7 +86,11 @@ __global__ __aicore__ void quant_block_sparse_attn(
     __gm__ uint8_t *blockTable, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
+#if QBSA_ARCH_9102R1
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
 
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；LSE 已改为编译期模板参数。
     TPipe tPipe;
