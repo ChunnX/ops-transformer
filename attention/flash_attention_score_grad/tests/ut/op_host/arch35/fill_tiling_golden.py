@@ -28,6 +28,24 @@ BEGIN = "### GOLDEN_BEGIN"
 END = "### GOLDEN_END"
 DEFAULT_HASH_AFTER_TOKENS = 600
 WRAP_WIDTH = 118
+KNOWN_KEYS = (
+    "test",
+    "tilingKey",
+    "workspace",
+    "dataBytes",
+    "tilingDataHash",
+    "tilingData",
+)
+# build/gtest logs often prefix: "[2026-09-02 14:20:00] test=..." or "12: ### GOLDEN_BEGIN"
+BRACKET_PREFIX_RE = re.compile(r"^(\[[^\]]+\]\s*)+")
+CTEST_PREFIX_RE = re.compile(r"^\d+:\s*")
+
+
+def _content(line: str) -> str:
+    line = line.strip()
+    line = BRACKET_PREFIX_RE.sub("", line)
+    line = CTEST_PREFIX_RE.sub("", line)
+    return line.strip()
 
 
 def parse_dump(text: str) -> dict[str, dict[str, str]]:
@@ -35,21 +53,25 @@ def parse_dump(text: str) -> dict[str, dict[str, str]]:
     current: dict[str, str] | None = None
     in_block = False
     for raw in text.splitlines():
-        line = raw.rstrip("\n")
-        if line.strip() == BEGIN:
+        line = _content(raw.rstrip("\r"))
+        if BEGIN in line:
             current = {}
             in_block = True
             continue
-        if line.strip() == END:
-            if current and "test" in current:
-                records[current["test"]] = current
+        if END in line:
+            if current and current.get("test"):
+                records[current["test"].strip()] = current
             current = None
             in_block = False
             continue
-        if not in_block or current is None or "=" not in line:
+        if not in_block or current is None:
             continue
-        key, value = line.split("=", 1)
-        current[key] = value
+        for key in KNOWN_KEYS:
+            prefix = key + "="
+            if line.startswith(prefix):
+                value = line[len(prefix) :]
+                current[key] = value.strip() if key != "tilingData" else value
+                break
     return records
 
 
@@ -159,25 +181,41 @@ def main() -> int:
         help="use FNV hash when tilingData has more int64 tokens than this (default 600)",
     )
     parser.add_argument("--plain", action="store_true", help="always write full tilingData strings")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="with --apply, refuse to write if any skip case has no dump record",
+    )
     args = parser.parse_args()
 
-    records = parse_dump(args.dump.read_text(encoding="utf-8", errors="ignore"))
+    dump_text = args.dump.read_text(encoding="utf-8", errors="ignore")
+    records = parse_dump(dump_text)
     src = args.src.read_text(encoding="utf-8")
     new_src, updated, missing = patch_source(src, records, args.hash_after_tokens, args.plain)
 
     skip_count = src.count(SKIP_CALL)
-    print(f"dump records: {len(records)}")
+    begin_hits = dump_text.count("GOLDEN_BEGIN")
+    print(f"GOLDEN_BEGIN in dump file: {begin_hits}")
+    print(f"parsed dump records: {len(records)}")
     print(f"skip ExecuteTestCase lines: {skip_count}")
-    print(f"patched: {len(updated)}")
+    print(f"would patch: {len(updated)}")
     if updated:
         print("  " + "\n  ".join(updated))
     if missing:
         print(f"skip lines with no dump record: {len(missing)}")
         print("  " + "\n  ".join(missing))
+        print(
+            "hint: those tests either failed tiling (no dump), were not run, "
+            "or golden.dump did not capture ### GOLDEN_BEGIN. "
+            "grep -c GOLDEN_BEGIN golden.dump and compare with skip count."
+        )
 
     if args.apply:
-        if missing:
-            print("error: refuse --apply while dump records are missing", file=sys.stderr)
+        if not records:
+            print("error: dump parsed 0 records; not writing", file=sys.stderr)
+            return 1
+        if args.strict and missing:
+            print("error: --strict refuse --apply while dump records are missing", file=sys.stderr)
             return 1
         if new_src == src:
             print("no changes")
@@ -186,7 +224,7 @@ def main() -> int:
         print(f"wrote {args.src}")
         return 0
 
-    print("dry-run; pass --apply to write the cpp")
+    print("dry-run; pass --apply to write the cpp (matched skip cases only)")
     return 0 if not missing else 2
 
 
