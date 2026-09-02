@@ -24,6 +24,9 @@ struct SendMaskConfig {
     uint64_t maskWinOffset;
     uint64_t expertCountWinOffset;
     bool publishExpertCountTable;
+    // A8W8 MTE Wave 直接发布连续 topkIndex；其他模板继续使用 mask。
+    uint64_t routeIndexAlignSize;
+    uint64_t routeIndexWinOffset;
     MegaMoeSendMaskBufferConfig bufferConfig;
 };
 
@@ -35,31 +38,114 @@ struct SendMaskConfig {
  * 发送写入的槽位就会与接收方读取的槽位错开。
  */
 __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint32_t aivCoreIdx,
-                                                      bool publishExpertCountTable = false)
+                                                      bool publishExpertCountTable = false,
+                                                      bool publishCompactRouteIndex = false)
 {
     uint32_t maskAlignSize = static_cast<uint32_t>(CalcDispatchMaskAlignSize(params.tilingData));
     uint64_t maskWinOffset =
         static_cast<uint64_t>(params.peermemInfo.maskRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
     uint64_t expertCountWinOffset =
         static_cast<uint64_t>(params.peermemInfo.expertCountRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
-    const MegaMoeSendMaskBufferConfig &bufferConfig = aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
-                                                          params.tilingData->sendMaskConfigForCoreWithExtraExpert :
-                                                          params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
+    const MegaMoeSendMaskBufferConfig &bufferConfig =
+        publishCompactRouteIndex ? (aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
+                                        params.tilingData->compactSendConfigForCoreWithExtraExpert :
+                                        params.tilingData->compactSendConfigForCoreWithoutExtraExpert) :
+                                   (aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
+                                        params.tilingData->sendMaskConfigForCoreWithExtraExpert :
+                                        params.tilingData->sendMaskConfigForCoreWithoutExtraExpert);
     return {.maskAlignSize = maskAlignSize,
             .maskSlotSize = maskAlignSize + static_cast<uint32_t>(ALIGN_32),
             .maskWinOffset = maskWinOffset,
             .expertCountWinOffset = expertCountWinOffset,
             .publishExpertCountTable = publishExpertCountTable,
+            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+            .routeIndexWinOffset = maskWinOffset,
             .bufferConfig = bufferConfig};
 }
 
 struct SendMaskScratch {
     LocalTensor<int32_t> topkIdsTensor;
+    LocalTensor<int32_t> topkIndexTensor;
     // Contiguous runtime-sized ring. Slot i starts at i * bufferConfig.bufferBytes.
     LocalTensor<uint8_t> sendMaskTensor;
     LocalTensor<int32_t> sendGatherOutTensor;
     LocalTensor<int32_t> sendCntAccTensor;
 };
+
+// A8W8 Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
+// 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishExpertCounts 独立发布。
+__aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
+                                                            const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                            GlobalTensor<int32_t> &topkIdsGm,
+                                                            GlobalTensor<int32_t> &dstRouteIndexGm,
+                                                            int32_t ownedExpertBegin, int32_t ownedExpertNum,
+                                                            int32_t batchIdx)
+{
+    const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
+    const uint32_t maskBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
+    const int32_t batchStart = batchIdx * bufferConfig.routeItemsPerBatch;
+    const int32_t realSendTotalNum =
+        static_cast<int32_t>(static_cast<uint64_t>(common.tokenNum) * static_cast<uint64_t>(common.topK));
+    const int32_t realRemain = realSendTotalNum - batchStart;
+    int32_t validLen = bufferConfig.routeItemsPerBatch;
+    if (realRemain < validLen) {
+        validLen = realRemain > 0 ? realRemain : 0;
+    }
+
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+    if (validLen > 0) {
+        DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
+        DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+    if (validLen > 0) {
+        CreateVecIndex(scratch.topkIndexTensor, batchStart, validLen);
+    }
+
+    int32_t batchRingBegin = batchIdx * ownedExpertNum;
+    for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
+        int32_t globalExpertId = ownedExpertBegin + ownedIdx;
+        int32_t dstRank = globalExpertId / static_cast<int32_t>(common.moeExpertPerRank);
+        int32_t localExpertId = globalExpertId % static_cast<int32_t>(common.moeExpertPerRank);
+        int32_t bufferIdx = (batchRingBegin + ownedIdx) % bufferConfig.bufferCount;
+        TEventID eventId = static_cast<TEventID>(bufferIdx);
+        LocalTensor<uint8_t> slot = scratch.sendMaskTensor[bufferIdx * bufferConfig.bufferBytes];
+        LocalTensor<uint8_t> maskBuf = slot;
+        LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
+        LocalTensor<int32_t> compactBuf = slot[maskBytes].template ReinterpretCast<int32_t>();
+
+        WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
+        uint64_t batchMatchedRouteCount = 0U;
+        if (validLen > 0) {
+            CompareScalar(maskBuf, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ, validLen);
+            GatherMask(compactBuf, scratch.topkIndexTensor, maskBufU32, true, static_cast<uint32_t>(validLen),
+                       {1, 1, 0, 0}, batchMatchedRouteCount);
+        }
+        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+
+        int32_t previousCount = scratch.sendCntAccTensor.GetValue(ownedIdx);
+        int32_t remainingCapacity = static_cast<int32_t>(common.tokenNum) - previousCount;
+        int32_t copiedCount = static_cast<int32_t>(batchMatchedRouteCount);
+        if (copiedCount > remainingCapacity) {
+            copiedCount = remainingCapacity > 0 ? remainingCapacity : 0;
+        }
+        scratch.sendCntAccTensor.SetValue(ownedIdx, previousCount + copiedCount);
+        SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
+
+        if (copiedCount > 0) {
+            uint64_t dstOffset = config.routeIndexWinOffset +
+                                 static_cast<uint64_t>(localExpertId * static_cast<int32_t>(common.worldSize) +
+                                                       static_cast<int32_t>(common.rankId)) *
+                                     config.routeIndexAlignSize +
+                                 static_cast<uint64_t>(previousCount) * sizeof(int32_t);
+            dstRouteIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + dstOffset));
+            DataCopyPad(dstRouteIndexGm, compactBuf,
+                        {1U, static_cast<uint32_t>(copiedCount * sizeof(int32_t)), 0U, 0U, 0U});
+        }
+        SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
+    }
+}
 
 __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
                                                     const SendMaskConfig &config, SendMaskScratch &scratch,
@@ -75,7 +161,8 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &
     // validLen 之后的 UB 残留数据经 CompareScalar 可能产生无效 mask 位; 这些位排在有效位之后,
     // 且 GatherMask 只统计 validLen 内的匹配, 槽尾 count 不含无效位, 接收端按 count 做序数
     // 夹紧时会跳过它们(见 token_dispatch.h DispatchExpertTokens), 因此不需要额外清零。
-    int32_t realSendTotalNum = static_cast<int32_t>(common.tokenNum * common.topK);
+    int32_t realSendTotalNum =
+        static_cast<int32_t>(static_cast<uint64_t>(common.tokenNum) * static_cast<uint64_t>(common.topK));
     int32_t realRemain = realSendTotalNum - batchStart;
     int32_t validLen = bufferConfig.routeItemsPerBatch;
     if (realRemain < validLen) {
@@ -231,6 +318,51 @@ __aicore__ inline void GatherAndSendExpertMasks(const AivJobContext &job, const 
 
     for (int32_t bufIdx = 0; bufIdx < bufferConfig.bufferCount; ++bufIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufIdx));
+    }
+    PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum);
+}
+
+// A8W8 MTE Wave 专用入口。专家 ownership 仍使用基线的连续 quotient/remainder 分配，
+// 因而 count 表可继续按目标 rank 合并成二维 strided copy。
+__aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
+                                                        const Params &params, GM_ADDR *winRankAddr,
+                                                        const SendMaskConfig &config, SendMaskScratch &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
+    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs) {
+        return;
+    }
+
+    int32_t totalExperts = static_cast<int32_t>(common.worldSize * common.moeExpertPerRank);
+    int32_t jobIndex = static_cast<int32_t>(job.jobIndex);
+    int32_t totalJobs = static_cast<int32_t>(job.totalJobs);
+    int32_t expertsPerJob = totalExperts / totalJobs;
+    int32_t jobCountWithExtraExpert = totalExperts % totalJobs;
+    int32_t ownedExpertNum = expertsPerJob + (jobIndex < jobCountWithExtraExpert ? 1 : 0);
+    int32_t ownedExpertBegin =
+        jobIndex * expertsPerJob + (jobIndex < jobCountWithExtraExpert ? jobIndex : jobCountWithExtraExpert);
+    if (ownedExpertNum <= 0) {
+        return;
+    }
+
+    GlobalTensor<int32_t> topkIdsGm;
+    topkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr));
+    GlobalTensor<int32_t> dstRouteIndexGm;
+    Duplicate<int32_t>(scratch.sendCntAccTensor, 0, ownedExpertNum);
+    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+
+    for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
+        SetFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
+    }
+    for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
+        GatherAndSendExpertCompactRouteBatch(common, winRankAddr, config, scratch, topkIdsGm, dstRouteIndexGm,
+                                             ownedExpertBegin, ownedExpertNum, batchIdx);
+    }
+    for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
+        WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
     PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum);
 }
