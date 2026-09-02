@@ -51,6 +51,8 @@ __simd_vf__ inline void cast_reg_loop(const SrcTensor src, DstTensor dst, uint32
         } else {
             src_reg = asc::te::experimental::load(src, coord);
         }
+        // update_mask 按引用自减 remain，先记录本轮有效元素个数（不能声明为 const）
+        uint32_t store_remain = remain > one_repeat ? one_repeat : remain;
         src_reg = src_reg.with_mask(asc::te::experimental::update_mask<wider_type>(remain));
 
         auto dst_reg = cast_register<dst_type>(src_reg);
@@ -58,13 +60,11 @@ __simd_vf__ inline void cast_reg_loop(const SrcTensor src, DstTensor dst, uint32
             asc::te::experimental::store(dst, coord, dst_reg);
         } else if constexpr (sizeof(src_type) == 2 * sizeof(dst_type)) {
             auto compact = asc::te::experimental::deinterleave(dst_reg, dst_reg).first;
-            uint32_t store_remain = one_repeat;
             compact = compact.with_mask(asc::te::experimental::update_mask<dst_type>(store_remain));
             asc::te::experimental::store(dst, coord, compact);
         } else {
             auto compact_2 = asc::te::experimental::deinterleave(dst_reg, dst_reg).first;
             auto compact_4 = asc::te::experimental::deinterleave(compact_2, compact_2).first;
-            uint32_t store_remain = one_repeat;
             compact_4 = compact_4.with_mask(asc::te::experimental::update_mask<dst_type>(store_remain));
             asc::te::experimental::store(dst, coord, compact_4);
         }
