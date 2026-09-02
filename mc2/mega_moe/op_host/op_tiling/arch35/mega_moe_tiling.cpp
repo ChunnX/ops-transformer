@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <limits>
+#include <unordered_map>
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
@@ -106,6 +107,12 @@ struct MegaMoeExpertParams {
     bool isPerExpertWeightTensor;
 };
 
+static const std::unordered_map<ge::DataType, int64_t> EXPERT_QUANT_MODE_MAP = {
+    {ge::DT_FLOAT8_E5M2, EXPERT_QUANT_OUT_DTYPE_E5M2},
+    {ge::DT_FLOAT8_E4M3FN, EXPERT_QUANT_OUT_DTYPE_E4M3FN},
+    {ge::DT_FLOAT4_E2M1, EXPERT_QUANT_OUT_DTYPE_E2M1},
+};
+
 uint32_t CalcMGroupsPerWave(const MegaMoeTilingData *tilingData, uint32_t aicNum)
 {
     if (tilingData->hiddenDim == 0U || tilingData->h == 0U || aicNum == 0U) {
@@ -167,8 +174,12 @@ static int64_t GetSingleExpertTensorDimSize(const gert::StorageShape *tensorShap
 }
 } // namespace
 
-static void PrintMegaMoeCoreTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
+void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
+    OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
+
+    // 问题规模、专家拓扑及执行模式。
     OP_LOGD(nodeName,
             "shape: bs=%u, numMaxTokensPerRank=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, "
             "isPerExpertWeightTensor=%d",
@@ -185,10 +196,8 @@ static void PrintMegaMoeCoreTilingData(const MegaMoeTilingData *tilingData, cons
     OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
-}
 
-static void PrintMegaMoeBufferConfigs(const MegaMoeTilingData *tilingData, const char *nodeName)
-{
+    // 各阶段的 UB 分批及缓冲区配置。
     const auto &dispatchConfig = tilingData->dispatchBufferConfig;
     OP_LOGD(nodeName, "dispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
             dispatchConfig.routeItemsPerBatch, dispatchConfig.routeBatchCount, dispatchConfig.bufferCount,
@@ -221,14 +230,6 @@ static void PrintMegaMoeBufferConfigs(const MegaMoeTilingData *tilingData, const
             unpermuteTailChunkConfig.tokensPerBatch, unpermuteTailChunkConfig.inputBufferCount,
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
-}
-
-void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
-{
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
-    OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-    PrintMegaMoeCoreTilingData(tilingData, nodeName);
-    PrintMegaMoeBufferConfigs(tilingData, nodeName);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -281,17 +282,6 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
                 combineSendSize);
 }
 
-static int64_t GetExpertQuantMode(ge::DataType quantOutDtype)
-{
-    if (quantOutDtype == ge::DT_FLOAT8_E5M2) {
-        return EXPERT_QUANT_OUT_DTYPE_E5M2;
-    }
-    if (quantOutDtype == ge::DT_FLOAT8_E4M3FN) {
-        return EXPERT_QUANT_OUT_DTYPE_E4M3FN;
-    }
-    return EXPERT_QUANT_OUT_DTYPE_E2M1;
-}
-
 static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeExpertParams &expertParams,
                               const MegaMoeTilingData *tilingData)
 {
@@ -304,8 +294,8 @@ static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeE
 
     return GET_TPL_TILING_KEY(
         static_cast<int64_t>(moeWeightDesc->GetDataType()), static_cast<int64_t>(sharedWeightDesc->GetDataType()),
-        DISPATCH_QUANT_MODE_MXFP, GetExpertQuantMode(expertParams.moe.quantOutDtype),
-        GetExpertQuantMode(expertParams.shared.quantOutDtype), static_cast<int64_t>(tilingData->combineQuantMode),
+        DISPATCH_QUANT_MODE_MXFP, EXPERT_QUANT_MODE_MAP.at(expertParams.moe.quantOutDtype),
+        EXPERT_QUANT_MODE_MAP.at(expertParams.shared.quantOutDtype), static_cast<int64_t>(tilingData->combineQuantMode),
         topoType, static_cast<int64_t>(tilingData->topkWeightsPrefetch));
 }
 
@@ -442,8 +432,8 @@ static ge::graphStatus CheckActivationTopoConstraint(int64_t topoType, const cha
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ValidateActivationParams(const gert::TilingContext *context, const MegaMoeConfig &config,
-                                                int64_t topoType, const char *nodeName)
+static ge::graphStatus CheckActivationParams(const gert::TilingContext *context, const MegaMoeConfig &config,
+                                             int64_t topoType, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
@@ -580,7 +570,7 @@ static ge::graphStatus CheckAndSetCommAndExpertAttrs(const gert::TilingContext *
 
 static bool IsSupportedExpertQuantDtype(ge::DataType dtype)
 {
-    return dtype == ge::DT_FLOAT8_E5M2 || dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT4_E2M1;
+    return EXPERT_QUANT_MODE_MAP.count(dtype) > 0U;
 }
 
 /*
@@ -879,7 +869,7 @@ static void SetActivationAttrParams(const gert::TilingContext *context, const Me
 static ge::graphStatus CheckAndSetActivationParams(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                    MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    ge::graphStatus status = ValidateActivationParams(context, config, tilingData->topoType, nodeName);
+    ge::graphStatus status = CheckActivationParams(context, config, tilingData->topoType, nodeName);
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
