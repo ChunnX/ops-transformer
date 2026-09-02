@@ -70,7 +70,21 @@ public:
                                 int32_t baseBlockHeight, int32_t baseBlockWidth,
                                 const ScheduleContext &context = 0)
     {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Unexpected GM CopyOut in Mhc C0 direct path"); });
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        // 混合通路中的GM tile继续使用标准ROW_MAJOR Fixpipe。
+        // 当前调用始终为顺序写，目标GlobalTensor已经包含本tile的GM偏移。
+        ASCENDC_ASSERT(enSequentialWrite,
+                       { KERNEL_LOG(KERNEL_ERROR, "Mhc C0 GM CopyOut requires sequential write"); });
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> params;
+        params.nSize = static_cast<uint16_t>(baseWidth);
+        params.mSize = static_cast<uint16_t>(baseHeight);
+        params.srcStride = AscendC::CeilAlign(baseHeight, AscendC::BLOCK_CUBE);
+        params.dstStride = static_cast<uint16_t>(baseWidth);
+        params.unitFlag = 3U;
+        AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_ROW_MAJOR>(dst, src, params);
+#else
+        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Mhc C0 GM CopyOut only supports DAV3510"); });
+#endif
     }
 };
 
