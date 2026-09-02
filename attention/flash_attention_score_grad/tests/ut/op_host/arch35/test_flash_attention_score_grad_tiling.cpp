@@ -81,9 +81,6 @@ static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5Comp
             platform_ascendc::SocVersion::ASCEND950};
 }
 
-// Success cases skip key/workspace golden until host UT can be executed locally.
-static constexpr uint64_t kSkipTilingKey = UINT64_MAX;
-
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_0)
 {
     Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo compileInfo = {
