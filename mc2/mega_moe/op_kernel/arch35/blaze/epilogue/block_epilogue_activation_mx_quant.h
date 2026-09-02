@@ -34,8 +34,6 @@
 #include "activation/swiglu_activation.h"
 #include "activation/swigluoai_activation.h"
 #include "block_epilogue_ub_layout.h"
-#include "quant/mx_quant_common.h"
-#include "quant/mxfp8_quant.h"
 
 namespace ActivationQuantMsg {
 using ActMode = MegaMoeImpl::MegaMoeActMode;
@@ -357,14 +355,13 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
 {
     const uint32_t dataCount = validRowCount * outputRowStrideElements;
     const uint32_t scaleCount = dataCount / ONE_BLK_SIZE;
-    const uint16_t dataLoopCount = static_cast<uint16_t>((dataCount + MxQuant::DATA_ELEMENT_COUNT_PER_LOOP - 1) /
-                                                         MxQuant::DATA_ELEMENT_COUNT_PER_LOOP);
 
     Quant::ComputeMaxExp<bfloat16_t>(ubPointers.activationOutput, ubPointers.maxExp, dataCount);
     Quant::ComputeScale<DataTypeOut>(ubPointers.maxExp, ubPointers.quantScale, ubPointers.reciprocalScale, scaleCount);
     if constexpr (IsSameType<DataTypeOut, fp8_e4m3fn_t>::value || IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-        MxQuant::QuantizeMxFp8Data<DataTypeOut>(ubPointers.activationOutput, ubPointers.reciprocalScale,
-                                                ubPointers.quantOutput, dataCount, dataLoopCount);
+        Quant::ComputeFp8Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
+                              AscendC::RoundMode::CAST_RINT>(
+            ubPointers.activationOutput, ubPointers.reciprocalScale, ubPointers.quantOutput, dataCount);
     }
     if constexpr (IsSameType<DataTypeOut, fp4x2_e2m1_t>::value || IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
         Quant::ComputeFp4Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
