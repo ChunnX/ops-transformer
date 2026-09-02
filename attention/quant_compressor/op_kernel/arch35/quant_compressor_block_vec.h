@@ -609,7 +609,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::OverLap(
         SaveToWorkSpace(srcLocal, nextCacheTcGm, sliceInfo, loopInfo, dStartIdx, dDealSize);
     }
     if (sliceInfo.compressTcSize > 0) {
-        PadAlign(dstLocal, srcLocal, sliceInfo, dStartIdx, dDealSize);
+        PadAlign(dstLocal, srcLocal, sliceInfo, 0, dDealSize);
         if constexpr (COMP::coff == COFF::OVERLAP) {
             GlobalTensor<T> curCacheTcGm = cacheTcGm[info.c1v1DbIdx * cmpRatio_ * constInfo_.headDim];
             LoadFromWorkSpace<IS_SCORE>(dstLocal, curCacheTcGm, srcGm, srcLocal, sliceInfo, loopInfo, dStartIdx,
