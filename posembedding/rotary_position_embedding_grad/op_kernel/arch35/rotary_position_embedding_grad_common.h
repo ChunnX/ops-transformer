@@ -103,8 +103,8 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<T> &sinTensor, const
 
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> vregIn, vregQ1In, vregQ2In, vregQ3In, vregSin, vregQ1Sin, vregQ2Sin, vregQ3Sin,
-            vregCos, vregQ1Cos, vregQ2Cos, vregQ3Cos, vregOut, vregQ1Out, vregQ2Out, vregQ3Out;
+        Reg::RegTensor<float> vregIn, vregQ1In, vregQ2In, vregQ3In, vregSin, vregQ1Sin, vregQ2Sin, vregQ3Sin, vregCos,
+            vregQ1Cos, vregQ2Cos, vregQ3Cos, vregOut, vregQ1Out, vregQ2Out, vregQ3Out;
         Reg::MaskReg preg;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlign;
@@ -182,8 +182,8 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<T> &sinTensor, con
 
     __VEC_SCOPE__
     {
-        Reg::RegTensor<float> vregFormerCos, vregLatterCos, vregFormerSin, vregLatterSin, vregFormerIn,
-            vregLatterIn, vregOdd, vregEven;
+        Reg::RegTensor<float> vregFormerCos, vregLatterCos, vregFormerSin, vregLatterSin, vregFormerIn, vregLatterIn,
+            vregOdd, vregEven;
         Reg::MaskReg pregLoop, pregPart1, pregPart2;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlignLen;
@@ -372,8 +372,8 @@ __aicore__ inline void BatchQuarterGradAlignVF(__ubuf__ T *in, __ubuf__ T *cos, 
     __VEC_SCOPE__
     {
         // 定义相关寄存器
-        Reg::RegTensor<float> inPart1Reg, inPart2Reg, inPart3Reg, inPart4Reg, cosPart1Reg, cosPart2Reg,
-            cosPart3Reg, cosPart4Reg, sinPart1Reg, sinPart2Reg, sinPart3Reg, sinPart4Reg;
+        Reg::RegTensor<float> inPart1Reg, inPart2Reg, inPart3Reg, inPart4Reg, cosPart1Reg, cosPart2Reg, cosPart3Reg,
+            cosPart4Reg, sinPart1Reg, sinPart2Reg, sinPart3Reg, sinPart4Reg;
         Reg::MaskReg pregLoop;
         __ubuf__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {

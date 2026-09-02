@@ -45,11 +45,10 @@ namespace UndGenQkvRmsNormRopeCache {
 namespace Reg = AscendC::Reg;
 
 constexpr static Reg::CastTrait CAST_B16_TO_B32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+                                                   Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 constexpr static Reg::CastTrait CAST_FP32_TO_B16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                         Reg::MaskMergeMode::ZEROING,
-                                                         AscendC::RoundMode::CAST_RINT};
+                                                    Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
 /**
  * @brief 本次调用的 UB 起址，逐 tile 变化
@@ -128,8 +127,8 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t *&inHead, __ubuf__
     Reg::RegTensor<bfloat16_t> xHighB16;
     Reg::RegTensor<float> xLow;
     Reg::RegTensor<float> xHigh;
-    Reg::LoadAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK_B16>(
-        xLowB16, inHead, halfStep);
+    Reg::LoadAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK_B16>(xLowB16, inHead,
+                                                                                                   halfStep);
     Reg::LoadAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK_B16>(
         xHighB16, inHead, halfStep); // 两次之后 inHead 已落到下一个 head
     Reg::Cast<float, bfloat16_t, CAST_B16_TO_B32>(xLow, xLowB16, pFull);
@@ -165,8 +164,8 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t *&inHead, __ubuf__
     Reg::RegTensor<bfloat16_t> outHighB16;
     Reg::Cast<bfloat16_t, float, CAST_FP32_TO_B16>(outLowB16, outLow, pFull);
     Reg::Cast<bfloat16_t, float, CAST_FP32_TO_B16>(outHighB16, outHigh, pFull);
-    Reg::StoreAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK_B32>(
-        outHead, outLowB16, halfStep, pFull);
+    Reg::StoreAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK_B32>(outHead, outLowB16,
+                                                                                                   halfStep, pFull);
     Reg::StoreAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK_B32>(
         outHead, outHighB16, halfStep, pFull); // 两次之后 outHead 已落到下一个 head
 }
@@ -249,14 +248,14 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr &addr, const 
             // 最后一次自增走出组尾，下个 token 会重新定基址，丢掉即可
             const uint32_t undBit = static_cast<uint32_t>((undMask >> t) & 1ULL);
             __ubuf__ float *gammaPtr = addr.gammaAll + (1U - undBit) * genGammaOffset;
-            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-                regs.qGammaLow, gammaPtr, halfStep);
-            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-                regs.qGammaHigh, gammaPtr, halfStep);
-            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-                regs.kGammaLow, gammaPtr, halfStep);
-            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-                regs.kGammaHigh, gammaPtr, halfStep);
+            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(regs.qGammaLow,
+                                                                                                gammaPtr, halfStep);
+            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(regs.qGammaHigh,
+                                                                                                gammaPtr, halfStep);
+            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(regs.kGammaLow,
+                                                                                                gammaPtr, halfStep);
+            Reg::LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(regs.kGammaHigh,
+                                                                                                gammaPtr, halfStep);
 
             for (uint16_t h = 0; h < shape.qHeadNum; ++h) {
                 RmsNormRopeOneHead(inPtr, qOutPtr, regs.qGammaLow, regs.qGammaHigh, regs, shape, pFull);
@@ -270,10 +269,10 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr &addr, const 
             // V 头紧跟 K 头之后，不参与 norm/rope：一个 head 恰好一个满 bf16 VL，直接搬
             for (uint16_t h = 0; h < shape.vHeadNum; ++h) {
                 Reg::RegTensor<bfloat16_t> vValue;
-                Reg::LoadAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
-                    vValue, inPtr, headStep);
-                Reg::StoreAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE,
-                                     Reg::StoreDist::DIST_NORM_B16>(vOutPtr, vValue, headStep, pFullB16);
+                Reg::LoadAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(vValue, inPtr,
+                                                                                                         headStep);
+                Reg::StoreAlign<bfloat16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B16>(
+                    vOutPtr, vValue, headStep, pFullB16);
             }
         }
     }

@@ -62,10 +62,11 @@ constexpr Reg::CastTrait QKV_K_SCALE_CAST_FP16_TO_INT8 = {
 };
 
 template <bool APPLY_GAMMA = true>
-__simd_callee__ inline void RmsNormBf16ToFp32D128(
-    Reg::RegTensor<float> &outLow, Reg::RegTensor<float> &outHigh, Reg::RegTensor<bfloat16_t> &inLowBf16,
-    Reg::RegTensor<bfloat16_t> &inHighBf16, Reg::RegTensor<float> &gammaLow,
-    Reg::RegTensor<float> &gammaHigh, float epsilon, Reg::MaskReg mask64, Reg::MaskReg maskFirst)
+__simd_callee__ inline void RmsNormBf16ToFp32D128(Reg::RegTensor<float> &outLow, Reg::RegTensor<float> &outHigh,
+                                                  Reg::RegTensor<bfloat16_t> &inLowBf16,
+                                                  Reg::RegTensor<bfloat16_t> &inHighBf16,
+                                                  Reg::RegTensor<float> &gammaLow, Reg::RegTensor<float> &gammaHigh,
+                                                  float epsilon, Reg::MaskReg mask64, Reg::MaskReg maskFirst)
 {
     Reg::RegTensor<float> squareLow;
     Reg::RegTensor<float> squareHigh;
@@ -79,10 +80,8 @@ __simd_callee__ inline void RmsNormBf16ToFp32D128(
     Reg::Mul(squareLow, outLow, outLow, mask64);
     Reg::Mul(squareHigh, outHigh, outHigh, mask64);
     Reg::Add(squareSum, squareLow, squareHigh, mask64);
-    Reg::Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(reduceSum, squareSum,
-                                                                                                mask64);
-    Reg::Muls<float, float, Reg::MaskMergeMode::ZEROING>(reduceSum, reduceSum, QKV_K_SCALE_D128_RECIP,
-                                                                   maskFirst);
+    Reg::Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(reduceSum, squareSum, mask64);
+    Reg::Muls<float, float, Reg::MaskMergeMode::ZEROING>(reduceSum, reduceSum, QKV_K_SCALE_D128_RECIP, maskFirst);
     Reg::Adds<float, float, Reg::MaskMergeMode::ZEROING>(reduceSum, reduceSum, epsilon, maskFirst);
     Reg::Sqrt(rms, reduceSum, maskFirst);
     Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(divisor, rms, mask64);
@@ -96,10 +95,9 @@ __simd_callee__ inline void RmsNormBf16ToFp32D128(
 }
 
 __simd_callee__ inline void RopeCastBf16D128(Reg::RegTensor<bfloat16_t> &outLowBf16,
-                                             Reg::RegTensor<bfloat16_t> &outHighBf16,
-                                             Reg::RegTensor<float> &xLow, Reg::RegTensor<float> &xHigh,
-                                             Reg::RegTensor<float> &cosValue, Reg::RegTensor<float> &sinValue,
-                                             Reg::MaskReg maskHalf)
+                                             Reg::RegTensor<bfloat16_t> &outHighBf16, Reg::RegTensor<float> &xLow,
+                                             Reg::RegTensor<float> &xHigh, Reg::RegTensor<float> &cosValue,
+                                             Reg::RegTensor<float> &sinValue, Reg::MaskReg maskHalf)
 {
     Reg::RegTensor<float> outLow;
     Reg::RegTensor<float> outHigh;
@@ -118,26 +116,23 @@ __simd_callee__ inline void RopeCastBf16D128(Reg::RegTensor<bfloat16_t> &outLowB
     Reg::Cast<bfloat16_t, float, QKV_K_SCALE_CAST_F32_TO_BF16>(outHighBf16, outHigh, maskHalf);
 }
 
-__simd_callee__ inline void ScatterNzBf16D128(__ubuf__ bfloat16_t *outBf16Nz,
-                                              Reg::RegTensor<bfloat16_t> &outLowBf16,
+__simd_callee__ inline void ScatterNzBf16D128(__ubuf__ bfloat16_t *outBf16Nz, Reg::RegTensor<bfloat16_t> &outLowBf16,
                                               Reg::RegTensor<bfloat16_t> &outHighBf16,
-                                              Reg::RegTensor<uint16_t> &nzIndex, uint16_t tokenIdx,
-                                              uint16_t headIdx, uint32_t outputTokenStride, uint32_t outputHeadStride,
+                                              Reg::RegTensor<uint16_t> &nzIndex, uint16_t tokenIdx, uint16_t headIdx,
+                                              uint32_t outputTokenStride, uint32_t outputHeadStride,
                                               uint32_t halfDOffset, Reg::MaskReg bf16HighBitMask)
 {
     const uint32_t rowOutOffset =
         (static_cast<uint32_t>(tokenIdx) * outputTokenStride + static_cast<uint32_t>(headIdx) * outputHeadStride) *
         QKV_K_SCALE_NZ_C0;
     Reg::Scatter<bfloat16_t, uint16_t>(outBf16Nz + rowOutOffset, outLowBf16, nzIndex, bf16HighBitMask);
-    Reg::Scatter<bfloat16_t, uint16_t>(outBf16Nz + rowOutOffset + halfDOffset, outHighBf16, nzIndex,
-                                            bf16HighBitMask);
+    Reg::Scatter<bfloat16_t, uint16_t>(outBf16Nz + rowOutOffset + halfDOffset, outHighBf16, nzIndex, bf16HighBitMask);
 }
 
 __simd_callee__ inline void ScaleBf16ToFp8D128(Reg::RegTensor<fp8_e4m3fn_t> &outLowFp8,
                                                Reg::RegTensor<fp8_e4m3fn_t> &outHighFp8,
                                                Reg::RegTensor<bfloat16_t> &inLowBf16,
-                                               Reg::RegTensor<bfloat16_t> &inHighBf16,
-                                               Reg::RegTensor<float> &scaleLow,
+                                               Reg::RegTensor<bfloat16_t> &inHighBf16, Reg::RegTensor<float> &scaleLow,
                                                Reg::RegTensor<float> &scaleHigh, Reg::MaskReg mask64)
 {
     Reg::RegTensor<float> inLow;
@@ -152,8 +147,7 @@ __simd_callee__ inline void ScaleBf16ToFp8D128(Reg::RegTensor<fp8_e4m3fn_t> &out
 }
 
 template <typename QuantT>
-__simd_callee__ inline void DynamicQuantD128(Reg::RegTensor<QuantT> &qkLowQuant,
-                                             Reg::RegTensor<QuantT> &qkHighQuant,
+__simd_callee__ inline void DynamicQuantD128(Reg::RegTensor<QuantT> &qkLowQuant, Reg::RegTensor<QuantT> &qkHighQuant,
                                              Reg::RegTensor<float> &scale, Reg::RegTensor<float> &qkLow,
                                              Reg::RegTensor<float> &qkHigh, Reg::RegTensor<float> &quantMax,
                                              Reg::MaskReg mask64, Reg::MaskReg maskFirst)
@@ -168,8 +162,7 @@ __simd_callee__ inline void DynamicQuantD128(Reg::RegTensor<QuantT> &qkLowQuant,
     Reg::Max(maxAbs, absLow, absHigh, mask64);
     Reg::ReduceMax(maxAbs, maxAbs, mask64);
     Reg::Div(scale, maxAbs, quantMax, maskFirst);
-    Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(scaleBroadcast, scale,
-                                                                                                mask64);
+    Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(scaleBroadcast, scale, mask64);
     Reg::Div(qkLow, qkLow, scaleBroadcast, mask64);
     Reg::Div(qkHigh, qkHigh, scaleBroadcast, mask64);
     if constexpr (std::is_same<QuantT, int8_t>::value) {
@@ -213,8 +206,7 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
         Reg::RegTensor<float> sinValue;
         Reg::AddrReg cosSinAddrReg = Reg::CreateAddrReg<float>(tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(cosValue, cosSin, cosSinAddrReg);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(sinValue, cosSin + QKV_K_SCALE_D128_HALF_SIZE,
-                                                                  cosSinAddrReg);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(sinValue, cosSin + QKV_K_SCALE_D128_HALF_SIZE, cosSinAddrReg);
 
         for (uint16_t headIdx = 0U; headIdx < headSize; ++headIdx) {
             Reg::RegTensor<bfloat16_t> xLowBf16;
@@ -306,8 +298,8 @@ __simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16,
         if constexpr (V_SCALE_PER_CHANNEL) {
             Reg::AddrReg vScaleAddrReg = Reg::CreateAddrReg<float>(headIdx, QKV_K_SCALE_D128_FULL_SIZE);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(scaleLow, vScale, vScaleAddrReg);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                scaleHigh, vScale + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, vScaleAddrReg);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(scaleHigh, vScale + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE,
+                                                            vScaleAddrReg);
         } else {
             Reg::AddrReg vScaleAddrReg = Reg::CreateAddrReg<float>(headIdx, 1U);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(scaleLow, vScale, vScaleAddrReg);
@@ -359,23 +351,22 @@ __simd_vf__ inline void QDynamicQuantD128NtdVfImpl(__ubuf__ float *qFp32, __ubuf
             Reg::RegTensor<fp8_e4m3fn_t> qkLowFp8;
             Reg::RegTensor<fp8_e4m3fn_t> qkHighFp8;
 
-            Reg::AddrReg qkAddrReg = Reg::CreateAddrReg<float>(
-                headIdx, qkUbTokenCapacity * QKV_K_SCALE_D128_FULL_SIZE, tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
+            Reg::AddrReg qkAddrReg = Reg::CreateAddrReg<float>(headIdx, qkUbTokenCapacity * QKV_K_SCALE_D128_FULL_SIZE,
+                                                               tokenIdx, QKV_K_SCALE_D128_FULL_SIZE);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(qkLow, qFp32, qkAddrReg);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                qkHigh, qFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, qkAddrReg);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(qkHigh, qFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE,
+                                                            qkAddrReg);
             DynamicQuantD128(qkLowFp8, qkHighFp8, scale, qkLow, qkHigh, fp8Max, mask64, maskFirst);
 
             const uint32_t qFp8Offset = (static_cast<uint32_t>(headIdx) * tokenSize + static_cast<uint32_t>(tokenIdx)) *
                                         QKV_K_SCALE_D128_FULL_SIZE;
-            Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(
-                (__ubuf__ uint8_t *&)qFp8 + qFp8Offset, (Reg::RegTensor<uint8_t> &)qkLowFp8, mask64);
+            Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>((__ubuf__ uint8_t *&)qFp8 + qFp8Offset,
+                                                                     (Reg::RegTensor<uint8_t> &)qkLowFp8, mask64);
             Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(
                 (__ubuf__ uint8_t *&)qFp8 + qFp8Offset + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE,
                 (Reg::RegTensor<uint8_t> &)qkHighFp8, mask64);
             Reg::AddrReg qScaleAddrReg = Reg::CreateAddrReg<float>(headIdx, scaleHeadStride, tokenIdx, 1U);
-            Reg::StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(qScale, scale, qScaleAddrReg,
-                                                                                     maskFirst);
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(qScale, scale, qScaleAddrReg, maskFirst);
         }
     }
 }
@@ -395,17 +386,17 @@ __simd_vf__ inline void QDynamicQuantD128TndVfImpl(__ubuf__ float *qFp32, __ubuf
             Reg::RegTensor<fp8_e4m3fn_t> qkLowFp8;
             Reg::RegTensor<fp8_e4m3fn_t> qkHighFp8;
 
-            Reg::AddrReg qkAddrReg = Reg::CreateAddrReg<float>(
-                tokenIdx, qHeadSize * QKV_K_SCALE_D128_FULL_SIZE, headIdx, QKV_K_SCALE_D128_FULL_SIZE);
+            Reg::AddrReg qkAddrReg = Reg::CreateAddrReg<float>(tokenIdx, qHeadSize * QKV_K_SCALE_D128_FULL_SIZE,
+                                                               headIdx, QKV_K_SCALE_D128_FULL_SIZE);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(qkLow, qFp32, qkAddrReg);
-            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(
-                qkHigh, qFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE, qkAddrReg);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(qkHigh, qFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE,
+                                                            qkAddrReg);
             DynamicQuantD128(qkLowFp8, qkHighFp8, scale, qkLow, qkHigh, fp8Max, mask64, maskFirst);
 
             const uint32_t qFp8Offset = (static_cast<uint32_t>(tokenIdx) * qHeadSize + static_cast<uint32_t>(headIdx)) *
                                         QKV_K_SCALE_D128_FULL_SIZE;
-            Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(
-                (__ubuf__ uint8_t *&)qFp8 + qFp8Offset, (Reg::RegTensor<uint8_t> &)qkLowFp8, mask64);
+            Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>((__ubuf__ uint8_t *&)qFp8 + qFp8Offset,
+                                                                     (Reg::RegTensor<uint8_t> &)qkLowFp8, mask64);
             Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(
                 (__ubuf__ uint8_t *&)qFp8 + qFp8Offset + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE,
                 (Reg::RegTensor<uint8_t> &)qkHighFp8, mask64);
@@ -452,23 +443,21 @@ __simd_vf__ inline void KDynamicQuantD128VfImpl(__ubuf__ float *kFp32, __ubuf__ 
             Reg::RegTensor<QuantT> kLowQuant;
             Reg::RegTensor<QuantT> kHighQuant;
 
-            Reg::AddrReg srcAddrReg =
-                Reg::CreateAddrReg<float>(outerIdx, inputOuterStride, innerIdx, inputInnerStride);
+            Reg::AddrReg srcAddrReg = Reg::CreateAddrReg<float>(outerIdx, inputOuterStride, innerIdx, inputInnerStride);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(kLow, kFp32, srcAddrReg);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(kHigh, kFp32 + QKV_K_SCALE_D128_FLOAT_REPEAT_SIZE,
-                                                                      srcAddrReg);
+                                                            srcAddrReg);
             DynamicQuantD128(kLowQuant, kHighQuant, scale, kLow, kHigh, quantMax, mask64, maskFirst);
 
             if constexpr (IS_INT8) {
                 Reg::AddrReg dstAddrReg =
                     Reg::CreateAddrReg<int8_t>(outerIdx, outputOuterStrideBytes, innerIdx, outputInnerStrideBytes);
-                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(kQuant, kLowQuant, dstAddrReg,
-                                                                                  mask64);
-                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(kQuant + QKV_K_SCALE_D128_HALF_SIZE,
-                                                                                  kHighQuant, dstAddrReg, mask64);
+                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(kQuant, kLowQuant, dstAddrReg, mask64);
+                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(kQuant + QKV_K_SCALE_D128_HALF_SIZE, kHighQuant,
+                                                                        dstAddrReg, mask64);
             } else {
-                Reg::AddrReg dstAddrReg = Reg::CreateAddrReg<uint8_t>(outerIdx, outputOuterStrideBytes,
-                                                                                innerIdx, outputInnerStrideBytes);
+                Reg::AddrReg dstAddrReg =
+                    Reg::CreateAddrReg<uint8_t>(outerIdx, outputOuterStrideBytes, innerIdx, outputInnerStrideBytes);
                 Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(
                     (__ubuf__ uint8_t *&)kQuant, (Reg::RegTensor<uint8_t> &)kLowQuant, dstAddrReg, mask64);
                 Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_PACK4_B32>(
@@ -478,7 +467,7 @@ __simd_vf__ inline void KDynamicQuantD128VfImpl(__ubuf__ float *kFp32, __ubuf__ 
             Reg::AddrReg scaleAddrReg =
                 Reg::CreateAddrReg<float>(outerIdx, scaleOuterStride, innerIdx, scaleInnerStride);
             Reg::StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(kScaleStaging, scale, scaleAddrReg,
-                                                                                     maskFirst);
+                                                                           maskFirst);
         }
     }
 }
