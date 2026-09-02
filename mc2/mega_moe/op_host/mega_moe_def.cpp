@@ -49,136 +49,76 @@ public:
             .ParamType(DYNAMIC)
             .DataType({
                 // MoE W8 configs x shared W8 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
                 // MoE W4 configs x shared W8 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
                 // MoE W4 configs x shared W4 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
 #endif
             })
             .Format({
                 // MoE W8 configs x shared W8 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,
                 // MoE W4 configs x shared W8 configs
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
                 // MoE W4 configs x shared W4 configs
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
 #endif
             });
         this->Input("weight2")
             .ParamType(DYNAMIC)
             .DataType({
                 // MoE W8 configs x shared W8 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
                 // MoE W4 configs x shared W8 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
                 // MoE W4 configs x shared W4 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
 #endif
             })
             .Format({
                 // MoE W8 configs x shared W8 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_ND,                ge::FORMAT_ND,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ,
                 // MoE W4 configs x shared W8 configs
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
                 // MoE W4 configs x shared W4 configs
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
 #endif
             });
         this->Input("weight_scales1")
@@ -215,136 +155,76 @@ public:
             .ParamType(DYNAMIC)
             .DataType({
                 // MoE W8 configs x shared W8 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
                 // MoE W4 configs x shared W8 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
                 // MoE W4 configs x shared W4 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
 #endif
             })
             .Format({
                 // MoE W8 configs x shared W8 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ_C0_32,
                 // MoE W4 configs x shared W8 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
                 // MoE W4 configs x shared W4 configs
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ,        ge::FORMAT_FRACTAL_NZ_C0_32,
 #endif
             });
         this->Input("shared_weight2")
             .ParamType(DYNAMIC)
             .DataType({
                 // MoE W8 configs x shared W8 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
                 // MoE W4 configs x shared W8 configs
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E5M2,
-                ge::DT_FLOAT8_E4M3FN,
-                ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E5M2,    ge::DT_FLOAT8_E4M3FN,  ge::DT_FLOAT8_E4M3FN,
                 // MoE W4 configs x shared W4 configs
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
-                ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,    ge::DT_FLOAT4_E2M1,
 #endif
             })
             .Format({
                 // MoE W8 configs x shared W8 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
 #ifdef ENABLE_FORMAT_NZ_C0_32
                 // MoE W8 configs x shared W4 configs
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
                 // MoE W4 configs x shared W8 configs
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
-                ge::FORMAT_ND,
-                ge::FORMAT_ND,
-                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
+                ge::FORMAT_ND,                ge::FORMAT_ND,                ge::FORMAT_FRACTAL_NZ,
                 // MoE W4 configs x shared W4 configs
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
-                ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
+                ge::FORMAT_FRACTAL_NZ_C0_32,  ge::FORMAT_FRACTAL_NZ_C0_32,
 #endif
             });
         this->Input("shared_weight_scales1")
