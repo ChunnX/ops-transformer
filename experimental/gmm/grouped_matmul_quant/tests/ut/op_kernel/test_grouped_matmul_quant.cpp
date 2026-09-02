@@ -42,9 +42,13 @@ protected:
 };
 
 namespace {
-constexpr uint32_t UB_SIZE = 196608U;
+// tikicpulib runs the two AIV sub-blocks of a Mix kernel serially while
+// accounting their source buffers against one 192 KiB UB budget. Give each
+// simulated AIV half of that budget. L0A is reduced as well because the
+// anti-quant temporary layout in UB is derived from L0ASize.
+constexpr uint32_t UB_SIZE = 196608U / 2U;
 constexpr uint32_t L1_SIZE = 524288U;
-constexpr uint32_t L0A_SIZE = 65536U;
+constexpr uint32_t L0A_SIZE = 32768U;
 constexpr uint32_t L0B_SIZE = 65536U;
 constexpr uint32_t L0C_SIZE = 131072U;
 constexpr uint32_t BUFFER_NUM = 8U;
