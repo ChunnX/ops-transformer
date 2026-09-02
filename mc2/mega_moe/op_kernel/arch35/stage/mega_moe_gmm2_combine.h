@@ -568,7 +568,7 @@ namespace GmmKernel {
 
 // 执行通用 GMM2 tile 循环。
 template <uint8_t CombineQuantMode, typename BlockMmad, bool IsShared, bool IsLayered = false,
-          Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE, typename WorkSet, typename Config>
+          bool NotifyCombineTileReady = false, typename WorkSet, typename Config>
 __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo,
                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                           uint32_t rowOffsetInExpert = 0U, int32_t *gmTileSequence = nullptr)
@@ -618,7 +618,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
-        if constexpr (SyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE && !IsShared) {
+        if constexpr (NotifyCombineTileReady && !IsShared) {
             // GMM2 tile 与配对 AIV1 的 Combine tile 一对一通知。
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -674,7 +674,7 @@ __aicore__ inline void Gmm2Aiv1EpilogueGeneric(Scheduler &scheduler, TensorC &l0
 }
 
 // 执行 A8W4 GMM2 tile 循环。
-template <bool IsShared, bool IsLayered, Gmm2CombineSyncProtocol SyncProtocol, typename BlockMmad, typename Scheduler,
+template <bool IsShared, bool IsLayered, bool NotifyCombineTileReady, typename BlockMmad, typename Scheduler,
           typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                        TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
@@ -714,7 +714,7 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
-        if constexpr (SyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE && !IsShared) {
+        if constexpr (NotifyCombineTileReady && !IsShared) {
             // AIV1 与本 AIC 重放同一 scheduler。FIX 写回完成后发布本核单调序号；
             // W4 prologue 仍由 AIV0 独立推进，不参与该一对一完成链路。
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
@@ -746,7 +746,7 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
 
 // 根据 GM 地址建立执行资源，并执行通用 GMM2 阶段。
 template <uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, bool IsLayered = false,
-          bool IsShared = false, Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE,
+          bool IsShared = false, bool NotifyCombineTileReady = false,
           typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                        uint32_t startLoopIdx, uint32_t tileNum,
@@ -787,13 +787,13 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
     if constexpr (g_coreType == AscendC::AIC) {
         if (blockMmadContext != nullptr) {
             InitBlockMmad(*blockMmadContext, config);
-            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, SyncProtocol>(
+            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
             InitBlockMmad(localBlockMmadContext, config);
-            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, SyncProtocol>(
+            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);
         }
@@ -802,7 +802,7 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
 
 // 根据 GM 地址建立执行资源，并执行 A8W4 GMM2 阶段。
 template <typename BlockMmad, typename BlockPrologue, typename ElementC, bool IsShared, bool IsLayered,
-          Gmm2CombineSyncProtocol SyncProtocol, typename Scheduler, typename Config>
+          bool NotifyCombineTileReady, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                     uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertTokenCount,
                                     uint32_t rowOffsetInExpert, const Params *params = nullptr,
@@ -841,7 +841,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
                                                    L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-        Gmm2AicMmadA8W4<IsShared, IsLayered, SyncProtocol, BlockMmad, decltype(workSet.scheduler),
+        Gmm2AicMmadA8W4<IsShared, IsLayered, NotifyCombineTileReady, BlockMmad, decltype(workSet.scheduler),
                         decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(
             blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
@@ -861,19 +861,18 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false,
-          Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE>
+          bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       const BlockJobContext &blockJob, void *blockMmadContext = nullptr,
                                       bool allowWeightL2Bypass = false, uint32_t rowOffsetInExpert = 0U,
                                       const Params *params = nullptr, int32_t *gmTileSequence = nullptr)
 {
-    static_assert(!IsShared || SyncProtocol == Gmm2CombineSyncProtocol::NONE,
+    static_assert(!IsShared || !NotifyCombineTileReady,
                   "Shared expert GMM2 has its own completion counter");
-    static_assert(!IsLayered || SyncProtocol == Gmm2CombineSyncProtocol::NONE,
+    static_assert(!IsLayered || !NotifyCombineTileReady,
                   "Layered GMM2 selects its synchronization through IsLayered");
-    if constexpr (SyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE && g_coreType == AscendC::AIV) {
+    if constexpr (NotifyCombineTileReady && g_coreType == AscendC::AIV) {
         // AIV1 在独立 CombineTokenRange 中重放 scheduler；这里不能提前推进其 startBlockIdx。
         if (GetSubBlockIdx() == 1U) {
             return;
@@ -890,7 +889,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     uint32_t tileNum = scheduler.GetTileNum();
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AscendC::AIV &&
-                  SyncProtocol != Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
+                  !NotifyCombineTileReady) {
         startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
         return;
     }
@@ -900,7 +899,8 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     using BlockMmad = typename GmmConfig::BlockMmad;
     using MmadContext = GmmKernel::BlockMmadContext<BlockMmad>;
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
-    GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared, SyncProtocol>(
+    GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared,
+                               NotifyCombineTileReady>(
         scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, typedBlockMmadContext, allowWeightL2Bypass,
         rowOffsetInExpert, params, gmTileSequence);
 
@@ -910,8 +910,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false,
-          Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE>
+          bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false,
@@ -922,26 +921,25 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2Generic<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                   SyncProtocol>(problemShape, gmmAddrInfo, startBlockIdx, blockJob, blockMmadContext,
-                                 allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence);
+                   NotifyCombineTileReady>(problemShape, gmmAddrInfo, startBlockIdx, blockJob, blockMmadContext,
+                                           allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence);
 }
 
 // RunGmm2A8W4：AIV0执行W4→W8 prologue，AIC执行GMM2；可选由配对AIV1逐tile Combine。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsWaveFlagGrained = false,
-          Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE>
+          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
 __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
                                    uint32_t rowOffsetInExpert, const Params *params = nullptr,
                                    int32_t *gmTileSequence = nullptr)
 {
-    static_assert(!IsShared || SyncProtocol == Gmm2CombineSyncProtocol::NONE,
+    static_assert(!IsShared || !NotifyCombineTileReady,
                   "Shared expert GMM2 has its own completion counter");
-    static_assert(!IsLayered || SyncProtocol == Gmm2CombineSyncProtocol::NONE,
+    static_assert(!IsLayered || !NotifyCombineTileReady,
                   "Layered GMM2 selects its synchronization through IsLayered");
-    if constexpr (SyncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE && g_coreType == AscendC::AIV) {
+    if constexpr (NotifyCombineTileReady && g_coreType == AscendC::AIV) {
         // AIV1 在独立 CombineTokenRange 中重放 scheduler；AIV0 仍需执行 W4 prologue。
         if (GetSubBlockIdx() == 1U) {
             return;
@@ -967,7 +965,7 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
         return;
     }
 
-    GmmKernel::Gmm2ExecA8W4<BlockMmad, BlockPrologue, ElementC, IsShared, IsLayered, SyncProtocol,
+    GmmKernel::Gmm2ExecA8W4<BlockMmad, BlockPrologue, ElementC, IsShared, IsLayered, NotifyCombineTileReady,
                             GmmKernel::BlockScheduler, decltype(config)>(
         scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, params,
         gmTileSequence);
@@ -977,8 +975,7 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
 
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsWaveFlagGrained = false,
-          Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE>
+          bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
 __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const Params *params = nullptr, int32_t *gmTileSequence = nullptr)
@@ -986,7 +983,7 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch,
-                 IsShared, IsLayered, IsWaveFlagGrained, SyncProtocol>(
+                 IsShared, IsLayered, IsWaveFlagGrained, NotifyCombineTileReady>(
         problemShape, gmmAddrInfo, startBlockIdx, blockJob, static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U,
         params, gmTileSequence);
 }
@@ -1083,7 +1080,7 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
-          Gmm2CombineSyncProtocol SyncProtocol = Gmm2CombineSyncProtocol::NONE>
+          bool NotifyCombineTileReady = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const GMMAddrInfo &gmmAddrInfo,
                                      const ProblemShape &problemShape, GmmRuntimeState &runtimeState,
                                      void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false,
@@ -1092,20 +1089,20 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
         RunGmm2A8W4<A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
-                    TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained, SyncProtocol>(
+                    TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained, NotifyCombineTileReady>(
             problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
             static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U, params, gmTileSequence);
     } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                       SyncProtocol>(
+                       NotifyCombineTileReady>(
             problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
             allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence);
     } else {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                       SyncProtocol>(
+                       NotifyCombineTileReady>(
             problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
             allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence);
     }
