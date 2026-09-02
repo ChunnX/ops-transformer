@@ -27,21 +27,10 @@
 #include "data_utils.h"
 #endif
 
-using namespace std;
+#include "fused_gdn_gating_tiling_data.h"
 
-struct alignas(8) FusedGdnGatingTilingData {
-    uint32_t numHeads;
-    float beta;
-    uint32_t numBatches;
-    uint32_t rowsPerIter;
-    uint32_t useBulkDma;
-    uint32_t usedCoreNum;
-    uint32_t alignedLength;
-    uint32_t tailLength;
-    uint32_t tileRows;
-    float inv_beta;
-    float threshold;
-};
+using namespace std;
+using FusedGdnGating::FusedGdnGatingTilingData;
 
 extern "C" __global__ __aicore__ void fused_gdn_gating(
     GM_ADDR a_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias,
