@@ -1323,4 +1323,3 @@ mask_mode参数解释：
   assert attn_out.dtype == out_dtype
   assert torch.isfinite(attn_out.float()).all().item()
   ```
-
