@@ -18,6 +18,9 @@ OPP_INSTALL_ROOT=/opt/Ascend/opp \
 bash experimental/gmm/grouped_matmul_quant/run_precision_test.sh
 ```
 
+未显式设置 `OPP_INSTALL_ROOT` 时，脚本优先使用 CANN 环境中的 `ASCEND_OPP_PATH`，若该变量为空则使用
+`${ASCEND_HOME_PATH}/opp`。安装目录必须对当前用户可写。
+
 以下内容是完整流程的分步命令。
 
 以下命令默认：
@@ -185,15 +188,15 @@ python3 -m pytest -sv test_grouped_matmul_quant.py \
   2>&1 | tee grouped_matmul_quant_precision.log
 ```
 
-完整测试共 6 个用例：
+完整测试共 8 个用例：
 
-- 2 个 CPU INT4 打包和 Golden 参考实现测试。
+- 4 个 CPU INT4 打包、Golden 和容差判定测试。
 - 4 个 Ascend 910B 真机精度测试。
 
 正常结果应为：
 
 ```text
-6 passed
+8 passed
 ```
 
 ## 8. 精度输出和通过标准
@@ -261,6 +264,6 @@ PR 测试说明中建议包含：
 - 服务器和 Ascend 910B 型号。
 - CANN、PyTorch、torch_npu 和 Python 版本。
 - 算子包及 PyTorch 扩展的构建命令。
-- `6 passed` 测试汇总。
+- `8 passed` 测试汇总。
 - 四个 NPU 用例的 `matched_ratio`、`max_abs_error` 和 `max_rel_error`。
 - `grouped_matmul_quant_extension_build.log` 和 `grouped_matmul_quant_precision.log` 的摘要。

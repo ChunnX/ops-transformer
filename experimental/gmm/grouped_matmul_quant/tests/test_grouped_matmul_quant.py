@@ -122,8 +122,10 @@ def _call_operator(op, x, packed, scale, offset, group_list, scale_group_size):
         None if group_list is None else group_list.npu(),
         scale_group_size,
     )
-    if isinstance(result, (tuple, list)):
-        result = result[0]
+    assert isinstance(result, torch.Tensor), (
+        "grouped_matmul_quant schema declares a Tensor result, "
+        f"but the registered implementation returned {type(result).__name__}"
+    )
     torch.npu.synchronize()
     return result
 
@@ -135,6 +137,21 @@ def test_int4_pack_round_trip():
     from golden import unpack_int32_to_int4
 
     np.testing.assert_array_equal(unpack_int32_to_int4(packed), logical)
+
+
+def test_int4_pack_known_storage_layout():
+    logical = np.zeros((1, 32, 32), dtype=np.int8)
+    logical[0, 0, :16] = np.arange(-8, 8, dtype=np.int8)
+    logical[0, 17, 18] = 7
+
+    expected = np.zeros((1, 2, 2, 16, 2), dtype=np.int32)
+    # Nibbles [-8, ..., -1] and [0, ..., 7], least-significant nibble first.
+    expected[0, 0, 0, 0, 0] = -19088744  # 0xFEDCBA98 as signed INT32
+    expected[0, 0, 0, 0, 1] = 1985229328  # 0x76543210
+    # (K, N) = (17, 18) maps to (K1, N1, K0, word, nibble) = (1, 1, 1, 0, 2).
+    expected[0, 1, 1, 1, 0] = 7 << 8
+
+    np.testing.assert_array_equal(pack_int4_to_int32(logical), expected)
 
 
 def test_golden_nonzero_offset_and_zero_token_expert():
@@ -154,6 +171,24 @@ def test_golden_nonzero_offset_and_zero_token_expert():
     np.testing.assert_array_equal(golden, np.stack((expected_row, expected_row)))
 
 
+def test_mixed_tolerance_ratio_cap_and_nonfinite_guards():
+    golden = np.zeros(100, dtype=np.float64)
+
+    within_cap = golden.copy()
+    within_cap[0] = 0.05
+    result = check_mixed_tolerance(within_cap, golden, "float16")
+    assert result.passed
+    assert result.matched_ratio == pytest.approx(0.99)
+
+    above_cap = golden.copy()
+    above_cap[0] = 0.2
+    assert not check_mixed_tolerance(above_cap, golden, "float16").passed
+
+    nonfinite = golden.copy()
+    nonfinite[0] = np.nan
+    assert not check_mixed_tolerance(nonfinite, golden, "float16").passed
+
+
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
 def test_grouped_matmul_quant_precision(case: PrecisionCase):
     pytest.importorskip("torch_npu")
@@ -164,6 +199,7 @@ def test_grouped_matmul_quant_precision(case: PrecisionCase):
     actual = _call_operator(op, x, packed, scale, offset, group_list, case.scale_group_size)
     assert tuple(actual.shape) == (case.m, case.n)
     assert actual.dtype == case.dtype
+    assert actual.device.type == "npu"
 
     dtype_name = "float16" if case.dtype == torch.float16 else "bfloat16"
     x_np = _to_numpy_float(x)

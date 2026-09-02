@@ -672,7 +672,7 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 
 inline aclDataType ConvertType(const at::ScalarType scalarType) { return ConvertToAclDataType(scalarType); }
 
-inline const char *ConvertType(const std::string &str) { return str.c_str(); }
+inline const char *ConvertType(const string &str) { return str.c_str(); }
 
 aclTensor *ConvertType(const TensorWrapper &tensor_r)
 {
@@ -899,7 +899,7 @@ void AddParamToBuf(const c10::optional<at::Tensor> &);
 void AddParamToBuf(const c10::optional<at::IntArrayRef> &);
 void AddParamToBuf(const c10::optional<at::Scalar> &);
 void AddParamToBuf(const at::ScalarType);
-void AddParamToBuf(const std::string &);
+void AddParamToBuf(const string &);
 void AddParamToBuf();
 
 template <typename T, typename... Args>

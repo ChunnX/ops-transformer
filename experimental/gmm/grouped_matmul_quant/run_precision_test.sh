@@ -13,7 +13,7 @@
 #   VENDOR_NAME      Custom operator vendor name. Default: gmm_quant
 #   SOC_VERSION      build.sh SoC value. Default: ascend910b
 #   OPP_INSTALL_ROOT Custom operator installation root.
-#                    Default: ${ASCEND_HOME_PATH}/opp
+#                    Default: ${ASCEND_OPP_PATH}, or ${ASCEND_HOME_PATH}/opp
 #   LOG_DIR          Test log directory.
 #                    Default: <repo>/build_out/grouped_matmul_quant_precision_logs
 
@@ -60,7 +60,7 @@ source "${CANN_ENV_SCRIPT}"
 set -u
 
 [[ -n "${ASCEND_HOME_PATH:-}" ]] || die "ASCEND_HOME_PATH is empty after sourcing ${CANN_ENV_SCRIPT}"
-OPP_INSTALL_ROOT="${OPP_INSTALL_ROOT:-${ASCEND_HOME_PATH}/opp}"
+OPP_INSTALL_ROOT="${OPP_INSTALL_ROOT:-${ASCEND_OPP_PATH:-${ASCEND_HOME_PATH}/opp}}"
 VENDOR_ENV_SCRIPT="${OPP_INSTALL_ROOT}/vendors/${VENDOR_NAME}_transformer/bin/set_env.bash"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/build_out/grouped_matmul_quant_precision_logs}"
 
@@ -71,6 +71,7 @@ npu-smi info
 "${PYTHON_BIN}" - <<'PY'
 import torch
 import torch_npu
+from pathlib import Path
 
 print("torch:", torch.__version__)
 print("torch_npu:", torch_npu.__version__)
@@ -78,6 +79,20 @@ print("NPU available:", torch.npu.is_available())
 print("NPU count:", torch.npu.device_count())
 if not torch.npu.is_available() or torch.npu.device_count() < 1:
     raise RuntimeError("No available Ascend NPU was detected")
+
+include_root = Path(torch_npu.__file__).resolve().parent / "include"
+helper_candidates = (
+    include_root / "third_party/op-plugin/op_plugin/utils/op_api_common.h",
+    include_root / "op_plugin/utils/op_api_common.h",
+    include_root / "torch_npu/csrc/aten/ops/op_api/op_api_common.h",
+)
+helper = next((path for path in helper_candidates if path.is_file()), None)
+if helper is None:
+    checked = "\n  ".join(str(path) for path in helper_candidates)
+    raise RuntimeError(f"torch_npu ACLNN helper header was not found. Checked:\n  {checked}")
+if "EXEC_NPU_CMD" not in helper.read_text(encoding="utf-8", errors="ignore"):
+    raise RuntimeError(f"EXEC_NPU_CMD is not defined by torch_npu helper: {helper}")
+print("ACLNN helper:", helper)
 PY
 
 log "Building GroupedMatmulQuant custom operator package"
@@ -89,17 +104,13 @@ bash build.sh \
     --soc="${SOC_VERSION}" \
     --vendor_name="${VENDOR_NAME}"
 
-shopt -s nullglob
-packages=("${REPO_ROOT}"/build_out/cann-ops-transformer-"${VENDOR_NAME}"_linux*.run)
-shopt -u nullglob
-(( ${#packages[@]} > 0 )) || die "Custom operator package was not generated under ${REPO_ROOT}/build_out"
-
-package_path="${packages[0]}"
-for candidate in "${packages[@]:1}"; do
-    if [[ "${candidate}" -nt "${package_path}" ]]; then
-        package_path="${candidate}"
-    fi
-done
+machine_arch="$(uname -m)"
+case "${machine_arch}" in
+    x86_64|aarch64) ;;
+    *) die "Unsupported package architecture reported by uname: ${machine_arch}" ;;
+esac
+package_path="${REPO_ROOT}/build_out/cann-ops-transformer-${VENDOR_NAME}_linux-${machine_arch}.run"
+[[ -f "${package_path}" ]] || die "Expected custom operator package was not generated: ${package_path}"
 
 log "Installing custom operator package: ${package_path}"
 chmod +x "${package_path}"
@@ -113,8 +124,39 @@ set -u
 [[ -n "${ASCEND_CUSTOM_OPP_PATH:-}" ]] || die "ASCEND_CUSTOM_OPP_PATH is empty after vendor activation"
 printf 'ASCEND_CUSTOM_OPP_PATH=%s\n' "${ASCEND_CUSTOM_OPP_PATH}"
 
-log "Installing Python test dependencies"
-"${PYTHON_BIN}" -m pip install pytest numpy
+CUSTOM_OP_API_LIB="${OPP_INSTALL_ROOT}/vendors/${VENDOR_NAME}_transformer/op_api/lib/libcust_opapi.so"
+[[ -f "${CUSTOM_OP_API_LIB}" ]] || die "Custom op-api library was not installed: ${CUSTOM_OP_API_LIB}"
+export CUSTOM_OP_API_LIB
+log "Checking custom op-api symbols"
+"${PYTHON_BIN}" - <<'PY'
+import ctypes
+import os
+
+library_path = os.environ["CUSTOM_OP_API_LIB"]
+library = ctypes.CDLL(library_path, mode=ctypes.RTLD_GLOBAL)
+required_symbols = (
+    "aclnnGroupedMatmulQuantGetWorkspaceSize",
+    "aclnnGroupedMatmulQuant",
+)
+missing = [symbol for symbol in required_symbols if not hasattr(library, symbol)]
+if missing:
+    raise RuntimeError(f"{library_path} is missing symbols: {', '.join(missing)}")
+print("custom op-api:", library_path)
+print("symbols:", ", ".join(required_symbols))
+PY
+
+log "Checking Python test dependencies"
+if ! "${PYTHON_BIN}" - <<'PY'
+import numpy
+import pytest
+
+print("numpy:", numpy.__version__)
+print("pytest:", pytest.__version__)
+PY
+then
+    log "Installing missing Python test dependencies"
+    "${PYTHON_BIN}" -m pip install pytest numpy
+fi
 
 log "Building the PyTorch registration extension for grouped_matmul_quant only"
 mkdir -p "${LOG_DIR}"
@@ -130,19 +172,30 @@ export NPU_OPS_TRANSFORMER_EXT_OPS=grouped_matmul_quant
     2>&1 | tee "${LOG_DIR}/grouped_matmul_quant_extension_build.log"
 
 log "Checking the operator schema and PrivateUse1 implementation"
+export EXTENSION_DIR
 "${PYTHON_BIN}" - <<'PY'
+import os
 import torch
 import torch_npu
 import npu_ops_transformer_ext
+from pathlib import Path
 
 qualified_name = "npu_ops_transformer_ext::grouped_matmul_quant"
 operator = torch.ops.npu_ops_transformer_ext.grouped_matmul_quant
 has_npu_kernel = torch._C._dispatch_has_kernel_for_dispatch_key(qualified_name, "PrivateUse1")
+source_root = Path(os.environ["EXTENSION_DIR"]).resolve()
+package_path = Path(npu_ops_transformer_ext.__file__).resolve()
+extension_path = Path(npu_ops_transformer_ext._C.__file__).resolve()
 
-print("package:", npu_ops_transformer_ext.__file__)
-print("extension:", npu_ops_transformer_ext._C.__file__)
+print("package:", package_path)
+print("extension:", extension_path)
 print("operator:", operator)
 print("PrivateUse1 kernel:", has_npu_kernel)
+if source_root not in package_path.parents or source_root not in extension_path.parents:
+    raise RuntimeError(
+        "The imported editable extension is not from the current source tree: "
+        f"expected under {source_root}, got package={package_path}, extension={extension_path}"
+    )
 if not has_npu_kernel:
     raise RuntimeError(f"{qualified_name} has no PrivateUse1 implementation")
 PY
