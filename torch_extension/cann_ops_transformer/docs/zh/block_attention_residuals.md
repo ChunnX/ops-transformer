@@ -97,6 +97,7 @@ cann_ops_transformer.block_attention_residuals(
     block_res,
     proj_weight,
     norm_weight,
+    *,
     valid_block_num=None,
     norm_eps=1.0e-5,
     need_backward=None,
