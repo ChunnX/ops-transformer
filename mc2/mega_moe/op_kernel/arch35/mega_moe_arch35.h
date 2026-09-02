@@ -571,8 +571,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
             sliceRange.end.expertIdx = state.expertIdx + 1U;
             sliceRange.end.tokenIndexInExpert = 0U;
         }
-        CombineTokenRange<ActivationQuantOutType, Weight1Type, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-            combineContext, sliceRange, combineRuntime);
+        CombineTokenRange<ActivationQuantOutType, Weight1Type, QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
+                          GMM1_TILE_M, TopkWeightsPrefetch>(combineContext, sliceRange, combineRuntime);
         return;
     }
 
