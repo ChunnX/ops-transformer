@@ -152,7 +152,7 @@ __simd_vf__ inline void CastTransdataDeconflictVFfp8(const uint32_t fullExeSize,
         Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven, (RegTensor<uint8_t> &)vregCastOdd,
            preg_all_b8);
         LoadAlign<uint8_t, Reg::LoadDist::DIST_NORM>((RegTensor<uint8_t> &)vregIndexes,
-                                                          ((__ubuf__ uint8_t *&)selrIndexesInt));
+                                                     ((__ubuf__ uint8_t *&)selrIndexesInt));
         Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes, (RegTensor<uint8_t> &)vregCastResTmp,
                         (RegTensor<uint8_t> &)vregIndexes);
         StoreAlign<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(

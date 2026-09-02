@@ -41,28 +41,26 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T *ex
     AscendC::Reg::UnalignRegForStore ureg_exp_sum;
 
     AscendC::Reg::MaskReg preg_all = AscendC::Reg::CreateMask<T, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg preg_all_b16 =
-        AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg_all_b16 = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
 
     for (uint16_t i = 0; i < m; ++i) {
         AlignedScaleStoreMax128<T>(vreg_input_x, vreg_input_x_unroll, vreg_max_tmp, srcUb, i, s2BaseSize, scale,
                                    preg_all);
 
-        AscendC::Reg::Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(
-            vreg_input_max, vreg_max_tmp, preg_all);
-        AscendC::Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
-                                                                                        vreg_input_max, ureg_max, 1);
+        AscendC::Reg::Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max,
+                                                                                              vreg_max_tmp, preg_all);
+        AscendC::Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), vreg_input_max,
+                                                                              ureg_max, 1);
     }
 
-    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
-                                                                                        ureg_max, 0);
+    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
     AscendC::Reg::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     for (uint16_t i = 0; i < m; ++i) {
         // maxUb is [S1, 1], BRC_B32 is reading one fp32 element and broadcast it to all 64 vreg element
         AscendC::Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
         AscendC::Reg::LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x, vreg_input_x_unroll,
-                                                                             srcUb + i * s2BaseSize);
+                                                                   srcUb + i * s2BaseSize);
 
         AscendC::Reg::ExpSub(vreg_exp_even, vreg_input_x, vreg_max_brc, preg_all);
         AscendC::Reg::ExpSub(vreg_exp_odd, vreg_input_x_unroll, vreg_max_brc, preg_all);
@@ -73,8 +71,8 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T *ex
         CastStoreExp128<T, T2>(vreg_exp_even, vreg_exp_odd, expUb, blockStride, repeatStride, preg_all, preg_all_b16,
                                indexesUb);
     }
-    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb),
-                                                                                        ureg_exp_sum, 0);
+    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum,
+                                                                              0);
 }
 
 // no update, originN == 128

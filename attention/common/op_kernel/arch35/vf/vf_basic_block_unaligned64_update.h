@@ -149,21 +149,19 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
                     preg_compare, (__ubuf__ uint32_t *&)maskUb, nPadding);
             }
             Select(vreg_sel, vreg_min, vreg_input_x, preg_compare);
-            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel,
-                                                              preg_src_n);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel, preg_src_n);
             Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_sel,
-                                                                                              preg_ori_src_n);
+                                                                                    preg_ori_src_n);
         } else {
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x,
-                                                              preg_src_n);
-            Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(
-                vreg_input_max, vreg_input_x, preg_ori_src_n);
+                                                         preg_src_n);
+            Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_x,
+                                                                                    preg_ori_src_n);
         }
         if constexpr (hasSink) {
             Max(vreg_input_max, vreg_input_max, vreg_sink_input, preg_ori_src_n);
         }
-        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max,
-                                                                     ureg_max, 1);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
     LoadAlign(vreg_in_max, inMaxUb);
@@ -188,10 +186,9 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
         ExpSub(vreg_exp, vreg_input_x, vreg_max, preg_ori_src_n);
 
         // x_sum = sum(x_exp, axis=-1, keepdims=True)
-        Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp,
-                                                                                          preg_ori_src_n);
+        Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp, preg_ori_src_n);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum,
-                                                                     ureg_exp_sum, 1);
+                                                                ureg_exp_sum, 1);
         if constexpr (isMlaFullQuant) {
             LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_rowmax_p, pScaleUb + i);
             if constexpr (IsSameType<T2, int8_t>::value) {
@@ -254,14 +251,13 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
             MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             // float → half → Or → half → int8 → Gather
             static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             Cast<half, T, castTrait0>(vreg_exp_f16, vreg_exp, preg_all);
-            Reg::Pack<uint16_t, uint32_t, Reg::HighLowPart::LOWEST>(
-                (Reg::RegTensor<uint16_t> &)vreg_cast_res, (Reg::RegTensor<uint32_t> &)vreg_exp_f16);
+            Reg::Pack<uint16_t, uint32_t, Reg::HighLowPart::LOWEST>((Reg::RegTensor<uint16_t> &)vreg_cast_res,
+                                                                    (Reg::RegTensor<uint32_t> &)vreg_exp_f16);
             Cast<T2, half, castTrait0>(vreg_exp_merge_tmp_int8, vreg_cast_res, preg_all_f16);
-            Reg::Pack<uint8_t, uint16_t, Reg::HighLowPart::LOWEST>(
-                (Reg::RegTensor<uint8_t> &)vreg_exp_merge_int8,
-                (Reg::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8);
+            Reg::Pack<uint8_t, uint16_t, Reg::HighLowPart::LOWEST>((Reg::RegTensor<uint8_t> &)vreg_exp_merge_int8,
+                                                                   (Reg::RegTensor<uint16_t> &)vreg_exp_merge_tmp_int8);
             StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ int8_t *&)expUb), vreg_exp_merge_int8, blockStride, repeatStride, preg_all_b8_128);
         } else if constexpr (IsSameType<T2, hifloat8_t>::value) {

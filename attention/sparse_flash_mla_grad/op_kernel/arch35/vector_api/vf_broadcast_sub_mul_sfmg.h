@@ -54,11 +54,11 @@ __simd_vf__ inline void BroadcastSubMulVF64(uint64_t srcLocalInt, uint64_t dstLo
         LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSfm, ((__ubuf__ float *&)sfmLocalInt), 128);
         Mul(vregMul, vregSub, vregSfm, pregTailExe);
         StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregMul, 128,
-                                                                   pregFullExe);
+                                                              pregFullExe);
         if constexpr (IS_DETER_OLD) { // 确定性计算需要将64~128的数据补零， 否则会有脏数据inf
             Duplicate(vregMul, 0);
             StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>((__ubuf__ float *&)dstLocalIntZero, vregMul, 128,
-                                                                       pregFullExe);
+                                                                  pregFullExe);
         }
     }
 }
@@ -89,14 +89,14 @@ __simd_vf__ inline void BroadcastSubMulVF128(uint64_t srcLocalInt, uint64_t dstL
         LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSfm, ((__ubuf__ float *&)sfmLocalInt), 64);
         Mul(vregMul, vregSub, vregSfm, pregFullExe);
         StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregMul, 64,
-                                                                   pregFullExe);
+                                                              pregFullExe);
         // 尾块
         LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float *&)srcLocalInt), 64);
         Sub(vregSub, vregSrc, vregGrad, pregTailExe);
         LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSfm, ((__ubuf__ float *&)sfmLocalInt), 64);
         Mul(vregMul, vregSub, vregSfm, pregTailExe);
         StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregMul, 64,
-                                                                   pregFullExe);
+                                                              pregFullExe);
     }
 }
 

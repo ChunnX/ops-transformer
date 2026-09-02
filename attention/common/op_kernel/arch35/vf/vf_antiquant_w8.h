@@ -19,26 +19,26 @@
 
 namespace FaVectorApi {
 // w8转Q_T
-static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+static constexpr Reg::CastTrait castTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                             RoundMode::UNKNOWN};
 // fp32->Q_T
-static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                   Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
+                                              RoundMode::CAST_RINT};
 // fp16 -> bf16
 static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
-                                                   Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                              Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 // fp8->fp32
 static constexpr Reg::CastTrait castTraitFp8_1 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp8->fp32
 static constexpr Reg::CastTrait castTraitFp8_2 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8_3 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 // fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8_4 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
 template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
 __simd_vf__ void AntiquantVFImplW8Nz(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T *ubDstAddr, __ubuf__ Q_T *ubOffsetAddr,
@@ -74,8 +74,7 @@ __simd_vf__ void AntiquantVFImplW8Nz(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T *
             __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + dealBaseNum * rowLoopIdx + colDstStride * colLoopIdx;
             __ubuf__ uint8_t *ubSrcTemp = ubSrcAddr + colSrcStride * colLoopIdx + dealBaseNum * rowLoopIdx;
             ;
-            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vKvData,
-                                                                             ubSrcTemp);
+            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vKvData, ubSrcTemp);
             if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
                 Reg::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvTypeMaskAll);
                 Reg::Cast<Q_T, half, castTrait1>(vRes, vCastFp16Res, kvTypeMaskAll);
@@ -136,8 +135,7 @@ __simd_vf__ void AntiquantVFImplW8NzD032(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q
             __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + colDstStride * colLoopIdx + dealBaseNum * rowLoopIdx;
             __ubuf__ uint8_t *ubSrcTemp = ubSrcAddr + colSrcStride * colLoopIdx + dealBaseNum * rowLoopIdx;
 
-            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vKvData,
-                                                                             ubSrcTemp);
+            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vKvData, ubSrcTemp);
             if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
                 Reg::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvTypeMaskAll);
                 Reg::Cast<Q_T, half, castTrait1>(vRes, vCastFp16Res, kvTypeMaskAll);
@@ -196,8 +194,7 @@ __simd_vf__ void AntiquantVFImplFp8Nz(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T 
             __ubuf__ Q_T *ubDstAddrTmp = ubDstAddr + colDstStride * colLoopIdx + dealBaseNum * rowLoopIdx;
             __ubuf__ uint8_t *ubSrcTemp = ubSrcAddr + colSrcStride * colLoopIdx + dealBaseNum * rowLoopIdx;
             ;
-            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint8_t> &)vKvData,
-                                                                              ubSrcTemp);
+            Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint8_t> &)vKvData, ubSrcTemp);
 
             // cast操作, Fp8->Fp32
             Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData, kvTypeMaskAll);
@@ -205,9 +202,9 @@ __simd_vf__ void AntiquantVFImplFp8Nz(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T 
             // cast操作, Fp32->Fp16/Bf16
             Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, kvTypeMaskAll);
             Reg::Cast<Q_T, float, castTraitFp8_4>(vCastRes1, vCastFp32Res1, kvTypeMaskAll);
-            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-                (Reg::RegTensor<uint16_t> &)vCastRes0, (Reg::RegTensor<uint16_t> &)vCastRes0,
-                (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
+            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                           (Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                           (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
             Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vRes, vCastRes0, vScale, qTypeMaskAll);
             // 将输出结果copy到UB
             Reg::StoreAlign<Q_T, Reg::StoreDist::DIST_NORM_B16>(ubDstAddrTmp, vRes, qTypeMaskAll);
@@ -216,12 +213,11 @@ __simd_vf__ void AntiquantVFImplFp8Nz(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T 
 }
 
 template <typename Q_T, typename KV_T, bool hasOffset>
-__simd_callee__ static inline void W8NzQuantAndStore(Reg::RegTensor<KV_T> &vKvData,
-                                                     Reg::RegTensor<half> &vCastFp16Res,
+__simd_callee__ static inline void W8NzQuantAndStore(Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<half> &vCastFp16Res,
                                                      Reg::RegTensor<Q_T> &vRes, __ubuf__ uint8_t *ubSrc,
-                                                     Reg::RegTensor<Q_T> &vOffset,
-                                                     Reg::RegTensor<Q_T> &vScale, __ubuf__ Q_T *ubDst,
-                                                     Reg::MaskReg &kvTypeMaskAll, Reg::MaskReg &qTypeMaskAll)
+                                                     Reg::RegTensor<Q_T> &vOffset, Reg::RegTensor<Q_T> &vScale,
+                                                     __ubuf__ Q_T *ubDst, Reg::MaskReg &kvTypeMaskAll,
+                                                     Reg::MaskReg &qTypeMaskAll)
 {
     Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B8>((Reg::RegTensor<uint8_t> &)vKvData, ubSrc);
     if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
@@ -395,7 +391,7 @@ __simd_vf__ void AntiquantVFImplW8D64(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T 
     Reg::MaskReg qTypeMaskAll = Reg::CreateMask<Q_T, Reg::MaskPattern::ALL>(); // Q_T 所有元素（共128个）
     Reg::MaskReg qTypeMaskHigher64;
     Reg::Xor(qTypeMaskHigher64, qTypeMaskLower64, qTypeMaskAll,
-                  qTypeMaskAll); // qTypeMaskAll与qTypeMaskLower64异或得到qTypeMaskHigher64
+             qTypeMaskAll); // qTypeMaskAll与qTypeMaskLower64异或得到qTypeMaskHigher64
 
     uint32_t blockStride = 1 + dealRowCount;
     uint32_t repeatStride = 2;
@@ -453,9 +449,8 @@ __aicore__ inline void AntiquantVFW8D64(LocalTensor<KV_T> &antiqInUb, LocalTenso
 template <typename Q_T, typename ANTIQ_PARAMS_T>
 __simd_callee__ static inline void LoadCastDupLowHighOr(
     Reg::RegTensor<ANTIQ_PARAMS_T> &vParam, Reg::UnalignRegForLoad &uReg, __ubuf__ ANTIQ_PARAMS_T *&ubAddr,
-    Reg::RegTensor<Q_T> &vParamFp16, Reg::RegTensor<Q_T> &vParamFp16Low,
-    Reg::RegTensor<Q_T> &vParamFp16High, Reg::MaskReg &maskOne, Reg::MaskReg &qTypeMaskLower64,
-    Reg::MaskReg &qTypeMaskHigher64, Reg::MaskReg &kvTypeMaskAll)
+    Reg::RegTensor<Q_T> &vParamFp16, Reg::RegTensor<Q_T> &vParamFp16Low, Reg::RegTensor<Q_T> &vParamFp16High,
+    Reg::MaskReg &maskOne, Reg::MaskReg &qTypeMaskLower64, Reg::MaskReg &qTypeMaskHigher64, Reg::MaskReg &kvTypeMaskAll)
 {
     Reg::LoadUnAlign<ANTIQ_PARAMS_T>(vParam, uReg, ubAddr, 1); // 1表示ub自动往后偏移1个float
     Reg::Cast<Q_T, ANTIQ_PARAMS_T, castTrait0>(vParamFp16, vParam, maskOne);
@@ -465,17 +460,15 @@ __simd_callee__ static inline void LoadCastDupLowHighOr(
     Reg::LoadUnAlign<ANTIQ_PARAMS_T>(vParam, uReg, ubAddr, 1); // 1表示ub自动往后偏移1个float
     Reg::Cast<Q_T, ANTIQ_PARAMS_T, castTrait0>(vParamFp16, vParam, maskOne);
     Reg::Duplicate<uint16_t, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(
-        (Reg::RegTensor<uint16_t> &)vParamFp16High, (Reg::RegTensor<uint16_t> &)vParamFp16,
-        qTypeMaskHigher64);
-    Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-        (Reg::RegTensor<uint16_t> &)vParamFp16, (Reg::RegTensor<uint16_t> &)vParamFp16Low,
-        (Reg::RegTensor<uint16_t> &)vParamFp16High, kvTypeMaskAll);
+        (Reg::RegTensor<uint16_t> &)vParamFp16High, (Reg::RegTensor<uint16_t> &)vParamFp16, qTypeMaskHigher64);
+    Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vParamFp16,
+                                                   (Reg::RegTensor<uint16_t> &)vParamFp16Low,
+                                                   (Reg::RegTensor<uint16_t> &)vParamFp16High, kvTypeMaskAll);
 }
 
 template <typename Q_T, typename KV_T>
 __simd_callee__ static inline void CastW8KvToRes(Reg::RegTensor<Q_T> &vRes, Reg::RegTensor<KV_T> &vKvData,
-                                                 Reg::RegTensor<half> &vCastFp16Res,
-                                                 Reg::MaskReg &kvTypeMaskAll)
+                                                 Reg::RegTensor<half> &vCastFp16Res, Reg::MaskReg &kvTypeMaskAll)
 {
     if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
         Reg::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvTypeMaskAll);
@@ -508,7 +501,7 @@ __simd_vf__ void AntiquantVFImplW8PerTokenD64(__ubuf__ uint8_t *ubSrcAddr, __ubu
     Reg::MaskReg qTypeMaskAll = Reg::CreateMask<Q_T, Reg::MaskPattern::ALL>(); // Q_T 所有元素（共128个）
     Reg::MaskReg qTypeMaskHigher64;
     Reg::Xor(qTypeMaskHigher64, qTypeMaskLower64, qTypeMaskAll,
-                  qTypeMaskAll); // qTypeMaskAll与qTypeMaskLower64异或得到qTypeMaskHigher64
+             qTypeMaskAll); // qTypeMaskAll与qTypeMaskLower64异或得到qTypeMaskHigher64
 
     Reg::UnalignRegForLoad u0;
     Reg::UnalignRegForLoad u1;
@@ -677,8 +670,7 @@ __simd_vf__ void AntiquantVFImplW8PerTokenD128(__ubuf__ uint8_t *ubSrcAddr, __ub
                 Reg::LoadUnAlign<ANTIQ_PARAMS_T>(vOffset, u1, ubOffsetAddrTemp, 1); // 1表示ub自动往后偏移1个float
                 Reg::Cast<Q_T, ANTIQ_PARAMS_T, castTrait0>(vOffsetFp16, vOffset, maskOne);
                 Reg::Duplicate<uint16_t, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(
-                    (Reg::RegTensor<uint16_t> &)vOffsetFp16, (Reg::RegTensor<uint16_t> &)vOffsetFp16,
-                    qTypeMaskAll);
+                    (Reg::RegTensor<uint16_t> &)vOffsetFp16, (Reg::RegTensor<uint16_t> &)vOffsetFp16, qTypeMaskAll);
                 Reg::Add<Q_T, Reg::MaskMergeMode::ZEROING>(vRes, vOffsetFp16, vRes, qTypeMaskAll);
             }
 
@@ -710,8 +702,8 @@ template <typename Q_T, typename ANTIQ_PARAMS_T, bool hasOffset>
 __simd_callee__ static inline void LoadPerTokenAntiqParams(
     Reg::RegTensor<ANTIQ_PARAMS_T> &vScale, Reg::UnalignRegForLoad &u0, __ubuf__ ANTIQ_PARAMS_T *&ubScaleAddr,
     Reg::RegTensor<Q_T> &vScaleFp16, Reg::MaskReg &maskOne, Reg::MaskReg &qMaskAll,
-    Reg::RegTensor<ANTIQ_PARAMS_T> &vOffset, Reg::UnalignRegForLoad &u1,
-    __ubuf__ ANTIQ_PARAMS_T *&ubOffsetAddr, Reg::RegTensor<Q_T> &vOffsetFp16)
+    Reg::RegTensor<ANTIQ_PARAMS_T> &vOffset, Reg::UnalignRegForLoad &u1, __ubuf__ ANTIQ_PARAMS_T *&ubOffsetAddr,
+    Reg::RegTensor<Q_T> &vOffsetFp16)
 {
     Reg::LoadUnAlign<ANTIQ_PARAMS_T>(vScale, u0, ubScaleAddr, 1); // 1表示ub自动往后偏移1个float
     Reg::Cast<Q_T, ANTIQ_PARAMS_T, castTrait0>(vScaleFp16, vScale, maskOne);
@@ -727,11 +719,9 @@ __simd_callee__ static inline void LoadPerTokenAntiqParams(
 
 template <typename Q_T, typename KV_T>
 __simd_callee__ static inline void CastW8KvToResPair(Reg::RegTensor<Q_T> &vRes, Reg::RegTensor<Q_T> &vRes1,
-                                                     Reg::RegTensor<KV_T> &vKvData,
-                                                     Reg::RegTensor<KV_T> &vKvData1,
+                                                     Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<KV_T> &vKvData1,
                                                      Reg::RegTensor<half> &vCastFp16Res,
-                                                     Reg::RegTensor<half> &vCastFp16Res1,
-                                                     Reg::MaskReg &kvMaskAll)
+                                                     Reg::RegTensor<half> &vCastFp16Res1, Reg::MaskReg &kvMaskAll)
 {
     if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
         Reg::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvMaskAll);
@@ -815,12 +805,10 @@ __aicore__ inline void AntiquantVFW8PerTokenD256(LocalTensor<KV_T> &antiqInUb, L
 }
 
 template <typename KV_T>
-__simd_callee__ static inline void LoadAlignW8Quad(Reg::RegTensor<KV_T> &vKvData,
-                                                   Reg::RegTensor<KV_T> &vKvData1,
-                                                   Reg::RegTensor<KV_T> &vKvData2,
-                                                   Reg::RegTensor<KV_T> &vKvData3, __ubuf__ uint8_t *&ubSrcAddr,
-                                                   __ubuf__ uint8_t *&ubSrcAddr1, __ubuf__ uint8_t *&ubSrcAddr2,
-                                                   __ubuf__ uint8_t *&ubSrcAddr3)
+__simd_callee__ static inline void LoadAlignW8Quad(Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<KV_T> &vKvData1,
+                                                   Reg::RegTensor<KV_T> &vKvData2, Reg::RegTensor<KV_T> &vKvData3,
+                                                   __ubuf__ uint8_t *&ubSrcAddr, __ubuf__ uint8_t *&ubSrcAddr1,
+                                                   __ubuf__ uint8_t *&ubSrcAddr2, __ubuf__ uint8_t *&ubSrcAddr3)
 {
     Reg::LoadAlign<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK_B8>(
         (Reg::RegTensor<uint8_t> &)vKvData, ubSrcAddr, 512); // d=512 每次往后偏移512
@@ -834,11 +822,10 @@ __simd_callee__ static inline void LoadAlignW8Quad(Reg::RegTensor<KV_T> &vKvData
 
 template <typename Q_T, typename KV_T>
 __simd_callee__ static inline void CastW8KvToResQuad(
-    Reg::RegTensor<Q_T> &vRes, Reg::RegTensor<Q_T> &vRes1, Reg::RegTensor<Q_T> &vRes2,
-    Reg::RegTensor<Q_T> &vRes3, Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<KV_T> &vKvData1,
-    Reg::RegTensor<KV_T> &vKvData2, Reg::RegTensor<KV_T> &vKvData3, Reg::RegTensor<half> &vCastFp16Res,
-    Reg::RegTensor<half> &vCastFp16Res1, Reg::RegTensor<half> &vCastFp16Res2,
-    Reg::RegTensor<half> &vCastFp16Res3, Reg::MaskReg &kvMaskAll)
+    Reg::RegTensor<Q_T> &vRes, Reg::RegTensor<Q_T> &vRes1, Reg::RegTensor<Q_T> &vRes2, Reg::RegTensor<Q_T> &vRes3,
+    Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<KV_T> &vKvData1, Reg::RegTensor<KV_T> &vKvData2,
+    Reg::RegTensor<KV_T> &vKvData3, Reg::RegTensor<half> &vCastFp16Res, Reg::RegTensor<half> &vCastFp16Res1,
+    Reg::RegTensor<half> &vCastFp16Res2, Reg::RegTensor<half> &vCastFp16Res3, Reg::MaskReg &kvMaskAll)
 {
     if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
         Reg::Cast<half, KV_T, castTrait>(vCastFp16Res, vKvData, kvMaskAll);
@@ -860,11 +847,11 @@ __simd_callee__ static inline void CastW8KvToResQuad(
 template <typename Q_T, bool hasOffset>
 __simd_callee__ static inline void AddMulStoreFp8Quad(Reg::RegTensor<Q_T> &vRes, Reg::RegTensor<Q_T> &vRes1,
                                                       Reg::RegTensor<Q_T> &vRes2, Reg::RegTensor<Q_T> &vRes3,
-                                                      Reg::RegTensor<Q_T> &vOffsetFp16,
-                                                      Reg::RegTensor<Q_T> &vScaleFp16, __ubuf__ Q_T *&ubDstAddr,
-                                                      __ubuf__ Q_T *&ubDstAddr1, __ubuf__ Q_T *&ubDstAddr2,
-                                                      __ubuf__ Q_T *&ubDstAddr3, uint32_t blockStride,
-                                                      uint32_t repeatStride, Reg::MaskReg &qMaskAll)
+                                                      Reg::RegTensor<Q_T> &vOffsetFp16, Reg::RegTensor<Q_T> &vScaleFp16,
+                                                      __ubuf__ Q_T *&ubDstAddr, __ubuf__ Q_T *&ubDstAddr1,
+                                                      __ubuf__ Q_T *&ubDstAddr2, __ubuf__ Q_T *&ubDstAddr3,
+                                                      uint32_t blockStride, uint32_t repeatStride,
+                                                      Reg::MaskReg &qMaskAll)
 {
     if constexpr (hasOffset) {
         Reg::Add<Q_T, Reg::MaskMergeMode::ZEROING>(vRes, vRes, vOffsetFp16, qMaskAll);
@@ -1046,7 +1033,7 @@ __simd_vf__ void AntiquantVFImplFp8D64(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T
     // 加载 scale
     Reg::LoadAlign<Q_T, Reg::LoadDist::DIST_NORM>(vScale, ubScalerSrcAddr);
     Reg::Xor(qTypeMaskHigher64, qTypeMaskLower64, qTypeMaskAll,
-                  qTypeMaskAll); // qTypeMaskAll与qTypeMaskLower64异或得到qTypeMaskHigher64
+             qTypeMaskAll); // qTypeMaskAll与qTypeMaskLower64异或得到qTypeMaskHigher64
 
     // D=64时相邻2行合并做伪量化计算，减小循环次数；额外+1是为了处理奇数行时场景
     for (uint16_t i = 0; i < loopCnt; i++) {
@@ -1061,9 +1048,9 @@ __simd_vf__ void AntiquantVFImplFp8D64(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T
         Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, kvTypeMaskAll);
         Reg::Cast<Q_T, float, castTraitFp8_4>(vCastRes1, vCastFp32Res1, kvTypeMaskAll);
 
-        Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-            (Reg::RegTensor<uint16_t> &)vCastRes0, (Reg::RegTensor<uint16_t> &)vCastRes0,
-            (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
+        Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                       (Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                       (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
 
         Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vMulRes, vCastRes0, vScale, qTypeMaskLower128);
 
@@ -1132,9 +1119,9 @@ __simd_vf__ void AntiquantVFImplFp8Norm(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_
             Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, kvTypeMaskAll);
             Reg::Cast<Q_T, float, castTraitFp8_4>(vCastRes1, vCastFp32Res1, kvTypeMaskAll);
 
-            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-                (Reg::RegTensor<uint16_t> &)vCastRes0, (Reg::RegTensor<uint16_t> &)vCastRes0,
-                (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
+            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                           (Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                           (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
 
             Reg::Mul<Q_T, Reg::MaskMergeMode::ZEROING>(vMulRes, vCastRes0, vScale, qTypeMaskAll);
 
@@ -1180,8 +1167,7 @@ __aicore__ inline void AntiquantVFImpl(LocalTensor<fp8_e5m2_t> &antiqInUb, Local
 template <typename Q_T, typename KV_T>
 __simd_callee__ static inline void Fp8CastToRes(Reg::RegTensor<Q_T> &vRes, Reg::RegTensor<KV_T> &vKvData,
                                                 Reg::RegTensor<float> &vCastFp32Res0,
-                                                Reg::RegTensor<float> &vCastFp32Res1,
-                                                Reg::RegTensor<Q_T> &vCastRes0,
+                                                Reg::RegTensor<float> &vCastFp32Res1, Reg::RegTensor<Q_T> &vCastRes0,
                                                 Reg::RegTensor<Q_T> &vCastRes1, Reg::MaskReg &kvMaskAll)
 {
     Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData, kvMaskAll);
@@ -1189,8 +1175,8 @@ __simd_callee__ static inline void Fp8CastToRes(Reg::RegTensor<Q_T> &vRes, Reg::
     Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, kvMaskAll);
     Reg::Cast<Q_T, float, castTraitFp8_4>(vCastRes1, vCastFp32Res1, kvMaskAll);
     Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vRes,
-                                                             (Reg::RegTensor<uint16_t> &)vCastRes0,
-                                                             (Reg::RegTensor<uint16_t> &)vCastRes1, kvMaskAll);
+                                                   (Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                   (Reg::RegTensor<uint16_t> &)vCastRes1, kvMaskAll);
 }
 
 template <typename Q_T, typename KV_T, typename ANTIQ_PARAMS_T, uint32_t baseSize, bool hasOffset = false>
@@ -1322,8 +1308,7 @@ __simd_vf__ void AntiquantVFImplFp8PerTokenD128(__ubuf__ uint8_t *ubSrcAddr, __u
                 Reg::LoadUnAlign<ANTIQ_PARAMS_T>(vOffset, u1, ubOffsetAddrTemp, 1); // 1表示ub自动往后偏移1个float
                 Reg::Cast<Q_T, ANTIQ_PARAMS_T, castTrait0>(vOffsetFp16, vOffset, maskOne);
                 Reg::Duplicate<uint16_t, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(
-                    (Reg::RegTensor<uint16_t> &)vOffsetFp16, (Reg::RegTensor<uint16_t> &)vOffsetFp16,
-                    qTypeMaskAll);
+                    (Reg::RegTensor<uint16_t> &)vOffsetFp16, (Reg::RegTensor<uint16_t> &)vOffsetFp16, qTypeMaskAll);
                 Reg::Add<Q_T, Reg::MaskMergeMode::ZEROING>(vRes, vRes, vOffsetFp16, qTypeMaskAll);
             }
 
@@ -1435,12 +1420,10 @@ __aicore__ inline void AntiquantVFFp8PerTokenD256(LocalTensor<KV_T> &antiqInUb, 
 }
 
 template <typename KV_T>
-__simd_callee__ static inline void LoadAlignFp8Quad(Reg::RegTensor<KV_T> &vKvData,
-                                                    Reg::RegTensor<KV_T> &vKvData1,
-                                                    Reg::RegTensor<KV_T> &vKvData2,
-                                                    Reg::RegTensor<KV_T> &vKvData3, __ubuf__ uint8_t *&ubSrcAddr,
-                                                    __ubuf__ uint8_t *&ubSrcAddr1, __ubuf__ uint8_t *&ubSrcAddr2,
-                                                    __ubuf__ uint8_t *&ubSrcAddr3)
+__simd_callee__ static inline void LoadAlignFp8Quad(Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<KV_T> &vKvData1,
+                                                    Reg::RegTensor<KV_T> &vKvData2, Reg::RegTensor<KV_T> &vKvData3,
+                                                    __ubuf__ uint8_t *&ubSrcAddr, __ubuf__ uint8_t *&ubSrcAddr1,
+                                                    __ubuf__ uint8_t *&ubSrcAddr2, __ubuf__ uint8_t *&ubSrcAddr3)
 {
     Reg::LoadAlign<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK_B16>(
         (Reg::RegTensor<uint8_t> &)vKvData, ubSrcAddr, 512); // d=512 每次往后偏移512
@@ -1530,12 +1513,13 @@ __aicore__ inline void AntiquantVFFp8PerTokenD512(LocalTensor<KV_T> &antiqInUb, 
 }
 
 template <typename Q_T, typename KV_T, bool hasOffset>
-__simd_callee__ static inline void Fp8NzQuantAndStore(
-    Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<Q_T> &vRes, __ubuf__ uint8_t *ubSrc,
-    Reg::RegTensor<Q_T> &vOffset, Reg::RegTensor<Q_T> &vScale, __ubuf__ Q_T *ubDst,
-    Reg::RegTensor<float> &vCastFp32Res0, Reg::RegTensor<float> &vCastFp32Res1,
-    Reg::RegTensor<Q_T> &vCastRes0, Reg::RegTensor<Q_T> &vCastRes1, Reg::MaskReg &kvTypeMaskAll,
-    Reg::MaskReg &qTypeMaskAll)
+__simd_callee__ static inline void Fp8NzQuantAndStore(Reg::RegTensor<KV_T> &vKvData, Reg::RegTensor<Q_T> &vRes,
+                                                      __ubuf__ uint8_t *ubSrc, Reg::RegTensor<Q_T> &vOffset,
+                                                      Reg::RegTensor<Q_T> &vScale, __ubuf__ Q_T *ubDst,
+                                                      Reg::RegTensor<float> &vCastFp32Res0,
+                                                      Reg::RegTensor<float> &vCastFp32Res1,
+                                                      Reg::RegTensor<Q_T> &vCastRes0, Reg::RegTensor<Q_T> &vCastRes1,
+                                                      Reg::MaskReg &kvTypeMaskAll, Reg::MaskReg &qTypeMaskAll)
 {
     Reg::LoadAlign<uint8_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint8_t> &)vKvData, ubSrc);
     Reg::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData, kvTypeMaskAll);
@@ -1543,8 +1527,8 @@ __simd_callee__ static inline void Fp8NzQuantAndStore(
     Reg::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, kvTypeMaskAll);
     Reg::Cast<Q_T, float, castTraitFp8_4>(vCastRes1, vCastFp32Res1, kvTypeMaskAll);
     Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vRes,
-                                                             (Reg::RegTensor<uint16_t> &)vCastRes0,
-                                                             (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
+                                                   (Reg::RegTensor<uint16_t> &)vCastRes0,
+                                                   (Reg::RegTensor<uint16_t> &)vCastRes1, kvTypeMaskAll);
     if constexpr (hasOffset) {
         Reg::Add<Q_T, Reg::MaskMergeMode::ZEROING>(vRes, vRes, vOffset, qTypeMaskAll);
     }

@@ -1061,7 +1061,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
            (RegTensor<uint16_t> &)vreg_p_scale_bf16_1, preg_108);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0, vreg_p_scale_bf16_0, preg_108);
         StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_PACK_B16>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                                   vreg_p_scale_f8e8m0, preg_108);
+                                                              vreg_p_scale_f8e8m0, preg_108);
     }
 }
 
@@ -1379,7 +1379,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
            (RegTensor<uint16_t> &)vreg_p_scale_bf16_1, preg_108);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0, vreg_p_scale_bf16_0, preg_108);
         StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_PACK_B16>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                                   vreg_p_scale_f8e8m0, preg_108);
+                                                              vreg_p_scale_f8e8m0, preg_108);
     }
 }
 
@@ -2079,11 +2079,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
             Mul(src0, src0, vreg_kscale_val, preg_135);
             LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
             Mul(src1, src1, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
             Mul(src2, src2, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
             Mul(src3, src3, vreg_kscale_val, preg_135);
 
             Compare<T, CMPMODE::GE>(preg_compare0, vreg_chunk0, vreg_thresh, preg_135);
@@ -2124,11 +2122,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
             Mul(src0, src0, vreg_kscale_val, preg_135);
             LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
             Mul(src1, src1, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
             Mul(src2, src2, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
             Mul(src3, src3, vreg_kscale_val, preg_135);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub0 + base, src0, preg_108);
@@ -2607,11 +2603,9 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
             Mul(src0, src0, vreg_kscale_val, preg_135);
             LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
             Mul(src1, src1, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
             Mul(src2, src2, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
             Mul(src3, src3, vreg_kscale_val, preg_135);
 
             Compare<T, CMPMODE::GE>(preg_compare0, vreg_chunk0, vreg_thresh, preg_135);
@@ -2652,11 +2646,9 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
             Mul(src0, src0, vreg_kscale_val, preg_135);
             LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
             Mul(src1, src1, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
             Mul(src2, src2, vreg_kscale_val, preg_135);
-            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val,
-                                                               kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
             Mul(src3, src3, vreg_kscale_val, preg_135);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub0 + base, src0, preg_108);

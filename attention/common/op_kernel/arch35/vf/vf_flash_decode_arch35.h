@@ -23,7 +23,7 @@ constexpr float FLT_MAX_NEW = 3.402823466e+38F;
 namespace FaVectorApi {
 // bf16->fp32
 static constexpr Reg::CastTrait castTraitFp16_32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                    Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // 处理循环splitKVIndex=0的场景，vregDst需要置0
 template <typename T>
 __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubuf__ T *accumOutUb, uint16_t k,
@@ -38,8 +38,8 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubu
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
 
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(
-            vregLse, (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(vregLse,
+                                                   (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex=0的场景，vregDst不需要load，直接置0
             Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vregDst, FLT_ZERO, pregTailN);
@@ -87,8 +87,8 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __
     uint32_t stride = (0x1 << 16) | 0x8;
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(
-            vregLse, (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(vregLse,
+                                                   (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex>0的场景，reg_dst需要先从dstUb中load之前的结果，再进行add
             Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
@@ -170,27 +170,23 @@ __simd_vf__ void ComputeScaleValue_8_VF(__ubuf__ uint16_t *lseSink, __ubuf__ T *
     Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vregLseSum, FLT_ZERO, pregTailN);
 
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp,
-                                                              (__ubuf__ float *&)lseMaxTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, (__ubuf__ float *&)lseMaxTmp + i * dealCount);
         Reg::Max<T, Reg::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseMaxTmp, pregTailN);
     }
 
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp,
-                                                              (__ubuf__ float *&)lseMaxTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, (__ubuf__ float *&)lseMaxTmp + i * dealCount);
         Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, vregLseMax, pregTailN);
         Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, pregTailN);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp,
-                                                              (__ubuf__ float *&)lseSumTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, (__ubuf__ float *&)lseSumTmp + i * dealCount);
         Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseMaxTmp, pregTailN);
         Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSumTmp, pregTailN);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)lseSumTmp + i * dealCount,
-                                                                    vregLseSumTmp, pregTailN);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)lseSumTmp + i * dealCount, vregLseSumTmp,
+                                                          pregTailN);
     }
 
     if (learnableSinkFlag) {
-        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregLseSink,
-                                                                           lseSink);
+        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregLseSink, lseSink);
         Reg::Cast<T, SINK_T, castTraitFp16_32>(vregLseSinkCast, vregLseSink, pregSinkTailN);
 
         Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, vregLseMax, pregTailN);
@@ -218,8 +214,7 @@ __simd_vf__ void ComputeScaleValue_8_VF(__ubuf__ uint16_t *lseSink, __ubuf__ T *
 
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp,
-                                                              (__ubuf__ float *&)lseSumTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, (__ubuf__ float *&)lseSumTmp + i * dealCount);
         Reg::Div<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseSum, pregTailN);
         Reg::StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             (__ubuf__ float *&)lseSum, vregLseSumTmp, blockStride, repeatStride, pregTailN);
@@ -270,23 +265,20 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
     Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vregLseMax, -FLT_MAX_NEW, pregTailN);
 
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp,
-                                                              (__ubuf__ float *&)lseMaxTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, (__ubuf__ float *&)lseMaxTmp + i * dealCount);
         Reg::Max<T, Reg::MaskMergeMode::ZEROING>(vregLseMax, vregLseMax, vregLseMaxTmp, pregTailN);
     }
     Reg::StoreAlign<T, StoreDist::DIST_NORM_B32>(lseMaxReduce, vregLseMax, pregTailN);
 
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp,
-                                                              (__ubuf__ float *&)lseMaxTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseMaxTmp, (__ubuf__ float *&)lseMaxTmp + i * dealCount);
         Reg::Sub<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, vregLseMax, pregTailN);
         Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregLseMaxTmp, vregLseMaxTmp, pregTailN);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp,
-                                                              (__ubuf__ float *&)lseSumTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, (__ubuf__ float *&)lseSumTmp + i * dealCount);
         Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseMaxTmp, pregTailN);
         Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSumTmp, pregTailN);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)lseSumTmp + i * dealCount,
-                                                                    vregLseSumTmp, pregTailN);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)lseSumTmp + i * dealCount, vregLseSumTmp,
+                                                          pregTailN);
     }
 
     for (i = 0; i < static_cast<uint16_t>(learnableSinkFlag); ++i) {
@@ -316,8 +308,7 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
 
     Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     for (i = 0; i < static_cast<uint16_t>(actualCombineLoopSize); ++i) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp,
-                                                              (__ubuf__ float *&)lseSumTmp + i * dealCount);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregLseSumTmp, (__ubuf__ float *&)lseSumTmp + i * dealCount);
         Reg::Div<T, Reg::MaskMergeMode::ZEROING>(vregLseSumTmp, vregLseSumTmp, vregLseSum, pregTailN);
         Reg::StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             (__ubuf__ float *&)lseUb, vregLseSumTmp, blockStride, repeatStride, pregTailN);
@@ -414,15 +405,14 @@ __simd_vf__ void ComputeScaleValue_16_VF(__ubuf__ uint16_t *lseSink, __ubuf__ ui
         Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSumTmp, pregTailN);
         Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregLseSum2, vregLseSum2, vregLseSumTmp2, pregTailN2);
         Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum, vregLseSumTmp, pregTailN);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum + dealCount,
-                                                                vregLseSumTmp2, pregTailN2);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(lseSumSrc + i * dealCountSum + dealCount, vregLseSumTmp2,
+                                                      pregTailN2);
     }
 
     if (learnableSinkFlag) {
-        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregLseSink,
-                                                                           lseSink);
-        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>(
-            (Reg::RegTensor<uint16_t> &)vregLseSink2, lseSink + dealCount);
+        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregLseSink, lseSink);
+        Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregLseSink2,
+                                                                 lseSink + dealCount);
 
         Reg::Cast<T, SINK_T, castTraitFp16_32>(vregLseSinkCast, vregLseSink, pregSinkTailN);
         Reg::Cast<T, SINK_T, castTraitFp16_32>(vregLseSinkCast2, vregLseSink2, pregSinkTailN2);

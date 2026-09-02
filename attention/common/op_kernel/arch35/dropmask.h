@@ -93,12 +93,11 @@ __simd_vf__ inline void GenIndexUnAling(const uint64_t indexVecDstLocalInt, cons
 
     Arange(inc_idx, 0);
     for (uint16_t s1Idx = 0; s1Idx < static_cast<uint16_t>(rowNums); s1Idx++) {
-        StoreUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int32_t *&)indexVecDstLocalInt,
-                                                                       inc_idx, ureg, eachRowIndexNum);
+        StoreUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int32_t *&)indexVecDstLocalInt, inc_idx,
+                                                                  ureg, eachRowIndexNum);
         Adds(inc_idx, inc_idx, eachRowOffset, preg);
     }
-    StoreUnAlignPost<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int32_t *&)indexVecDstLocalInt, ureg,
-                                                                       0);
+    StoreUnAlignPost<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>((__ubuf__ int32_t *&)indexVecDstLocalInt, ureg, 0);
 }
 
 /*
@@ -148,7 +147,7 @@ __simd_vf__ inline void GenMaskVF(__ubuf__ uint32_t *mask, const uint64_t indexV
 
     for (uint16_t i = 0; i < mainLoop; i++) {
         LoadAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(inc_idx, ((__ubuf__ int32_t *&)indexVecLocalInt),
-                                                                    ELE_CNT_B32);
+                                                               ELE_CNT_B32);
 
         RegTensor<uint32_t> tmp_ctr_0 = ctr_0;
         RegTensor<uint32_t> tmp_ctr_1 = ctr_1;

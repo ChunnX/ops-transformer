@@ -239,7 +239,7 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *p_de
 
         // 存储下一块最大值到 ulmax (i+1)*128 偏移
         StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + ((i + 1) * QsBase), next_group_max,
-                                                          preg_valid_max);
+                                                     preg_valid_max);
 
         // 更新当前块最大值，用于下一次循环
         if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {

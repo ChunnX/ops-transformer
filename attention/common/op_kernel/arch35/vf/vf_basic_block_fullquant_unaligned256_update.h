@@ -87,7 +87,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256GqaFullquantVF(__ubuf__ T2 *expU
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_all_half);
     for (uint16_t i = 0; i < m / 8; ++i) {
         StoreAlign<half, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ half *&)srcUb + tailNOffset + i * 128, vreg_min,
-                                                             preg_all_half);
+                                                        preg_all_half);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     for (uint16_t i = 0; i < 4; ++i) {
@@ -108,10 +108,9 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256GqaFullquantVF(__ubuf__ T2 *expU
         ReduceDataBlock<AscendC::Reg::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all_half);
         Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all_half);
         Sub(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_ln_p_scale, preg_all_half);
-        StoreUnAlign<half, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb), vreg_max_tmp,
-                                                                    ureg_max, 8);
+        StoreUnAlign<half, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb), vreg_max_tmp, ureg_max, 8);
         StoreUnAlign<half, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb), vreg_max_tmp_unroll,
-                                                                    ureg_max, 8);
+                                                               ureg_max, 8);
     }
     StoreUnAlignPost<half, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ half *&)tmpMaxUb), ureg_max, 0);
 
@@ -133,11 +132,11 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256GqaFullquantVF(__ubuf__ T2 *expU
             // n / 32 ，两个fp16的分形（一行16个元素）合一个fp8的分形（一行32个元素），第j个[64, 32]
             LoadAlign<half, Reg::LoadDist::DIST_NORM>(vreg_input_x_0, srcUb + i * 16 * 16 + j * 64 * 32);
             LoadAlign<half, Reg::LoadDist::DIST_NORM>(vreg_input_x_unroll_0,
-                                                           srcUb + i * 16 * 16 + j * 64 * 32 + 64 * 16);
+                                                      srcUb + i * 16 * 16 + j * 64 * 32 + 64 * 16);
 
             LoadAlign<half, Reg::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * 16 * 16 + j * 64 * 32 + 128);
             LoadAlign<half, Reg::LoadDist::DIST_NORM>(vreg_input_x_unroll_1,
-                                                           srcUb + i * 16 * 16 + j * 64 * 32 + 128 + 64 * 16);
+                                                      srcUb + i * 16 * 16 + j * 64 * 32 + 128 + 64 * 16);
 
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_1, vreg_input_x_0, vreg_max, preg_all_half);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_1, vreg_input_x_0, vreg_max, preg_all_half);
@@ -194,9 +193,9 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256GqaFullquantVF(__ubuf__ T2 *expU
         ReduceDataBlock<AscendC::Reg::ReduceType::SUM>(vreg_exp_sum_0, vreg_exp_sum_0, preg_all_half);
         ReduceDataBlock<AscendC::Reg::ReduceType::SUM>(vreg_exp_sum_1, vreg_exp_sum_1, preg_all_half);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)tmpExpSumUb), vreg_exp_sum_0,
-                                                                     ureg_exp_sum, 8);
+                                                                ureg_exp_sum, 8);
         StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)tmpExpSumUb), vreg_exp_sum_1,
-                                                                     ureg_exp_sum, 8);
+                                                                ureg_exp_sum, 8);
     }
     StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)tmpExpSumUb), ureg_max, 0);
 }

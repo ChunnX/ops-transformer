@@ -251,7 +251,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven,
                        (RegTensor<uint8_t> &)vregCastOdd, preg_all_b8);
                     DataCopy<uint8_t, Reg::LoadDist::DIST_NORM>((RegTensor<uint8_t> &)vregIndexes,
-                                                                     ((__ubuf__ uint8_t *&)selrIndexesInt));
+                                                                ((__ubuf__ uint8_t *&)selrIndexesInt));
                     Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes, (RegTensor<uint8_t> &)vregCastResTmp,
                                     (RegTensor<uint8_t> &)vregIndexes);
                     DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
@@ -285,7 +285,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven,
                        (RegTensor<uint8_t> &)vregCastOdd, preg_all_b8);
                     DataCopy<uint8_t, Reg::LoadDist::DIST_NORM>((RegTensor<uint8_t> &)vregIndexes,
-                                                                     ((__ubuf__ uint8_t *&)selrIndexesInt));
+                                                                ((__ubuf__ uint8_t *&)selrIndexesInt));
                     Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes, (RegTensor<uint8_t> &)vregCastResTmp,
                                     (RegTensor<uint8_t> &)vregIndexes);
                     DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
@@ -301,7 +301,7 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
                     Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven,
                        (RegTensor<uint8_t> &)vregCastOdd, preg_all_b8);
                     DataCopy<uint8_t, Reg::LoadDist::DIST_NORM>((RegTensor<uint8_t> &)vregIndexes,
-                                                                     ((__ubuf__ uint8_t *&)selrIndexesIntTail));
+                                                                ((__ubuf__ uint8_t *&)selrIndexesIntTail));
                     Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes, (RegTensor<uint8_t> &)vregCastResTmp,
                                     (RegTensor<uint8_t> &)vregIndexes);
                     DataCopy<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(

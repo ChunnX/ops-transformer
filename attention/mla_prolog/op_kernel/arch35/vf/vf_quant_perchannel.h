@@ -35,23 +35,21 @@ __simd_vf__ void QuantChannelVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf
         AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
         AscendC::RoundMode::CAST_RINT};
     constexpr static AscendC::Reg::CastTrait castTraitF32ToHalf = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
-        AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
+        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        RoundMode::CAST_ODD};
 
     uint32_t colOffset = 0;
     uint32_t rowOffset = 0;
     for (uint32_t j = 0; j < dLoops; j++) {
-        AscendC::Reg::LoadAlign<C, AscendC::Reg::LoadDist::DIST_NORM>(vregQuantScale,
-                                                                                quantScaleAddr + colOffset);
+        AscendC::Reg::LoadAlign<C, AscendC::Reg::LoadDist::DIST_NORM>(vregQuantScale, quantScaleAddr + colOffset);
         rowOffset = 0;
         for (uint32_t i = 0; i < row; i++) {
-            AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInput,
-                                                                                    xAddr + colOffset + rowOffset);
+            AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInput, xAddr + colOffset + rowOffset);
             AscendC::Reg::Mul(vregInput, vregInput, vregQuantScale, fullMask);
             AscendC::Reg::Cast<half, float, castTraitF32ToHalf>(vregOutputHalf, vregInput, fullMask);
             AscendC::Reg::Cast<O, half, castTraitPack2>(vregOutput, vregOutputHalf, fullMask);
-            AscendC::Reg::StoreAlign<O, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                yAddr + colOffset + rowOffset, vregOutput, fullMask);
+            AscendC::Reg::StoreAlign<O, AscendC::Reg::StoreDist::DIST_PACK4_B32>(yAddr + colOffset + rowOffset,
+                                                                                 vregOutput, fullMask);
             rowOffset += stride;
         }
         colOffset += floatRepSize;
@@ -60,10 +58,10 @@ __simd_vf__ void QuantChannelVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf
     if (dTailLoop > 0) {
         rowOffset = 0;
         AscendC::Reg::LoadAlign<C, AscendC::Reg::LoadDist::DIST_NORM>(vregQuantScale,
-                                                                                quantScaleAddr + dLoops * floatRepSize);
+                                                                      quantScaleAddr + dLoops * floatRepSize);
         for (uint32_t i = 0; i < row; i++) {
-            AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(
-                vregInput, xAddr + dLoops * floatRepSize + rowOffset);
+            AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInput,
+                                                                          xAddr + dLoops * floatRepSize + rowOffset);
             AscendC::Reg::Mul(vregInput, vregInput, vregQuantScale, tailMask);
             AscendC::Reg::Cast<half, float, castTraitF32ToHalf>(vregOutputHalf, vregInput, tailMask);
             AscendC::Reg::Cast<O, half, castTraitPack2>(vregOutput, vregOutputHalf, tailMask);

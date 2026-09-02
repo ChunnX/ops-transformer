@@ -24,8 +24,7 @@
 
 namespace vector1 {
 
-__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, __ubuf__ float *src,
-                                          uint16_t laneIdx)
+__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, __ubuf__ float *src, uint16_t laneIdx)
 {
     AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(dst, src + laneIdx);
 }
@@ -34,12 +33,11 @@ __simd_callee__ inline void CastFP32ToFP16ToFP32(AscendC::Reg::RegTensor<float> 
                                                  AscendC::Reg::RegTensor<half> (&regQK0Half)[2],
                                                  AscendC::Reg::MaskReg &maskAllB32)
 {
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
     constexpr static Reg::CastTrait castTraitFP32ToFP16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     float mulsScalar = 1.0 / 1024;
 
     Reg::Muls(regQK0[0], regQK0[0], mulsScalar, maskAllB32);
@@ -60,9 +58,8 @@ __simd_callee__ inline void ReduceSumLoopBody(
     AscendC::Reg::RegTensor<float> (&regSum1)[2], AscendC::Reg::MaskReg &maskAllB32, __ubuf__ QK_T *qk_,
     const uint32_t qkVLStride, const int gSize)
 {
-    constexpr static Reg::CastTrait castTraitInt32ToFP32 = {
-        Reg::RegLayout::UNKNOWN, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
-        RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitInt32ToFP32 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::NO_SAT,
+                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
     for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
         if constexpr (std::is_same<QK_T, int32_t>::value) {
@@ -97,8 +94,7 @@ __simd_callee__ inline void ReduceSumLoopBody(
 __simd_callee__ inline void ReduceSumFinalize(AscendC::Reg::RegTensor<float> (&regSum0)[2],
                                               AscendC::Reg::RegTensor<float> (&regSum1)[2],
                                               AscendC::Reg::RegTensor<float> (&regKScale)[2],
-                                              AscendC::Reg::MaskReg &maskAllB32,
-                                              FloatSortConstCtx<bfloat16_t> &bf16Ctx,
+                                              AscendC::Reg::MaskReg &maskAllB32, FloatSortConstCtx<bfloat16_t> &bf16Ctx,
                                               AscendC::Reg::MaskReg &maskAllB16, __ubuf__ uint16_t *out_)
 {
     AscendC::Reg::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -107,10 +103,10 @@ __simd_callee__ inline void ReduceSumFinalize(AscendC::Reg::RegTensor<float> (&r
     AscendC::Reg::Mul(regSum0[0], regSum0[0], regKScale[0], maskAllB32);
     AscendC::Reg::Mul(regSum0[1], regSum0[1], regKScale[1], maskAllB32);
 
-    constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {
-        Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
-    constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {
-        Reg::RegLayout::ONE, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                              Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
     AscendC::Reg::RegTensor<bfloat16_t> regSumBF16;
     AscendC::Reg::DeInterleave(regSum0[0], regSum0[1], regSum0[0], regSum0[1]);
@@ -152,9 +148,8 @@ __simd_callee__ inline void ReduceSum2LoopBody(
     AscendC::Reg::MaskReg &maskAllB32, __ubuf__ QK_T *qk0_, __ubuf__ QK_T *qk1_, const uint32_t qkVLStride,
     __ubuf__ float *brcWeight_, const int gSize)
 {
-    constexpr static Reg::CastTrait castTraitInt32ToFP32 = {
-        Reg::RegLayout::UNKNOWN, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
-        RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitInt32ToFP32 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::NO_SAT,
+                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
     for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i++) {
         if constexpr (std::is_same<QK_T, int32_t>::value) {
@@ -203,10 +198,10 @@ __simd_callee__ inline void ReduceSum2Finalize(AscendC::Reg::RegTensor<float> (&
     AscendC::Reg::Mul(regSum1[0], regSum1[0], regKScale[0], maskAllB32);
     AscendC::Reg::Mul(regSum1[1], regSum1[1], regKScale[1], maskAllB32);
 
-    constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {
-        Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
-    constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {
-        Reg::RegLayout::ONE, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                              Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
     AscendC::Reg::RegTensor<bfloat16_t> regSumBF16[2];
     AscendC::Reg::RegTensor<uint16_t> regOut[2];
@@ -225,9 +220,8 @@ __simd_callee__ inline void ReduceSum2Finalize(AscendC::Reg::RegTensor<float> (&
 __simd_callee__ inline void ReduceSum2Finalize(AscendC::Reg::RegTensor<float> (&regSum0)[2],
                                                AscendC::Reg::RegTensor<float> (&regSum1)[2],
                                                AscendC::Reg::RegTensor<float> (&regKScale)[2],
-                                               AscendC::Reg::MaskReg &maskAllB32,
-                                               FloatSortConstCtx<float> &fp32Ctx, __ubuf__ uint32_t *out0_,
-                                               __ubuf__ uint32_t *out1_)
+                                               AscendC::Reg::MaskReg &maskAllB32, FloatSortConstCtx<float> &fp32Ctx,
+                                               __ubuf__ uint32_t *out0_, __ubuf__ uint32_t *out1_)
 {
     AscendC::Reg::Mul(regSum0[0], regSum0[0], regKScale[0], maskAllB32);
     AscendC::Reg::Mul(regSum0[1], regSum0[1], regKScale[1], maskAllB32);
@@ -240,11 +234,9 @@ __simd_callee__ inline void ReduceSum2Finalize(AscendC::Reg::RegTensor<float> (&
     FloatX2ToSortableKey<float>(regOut0[0], regOut0[1], regSum0[0], regSum0[1], fp32Ctx, maskAllB32);
     FloatX2ToSortableKey<float>(regOut1[0], regOut1[1], regSum1[0], regSum1[1], fp32Ctx, maskAllB32);
     AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_NORM>(out0_, regOut0[0], maskAllB32);
-    AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_NORM>(out0_ + 64, regOut0[1],
-                                                                                     maskAllB32);
+    AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_NORM>(out0_ + 64, regOut0[1], maskAllB32);
     AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_NORM>(out1_, regOut1[0], maskAllB32);
-    AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_NORM>(out1_ + 64, regOut1[1],
-                                                                                     maskAllB32);
+    AscendC::Reg::StoreAlign<uint32_t, AscendC::Reg::StoreDist::DIST_NORM>(out1_ + 64, regOut1[1], maskAllB32);
 }
 
 __simd_callee__ inline void LoadKScaleFP16(AscendC::Reg::RegTensor<half> (&regKScaleFP16)[2],
@@ -252,7 +244,7 @@ __simd_callee__ inline void LoadKScaleFP16(AscendC::Reg::RegTensor<half> (&regKS
                                            AscendC::Reg::MaskReg &maskAllB16, __ubuf__ half *kScale_)
 {
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[0], kScale_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[1], kScale_ + 64);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regKScale[0], regKScaleFP16[0], maskAllB16);
@@ -275,8 +267,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     AscendC::Reg::RegTensor<float> regSum0[2];
     AscendC::Reg::RegTensor<float> regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
@@ -316,14 +307,13 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     AscendC::Reg::RegTensor<float> regSum0[2];
     AscendC::Reg::RegTensor<float> regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16, weight_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16, qScale_);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regW, regWFP16, maskAllB16);
@@ -358,14 +348,13 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t *out_, __ubuf__ 
     AscendC::Reg::RegTensor<float> regSum0[2];
     AscendC::Reg::RegTensor<float> regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
     constexpr static Reg::CastTrait castTraitBF16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWBF16, weight_);
     AscendC::Reg::Cast<float, bfloat16_t, castTraitBF16ToFP32>(regW, regWBF16, maskAllB16);
     AscendC::Reg::LoadAlign<float>(regQScale, qScale_);
@@ -403,14 +392,13 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t *out_, __ubuf__ 
     AscendC::Reg::RegTensor<float> regSum0[2];
     AscendC::Reg::RegTensor<float> regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<float> fp32Ctx;
     InitFloatSortConstCtx(fp32Ctx, maskAllB32);
 
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16, weight_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16, qScale_);
     AscendC::Reg::Cast<float, half, castTraitFP16ToFP32>(regW, regWFP16, maskAllB16);
@@ -420,7 +408,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t *out_, __ubuf__ 
     DuplicateZero(regSum0, maskAllB32);
     DuplicateZero(regSum1, maskAllB32);
     constexpr static Reg::CastTrait castTraitFP32ToFP16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     Reg::Cast<half, float, castTraitFP32ToFP16>(regWFP16Temp, regW, maskAllB32);
     Reg::Cast<float, half, castTraitFP16ToFP32>(regW, regWFP16Temp, maskAllB16);
@@ -451,8 +439,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::RegTensor<float> regQScale[2], regKScale[2];
     AscendC::Reg::RegTensor<float> regSum0[2], regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
@@ -499,14 +486,13 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::RegTensor<float> regQScale[2], regKScale[2];
     AscendC::Reg::RegTensor<float> regSum0[2], regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
     constexpr static Reg::CastTrait castTraitBF16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWBF16[0], weight0_);
     AscendC::Reg::LoadAlign<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWBF16[1], weight1_);
     AscendC::Reg::Cast<float, bfloat16_t, castTraitBF16ToFP32>(regW[0], regWBF16[0], maskAllB16);
@@ -551,14 +537,13 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t *out0_, __ubuf_
     AscendC::Reg::RegTensor<half> regQScaleFP16[2], regKScaleFP16[2];
     AscendC::Reg::RegTensor<float> regQScale[2], regKScale[2], regSum0[2], regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16[0], weight0_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16[1], weight1_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16[0], qScale0_);
@@ -604,14 +589,13 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
     AscendC::Reg::RegTensor<half> regQScaleFP16[2], regKScaleFP16[2];
     AscendC::Reg::RegTensor<float> regQScale[2], regKScale[2], regSum0[2], regSum1[2];
     AscendC::Reg::MaskReg maskAllB32 = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg maskAllB16 =
-        AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg maskAllB16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
 
     FloatSortConstCtx<float> fp32Ctx;
     InitFloatSortConstCtx(fp32Ctx, maskAllB32);
 
     constexpr static Reg::CastTrait castTraitFP16ToFP32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16[0], weight0_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regWFP16[1], weight1_);
     AscendC::Reg::LoadAlign<half, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(regQScaleFP16[0], qScale0_);
@@ -625,7 +609,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t *out0_, __ubuf_
     AscendC::Reg::Mul(regW[1], regW[1], regQScale[1], maskAllB32);
 
     constexpr static Reg::CastTrait castTraitFP32ToFP16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
     Reg::Cast<half, float, castTraitFP32ToFP16>(regWFP16Temp[0], regW[0], maskAllB32);
     Reg::Cast<half, float, castTraitFP32ToFP16>(regWFP16Temp[1], regW[1], maskAllB32);

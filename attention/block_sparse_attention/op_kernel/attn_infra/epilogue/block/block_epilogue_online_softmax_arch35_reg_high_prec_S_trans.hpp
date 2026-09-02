@@ -329,8 +329,8 @@ private:
             Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
             DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
             StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY,
-                       AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
+                       AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg,
+                                                                    blockStride, 1, pregFp16VL128);
 
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
@@ -339,8 +339,8 @@ private:
                 Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
             }
             StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY,
-                       AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
+                       AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg,
+                                                                    blockStride, 1, pregFp16VL128);
             if constexpr (mTileNum >= MAlignedTileNum::One) {
                 Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
             }

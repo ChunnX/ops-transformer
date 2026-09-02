@@ -26,8 +26,8 @@ __simd_vf__ void DequantVFImpl(__ubuf__ float *yAddr, __ubuf__ T *xAddr, __ubuf_
                                uint32_t stride)
 {
     constexpr static AscendC::Reg::CastTrait castTraitInt32ToFp32 = {
-        AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::NO_SAT,
-        AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+        AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::CAST_RINT};
 
     AscendC::Reg::RegTensor<T> vregInput;
     AscendC::Reg::RegTensor<float> vregScalePerChannel;
@@ -42,24 +42,23 @@ __simd_vf__ void DequantVFImpl(__ubuf__ float *yAddr, __ubuf__ T *xAddr, __ubuf_
     uint32_t scaleOffset = 0;
     for (uint32_t j = 0; j < dLoops; j++) {
         AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_NORM>(vregScalePerChannel,
-                                                                                    scalePerChannelAddr + colOffset);
+                                                                          scalePerChannelAddr + colOffset);
         rowOffset = 0;
         scaleOffset = 0;
         for (uint32_t i = 0; i < row; i++) {
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                vregScalePerToken, scalePerTokenAddr + scaleOffset);
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(vregScalePerToken,
+                                                                                 scalePerTokenAddr + scaleOffset);
             if constexpr (!std::is_same<T, float>::value) {
-                AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInput,
-                                                                                        xAddr + colOffset + rowOffset);
+                AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInput, xAddr + colOffset + rowOffset);
                 AscendC::Reg::Cast<float, T, castTraitInt32ToFp32>(vregInputFp32, vregInput, fullMask);
             } else {
                 AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(vregInputFp32,
-                                                                                        xAddr + colOffset + rowOffset);
+                                                                              xAddr + colOffset + rowOffset);
             }
             AscendC::Reg::Mul(vregInputFp32, vregInputFp32, vregScalePerChannel, fullMask);
             AscendC::Reg::Mul(vregInputFp32, vregInputFp32, vregScalePerToken, fullMask);
-            AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                yAddr + colOffset + rowOffset, vregInputFp32, fullMask);
+            AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(yAddr + colOffset + rowOffset,
+                                                                                    vregInputFp32, fullMask);
             rowOffset += stride;
             scaleOffset += fp32BlockElementNum;
         }
@@ -69,11 +68,11 @@ __simd_vf__ void DequantVFImpl(__ubuf__ float *yAddr, __ubuf__ T *xAddr, __ubuf_
     if (dTailLoop > 0) {
         rowOffset = 0;
         scaleOffset = 0;
-        AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_NORM>(
-            vregScalePerChannel, scalePerChannelAddr + dLoops * floatRepSize);
+        AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_NORM>(vregScalePerChannel,
+                                                                          scalePerChannelAddr + dLoops * floatRepSize);
         for (uint32_t i = 0; i < row; i++) {
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(
-                vregScalePerToken, scalePerTokenAddr + scaleOffset);
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(vregScalePerToken,
+                                                                                 scalePerTokenAddr + scaleOffset);
             if constexpr (!std::is_same<T, float>::value) {
                 AscendC::Reg::LoadAlign<T, AscendC::Reg::LoadDist::DIST_NORM>(
                     vregInput, xAddr + dLoops * floatRepSize + rowOffset);

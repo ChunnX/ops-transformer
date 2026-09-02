@@ -44,11 +44,11 @@ __simd_vf__ inline void CastToOriginFullyVf(__ubuf__ U *srcAddr, __ubuf__ T *dst
         curpreg = Reg::UpdateMask<uint32_t>(sregMask);
         Reg::LoadAlign<U, Reg::LoadDist::DIST_NORM>(valueSrc, srcAddr + VL_B32 * j);
         if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
-                                                                        (Reg::RegTensor<T> &)valueSrc, curpreg);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j, (Reg::RegTensor<T> &)valueSrc,
+                                                              curpreg);
         } else {
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
-                                                                         (Reg::RegTensor<T> &)valueSrc, curpreg);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j, (Reg::RegTensor<T> &)valueSrc,
+                                                               curpreg);
         }
     }
 }

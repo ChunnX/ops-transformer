@@ -87,8 +87,7 @@ __simd_vf__ inline void ProcessVec5BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb,
         Mul(vreg_output_x_new, vreg_tmp2, vreg_input_x2_new, preg_all_b32);
         Add(vreg_output_x, vreg_output_x_new, vreg_output_x, preg_all_b32);
     }
-    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_output, vreg_output_x,
-                                                                                      preg_all_b32);
+    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_output, vreg_output_x, preg_all_b32);
     Add(vreg_dst, vreg_output, vreg_dst, preg_all_b32);
     StoreAlign(((__ubuf__ T *&)dstUb), vreg_dst, preg_loss);
 }

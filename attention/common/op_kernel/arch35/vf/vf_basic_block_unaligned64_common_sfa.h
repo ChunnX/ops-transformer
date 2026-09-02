@@ -64,10 +64,8 @@ __simd_callee__ inline void ExpSumReduceStore64(RegTensor<float> &vreg_exp_sum, 
                                                 UnalignRegForStore &ureg_exp_sum, __ubuf__ T *&expSumUb,
                                                 MaskReg &preg_ori_src_n)
 {
-    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp,
-                                                                                      preg_ori_src_n);
-    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum,
-                                                                 1);
+    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp, preg_ori_src_n);
+    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum, 1);
 }
 
 } // namespace FaVectorApi

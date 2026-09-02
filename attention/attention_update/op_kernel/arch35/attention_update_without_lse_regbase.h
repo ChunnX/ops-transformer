@@ -192,7 +192,7 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeLseMVF(uint32_t
         AscendC::Reg::MaskReg pregCompare;
         uint32_t sreg = curBlockNum;
         static constexpr AscendC::Reg::ExpSpecificMode mode = {AscendC::Reg::MaskMergeMode::ZEROING,
-                                                                    AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
+                                                               AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
         Reg::Duplicate(vregNegInf, NEG_INF);
         for (uint16_t i = 0; i < vfLoop; i++) {
             preg1 = AscendC::Reg::UpdateMask<float, Reg::RegTraitNumOne>(sreg);
@@ -211,21 +211,18 @@ __aicore__ inline void AttentionUpdateWithoutLse<goType>::ComputeLseMVF(uint32_t
                 AscendC::Reg::LoadAlign<float>(vregOriginalLse, lseUbAddr + i * VL + j * blockStride);
                 Reg::Compares<float, CMPMODE::EQ>(pregCompare, vregOriginalLse, POS_INF, pregAll);
                 Reg::Select<float>(vregLse, vregNegInf, vregOriginalLse, pregCompare);
-                AscendC::Reg::Sub<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregSubRes, vregLse, vregMax,
-                                                                                         preg1);
+                AscendC::Reg::Sub<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregSubRes, vregLse, vregMax, preg1);
                 AscendC::Reg::Exp<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregExpRes, vregSubRes, preg1);
-                AscendC::Reg::Add<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregSum, vregExpRes, vregSum,
-                                                                                         preg1);
+                AscendC::Reg::Add<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregSum, vregExpRes, vregSum, preg1);
             }
             AscendC::Reg::Log<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregLogRes, vregSum, preg1);
-            AscendC::Reg::Add<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregLseM, vregLogRes, vregMax,
-                                                                                     preg1);
+            AscendC::Reg::Add<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregLseM, vregLogRes, vregMax, preg1);
             for (uint16_t j = 0; j < spSize; j++) {
                 AscendC::Reg::LoadAlign<float>(vregOriginalLse, lseUbAddr + i * VL + j * blockStride);
                 Reg::Compares<float, CMPMODE::EQ>(pregCompare, vregOriginalLse, POS_INF, pregAll);
                 Reg::Select<float>(vregLse, vregNegInf, vregOriginalLse, pregCompare);
-                AscendC::Reg::Sub<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregSubLseMRes, vregLse,
-                                                                                         vregLseM, preg1);
+                AscendC::Reg::Sub<float, AscendC::Reg::MaskMergeMode::ZEROING>(vregSubLseMRes, vregLse, vregLseM,
+                                                                               preg1);
                 AscendC::Reg::Exp<float, &mode>(vregLseExpFinal, vregSubLseMRes, preg1);
                 AscendC::Reg::StoreAlign<float>(expUbAddr + i * VL + j * blockStride, vregLseExpFinal, preg1);
             }

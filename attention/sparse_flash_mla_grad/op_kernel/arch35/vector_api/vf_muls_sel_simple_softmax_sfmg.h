@@ -103,8 +103,7 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
                 ((__ubuf__ float *&)dstLocalInt), vregExp, srcN, pregFullExe);
         }
         // tailLoop
-        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail),
-                                                                  128);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 128);
         Muls(vregMulsTail, vregSrcTail, scale, pregTailExe);
         Sub(vregSubTail, vregMulsTail, vregLse, pregTailExe);
         Exp(vregExpTail, vregSubTail, pregTailExe);

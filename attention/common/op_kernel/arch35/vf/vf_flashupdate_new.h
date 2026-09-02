@@ -20,7 +20,7 @@
 namespace FaVectorApi {
 // bf16->fp32
 static constexpr Reg::CastTrait castTraitFp16_32_update = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                                Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                           Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr uint16_t REDUCE_SIZE = 1;
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
           bool isMlaFullQuant>
@@ -62,7 +62,7 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_add,
-                                                              preg_all);
+                                                         preg_all);
         }
     }
 }
@@ -122,7 +122,7 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float *dstUb, __ubuf__ flo
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_add,
-                                                              preg_all);
+                                                         preg_all);
         }
         for (uint16_t t = 0; t < hasTail; ++t) {
             LoadAlign(vreg_input_pre, preUb + i * d + dLoops * floatRepSize);
@@ -138,8 +138,8 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float *dstUb, __ubuf__ flo
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail_d);
 
-            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + dLoops * floatRepSize,
-                                                              vreg_add, preg_tail_d);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + dLoops * floatRepSize, vreg_add,
+                                                         preg_tail_d);
         }
     }
 }
@@ -252,7 +252,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
                 }
             }
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
-                                                              preg_all);
+                                                         preg_all);
         }
     }
 }
@@ -316,7 +316,7 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
-                                                              preg_all);
+                                                         preg_all);
         }
 
         for (uint16_t t = 0; t < hasTail; ++t) {
@@ -333,8 +333,8 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail_d);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_tail_d);
 
-            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + dLoops * floatRepSize,
-                                                              vreg_div, preg_tail_d);
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + dLoops * floatRepSize, vreg_div,
+                                                         preg_tail_d);
         }
     }
 }
@@ -429,7 +429,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
                 }
             }
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
-                                                              preg_update);
+                                                         preg_update);
         }
     }
 }
@@ -468,7 +468,7 @@ __simd_vf__ inline void InvalidLineUpdateVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb
             LoadAlign(vreg_input, srcUb + i * d + j * floatRepSize);
             Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize,
-                                                              vreg_input_brc, preg_all);
+                                                         vreg_input_brc, preg_all);
         }
     }
 }
@@ -535,8 +535,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
         Reg::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregTail);
         Reg::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
 
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(dstUb + floatRepSize * updateLoops, vregResFinal,
-                                                                    pregTail);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(dstUb + floatRepSize * updateLoops, vregResFinal, pregTail);
     }
 }
 
@@ -592,8 +591,7 @@ __simd_vf__ inline void SinkSubExpAddVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMax
         Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregRes, vregRes, pregTail);
         Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregSum, vregSum, vregRes, pregTail);
 
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(srcSumUb + (updateLoops * floatRepSize), vregSum,
-                                                                    pregTail);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(srcSumUb + (updateLoops * floatRepSize), vregSum, pregTail);
     }
 }
 
@@ -628,8 +626,7 @@ __simd_vf__ inline void SinkSubExpAddGSFusedVF(__ubuf__ T *srcSumUb, __ubuf__ T 
     Reg::MaskReg pregTail = Reg::UpdateMask<T>(pltTail);
     Reg::MaskReg pregSinkAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
 
-    Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregSink,
-                                                                       sinkUb);
+    Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>((Reg::RegTensor<uint16_t> &)vregSink, sinkUb);
     Reg::Cast<T, SINK_T, castTraitFp16_32_update>(vregSinkCast, vregSink, pregSinkAll);
 
     for (uint16_t i = 0; i < updateLoops; ++i) {
@@ -651,8 +648,7 @@ __simd_vf__ inline void SinkSubExpAddGSFusedVF(__ubuf__ T *srcSumUb, __ubuf__ T 
         Reg::Exp<T, Reg::MaskMergeMode::ZEROING>(vregRes, vregRes, pregTail);
         Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregSum, vregSum, vregRes, pregTail);
 
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(srcSumUb + (updateLoops * floatRepSize), vregSum,
-                                                                    pregTail);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(srcSumUb + (updateLoops * floatRepSize), vregSum, pregTail);
     }
 }
 
@@ -698,15 +694,14 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
         for (uint16_t j = 0; j < dLoops; ++j) {
             Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
             Reg::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize,
-                                                                        vregFinalNew, pregAll);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize, vregFinalNew,
+                                                              pregAll);
         }
         for (uint16_t t = 0; t < hasTail; ++t) {
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregFinal,
-                                                                  finalUb + i * dSize + dLoops * floatRepSize);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + dLoops * floatRepSize);
             Reg::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize,
-                                                                        vregFinalNew, pregTailD);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize, vregFinalNew,
+                                                              pregTailD);
         }
     }
 }

@@ -32,9 +32,9 @@ __simd_vf__ void VecMulMatVFImpl(__ubuf__ T *outputUb, __ubuf__ T *rowVecUb, __u
     Reg::MaskReg tailMask;
     tailMask = Reg::UpdateMask<float>(dTail);
     constexpr static Reg::CastTrait castTraitPack2 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                           Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                      Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     constexpr static Reg::CastTrait castTraitF32ToHalf = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
 
     uint32_t colOffset = 0;
     uint32_t rowOffset = 0;
@@ -44,8 +44,7 @@ __simd_vf__ void VecMulMatVFImpl(__ubuf__ T *outputUb, __ubuf__ T *rowVecUb, __u
         for (uint16_t i = 0; i < row; i++) {
             Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregMatrix, matrixUb + colOffset + rowOffset);
             Reg::Mul(vregOutput, vregMatrix, vregRowVec, fullMask);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputUb + colOffset + rowOffset, vregOutput,
-                                                                    fullMask);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputUb + colOffset + rowOffset, vregOutput, fullMask);
             rowOffset += col;
         }
         colOffset += floatRepSize;
@@ -55,11 +54,10 @@ __simd_vf__ void VecMulMatVFImpl(__ubuf__ T *outputUb, __ubuf__ T *rowVecUb, __u
         rowOffset = 0;
         Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + dLoops * floatRepSize);
         for (uint16_t i = 0; i < row; i++) {
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregMatrix,
-                                                                  matrixUb + dLoops * floatRepSize + rowOffset);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregMatrix, matrixUb + dLoops * floatRepSize + rowOffset);
             Reg::Mul(vregOutput, vregMatrix, vregRowVec, tailMask);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputUb + dLoops * floatRepSize + rowOffset,
-                                                                    vregOutput, tailMask);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputUb + dLoops * floatRepSize + rowOffset, vregOutput,
+                                                          tailMask);
             rowOffset += col;
         }
     }

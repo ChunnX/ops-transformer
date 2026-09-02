@@ -42,32 +42,28 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(__ubuf__ T2 *expUb, __ubuf__ T *srcUb
     AscendC::Reg::UnalignRegForStore ureg_exp_sum;
 
     AscendC::Reg::MaskReg preg_all = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-    AscendC::Reg::MaskReg preg_all_b16 =
-        AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg_all_b16 = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
     AscendC::Reg::MaskReg preg_ori_src_n = AscendC::Reg::UpdateMask<T>(pltOriginalN);
     AscendC::Reg::MaskReg preg_src_n = AscendC::Reg::UpdateMask<T>(pltSrcN);
-    AscendC::Reg::MaskReg preg_src_n_b16 =
-        AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::H>();
+    AscendC::Reg::MaskReg preg_src_n_b16 = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::H>();
 
     // x_max = max(src, axis=-1, keepdims=True)
     for (uint16_t i = 0; i < m; ++i) {
         AscendC::Reg::LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         AscendC::Reg::Muls(vreg_input_x, vreg_input_x, scale, preg_ori_src_n);
-        AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize,
-                                                                             vreg_input_x, preg_src_n);
+        AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x,
+                                                                   preg_src_n);
         AscendC::Reg::Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(
             vreg_cur_max, vreg_input_x, preg_ori_src_n);
-        AscendC::Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb),
-                                                                                        vreg_cur_max, ureg_max, 1);
+        AscendC::Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_cur_max,
+                                                                              ureg_max, 1);
     }
-    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb),
-                                                                                        ureg_max, 0);
+    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
     AscendC::Reg::LoadAlign(vreg_in_max, inMaxUb);
     AscendC::Reg::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     AscendC::Reg::LoadAlign(vreg_cur_max, tmpMaxUb2);
     AscendC::Reg::Max(vreg_max_new, vreg_cur_max, vreg_in_max, preg_all); // 计算新、旧的最大值
-    AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new,
-                                                                         preg_all);
+    AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
 
     AscendC::Reg::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -83,7 +79,7 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(__ubuf__ T2 *expUb, __ubuf__ T *srcUb
                               indexesUb);
     }
     AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb),
-                                                                                        ureg_exp_sum, 0);
+                                                                              ureg_exp_sum, 0);
 }
 
 // update, originN <= 64

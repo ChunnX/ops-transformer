@@ -159,8 +159,8 @@ __simd_vf__ inline void SinkSoftMaxVF(uint64_t sinkAddr, uint64_t maxAddr, uint6
     Sub(vregSub, vregSink, vregMax, pregTail); // sink - max
     Exp(vregExp, vregSub, pregTail);           // exp(sink-max)
     Div(vregDiv, vregExp, vregSum, pregTail);  // exp / sum
-    StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ float *&)dstAddr, vregDiv, 64, pregTail);
+    StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstAddr,
+                                                                                         vregDiv, 64, pregTail);
 }
 
 // CalculateSinkSimpleSoftMax：P_sink = exp(sink-max)/sum，微指令直接读 sink 专用 TQue

@@ -323,16 +323,16 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAVectorService<TEMPLATE_AR
 
 // fp8->fp32
 static constexpr Reg::CastTrait castTraitFp8_1 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp8->fp32
 static constexpr Reg::CastTrait castTraitFp8_2 = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 // fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8_3 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 // fp32->fp16
 static constexpr Reg::CastTrait castTraitFp8_4 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                       Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                  Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 template <typename Q_T, typename KV_T>
 __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrcAddr, uint32_t dealRowCount)
 {
@@ -354,8 +354,7 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrc
         Reg::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8_1>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
         Reg::Cast<float, bfloat16_t, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
 
-        Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(ubDstAddrTmp, vScalefp32Res0, 64,
-                                                                             bf16TypeMaskAll);
+        Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(ubDstAddrTmp, vScalefp32Res0, 64, bf16TypeMaskAll);
     }
 }
 

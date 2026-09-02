@@ -67,15 +67,15 @@ __aicore__ inline void FlashUpdateNoTailV510_VF(const LocalTensor<T> &dstTensor,
 
         for (uint16_t i = 0; i < m; ++i) {
             static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             Reg::Cast<T, float, castTrait0>(vSrcRegMaxB16Even, vSrcRegMax, maskRegAllB32);
             Reg::Cast<T, float, castTrait1>(vSrcRegMaxB16Odd, vSrcRegMax, maskRegAllB32);
-            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-                (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16, (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Even,
-                (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Odd, preg_d);
+            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vSrcRegMaxB16,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Even,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Odd, preg_d);
 
             // high performance only support d=128
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
@@ -143,21 +143,21 @@ __aicore__ inline void FlashUpdateLastNoTailV510_VF(const LocalTensor<T> &dstTen
 
         for (uint16_t i = 0; i < m; ++i) {
             static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(vSrcRegMax, expMaxUb + i * reduceSize);
             Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             Reg::Cast<T, float, castTrait0>(vSrcRegMaxB16Even, vSrcRegMax, maskRegAllB32);
             Reg::Cast<T, float, castTrait1>(vSrcRegMaxB16Odd, vSrcRegMax, maskRegAllB32);
             Reg::Cast<T, float, castTrait0>(vSrcRegSumB16Even, vSrcRegSum, maskRegAllB32);
             Reg::Cast<T, float, castTrait1>(vSrcRegSumB16Odd, vSrcRegSum, maskRegAllB32);
-            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-                (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16, (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Even,
-                (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Odd, preg_d);
-            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-                (Reg::RegTensor<uint16_t> &)vSrcRegSumB16, (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Even,
-                (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Odd, preg_d);
+            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vSrcRegMaxB16,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Even,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegMaxB16Odd, preg_d);
+            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vSrcRegSumB16,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Even,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Odd, preg_d);
 
             // high performance only support d=128
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
@@ -213,15 +213,15 @@ __aicore__ inline void FlashUpdateDivNoTailV510_VF(const LocalTensor<T> &dstTens
 
         for (uint16_t i = 0; i < m; ++i) {
             static constexpr Reg::CastTrait castTrait0 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             static constexpr Reg::CastTrait castTrait1 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
             Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(vSrcRegSum, expSumUb + i * reduceSize);
             Reg::Cast<T, float, castTrait0>(vSrcRegSumB16Even, vSrcRegSum, maskRegAllB32);
             Reg::Cast<T, float, castTrait1>(vSrcRegSumB16Odd, vSrcRegSum, maskRegAllB32);
-            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>(
-                (Reg::RegTensor<uint16_t> &)vSrcRegSumB16, (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Even,
-                (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Odd, preg_d);
+            Reg::Or<uint16_t, Reg::MaskMergeMode::ZEROING>((Reg::RegTensor<uint16_t> &)vSrcRegSumB16,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Even,
+                                                           (Reg::RegTensor<uint16_t> &)vSrcRegSumB16Odd, preg_d);
             // high performance only support d=128
             Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vSrcRegPre, preUb + i * dSize);
             Reg::Div<T, &mode>(vDstRegDiv, vSrcRegPre, vSrcRegSumB16, preg_d);
@@ -290,7 +290,7 @@ __aicore__ inline void InvalidLineUpdate(const LocalTensor<T> &dstTensor, const 
                 DataCopy(vreg_input, srcUb + i * d + j * floatRepSize);
                 Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
                 DataCopy<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize,
-                                                                vreg_input_brc, preg_all);
+                                                           vreg_input_brc, preg_all);
             }
         }
     }
@@ -337,15 +337,14 @@ __aicore__ inline void RowInvalidUpdateVF(const LocalTensor<T> &finalTensor, con
             for (uint16_t j = 0; j < dLoops; ++j) {
                 Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
                 Reg::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
-                Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize,
-                                                                          vregFinalNew, pregAll);
+                Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize, vregFinalNew,
+                                                                pregAll);
             }
             for (uint16_t t = 0; t < hasTail; ++t) {
-                Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregFinal,
-                                                                     finalUb + i * dSize + dLoops * floatRepSize);
+                Reg::DataCopy<T, Reg::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + dLoops * floatRepSize);
                 Reg::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
                 Reg::DataCopy<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize,
-                                                                          vregFinalNew, pregTailD);
+                                                                vregFinalNew, pregTailD);
             }
         }
     }

@@ -256,8 +256,7 @@ __simd_callee__ inline void BuildKdaGateRegbaseExp(AscendC::Reg::RegTensor<float
 template <typename OutputT>
 __simd_callee__ inline void StoreKdaGateRegbasePair(__ubuf__ OutputT *dst, AscendC::Reg::RegTensor<float> &zeroReg,
                                                     AscendC::Reg::RegTensor<float> &oneReg,
-                                                    AscendC::Reg::MaskReg &inputMask,
-                                                    AscendC::Reg::MaskReg &floatMask)
+                                                    AscendC::Reg::MaskReg &inputMask, AscendC::Reg::MaskReg &floatMask)
 {
     using namespace AscendC::Reg;
     RegTensor<OutputT> outputReg;

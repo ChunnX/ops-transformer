@@ -254,8 +254,7 @@ __simd_callee__ inline void MaxReduce16(RegTensor<float> &vreg_input_max, RegTen
     Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp3, preg_all);
     Max(vreg_max_tmp5, vreg_max_tmp5, vreg_max_tmp7, preg_all);
     Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp5, preg_all);
-    Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp1,
-                                                                                      preg_all);
+    Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp1, preg_all);
 }
 
 template <typename T, typename T2>
@@ -287,10 +286,8 @@ __simd_callee__ inline void ExpSumReduceStore1024(RegTensor<float> &vreg_exp_sum
     Add(vreg_exp_sum1, vreg_exp_sum1, vreg_exp_sum3, preg_all);
     Add(vreg_exp_sum5, vreg_exp_sum5, vreg_exp_sum7, preg_all);
     Add(vreg_exp_sum1, vreg_exp_sum1, vreg_exp_sum5, preg_all);
-    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum1, vreg_exp_sum1,
-                                                                                      preg_all);
-    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum1, ureg_exp_sum,
-                                                                 1);
+    Reduce<Reg::ReduceType::SUM, float, float, Reg::MaskMergeMode::ZEROING>(vreg_exp_sum1, vreg_exp_sum1, preg_all);
+    StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), vreg_exp_sum1, ureg_exp_sum, 1);
 }
 
 template <typename T2>
@@ -503,19 +500,19 @@ __simd_callee__ inline void LoadInputDinterleave8(VREG_FLOAT_INPUT_X_16_DECL)
 {
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x1, vreg_input_x2, srcUb + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x3, vreg_input_x4,
-                                                      srcUb + floatRepSize * 2 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 2 + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x5, vreg_input_x6,
-                                                      srcUb + floatRepSize * 4 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 4 + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x7, vreg_input_x8,
-                                                      srcUb + floatRepSize * 6 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 6 + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x9, vreg_input_x10,
-                                                      srcUb + floatRepSize * 8 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 8 + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x11, vreg_input_x12,
-                                                      srcUb + floatRepSize * 10 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 10 + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x13, vreg_input_x14,
-                                                      srcUb + floatRepSize * 12 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 12 + i * s2BaseSize);
     LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x15, vreg_input_x16,
-                                                      srcUb + floatRepSize * 14 + i * s2BaseSize);
+                                                 srcUb + floatRepSize * 14 + i * s2BaseSize);
 }
 
 __simd_callee__ inline void ExpSub16(

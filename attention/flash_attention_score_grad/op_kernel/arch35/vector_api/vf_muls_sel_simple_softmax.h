@@ -90,19 +90,17 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
             LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);
             if constexpr (IsSameType<T1, half>::value && hasPse == 1) {
                 LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalf, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                       pseStride);
+                                                                  pseStride);
                 Interleave(vregPseHalfEven, vregPseHalfOdd, vregPseHalf, vregPseHalf);
                 Cast<float, T1, castTraitB162B32Even>(vregPse, vregPseHalfEven, pregFullExeB16);
                 Add(vregSrc, vregSrc, vregPse, pregFullExe);
             } else if constexpr (IsSameType<T1, bfloat16_t>::value && hasPse == 1) {
-                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBf, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                       pseStride);
+                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBf, ((__ubuf__ T1 *&)pseLocalInt), pseStride);
                 Interleave(vregPseBfEven, vregPseBfOdd, vregPseBf, vregPseBf);
                 Cast<float, T1, castTraitB162B32Even>(vregPse, vregPseBfEven, pregFullExeB16);
                 Add(vregSrc, vregSrc, vregPse, pregFullExe);
             } else if constexpr (IsSameType<T1, float>::value && hasPse == 1) {
-                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPse, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                       pseStride);
+                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPse, ((__ubuf__ T1 *&)pseLocalInt), pseStride);
                 Add(vregSrc, vregSrc, vregPse, pregFullExe);
             }
             Muls(vregMuls, vregSrc, scale, pregFullExe);
@@ -120,23 +118,22 @@ __simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLoca
                 ((__ubuf__ float *&)dstLocalInt), vregDiv, srcN, pregFullExe);
         }
         // tailLoop
-        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail),
-                                                                  128);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 128);
         if constexpr (IsSameType<T1, half>::value && hasPse == 1) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalfTail, ((__ubuf__ T1 *&)pseLocalIntTail),
-                                                                   pseTailStride);
+                                                              pseTailStride);
             Interleave(vregPseHalfTailEven, vregPseHalfTailOdd, vregPseHalfTail, vregPseHalfTail);
             Cast<float, T1, castTraitB162B32Even>(vregPseTail, vregPseHalfTailEven, pregFullExeB16);
             Add(vregSrcTail, vregSrcTail, vregPseTail, pregTailExe);
         } else if constexpr (IsSameType<T1, bfloat16_t>::value && hasPse == 1) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBfTail, ((__ubuf__ T1 *&)pseLocalIntTail),
-                                                                   pseTailStride);
+                                                              pseTailStride);
             Interleave(vregPseBfTailEven, vregPseBfTailOdd, vregPseBfTail, vregPseBfTail);
             Cast<float, T1, castTraitB162B32Even>(vregPseTail, vregPseBfTailEven, pregFullExeB16);
             Add(vregSrcTail, vregSrcTail, vregPseTail, pregTailExe);
         } else if constexpr (IsSameType<T1, float>::value && hasPse == 1) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseTail, ((__ubuf__ T1 *&)pseLocalIntTail),
-                                                                   pseTailStride);
+                                                              pseTailStride);
             Add(vregSrcTail, vregSrcTail, vregPseTail, pregTailExe);
         }
         Muls(vregMulsTail, vregSrcTail, scale, pregTailExe);
@@ -219,19 +216,17 @@ __simd_vf__ inline void MulsSelVFPseType0(uint64_t srcLocalInt, uint64_t dstLoca
             Muls(vregMuls, vregSrc, scale, pregFullExe);
             if constexpr (IsSameType<T1, half>::value && hasPse == 1) {
                 LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalf, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                       pseStride);
+                                                                  pseStride);
                 Interleave(vregPseHalfEven, vregPseHalfOdd, vregPseHalf, vregPseHalf);
                 Cast<float, T1, castTraitB162B32Even>(vregPse, vregPseHalfEven, pregFullExeB16);
                 Add(vregMuls, vregMuls, vregPse, pregFullExe);
             } else if constexpr (IsSameType<T1, bfloat16_t>::value && hasPse == 1) {
-                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBf, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                       pseStride);
+                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBf, ((__ubuf__ T1 *&)pseLocalInt), pseStride);
                 Interleave(vregPseBfEven, vregPseBfOdd, vregPseBf, vregPseBf);
                 Cast<float, T1, castTraitB162B32Even>(vregPse, vregPseBfEven, pregFullExeB16);
                 Add(vregMuls, vregMuls, vregPse, pregFullExe);
             } else if constexpr (IsSameType<T1, float>::value && hasPse == 1) {
-                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPse, ((__ubuf__ T1 *&)pseLocalInt),
-                                                                       pseStride);
+                LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPse, ((__ubuf__ T1 *&)pseLocalInt), pseStride);
                 Add(vregMuls, vregMuls, vregPse, pregFullExe);
             }
             if constexpr (hasAtten == 1) {
@@ -248,24 +243,23 @@ __simd_vf__ inline void MulsSelVFPseType0(uint64_t srcLocalInt, uint64_t dstLoca
                 ((__ubuf__ float *&)dstLocalInt), vregDiv, srcN, pregFullExe);
         }
         // tailLoop
-        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail),
-                                                                  128);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 128);
         Muls(vregMulsTail, vregSrcTail, scale, pregTailExe);
         if constexpr (IsSameType<T1, half>::value && hasPse == 1) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseHalfTail, ((__ubuf__ T1 *&)pseLocalIntTail),
-                                                                   pseTailStride);
+                                                              pseTailStride);
             Interleave(vregPseHalfTailEven, vregPseHalfTailOdd, vregPseHalfTail, vregPseHalfTail);
             Cast<float, T1, castTraitB162B32Even>(vregPseTail, vregPseHalfTailEven, pregFullExeB16);
             Add(vregMulsTail, vregMulsTail, vregPseTail, pregTailExe);
         } else if constexpr (IsSameType<T1, bfloat16_t>::value && hasPse == 1) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseBfTail, ((__ubuf__ T1 *&)pseLocalIntTail),
-                                                                   pseTailStride);
+                                                              pseTailStride);
             Interleave(vregPseBfTailEven, vregPseBfTailOdd, vregPseBfTail, vregPseBfTail);
             Cast<float, T1, castTraitB162B32Even>(vregPseTail, vregPseBfTailEven, pregFullExeB16);
             Add(vregMulsTail, vregMulsTail, vregPseTail, pregTailExe);
         } else if constexpr (IsSameType<T1, float>::value && hasPse == 1) {
             LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregPseTail, ((__ubuf__ T1 *&)pseLocalIntTail),
-                                                                   pseTailStride);
+                                                              pseTailStride);
             Add(vregMulsTail, vregMulsTail, vregPseTail, pregTailExe);
         }
         if constexpr (hasAtten == 1) {
@@ -356,8 +350,7 @@ __simd_vf__ inline void MulsSelVFPseType2(uint64_t srcLocalInt, uint64_t dstLoca
                 ((__ubuf__ float *&)dstLocalInt), vregDiv, srcN, pregFullExe);
         }
         // tailLoop
-        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail),
-                                                                  128);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 128);
         // pse inner generate start
         Abs(vregPseTail, vregPseIdxTail, pregFullExe);
         Adds(vregPseIdxTail, vregPseIdxTail, -1.0f, pregFullExe);
@@ -456,8 +449,7 @@ __simd_vf__ inline void MulsSelVFPseType3(uint64_t srcLocalInt, uint64_t dstLoca
                 ((__ubuf__ float *&)dstLocalInt), vregDiv, srcN, pregFullExe);
         }
         // tailLoop
-        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail),
-                                                                  128);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 128);
         // pse inner generate start
         Abs(vregPseTail, vregPseIdxTail, pregFullExe);
         Adds(vregPseIdxTail, vregPseIdxTail, -1.0f, pregFullExe);

@@ -53,15 +53,15 @@ __aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T> &dstTensor, con
 
             if constexpr (IsSameType<OUTPUT_T, float>::value) {
                 DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div,
-                                                                       preg_all);
+                                                                  preg_all);
             } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_bf16, vreg_div, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD,
-                                                                       vreg_div_bf16, preg_all);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_bf16,
+                                                                  preg_all);
             } else {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_f16, vreg_div, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD,
-                                                                       vreg_div_f16, preg_all);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_f16,
+                                                                  preg_all);
             }
         }
     }
@@ -106,24 +106,24 @@ __aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T> &dstTensor, co
             Div(vreg_div_odd, vreg_src_odd, vreg_exp_sum, preg_all);
 
             if constexpr (IsSameType<OUTPUT_T, float>::value) {
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD,
-                                                                       vreg_div_even, preg_all);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>(
-                    (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + (srcD >> 1), vreg_div_odd, preg_all);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_even,
+                                                                  preg_all);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD + (srcD >> 1),
+                                                                  vreg_div_odd, preg_all);
             } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_bf16, vreg_div_even, preg_all);
                 Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_bf16, vreg_div_odd, preg_all);
                 Or((RegTensor<uint16_t> &)vreg_cast_bf16, (RegTensor<uint16_t> &)vreg_div_even_bf16,
                    (RegTensor<uint16_t> &)vreg_div_odd_bf16, preg_all_b16);
                 DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD,
-                                                                       vreg_cast_bf16, preg_all_b16);
+                                                                  vreg_cast_bf16, preg_all_b16);
             } else {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_f16, vreg_div_even, preg_all);
                 Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_f16, vreg_div_odd, preg_all);
                 Or((RegTensor<uint16_t> &)vreg_cast_f16, (RegTensor<uint16_t> &)vreg_div_even_f16,
                    (RegTensor<uint16_t> &)vreg_div_odd_f16, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD,
-                                                                       vreg_cast_f16, preg_all_b16);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_cast_f16,
+                                                                  preg_all_b16);
             }
         }
     }

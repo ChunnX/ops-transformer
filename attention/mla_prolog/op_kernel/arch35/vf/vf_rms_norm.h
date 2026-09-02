@@ -33,7 +33,7 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ InType *inputBuf, __ubuf__ GammaType *ga
     Reg::MaskReg pregFirst = Reg::CreateMask<C, Reg::MaskPattern::VL1>();
 
     static constexpr Reg::CastTrait castTraitB162B32 = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
     Reg::Duplicate<C, C>(vregSum, 0.0);
 
@@ -47,15 +47,11 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ InType *inputBuf, __ubuf__ GammaType *ga
         Reg::Add<C, Reg::MaskMergeMode::ZEROING>(vregSum, vregXSquare, vregSum, pregAll);
     }
 
-    Reg::Reduce<Reg::ReduceType::SUM, C, C, Reg::MaskMergeMode::ZEROING>(vregSumReduce, vregSum,
-                                                                                        pregAll);
-    Reg::Muls<C, C, Reg::MaskMergeMode::ZEROING>(vregSumReduce, vregSumReduce, rmsNormParams.reciprocal,
-                                                           pregFirst);
-    Reg::Adds<C, C, Reg::MaskMergeMode::ZEROING>(vregSumReduce, vregSumReduce, rmsNormParams.epsilon,
-                                                           pregFirst);
+    Reg::Reduce<Reg::ReduceType::SUM, C, C, Reg::MaskMergeMode::ZEROING>(vregSumReduce, vregSum, pregAll);
+    Reg::Muls<C, C, Reg::MaskMergeMode::ZEROING>(vregSumReduce, vregSumReduce, rmsNormParams.reciprocal, pregFirst);
+    Reg::Adds<C, C, Reg::MaskMergeMode::ZEROING>(vregSumReduce, vregSumReduce, rmsNormParams.epsilon, pregFirst);
     Reg::Sqrt<C, Reg::MaskMergeMode::ZEROING>(vregSquareRoot, vregSumReduce, pregFirst);
-    Reg::Duplicate<C, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(vregDiv, vregSquareRoot,
-                                                                                            pregAll);
+    Reg::Duplicate<C, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(vregDiv, vregSquareRoot, pregAll);
 
     for (uint16_t i = 0; i < uint16_t(repeatTimes); ++i) {
         Reg::RegTensor<C> vregXCast;
