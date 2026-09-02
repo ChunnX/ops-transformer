@@ -113,39 +113,46 @@ CUTLASS_DEVICE void warp_bucket_topk(
         const uint32_t prefix_val = kth_value & prefix_mask;
 
         // Build histogram: each lane owns 8 buckets [lane*8 .. lane*8+7]
-        // Local register counters — no SMEM atomic
-        uint32_t lc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        // Use scalar variables instead of array to prevent register spill
         const uint32_t my_base = lane_idx * 8;
+        uint32_t c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
         for (uint32_t i = lane_idx; i < k_len; i += 32) {
             uint32_t u = to_sortable(logits[k_start + i]);
             if ((u & prefix_mask) == prefix_val) {
                 uint32_t b = (u >> shift) & 0xFF;
                 uint32_t bi = b - my_base;
-                if (bi < 8)
-                    lc[bi]++;
+                if (bi == 0) c0++;
+                else if (bi == 1) c1++;
+                else if (bi == 2) c2++;
+                else if (bi == 3) c3++;
+                else if (bi == 4) c4++;
+                else if (bi == 5) c5++;
+                else if (bi == 6) c6++;
+                else if (bi == 7) c7++;
             }
         }
 
         // Warp reduce: lane i gets total for buckets [i*8..i*8+7]
         #pragma unroll
-        for (int b = 0; b < 8; b++) {
-            uint32_t v = lc[b];
-            for (int s = 16; s > 0; s >>= 1)
-                v += __shfl_xor_sync(0xFFFFFFFF, v, s);
-            lc[b] = v;
+        for (int s = 16; s > 0; s >>= 1) {
+            c0 += __shfl_xor_sync(0xFFFFFFFF, c0, s);
+            c1 += __shfl_xor_sync(0xFFFFFFFF, c1, s);
+            c2 += __shfl_xor_sync(0xFFFFFFFF, c2, s);
+            c3 += __shfl_xor_sync(0xFFFFFFFF, c3, s);
+            c4 += __shfl_xor_sync(0xFFFFFFFF, c4, s);
+            c5 += __shfl_xor_sync(0xFFFFFFFF, c5, s);
+            c6 += __shfl_xor_sync(0xFFFFFFFF, c6, s);
+            c7 += __shfl_xor_sync(0xFFFFFFFF, c7, s);
         }
 
         if (lane_idx == 0 && k_start == 0) {
-            uint32_t dbg_sum = 0;
-            for (int i = 0; i < 8; i++) dbg_sum += lc[i];
-            printf("Round %d: lc[0]=%u lc[1]=%u sum=%u total_should_be=%u remaining=%u\n",
-                   round, lc[0], lc[1], dbg_sum, k_len, remaining);
+            printf("Round %d: c0=%u c1=%u sum=%u remaining=%u\n",
+                   round, c0, c1, c0+c1+c2+c3+c4+c5+c6+c7, remaining);
         }
 
         // Find cutoff: scan from high bucket to low
-        uint32_t my_sum = 0;
-        #pragma unroll
-        for (int i = 0; i < 8; i++) my_sum += lc[i];
+        uint32_t my_counts[8] = {c0, c1, c2, c3, c4, c5, c6, c7};
+        uint32_t my_sum = c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7;
 
         // Inclusive prefix sum across lanes
         uint32_t incl = my_sum;
@@ -164,12 +171,12 @@ CUTLASS_DEVICE void warp_bucket_topk(
         #pragma unroll
         for (int i = 7; i >= 0; i--) {
             uint32_t count_above = count_above_me + prefix_in_lane;
-            uint32_t count_ge = count_above + lc[i];
+            uint32_t count_ge = count_above + my_counts[i];
             if (count_above < remaining && count_ge >= remaining) {
                 my_cutoff = static_cast<int32_t>(lane_idx * 8 + i);
                 my_count_above_cutoff = count_above;
             }
-            prefix_in_lane += lc[i];
+            prefix_in_lane += my_counts[i];
         }
 
         uint32_t cutoff_mask = __ballot_sync(0xFFFFFFFF, my_cutoff >= 0);
