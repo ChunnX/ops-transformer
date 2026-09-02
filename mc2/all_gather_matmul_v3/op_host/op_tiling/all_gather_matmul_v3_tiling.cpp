@@ -78,8 +78,6 @@ static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value
 {
     return std::find(list.begin(), list.end(), value) != list.end();
 }
-
-// ---- shape info struct ----
 struct ShapeInfo {
     int64_t mPerRank{0};
     int64_t k{0};
