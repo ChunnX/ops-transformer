@@ -27,14 +27,14 @@
 #include "aclnnop/aclnn_generic_block_sparse_attention_grad_metadata.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
@@ -136,7 +136,7 @@ int main()
     std::vector<int64_t> metaShape = {metaSize};
 
     // 3. Host 数据：小常数输入 + 单 KV 块全选 Q
-    std::vector<uint16_t> qHost(static_cast<size_t>(GetShapeSize(qShape)), 0x2E66);    // ~0.1
+    std::vector<uint16_t> qHost(static_cast<size_t>(GetShapeSize(qShape)), 0x2E66); // ~0.1
     std::vector<uint16_t> kHost(static_cast<size_t>(GetShapeSize(kvShape)), 0x2E66);
     std::vector<uint16_t> vHost(static_cast<size_t>(GetShapeSize(kvShape)), 0x2E66);
     std::vector<uint16_t> doutHost(static_cast<size_t>(GetShapeSize(qShape)), 0x211E); // ~0.01
@@ -229,8 +229,8 @@ int main()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate metadata workspace failed. ERROR: %d\n", ret); return ret);
     }
     ret = aclnnGenericBlockSparseAttentionGradMetadata(metaWs, metaWsSize, metaExecutor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnGenericBlockSparseAttentionGradMetadata failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGenericBlockSparseAttentionGradMetadata failed. ERROR: %d\n", ret);
+              return ret);
 
     // 5. 再跑 Grad
     uint64_t workspaceSize = 0;
@@ -241,7 +241,8 @@ int main()
         nullptr /*sequsedQ*/, nullptr /*sequsedKv*/, blockShape, isPackedGqa, qLayout, kvLayout, scaleValue, maskType,
         softmaxPrecision, windowLeft, windowRight, dq, dk, dv, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnGenericBlockSparseAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+              LOG_PRINT("aclnnGenericBlockSparseAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
     CHECK_RET(executor != nullptr, LOG_PRINT("executor is null\n"); return -1);
     LOG_PRINT("Workspace size required: %lu bytes\n", static_cast<unsigned long>(workspaceSize));
 
@@ -253,7 +254,8 @@ int main()
 
     LOG_PRINT("Calling aclnnGenericBlockSparseAttentionGrad...\n");
     ret = aclnnGenericBlockSparseAttentionGrad(workspace, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGenericBlockSparseAttentionGrad failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGenericBlockSparseAttentionGrad failed. ERROR: %d\n", ret);
+              return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

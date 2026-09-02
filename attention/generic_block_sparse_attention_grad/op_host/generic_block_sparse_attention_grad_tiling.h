@@ -22,8 +22,8 @@ namespace optiling {
 BEGIN_TILING_DATA_DEF(GenericBlockSparseAttentionGradTilingDataArch35)
 TILING_DATA_FIELD_DEF(uint64_t, cubeCoreNum);
 TILING_DATA_FIELD_DEF(uint64_t, batchNum);
-TILING_DATA_FIELD_DEF(uint64_t, qSeqLen);   // TND: T1 total tokens
-TILING_DATA_FIELD_DEF(uint64_t, kvSeqLen);  // TND: T2 total tokens
+TILING_DATA_FIELD_DEF(uint64_t, qSeqLen);  // TND: T1 total tokens
+TILING_DATA_FIELD_DEF(uint64_t, kvSeqLen); // TND: T2 total tokens
 TILING_DATA_FIELD_DEF(uint64_t, qGroup);
 TILING_DATA_FIELD_DEF(uint64_t, qHeadNum);
 TILING_DATA_FIELD_DEF(uint64_t, kvHeadNum);

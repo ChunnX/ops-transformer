@@ -59,9 +59,9 @@ private:
     GlobalTensor<float> dv_workspace_;
     GlobalTensor<float> dq_sel_workspace_;
     GlobalTensor<int32_t> sparse_idx_gm_;
-    uint64_t dq_sel_workspace_offset_ { 0 };
-    int64_t dq_sel_core_elems_ { 0 };
-    int32_t q_stride_lse_ { 1 };
+    uint64_t dq_sel_workspace_offset_{0};
+    int64_t dq_sel_core_elems_{0};
+    int32_t q_stride_lse_{1};
     LocalTensor<float> lse_tensor_;
     LocalTensor<float> lse_tensor_ping_;
     LocalTensor<float> lse_tensor_pong_;
@@ -103,7 +103,7 @@ private:
     int64_t lse_gm_offset_;
     int64_t sftg_gm_offset_;
     int64_t l1_offset_;
-    int32_t runTimeMaskType_ { 0 };
+    int32_t runTimeMaskType_{0};
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
     TEventID event_id;
@@ -138,22 +138,19 @@ public:
         q_stride_lse_ = (INPUT_LAYOUT == TND) ? q_head_num_ : 1;
 
         // gm_tensor — pass explicit sizes so GetValue cannot treat large T offsets as OOB (AIC 264).
-        const int64_t sparseIdxElems = static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum *
-                                       tilingData->numJ * tilingData->maxS1;
-        const int64_t lseElems = (INPUT_LAYOUT == TND)
-                                     ? static_cast<int64_t>(tilingData->qSeqLen) * tilingData->qHeadNum
-                                     : static_cast<int64_t>(tilingData->batchNum) * tilingData->qHeadNum *
-                                           tilingData->qSeqLen;
+        const int64_t sparseIdxElems =
+            static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum * tilingData->numJ * tilingData->maxS1;
+        const int64_t lseElems =
+            (INPUT_LAYOUT == TND) ?
+                static_cast<int64_t>(tilingData->qSeqLen) * tilingData->qHeadNum :
+                static_cast<int64_t>(tilingData->batchNum) * tilingData->qHeadNum * tilingData->qSeqLen;
         // Match host GetWorkspaceSize padding (AlignTo 256) so EvenCore DataCopy tails stay in-bound.
         const int64_t sftgElems = ((lseElems * 8) + 255) / 256 * 256;
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse, lseElems);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset), sftgElems);
-        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset),
-                                      tilingData->dqSize);
-        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset),
-                                      tilingData->dkSize);
-        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset),
-                                      tilingData->dkSize);
+        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset), tilingData->dqSize);
+        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset), tilingData->dkSize);
+        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset), tilingData->dkSize);
         dq_sel_workspace_offset_ = tilingData->dqSelWorkspaceOffset;
         dq_sel_core_elems_ = static_cast<int64_t>(base_m) * head_dim_align_;
         const int64_t cubeBlk = static_cast<int64_t>(GetBlockIdx() / 2);
@@ -300,8 +297,7 @@ public:
         // Match Cube dualDstCtl=1 / each AIV owns mAlign/2 (pad rows may be empty).
         half_s1_process_align_ = s1_process_align_ / 2;
         if (v_sub_core_idx_ == 0) {
-            half_s1_process_real_ =
-                half_s1_process_align_ < s1_process_ ? half_s1_process_align_ : s1_process_;
+            half_s1_process_real_ = half_s1_process_align_ < s1_process_ ? half_s1_process_align_ : s1_process_;
         } else {
             half_s1_process_real_ = s1_process_ - half_s1_process_align_;
             if (half_s1_process_real_ < 0) {
@@ -345,13 +341,13 @@ public:
                 if constexpr (INPUT_LAYOUT == TND) {
                     // LSE user tensor is TND [T, N]; sftg workspace is written as
                     // prefix*N*8 + n1*S*8 + t*8 (same as GetSftgGmOffset / SendVecSftgFront).
-                    lseOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ +
-                             runTimeInfo.n1Idx;
-                    sftgOff = GetSftgGmOffset<INPUT_LAYOUT>(
-                        static_cast<int64_t>(runTimeInfo.last_q_seq_sum),
-                        static_cast<int64_t>(runTimeInfo.cur_q_seq_len), q_head_num_,
-                        static_cast<int64_t>(runTimeInfo.bIdx), static_cast<int64_t>(qTok),
-                        static_cast<int64_t>(runTimeInfo.n1Idx));
+                    lseOff =
+                        (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ + runTimeInfo.n1Idx;
+                    sftgOff = GetSftgGmOffset<INPUT_LAYOUT>(static_cast<int64_t>(runTimeInfo.last_q_seq_sum),
+                                                            static_cast<int64_t>(runTimeInfo.cur_q_seq_len),
+                                                            q_head_num_, static_cast<int64_t>(runTimeInfo.bIdx),
+                                                            static_cast<int64_t>(qTok),
+                                                            static_cast<int64_t>(runTimeInfo.n1Idx));
                 } else {
                     lseOff = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len +
                              runTimeInfo.n1Idx * runTimeInfo.cur_q_seq_len + qTok;
@@ -459,8 +455,7 @@ public:
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                       (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_real_, s2_process_align_);
         if (half_s1_process_real_ < half_s1_process_align_) {
-            const int32_t padElems =
-                (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
+            const int32_t padElems = (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
             Duplicate(src_ub_tensor[half_s1_process_real_ * s2_process_align_], 0.0f, padElems);
             PipeBarrier<PIPE_V>();
         }
@@ -507,8 +502,7 @@ public:
         }
         // Pad rows beyond real must be 0 so align-sized SoftmaxGrad/Cast stay in-bounds.
         if (half_s1_process_real_ < half_s1_process_align_) {
-            const int32_t padElems =
-                (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
+            const int32_t padElems = (half_s1_process_align_ - half_s1_process_real_) * s2_process_align_;
             Duplicate(src_ub_tensor[half_s1_process_real_ * s2_process_align_], 0.0f, padElems);
             Duplicate(softmax_ub_tensor[half_s1_process_real_ * s2_process_align_], 0.0f, padElems);
             PipeBarrier<PIPE_V>();
@@ -569,8 +563,7 @@ public:
         // Keep Scatter staging far from mm/gather overlay (offset 0). FIX_SUMMARY: offset-0
         // collided with AIV gather and zeroed dq; 200KB sits in the unused tail of 247KB UB.
         constexpr uint32_t SCATTER_UB_OFFSET = 200 * 1024;
-        LocalTensor<float> batchUb =
-            ub_buffer.GetWithOffset<float>(UB_ROW_SIZE * head_dim_align_, SCATTER_UB_OFFSET);
+        LocalTensor<float> batchUb = ub_buffer.GetWithOffset<float>(UB_ROW_SIZE * head_dim_align_, SCATTER_UB_OFFSET);
 
         // Layout bases outside the per-row loop.
         const int64_t n1Dim = static_cast<int64_t>(runTimeInfo.n1Idx) * head_dim_;
@@ -580,8 +573,8 @@ public:
             layoutBase = static_cast<int64_t>(runTimeInfo.last_q_seq_sum) * q_head_num_ * head_dim_ + n1Dim;
             qTokStride = static_cast<int64_t>(q_head_num_) * head_dim_;
         } else if constexpr (INPUT_LAYOUT == BSND) {
-            layoutBase = static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ +
-                         n1Dim;
+            layoutBase =
+                static_cast<int64_t>(runTimeInfo.bIdx) * runTimeInfo.cur_q_seq_len * q_head_num_ * head_dim_ + n1Dim;
             qTokStride = static_cast<int64_t>(q_head_num_) * head_dim_;
         } else {
             layoutBase = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len * head_dim_ +

@@ -30,21 +30,21 @@
 namespace aicpu {
 
 struct GsagTask {
-    uint32_t b { 0U };
-    uint32_t n2 { 0U };
-    uint32_t j { 0U };
-    uint32_t g { 0U };
-    int32_t count { 0 };
+    uint32_t b{0U};
+    uint32_t n2{0U};
+    uint32_t j{0U};
+    uint32_t g{0U};
+    int32_t count{0};
 };
 
 // One KV block (b, n2, j): G tasks share the same K/V tile.
 struct GsagKvBlockGroup {
-    uint32_t b { 0U };
-    uint32_t n2 { 0U };
-    uint32_t j { 0U };
-    int32_t count { 0 };
-    uint32_t kvBlockLen { 0U };
-    uint64_t blockCost { 0U };
+    uint32_t b{0U};
+    uint32_t n2{0U};
+    uint32_t j{0U};
+    int32_t count{0};
+    uint32_t kvBlockLen{0U};
+    uint64_t blockCost{0U};
 };
 
 template <typename T>

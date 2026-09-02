@@ -60,10 +60,10 @@ private:
     LocalTensor<INPUT_TYPE> query_l1_tensor_ping_, query_l1_tensor_pong_;
     LocalTensor<INPUT_TYPE> dout_l1_tensor_ping_, dout_l1_tensor_pong_;
     GlobalTensor<int32_t> sparse_idx_gm_;
-    int32_t q_head_num_ { 0 };
-    int32_t head_dim_ { 0 };
-    uint32_t vec_ub_matrix_elements_ { 0 };
-    uint32_t vec_base_m_ { 0 };
+    int32_t q_head_num_{0};
+    int32_t head_dim_{0};
+    uint32_t vec_ub_matrix_elements_{0};
+    uint32_t vec_base_m_{0};
     uint32_t taskId = 0;
     uint32_t ping_pong_idx = 0;
     uint32_t last_ping_pong_idx = 0;
@@ -114,8 +114,7 @@ private:
         CopyQAndDoutToL1(curr, currIdx);
         // Always signal — including AIV with 0 real rows (zero-filled pad half).
         const uint32_t gatherFlagBase = currIdx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
-        const uint32_t gatherFlag =
-            gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
+        const uint32_t gatherFlag = gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(gatherFlag);
         (void)m;
         (void)mAlign;
@@ -221,10 +220,9 @@ public:
      */
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dout, GM_ADDR attention_out,
                                    GM_ADDR softmaxLse, GM_ADDR rsvdBlockIdx, GM_ADDR rsvdBlockCount, GM_ADDR metadata,
-                                   GM_ADDR attenMask, GM_ADDR cuSeqLengthsQ, GM_ADDR cuSeqLengthsKv,
-                                   GM_ADDR sequsedQ, GM_ADDR sequsedKv, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
-                                   GM_ADDR workspace, const TILING_CLASS *tilingData,
-                                   TPipe *tPipe)
+                                   GM_ADDR attenMask, GM_ADDR cuSeqLengthsQ, GM_ADDR cuSeqLengthsKv, GM_ADDR sequsedQ,
+                                   GM_ADDR sequsedKv, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
+                                   const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
@@ -239,22 +237,18 @@ public:
         dq_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq, tilingData->dqSize);
         dk_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk, tilingData->dkSize);
         dv_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv, tilingData->dkSize);
-        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset),
-                                      tilingData->dqSize);
-        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset),
-                                      tilingData->dkSize);
-        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset),
-                                      tilingData->dkSize);
-        const int64_t lseElems = (INPUT_LAYOUT == TND)
-                                     ? static_cast<int64_t>(tilingData->qSeqLen) * tilingData->qHeadNum
-                                     : static_cast<int64_t>(tilingData->batchNum) * tilingData->qHeadNum *
-                                           tilingData->qSeqLen;
+        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset), tilingData->dqSize);
+        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset), tilingData->dkSize);
+        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset), tilingData->dkSize);
+        const int64_t lseElems =
+            (INPUT_LAYOUT == TND) ?
+                static_cast<int64_t>(tilingData->qSeqLen) * tilingData->qHeadNum :
+                static_cast<int64_t>(tilingData->batchNum) * tilingData->qHeadNum * tilingData->qSeqLen;
         // Match host GetWorkspaceSize padding (AlignTo 256).
         const int64_t sftgElems = ((lseElems * 8) + 255) / 256 * 256;
-        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset),
-                                        sftgElems);
-        const int64_t sparseIdxElems = static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum *
-                                       tilingData->numJ * tilingData->maxS1;
+        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset), sftgElems);
+        const int64_t sparseIdxElems =
+            static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum * tilingData->numJ * tilingData->maxS1;
         sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx, sparseIdxElems);
         q_head_num_ = static_cast<int32_t>(tilingData->qHeadNum);
         head_dim_ = static_cast<int32_t>(tilingData->headDim);
@@ -272,9 +266,8 @@ public:
         const uint32_t mmSlotElems = vec_base_m * vec_base_n;
         const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n;
         const uint32_t mmSlotBytes = 2u * mmSlotElems * static_cast<uint32_t>(sizeof(float));
-        const uint32_t gatherStagingBytes =
-            2u * vec_ub_matrix_elements_ * static_cast<uint32_t>(sizeof(INPUT_TYPE)) +
-            2u * nz_ub_elements * static_cast<uint32_t>(sizeof(INPUT_TYPE));
+        const uint32_t gatherStagingBytes = 2u * vec_ub_matrix_elements_ * static_cast<uint32_t>(sizeof(INPUT_TYPE)) +
+                                            2u * nz_ub_elements * static_cast<uint32_t>(sizeof(INPUT_TYPE));
         const uint32_t mmUbBase = ub_offset_;
         const uint32_t mmFloatBytes = mmSlotElems * static_cast<uint32_t>(sizeof(float));
 
@@ -412,18 +405,16 @@ public:
         const int32_t copyRows = shardAlign;
         DataCopyParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(head_dim_ / C0_SIZE);
-        copyParams.blockLen = static_cast<uint16_t>(
-            copyRows * static_cast<int32_t>(C0_SIZE) * static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
-        copyParams.srcStride = static_cast<uint16_t>(
-            (static_cast<int32_t>(vfM) + 1 - copyRows) * static_cast<int32_t>(C0_SIZE) *
-            static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
-        copyParams.dstStride = static_cast<uint16_t>(
-            (totalAlign - copyRows) * static_cast<int32_t>(C0_SIZE) * static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
+        copyParams.blockLen = static_cast<uint16_t>(copyRows * static_cast<int32_t>(C0_SIZE) *
+                                                    static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
+        copyParams.srcStride =
+            static_cast<uint16_t>((static_cast<int32_t>(vfM) + 1 - copyRows) * static_cast<int32_t>(C0_SIZE) *
+                                  static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
+        copyParams.dstStride = static_cast<uint16_t>((totalAlign - copyRows) * static_cast<int32_t>(C0_SIZE) *
+                                                     static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
 
-        LocalTensor<INPUT_TYPE> qL1 =
-            pingPongIdx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
-        LocalTensor<INPUT_TYPE> doutL1 =
-            pingPongIdx == 0 ? dout_l1_tensor_ping_ : dout_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> qL1 = pingPongIdx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> doutL1 = pingPongIdx == 0 ? dout_l1_tensor_ping_ : dout_l1_tensor_pong_;
         const int32_t l1RowOffset = rowBegin * static_cast<int32_t>(C0_SIZE);
         DataCopy(qL1[l1RowOffset], qNz, copyParams);
         DataCopy(doutL1[l1RowOffset], doutNz, copyParams);
@@ -435,8 +426,7 @@ public:
                                        GM_ADDR softmaxLse, GM_ADDR rsvdBlockIdx, GM_ADDR rsvdBlockCount,
                                        GM_ADDR metadata, GM_ADDR cuSeqLengthsQ, GM_ADDR cuSeqLengthsKv,
                                        GM_ADDR sequsedQ, GM_ADDR sequsedKv, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
-                                       GM_ADDR workspace, const TILING_CLASS *tilingData,
-                                       TPipe *tPipe)
+                                       GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         CubeOp<GSAG_TYPE> cubeOp;
         cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_, query_l1_tensor_ping_, query_l1_tensor_pong_,
@@ -486,12 +476,11 @@ public:
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
     }
 
-    __aicore__ inline void VectorProcess(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dout,
-                                         GM_ADDR attention_out, GM_ADDR softmaxLse, GM_ADDR rsvdBlockIdx,
-                                         GM_ADDR rsvdBlockCount, GM_ADDR metadata, GM_ADDR cuSeqLengthsQ,
-                                         GM_ADDR cuSeqLengthsKv, GM_ADDR sequsedQ, GM_ADDR sequsedKv,
-                                         GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
-                                         const TILING_CLASS *tilingData, TPipe *tPipe)
+    __aicore__ inline void VectorProcess(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dout, GM_ADDR attention_out,
+                                         GM_ADDR softmaxLse, GM_ADDR rsvdBlockIdx, GM_ADDR rsvdBlockCount,
+                                         GM_ADDR metadata, GM_ADDR cuSeqLengthsQ, GM_ADDR cuSeqLengthsKv,
+                                         GM_ADDR sequsedQ, GM_ADDR sequsedKv, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
+                                         GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         VecOp<GSAG_TYPE> vecOp;
         vecOp.Init(dout, query, key, value, attention_out, softmaxLse, rsvdBlockIdx, rsvdBlockCount, metadata,
@@ -538,8 +527,7 @@ public:
 
         CrossCoreWaitFlag(FLAG_CUBE_POST);
         SyncAll();
-        vecOp.SendVecPost(dq_gm_, dk_gm_, dv_gm_, dq_workspace_, dk_workspace_, dv_workspace_, tilingData,
-                          ub_buffer_);
+        vecOp.SendVecPost(dq_gm_, dk_gm_, dv_gm_, dq_workspace_, dk_workspace_, dv_workspace_, tilingData, ub_buffer_);
     }
 };
 

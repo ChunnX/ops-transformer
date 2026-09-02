@@ -26,11 +26,10 @@ OP_TYPE_REGISTER(GenericBlockSparseAttentionGrad);
 const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout, const aclTensor *out,
     const aclTensor *lse, const aclTensor *rsvdBlockIdx, const aclTensor *rsvdBlockCount, const aclTensor *metadata,
-    const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsOptional,
-    const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclIntArray *blockShape, int64_t isPackedGqa, char *qInputLayout,
-    char *kvInputLayout, double scaleValue, int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft,
-    int64_t windowSizeRight, aclOpExecutor *executor)
+    const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsOptional, const aclTensor *cuSeqLengthsKvOptional,
+    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, const aclIntArray *blockShape,
+    int64_t isPackedGqa, char *qInputLayout, char *kvInputLayout, double scaleValue, int64_t maskType,
+    int64_t softmaxPrecision, int64_t windowSizeLeft, int64_t windowSizeRight, aclOpExecutor *executor)
 {
     const char *safeKvLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
     L0_DFX(GenericBlockSparseAttentionGrad, query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount, metadata,
@@ -38,21 +37,18 @@ const std::array<const aclTensor *, 3> GenericBlockSparseAttentionGrad(
            safeKvLayout, scaleValue, maskType, softmaxPrecision, windowSizeLeft, windowSizeRight);
 
     const aclTensor *attenMaskTensor =
-        (attenMaskOptional != nullptr) ?
-            attenMaskOptional :
-            executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);
-    const aclTensor *cuSeqTensor =
-        (cuSeqLengthsOptional != nullptr) ?
-            cuSeqLengthsOptional :
-            executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
+        (attenMaskOptional != nullptr) ? attenMaskOptional :
+                                         executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);
+    const aclTensor *cuSeqTensor = (cuSeqLengthsOptional != nullptr) ?
+                                       cuSeqLengthsOptional :
+                                       executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     const aclTensor *cuSeqKvTensor =
         (cuSeqLengthsKvOptional != nullptr) ?
             cuSeqLengthsKvOptional :
             executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     const aclTensor *sequsedQTensor =
-        (sequsedQOptional != nullptr) ?
-            sequsedQOptional :
-            executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+        (sequsedQOptional != nullptr) ? sequsedQOptional :
+                                        executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     const aclTensor *sequsedKvTensor =
         (sequsedKvOptional != nullptr) ?
             sequsedKvOptional :

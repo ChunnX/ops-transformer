@@ -74,8 +74,8 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("metadata must be a 1D tensor");
         return false;
     }
-    if (rsvdBlockIdx_ == nullptr || rsvdBlockIdx_->GetData() == nullptr ||
-        rsvdBlockIdx_->GetTensorShape() == nullptr || rsvdBlockIdx_->GetTensorShape()->GetDims() != 4) {
+    if (rsvdBlockIdx_ == nullptr || rsvdBlockIdx_->GetData() == nullptr || rsvdBlockIdx_->GetTensorShape() == nullptr ||
+        rsvdBlockIdx_->GetTensorShape()->GetDims() != 4) {
         KERNEL_LOG_ERROR("rsvd_block_idx must be a valid 4D tensor");
         return false;
     }
@@ -168,8 +168,7 @@ uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvBlockLen(uint32_
     return remain < baseN_ ? remain : baseN_;
 }
 
-uint64_t GenericBlockSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t count,
-                                                                         uint32_t kvBlockLen) const
+uint64_t GenericBlockSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t count, uint32_t kvBlockLen) const
 {
     if (count <= 0 || kvBlockLen == 0U) {
         return 0U;
@@ -195,8 +194,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
                 if (jIdx >= jLimit) {
                     continue;
                 }
-                const uint64_t cntOffset =
-                    (static_cast<uint64_t>(bIdx) * n2Size_ + n2Idx) * jSize_ + jIdx;
+                const uint64_t cntOffset = (static_cast<uint64_t>(bIdx) * n2Size_ + n2Idx) * jSize_ + jIdx;
                 const int32_t count = countPtr[cntOffset];
                 if (count <= 0) {
                     continue;
@@ -250,8 +248,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::BalanceKvBlockGroups()
     for (uint32_t coreIdx = 0U; coreIdx < usedCoreNum_ && groupIdx < groupNum; ++coreIdx) {
         const bool isLastCore = (coreIdx + 1U == usedCoreNum_);
         const uint32_t remainingCores = usedCoreNum_ - coreIdx;
-        uint64_t blockLimit =
-            isLastCore ? unassignedCost : (unassignedCost + remainingCores - 1U) / remainingCores;
+        uint64_t blockLimit = isLastCore ? unassignedCost : (unassignedCost + remainingCores - 1U) / remainingCores;
         blockLimit = std::max(blockLimit, kvBlockGroups_[groupIdx].blockCost);
 
         coreGroupStart_[coreIdx] = groupIdx;
@@ -305,8 +302,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
     totalNum_ = static_cast<uint32_t>(taskList_.size());
     const uint32_t maxTasks = static_cast<uint32_t>(CalcGsagMetadataTaskCapacity(metadataCapacity_));
     if (totalNum_ > maxTasks) {
-        KERNEL_LOG_ERROR("task num %u exceeds metadata capacity %u (elems=%u)", totalNum_, maxTasks,
-                         metadataCapacity_);
+        KERNEL_LOG_ERROR("task num %u exceeds metadata capacity %u (elems=%u)", totalNum_, maxTasks, metadataCapacity_);
         return false;
     }
     return true;

@@ -25,8 +25,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, aclTensor *metadata, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(void *workspace,
+                                                                                                uint64_t workspaceSize,
+                                                                                                aclOpExecutor *executor,
+                                                                                                aclrtStream stream);
 
 #ifdef __cplusplus
 }

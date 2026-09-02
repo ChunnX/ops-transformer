@@ -194,7 +194,7 @@ aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/co
 ## 约束说明
 
 - 确定性计算：当前不支持（本算子输出为确定性结果，但主 Grad 算子不支持确定性计算）。
-- 须与 [`aclnnGenericBlockSparseAttentionGrad`](../generic_block_sparse_attention_grad/docs/aclnnGenericBlockSparseAttentionGrad.md) 配合使用；主算子调用前必须先成功执行本算子。
+- 须与 [`aclnnGenericBlockSparseAttentionGrad`](../../generic_block_sparse_attention_grad/docs/aclnnGenericBlockSparseAttentionGrad.md) 配合使用；主算子调用前必须先成功执行本算子。
 - `maskType` 当前仅支持 **1**。
 - `winLeft` 和 `winRight` 不使能时必须为 **-1**。
 - HeadDim 固定为 **128**。

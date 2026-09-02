@@ -110,19 +110,18 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
 aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dout, const aclTensor *out,
     const aclTensor *lse, const aclTensor *rsvdBlockIdx, const aclTensor *rsvdBlockCount, const aclTensor *metadata,
-    const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsOptional,
-    const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclIntArray *blockShape, int64_t isPackedGqa, char *qInputLayout,
-    char *kvInputLayout, double scaleValue, int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft,
-    int64_t windowSizeRight, aclTensor *dQuery, aclTensor *dKey, aclTensor *dValue, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor *attenMaskOptional, const aclTensor *cuSeqLengthsOptional, const aclTensor *cuSeqLengthsKvOptional,
+    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, const aclIntArray *blockShape,
+    int64_t isPackedGqa, char *qInputLayout, char *kvInputLayout, double scaleValue, int64_t maskType,
+    int64_t softmaxPrecision, int64_t windowSizeLeft, int64_t windowSizeRight, aclTensor *dQuery, aclTensor *dKey,
+    aclTensor *dValue, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     CHECK_RET(workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     L2_DFX_PHASE_1(aclnnGenericBlockSparseAttentionGrad,
                    DFX_IN(query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount, metadata, attenMaskOptional,
-                          cuSeqLengthsOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
-                          blockShape, isPackedGqa, qInputLayout,
-                          kvInputLayout, scaleValue, maskType, softmaxPrecision, windowSizeLeft, windowSizeRight),
+                          cuSeqLengthsOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockShape,
+                          isPackedGqa, qInputLayout, kvInputLayout, scaleValue, maskType, softmaxPrecision,
+                          windowSizeLeft, windowSizeRight),
                    DFX_OUT(dQuery, dKey, dValue));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -172,9 +171,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
 
     auto outs = l0op::GenericBlockSparseAttentionGrad(
         queryC, keyC, valueC, doutC, outC, lseC, idxC, cntC, metaC, attenC, cuQC, cuKvC, sequsedQC, sequsedKvC,
-        blockShape, isPackedGqa, qInputLayout, kvInputLayout, scaleValue, maskType, softmaxPrecision,
-        windowSizeLeft, windowSizeRight,
-        uniqueExecutor.get());
+        blockShape, isPackedGqa, qInputLayout, kvInputLayout, scaleValue, maskType, softmaxPrecision, windowSizeLeft,
+        windowSizeRight, uniqueExecutor.get());
     CHECK_RET(outs[0] != nullptr && outs[1] != nullptr && outs[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto dqView = l0op::ViewCopy(outs[0], dQuery, uniqueExecutor.get());
@@ -187,8 +185,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGrad(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGrad(void *workspace,
+                                                                                        uint64_t workspaceSize,
+                                                                                        aclOpExecutor *executor,
+                                                                                        const aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGenericBlockSparseAttentionGrad);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
