@@ -48,9 +48,9 @@ private:
         GM_ADDR srcAddr = this->localAddr_ + targetRankId * this->chunkBytes_ +
             this->currentTileIdx_ * this->tileMaxByteSize_;
 
-        uint64_t slotIdx = this->currentTileIdx_ % this->bufferCount_;
+        uint64_t slotOffset = this->bufferChannel_.GetNextSlotAddr();
         GM_ADDR dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-            slotIdx * (this->udmaCtx_->rankSize * this->tileMaxByteSize_) + this->udmaCtx_->rankId * this->tileMaxByteSize_;
+            slotOffset + this->udmaCtx_->rankId * this->tileMaxByteSize_;
 
         int32_t ret = this->comm_.WriteNbi(
             static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr, tileByteSize);

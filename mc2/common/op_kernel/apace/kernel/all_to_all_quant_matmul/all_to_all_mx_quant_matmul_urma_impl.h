@@ -156,6 +156,7 @@ private:
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
         uint32_t bufferCount{0};    // win区复用槽位数，0=不复用
+        uint64_t effBufferCount{0};  // 归一化后的 slot 数（复用值或 commTiles），供 BufferChannel 寻址
         uint64_t scaleWinOffset{0}; // win区data部分字节大小，用作scale的winOffset
     } baseParams_;
 
@@ -203,10 +204,23 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
-    allToAllA_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm,
-                                           commBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
+    uint64_t maxTileSize = tilingData_->commTilingData.splitAxisTileSize >
+        tilingData_->commTilingData.splitAxisTailSize ?
+        tilingData_->commTilingData.splitAxisTileSize : tilingData_->commTilingData.splitAxisTailSize;
+    uint32_t commTiles = static_cast<uint32_t>(baseParams_.commTurn);
 
-    allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
+    Apace::Basic::BufferChannel dataChannel;
+    Apace::Basic::BufferChannel scaleChannel;
+    dataChannel.Init(0, static_cast<uint64_t>(baseParams_.rankSize) * maxTileSize * baseParams_.axisKa * sizeof(AType),
+                     static_cast<uint32_t>(baseParams_.effBufferCount), commTiles);
+    scaleChannel.Init(0, static_cast<uint64_t>(baseParams_.rankSize) * maxTileSize * baseParams_.scaleKaSize,
+                      commTiles, commTiles);
+
+    allToAllA_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, dataChannel, tilingData->commTilingData,
+                                           baseParams_.aGm, commBuf.Get(), baseParams_.rankSize,
+                                           static_cast<uint32_t>(GetBlockIdx()));
+
+    allToAllScaleA_.Init(udmaCtx_, teamBarrier_, scaleChannel, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
                          commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
                          baseParams_.scaleWinOffset);
 }
@@ -238,7 +252,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         // win buffer 复用：写 tile tid 会覆盖槽位 tid%bufferCount，需等本端 cube 消费完 tile tid-bufferCount，
         // 并跨 device 屏障保证对端 cube 也已释放该槽位
         if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>((tid - baseParams_.bufferCount) % SYNCALL_FLAG_ID_MAX);
+            allToAllA_.WaitRelease(tid);
             AscendC::SyncAll<true>();
             if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
                 teamBarrier_.CrossDevice();
@@ -288,12 +302,12 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     // release 门控用（0 表示不复用）
     baseParams_.bufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
                               static_cast<uint32_t>(rawBufferCount) : 0;
-    // A 数据补齐后的 footprint → scale 偏移
-    uint64_t effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
+    // 归一化后的 slot 数（不复用时 = commTiles，供 BufferChannel 寻址）
+    baseParams_.effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
     uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
         tilingData->commTilingData.splitAxisTailSize ?
         tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
-    baseParams_.scaleWinOffset = baseParams_.rankSize * effBufferCount *
+    baseParams_.scaleWinOffset = baseParams_.rankSize * baseParams_.effBufferCount *
                            maxTileSize * baseParams_.axisKa * sizeof(AType);
 }
 

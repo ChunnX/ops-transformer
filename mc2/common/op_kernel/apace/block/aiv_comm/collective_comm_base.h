@@ -17,6 +17,7 @@
 
 #include "collective_comm_context.h"
 #include "apace/tiling/comm_tiling_data.h"
+#include "apace/basic/buffer/buffer_channel.h"
 #include "tensor_api/tensor/pointer.h"
 #include "barrier/barrier_ubmem.h"
 
@@ -40,6 +41,7 @@ public:
     __aicore__ inline void Init(
         __gm__ CommUdmaContext* udmaCtx,
         Barrier& barrier,
+        Apace::Basic::BufferChannel& bufferChannel,
         const CommTilingData& tilingData,
         GM_ADDR localAddr,
         __ubuf__ uint8_t* commbuf,
@@ -52,6 +54,7 @@ public:
         }
         udmaCtx_ = udmaCtx;
         barrier_ = barrier;
+        bufferChannel_ = bufferChannel;
         localAddr_ = localAddr;
         tilingData_ = &tilingData;
         commBuf_ = commbuf;
@@ -159,6 +162,12 @@ public:
         return tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
     }
 
+    // 写端 buffer 复用释放等待（c 核消费完对应 slot 后放行）；不复用时为 no-op
+    __aicore__ inline void WaitRelease(uint32_t round)
+    {
+        bufferChannel_.WaitRelease(round);
+    }
+
     template<uint8_t BarrierMode = BARRIER_BOTH>
     __aicore__ inline void Finalize()
     {
@@ -169,6 +178,7 @@ protected:
     __gm__ CommUdmaContext* udmaCtx_;
     const CommTilingData* tilingData_;
     Barrier barrier_;
+    Apace::Basic::BufferChannel bufferChannel_;
 
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
     GM_ADDR localAddr_;
