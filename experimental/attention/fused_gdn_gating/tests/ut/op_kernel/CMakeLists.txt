@@ -29,7 +29,9 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
         add_library(${opName}_${socVersion}_cases_obj OBJECT
             ${fused_gdn_gating_kernel_src} ${OPKERNEL_CASES_SRC})
         target_compile_options(
-            ${opName}_${socVersion}_cases_obj PRIVATE -g -DUT_SOC_VERSION="${socVersion}"
+            ${opName}_${socVersion}_cases_obj PRIVATE
+            -g -DUT_SOC_VERSION="${socVersion}"
+            -include ${CMAKE_CURRENT_SOURCE_DIR}/${opName}_tiling.h
             )
         target_include_directories(
             ${opName}_${socVersion}_cases_obj
