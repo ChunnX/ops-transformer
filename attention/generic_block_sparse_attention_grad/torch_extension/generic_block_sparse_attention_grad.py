@@ -21,13 +21,15 @@ GSAG_METADATA_SIZE = (
 GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
 GSAG_TASK_ENTRY_SIZE = 4
 GSAG_METADATA_OP_NAME = "generic_block_sparse_attention_grad_metadata"
+ARC22_GBSAG_TASK_LIST_SIZE = 528  # 16 + 64 * 8
 
 
 def calc_gsag_metadata_size(batch_size: int, num_q_heads: int, num_j: int) -> int:
     """Required metadata int64 length: TASK_LIST_OFFSET + B * N1 * J * TASK_ENTRY_SIZE."""
-    return (
+    arc35_size = (
         GSAG_TASK_LIST_OFFSET + batch_size * num_q_heads * num_j * GSAG_TASK_ENTRY_SIZE
     )
+    return max(arc35_size, ARC22_GBSAG_TASK_LIST_SIZE)
 
 
 class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):

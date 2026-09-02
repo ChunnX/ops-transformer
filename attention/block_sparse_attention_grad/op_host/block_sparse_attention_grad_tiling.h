@@ -107,6 +107,7 @@ TILING_DATA_FIELD_DEF(uint64_t, postUbBaseSize);
 TILING_DATA_FIELD_DEF(uint64_t, ubSize);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradTilingData);
 END_TILING_DATA_DEF;
+
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad, BlockSparseAttentionGradTilingData)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1000, BlockSparseAttentionGradTilingDataArch35)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1001, BlockSparseAttentionGradTilingDataArch35)

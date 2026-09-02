@@ -14,11 +14,12 @@
  */
 
 #include "generic_block_sparse_attention_grad_metadata_aicpu.h"
+#include "arch22/generic_block_sparse_attention_grad_metadata_aicpu_arch22.h"
 
 using namespace optiling;
 
 namespace aicpu {
-uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t GenericBlockSparseAttentionGradMetadataCpuKernelArch35::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -29,7 +30,7 @@ uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::Compute(CpuKernelCont
 }
 
 // 从 CpuKernelContext 取输入输出与属性，并进行参数检查和初始化
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::Prepare(CpuKernelContext &ctx)
 {
     rsvdBlockIdx_ = ctx.Input(static_cast<uint32_t>(ParamId::rsvdBlockIdx));
     rsvdBlockCount_ = ctx.Input(static_cast<uint32_t>(ParamId::rsvdBlockCount));
@@ -64,7 +65,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::Prepare(CpuKernelContext 
 }
 
 // 检查参数是否合法
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsCheck()
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::ParamsCheck()
 {
     if (metadata_ == nullptr || metadata_->GetData() == nullptr || metadata_->GetTensorShape() == nullptr) {
         KERNEL_LOG_ERROR("Output metadata is nullptr");
@@ -98,7 +99,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsCheck()
 }
 
 // 初始化参数
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsInit()
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::ParamsInit()
 {
     auto idxShape = rsvdBlockIdx_->GetTensorShape();
     auto cntShape = rsvdBlockCount_->GetTensorShape();
@@ -144,7 +145,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvSeqLen(uint32_t bIdx) const
+uint32_t GenericBlockSparseAttentionGradMetadataCpuKernelArch35::GetKvSeqLen(uint32_t bIdx) const
 {
     if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
         const int32_t *sequsedPtr = static_cast<const int32_t *>(sequsedKv_->GetData());
@@ -157,7 +158,7 @@ uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvSeqLen(uint32_t 
     return static_cast<uint32_t>(maxKvSeqlen_);
 }
 
-uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvBlockLen(uint32_t bIdx, uint32_t jIdx) const
+uint32_t GenericBlockSparseAttentionGradMetadataCpuKernelArch35::GetKvBlockLen(uint32_t bIdx, uint32_t jIdx) const
 {
     const uint32_t actS2 = GetKvSeqLen(bIdx);
     const uint32_t s2Start = jIdx * baseN_;
@@ -168,7 +169,8 @@ uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvBlockLen(uint32_
     return remain < baseN_ ? remain : baseN_;
 }
 
-uint64_t GenericBlockSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t count, uint32_t kvBlockLen) const
+uint64_t GenericBlockSparseAttentionGradMetadataCpuKernelArch35::CalcGroupBlockCost(int32_t count,
+                                                                                    uint32_t kvBlockLen) const
 {
     if (count <= 0 || kvBlockLen == 0U) {
         return 0U;
@@ -179,7 +181,7 @@ uint64_t GenericBlockSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(in
 }
 
 // 构建 KV 块组,遍历顺序 B → N2 → J。每个 count>0 的 (b,n2,j) 成一个 KV 块组，并记录总的任务数量（baseN=128）
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::BuildKvBlockGroups()
 {
     const int32_t *countPtr = static_cast<const int32_t *>(rsvdBlockCount_->GetData());
     kvBlockGroups_.clear();
@@ -226,7 +228,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
 
 // 负载均衡,将 KV 块组分配到 AIC 核心上，按照任务数量进行分配，使得每个核心的块成本尽可能均衡，
 // 且保证每个group在同一个核上进行处理，使KV L1 可复用
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::BalanceKvBlockGroups()
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::BalanceKvBlockGroups()
 {
     const uint32_t groupNum = static_cast<uint32_t>(kvBlockGroups_.size());
     usedCoreNum_ = groupNum == 0U ? 1U : std::min(aicCoreNum_, groupNum);
@@ -284,7 +286,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::BalanceKvBlockGroups()
 }
 
 // 展开任务列表，将每个 KV 块组中的任务展开，并记录到任务列表中
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::ExpandTaskList()
 {
     taskList_.clear();
     for (const GsagKvBlockGroup &group : kvBlockGroups_) {
@@ -309,7 +311,7 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
 }
 
 // 生成元数据，将任务列表、块成本、核心数量等信息写入到 metadata 中
-bool GenericBlockSparseAttentionGradMetadataCpuKernel::GenMetadata()
+bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::GenMetadata()
 {
     int64_t *metadataPtr = static_cast<int64_t *>(metadata_->GetData());
     for (uint32_t i = 0U; i < metadataCapacity_; ++i) {
@@ -363,6 +365,28 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::GenMetadata()
     (void)socVersion_;
     return true;
 }
+
+class GenericBlockSparseAttentionGradMetadataCpuKernel : public CpuKernel {
+public:
+    GenericBlockSparseAttentionGradMetadataCpuKernel() = default;
+    ~GenericBlockSparseAttentionGradMetadataCpuKernel() override = default;
+    uint32_t Compute(CpuKernelContext &ctx) override
+    {
+        std::string socVersion;
+        if (!GetAttrValue(ctx, "soc_version", socVersion)) {
+            KERNEL_LOG_ERROR("Get soc_version failed!");
+            return KERNEL_STATUS_PARAM_INVALID;
+        }
+        if (socVersion.find("Ascend950") != std::string::npos) {
+            return arch35Kernel_.Compute(ctx);
+        }
+        return arch22Kernel_.Compute(ctx);
+    }
+
+private:
+    GenericBlockSparseAttentionGradMetadataCpuKernelArch35 arch35Kernel_;
+    GenericBlockSparseAttentionGradMetadataCpuKernelArch22 arch22Kernel_;
+};
 
 namespace {
 static const char *kernelType = "GenericBlockSparseAttentionGradMetadata";

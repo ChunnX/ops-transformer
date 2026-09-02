@@ -101,6 +101,8 @@ public:
         this->Attr("window_size_left").AttrType(OPTIONAL).Int(-1);
         this->Attr("window_size_right").AttrType(OPTIONAL).Int(-1);
 
+        this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend910_93");
         this->AICore().AddConfig("ascend950");
     }
 };
