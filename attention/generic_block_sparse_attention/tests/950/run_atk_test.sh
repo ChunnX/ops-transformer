@@ -12,8 +12,8 @@ ATK_WHITE_LIST=${ATK_WHITE_LIST:-}
 RUN_NONCONTIG=${RUN_NONCONTIG:-0}
 ATK_LOOP_NUMS=${ATK_LOOP_NUMS:-1}
 ATK_UNCON_WHITE_LIST=${ATK_UNCON_WHITE_LIST:-'[178]'}
-DEFAULT_CUSTOM_OPP_ENV=/home/npu_user1/l00937279/package/package_custom_personal/wjc/msa_new_dev_llw2_c36ad0218c/vendors/custom_transformer/bin/set_env.bash
-CUSTOM_OPP_ENV=${CUSTOM_OPP_ENV:-${DEFAULT_CUSTOM_OPP_ENV}}
+CUSTOM_OPP_ENV=${CUSTOM_OPP_ENV:-}
+ATK_ROOT=${ATK_ROOT:-}
 
 if [[ "${TEST_MODE}" != "normal" && "${TEST_MODE}" != "fd" ]]; then
     echo "TEST_MODE must be normal or fd, got: ${TEST_MODE}" >&2
@@ -36,16 +36,15 @@ elif [[ -f /usr/local/Ascend/cann-9.1.0/set_env.sh ]]; then
     source /usr/local/Ascend/cann-9.1.0/set_env.sh
 fi
 
-# Preserve the already-installed package as the default.  A newly installed
-# package can be selected without editing this script by exporting either
+# Select the package without editing this script by exporting either
 # CUSTOM_OPP_PATH=<install>/vendors/custom_transformer or CUSTOM_OPP_ENV=...
 if [[ -n "${CUSTOM_OPP_PATH:-}" ]]; then
     export ASCEND_CUSTOM_OPP_PATH=${CUSTOM_OPP_PATH}
-elif [[ -f "${CUSTOM_OPP_ENV}" ]]; then
+elif [[ -n "${CUSTOM_OPP_ENV}" && -f "${CUSTOM_OPP_ENV}" ]]; then
     # shellcheck disable=SC1090
     source "${CUSTOM_OPP_ENV}"
 else
-    echo "custom OPP environment not found: ${CUSTOM_OPP_ENV}" >&2
+    echo "custom OPP is not configured; set CUSTOM_OPP_PATH or CUSTOM_OPP_ENV" >&2
     exit 2
 fi
 
@@ -77,16 +76,16 @@ fi
 export ASCEND_RT_VISIBLE_DEVICES=${DEVICE_ID}
 ATK_LOGICAL_DEVICE_ID=0
 
-PYTHON_BIN=${PYTHON_BIN:-/usr/local/python3.12.13/bin/python3.12}
+PYTHON_BIN=${PYTHON_BIN:-python3}
 if command -v atk >/dev/null 2>&1; then
     ATK_CMD=(atk)
-elif [[ -x "${PYTHON_BIN}" ]] && "${PYTHON_BIN}" -c 'import atk' >/dev/null 2>&1; then
+elif command -v "${PYTHON_BIN}" >/dev/null 2>&1 && "${PYTHON_BIN}" -c 'import atk' >/dev/null 2>&1; then
     ATK_CMD=("${PYTHON_BIN}" -m atk)
-elif [[ -d /home/npu_user1/l00937279/ATK/atk ]]; then
-    export PYTHONPATH=/home/npu_user1/l00937279/ATK:${PYTHONPATH:-}
+elif [[ -n "${ATK_ROOT}" && -d "${ATK_ROOT}/atk" ]]; then
+    export PYTHONPATH=${ATK_ROOT}:${PYTHONPATH:-}
     ATK_CMD=("${PYTHON_BIN}" -m atk)
 else
-    echo "ATK is not installed and /home/npu_user1/l00937279/ATK is unavailable" >&2
+    echo "ATK is unavailable; install it or set ATK_ROOT to its repository root" >&2
     exit 2
 fi
 

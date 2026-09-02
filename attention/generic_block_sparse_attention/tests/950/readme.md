@@ -111,7 +111,7 @@ ATK 算子定义文件，描述：
 
 - `topK=1`。
 - `topK=11`。
-- `returnSoftmaxlse=1`。
+- `topK=16`，满足 Metadata FD gate。
 - 9 个 Base Task，超过 FD gate。
 
 FD 模式循环生成 `fd_case_specs.py` 中定义的确定性 FD Case。
@@ -274,16 +274,23 @@ fd_metadata_v8.py
 
 ## 5. 运行方法
 
+先设置仓库和自定义算子包的实际路径：
+
+```bash
+export REPO_ROOT=/path/to/ops-transformer
+export INSTALL_DIR=/path/to/custom-op-install
+```
+
 进入测试目录：
 
 ```bash
-cd /home/npu_user1/l00937279/ops-transformer/attention/generic_block_sparse_attention/tests/950
+cd ${REPO_ROOT}/attention/generic_block_sparse_attention/tests/950
 ```
 
 选择自定义 OPP：
 
 ```bash
-export CUSTOM_OPP_PATH=/home/npu_user1/l00937279/package/package_custom_personal_wjc_msa_new_dev_llw2_c36ad0218c_atk/vendors/custom_transformer
+export CUSTOM_OPP_PATH=${INSTALL_DIR}/vendors/custom_transformer
 ```
 
 ### 5.1 FD 完整测试

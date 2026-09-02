@@ -1,7 +1,7 @@
 """Metadata-v8 simulator for GenericBlockSparseAttention ATK tests.
 
 This module mirrors the AICPU scheduler in
-``sparse_attention_score_metadata_scheduler.h``.  It deliberately contains
+``generic_block_sparse_attention_metadata_scheduler.h``.  It deliberately contains
 no attention math: the serialized metadata drives the NPU kernel and the
 structured plan is consumed by the Python FD golden.
 """

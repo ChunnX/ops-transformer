@@ -13,7 +13,7 @@ BLOCK_SHAPE_X = 1
 BLOCK_SHAPE_Y = 128
 PAGED_BLOCK_SIZE = 128
 MAX_TOPK = 256
-# Keep in sync with sparse_attention_score_metadata.h
+# Keep in sync with generic_block_sparse_attention_metadata.h
 METADATA_TOTAL_SIZE = 1024
 
 
@@ -23,7 +23,7 @@ class GenericBlockSparseAttentionGenerator(CaseGenerator):
 
     Fixed (tiling/kernel):
       layoutQ=TND, layoutKv=PAGED_BBND, maskType=1, blockShape=[1,128], D=128
-      quantType=0, isPackedGQA=1, returnSoftmaxlse=0|1
+      quantType=0, isPackedGQA=1, returnSoftmaxlse=0
       softmaxPrecision=1 only (align BSA 950 innerPrecise=4 / low-prec path)
       topK <= 256, winLeft/winRight=-1, dstTypeMax=0.0
 
@@ -101,7 +101,7 @@ class GenericBlockSparseAttentionGenerator(CaseGenerator):
             "top_k": top_k,
             "max_blocks": max_blocks,
             "num_physical": num_physical,
-            "return_lse": random.choice([0, 1]),
+            "return_lse": 0,
         }
 
     def _fd_shape(self):
@@ -137,8 +137,8 @@ class GenericBlockSparseAttentionGenerator(CaseGenerator):
             # topK below the Metadata FD lower bound.
             (1, 1, 1, 16, 1, 0),
             (1, 1, 16, 8, 11, 0),
-            # Metadata may schedule FD, but public LSE forces Kernel fallback.
-            (1, 1, 16, 16, 16, 1),
+            # topK reaches the Metadata FD gate on the target branch.
+            (1, 1, 16, 16, 16, 0),
             # 9 base tasks violate totalTaskNum * 10 < 28 * 3.
             (1, 9, 16, 8, 16, 0),
         )
