@@ -25,7 +25,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> BlockAttentionResiduals(
 {
     int64_t numTokens = prefixSum.size(0);
     int64_t hiddenSize = prefixSum.size(1);
-    int64_t blockCount = blockRes.size(1) + 1;
+    int64_t numBlocks = blockRes.size(1);
+    int64_t blockCount = numBlocks + 1;
+    if (validBlockNum < 0) {
+        validBlockNum = numBlocks;
+    }
     at::Tensor hiddenStates;
     at::Tensor invNorm;
     at::Tensor probs;
@@ -58,7 +62,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> BlockAttentionResiduals(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("block_attention_residuals", &BlockAttentionResiduals, "block_attention_residuals", py::arg("prefix_sum"),
-          py::arg("block_res"), py::arg("proj_weight"), py::arg("norm_weight"), py::arg("valid_block_num"),
+          py::arg("block_res"), py::arg("proj_weight"), py::arg("norm_weight"), py::arg("valid_block_num") = -1,
           py::arg("norm_eps") = 1e-5, py::arg("need_backward") = false);
 }
 

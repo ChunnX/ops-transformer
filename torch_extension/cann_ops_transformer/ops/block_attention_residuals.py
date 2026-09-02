@@ -28,7 +28,7 @@ class BlockAttentionResidualsOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "block_attention_residuals(Tensor prefix_sum, Tensor block_res, Tensor proj_weight, "
-            "Tensor norm_weight, int valid_block_num=-1, float norm_eps=1e-5, bool? need_backward=None) "
+            "Tensor norm_weight, int? valid_block_num=None, float norm_eps=1e-5, bool? need_backward=None) "
             "-> (Tensor, Tensor, Tensor)"
         )
 
@@ -39,7 +39,7 @@ class BlockAttentionResidualsOpBuilder(OpBuilder):
             block_res,
             proj_weight,
             norm_weight,
-            valid_block_num=-1,
+            valid_block_num=None,
             norm_eps=1e-5,
             need_backward=None,
         ):
@@ -60,6 +60,12 @@ class BlockAttentionResidualsOpBuilder(OpBuilder):
 block_attention_residuals_op_builder = BlockAttentionResidualsOpBuilder()
 
 
+def _resolve_valid_block_num(block_res, valid_block_num):
+    if valid_block_num is None or valid_block_num < 0:
+        return block_res.size(1)
+    return valid_block_num
+
+
 def _resolve_need_backward(
     prefix_sum, block_res, proj_weight, norm_weight, need_backward
 ):
@@ -76,12 +82,11 @@ def _block_attention_residuals_dispatch(
     block_res,
     proj_weight,
     norm_weight,
-    valid_block_num=-1,
+    valid_block_num=None,
     norm_eps=1e-5,
     need_backward=None,
 ):
-    if valid_block_num < 0:
-        valid_block_num = block_res.size(1)
+    valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
     need_backward = _resolve_need_backward(
         prefix_sum, block_res, proj_weight, norm_weight, need_backward
     )
@@ -102,19 +107,20 @@ def block_attention_residuals(
     block_res,
     proj_weight,
     norm_weight,
-    valid_block_num=-1,
+    valid_block_num=None,
     norm_eps=1e-5,
     need_backward=None,
 ):
     """Attention Residual 加权融合前向（Eager / PrivateUse1）。
 
+    valid_block_num 为可选参数：不传或传入 None / -1 时默认等于 N（block_res.size(1)），
+    再下发给 ACLNN；当前仅支持等于 N。
     need_backward=None（默认）时根据是否所有输入（prefix_sum/block_res/proj_weight/norm_weight）
     都有梯度（requires_grad=True）自动决定：全有梯度则返回中间量，否则不返回。
     need_backward=False 时仅返回 hidden_states；
     need_backward=True 时返回 (hidden_states, inv_norm, probs)，dtype 分别为 BF16 / FP32 / FP32。
     """
-    if valid_block_num < 0:
-        valid_block_num = block_res.size(1)
+    valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
     need_backward = _resolve_need_backward(
         prefix_sum, block_res, proj_weight, norm_weight, need_backward
     )
