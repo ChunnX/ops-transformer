@@ -26,41 +26,42 @@
 
 ### 2.2 当前状态
 
-| 组件 | 状态 | 说明 |
-|------|------|------|
-| op_host (def/infershape/tiling) | ✅ 已完成 | 校验完整，aclnn 已改自动生成 |
-| common.h | ✅ 已修复 | 恢复 FIA_SYNC_MODE2/BUFFER_SIZE_BYTE_*/isLDOpen/splitMFlag |
-| arch35 kernel.h | ✅ 已修复 | 删多余`}`、恢复splitMFlag计算/isLDOpen读取、LI_SYNC_MODE4→PKI_SYNC_MODE4 |
-| arch35 service_cube.h | ✅ 已修复 | splitMFlag 恢复、命名修复 |
-| arch35 service_vector.h | ✅ 已修复 | ProcessTopK 从 LI 重写、InitBuffers 修复、ReinterpretCast 修复 |
-| arch22 kernel.h | ✅ 已修复 | negInf 定义、valueOutGmTmp uint32 |
-| arch22 service_vector.h | ✅ 已修复 | CleanInvalidOutput 重写、ProcessLD/ProcessVec 修复 |
+| 组件                            | 状态      | 说明                                                                        |
+| ------------------------------- | --------- | --------------------------------------------------------------------------- |
+| op_host (def/infershape/tiling) | ✅ 已完成 | 校验完整，aclnn 已改自动生成                                                |
+| common.h                        | ✅ 已修复 | 恢复 FIA_SYNC_MODE2/BUFFER_SIZE_BYTE_*/isLDOpen/splitMFlag                  |
+| arch35 kernel.h                 | ✅ 已修复 | 删多余`}`、恢复splitMFlag计算/isLDOpen读取、LI_SYNC_MODE4→PKI_SYNC_MODE4 |
+| arch35 service_cube.h           | ✅ 已修复 | splitMFlag 恢复、命名修复                                                   |
+| arch35 service_vector.h         | ✅ 已修复 | ProcessTopK 从 LI 重写、InitBuffers 修复、ReinterpretCast 修复              |
+| arch22 kernel.h                 | ✅ 已修复 | negInf 定义、valueOutGmTmp uint32                                           |
+| arch22 service_vector.h         | ✅ 已修复 | CleanInvalidOutput 重写、ProcessLD/ProcessVec 修复                          |
 
 ### 2.3 退化场景等价性分析
 
-| 计算路径 | LI 行为 | PKI 退化行为 | 等价? |
-|---------|---------|-------------|--------|
-| Q⊗K^T (Cube Mmad) | S2=token数 | pool_size=1 → S2=pool数=token数 | ✅ |
-| ReLU + Weight 聚合 | G头求和 | 相同 | ✅ |
-| Causal Mask | sparseMode==3 | maskMode==3 (值相同) | ✅ |
-| TopK 选择 | topk 个 | sparseCount=topk/1=topk | ✅ |
-| 索引输出 | topk 个 | topk+1-1=topk 个 | ✅ |
-| 值输出 | K_T (fp16/bf16) | **float** | ⚠️ 有意适配 |
-| INVALID_VAL | uint16 (0xFC00/0xFF80) | uint32 (0xFF800000 float -inf) | ⚠️ 有意适配 |
+| 计算路径           | LI 行为                | PKI 退化行为                     | 等价?         |
+| ------------------ | ---------------------- | -------------------------------- | ------------- |
+| Q⊗K^T (Cube Mmad) | S2=token数             | pool_size=1 → S2=pool数=token数 | ✅            |
+| ReLU + Weight 聚合 | G头求和                | 相同                             | ✅            |
+| Causal Mask        | sparseMode==3          | maskMode==3 (值相同)             | ✅            |
+| TopK 选择          | topk 个                | sparseCount=topk/1=topk          | ✅            |
+| 索引输出           | topk 个                | topk+1-1=topk 个                 | ✅            |
+| 值输出             | K_T (fp16/bf16)        | **float**                  | ⚠️ 有意适配 |
+| INVALID_VAL        | uint16 (0xFC00/0xFF80) | uint32 (0xFF800000 float -inf)   | ⚠️ 有意适配 |
 
 **有意差异**（非错误）：
+
 - 输出类型 float：规格要求 `sparseValuesOut` 为 FLOAT
 - INVALID_VAL：float -inf 适配 float 输出
 - `UIntToFloatReturnValue`：将 uint32 score 转换为 float 输出
 
 ### 2.4 待验证项
 
-| 验证项 | 方法 |
-|--------|------|
-| 编译通过 | arch35 + arch22 编译（FP16/BF16 两种 dtype） |
-| 功能正确性 | BSND/TND 两种 layout 跑通，结果与 LI 对齐 |
-| maskMode=0/3 | 两种 mask 模式均验证 |
-| returnValue true/false | 两种模式均验证 |
+| 验证项                 | 方法                                         |
+| ---------------------- | -------------------------------------------- |
+| 编译通过               | arch35 + arch22 编译（FP16/BF16 两种 dtype） |
+| 功能正确性             | BSND/TND 两种 layout 跑通，结果与 LI 对齐    |
+| maskMode=0/3           | 两种 mask 模式均验证                         |
+| returnValue true/false | 两种模式均验证                               |
 
 ### 2.5 遗留风险
 
@@ -83,11 +84,13 @@
 #### tiling 层（op_host）
 
 **`pool_key_indexer_tiling.h`**：
+
 - 添加 `#include <vector>`
 - `PoolKeyIndexerTiling` 类添加私有成员 `std::vector<uint32_t> keyStridesVec_`
 - 添加私有方法 `ge::graphStatus CheckKeyContiguous(const PoolKeyIndexerTilingInfo &info) const`
 
 **`pool_key_indexer_tiling.cpp`**：
+
 1. `ParseAndCheckParams` 中 key shape 解析之后，添加 `GetDynamicInputStride(PKI_POOL_KEY_INDEX, 0)` 读取运行时 stride 到 `keyStridesVec_`
 2. `keyStride0` 填值修改：
    - PA 路径：`keyStride0 = keyStridesVec_[0]`（有 stride 时）或 `0`（无 stride 时）——替代原来的 `blockSize * N2 * D`
@@ -102,9 +105,11 @@
 #### kernel 层 — arch22（op_kernel/arch22）
 
 **`pool_key_indexer_kernel.h` `InitTilingData`**：
+
 - 补 `constInfo.keyStride0 = tilingData->keyStride0`（arch22 原来未读取此字段）
 
 **`pool_key_indexer_service_cube.h` `KeyNd2NzForPA`**：
+
 - 地址计算从硬编码 `kCacheBlockSize * kHeadNum * headDim` 改为 `keyStride0`
   ```cpp
   // 改前：blkTable.GetValue(...) * kCacheBlockSize * kHeadNum * headDim
@@ -113,12 +118,12 @@
 
 #### 无需修改
 
-| 项 | 理由 |
-|---|---|
+| 项                                     | 理由                              |
+| -------------------------------------- | --------------------------------- |
 | `op_def` 所有 `IgnoreContiguous()` | 已正确，所有架构保留运行时 stride |
-| `common.h` `ConstInfo::keyStride0` | 字段已存在（共用） |
-| arch35 `kernel.h:155` | 已读 `keyStride0` |
-| arch35 `service_cube.h:279` | 已用 `keyStride0` 寻址 |
+| `common.h` `ConstInfo::keyStride0` | 字段已存在（共用）                |
+| arch35`kernel.h:155`                 | 已读`keyStride0`                |
+| arch35`service_cube.h:279`           | 已用`keyStride0` 寻址           |
 
 ### 2补.3 验证方法
 
@@ -139,13 +144,13 @@
 
 参考 LIV2 的 `cmp_ratio` / `cmp_residual_k` 设计模式：
 
-| 概念 | LIV2 | PKI | 对应关系 |
-|------|------|-----|---------|
-| 压缩比 | cmp_ratio (r) | pool_size | 连续 r/pool_size 个 token → 1 个压缩单元 |
-| 残余 token | cmp_residual_k (res_k) | pool_tail_k | 尾部不完整单元的有效 token 数 |
-| 原始序列长度 | L_orig = S2·r + res_k | L_orig = S2·pool_size + pool_tail_k | 结构性参数 |
-| 压缩空间 TopK | 在 S2 空间 | 在 S2 空间 (sparseCount=topk/pool_size) | 一致 |
-| 因果掩码 end(j) | (j+1)·r - 1 | (j+1)·pool_size - 1 | 一致 |
+| 概念            | LIV2                   | PKI                                     | 对应关系                                  |
+| --------------- | ---------------------- | --------------------------------------- | ----------------------------------------- |
+| 压缩比          | cmp_ratio (r)          | pool_size                               | 连续 r/pool_size 个 token → 1 个压缩单元 |
+| 残余 token      | cmp_residual_k (res_k) | pool_tail_k                             | 尾部不完整单元的有效 token 数             |
+| 原始序列长度    | L_orig = S2·r + res_k | L_orig = S2·pool_size + pool_tail_k    | 结构性参数                                |
+| 压缩空间 TopK   | 在 S2 空间             | 在 S2 空间 (sparseCount=topk/pool_size) | 一致                                      |
+| 因果掩码 end(j) | (j+1)·r - 1           | (j+1)·pool_size - 1                    | 一致                                      |
 
 **PKI 与 LIV2 完全对应**：PKI 的 `poolKey` 与 LIV2 的 `key` 一样，输入已经是压缩/聚合后的（S2 维度是压缩块/pool 数，不是原始 token 数）。两者的 cmp_ratio/pool_size、cmp_residual_k/pool_tail_k、因果掩码修正逻辑完全一致，可直接照搬 LIV2 的实现。
 
@@ -154,6 +159,7 @@
 #### 3.2.1 op_host 修改
 
 **tiling.cpp `ParseAndCheckParams`**：
+
 ```
 info.sparseCount = info.topk / info.poolSize;  // 已有
 // 新增：pool_size > 1 时的校验
@@ -165,6 +171,7 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 ```
 
 **tiling.h `ConstInfo`/`TilingData`**：
+
 ```
 // 已有：poolSize, topk, sparseCount, maskMode, poolTailK（需传入 kernel）
 // 新增传入 kernel：
@@ -176,6 +183,7 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 #### 3.2.2 arch35 kernel 修改
 
 **kernel.h `CalcRunInfo`**：
+
 ```
 // 因果掩码位置修正（参考 LIV2 的 cmp_ratio 逻辑）
 // maskMode == 3 (causal) 时：
@@ -186,14 +194,17 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 ```
 
 **service_cube.h `ComputeMm1`**：
+
 - 无需修改（poolKey 与 LIV2 的 key 语义一致，S2 维度是压缩/pool 数，Cube matmul 直接使用）
 
 **service_vector.h**：
+
 - `trunkLen` / `topkCount_` 已使用 `constInfo_.sparseCount`（在 tiling.cpp:175 计算 `= topk/poolSize`，kernel 仅读取 tilingData），退化时等价
 - TopK 在 S2 空间操作，输出 sparseCount 个 pool 索引
 - **不展开为 token 索引**（步骤3 才做）
 
 #### 3.2.3 arch22 kernel 修改
+
 - 同 arch35，因果掩码位置修正
 - `CleanInvalidOutput` 的填充范围按 sparseCount 调整
 
@@ -215,20 +226,22 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 
 ### 3.4 输出维度（步骤2 不展开）
 
-| 输出 | 退化场景(pool_size=1) | 步骤2(pool_size>1, 不展开) |
-|------|----------------------|---------------------------|
-| sparse_indices 最后一维 | topk + 0 = topk | **sparseCount = topk/pool_size**（pool 级别） |
-| sparse_values 最后一维 | topk/1 = topk | **sparseCount = topk/pool_size** |
+| 输出                    | 退化场景(pool_size=1) | 步骤2(pool_size>1, 不展开)                          |
+| ----------------------- | --------------------- | --------------------------------------------------- |
+| sparse_indices 最后一维 | topk + 0 = topk       | **sparseCount = topk/pool_size**（pool 级别） |
+| sparse_values 最后一维  | topk/1 = topk         | **sparseCount = topk/pool_size**              |
 
 **注意**：步骤2 输出的是 pool 索引（未展开），输出维度与规格不同（规格是 topk+pool_size-1）。步骤3 才展开到规格要求的维度。因此步骤2 的输出 shape 需要临时调整为 sparseCount 维度，步骤3 再改回。
 
 ### 3.5 验证方法
+
 - pool_size=2/4/8/16，pool_tail_k=0~pool_size-1
 - maskMode=0/3
 - 对比：手写 golden data（pool 级别 TopK 结果）
 - 退化验证：pool_size=1 时结果与步骤1 一致
 
 ### 3.6 风险点
+
 1. **pool_tail_k 传入 kernel**：当前 `poolTailK` 在 Init 中接收但未传递给 service。需要在 ConstInfo 中添加 poolTailK GM 偏移，kernel 运行时从 GM 读取每个 batch 的 tail_k 值
 2. **因果掩码精度**：`L_orig` 计算涉及乘法，需确认 int32/int64 精度
 3. **TND+PA 场景**：pool_tail_k 的前缀和处理需与 actual_seq_k 一致
@@ -259,6 +272,7 @@ info.sparseCount = info.topk / info.poolSize;  // 已有
 ### 4.2 关键修改点
 
 #### 4.2.1 输出 shape
+
 - sparse_indices 最后一维 = `topk + pool_size - 1`（规格要求，infershape/tiling 已正确）
 - sparse_values 最后一维 = `topk / pool_size` = sparseCount
 
@@ -371,29 +385,32 @@ __aicore__ void ExpandAndAppendIndices(
 
 **指令开销分析**：
 
-| 步骤 | 指令 | Brcb 路径 | Fallback 路径 |
-|------|------|-----------|--------------|
-| Step 0: 初始化 -1 | Duplicate | 1 | 1 |
-| 偏移模板构造 | SetValue | poolSize (≤128) | poolSize (≤128) |
-| 循环偏移复制 | DataCopy | validS2Len | — |
-| Muls | Muls | 1 | validS2Len/8 批 |
-| 广播 | Brcb | 1 | — |
-| 加偏移 | Add | 1 | validS2Len × 2 (Duplicate+Add) |
-| 尾块 | Duplicate + Add | 2 | 2 |
-| **总计** | | **~6 + validS2Len** | **~3 + validS2Len × 2.25** |
+| 步骤              | 指令            | Brcb 路径                 | Fallback 路径                     |
+| ----------------- | --------------- | ------------------------- | --------------------------------- |
+| Step 0: 初始化 -1 | Duplicate       | 1                         | 1                                 |
+| 偏移模板构造      | SetValue        | poolSize (≤128)          | poolSize (≤128)                  |
+| 循环偏移复制      | DataCopy        | validS2Len                | —                                |
+| Muls              | Muls            | 1                         | validS2Len/8 批                   |
+| 广播              | Brcb            | 1                         | —                                |
+| 加偏移            | Add             | 1                         | validS2Len × 2 (Duplicate+Add)   |
+| 尾块              | Duplicate + Add | 2                         | 2                                 |
+| **总计**    |                 | **~6 + validS2Len** | **~3 + validS2Len × 2.25** |
 
 对比标量方案 `O(validS2Len * poolSize)` 次标量赋值，两种向量化方案均显著优于标量。
 
 #### 4.2.3 arch22 同样新增展开逻辑
+
 - 在 Vector 核的输出阶段执行，逻辑与 arch35 一致
 - arch22 的向量指令 API 与 arch35 略有差异，需适配
 - arch22 的 Brcb 广播因子对齐要求可能不同（16 的倍数），需确认
 
 #### 4.2.4 infershape/tiling
+
 - 当前 infershape 已正确输出 `topk + pool_size - 1` 和 `topk / pool_size`
 - 步骤2 未修改输出维度，步骤3 无需恢复
 
 ### 4.3 验证方法
+
 - pool_size=2/4/8/16，pool_tail_k=0~pool_size-1
 - 验证输出维度 = topk + pool_size - 1
 - 验证有效展开索引正确性
@@ -404,6 +421,7 @@ __aicore__ void ExpandAndAppendIndices(
 - 退化验证：poolSize=1 时不执行展开，输出 = sparseCount = topk（与步骤2一致）
 
 ### 4.4 风险点
+
 1. **UB 空间**：workBuf 需容纳偏移模板 + 循环偏移 + baseIndices。Brcb 路径最大需 `AlignUp(poolSize,8) + AlignUp(validExpand,8) + AlignUp(validS2Len,8)` 个 int32。Fallback 路径只需偏移模板。需评估最大场景
 2. **Brcb 对齐约束**：广播因子需为 8 的倍数（arch35）或 16 的倍数（arch22），非对齐时走 Fallback
 3. **validS2Len 传递**：需从 ProcessTopK 的因果掩码计算中获取 validS2Len，传入 ExpandAndAppendIndices
@@ -418,6 +436,7 @@ __aicore__ void ExpandAndAppendIndices(
 > **2026-08-28 修订**：基于 `attention/quant_lightning_indexer_v2`（QLIv2）实际代码调研，**推翻原"Cube 侧 FP8→FP16 反量化后再 Mmad"的设想**，改为 QLIv2 的两条原生路径。两个语义决策已拍板（见 §5.2）。
 >
 > **2026-08-28 实施完成**：Phase 0-5 全部落地并在 A5（Ascend950PR）验证通过。
+>
 > - 量化套件 `tests/pytest/test_quant.py`：**22/22 passed**（mode=0/1 × BSND/TND/PA × mask 0/3 × PA 非连续 × E8M0=0xFF NaN 传播 × 错误路径）
 > - 量化泛化套件 `tests/pytest/test_quant_general.py`：**91/91 passed**（4 布局桶 × 2 mode × 8 例确定性随机 + 27 例定向边界：S2 跨 128 边界、0 池 batch、零长度 query、topk 极值含 3072、n1 极值 1/64、PA 非连续、pa_bs=1024、tail 边界、batch 5/6 维）
 > - 非量化回归：precision+smoke 138 passed、GE 图模式 68 passed（无回归）
@@ -436,29 +455,29 @@ __aicore__ void ExpandAndAppendIndices(
 
 QLIv2 实际架构（与"反量化成 FP16 再 Mmad"不同）：
 
-| QLIv2 quant_mode | Cube 侧 | scale 消费点 | PKI 对应 |
-|------------------|---------|-------------|---------|
-| 1 (FP8 per-token) | **原生 FP8×FP8 Mmad**（L0C fp32 累加），scale 不上 Cube | **Vector 侧融合**：`BatchMulWeightAndReduceSum(..., qScale, kScale)`——qScale 乘入 weight、kScale 乘入聚合和 | quantMode=0 |
-| 3 (mxFP8) | **LoadData-Mx 硬件反量化**：数据+E8M0 scale 同入 L0（scale 按 2 个 E8M0 打包成 bf16 单位 Dn2Nz 搬入 L1） | Cube L0 内硬件完成，Vector 无 scale | quantMode=1 |
+| QLIv2 quant_mode  | Cube 侧                                                                                                        | scale 消费点                                                                                                          | PKI 对应    |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1 (FP8 per-token) | **原生 FP8×FP8 Mmad**（L0C fp32 累加），scale 不上 Cube                                                 | **Vector 侧融合**：`BatchMulWeightAndReduceSum(..., qScale, kScale)`——qScale 乘入 weight、kScale 乘入聚合和 | quantMode=0 |
+| 3 (mxFP8)         | **LoadData-Mx 硬件反量化**：数据+E8M0 scale 同入 L0（scale 按 2 个 E8M0 打包成 bf16 单位 Dn2Nz 搬入 L1） | Cube L0 内硬件完成，Vector 无 scale                                                                                   | quantMode=1 |
 
 数学依据：quantMode=0 的 scale 为 per-token-head 标量，可从 D 维点积中完全提出：`relu(Σ_d q·k) · dq · dk`（scale 恒正，ReLU 与乘法可交换，等价精确）。quantMode=1 的 scale 为 per-32-D-group，不可提出，必须走硬件 MX 路径。
 
 **PKI 现有代码对两条路径的适配度**（调研确认）：
 
-| 项 | 状态 | 说明 |
-|----|------|------|
-| `MulWeightAndReduceSum`（arch35 vf/pool_key_indexer_vector1.h:228） | ✅ 预留 | 已声明 regQScale/regKScale 寄存器（从 QLIv2 简化而来未使用），qk 输入已是 float，ReLU 在 vector 侧做——mode=0 加 scale 是"回归"式改动 |
-| Fixpipe float 路径（arch35 service_cube.h:399-415） | ✅ 就绪 | `Fixpipe<float,float>` dualDstCtl 双目标已存在，FP8 Mmad 的 L0C float 结果直接复用 |
-| 模板 Tiling Key FP8 组合（template_tiling_key.h:168-177） | ✅ 已注册 | QUANT_MODE 0/1/2 全枚举已含，entry 的 FP8 dtype 分支已存在（pool_key_indexer.cpp:61-64） |
-| entry 按 QUANT_MODE 分发 SCALE_T | ❌ 缺失 | 当前 FP8 分支未区分 mode，PkiType 无 SCALE_T 参数 |
-| descale GM 接线 | ❌ 缺失 | kernel.h:417 已接收 qDescale/kDescale 形参但未消费 |
+| 项                                                                    | 状态      | 说明                                                                                                                                   |
+| --------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `MulWeightAndReduceSum`（arch35 vf/pool_key_indexer_vector1.h:228） | ✅ 预留   | 已声明 regQScale/regKScale 寄存器（从 QLIv2 简化而来未使用），qk 输入已是 float，ReLU 在 vector 侧做——mode=0 加 scale 是"回归"式改动 |
+| Fixpipe float 路径（arch35 service_cube.h:399-415）                   | ✅ 就绪   | `Fixpipe<float,float>` dualDstCtl 双目标已存在，FP8 Mmad 的 L0C float 结果直接复用                                                   |
+| 模板 Tiling Key FP8 组合（template_tiling_key.h:168-177）             | ✅ 已注册 | QUANT_MODE 0/1/2 全枚举已含，entry 的 FP8 dtype 分支已存在（pool_key_indexer.cpp:61-64）                                               |
+| entry 按 QUANT_MODE 分发 SCALE_T                                      | ❌ 缺失   | 当前 FP8 分支未区分 mode，PkiType 无 SCALE_T 参数                                                                                      |
+| descale GM 接线                                                       | ❌ 缺失   | kernel.h:417 已接收 qDescale/kDescale 形参但未消费                                                                                     |
 
 ### 5.2 语义决策记录（已拍板）
 
-| 决策点 | 结论 | 依据 |
-|--------|------|------|
-| mxFP8 语义 | **与 QLIv2 一致**：每 32 个 D 元素一组 E8M0 scale，descale shape = query/key 去 D shape + **[D/64, 2] 尾维**（E8M0 按 2 打包） | QLIv2 tiling.cpp:1158-1199（MX shape 校验）、golden.py:104-105 |
-| E8M0=0xFF | **不拦截，NaN 传播**（0xFF 按 E8M0 约定为 NaN） | QLIv2 golden.py:199-203（`raw==255 → NaN`）；host/kernel 均无 0xFF 校验 |
+| 决策点     | 结论                                                                                                                                       | 依据                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| mxFP8 语义 | **与 QLIv2 一致**：每 32 个 D 元素一组 E8M0 scale，descale shape = query/key 去 D shape + **[D/64, 2] 尾维**（E8M0 按 2 打包） | QLIv2 tiling.cpp:1158-1199（MX shape 校验）、golden.py:104-105             |
+| E8M0=0xFF  | **不拦截，NaN 传播**（0xFF 按 E8M0 约定为 NaN）                                                                                      | QLIv2 golden.py:199-203（`raw==255 → NaN`）；host/kernel 均无 0xFF 校验 |
 
 E8M0 解码约定（kernel/golden 共用）：`scale = 2^(raw - 127)`；`raw == 255 → NaN`；`raw == 0 → 2^-127`。
 
@@ -493,15 +512,15 @@ weights 在两种模式下均为 FP16/BF16（不量化）。arch22 不支持 FP8
 
 **已有校验**（tiling.cpp:243-337, 532-621，覆盖较全）：
 
-| 校验项 | 状态 | 位置 |
-|--------|------|------|
-| quantMode 合法值 (-1/0/1) | ✅ | :155 |
-| descale 空与非空匹配（-1→null，0/1→非null） | ✅ | :259-267, 280-285, 310-315 |
-| query dtype（-1→FP16/BF16，0/1→FP8_E4M3FN） | ✅ | :269-272, 287-290, 317-320 |
-| descale dtype（0→FLOAT，1→FLOAT8_E8M0） | ✅ | :294-301, 324-331 |
-| weights dtype（-1→同query，0/1→FP16/BF16） | ✅ | :274-276, 302-306, 332-336 |
-| descale shape 与 query/poolKey 逐维一致（含 PA 三维） | ✅（仅按 mode=0 语义） | :532-621 |
-| def.cpp 950 config dtype 组合表（4组合） | ✅ | def.cpp:112-145 |
+| 校验项                                                | 状态                   | 位置                       |
+| ----------------------------------------------------- | ---------------------- | -------------------------- |
+| quantMode 合法值 (-1/0/1)                             | ✅                     | :155                       |
+| descale 空与非空匹配（-1→null，0/1→非null）         | ✅                     | :259-267, 280-285, 310-315 |
+| query dtype（-1→FP16/BF16，0/1→FP8_E4M3FN）         | ✅                     | :269-272, 287-290, 317-320 |
+| descale dtype（0→FLOAT，1→FLOAT8_E8M0）             | ✅                     | :294-301, 324-331          |
+| weights dtype（-1→同query，0/1→FP16/BF16）          | ✅                     | :274-276, 302-306, 332-336 |
+| descale shape 与 query/poolKey 逐维一致（含 PA 三维） | ✅（仅按 mode=0 语义） | :532-621                   |
+| def.cpp 950 config dtype 组合表（4组合）              | ✅                     | def.cpp:112-145            |
 
 **缺口（4项，随本步骤补齐）**：
 
@@ -514,17 +533,18 @@ weights 在两种模式下均为 FP16/BF16（不量化）。arch22 不支持 FP8
 
 **keyDequantScaleStride0 填值**（参考 QLIv2 tiling.cpp:1374-1381；PKI 无 FP4，比 QLIv2 简单）：
 
-| 场景 | mode=0 (per-token) | mode=1 (mxFP8) |
-|------|--------------------|----------------|
-| PA（有运行时 stride） | `keyDequantScaleStridesVec_[0]` | `keyDequantScaleStridesVec_[0]` |
-| PA（无 stride，连续推导） | `blockSize * N2` | `blockSize * N2 * (D/32)` |
-| BSND/TND | 0（连续寻址，不用） | 0（连续寻址，不用） |
+| 场景                      | mode=0 (per-token)                | mode=1 (mxFP8)                    |
+| ------------------------- | --------------------------------- | --------------------------------- |
+| PA（有运行时 stride）     | `keyDequantScaleStridesVec_[0]` | `keyDequantScaleStridesVec_[0]` |
+| PA（无 stride，连续推导） | `blockSize * N2`                | `blockSize * N2 * (D/32)`       |
+| BSND/TND                  | 0（连续寻址，不用）               | 0（连续寻址，不用）               |
 
 **kernel 侧 k_descale 寻址**（mode=0，Vector 侧）：非 PA 连续寻址；PA 走 `block_table × keyDequantScaleStride0`（参考 QLIv2 GetKeyScale，service_vector.h:432-485）。mode=1 的 scale 寻址在 Cube 侧 LoadKScaleToL1 内（同公式）。
 
 ### 5.5 实施计划（6 Phase，每阶段独立编译验证）
 
 **Phase 0 — op_host + 规格修订**
+
 - fail-fast（tiling.cpp:247-257）→ 架构门禁：仅 `GetCurNpuArch()==DAV_3510` 放行 quantMode 0/1
 - descale shape 校验按 mode 分裂：mode=0 维持现状；mode=1 改为 +[D/64,2] 尾维（BSND:(B,S1,N1,D/64,2)，TND:(T1,N1,D/64,2)，PA:(blockNum,blockSize,N2,D/64,2)），补 headDim%64==0
 - `keyDequantScaleStridesVec_` 接线 + `keyDequantScaleStride0` 填值（按 §5.4 表）
@@ -532,18 +552,21 @@ weights 在两种模式下均为 FP16/BF16（不量化）。arch22 不支持 FP8
 - 修订 docs/aclnnKpoolIndexer.md 的 mode=1 descale shape（消除 §5.2 所述冲突）
 
 **Phase 1 — kernel 框架**
+
 - `PkiType` 增加 `SCALE_T` 模板参数（mode0→float，mode1→fp8_e8m0_t）+ `isMxFp8` trait（参考 QLIv2 common.h:38-58）
 - entry arch35 FP8 分支按 QUANT_MODE tpl 值分发 SCALE_T（pool_key_indexer.cpp:61-64）
 - kernel.h：descale GM 接线（mode=1 Cube 侧按 bfloat16_t reinterpret——2×E8M0 打包；mode=0 Vector 侧）
 - RunInfo 增 `tensorQScaleOffset/tensorKeyScaleOffset`（参考 QLIv2 kernel.h:690-715 的 scale offset 公式）
 
 **Phase 2 — Cube 侧**
+
 - FP8 NZ 布局因子：`KeyNd2NzForPA` dst offset `×FP8_BLOCK_CUBE(32)`（现 service_cube.h:294 是 FP16_BLOCK_CUBE=16）；`LoadData kStep=CeilDiv(headDim,32)`（现 /16）
 - L1/L0 buffer 按 sizeof(Q_T) 自动折半（InitBuffers 按类型分配，FP8 实例化自动生效，验证即可）
 - mode=1 MX 路径移植：`bufQScaleL1_/bufKeyScaleL1_` + `LoadQScaleToL1/LoadKScaleToL1`（Dn2Nz，`scalePerToken=D/32`，GM offset `/FP8_TWO`，PA 按 block_table×keyDequantScaleStride0）+ LoadData-Mx 变体（LoadData2DMxParams，`yStep=D/64`）+ L0 dst type `mx_fp8_e4m3_t`
 - Mmad/ComputeL0c/Fixpipe 不变
 
 **Phase 3 — Vector 侧（仅 mode=0）**
+
 - `InitVecInputTensor` 增 qScaleGm/kScaleGm；ProcessVec1 增两处搬运：
   - q_descale 与 weights 同 pattern 同 offset（shape 相同，QLIv2 直接复用 weightGmOffset，service_vector.h:523-531）
   - k_descale：非 PA 连续寻址；PA 走 `block_table × keyDequantScaleStride0`（参考 QLIv2 GetKeyScale，service_vector.h:432-485）
@@ -551,9 +574,11 @@ weights 在两种模式下均为 FP16/BF16（不量化）。arch22 不支持 FP8
 - UB 预算复核：kScaleBuf ~16KB + qScaleBuf（arch35 UB 248KB，需核算与现有 128KB mm1ResUB 的余量）
 
 **Phase 4 — torch_extension**
+
 - `FixPkiAclDtypes`：mode=1 校验 descale dtype 为 float8_e8m0fnu + TensorWrapper `ACL_FLOAT8_E8M0`；mode=0 直接透传（§6.3.2 预留项落地）
 
 **Phase 5 — 测试**
+
 - golden 扩展：mode=0 per-token 参考实现；mode=1 移植 QLIv2 `e8m0_raw_to_float`（含 0xFF→NaN）+ per-32-group 反量化
 - 用例矩阵：BSND/TND/PA × mask 0/3 × quant 0/1 × returnValue × E8M0=0xFF 用例（NaN 传播）× k_descale 0轴非连续 blockFusion
 - FP8 vs FP16 直接计算精度对比；arch22 拦截回归；quantMode=-1 无回归
@@ -581,30 +606,32 @@ weights 在两种模式下均为 FP16/BF16（不量化）。arch22 不支持 FP8
 **适配位置**：`ops-transformer/torch_extension/cann_ops_transformer`（OpBuilder + JIT 编译体系），**不是**算子目录下既有的 `torch_ops_extension/`（基于 `NpuExtension` + `EXEC_NPU_CMD_V1` 的旧式 custom 命名空间封装，二者并存，步骤5 以 `cann_ops_transformer` 体系为准）。
 
 **参考实现**：
+
 - 主参考：`ops/lightning_indexer.py` + `ops/csrc/lightning_indexer.cpp`（LIV2 非量化路径）
 - 量化路径参考：`ops/quant_lightning_indexer.py` + `ops/csrc/quant_lightning_indexer.cpp`（FP8 dtype 适配、`TensorWrapper` + `FixAclDtypes` 模式）
 
 **与 LIV2 的关键差异**：
 
-| 维度 | LIV2 | PKI | 影响 |
-|------|------|-----|------|
-| aclnn 接口 | 两段式 + 独立 `aclnnLightningIndexerV2Metadata` | **仅两段式，无 metadata 子算子** | 步骤5 无需 metadata 算子，仅注册单算子 |
-| 输出 values dtype | bfloat16 | **float**（规格要求） | 输出 tensor 用 `at::kFloat` |
-| 输出 indices 维度 | topk | **topk + pool_size - 1** | infershape 需按 pool_size 计算 |
-| 输出 values 维度 | topk | **topk / pool_size**（pool 级，非展开） | 与 indices 维度不同 |
-| return_value=False | values 为空 | values 为空（`{0}` shape） | 一致 |
-| 量化接口分离 | 独立 `quant_lightning_indexer` 算子 | **单算子，quant_mode 驱动** | 步骤5 只注册一个算子，quant_mode 作属性 |
+| 维度               | LIV2                                             | PKI                                           | 影响                                    |
+| ------------------ | ------------------------------------------------ | --------------------------------------------- | --------------------------------------- |
+| aclnn 接口         | 两段式 + 独立`aclnnLightningIndexerV2Metadata` | **仅两段式，无 metadata 子算子**        | 步骤5 无需 metadata 算子，仅注册单算子  |
+| 输出 values dtype  | bfloat16                                         | **float**（规格要求）                   | 输出 tensor 用`at::kFloat`            |
+| 输出 indices 维度  | topk                                             | **topk + pool_size - 1**                | infershape 需按 pool_size 计算          |
+| 输出 values 维度   | topk                                             | **topk / pool_size**（pool 级，非展开） | 与 indices 维度不同                     |
+| return_value=False | values 为空                                      | values 为空（`{0}` shape）                  | 一致                                    |
+| 量化接口分离       | 独立`quant_lightning_indexer` 算子             | **单算子，quant_mode 驱动**             | 步骤5 只注册一个算子，quant_mode 作属性 |
 
 ### 6.2 新增文件清单
 
-| 文件 | 职责 | 参考 |
-|------|------|------|
-| `torch_extension/cann_ops_transformer/ops/csrc/pool_key_indexer.cpp` | C++ 后端：构造输出 tensor + `ACLNN_CMD(aclnnPoolKeyIndexer, ...)` 下发 | `csrc/lightning_indexer.cpp` |
-| `torch_extension/cann_ops_transformer/ops/pool_key_indexer.py` | Python 前端：`OpBuilder` + schema + Meta + PrivateUse1 dispatch（`register_fake` 已移除，Meta impl 足够） | `ops/lightning_indexer.py` |
+| 文件                                                                                         | 职责                                                                                                          | 参考                                                                                                              |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `torch_extension/cann_ops_transformer/ops/csrc/pool_key_indexer.cpp`                       | C++ 后端：构造输出 tensor +`ACLNN_CMD(aclnnPoolKeyIndexer, ...)` 下发                                       | `csrc/lightning_indexer.cpp`                                                                                    |
+| `torch_extension/cann_ops_transformer/ops/pool_key_indexer.py`                             | Python 前端：`OpBuilder` + schema + Meta + PrivateUse1 dispatch（`register_fake` 已移除，Meta impl 足够） | `ops/lightning_indexer.py`                                                                                      |
 | `torch_extension/cann_ops_transformer/ops/graph_convert/graph_convert_pool_key_indexer.py` | torchair 图模式 GE Converter：`register_fx_node_ge_converter` + `torchair.ge.custom_op("PoolKeyIndexer")` | `graph_convert/graph_convert_lightning_indexer.py`（LIV2 stub）、旧 `torch_ops_extension` converter（已移植） |
-| `torch_extension/cann_ops_transformer/ops/__init__.py`（修改） | 导出 `pool_key_indexer` + `convert_pool_key_indexer` | 在末尾追加 import |
+| `torch_extension/cann_ops_transformer/ops/__init__.py`（修改）                             | 导出`pool_key_indexer` + `convert_pool_key_indexer`                                                       | 在末尾追加 import                                                                                                 |
 
 **依赖的公共组件（无需新建，已存在）**：
+
 - `op_builder/builder.py`：`OpBuilder` 基类（JIT `load`、`register_schema`、`register_meta`、`include_paths`、`cxx_args`、`extra_ldflags`）
 - `common/inc/aclnn_common.h`：`ACLNN_CMD` 宏、`ConvertType`、`TensorWrapper`、`get_valid_tensor`、`DecodeDevice`、`ApplyDeterministicConfig`
 
@@ -694,6 +721,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 > **注**：本样例未含 `c10::OptionalDeviceGuard`，与 LIV2/QLI/flash_attn 等 lightning 家族算子保持一致（依赖 `query.options()` 携带设备信息分配输出张量）。开发规范 §3.1 建议加 DeviceGuard，但当前算子家族约定不使用。
 >
 > **关键设计**：
+>
 > - `pool_tail_k` / `actual_seq_q` / `actual_seq_k` 是 `ValueDepend(OPTIONAL)` 输入，aclnn API 期望 `aclIntArray*`（非 `aclTensor*`），C++ wrapper 需将 1-D int64 tensor 转 CPU + `contiguous()` + 构造 `at::IntArrayRef`
 > - `block_table` / `q_descale` / `k_descale` 直接传 `c10::optional<at::Tensor>`，`ConvertType` 自动处理 optional→`aclTensor*`(或 nullptr)
 > - ACLNN_CMD 属性参数顺序为 `topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue`（对齐 aclnn IR 声明）
@@ -784,6 +812,7 @@ def pool_key_indexer(query, pool_key, weights, pool_tail_k, *,
 ```
 
 **与 LIV2 的差异**：
+
 - 无 `*_metadata` 算子（PKI aclnn 接口无 metadata 分离，不同于 LIV2 的 `lightning_indexer_metadata`）
 - `register_fake` 已移除（与 LIV2 主算子一致，Meta impl 足够提供 shape 推导；如后续需 torch.compile 支持可补回）
 - 已添加 `graph_convert_pool_key_indexer.py`，注册真实可用的 GE converter（移植自旧 `torch_ops_extension`，不同于 LIV2 的 RuntimeError stub）
@@ -815,6 +844,7 @@ def convert_pool_key_indexer(query, pool_key, weights, pool_tail_k, *,
 #### 6.3.5 注册导出 `ops/__init__.py`
 
 在末尾追加：
+
 ```python
 from .pool_key_indexer import pool_key_indexer
 from .graph_convert.graph_convert_pool_key_indexer import convert_pool_key_indexer
@@ -823,6 +853,7 @@ from .graph_convert.graph_convert_pool_key_indexer import convert_pool_key_index
 ### 6.4 顶层调用方式
 
 适配完成后，模型侧调用方式：
+
 ```python
 import cann_ops_transformer
 sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
@@ -842,10 +873,10 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 2. **命名违规**：旧封装使用 `npu_pool_key_indexer`（带 `npu_` 前缀），违反 `torch_extension_guidelines.md` §2.1「对外 api 接口及算子名一律不带 `npu_` 前缀」
 3. **重复维护**：两套封装底层调用同一个 `aclnnPoolKeyIndexer`，存在维护成本和一致性风险
 
-| 路径 | 入口 | 编译方式 | 适用场景 | 状态 |
-|------|------|---------|---------|------|
-| `cann_ops_transformer`（步骤5） | `cann_ops_transformer.pool_key_indexer` | `OpBuilder` JIT + `ACLNN_CMD` | eager + torch.compile + torchair 图模式 | ✅ 唯一路径 |
-| ~~`torch_ops_extension/`~~（已删除） | ~~`torch.ops.custom.npu_pool_key_indexer`~~ | ~~`NpuExtension` 预编译 + `EXEC_NPU_CMD_V1`~~ | ~~torchair 静态图~~ | ❌ 已删除 |
+| 路径                                    | 入口                                           | 编译方式                                           | 适用场景                                | 状态        |
+| --------------------------------------- | ---------------------------------------------- | -------------------------------------------------- | --------------------------------------- | ----------- |
+| `cann_ops_transformer`（步骤5）       | `cann_ops_transformer.pool_key_indexer`      | `OpBuilder` JIT + `ACLNN_CMD`                  | eager + torch.compile + torchair 图模式 | ✅ 唯一路径 |
+| ~~`torch_ops_extension/`~~（已删除） | ~~`torch.ops.custom.npu_pool_key_indexer`~~ | ~~`NpuExtension` 预编译 + `EXEC_NPU_CMD_V1`~~ | ~~torchair 静态图~~                    | ❌ 已删除   |
 
 ### 6.6 验证方法
 
@@ -916,31 +947,31 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 
 ## 八、关键设计决策记录
 
-| 决策 | 理由 |
-|------|------|
-| 输出类型 float（非 K_T） | 规格要求 sparseValuesOut 为 FLOAT |
-| INVALID_VAL = 0xFF800000 (uint32) | 适配 float -inf |
-| splitMFlag 恢复为运行时 | 与 LI 一致，退化场景下正确触发 |
-| isLDOpen 恒 false（未启用） | 与 LI v1/LIV2/QLI 一致。arch22 用 isSparseCountOver2K+ProcessLD 做跨核归约，arch35 用 isLDOpen 门控 S2 切分（恒 false，未启用）。arch22/arch35 不一致是与 LI v1 一致的设计模式 |
-| preTokens/nextTokens 删除 | PKI 不支持，arch22 删除引用 |
-| poolKey 与 key 一致 | 两者输入都是压缩/聚合后的，S2 是压缩空间长度，kernel 无需内部聚合 |
-| 步骤2 不展开索引 | 先验证 pool 级 TopK 正确性，再展开 |
-| 2补: 所有架构均支持 pool_key 0轴非连续（不区分 arch35/arch22） | arch22 用户也可能使用 PA 非连续 kv_cache；且 LIV2 仅在 950 设置但 PKI 已对所有 config 设置 IgnoreContiguous，需全架构接线 |
-| 2补: BSND/TND keyStride0 置 0 | kernel `KeyNd2Nz` 用 `tensorKeyOffset` 连续寻址，不读 keyStride0；只有 PA 的 `KeyNd2NzForPA` 需要 |
-| 步骤4 仅 arch35 | A2/A3 不支持 FP8 |
-| 步骤5 适配 cann_ops_transformer 而非改造 torch_ops_extension | OpBuilder JIT 模式支持 torch.compile，与 LIV2 体系一致；旧式封装违反命名规范（npu_ 前缀），功能被 cann_ops_transformer 完全覆盖后整体删除 |
-| 步骤5 graph_convert 移植真实 GE converter | 旧 torch_ops_extension 的 `torchair.ge.custom_op("PoolKeyIndexer")` 已移植到 cann_ops_transformer graph_convert，图模式可用（不同于 LIV2 的 RuntimeError stub） |
-| 步骤5 无独立 metadata 子算子 | PKI aclnn 接口无 metadata 分离（不同于 LIV2），单算子即可 |
-| 步骤5 输出 values dtype 固定 FLOAT | 规格要求，不跟随 query dtype，C++ 显式 `at::kFloat` |
-| 步骤5 register_fake 移除 | 与 LIV2 主算子一致，Meta impl 足够提供 shape 推导。register_fake 与 Meta 冲突，移除后 eager 模式正常 |
-| 8补2: ValueDepend 输入转 IntArrayRef | `pool_tail_k`/`actual_seq_q`/`actual_seq_k` 在 op_def 中声明为 ValueDepend(OPTIONAL)，aclnn API 期望 aclIntArray*（非 aclTensor*），C++ wrapper 需将 tensor 转 CPU+contiguous+IntArrayRef |
-| 8补2: workspace 总量含 16MB 系统保留区 | arch22 的 `GetUserWorkspace()` 从 base+16MB 开始，host tiling 必须加 `GetLibApiWorkSpaceSize()`，否则 kernel 越界踩踏系统区 |
-| 8补: quant_mode +1 偏移映射 | def.cpp 属性 `-1` 是用户接口约定不改；tiling.h `int32_t` 保持一致；TilingData `uint32_t` 和模板 Tiling Key 通过 `+1` 统一映射为非负值，实现用户接口与 kernel 内部编码解耦 |
-| 8补: 模板常量加 TPL_ 前缀 | `PKI_TPL_QUANT_*` / `PKI_TPL_MASK_*` 消除与 tiling.h `constexpr` 同名冲突，防止 `#define` 静默覆盖 |
-| 8补: ExpandAndAppendIndices 值传递 | `LocalTensor` 是轻量包装器（指针+偏移），按值传递无性能开销，且解决临时值无法绑定左值引用问题 |
-| 步骤4: mxFP8 语义与 QLIv2 对齐 | descale 每 32 个 D 元素一组 E8M0，shape 带 [D/64,2] 尾维；规格文档 aclnnKpoolIndexer.md 需同步修订（Phase 0） |
-| 步骤4: E8M0=0xFF 不拦截 | 按 NaN 传播（与 QLIv2 golden 一致，host/kernel 均无 0xFF 校验） |
-| 步骤4: 双路径而非反量化成FP16 | mode=0 原生FP8 Mmad + Vector scale 融合（scale 可从点积提出，数学精确）；mode=1 LoadData-Mx 硬件反量化（scale 不可提出）。推翻原蓝图的 "DequantQuery 先转FP16 再 Mmad" 设想 |
+| 决策                                                           | 理由                                                                                                                                                                                            |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 输出类型 float（非 K_T）                                       | 规格要求 sparseValuesOut 为 FLOAT                                                                                                                                                               |
+| INVALID_VAL = 0xFF800000 (uint32)                              | 适配 float -inf                                                                                                                                                                                 |
+| splitMFlag 恢复为运行时                                        | 与 LI 一致，退化场景下正确触发                                                                                                                                                                  |
+| isLDOpen 恒 false（未启用）                                    | 与 LI v1/LIV2/QLI 一致。arch22 用 isSparseCountOver2K+ProcessLD 做跨核归约，arch35 用 isLDOpen 门控 S2 切分（恒 false，未启用）。arch22/arch35 不一致是与 LI v1 一致的设计模式                  |
+| preTokens/nextTokens 删除                                      | PKI 不支持，arch22 删除引用                                                                                                                                                                     |
+| poolKey 与 key 一致                                            | 两者输入都是压缩/聚合后的，S2 是压缩空间长度，kernel 无需内部聚合                                                                                                                               |
+| 步骤2 不展开索引                                               | 先验证 pool 级 TopK 正确性，再展开                                                                                                                                                              |
+| 2补: 所有架构均支持 pool_key 0轴非连续（不区分 arch35/arch22） | arch22 用户也可能使用 PA 非连续 kv_cache；且 LIV2 仅在 950 设置但 PKI 已对所有 config 设置 IgnoreContiguous，需全架构接线                                                                       |
+| 2补: BSND/TND keyStride0 置 0                                  | kernel`KeyNd2Nz` 用 `tensorKeyOffset` 连续寻址，不读 keyStride0；只有 PA 的 `KeyNd2NzForPA` 需要                                                                                          |
+| 步骤4 仅 arch35                                                | A2/A3 不支持 FP8                                                                                                                                                                                |
+| 步骤5 适配 cann_ops_transformer 而非改造 torch_ops_extension   | OpBuilder JIT 模式支持 torch.compile，与 LIV2 体系一致；旧式封装违反命名规范（npu_ 前缀），功能被 cann_ops_transformer 完全覆盖后整体删除                                                       |
+| 步骤5 graph_convert 移植真实 GE converter                      | 旧 torch_ops_extension 的`torchair.ge.custom_op("PoolKeyIndexer")` 已移植到 cann_ops_transformer graph_convert，图模式可用（不同于 LIV2 的 RuntimeError stub）                                |
+| 步骤5 无独立 metadata 子算子                                   | PKI aclnn 接口无 metadata 分离（不同于 LIV2），单算子即可                                                                                                                                       |
+| 步骤5 输出 values dtype 固定 FLOAT                             | 规格要求，不跟随 query dtype，C++ 显式`at::kFloat`                                                                                                                                            |
+| 步骤5 register_fake 移除                                       | 与 LIV2 主算子一致，Meta impl 足够提供 shape 推导。register_fake 与 Meta 冲突，移除后 eager 模式正常                                                                                            |
+| 8补2: ValueDepend 输入转 IntArrayRef                           | `pool_tail_k`/`actual_seq_q`/`actual_seq_k` 在 op_def 中声明为 ValueDepend(OPTIONAL)，aclnn API 期望 aclIntArray*（非 aclTensor*），C++ wrapper 需将 tensor 转 CPU+contiguous+IntArrayRef |
+| 8补2: workspace 总量含 16MB 系统保留区                         | arch22 的`GetUserWorkspace()` 从 base+16MB 开始，host tiling 必须加 `GetLibApiWorkSpaceSize()`，否则 kernel 越界踩踏系统区                                                                  |
+| 8补: quant_mode +1 偏移映射                                    | def.cpp 属性`-1` 是用户接口约定不改；tiling.h `int32_t` 保持一致；TilingData `uint32_t` 和模板 Tiling Key 通过 `+1` 统一映射为非负值，实现用户接口与 kernel 内部编码解耦                |
+| 8补: 模板常量加 TPL_ 前缀                                      | `PKI_TPL_QUANT_*` / `PKI_TPL_MASK_*` 消除与 tiling.h `constexpr` 同名冲突，防止 `#define` 静默覆盖                                                                                      |
+| 8补: ExpandAndAppendIndices 值传递                             | `LocalTensor` 是轻量包装器（指针+偏移），按值传递无性能开销，且解决临时值无法绑定左值引用问题                                                                                                 |
+| 步骤4: mxFP8 语义与 QLIv2 对齐                                 | descale 每 32 个 D 元素一组 E8M0，shape 带 [D/64,2] 尾维；规格文档 aclnnKpoolIndexer.md 需同步修订（Phase 0）                                                                                   |
+| 步骤4: E8M0=0xFF 不拦截                                        | 按 NaN 传播（与 QLIv2 golden 一致，host/kernel 均无 0xFF 校验）                                                                                                                                 |
+| 步骤4: 双路径而非反量化成FP16                                  | mode=0 原生FP8 Mmad + Vector scale 融合（scale 可从点积提出，数学精确）；mode=1 LoadData-Mx 硬件反量化（scale 不可提出）。推翻原蓝图的 "DequantQuery 先转FP16 再 Mmad" 设想                     |
 
 ---
 
@@ -950,23 +981,23 @@ sparse_indices, sparse_values = cann_ops_transformer.pool_key_indexer(
 
 ### 修复类别总览
 
-| 类别 | 文件 | 根因 | 修复方式 |
-|------|------|------|---------|
-| #1 宏参数过多 | infershape.cpp | `OP_LOGE_FOR_INVALID_VALUE_WITH_REASON` 传 6 参，宏仅接受 4 参 | 移除多余格式化参数，信息编码到 reason 字符串 |
-| #2 常量重复定义 | tiling.h | `PKI_TOPK_6K` 在同文件定义两次 | 删除重复定义 |
-| #3 Shape 类型不匹配 | tiling.cpp | `GetInputShape()` 返回 `StorageShape*`，代码用 `Shape*` | 改为 `StorageShape*` + `GetStorageShape().` 访问 |
-| #4 TilingData 字段访问 | tiling.cpp | `TILING_DATA_FIELD_DEF` 生成私有字段+getter/setter，代码直接访问公有字段 | 改用 `set_` / `get_` 方法 |
-| #5 Platform API 不存在 | tiling.cpp | `GetNpuArch`/`GetCoreNumPerAicore`/`CalcTschBlockDim`(静态) 不存在 | 改用 `GetCurNpuArch`/`GetCoreNumAiv`/`GetCoreNumAic`/`GetCoreMemSize(2参)`/实例方法 |
-| #6 Workspace API 不存在 | tiling.cpp | `GetWorkspaceSize/SetWorkspaceSize` 不存在 | 改用 `GetWorkspaceSizes(1)` 返回指针 |
-| #7 格式化字符串类型 | tiling.cpp | `%lu` 用于 `int64_t`（有符号） | 改为 `%ld` |
-| #8 模板 Tiling Key 宏不存在 | template_tiling_key.h | `ASCENDC_TPL_INT_DECL/SEL` 不存在，导致文本泄漏 | 改用 `ASCENDC_TPL_UINT_DECL/SEL` + `ASCENDC_TPL_4_BW` + `ASCENDC_TPL_UI_LIST` |
-| #9 未声明标识符 | arch22/kernel.h | Init 参数名与函数体引用名不一致 | 统一为 snake_case |
-| #10 左值引用绑定临时值 | arch22/service_vector.h | `ExpandAndAppendIndices` 引用参数接收临时 `LocalTensor` | 改为值传递 |
-| #11 宿主编译缺语句终结符 | template_tiling_key.h | `ASCENDC_TPL_ARGS_DECL/SEL` 宿主模式展开为 `static` 变量缺 `;` | 宏调用末尾补 `;` |
-| #12 缺失 GET_TPL_TILING_KEY | tiling.cpp | tiling 未调用 `GET_TPL_TILING_KEY` + `SetTilingKey` | 补充 8 参数 Tiling Key 计算和 SetTilingKey |
-| #13 quant_mode 值冲突+同名重定义 | tiling.h + template_tiling_key.h + tiling.cpp | `int32_t(-1)` → `uint32_t(0xFFFFFFFF)` + `PKI_QUANT_NONE` 同名双重定义 | 模板常量加 `TPL_` 前缀 + `quantMode + 1` 偏移映射 |
-| #14 左值引用绑定临时值 | arch35/service_vector.h | 同 #10（arch35 遗漏） | 改为值传递 |
-| #15 mask 常量同名冲突 | template_tiling_key.h | `PKI_MASK_*` 同名双重定义 | 模板常量加 `TPL_` 前缀 |
+| 类别                             | 文件                                          | 根因                                                                          | 修复方式                                                                                   |
+| -------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| #1 宏参数过多                    | infershape.cpp                                | `OP_LOGE_FOR_INVALID_VALUE_WITH_REASON` 传 6 参，宏仅接受 4 参              | 移除多余格式化参数，信息编码到 reason 字符串                                               |
+| #2 常量重复定义                  | tiling.h                                      | `PKI_TOPK_6K` 在同文件定义两次                                              | 删除重复定义                                                                               |
+| #3 Shape 类型不匹配              | tiling.cpp                                    | `GetInputShape()` 返回 `StorageShape*`，代码用 `Shape*`                 | 改为`StorageShape*` + `GetStorageShape().` 访问                                        |
+| #4 TilingData 字段访问           | tiling.cpp                                    | `TILING_DATA_FIELD_DEF` 生成私有字段+getter/setter，代码直接访问公有字段    | 改用`set_` / `get_` 方法                                                               |
+| #5 Platform API 不存在           | tiling.cpp                                    | `GetNpuArch`/`GetCoreNumPerAicore`/`CalcTschBlockDim`(静态) 不存在      | 改用`GetCurNpuArch`/`GetCoreNumAiv`/`GetCoreNumAic`/`GetCoreMemSize(2参)`/实例方法 |
+| #6 Workspace API 不存在          | tiling.cpp                                    | `GetWorkspaceSize/SetWorkspaceSize` 不存在                                  | 改用`GetWorkspaceSizes(1)` 返回指针                                                      |
+| #7 格式化字符串类型              | tiling.cpp                                    | `%lu` 用于 `int64_t`（有符号）                                            | 改为`%ld`                                                                                |
+| #8 模板 Tiling Key 宏不存在      | template_tiling_key.h                         | `ASCENDC_TPL_INT_DECL/SEL` 不存在，导致文本泄漏                             | 改用`ASCENDC_TPL_UINT_DECL/SEL` + `ASCENDC_TPL_4_BW` + `ASCENDC_TPL_UI_LIST`         |
+| #9 未声明标识符                  | arch22/kernel.h                               | Init 参数名与函数体引用名不一致                                               | 统一为 snake_case                                                                          |
+| #10 左值引用绑定临时值           | arch22/service_vector.h                       | `ExpandAndAppendIndices` 引用参数接收临时 `LocalTensor`                   | 改为值传递                                                                                 |
+| #11 宿主编译缺语句终结符         | template_tiling_key.h                         | `ASCENDC_TPL_ARGS_DECL/SEL` 宿主模式展开为 `static` 变量缺 `;`          | 宏调用末尾补`;`                                                                          |
+| #12 缺失 GET_TPL_TILING_KEY      | tiling.cpp                                    | tiling 未调用`GET_TPL_TILING_KEY` + `SetTilingKey`                        | 补充 8 参数 Tiling Key 计算和 SetTilingKey                                                 |
+| #13 quant_mode 值冲突+同名重定义 | tiling.h + template_tiling_key.h + tiling.cpp | `int32_t(-1)` → `uint32_t(0xFFFFFFFF)` + `PKI_QUANT_NONE` 同名双重定义 | 模板常量加`TPL_` 前缀 + `quantMode + 1` 偏移映射                                       |
+| #14 左值引用绑定临时值           | arch35/service_vector.h                       | 同#10（arch35 遗漏）                                                          | 改为值传递                                                                                 |
+| #15 mask 常量同名冲突            | template_tiling_key.h                         | `PKI_MASK_*` 同名双重定义                                                   | 模板常量加`TPL_` 前缀                                                                    |
 
 ### quant_mode 值映射设计
 
@@ -983,16 +1014,16 @@ quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
 
 ### 修复文件清单
 
-| 文件 | 修改内容 |
-|------|----------|
-| `op_host/pool_key_indexer_infershape.cpp` | 宏参数从 6 改为 4 |
-| `op_host/pool_key_indexer_tiling.h` | 删除重复 `PKI_TOPK_6K` |
-| `op_host/pool_key_indexer_tiling.cpp` | StorageShape + set_/get_ + Platform API + Workspace API + %ld + GET_TPL_TILING_KEY + SetTilingKey + quant_mode +1 映射 |
-| `op_kernel/pool_key_indexer_template_tiling_key.h` | UINT_DECL + TPL_ 前缀 + 末尾分号 |
-| `op_kernel/arch22/pool_key_indexer_kernel.h` | 参数名 snake_case 对齐 |
-| `op_kernel/arch22/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices` 值传递 |
-| `op_kernel/arch35/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices` 值传递 |
-| `op_host/pool_key_indexer_def.cpp` | 无需修改（属性值 -1 通过 tiling.cpp +1 映射） |
+| 文件                                                   | 修改内容                                                                                                               |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `op_host/pool_key_indexer_infershape.cpp`            | 宏参数从 6 改为 4                                                                                                      |
+| `op_host/pool_key_indexer_tiling.h`                  | 删除重复`PKI_TOPK_6K`                                                                                                |
+| `op_host/pool_key_indexer_tiling.cpp`                | StorageShape + set_/get_ + Platform API + Workspace API + %ld + GET_TPL_TILING_KEY + SetTilingKey + quant_mode +1 映射 |
+| `op_kernel/pool_key_indexer_template_tiling_key.h`   | UINT_DECL + TPL_ 前缀 + 末尾分号                                                                                       |
+| `op_kernel/arch22/pool_key_indexer_kernel.h`         | 参数名 snake_case 对齐                                                                                                 |
+| `op_kernel/arch22/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices` 值传递                                                                                      |
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices` 值传递                                                                                      |
+| `op_host/pool_key_indexer_def.cpp`                   | 无需修改（属性值 -1 通过 tiling.cpp +1 映射）                                                                          |
 
 ### 参考模式来源
 
@@ -1019,16 +1050,16 @@ quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
 
 ### 修复内容
 
-| 文件 | 修改 |
-|------|------|
+| 文件                                                          | 修改                                                                                                                                   |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `op_host/pool_key_indexer_tiling.cpp` `CalcWorkspaceSize` | 重写为镜像 kernel 侧布局（`scoreGm` + `ldScore` + `ldParam` 三段），用 `aicNum × 2 × mBaseSizeAlign × 512 × 4B` 等正确公式 |
-| `op_host/pool_key_indexer_tiling.cpp` `DoTiling` | 补 `workspaceSize += ascendcPlatform.GetLibApiWorkSpaceSize()`（16MB 系统保留区） |
-| `op_host/pool_key_indexer_tiling.cpp` 文件末尾 | 补 `IMPL_OP_OPTILING(PoolKeyIndexer).Tiling(TilingPoolKeyIndexer)` 注册 |
-| `op_host/CMakeLists.txt` | `op_host_aclnnInner` → `op_host_aclnn`（与 LIV2/PKI 一致） |
-| `torch_extension/.../csrc/pool_key_indexer.cpp` | ValueDepend 输入转 `IntArrayRef` + ACLNN_CMD 参数顺序修正 + `get_valid_tensor` 移除 |
-| `torch_extension/.../pool_key_indexer.py` | 移除 `register_fake`（与 LIV2 主算子一致，Meta impl 足够） |
-| `tests/pytest/simple_test.py` | 新增简化测试脚本（2 用例：BSND + TND） |
-| `tests/atk/pool_key_indexer_golden.py` | `actual_seq_k` 语义修正（累计 pool 数，非 token 数） |
+| `op_host/pool_key_indexer_tiling.cpp` `DoTiling`          | 补`workspaceSize += ascendcPlatform.GetLibApiWorkSpaceSize()`（16MB 系统保留区）                                                     |
+| `op_host/pool_key_indexer_tiling.cpp` 文件末尾              | 补`IMPL_OP_OPTILING(PoolKeyIndexer).Tiling(TilingPoolKeyIndexer)` 注册                                                               |
+| `op_host/CMakeLists.txt`                                    | `op_host_aclnnInner` → `op_host_aclnn`（与 LIV2/PKI 一致）                                                                        |
+| `torch_extension/.../csrc/pool_key_indexer.cpp`             | ValueDepend 输入转`IntArrayRef` + ACLNN_CMD 参数顺序修正 + `get_valid_tensor` 移除                                                 |
+| `torch_extension/.../pool_key_indexer.py`                   | 移除`register_fake`（与 LIV2 主算子一致，Meta impl 足够）                                                                            |
+| `tests/pytest/simple_test.py`                               | 新增简化测试脚本（2 用例：BSND + TND）                                                                                                 |
+| `tests/atk/pool_key_indexer_golden.py`                      | `actual_seq_k` 语义修正（累计 pool 数，非 token 数）                                                                                 |
 
 ### C++ 后端关键修复
 
@@ -1038,13 +1069,13 @@ quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
 
 ### 验证结果
 
-| 项目 | 结果 |
-|------|------|
-| `simple_test.py` 2 用例 | 全部 PASSED（历史 0 通过） |
-| 9 组 shape 变体（1核/8核/64核、S2=4096、topk=2048/4096、B=2、pool16+causal、G=1） | 9/9 通过 |
-| 重复运行 ×3 | 稳定通过 |
-| 官方 pytest `test_pool_key_indexer.py` | 9/12 通过（3 个 TND 失败为 golden 脚本侧 `actual_seq_k` 语义问题） |
-| LIV2 同包回归 | 无影响 |
+| 项目                                                                              | 结果                                                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `simple_test.py` 2 用例                                                         | 全部 PASSED（历史 0 通过）                                          |
+| 9 组 shape 变体（1核/8核/64核、S2=4096、topk=2048/4096、B=2、pool16+causal、G=1） | 9/9 通过                                                            |
+| 重复运行 ×3                                                                      | 稳定通过                                                            |
+| 官方 pytest`test_pool_key_indexer.py`                                           | 9/12 通过（3 个 TND 失败为 golden 脚本侧`actual_seq_k` 语义问题） |
+| LIV2 同包回归                                                                     | 无影响                                                              |
 
 ### 经验教训
 
@@ -1059,34 +1090,34 @@ quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
 
 ### 输入约束
 
-| 参数 | 数据类型 | 维度 | 约束 |
-|------|---------|------|------|
-| query | FP16/BF16/FP8_E4M3FN(950) | BSND:(B,S1,N1,D) / TND:(T1,N1,D) | 不支持空tensor，N1≤64，headDim=128 |
-| poolKey | 同query | PA:(blockNum,blockSize,N2,D) / BSND:(B,S2,N2,D) / TND:(T2,N2,D) | 不支持空tensor，N2=1，支持0轴非连续 |
-| weights | FP16/BF16 | BSND:(B,S1,N1) / TND:(T1,N1) | 不支持空tensor |
-| poolTailK | INT64 | (B,) | 取值[0,pool_size-1] |
-| actualSeqLengthsQueryOptional | INT64 | (B,) | TND必传，前缀和 |
-| actualSeqLengthsKeyOptional | INT64 | (B,) | TND/PA必传，TND前缀和/PA非前缀和 |
-| blockTableOptional | INT32 | (B,maxBlockNumPerSeq) | PA必传 |
-| qDescaleOptional | FLOAT/FLOAT8_E8M0 | 同query维度/同key维度 | 量化必传 |
-| kDescaleOptional | 同上 | 同key维度 | 量化必传 |
+| 参数                          | 数据类型                  | 维度                                                            | 约束                                |
+| ----------------------------- | ------------------------- | --------------------------------------------------------------- | ----------------------------------- |
+| query                         | FP16/BF16/FP8_E4M3FN(950) | BSND:(B,S1,N1,D) / TND:(T1,N1,D)                                | 不支持空tensor，N1≤64，headDim=128 |
+| poolKey                       | 同query                   | PA:(blockNum,blockSize,N2,D) / BSND:(B,S2,N2,D) / TND:(T2,N2,D) | 不支持空tensor，N2=1，支持0轴非连续 |
+| weights                       | FP16/BF16                 | BSND:(B,S1,N1) / TND:(T1,N1)                                    | 不支持空tensor                      |
+| poolTailK                     | INT64                     | (B,)                                                            | 取值[0,pool_size-1]                 |
+| actualSeqLengthsQueryOptional | INT64                     | (B,)                                                            | TND必传，前缀和                     |
+| actualSeqLengthsKeyOptional   | INT64                     | (B,)                                                            | TND/PA必传，TND前缀和/PA非前缀和    |
+| blockTableOptional            | INT32                     | (B,maxBlockNumPerSeq)                                           | PA必传                              |
+| qDescaleOptional              | FLOAT/FLOAT8_E8M0         | 同query维度/同key维度                                           | 量化必传                            |
+| kDescaleOptional              | 同上                      | 同key维度                                                       | 量化必传                            |
 
 ### 属性约束
 
-| 属性 | 类型 | 约束 |
-|------|------|------|
-| topk | INT64 | [1,2048] ∪ {3072,4096,5120,6144,7168,8192} |
-| poolSize | INT64 | [1,128] |
-| maskMode | INT64 | 0(defaultMask) / 3(rightDownCausal) |
-| quantMode | INT64 | -1(不量化) / 0(FP8 per-token-head) / 1(mxFP8) |
-| returnValue | BOOL | 是否输出sparseValuesOut |
+| 属性        | 类型  | 约束                                          |
+| ----------- | ----- | --------------------------------------------- |
+| topk        | INT64 | [1,2048] ∪ {3072,4096,5120,6144,7168,8192}   |
+| poolSize    | INT64 | [1,128]                                       |
+| maskMode    | INT64 | 0(defaultMask) / 3(rightDownCausal)           |
+| quantMode   | INT64 | -1(不量化) / 0(FP8 per-token-head) / 1(mxFP8) |
+| returnValue | BOOL  | 是否输出sparseValuesOut                       |
 
 ### 输出约束
 
-| 输出 | 数据类型 | 维度 |
-|------|---------|------|
-| sparseIndicesOut | INT32 | BSND:(B,S1,topk+pool_size-1) / TND:(T1,topk+pool_size-1) |
-| sparseValuesOut | FLOAT | BSND:(B,S1,topk//pool_size) / TND:(T1,topk//pool_size) |
+| 输出             | 数据类型 | 维度                                                     |
+| ---------------- | -------- | -------------------------------------------------------- |
+| sparseIndicesOut | INT32    | BSND:(B,S1,topk+pool_size-1) / TND:(T1,topk+pool_size-1) |
+| sparseValuesOut  | FLOAT    | BSND:(B,S1,topk//pool_size) / TND:(T1,topk//pool_size)   |
 
 ### 维度一致性约束
 
@@ -1099,8 +1130,8 @@ quant_mode = 1    →    1                  →   2  (PKI_TPL_QUANT_MXFP8)
 
 ### 平台支持
 
-| 平台 | FP16/BF16 | FP8_E4M3FN | 量化 |
-|------|-----------|------------|------|
-| Ascend 950PR/950DT (arch35) | ✅ | ✅ | ✅ (quantMode 0/1) |
-| Atlas A3 (arch22) | ✅ | ❌ | ❌ |
-| Atlas A2 (arch22) | ✅ | ❌ | ❌ |
+| 平台                        | FP16/BF16 | FP8_E4M3FN | 量化               |
+| --------------------------- | --------- | ---------- | ------------------ |
+| Ascend 950PR/950DT (arch35) | ✅        | ✅         | ✅ (quantMode 0/1) |
+| Atlas A3 (arch22)           | ✅        | ❌         | ❌                 |
+| Atlas A2 (arch22)           | ✅        | ❌         | ❌                 |

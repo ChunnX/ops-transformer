@@ -89,8 +89,11 @@ def pack_pa_key(pool_key_rows, k_pool_lens, block_size):
             cur += 1
     if pool_key_rows.dtype == torch.float8_e4m3fn:
         # fp8 无 index 语义: 经 uint8 位视图散布(字节级等价)
-        return (blocks.view(torch.uint8)[perm].contiguous().view(torch.float8_e4m3fn),
-                bt, block_num)
+        return (
+            blocks.view(torch.uint8)[perm].contiguous().view(torch.float8_e4m3fn),
+            bt,
+            block_num,
+        )
     return blocks[perm].contiguous(), bt, block_num
 
 
@@ -167,7 +170,9 @@ def build_case_inputs(cfg):
         # (默认 FP16); 金标侧统一转 float32 计算(两种承载 dtype 数值近似)
         w_dtype = cfg.get("weights_dtype", torch.float16)
         if cfg["layout_q"] == "BSND":
-            q_fp32 = torch.randn(batch, q_lens[0], n1, HEAD_DIM, dtype=torch.float32) * 0.25
+            q_fp32 = (
+                torch.randn(batch, q_lens[0], n1, HEAD_DIM, dtype=torch.float32) * 0.25
+            )
             weights = torch.randn(batch, q_lens[0], n1, dtype=w_dtype)
         else:
             q_fp32 = torch.randn(sum(q_lens), n1, HEAD_DIM, dtype=torch.float32) * 0.25
@@ -195,7 +200,9 @@ def build_case_inputs(cfg):
     if quant_mode == 0:
         # mode=0: (B,S1,N1)/(T1,N1) float32
         if cfg["layout_q"] == "BSND":
-            q_descale = torch.rand(batch, q_lens[0], n1, dtype=torch.float32) * 3.0 + 0.25
+            q_descale = (
+                torch.rand(batch, q_lens[0], n1, dtype=torch.float32) * 3.0 + 0.25
+            )
         else:
             q_descale = torch.rand(sum(q_lens), n1, dtype=torch.float32) * 3.0 + 0.25
     elif quant_mode == 1:
@@ -211,8 +218,11 @@ def build_case_inputs(cfg):
     if cfg["layout_k"] == "PA_BBND":
         assert sum(k_pools) > 0, "PA 全部 batch 0 池时 pool_key 为空, 不允许"
         if need_fp32_gen:
-            logical = ((torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=torch.float32) * 0.25)
-                       .clamp(-3.5, 3.5).to(dtype))
+            logical = (
+                (torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=torch.float32) * 0.25)
+                .clamp(-3.5, 3.5)
+                .to(dtype)
+            )
         else:
             logical = torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=dtype)
         pool_key, block_table, block_num = pack_pa_key(
@@ -229,19 +239,29 @@ def build_case_inputs(cfg):
             if quant_mode == 0:
                 # 规格: (blockNum, blockSize, N2) 3D
                 k_descale = _pack_pa_descale(
-                    k_ds_logical.reshape(sum(k_pools), 1), k_pools,
-                    cfg["pa_block_size"], block_table, pad_value=0.0,
+                    k_ds_logical.reshape(sum(k_pools), 1),
+                    k_pools,
+                    cfg["pa_block_size"],
+                    block_table,
+                    pad_value=0.0,
                 ).squeeze(-1)  # 去掉打包用的尾维 1
             else:
                 # 规格: (blockNum, blockSize, N2, D/64, 2) 5D
                 k_descale = _pack_pa_descale(
-                    k_ds_logical, k_pools, cfg["pa_block_size"], block_table, pad_value=0,
+                    k_ds_logical,
+                    k_pools,
+                    cfg["pa_block_size"],
+                    block_table,
+                    pad_value=0,
                 )
     elif cfg["layout_q"] == "TND":  # TND/TND
         assert sum(k_pools) > 0, "pool_key 不允许空 tensor"
         if need_fp32_gen:
-            pool_key = ((torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=torch.float32) * 0.25)
-                        .clamp(-3.5, 3.5).to(dtype))
+            pool_key = (
+                (torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=torch.float32) * 0.25)
+                .clamp(-3.5, 3.5)
+                .to(dtype)
+            )
         else:
             pool_key = torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=dtype)
         actual_seq_k = torch.tensor(k_pools, dtype=torch.int64).cumsum(0)  # 前缀和
@@ -250,14 +270,19 @@ def build_case_inputs(cfg):
             if quant_mode == 0:
                 k_descale = k_ds_logical.reshape(sum(k_pools), N2)
             else:
-                k_descale = k_ds_logical.reshape(sum(k_pools), N2, HEAD_DIM // 64, 2)  # (T2,N2,D/64,2)
+                k_descale = k_ds_logical.reshape(
+                    sum(k_pools), N2, HEAD_DIM // 64, 2
+                )  # (T2,N2,D/64,2)
     else:  # BSND/BSND: 不允许 S2 pad, 各 batch 池数必须相同
         pools = k_pools[0]
         assert all(p == pools for p in k_pools), "BSND 要求各 batch 池数相同"
         assert pools > 0
         if need_fp32_gen:
-            pool_key = ((torch.randn(batch, pools, N2, HEAD_DIM, dtype=torch.float32) * 0.25)
-                        .clamp(-3.5, 3.5).to(dtype))
+            pool_key = (
+                (torch.randn(batch, pools, N2, HEAD_DIM, dtype=torch.float32) * 0.25)
+                .clamp(-3.5, 3.5)
+                .to(dtype)
+            )
         else:
             pool_key = torch.randn(batch, pools, N2, HEAD_DIM, dtype=dtype)
         k_ds_logical = _make_k_descale_logical(quant_mode, k_pools)
@@ -318,8 +343,9 @@ def _pack_pa_descale(descale_rows, k_pool_lens, block_size, block_table, pad_val
     block_num = sum(blocks_per_batch)
     tail_dims = descale_rows.shape[1:]
     # 先按"逐 batch 前缀填块"的原始逻辑顺序组块
-    ordered = torch.full((block_num, block_size, 1, *tail_dims), pad_value,
-                         dtype=descale_rows.dtype)
+    ordered = torch.full(
+        (block_num, block_size, 1, *tail_dims), pad_value, dtype=descale_rows.dtype
+    )
     row_start = blk_start = 0
     for pools, nb in zip(k_pool_lens, blocks_per_batch):
         if nb == 0:
@@ -327,8 +353,9 @@ def _pack_pa_descale(descale_rows, k_pool_lens, block_size, block_table, pad_val
         seg = descale_rows[row_start : row_start + pools]
         pad = nb * block_size - pools
         if pad:
-            seg = torch.cat([seg, torch.full((pad, *tail_dims), pad_value,
-                                             dtype=seg.dtype)], dim=0)
+            seg = torch.cat(
+                [seg, torch.full((pad, *tail_dims), pad_value, dtype=seg.dtype)], dim=0
+            )
         ordered[blk_start : blk_start + nb] = seg.view(nb, block_size, 1, *tail_dims)
         row_start += pools
         blk_start += nb
@@ -527,6 +554,54 @@ def _e8m0_to_scale(t):
     return scale
 
 
+def _capture_run(cfg, run):
+    """标准 NPUGraph 捕获流程: 侧流预热 + 捕获(与 test_aclgraph.py 口径一致)。"""
+    torch_npu.npu.set_device(get_device_id())
+    s = torch_npu.npu.Stream()
+    s.wait_stream(torch_npu.npu.current_stream())
+    with torch_npu.npu.stream(s):
+        for _ in range(3):
+            run()
+    torch_npu.npu.current_stream().wait_stream(s)
+
+    g = torch_npu.npu.NPUGraph()
+    with torch_npu.npu.graph(g):
+        out = run()
+    return g, out
+
+
+def run_op_aclgraph(inputs, cfg, device_id=None):
+    """aclgraph(原生 NPUGraph)捕获/回放调用算子, 返回 CPU 输出。
+
+    值输入(pool_tail_k/actual_seq_q/k)搬至 NPU, csrc 走 aclnn Tensor 变体
+    (捕获期无阻塞 D2H), device 值输入为图输入。侧流预热 + 捕获 + 回放,
+    回放输出与 CPU golden 比对。return_value=False 时 values 为空 tensor,
+    与 assert_output_spec 的 empty 口径兼容。
+    """
+    dev = f"npu:{device_id if device_id is not None else get_device_id()}"
+    q, k, w, ptk, asq, ask, bt = _op_tensor_args(inputs, dev)
+    kwargs = dict(
+        actual_seq_q=asq,
+        actual_seq_k=ask,
+        block_table=bt,
+        layout_q=cfg["layout_q"],
+        layout_k=cfg["layout_k"],
+        topk=cfg["topk"],
+        pool_size=cfg["pool_size"],
+        mask_mode=cfg["mask_mode"],
+        quant_mode=-1,
+        return_value=cfg["return_value"],
+    )
+
+    def run():
+        return pool_key_indexer(q, k, w, ptk, **kwargs)
+
+    g, (indices, values) = _capture_run(cfg, run)
+    g.replay()
+    torch.npu.synchronize()
+    return indices.cpu(), values.cpu()
+
+
 def run_golden(inputs, cfg, ref_device="cpu"):
     """统一标杆调用(cpu 金标 / npu 组合标杆, 由 ref_device 指定)。
 
@@ -562,13 +637,11 @@ def run_golden(inputs, cfg, ref_device="cpu"):
     if inputs.get("q_descale") is not None:
         q_descale = inputs["q_descale"].to(dev)
         if quant_mode == 1:
-            q_descale = _e8m0_to_scale(q_descale).reshape(
-                *q_descale.shape[:-2], -1)
+            q_descale = _e8m0_to_scale(q_descale).reshape(*q_descale.shape[:-2], -1)
     if inputs.get("k_descale") is not None:
         k_descale = inputs["k_descale"].to(dev)
         if quant_mode == 1:
-            k_descale = _e8m0_to_scale(k_descale).reshape(
-                *k_descale.shape[:-2], -1)
+            k_descale = _e8m0_to_scale(k_descale).reshape(*k_descale.shape[:-2], -1)
     g_indices, g_values = pool_key_indexer_reference(
         moved["query"],
         moved["pool_key"],

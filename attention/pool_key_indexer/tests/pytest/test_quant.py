@@ -42,6 +42,9 @@ torch_npu = pytest.importorskip("torch_npu")
 if not torch.npu.is_available():
     pytest.skip("NPU device is not available", allow_module_level=True)
 
+if "950" not in torch.npu.get_device_properties(0).name:
+    pytest.skip("quant_mode 仅 Ascend950(arch35) 支持", allow_module_level=True)
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from pki_common import (  # noqa: E402
@@ -65,94 +68,390 @@ FP8 = torch.float8_e4m3fn
 
 _QUANT_FIXED_CASES = [
     # ---- mode=0 (FP8 per-token-head) ----
-    dict(id="q0_bsnd_bsnd_nomask_noval", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[8], k_pools=[64], n1=8, topk=32, pool_size=1,
-         mask_mode=0, return_value=False, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=101, quant_mode=0),
-    dict(id="q0_bsnd_bsnd_causal_val", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[16], k_pools=[128], n1=8, topk=128, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=102, quant_mode=0),
-    dict(id="q0_bsnd_bsnd_ps16_causal", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[32], k_pools=[64], n1=16, topk=256, pool_size=16,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=[3], seed=103, quant_mode=0),
-    dict(id="q0_tnd_tnd_causal", layout_q="TND", layout_k="TND",
-         dtype=FP8, q_lens=[8, 12], k_pools=[48, 32], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=104, quant_mode=0),
-    dict(id="q0_tnd_tnd_nomask_noval", layout_q="TND", layout_k="TND",
-         dtype=FP8, q_lens=[16, 8], k_pools=[64, 64], n1=4, topk=32, pool_size=1,
-         mask_mode=0, return_value=False, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=105, quant_mode=0),
-    dict(id="q0_tnd_pa_causal", layout_q="TND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[8, 16], k_pools=[32, 48], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=106, quant_mode=0),
-    dict(id="q0_tnd_pa_noncontig_causal", layout_q="TND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[8, 8], k_pools=[48, 32], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=True,
-         tail=None, seed=107, quant_mode=0),
-    dict(id="q0_bsnd_pa_nomask_val", layout_q="BSND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[16], k_pools=[64], n1=8, topk=128, pool_size=8,
-         mask_mode=0, return_value=True, pa_block_size=32, key_non_contig=False,
-         tail=None, seed=108, quant_mode=0),
-    dict(id="q0_bsnd_bsnd_g64_causal", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[16], k_pools=[128], n1=64, topk=128, pool_size=1,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=109, quant_mode=0),
-    dict(id="q0_bsnd_bsnd_topk2k_nomask", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[8], k_pools=[256], n1=8, topk=2048, pool_size=16,
-         mask_mode=0, return_value=False, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=110, quant_mode=0),
-
+    dict(
+        id="q0_bsnd_bsnd_nomask_noval",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[8],
+        k_pools=[64],
+        n1=8,
+        topk=32,
+        pool_size=1,
+        mask_mode=0,
+        return_value=False,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=101,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_bsnd_bsnd_causal_val",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[128],
+        n1=8,
+        topk=128,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=102,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_bsnd_bsnd_ps16_causal",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[32],
+        k_pools=[64],
+        n1=16,
+        topk=256,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=[3],
+        seed=103,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_tnd_tnd_causal",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP8,
+        q_lens=[8, 12],
+        k_pools=[48, 32],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=104,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_tnd_tnd_nomask_noval",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP8,
+        q_lens=[16, 8],
+        k_pools=[64, 64],
+        n1=4,
+        topk=32,
+        pool_size=1,
+        mask_mode=0,
+        return_value=False,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=105,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_tnd_pa_causal",
+        layout_q="TND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[8, 16],
+        k_pools=[32, 48],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=106,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_tnd_pa_noncontig_causal",
+        layout_q="TND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[8, 8],
+        k_pools=[48, 32],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=True,
+        tail=None,
+        seed=107,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_bsnd_pa_nomask_val",
+        layout_q="BSND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[64],
+        n1=8,
+        topk=128,
+        pool_size=8,
+        mask_mode=0,
+        return_value=True,
+        pa_block_size=32,
+        key_non_contig=False,
+        tail=None,
+        seed=108,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_bsnd_bsnd_g64_causal",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[128],
+        n1=64,
+        topk=128,
+        pool_size=1,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=109,
+        quant_mode=0,
+    ),
+    dict(
+        id="q0_bsnd_bsnd_topk2k_nomask",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[8],
+        k_pools=[256],
+        n1=8,
+        topk=2048,
+        pool_size=16,
+        mask_mode=0,
+        return_value=False,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=110,
+        quant_mode=0,
+    ),
     # ---- BF16 weights(量化场景规格允许 FP16/BF16; P1-2 修复的防回退覆盖) ----
-    dict(id="q0_bf16w_bsnd_causal", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[16], k_pools=[64], n1=8, topk=128, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=111, quant_mode=0, weights_dtype=torch.bfloat16),
-    dict(id="q0_bf16w_tnd_pa", layout_q="TND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[8, 16], k_pools=[32, 48], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=112, quant_mode=0, weights_dtype=torch.bfloat16),
-    dict(id="q1_bf16w_bsnd_causal", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[16], k_pools=[64], n1=8, topk=128, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=113, quant_mode=1, weights_dtype=torch.bfloat16),
-    dict(id="q0_bf16w_n1_48", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[16], k_pools=[64], n1=48, topk=128, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=114, quant_mode=0, weights_dtype=torch.bfloat16),
-
+    dict(
+        id="q0_bf16w_bsnd_causal",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[64],
+        n1=8,
+        topk=128,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=111,
+        quant_mode=0,
+        weights_dtype=torch.bfloat16,
+    ),
+    dict(
+        id="q0_bf16w_tnd_pa",
+        layout_q="TND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[8, 16],
+        k_pools=[32, 48],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=112,
+        quant_mode=0,
+        weights_dtype=torch.bfloat16,
+    ),
+    dict(
+        id="q1_bf16w_bsnd_causal",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[64],
+        n1=8,
+        topk=128,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=113,
+        quant_mode=1,
+        weights_dtype=torch.bfloat16,
+    ),
+    dict(
+        id="q0_bf16w_n1_48",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[64],
+        n1=48,
+        topk=128,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=114,
+        quant_mode=0,
+        weights_dtype=torch.bfloat16,
+    ),
     # ---- mode=1 (mxFP8, E8M0 scale) ----
-    dict(id="q1_bsnd_bsnd_nomask_noval", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[8], k_pools=[64], n1=8, topk=32, pool_size=1,
-         mask_mode=0, return_value=False, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=201, quant_mode=1),
-    dict(id="q1_bsnd_bsnd_causal_val", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[16], k_pools=[128], n1=8, topk=128, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=202, quant_mode=1),
-    dict(id="q1_bsnd_bsnd_ps16_causal", layout_q="BSND", layout_k="BSND",
-         dtype=FP8, q_lens=[32], k_pools=[64], n1=16, topk=256, pool_size=16,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=[5], seed=203, quant_mode=1),
-    dict(id="q1_tnd_tnd_causal", layout_q="TND", layout_k="TND",
-         dtype=FP8, q_lens=[8, 12], k_pools=[48, 32], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=204, quant_mode=1),
-    dict(id="q1_tnd_pa_causal", layout_q="TND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[8, 16], k_pools=[32, 48], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=False,
-         tail=None, seed=205, quant_mode=1),
-    dict(id="q1_tnd_pa_noncontig_causal", layout_q="TND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[8, 8], k_pools=[48, 32], n1=8, topk=64, pool_size=8,
-         mask_mode=3, return_value=True, pa_block_size=16, key_non_contig=True,
-         tail=None, seed=206, quant_mode=1),
-    dict(id="q1_bsnd_pa_nomask_val", layout_q="BSND", layout_k="PA_BBND",
-         dtype=FP8, q_lens=[16], k_pools=[64], n1=8, topk=128, pool_size=8,
-         mask_mode=0, return_value=True, pa_block_size=32, key_non_contig=False,
-         tail=None, seed=207, quant_mode=1),
+    dict(
+        id="q1_bsnd_bsnd_nomask_noval",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[8],
+        k_pools=[64],
+        n1=8,
+        topk=32,
+        pool_size=1,
+        mask_mode=0,
+        return_value=False,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=201,
+        quant_mode=1,
+    ),
+    dict(
+        id="q1_bsnd_bsnd_causal_val",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[128],
+        n1=8,
+        topk=128,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=202,
+        quant_mode=1,
+    ),
+    dict(
+        id="q1_bsnd_bsnd_ps16_causal",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP8,
+        q_lens=[32],
+        k_pools=[64],
+        n1=16,
+        topk=256,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=[5],
+        seed=203,
+        quant_mode=1,
+    ),
+    dict(
+        id="q1_tnd_tnd_causal",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP8,
+        q_lens=[8, 12],
+        k_pools=[48, 32],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=204,
+        quant_mode=1,
+    ),
+    dict(
+        id="q1_tnd_pa_causal",
+        layout_q="TND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[8, 16],
+        k_pools=[32, 48],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=False,
+        tail=None,
+        seed=205,
+        quant_mode=1,
+    ),
+    dict(
+        id="q1_tnd_pa_noncontig_causal",
+        layout_q="TND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[8, 8],
+        k_pools=[48, 32],
+        n1=8,
+        topk=64,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        pa_block_size=16,
+        key_non_contig=True,
+        tail=None,
+        seed=206,
+        quant_mode=1,
+    ),
+    dict(
+        id="q1_bsnd_pa_nomask_val",
+        layout_q="BSND",
+        layout_k="PA_BBND",
+        dtype=FP8,
+        q_lens=[16],
+        k_pools=[64],
+        n1=8,
+        topk=128,
+        pool_size=8,
+        mask_mode=0,
+        return_value=True,
+        pa_block_size=32,
+        key_non_contig=False,
+        tail=None,
+        seed=207,
+        quant_mode=1,
+    ),
 ]
 
 
@@ -242,7 +541,9 @@ def test_quant_e8m0_nan_propagation(cfg_id, nan_ratio):
 
 def test_quant_error_mode_none_with_descale():
     """quant_mode=-1 传 descale -> tiling 校验拒绝。"""
-    cfg = dict(next(c for c in _QUANT_FIXED_CASES if c["id"] == "q0_bsnd_bsnd_nomask_noval"))
+    cfg = dict(
+        next(c for c in _QUANT_FIXED_CASES if c["id"] == "q0_bsnd_bsnd_nomask_noval")
+    )
     cfg["quant_mode"] = -1  # 保持 FP8 输入 + descale 非空 -> tiling 报错
     inputs = build_case_inputs(cfg)
     # build 仍生成 descale, 但 op 调用 quant_mode=-1
@@ -253,7 +554,9 @@ def test_quant_error_mode_none_with_descale():
 
 def test_quant_error_mode0_without_descale():
     """quant_mode=0 缺 descale -> csrc TORCH_CHECK 拒绝。"""
-    cfg = dict(next(c for c in _QUANT_FIXED_CASES if c["id"] == "q0_bsnd_bsnd_nomask_noval"))
+    cfg = dict(
+        next(c for c in _QUANT_FIXED_CASES if c["id"] == "q0_bsnd_bsnd_nomask_noval")
+    )
     inputs = build_case_inputs(cfg)
     inputs["q_descale"] = None
     inputs["k_descale"] = None
@@ -263,7 +566,9 @@ def test_quant_error_mode0_without_descale():
 
 def test_quant_error_mode0_wrong_descale_dtype():
     """quant_mode=0 的 descale 不是 float -> csrc TORCH_CHECK 拒绝。"""
-    cfg = dict(next(c for c in _QUANT_FIXED_CASES if c["id"] == "q0_bsnd_bsnd_nomask_noval"))
+    cfg = dict(
+        next(c for c in _QUANT_FIXED_CASES if c["id"] == "q0_bsnd_bsnd_nomask_noval")
+    )
     inputs = build_case_inputs(cfg)
     # 将 float descale 换成 e8m0 视图(dtype 不匹配 mode=0)
     inputs["q_descale"] = inputs["q_descale"].view(torch.float8_e8m0fnu)
@@ -287,8 +592,19 @@ def test_quant_error_nonpa_noncontig_key():
     from cann_ops_transformer import pool_key_indexer as _op
 
     with pytest.raises(Exception, match="PA_BBND"):
-        _op(q, key_nc, w, ptk, layout_q="BSND", layout_k="BSND",
-            topk=64, pool_size=8, mask_mode=0, quant_mode=-1, return_value=False)
+        _op(
+            q,
+            key_nc,
+            w,
+            ptk,
+            layout_q="BSND",
+            layout_k="BSND",
+            topk=64,
+            pool_size=8,
+            mask_mode=0,
+            quant_mode=-1,
+            return_value=False,
+        )
 
     # TND 布局同样拒绝
     big_t = torch.randn(256, 1, HEAD_DIM, dtype=torch.float16, device=dev)
@@ -298,9 +614,21 @@ def test_quant_error_nonpa_noncontig_key():
     asq = torch.tensor([16, 16], dtype=torch.int64).cumsum(0).to(dev)
     ask = torch.tensor([64, 64], dtype=torch.int64).cumsum(0).to(dev)
     with pytest.raises(Exception, match="PA_BBND"):
-        _op(q_t, key_tnd_nc, w_t, ptk[:2], actual_seq_q=asq, actual_seq_k=ask,
-            layout_q="TND", layout_k="TND",
-            topk=64, pool_size=8, mask_mode=0, quant_mode=-1, return_value=False)
+        _op(
+            q_t,
+            key_tnd_nc,
+            w_t,
+            ptk[:2],
+            actual_seq_q=asq,
+            actual_seq_k=ask,
+            layout_q="TND",
+            layout_k="TND",
+            topk=64,
+            pool_size=8,
+            mask_mode=0,
+            quant_mode=-1,
+            return_value=False,
+        )
 
 
 def test_quant_error_noncontig_kdescale():
@@ -314,9 +642,21 @@ def test_quant_error_noncontig_kdescale():
     dev = f"npu:{get_device_id()}"
     B, S2 = 2, 64
     block_num, block_size = 2, 64
-    q = (torch.randn(B, 16, 8, HEAD_DIM, dtype=torch.float32) * 0.25).to(torch.float8_e4m3fn).to(dev)
-    k8 = (torch.randn(B, S2, 1, HEAD_DIM, dtype=torch.float32) * 0.25).to(torch.float8_e4m3fn).to(dev)
-    k_pa = (torch.randn(block_num, block_size, 1, HEAD_DIM, dtype=torch.float32) * 0.25).to(torch.float8_e4m3fn).to(dev)
+    q = (
+        (torch.randn(B, 16, 8, HEAD_DIM, dtype=torch.float32) * 0.25)
+        .to(torch.float8_e4m3fn)
+        .to(dev)
+    )
+    k8 = (
+        (torch.randn(B, S2, 1, HEAD_DIM, dtype=torch.float32) * 0.25)
+        .to(torch.float8_e4m3fn)
+        .to(dev)
+    )
+    k_pa = (
+        (torch.randn(block_num, block_size, 1, HEAD_DIM, dtype=torch.float32) * 0.25)
+        .to(torch.float8_e4m3fn)
+        .to(dev)
+    )
     w = torch.randn(B, 16, 8, dtype=torch.float16).to(dev)
     ptk = torch.zeros(B, dtype=torch.int64).to(dev)
     qds = torch.rand(B, 16, 8, dtype=torch.float32).to(dev)
@@ -328,18 +668,43 @@ def test_quant_error_noncontig_kdescale():
     big_ks = torch.rand(B, 2 * S2, 1, dtype=torch.float32, device=dev)
     kds_nc = big_ks[:, ::2, :]
     with pytest.raises(Exception, match="PA_BBND"):
-        _op(q, k8, w, ptk, q_descale=qds, k_descale=kds_nc,
-            layout_q="BSND", layout_k="BSND", topk=64, pool_size=8,
-            mask_mode=0, quant_mode=0, return_value=False)
+        _op(
+            q,
+            k8,
+            w,
+            ptk,
+            q_descale=qds,
+            k_descale=kds_nc,
+            layout_q="BSND",
+            layout_k="BSND",
+            topk=64,
+            pool_size=8,
+            mask_mode=0,
+            quant_mode=0,
+            return_value=False,
+        )
 
     # 拒绝 2: PA + 轴 1 非连续
     big2 = torch.rand(2, 2 * block_size, 1, dtype=torch.float32, device=dev)
     kds_ax1 = big2[:, ::2, :]
     with pytest.raises(Exception, match="0-axis"):
-        _op(q, k_pa, w, ptk, actual_seq_k=ask, block_table=bt,
-            q_descale=qds, k_descale=kds_ax1,
-            layout_q="BSND", layout_k="PA_BBND", topk=64, pool_size=8,
-            mask_mode=0, quant_mode=0, return_value=False)
+        _op(
+            q,
+            k_pa,
+            w,
+            ptk,
+            actual_seq_k=ask,
+            block_table=bt,
+            q_descale=qds,
+            k_descale=kds_ax1,
+            layout_q="BSND",
+            layout_k="PA_BBND",
+            topk=64,
+            pool_size=8,
+            mask_mode=0,
+            quant_mode=0,
+            return_value=False,
+        )
 
     # 支持: PA + 0 轴非连续(mode=0), 结果与连续参照一致
     kds_contig = torch.rand(block_num, block_size, 1, dtype=torch.float32).to(dev)
@@ -348,38 +713,82 @@ def test_quant_error_noncontig_kdescale():
     kds_nc_pa = big[0::2]
 
     def run_pa(kds):
-        idx, _ = _op(q, k_pa, w, ptk, actual_seq_k=ask, block_table=bt,
-                     q_descale=qds, k_descale=kds,
-                     layout_q="BSND", layout_k="PA_BBND", topk=64, pool_size=8,
-                     mask_mode=0, quant_mode=0, return_value=False)
+        idx, _ = _op(
+            q,
+            k_pa,
+            w,
+            ptk,
+            actual_seq_k=ask,
+            block_table=bt,
+            q_descale=qds,
+            k_descale=kds,
+            layout_q="BSND",
+            layout_k="PA_BBND",
+            topk=64,
+            pool_size=8,
+            mask_mode=0,
+            quant_mode=0,
+            return_value=False,
+        )
         torch.npu.synchronize()
         return idx.cpu()
 
     idx_nc = run_pa(kds_nc_pa)
     idx_ct = run_pa(kds_contig)
     same = all(
-        sorted(idx_nc[b, r][idx_nc[b, r] >= 0].tolist()) == sorted(idx_ct[b, r][idx_ct[b, r] >= 0].tolist())
-        for b in range(B) for r in range(idx_nc.shape[1]))
-    assert same, "PA 0-axis non-contiguous k_descale results mismatch with contiguous reference"
+        sorted(idx_nc[b, r][idx_nc[b, r] >= 0].tolist())
+        == sorted(idx_ct[b, r][idx_ct[b, r] >= 0].tolist())
+        for b in range(B)
+        for r in range(idx_nc.shape[1])
+    )
+    assert same, (
+        "PA 0-axis non-contiguous k_descale results mismatch with contiguous reference"
+    )
 
     # 支持: PA + 0 轴非连续(mode=1, E8M0 视图)
-    qds_m1 = torch.randint(120, 136, (B, 16, 8, 2, 2), dtype=torch.uint8).to(dev).view(torch.float8_e8m0fnu)
-    kds_c1 = torch.randint(120, 136, (block_num, block_size, 1, 2, 2), dtype=torch.uint8).to(dev).view(torch.float8_e8m0fnu)
-    big1 = torch.zeros(2 * block_num, block_size, 1, 2, 2, dtype=torch.uint8, device=dev)
+    qds_m1 = (
+        torch.randint(120, 136, (B, 16, 8, 2, 2), dtype=torch.uint8)
+        .to(dev)
+        .view(torch.float8_e8m0fnu)
+    )
+    kds_c1 = (
+        torch.randint(120, 136, (block_num, block_size, 1, 2, 2), dtype=torch.uint8)
+        .to(dev)
+        .view(torch.float8_e8m0fnu)
+    )
+    big1 = torch.zeros(
+        2 * block_num, block_size, 1, 2, 2, dtype=torch.uint8, device=dev
+    )
     big1[0::2] = kds_c1.view(torch.uint8)
     kds_nc1 = big1[0::2].view(torch.float8_e8m0fnu)
 
     def run_pa_m1(kds):
-        idx, _ = _op(q, k_pa, w, ptk, actual_seq_k=ask, block_table=bt,
-                     q_descale=qds_m1, k_descale=kds,
-                     layout_q="BSND", layout_k="PA_BBND", topk=64, pool_size=8,
-                     mask_mode=0, quant_mode=1, return_value=False)
+        idx, _ = _op(
+            q,
+            k_pa,
+            w,
+            ptk,
+            actual_seq_k=ask,
+            block_table=bt,
+            q_descale=qds_m1,
+            k_descale=kds,
+            layout_q="BSND",
+            layout_k="PA_BBND",
+            topk=64,
+            pool_size=8,
+            mask_mode=0,
+            quant_mode=1,
+            return_value=False,
+        )
         torch.npu.synchronize()
         return idx.cpu()
 
     idx_nc1 = run_pa_m1(kds_nc1)
     idx_ct1 = run_pa_m1(kds_c1)
     same1 = all(
-        sorted(idx_nc1[b, r][idx_nc1[b, r] >= 0].tolist()) == sorted(idx_ct1[b, r][idx_ct1[b, r] >= 0].tolist())
-        for b in range(B) for r in range(idx_nc1.shape[1]))
+        sorted(idx_nc1[b, r][idx_nc1[b, r] >= 0].tolist())
+        == sorted(idx_ct1[b, r][idx_ct1[b, r] >= 0].tolist())
+        for b in range(B)
+        for r in range(idx_nc1.shape[1])
+    )
     assert same1, "mode=1 PA 0-axis non-contiguous k_descale results mismatch"

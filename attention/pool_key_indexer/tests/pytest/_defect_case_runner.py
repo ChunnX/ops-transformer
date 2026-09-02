@@ -13,7 +13,10 @@
 exception)只污染本进程, 由父进程按输出/退出码判定。
 
 用法:
-    python _defect_case_runner.py <case_id> [--device N]
+    python _defect_case_runner.py <case_id> [--device N] [--graph]
+
+    --graph: 算子走 aclgraph(NPUGraph 捕获/回放)路径执行(默认 eager);
+             崩溃同样由本进程隔离, 输出协议不变。
 
 环境变量:
     PKI_REF_DEVICE=cpu|npu   标杆设备(默认 cpu; npu 为 NPU 组合标杆)
@@ -51,8 +54,8 @@ def build_case_inputs(cfg):
     return _build(cfg)
 
 
-def run_case(cfg, device_id, ref_device="cpu"):
-    from pki_common import run_golden, run_op_eager
+def run_case(cfg, device_id, ref_device="cpu", use_graph=False):
+    from pki_common import run_golden, run_op_aclgraph, run_op_eager
     from result_compare import compare_values
 
     inputs = build_case_inputs(cfg)
@@ -60,8 +63,11 @@ def run_case(cfg, device_id, ref_device="cpu"):
     # ---- 标杆(cpu 金标 / npu 组合标杆, 由 PKI_REF_DEVICE 指定) ----
     g_indices, g_values = run_golden(inputs, cfg, ref_device=ref_device)
 
-    # ---- NPU 算子 ----
-    npu_indices, npu_values = run_op_eager(inputs, cfg, device_id=device_id)
+    # ---- NPU 算子(eager / aclgraph NPUGraph 捕获回放) ----
+    if use_graph:
+        npu_indices, npu_values = run_op_aclgraph(inputs, cfg, device_id=device_id)
+    else:
+        npu_indices, npu_values = run_op_eager(inputs, cfg, device_id=device_id)
 
     # ---- 比对(indices 集合门禁 + values 参考日志) ----
     from result_compare import compare_indices
@@ -85,11 +91,12 @@ def main():
     global DEVICE_ID
     args = sys.argv[1:]
     if not args:
-        print("usage: _defect_case_runner.py <case_id> [--device N]")
+        print("usage: _defect_case_runner.py <case_id> [--device N] [--graph]")
         sys.exit(3)
     case_id = args[0]
     if "--device" in args:
         DEVICE_ID = int(args[args.index("--device") + 1])
+    use_graph = "--graph" in args
     ref_device = os.environ.get("PKI_REF_DEVICE", "cpu")
 
     from known_defect_cases import CASE_BY_ID
@@ -106,7 +113,7 @@ def main():
     )
 
     try:
-        ok, detail = run_case(cfg, DEVICE_ID, ref_device)
+        ok, detail = run_case(cfg, DEVICE_ID, ref_device, use_graph=use_graph)
     except RuntimeError as e:
         # NPU 运行时异常(aicore exception / EE9999 等)
         msg = str(e).replace("\n", " ")[:500]
