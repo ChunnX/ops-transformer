@@ -532,9 +532,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
     int32_t &pairwiseTileSequence, bool isFinalCombine)
 {
-    constexpr Gmm2CombineSyncProtocol syncProtocol =
-        CombineQuantMode == COMBINE_NO_QUANT ? Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE
-                                             : Gmm2CombineSyncProtocol::NONE;
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
@@ -542,7 +539,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
-        if constexpr (syncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             // 非量化 Combine 按 GMM2 tile 配对消费，需要为每个 AIC 配置独立完成标记。
             gmmAddrInfo.gmmToEpilogueFlag =
                 reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
@@ -551,11 +548,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         int32_t *gmm2TileSequence = nullptr;
-        if constexpr (syncProtocol == Gmm2CombineSyncProtocol::PAIRED_TILE_SEQUENCE) {
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             gmm2TileSequence = &pairwiseTileSequence;
         }
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true, syncProtocol>(
+                    TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
             tokenStartIndexInExpert, nullptr, gmm2TileSequence);
     }
