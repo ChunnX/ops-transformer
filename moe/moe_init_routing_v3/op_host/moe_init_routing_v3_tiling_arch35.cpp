@@ -85,7 +85,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckOutputs());
     MIRV3_CHECK_GE_RET(CheckTopkWeightConsistency());
 
-    // 空tensor快速返回，跳过后续tiling计算
+    // n/k 为 0 时没有路由元素，直接走空 Tensor 路径。
     if (isEmptyTensor_) {
         return ge::GRAPH_SUCCESS;
     }
@@ -796,14 +796,13 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // n/k 为 0 时没有路由元素；cols 为 0 时仍有 n*k 个路由元素，继续走正常 tiling key。
+    if (n_ == 0 || k_ == 0) {
         isEmptyTensor_ = true;
     }
 
-    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
-    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
-    if (isEmptyTensor_) {
+    // 真空 Tensor 以及零宽场景都将 activeNum 归一化为 totalLength_，与非 arch35 路径一致。
+    if (isEmptyTensor_ || cols_ == 0) {
         tilingDataPtr_->activeNum = totalLength_;
     } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
         //! 出于历史调用的兼容性，保留校验activeNum=n*k，但实际上不使用该属性
@@ -1427,7 +1426,7 @@ PerLoopParams MoeInitRoutingV3TilingArch35::GetPerLoopParams(MultipleParams &mul
                                                              int64_t perCoreIndicesElements)
 {
     PerLoopParams perLoopParams;
-    perLoopParams.perLoopCols = tilingDataPtr_->cols;
+    perLoopParams.perLoopCols = std::max(tilingDataPtr_->cols, static_cast<int64_t>(1));
     if (quantMode_ == QUANT_MODE_HIF8_PERTENSOR) {
         perLoopParams.perLoopMaxIndicesElements =
             (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple) /
@@ -1573,8 +1572,12 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutCompute()
         AlignInt4DynamicQuantPerLoopCols(perLoopParams);
     }
 
-    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
-    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    int64_t colsLoops = 0;
+    int64_t lastLoopCols = 0;
+    if (tilingDataPtr_->cols > 0) {
+        colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
+        lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    }
     gatherOutTiling->needCoreNum = needCoreNum;
     gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
     gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
@@ -1613,7 +1616,8 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxFP8NoQuantCompute()
     PerLoopParams perLoopParams;
     perLoopParams.perLoopCols = tilingDataPtr_->cols;
 
-    perLoopParams.perLoopCols = Ops::Base::CeilAlign(perLoopParams.perLoopCols, MXFPX_SCALE_BLOCK_SIZE);
+    perLoopParams.perLoopCols =
+        std::max(Ops::Base::CeilAlign(perLoopParams.perLoopCols, MXFPX_SCALE_BLOCK_SIZE), MXFPX_SCALE_BLOCK_SIZE);
     perLoopParams.perLoopMaxIndicesElements =
         (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * inputXDtypeSize_ * NUM_TWO -
          Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
@@ -1642,8 +1646,12 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxFP8NoQuantCompute()
             NUM_TWO / static_cast<int64_t>(sizeof(int32_t));
     }
 
-    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
-    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    int64_t colsLoops = 0;
+    int64_t lastLoopCols = 0;
+    if (tilingDataPtr_->cols > 0) {
+        colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
+        lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    }
     gatherOutTiling->colsLoops = colsLoops;
     gatherOutTiling->perLoopCols = perLoopParams.perLoopCols;
     gatherOutTiling->lastLoopCols = lastLoopCols;
@@ -1707,7 +1715,8 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxQuant()
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
     int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
 
-    int64_t perLoopCols = Ops::Base::CeilAlign(tilingDataPtr_->cols, MX_QUANT_BLOCK_SIZE);
+    int64_t perLoopCols =
+        std::max(Ops::Base::CeilAlign(tilingDataPtr_->cols, MX_QUANT_BLOCK_SIZE), MX_QUANT_BLOCK_SIZE);
     int64_t perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopMxQuant(perLoopCols);
     while (perLoopMaxIndicesElements <= 0 && perLoopCols > MX_QUANT_BLOCK_SIZE) {
         perLoopCols = Ops::Base::CeilAlign(Ops::Base::CeilDiv(perLoopCols, NUM_TWO), MX_QUANT_BLOCK_SIZE);
@@ -1720,8 +1729,12 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutMxQuant()
             "UB space insufficient for MX quantization");
         return;
     }
-    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
-    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopCols;
+    int64_t colsLoops = 0;
+    int64_t lastLoopCols = 0;
+    if (tilingDataPtr_->cols > 0) {
+        colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
+        lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopCols;
+    }
     gatherOutTiling->needCoreNum = needCoreNum; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
     gatherOutTiling->perCoreIndicesElements =
         perCoreIndicesElements; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
@@ -1774,7 +1787,8 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutFP8Quant()
 
     bool isFp8Group = (quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN ||
                        quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
-    int64_t perLoopCols = Ops::Base::CeilAlign(tilingDataPtr_->cols, FP8_PERBLOCK_BLOCK_SIZE);
+    int64_t perLoopCols =
+        std::max(Ops::Base::CeilAlign(tilingDataPtr_->cols, FP8_PERBLOCK_BLOCK_SIZE), FP8_PERBLOCK_BLOCK_SIZE);
     int64_t perLoopMaxIndicesElements =
         isFp8Group ? CalcMaxRowIdxPerLoopFP8GroupQuant(perLoopCols) : CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
     while (perLoopMaxIndicesElements <= 0 && perLoopCols > FP8_PERBLOCK_BLOCK_SIZE) {
@@ -1789,8 +1803,12 @@ void MoeInitRoutingV3TilingArch35::Tiling4GatherOutFP8Quant()
             "UB space is insufficient for FP8 quantization.");
         return;
     }
-    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
-    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopCols;
+    int64_t colsLoops = 0;
+    int64_t lastLoopCols = 0;
+    if (tilingDataPtr_->cols > 0) {
+        colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
+        lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopCols;
+    }
     gatherOutTiling->needCoreNum = needCoreNum;
     gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
     gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
@@ -2006,7 +2024,7 @@ void MoeInitRoutingV3TilingArch35::SetGatherOutDropPadLoopParams(int64_t perCore
                                                                  int64_t lastCoreIndicesElements)
 {
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
-    int64_t perLoopCols = cols_;
+    int64_t perLoopCols = std::max(cols_, static_cast<int64_t>(1));
     // compact DropPad gather_out 按输出行遍历，只需要保留单行 X queue 和 source-row map queue。
     int64_t scaleCopyInQueueSize =
         isInputScale_ == 1 ? DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
@@ -2027,8 +2045,12 @@ void MoeInitRoutingV3TilingArch35::SetGatherOutDropPadLoopParams(int64_t perCore
         perLoopCols = Ops::Base::CeilDiv(perLoopCols, NUM_TWO);
     }
 
-    int64_t colsLoops = Ops::Base::CeilDiv(cols_, perLoopCols);
-    int64_t lastLoopCols = cols_ - (colsLoops - 1) * perLoopCols;
+    int64_t colsLoops = 0;
+    int64_t lastLoopCols = 0;
+    if (cols_ > 0) {
+        colsLoops = Ops::Base::CeilDiv(cols_, perLoopCols);
+        lastLoopCols = cols_ - (colsLoops - 1) * perLoopCols;
+    }
 
     int64_t perCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, perCoreIndicesElements);
     int64_t perCoreIndicesLoops = Ops::Base::CeilDiv(perCoreIndicesElements, perCorePerLoopIndicesElements);

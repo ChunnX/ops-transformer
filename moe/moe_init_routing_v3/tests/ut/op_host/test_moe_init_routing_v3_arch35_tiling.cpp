@@ -158,6 +158,7 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
         case QUANT_MODE_STATIC:
         case QUANT_MODE_HIF8_CAST:
         case QUANT_MODE_HIF8_PERTENSOR:
+            return ExpandedScaleDesc{{0}, ge::DT_FLOAT};
         case QUANT_MODE_HIF8_PERTOKEN:
         case QUANT_MODE_DYNAMIC:
         case QUANT_MODE_INT4_DYNAMIC:
@@ -178,10 +179,10 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
         case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return MakeFp8GroupScaleDesc(totalLength, cols);
         case QUANT_MODE_UNQUANT:
-            if (isInputScale) {
-                return MakeUnquantInputScaleDesc(totalLength, cols, xDtype);
+            if (!isInputScale) {
+                return ExpandedScaleDesc{{0}, ge::DT_FLOAT};
             }
-            return MakePerTokenScaleDesc(totalLength);
+            return MakeUnquantInputScaleDesc(totalLength, cols, xDtype);
         default:
             return MakePerTokenScaleDesc(totalLength);
     }
@@ -486,6 +487,13 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_reject
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_reject_partial_expert_range)
 {
     RunDropPadTilingTestcase(4, 16, 2, 2, {0, 128}, ROW_IDX_TYPE_GATHER, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_cols_zero_keeps_routing_tiling)
+{
+    constexpr uint64_t SORT_ONE_CORE_GATHER_DROP_TILING_KEY = 10000100ULL;
+    RunDropPadTilingTestcase(4, 0, 2, 2, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS,
+                             SORT_ONE_CORE_GATHER_DROP_TILING_KEY);
 }
 
 // fullload + not quant 200000
@@ -862,12 +870,116 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
-// 空tensor场景：cols_==0（x第1维为0，如[3,0]）
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_cols_zero)
+// dropless 零宽场景：cols_==0 但 n*k 非 0，仍应选择排序 tiling，而不是 EMPTY_TENSOR。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cols_zero_not_empty_routing)
 {
-    RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
+    constexpr uint64_t FULL_LOAD_UNQUANT_TILING_KEY = 200000ULL;
+    RunArch35ExtendedTestcase(17, 0, 115, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_INT8,
                               {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
-                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, FULL_LOAD_UNQUANT_TILING_KEY);
+}
+
+// dropless 零宽场景应覆盖 Ascend 950 支持的全部 quantMode，并保留非全载 Gather/Scatter tiling key。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cols_zero_all_quant_modes)
+{
+    struct QuantModeCase {
+        const char *name;
+        int64_t quantMode;
+        ge::DataType xDtype;
+        std::vector<int64_t> scaleShape;
+        ge::DataType scaleDtype;
+        std::vector<int64_t> offsetShape;
+        int64_t quantModeFactor;
+    };
+    const std::vector<QuantModeCase> cases = {
+        {"unquant", QUANT_MODE_UNQUANT, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 0},
+        {"static", QUANT_MODE_STATIC, ge::DT_FLOAT16, {1}, ge::DT_FLOAT, {1}, 1},
+        {"dynamic", QUANT_MODE_DYNAMIC, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 2},
+        {"mxfp8_e5m2", QUANT_MODE_MXFP8_E5M2, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 3},
+        {"mxfp8_e4m3fn", QUANT_MODE_MXFP8_E4M3FN, ge::DT_BF16, {}, ge::DT_FLOAT, {}, 3},
+        {"fp8_group_e5m2", QUANT_MODE_FP8_GROUP_E5M2, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 5},
+        {"fp8_group_e4m3fn", QUANT_MODE_FP8_GROUP_E4M3FN, ge::DT_BF16, {}, ge::DT_FLOAT, {}, 5},
+        {"hif8_cast", QUANT_MODE_HIF8_CAST, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 7},
+        {"hif8_pertensor", QUANT_MODE_HIF8_PERTENSOR, ge::DT_BF16, {1}, ge::DT_FLOAT, {}, 8},
+        {"hif8_pertoken", QUANT_MODE_HIF8_PERTOKEN, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 9},
+        {"mxfp4_e2m1", QUANT_MODE_MXFP4_E2M1, ge::DT_BF16, {}, ge::DT_FLOAT, {}, 10},
+        {"fp8_perblock_e5m2", QUANT_MODE_FP8_PERBLOCK_E5M2, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 12},
+        {"fp8_perblock_e4m3fn", QUANT_MODE_FP8_PERBLOCK_E4M3FN, ge::DT_BF16, {}, ge::DT_FLOAT, {}, 12},
+        {"int4_dynamic", QUANT_MODE_INT4_DYNAMIC, ge::DT_FLOAT, {}, ge::DT_FLOAT, {}, 14},
+        {"fp8_group_amax_e5m2", QUANT_MODE_FP8_GROUP_AMAX_E5M2, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 15},
+        {"fp8_group_amax_e4m3fn", QUANT_MODE_FP8_GROUP_AMAX_E4M3FN, ge::DT_BF16, {}, ge::DT_FLOAT, {}, 15},
+        {"mxfp8_roundscale_amax_e5m2", QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, 17},
+        {"mxfp8_roundscale_amax_e4m3fn",
+         QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN,
+         ge::DT_BF16,
+         {},
+         ge::DT_FLOAT,
+         {},
+         17},
+    };
+
+    constexpr int64_t N = 257;
+    constexpr int64_t K = 64;
+    constexpr uint64_t TILING_KEY_BASE = 11000000ULL;
+    constexpr uint64_t QUANT_MODE_FACTOR = 10000ULL;
+    constexpr uint64_t ROW_IDX_FACTOR = 1000ULL;
+    for (const auto &testcase : cases) {
+        for (int64_t rowIdxType : {ROW_IDX_TYPE_GATHER, ROW_IDX_TYPE_SCATTER}) {
+            SCOPED_TRACE(std::string(testcase.name) + (rowIdxType == ROW_IDX_TYPE_GATHER ? "_gather" : "_scatter"));
+            uint64_t expectedTilingKey =
+                TILING_KEY_BASE + testcase.quantModeFactor * QUANT_MODE_FACTOR + rowIdxType * ROW_IDX_FACTOR;
+            RunArch35ExtendedTestcase(N, 0, K, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, testcase.quantMode,
+                                      testcase.xDtype, {0, EXPERT_NUM}, rowIdxType, testcase.scaleShape,
+                                      testcase.scaleDtype, testcase.offsetShape, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                                      ge::GRAPH_SUCCESS, expectedTilingKey);
+        }
+    }
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cols_zero_full_load_quant_modes)
+{
+    struct FullLoadCase {
+        int64_t quantMode;
+        ge::DataType xDtype;
+        std::vector<int64_t> scaleShape;
+        std::vector<int64_t> offsetShape;
+        ge::DataType expandedXDtype;
+        uint64_t tilingKey;
+    };
+    const std::vector<FullLoadCase> cases = {
+        {QUANT_MODE_UNQUANT, ge::DT_FLOAT16, {}, {}, ge::DT_FLOAT16, 200000ULL},
+        {QUANT_MODE_STATIC, ge::DT_FLOAT16, {1}, {1}, ge::DT_INT8, 210000ULL},
+        {QUANT_MODE_DYNAMIC, ge::DT_FLOAT16, {}, {}, ge::DT_INT8, 220000ULL},
+        {QUANT_MODE_INT4_DYNAMIC, ge::DT_BF16, {}, {}, ge::DT_INT4, 220000ULL},
+    };
+    for (const auto &testcase : cases) {
+        RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, testcase.quantMode, testcase.xDtype,
+                                  {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, testcase.scaleShape, ge::DT_FLOAT,
+                                  testcase.offsetShape, ge::DT_FLOAT, testcase.expandedXDtype, ge::GRAPH_SUCCESS,
+                                  testcase.tilingKey);
+    }
+}
+
+// 非量化一维 scale 在零宽时仍有 n*k 个输出元素；MX scale 含零宽维，不应退回 EMPTY_TENSOR。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cols_zero_unquant_scale_shapes)
+{
+    constexpr uint64_t FULL_LOAD_UNQUANT_TILING_KEY = 200000ULL;
+    constexpr uint64_t SORT_ONE_CORE_GATHER_TILING_KEY = 10000000ULL;
+    RunArch35ExtendedTestcase(17, 0, 115, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT16,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {17}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, FULL_LOAD_UNQUANT_TILING_KEY);
+    RunArch35ExtendedTestcase(17, 0, 115, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT8_E5M2,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {17, 0, 2}, ge::DT_FLOAT8_E8M0, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, SORT_ONE_CORE_GATHER_TILING_KEY);
+}
+
+// totalLength 超过单核排序能力时，零宽量化路径也应生成对应的多核 key。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cols_zero_quant_multicore)
+{
+    constexpr uint64_t SORT_MULTI_CORE_HIF8_PERTOKEN_SCATTER_TILING_KEY = 11091000ULL;
+    RunArch35ExtendedTestcase(257, 0, 64, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_HIF8_PERTOKEN, ge::DT_BF16,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, SORT_MULTI_CORE_HIF8_PERTOKEN_SCATTER_TILING_KEY);
 }
 
 // 空tensor场景：k_==0 + key_value模式

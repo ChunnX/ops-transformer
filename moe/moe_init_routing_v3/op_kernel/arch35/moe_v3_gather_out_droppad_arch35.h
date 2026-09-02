@@ -164,7 +164,9 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Init(GM_ADDR x, GM_ADDR scale, 
     // DropPad compact路径按输出行搬运 X，保留单行 queue 即可。
     int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutComputeParamsOp.xCopyInQueueBufferNum,
                                         GATHER_OUT_BUFFER_NUM);
-    pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, AlignBytes(perLoopCols_, sizeof(T)));
+    if (colsLoops_ > 0) {
+        pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, AlignBytes(perLoopCols_, sizeof(T)));
+    }
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
                                        Align(curCoreIndicesElements_, sizeof(int32_t)));
@@ -277,13 +279,26 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessCompactOutputRows()
         CopySourceRowsIn(outputRowOffset, curLoopRows);
         LocalTensor<int32_t> sourceRowsLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
 
+        if (isInputScale_ == 1) {
+            DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+            for (int64_t idx = 0; idx < curLoopRows; idx++) {
+                int64_t srcRow = sourceRowsLocal.GetValue(idx);
+                if (srcRow < 0 || srcRow >= n_) {
+                    continue;
+                }
+                SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                CopyScaleIn(srcRow);
+                LocalTensor<float> scaleLocal = scaleCopyInQueue_.DeQue<float>();
+                DataCopyPad(expandedScaleGm_[outputRowOffset + idx], scaleLocal, copyScaleParams);
+                scaleCopyInQueue_.FreeTensor(scaleLocal);
+            }
+        }
+
         // 按列分块拷贝：当cols很大时，一行数据需要分多次拷贝
         for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
             int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
             int64_t colsLoopOffset = colsLoop * perLoopCols_;
             DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-            DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-
             for (int64_t idx = 0; idx < curLoopRows; idx++) {
                 int64_t srcRow = sourceRowsLocal.GetValue(idx);
                 if (srcRow < 0 || srcRow >= n_) {
@@ -294,21 +309,8 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessCompactOutputRows()
                 CopyXIn(srcRow * cols_ + colsLoopOffset, srcRow, curLoopCols);
                 LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
 
-                LocalTensor<float> scaleLocal;
-                if (isInputScale_ == 1 && colsLoop == 0) {
-                    CopyScaleIn(srcRow);
-                    scaleLocal = scaleCopyInQueue_.DeQue<float>();
-                }
-
                 int64_t outputRow = outputRowOffset + idx;
                 DataCopyPad(expandedXGm_[outputRow * cols_ + colsLoopOffset], xLocal, copyXParams);
-                if (isInputScale_ == 1 && colsLoop == 0) {
-                    DataCopyPad(expandedScaleGm_[outputRow], scaleLocal, copyScaleParams);
-                }
-
-                if (isInputScale_ == 1 && colsLoop == 0) {
-                    scaleCopyInQueue_.FreeTensor(scaleLocal);
-                }
                 xCopyInQueue_.FreeTensor(xLocal);
             }
         }
@@ -339,6 +341,28 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
+            if (isInputScale_ == 1) {
+                int64_t curIndex = 0;
+                int64_t globalSortIdx = globalReadOffset;
+                int64_t startRow = globalSortIdx / k_;
+                int64_t endRow = (globalSortIdx + curLoopElements - 1) / k_;
+                DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+                for (int64_t row = startRow; row <= endRow; row++) {
+                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                    CopyScaleIn(row);
+                    LocalTensor<float> scaleLocal = scaleCopyInQueue_.DeQue<float>();
+                    while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
+                        int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
+                        curIndex++;
+                        globalSortIdx++;
+                        if (outPosition >= 0 && outPosition < outputRows_) {
+                            DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
+                        }
+                    }
+                    scaleCopyInQueue_.FreeTensor(scaleLocal);
+                }
+            }
+
             for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
                 int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
                 int64_t colsLoopOffset = colsLoop * perLoopCols_;
@@ -352,14 +376,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                     CopyXIn(row * cols_ + colsLoopOffset, row, curLoopCols);
                     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
 
-                    LocalTensor<float> scaleLocal;
-                    if (isInputScale_ == 1 && colsLoop == 0) {
-                        CopyScaleIn(row);
-                        scaleLocal = scaleCopyInQueue_.DeQue<float>();
-                    }
-
                     DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                    DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
                     while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
                         int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
                         curIndex++;
@@ -368,13 +385,6 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                             continue;
                         }
                         DataCopyPad(expandedXGm_[outPosition * cols_ + colsLoopOffset], xLocal, copyXParams);
-                        if (isInputScale_ == 1 && colsLoop == 0) {
-                            DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
-                        }
-                    }
-
-                    if (isInputScale_ == 1 && colsLoop == 0) {
-                        scaleCopyInQueue_.FreeTensor(scaleLocal);
                     }
                     xCopyInQueue_.FreeTensor(xLocal);
                 }

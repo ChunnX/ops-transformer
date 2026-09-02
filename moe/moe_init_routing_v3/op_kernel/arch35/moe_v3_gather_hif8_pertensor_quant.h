@@ -259,6 +259,11 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::InitBasicParams(
 
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
 
+    if (cols_ == 0) {
+        needCoreNum_ = 0;
+        return;
+    }
+
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum_, sizeof(int32_t)),
@@ -296,6 +301,9 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
                                                                TPipe *tPipe)
 {
     InitBasicParams(sortedExpertIdx, tilingData, tPipe);
+    if (cols_ == 0) {
+        return;
+    }
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
     expandedXGm_.SetGlobalBuffer((__gm__ hifloat8_t *)expandedX);
     scaleGm_.SetGlobalBuffer((__gm__ float *)scale, 1);
@@ -326,6 +334,9 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
 template <typename T>
 __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Process()
 {
+    if (cols_ == 0) {
+        return;
+    }
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
         if (colLoops_ > 1) {
