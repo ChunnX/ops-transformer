@@ -72,10 +72,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attention_residuals(
     const int64_t hiddenSize = prefixSum.size(H_DIM_INDEX);
     const int64_t numBlocks = blockRes.size(N_DIM_INDEX);
     const int64_t blockCount = numBlocks + 1;
-    TORCH_CHECK(numTokens >= 0 && hiddenSize >= MIN_HIDDEN_SIZE && numBlocks >= MIN_BLOCK_NUM &&
-                    numBlocks <= MAX_BLOCK_NUM,
-                "shape range requires T>=0, H>=1 and 1<=N<=", MAX_BLOCK_NUM, ", but got T=", numTokens,
-                ", H=", hiddenSize, ", N=", numBlocks);
+    TORCH_CHECK(
+        numTokens >= 0 && hiddenSize >= MIN_HIDDEN_SIZE && numBlocks >= MIN_BLOCK_NUM && numBlocks <= MAX_BLOCK_NUM,
+        "shape range requires T>=0, H>=1 and 1<=N<=", MAX_BLOCK_NUM, ", but got T=", numTokens, ", H=", hiddenSize,
+        ", N=", numBlocks);
     TORCH_CHECK(blockRes.size(T_DIM_INDEX) == numTokens && blockRes.size(BLOCK_RES_H_DIM_INDEX) == hiddenSize,
                 "block_res shape must be [T,N,H], but got ", blockRes.sizes());
     TORCH_CHECK(projWeight.size(-1) == hiddenSize, "proj_weight last dim must equal H=", hiddenSize, ", but got ",
