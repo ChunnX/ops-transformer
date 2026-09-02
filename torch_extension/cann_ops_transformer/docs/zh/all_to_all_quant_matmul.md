@@ -66,7 +66,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
     x2_scale=None,
     x1_quant_mode=None,
     x2_quant_mode=None,
-    group_sizes=None,
+    group_sizes=[],
     x1_dtype=None,
     x2_dtype=None,
     x1_scale_dtype=None,
@@ -89,7 +89,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 | `x2_scale`       | Tensor       | 可选      | `x2`的MX量化scale，默认值为`None`。                                                                                        | `float8_e8m0`                       | ND        | `(N, ceil(H*rankSize / 64), 2)` |
 | `x1_quant_mode`  | int          | 可选      | `x1`量化模式，默认值为0；MX量化传6。                                                                                         | int                                            | -              | -                                 |
 | `x2_quant_mode`  | int          | 可选      | `x2`量化模式，默认值为0；MX量化传6。                                                                                         | int                                            | -              | -                                 |
-| `group_sizes`    | List[int]    | 可选      | MX量化group大小，默认值为`None`；MX场景传`[1, 1, 32]`。                                                                    | int                                            | -              | -                                 |
+| `group_sizes`    | List[int]    | 可选      | MX量化group大小，默认值为`[]`；MX场景传`[1, 1, 32]`。                                                                    | int                                            | -              | -                                 |
 | `x1_dtype`       | int          | 可选      | `x1`的dtype，默认值为-1（使用tensor的dtype）；MXFP4场景传296（float4_e2m1）。                                                 | int                                            | -              | -                                 |
 | `x2_dtype`       | int          | 可选      | `x2`的dtype，默认值为-1（使用tensor的dtype）；MXFP4场景传296（float4_e2m1）。                                                 | int                                            | -              | -                                 |
 | `x1_scale_dtype` | int          | 可选      | `x1_scale`的dtype，默认值为-1；MX场景传293（float8_e8m0）。                                                           | int                                            | -              | -                                 |
