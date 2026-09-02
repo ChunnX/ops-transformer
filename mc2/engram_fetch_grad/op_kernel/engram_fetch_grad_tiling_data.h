@@ -22,9 +22,10 @@
 // Host 侧 op_tiling 与 Kernel 侧 utils/arch35/unique 均从此处引用，禁止在其它文件重复定义；
 // 修改任一常量必须同步评估两侧 UB/GM 预算（TIL-2/SIMT-UB-01/CG-4.3 根治措施）。
 namespace Mc2Kernel {
-constexpr uint32_t MAX_QP_SIZE = 1024U;           // 通信域 rank 上界（EngramCommContext.commBuffer 容量）
-constexpr uint32_t UB_ALIGN = 32U;                // UB 32B 对齐
-constexpr uint32_t TILE_BYTES = 64U * 1024U;      // grad 单 tile 整缓冲容量
+constexpr uint32_t MAX_QP_SIZE = 1024U;      // 通信域 rank 上界（EngramCommContext.commBuffer 容量）
+constexpr uint32_t UB_ALIGN = 32U;           // UB 32B 对齐
+constexpr uint32_t NUM_SLOTS = 8U;           // 通信窗口每 srcRank 槽位数（Host 侧 deferRecv 判定同源）
+constexpr uint32_t TILE_BYTES = 64U * 1024U; // grad 单 tile 整缓冲容量
 constexpr uint32_t GRAD_PING_BYTES = 32U * 1024U; // grad ping/pong 半缓冲容量
 constexpr uint32_t ENTRY_BUF_BYTES = 64U * 1024U;
 constexpr uint32_t GRAD_BUF_BYTES = 64U * 1024U;
@@ -52,5 +53,6 @@ struct EngramFetchGradTilingData {
     int32_t inputDtype;        // gradFetched 的 dtype（ge::DataType）
     int32_t outputDtype;       // gradUniqueOut 的 dtype（ge::DataType）
     uint32_t gradSubBatch;     // unique 阶段每批处理的 grad 数量
+    uint32_t deferRecv;        // 1: RecvGradFromPeers 延后至 sort/count/zero 之后
 };
 #endif
