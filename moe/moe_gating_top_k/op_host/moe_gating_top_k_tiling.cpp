@@ -182,6 +182,7 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
     }
     moeGatingTopKTilingData_.set_hashFlag(hashFlag_);
 
+
     if (hashFlag_ == 1) {
         OP_CHECK_IF(k_ > MAX_K_FOR_HASH,
                     OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "k", std::to_string(k_),
