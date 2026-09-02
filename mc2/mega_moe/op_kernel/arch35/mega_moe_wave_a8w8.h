@@ -45,6 +45,9 @@
 
 namespace MegaMoeImpl {
 
+constexpr uint32_t GMM2_LAG_MIN_TOKEN_NUM = 4096U;
+
+
 using namespace AscendC;
 
 // 预留：XType OutputType TopkWeightsType Weight1Type
@@ -801,6 +804,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertTokenPosition gmm1Position{};
     ExpertTokenPosition gmm2Position{};
     ExpertTokenPosition dispatchEndPosition{};
+    // GMM2 的滞后消费目标（见循环内注释）；首轮为零位置，GMM2 空转一轮。
+    // 形状门控：滞后收益来自消除 AIC 等激活（随 wave 数放大），代价是流水尾部固定多一个
+    // GMM2 wave 深度——小 bs 下 wave 少、尾深占比大，实测 bs2048 净劣化（中位数 +45us）而
+    // bs8192 净收益（-820us），故仅在每卡 token 数达到阈值时启用；2048/8192 之间未实测，
+    // 阈值取中点偏保守，中间形状合入前需补测。
+    const bool gmm2LagActive = commonConfig_.tokenNum >= GMM2_LAG_MIN_TOKEN_NUM;
+    ExpertTokenPosition gmm2LaggedTarget{};
     uint32_t combineBeginExpertIndex = 0U;
     uint32_t allCoreCombineExpertIndex = moeExpertPerRank_;
 
@@ -841,10 +851,27 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
+        /*
+         * GMM2 的 AIC 消费目标滞后一个 wave（gmm2LaggedTarget 是上一轮 GMM1 的终点）：
+         * GMM2 wave w 的输入是 wave w 的激活输出，AIV0 epilogue 在末批 MMAD 后仍需一段
+         * 向量时间才发布 activationToGmm2Flag；紧跟消费同一 wave 会让 AIC 反复自旋等激活
+         * （实测约占 E2E 15%）。滞后一个 wave 后等待清零；代价仅是流水尾部多一个 GMM2 wave。
+         * 仅 AIC 滞后：AIV0 的 GMM2 状态机保持原目标推进——它承担 allCoreCombineExpertState
+         * 的保存与本地行偏移推进，滞后它会让全核 combine 专家的状态晚一个 wave 才可用；
+         * combine 门控走 AIC 发布的 per-expert gmm2Ready flag，自动跟随 AIC 滞后，语义不变。
+         */
         GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
-        ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
+        ExpertTokenPosition gmm2ConsumeTarget = waveEndPosition;
+        if constexpr (g_coreType == AIC) {
+            if (gmm2LagActive) {
+                gmm2ConsumeTarget = gmm2LaggedTarget;
+            }
+        }
+        ProcessGmm2Wave(gmm2Position, gmm2ConsumeTarget, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
                         allCoreCombineExpertIndex, allCoreCombineExpertState);
+        gmm2LaggedTarget = waveEndPosition;
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+        gmm2LaggedTarget = waveEndPosition;
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
         const bool fixedRoleResonance =
@@ -860,6 +887,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         waveBeginPosition = waveEndPosition;
     }
 
+    // 滞后流水收尾：仅 AIC 补跑最后一个 wave 的 GMM2（AIV 的 GMM2 状态机未滞后，无需补；
+    // combine 已在循环内按 per-expert flag 全量收齐）。
+    if constexpr (g_coreType == AIC) {
+        if (gmm2LagActive && !IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
+            GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
+            ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState,
+                            allCoreCombineExpertIndex, allCoreCombineExpertState);
+            UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+        }
+    }
+
     if constexpr (!TopkWeightsPrefetch) {
         EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
     }
@@ -870,14 +908,23 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmmPipeline()
 {
+    // 等待所有 rank 完成本轮输入准备（quant/mask 发送/本地 workspace flag 清理），再进入
+    // MoE stage。该同步置于共享专家 GMM1 之前：共享 GMM1 只依赖本卡输入（SyncAll<false>
+    // 已保证可见），dispatch（奇数子核）只依赖本卡量化数据与远端输入准备完成，两者无数据
+    // 依赖；奇数子核不参与共享 GMM1 的核间交接（实测穿越 <1us），先同步即让 dispatch 与
+    // 共享 GMM1/激活并行，消除奇数子核在同步点等待整段共享 GMM1 的空转（实测 8K 1010us）。
+    // 不变量（重排后由隐式约定承担，改动共享/通信任一侧时必须重审）：
+    //  1. 共享 GMM1/激活只触碰 workspace 侧 sharedExpert* 区与本核私有 UB；dispatch/combine
+    //     只触碰通信 window 与 count workspace——两资源面零交叠是并发安全的前提。
+    //  2. 本同步与后续 dispatch 读远端 mask 计数之间不再有共享 GMM1 的时间垫层，读计数的
+    //     到达保证与无共享路径（主线现役行为）完全一致。
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
         ProcessSharedExpertGmm1();
     }
-
-    // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
 
     // Dispatch 的全部专家先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
     ProcessMoeExpertStages();
