@@ -446,6 +446,10 @@ void FlashMlaWithKvcacheTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.outputLayout =
         static_cast<uint32_t>(faInfo_->kernelOutputLayout);
+    // 单 token / 小 batch decode 场景：K/V 数据量远超 L2 缓存容量，关闭 L2 cache 避免无意义的缓存填充/驱逐开销
+    // （阈值 128 = 2*mBaseSize，由性能实验验证：gSize*s1Size > 128 时可能存在跨 batch 复用，保持 L2 开启）
+    tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.l2CacheOffFlag =
+        (faInfo_->gSize * faInfo_->s1Size) <= 128 ? 1U : 0U;
 
     tilingData_.baseTiling.flashMlaWithKvcachePageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;

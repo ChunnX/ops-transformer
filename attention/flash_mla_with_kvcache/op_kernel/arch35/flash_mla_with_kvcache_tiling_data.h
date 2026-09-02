@@ -99,6 +99,7 @@ struct FlashMlaWithKvcacheBaseParams {
     float scaleValue = 0.0f;
     uint8_t isKvContinuous = 0;
     uint8_t isSoftMaxLseEnable = 0;
+    uint8_t l2CacheOffFlag = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = 0;
     // 增加strides参数

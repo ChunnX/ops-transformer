@@ -165,6 +165,7 @@ struct MlaExtConstInfo {
     StridesConstInfo vScaleStrides;
 
     bool isRowInvalidOpen;
+    bool l2CacheOffFlag;
 };
 
 /* 高阶特性 */
