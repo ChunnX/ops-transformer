@@ -581,7 +581,7 @@ function build_example()
     fi
     # No soc provided.
     if [[ -z "$ASCEND_SOC_UNITS" ]]; then
-ASCEND_SOC_UNITS="ascend910b"
+        ASCEND_SOC_UNITS="ascend910b"
     fi
     is_soc_support=""
     for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
