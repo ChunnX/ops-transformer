@@ -1607,6 +1607,16 @@
     <td>完成因果一维卷积（Causal Conv1d）计算，支持前向计算（prefill/chunk-prefill）和状态更新（decode/update）两种运行模式，支持APC（Automatic Prefix Caching）、MTP（投机解码）等特性。</td>
   </tr>
   <tr>
+    <td>residuals</td>
+    <td><a href="../../residuals/block_attention_residuals/README.md">block_attention_residuals</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>将 prefixSum 与 blockRes 拼接后完成 RMS、投影打分与 Softmax 加权融合，输出 hiddenStates。</td>
+  </tr>
+  <tr>
     <td>posembedding</td>
     <td><a href="../../posembedding/apply_rotary_pos_emb/README.md">apply_rotary_pos_emb</a></td>
     <td>✓</td>
