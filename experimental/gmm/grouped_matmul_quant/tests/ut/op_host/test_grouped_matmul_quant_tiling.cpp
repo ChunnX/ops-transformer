@@ -162,7 +162,11 @@ void DeserializeTilingData(const TilingInfo& info, optiling::GroupedMatmulQuantT
     READ_TILING_FIELD(castOutTailN);
     READ_TILING_FIELD(castOutTailCoreNum);
 #undef READ_TILING_FIELD
-    EXPECT_EQ(offset, info.tilingDataSize) << "Tiling data schema changed; update the deserializer";
+    constexpr size_t TILING_DATA_ALIGNMENT = sizeof(uint64_t);
+    const size_t alignedSize =
+        (offset + TILING_DATA_ALIGNMENT - 1U) / TILING_DATA_ALIGNMENT * TILING_DATA_ALIGNMENT;
+    EXPECT_EQ(alignedSize, info.tilingDataSize)
+        << "Tiling data schema changed or has unexpected trailing data; update the deserializer";
 }
 
 void ExpectValidCase(const CaseParam& param, uint32_t expectedSplitK)
