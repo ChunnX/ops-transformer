@@ -424,7 +424,11 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     if (info.isAscend950 && !info.isQuant && IsFp8ComputeDtype(info.queryDtype)) {
         scratchElemBytes = 1U;
     }
-    const uint32_t kScratchElems = c2ub ? MSA_A5_K_SCRATCH_ELEM_NUM : MSA_K_SCRATCH_ELEM_NUM;
+    uint32_t kScratchElems = c2ub ? MSA_A5_K_SCRATCH_ELEM_NUM : MSA_K_SCRATCH_ELEM_NUM;
+    // A2/A3 int8 四槽 K scratch；950 C2UB / 非量化 TND 尾页保持单槽。
+    if (!info.isAscend950 && info.isQuant) {
+        kScratchElems *= MSA_K_SCRATCH_STAGES_A2;
+    }
     const uint32_t kScratchBytes = useKScratch ? (aicNum * kScratchElems * scratchElemBytes) : 0U;
     const uint32_t kScratchOffsetElems = sWsBytes / sizeof(float);
 
