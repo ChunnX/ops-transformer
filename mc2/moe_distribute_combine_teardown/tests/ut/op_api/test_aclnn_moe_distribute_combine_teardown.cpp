@@ -22,6 +22,7 @@
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 using namespace std;
@@ -51,7 +52,7 @@ class TestAclnnMoeDistributeCombineTeardown : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "TestAclnnMoeDistributeCombineTeardown SetUp" << endl;
     }
 
@@ -465,13 +466,13 @@ class TestAclnnMoeDistributeCombineTeardownUnsupportedArch : public testing::Tes
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3113);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3113);
         cout << "TestAclnnMoeDistributeCombineTeardownUnsupportedArch SetUp" << endl;
     }
 
     static void TearDownTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "TestAclnnMoeDistributeCombineTeardownUnsupportedArch TearDown" << endl;
     }
 };

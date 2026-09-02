@@ -16,6 +16,7 @@
 #include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 #include "mc2_log.h"
 #include "common/utils/op_mc2.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 using namespace Mc2Log;
 using namespace Mc2Tiling;
 
@@ -26,7 +27,7 @@ bool UnQuantMatmulAllReduceTiling310::IsCapable()
     OP_TILING_CHECK(weightTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
                     return false);
     auto format = weightTensor->GetStorageFormat();
-    if ((npuArch_ != NpuArch::DAV_2002) || (format == ge::Format::FORMAT_ND)) {
+    if ((npuArch_ != Ops::Base::DAV_2002) || (format == ge::Format::FORMAT_ND)) {
         OP_LOGI(opName_, "skip normalized unquant tiling when is not 310p or not weight nz[%d].", format);
         return false;
     }

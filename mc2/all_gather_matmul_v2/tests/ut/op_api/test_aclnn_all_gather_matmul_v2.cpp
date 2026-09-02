@@ -15,6 +15,7 @@
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
 #include "platform/platform_info.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 using namespace std;
@@ -25,7 +26,7 @@ class AllGatherMatmulV2AclnnTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "AllGatherMatmulV2AclnnTest SetUp" << endl;
     }
     static void TearDownTestCase()
@@ -798,7 +799,7 @@ TEST_F(AllGatherMatmulV2AclnnAIVTest, TestAIVX1TransposedRejected)
 
 TEST_F(AllGatherMatmulV2AclnnTest, TestGetWorkspaceSizeUnsupportedNpuArch)
 {
-    op::SetPlatformNpuArch(NpuArch::DAV_RESV);
+    op::SetPlatformNpuArch(Ops::Base::DAV_RESV);
     TensorDesc x1 = TensorDesc({8, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x2 = TensorDesc({256, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({8, 512}, ACL_FLOAT16, ACL_FORMAT_ND);
@@ -811,7 +812,7 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestGetWorkspaceSizeUnsupportedNpuArch)
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 }
 
 TEST_F(AllGatherMatmulV2AclnnTest, TestSecondStageSkipsWhenWorkspaceEmpty)

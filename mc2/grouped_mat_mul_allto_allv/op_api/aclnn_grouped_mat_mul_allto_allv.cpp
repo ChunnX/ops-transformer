@@ -17,6 +17,7 @@
 #include "aclnn_grouped_mat_mul_allto_allv.h"
 #include "aclnnInner_grouped_mat_mul_allto_allv.h"
 #include "mc2_comm_utils.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 
@@ -149,7 +150,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(void *workspace, uint64_t workspaceSize,
                                         aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

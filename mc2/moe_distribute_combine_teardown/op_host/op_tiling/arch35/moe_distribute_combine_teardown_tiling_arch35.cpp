@@ -17,6 +17,7 @@
 #include "moe_distribute_combine_teardown_tiling_arch35.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 namespace {
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
@@ -66,7 +67,7 @@ REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineTeardown, MoeDistributeCombineT
 bool MoeDistributeCombineTeardownTilingA5::IsCapable()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
         return true;
     }
     return false;

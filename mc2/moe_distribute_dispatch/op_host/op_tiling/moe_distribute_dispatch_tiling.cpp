@@ -28,6 +28,7 @@
 #include <string>
 
 #include "moe_distribute_dispatch_tiling_base.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace Mc2Tiling;
@@ -752,7 +753,7 @@ ge::graphStatus MoeDistributeDispatchTilingBase::MoeDistributeDispatchA3A5Tiling
                                                           "MoeDistributeDispatchA3A5TilingCheckAttr failed"),
                     return ge::GRAPH_FAILED);
 
-    uint64_t tilingKey = CalTilingKey(isScales, quantMode, mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510);
+    uint64_t tilingKey = CalTilingKey(isScales, quantMode, mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     uint32_t numBlocks = 1U;

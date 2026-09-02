@@ -20,6 +20,7 @@
 
 #include "activation/softmax_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 #include "softmax_tiling_mocker.h"
 
 SoftmaxTilingMocker &SoftmaxTilingMocker::GetInstance()
@@ -93,7 +94,7 @@ uint32_t GetSoftMaxMinTmpSize(const ge::Shape &srcShape, const uint32_t dataType
     const auto npuArch = platform->GetCurNpuArch();
 
     uint32_t needSize;
-    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_3003 || npuArch == NpuArch::DAV_5102) {
+    if (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_3003 || npuArch == Ops::Base::DAV_5102) {
         const uint32_t needSize1 = srcM * (BASIC_TILE_NUM + srcK) +
                                    SOFTMAX_BASICBLOCK_UNIT * SOFTMAX_TMPFLASHUPDATE_COUNT +
                                    (srcM + BASIC_TILE_NUM - 1U) / BASIC_TILE_NUM * BASIC_TILE_NUM;
@@ -134,7 +135,7 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape &srcShape, const uint32_t d
     const auto npuArch = platform->GetCurNpuArch();
 
     uint32_t needMinSize = 0U;
-    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_5102) {
+    if (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_5102) {
         if (isUpdate) {
             if (dataTypeSize1 == SOFTMAX_HALF_SIZE) {
                 const uint32_t size1 =
@@ -213,7 +214,7 @@ uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape &srcShape, const uint32_t dat
     const auto npuArch = platform->GetCurNpuArch();
 
     uint32_t needSize;
-    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_5102) {
+    if (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_5102) {
         const uint32_t needSize2 = srcM * (elementNumPerBlk + srcK);
         if (!isUpdate) {
             const uint32_t needSize1 = srcM * (BASIC_TILE_NUM + srcK) + SOFTMAX_BASICBLOCK_UNIT * SOFTMAX_FLOAT_SIZE +

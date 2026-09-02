@@ -14,6 +14,7 @@
 #include "op_api/op_api_def.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 namespace Ops {
 namespace Transformer {
@@ -41,21 +42,15 @@ bool NeedCubeGoHF32(const op::DataType cubeTensorPromoteType, int8_t cubeMathTyp
 // 检查针对x芯片，cube算子是否支持FP32
 inline bool IsCubeSupportFp32()
 {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 &&
-        op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        return false;
-    }
-    return true;
+    const auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    return npuArch == Ops::Base::DAV_2201 || npuArch == Ops::Base::DAV_3510;
 }
 
 // 检查针对x芯片，cube算子是否支持HF32
 inline bool IsCubeSupportHf32()
 {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201 &&
-        op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        return false;
-    }
-    return true;
+    const auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    return npuArch == Ops::Base::DAV_2201 || npuArch == Ops::Base::DAV_3510;
 }
 
 bool CheckUnSupportDtype(const aclTensor *input, const aclTensor *weight);

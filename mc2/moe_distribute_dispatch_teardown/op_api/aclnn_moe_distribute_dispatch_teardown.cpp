@@ -18,6 +18,7 @@
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_distribute_dispatch_teardown.h"
 #include "mc2_log_compat.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 
@@ -87,7 +88,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     OP_LOGD("aclnnMoeDistributeDispatchTeardownGetWorkspaceSize start");
-    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != Ops::Base::DAV_3510) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "aclnnMoeDistributeDispatchTeardown", "npuArch",
             std::to_string(static_cast<int64_t>(GetCurrentPlatformInfo().GetCurNpuArch())).c_str(),

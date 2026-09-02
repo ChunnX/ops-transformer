@@ -17,13 +17,14 @@
 #include "moe_distribute_dispatch_teardown_tiling_arch35.h"
 #include "register/op_def_registry.h"
 #include "op_host/tiling_templates_registry.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 namespace optiling {
 
 REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatchTeardown, MoeDistributeDispatchTeardownTilingA5, 0);
 bool MoeDistributeDispatchTeardownTilingA5::IsCapable()
 {
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         OP_LOGD(nodeName_, "Do MoeDistributeDispatchTeardownTilingA5 tiling.");
         return true;
     }

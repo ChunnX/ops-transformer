@@ -12,6 +12,7 @@
 #include "all_gather_matmul_api_ut_param.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "../../../op_api/aclnn_all_gather_matmul.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 namespace AllGatherMatmulUT {
 
@@ -65,9 +66,9 @@ TEST_F(AclnnAllGatherMatmulLaunchTest, LaunchApiCoverage)
 
 TEST_F(AclnnAllGatherMatmulLaunchTest, Ascend950LaunchCcuCommMode)
 {
-    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
     (void)aclnnAllGatherMatmul(nullptr, 0, nullptr, nullptr);
-    op::SetPlatformNpuArch(NpuArch::DAV_3103);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3103);
     op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
 }
 

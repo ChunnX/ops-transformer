@@ -21,6 +21,7 @@
 #include "mc2/matmul_all_reduce/op_kernel/arch35/matmul_all_reduce_apt_tiling_key.h"
 #include "all_reduce_fit_balance_tiling.h"
 #include "mc2_comm_utils.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace Mc2Log;
 using namespace Mc2Tiling;
@@ -1024,7 +1025,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, QuantMatmulAllReduceTilingA5,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace optiling
 
 #endif //_QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_

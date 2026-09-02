@@ -54,6 +54,8 @@ enum class NpuArch : uint32_t {
 
 #endif
 
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
+
 namespace op {
 
 enum class SocVersion {

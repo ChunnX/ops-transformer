@@ -17,6 +17,7 @@
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 using namespace std;
@@ -964,7 +965,7 @@ static void TestV2OneParamCase(const MatmulAlltoAllV2AclnnTestParam &param)
 
 TEST_F(TestAclnnMatmulAlltoAllV2, CasesParamsTest950)
 {
-    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
     if (std::size(g_v2_casesParams_950) != 0) {
         uint64_t numCases = sizeof(g_v2_casesParams_950) / sizeof(g_v2_casesParams_950[0]);
         for (size_t idx = 0; idx < numCases; idx += 1) {

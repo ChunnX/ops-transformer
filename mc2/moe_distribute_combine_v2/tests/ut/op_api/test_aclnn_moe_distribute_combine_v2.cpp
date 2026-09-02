@@ -23,6 +23,7 @@
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 
 using namespace op;
@@ -74,7 +75,7 @@ TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSize950Ccu)
 {
     EXPECT_EXIT(
         {
-            op::SetPlatformNpuArch(NpuArch::DAV_3510);
+            op::SetPlatformNpuArch(Ops::Base::DAV_3510);
             (void)CallBaseGetWorkspaceSize("test_moe_distribute_combine_tp", "ccu");
             std::exit(0);
         },

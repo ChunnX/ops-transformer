@@ -18,6 +18,7 @@
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log_compat.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 
@@ -65,11 +66,11 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
                             const aclTensor *commQuantScale1Optional, const aclTensor *commQuantScale2Optional,
                             const aclTensor *output)
 {
-    const auto &dequantDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto &dequantDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2002 ?
                                        DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                        DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto &outDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto &outDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2002 ?
                                    DTYPE_SUPPORT_LIST_310P :
                                    DTYPE_SUPPORT_LIST;
 
@@ -363,7 +364,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     aclTensor *offset = nullptr;
     int64_t antiquantGroupSize = 0;
     auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != Ops::Base::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
         if (x2->GetTensor() == nullptr) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "x2");
             return ACLNN_ERR_INNER_NULLPTR;
@@ -398,7 +399,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(void *workspace, uint64_t workspaceSize,
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }

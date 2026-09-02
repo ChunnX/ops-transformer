@@ -16,6 +16,7 @@
 #include <register/op_impl_registry.h>
 
 #include "allto_all_matmul_tiling_base.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace ge;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
@@ -28,7 +29,7 @@ static ge::graphStatus AlltoAllMatmulTilingFunc(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
+    if (npuArch == Ops::Base::DAV_3510) {
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);

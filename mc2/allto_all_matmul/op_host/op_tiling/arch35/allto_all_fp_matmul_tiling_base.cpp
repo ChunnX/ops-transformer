@@ -18,6 +18,7 @@
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -413,6 +414,6 @@ AllToAllFpMatmulTilingBase::AllToAllFpMatmulTilingBase(gert::TilingContext *cont
 {}
 
 // 注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase, static_cast<int32_t>(NpuArch::DAV_3510),
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase, static_cast<int32_t>(Ops::Base::DAV_3510),
                                    0);
 } // namespace MC2Tiling

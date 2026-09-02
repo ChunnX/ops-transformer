@@ -16,6 +16,7 @@
 #include "mc2_log.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -1013,6 +1014,6 @@ MxQuantMatmulAllToAllTilingBase::MxQuantMatmulAllToAllTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, MxQuantMatmulAllToAllTilingBase,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 2);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 2);
 
 } // namespace MC2Tiling

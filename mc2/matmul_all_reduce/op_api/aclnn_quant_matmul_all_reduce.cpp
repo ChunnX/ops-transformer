@@ -19,6 +19,7 @@
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log_compat.h"
+#include "third_party/opbase/include/op_common/op_host/util/platform_util.h"
 
 using namespace op;
 
@@ -64,7 +65,7 @@ aclnnStatus aclnnQuantMatmulAllReduce(void *workspace, uint64_t workspaceSize, a
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
