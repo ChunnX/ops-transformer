@@ -114,9 +114,8 @@ protected:
 
 private:
     MhcPreBackwardTilingData tilingData_;
-    uint32_t blockDim_{0};       // 参与硬同步的AIC核数
-    uint32_t usedBlockDim_{0};   // 实际参与计算的AIC核数
-    uint32_t vecCoreNum_{0};     // 实际参与计算的AIV核数
+    uint32_t blockDim_{0};   // AIC
+    uint32_t vecCoreNum_{0}; // AIV
     uint64_t totalLength_{0};
     uint64_t N_{0};
     uint64_t D_{0};

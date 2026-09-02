@@ -324,8 +324,7 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
 {
     v1UsedCubeCoreNum_ = 0;
-    // GetBlockNum包含所有硬同步参与核；ND只按tiling指定的实际计算核数切分。
-    cubeDealnDPeCore_ = nD_ / coreNum_;
+    cubeDealnDPeCore_ = nD_ / GetBlockNum();
     if (cubeDealnDPeCore_ == 0) {
         cubeDealnDPeCore_ = nD_;
         v1UsedCubeCoreNum_ = 1;
