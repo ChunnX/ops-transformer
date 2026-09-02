@@ -93,8 +93,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
 // 属性合法性
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const char *nodeName,
-                                       MoeEpDispatchEpilogueInfo &info, uint32_t &networkMode,
-                                       uint32_t &serverNum)
+                                       MoeEpDispatchEpilogueInfo &info, uint32_t &networkMode, uint32_t &serverNum)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
@@ -113,8 +112,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(requestedNetworkModePtr == nullptr,
-                    OP_LOGE(nodeName, "requestedNetworkModePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(requestedNetworkModePtr == nullptr, OP_LOGE(nodeName, "requestedNetworkModePtr is null."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rankNumPerServerPtr == nullptr, OP_LOGE(nodeName, "rankNumPerServerPtr is null."),
                     return ge::GRAPH_FAILED);
 
@@ -161,8 +160,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
     serverNum = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
-    networkMode = (requestedNetworkMode == NETWORK_HYBRID && serverNum > 1U) ?
-        NETWORK_HYBRID : NETWORK_DIRECT;
+    networkMode = (requestedNetworkMode == NETWORK_HYBRID && serverNum > 1U) ? NETWORK_HYBRID : NETWORK_DIRECT;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -448,7 +446,8 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchNotifyCount = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN;
     uint64_t dispatchWinStateSize = cntWinStateSize + dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
+    constexpr uint64_t combineChannelCount = 6UL;
+    uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * combineChannelCount * WIN_ADDR_ALIGN;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint64_t dispatchReservedPerSlotBytes = AlignUpWin(static_cast<uint64_t>(hiddenAlign + topKAlign * 2 + UB_ALIGN));
@@ -471,20 +470,18 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
         winNeed = payloadStashWinOffset + payloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
-        uint64_t stateAndRecvDataWinSize =
-            dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
+        uint64_t stateAndRecvDataWinSize = dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
         uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
         winDataOffset = totalStateWinSizeEp;
         winNeed = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
     }
-    OP_TILING_CHECK(
-        winNeed > maxWindowSize,
-        OP_LOGE(nodeName,
-                "ccl_buffer_size is not enough, need %lu (ep_world_size=%u, num_max_tokens_per_rank=%u, "
-                "per_slot_bytes=%u, dispatch_reserved_per_slot_bytes=%lu), but got ccl_buffer_size=%lu.",
-                winNeed, info.cfg.epWorldSize, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes,
-                dispatchReservedPerSlotBytes, maxWindowSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(winNeed > maxWindowSize,
+                    OP_LOGE(nodeName,
+                            "ccl_buffer_size is not enough, need %lu (ep_world_size=%u, num_max_tokens_per_rank=%u, "
+                            "per_slot_bytes=%u, dispatch_reserved_per_slot_bytes=%lu), but got ccl_buffer_size=%lu.",
+                            winNeed, info.cfg.epWorldSize, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes,
+                            dispatchReservedPerSlotBytes, maxWindowSize),
+                    return ge::GRAPH_FAILED);
 
     info.winDataOffset = winDataOffset;
     info.slotWinStateOffset = cntWinStateSize;
@@ -549,8 +546,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN) *
         WIN_ADDR_ALIGN;
 
-    OP_TILING_CHECK(BuildAndCheckWindowLayout(context, nodeName, info, networkMode, serverNum) !=
-                        ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(BuildAndCheckWindowLayout(context, nodeName, info, networkMode, serverNum) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check HCCL Window size failed."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
