@@ -1319,7 +1319,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
             Adds(c0DirectStageBuf_, c0DirectUb, ZERO, c0TileRows * copySizeND);
             PipeBarrier<PIPE_V>();
             vecInQueue0_.EnQue(c0DirectStageBuf_);
-            c0DirectStageBuf_ = vecInQueue0_.DeQue<P>();
+            vecInQueue0_.DeQue<P>(c0DirectStageBuf_);
             if (c0DirectConsumeSlot_ == 0) {
                 AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PING);
             } else {
