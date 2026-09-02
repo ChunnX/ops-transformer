@@ -622,12 +622,12 @@ protected:
             uint64_t commDataBits = worldSize_ * m_ * perRankBits;
             uint64_t commDataBytes = (commDataBits + 7UL) / 8UL;
             constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL;
-            uint64_t needBytes = commDataBytes + HCCL_BUFFER_RESERVED_BYTES;
+            uint64_t needBytes = 2 * (commDataBytes + HCCL_BUFFER_RESERVED_BYTES);
             if (hccBufPtr != nullptr && static_cast<uint64_t>(*hccBufPtr) < needBytes) {
                 OP_LOGE_WITHOUT_REPORT(opName,
                                        "[hcclBufferSize] hcclBufferSize(%ld) is less than "
-                                       "worldSize(%lu) * m_per_rank(%lu) * (Ka(%lu) * %lu bits + "
-                                       "scale(%lu * %lu * 8 bits)) / 8 + reserved(%lu) = %lu bytes",
+                                       "2 * (worldSize(%lu) * m_per_rank(%lu) * (Ka(%lu) * %lu bits + "
+                                       "scale(%lu * %lu * 8 bits)) / 8 + reserved(%lu)) = %lu bytes",
                                        static_cast<long>(*hccBufPtr), worldSize_, m_, kPerRank, x1Bits, scaleKGroups,
                                        SCALE_LAST_DIM, HCCL_BUFFER_RESERVED_BYTES, needBytes);
                 return ge::GRAPH_FAILED;
