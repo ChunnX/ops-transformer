@@ -334,3 +334,49 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 [INFO] 卡0 <-> 卡1完全一致(顺序+内容+次数相同)<br>
 [INFO] graph图文件分析完成<br>
 <b>上述结果为对GRAPH_PATH下对应卡的graph图文件分析，并根据文件中的信息,判断每张卡的算子执行顺序、次数、内容是否完全一致,不一致则视为异常</b>
+
+## MC2 融合算子异常 dump 统一解析
+
+`parse_mc2_dump.py` 将原来分散的 `tiling_data`、`args_info`、`workspace_seg`、CCU XN/CKE 地址表以及
+URMA context/peermem 解析整合成一个入口。在 dump 根目录执行时只需要传算子名：
+
+```bash
+python3 /path/to/ops-transformer/mc2/tools/dump_analysis/parse_mc2_dump.py AlltoAllMatmul
+```
+
+不在 dump 目录执行时，可以追加 dump 目录；这是唯一的可选位置参数：
+
+```bash
+python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/data-dump
+```
+
+支持的通路如下：
+
+| 算子名 | 通路 | 说明 |
+| --- | --- | --- |
+| `AllGatherMatmulV2` | CCU | 可使用别名 `agmmv2` |
+| `AllGatherMatmulV3` | AIV + URMA | 可使用别名 `agmmv3` |
+| `AlltoAllMatmul` | 主线 CCU | 根据 tiling 布局自动识别 |
+| `AlltoAllMatmul` | Apace CCU | 自动识别 `hcommAllToAllMatmulTilingData`，无需额外参数 |
+| `AlltoAllMatmulV2` | AIV + URMA | 可使用别名 `a2ammv2` |
+| `MatmulReduceScatterV2` | CCU | `MatmulReduceScatter`、`mmrs`、`mmrsv2` 均可使用 |
+
+脚本递归查找文件名中对应算子名的 dump，并根据前缀自动选择解析方式：
+
+- `tiling_data_`：解析 tiling 结构和 `WorkspaceLayoutInfo`；
+- `args_info_`：按 kernel 实际参数序号解析 GM 地址；CCU 算子会显示运行时注入的隐藏 context；
+- `workspace_segN_typeM_`：显示段编号、段类型和大小；type 12 继续解析逐核 `RuntimeInfo`；
+- `xn_addr_info_`、`cke_addr_info_`：按小端 `uint64`、每行 64 个地址导出，不依赖 NumPy；
+- `comm_context_`、`peermem_window_`、`peermem_segN_typeM_`：用于 AIV + URMA 通路。
+
+解析结果汇总到：
+
+```text
+<dump-dir>/mc2_dump_analysis/<算子名>/analysis.txt
+```
+
+XN/CKE 地址表的文本文件也放在该目录下。脚本会先从 tiling 自动读取 `aicCoreNum` 或 `usedCoreNum`，
+再解析 workspace type 12，因此不需要手工传 `--aic-core-num`。
+
+非 RuntimeInfo 的 workspace 是算子数据缓冲区，二进制文件本身不包含 dtype 和二维 shape；统一入口会给出段类型和
+hex 预览。需要按矩阵查看数值时，再使用 `parse_matrix.py` 显式提供 dtype/shape，避免把 FP8、BF16 或 scale 数据误解码。

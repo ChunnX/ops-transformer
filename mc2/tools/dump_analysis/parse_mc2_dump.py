@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+"""Unified MC2 exception-dump parser.
+
+Only the operator name is required when this script is run in a dump directory.
+The script discovers and dispatches tiling_data, args_info, workspace segments,
+CCU xn/cke address tables, and URMA context/peermem files automatically.
+"""
+
+import argparse
+import importlib
+import os
+from pathlib import Path
+import re
+import struct
+import subprocess
+import sys
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+PROFILES = {
+    "allgathermatmulv2": {
+        "name": "AllGatherMatmulV2",
+        "backend": "parse_all_gather_matmul_v2_tiling.py",
+        "module": "parse_all_gather_matmul_v2_tiling",
+        "path": "CCU",
+    },
+    "allgathermatmulv3": {
+        "name": "AllGatherMatmulV3",
+        "backend": "parse_all_gather_matmul_v3_tiling.py",
+        "module": "parse_all_gather_matmul_v3_tiling",
+        "path": "AIV + URMA",
+    },
+    "alltoallmatmul": {
+        "name": "AlltoAllMatmul",
+        "backend": "parse_allto_all_matmul_tiling.py",
+        "module": "parse_allto_all_matmul_tiling",
+        "path": "mainline CCU / Apace CCU (auto-detect)",
+    },
+    "alltoallmatmulv2": {
+        "name": "AlltoAllMatmulV2",
+        "backend": "parse_allto_all_matmul_v2_tiling.py",
+        "module": "parse_allto_all_matmul_v2_tiling",
+        "path": "AIV + URMA",
+    },
+    "matmulreducescatterv2": {
+        "name": "MatmulReduceScatterV2",
+        "backend": "parse_matmul_reduce_scatter_v2_tiling.py",
+        "module": "parse_matmul_reduce_scatter_v2_tiling",
+        "path": "CCU",
+    },
+}
+
+ALIASES = {
+    "agmmv2": "allgathermatmulv2",
+    "agmmv3": "allgathermatmulv3",
+    "a2amm": "alltoallmatmul",
+    "a2ammv2": "alltoallmatmulv2",
+    "alltoallmatmulapace": "alltoallmatmul",
+    "alltoallmatmulmainline": "alltoallmatmul",
+    "matmulreducescatter": "matmulreducescatterv2",
+    "mmrs": "matmulreducescatterv2",
+    "mmrsv2": "matmulreducescatterv2",
+}
+
+FILE_KINDS = (
+    ("tiling", re.compile(r"^tiling_data_", re.IGNORECASE)),
+    ("args", re.compile(r"^args_info_", re.IGNORECASE)),
+    ("xn", re.compile(r"^xn_addr_info_", re.IGNORECASE)),
+    ("cke", re.compile(r"^cke_addr_info_", re.IGNORECASE)),
+    ("comm_context", re.compile(r"^comm_context_", re.IGNORECASE)),
+    ("peermem", re.compile(r"^peermem_(?:window|seg\d+_type\d+)_", re.IGNORECASE)),
+    ("workspace", re.compile(r"^workspace_seg\d+_type\d+_", re.IGNORECASE)),
+)
+
+KIND_ORDER = {
+    "tiling": 0,
+    "args": 1,
+    "xn": 2,
+    "cke": 3,
+    "comm_context": 4,
+    "peermem": 5,
+    "workspace": 6,
+}
+
+WORKSPACE_SEG_TYPE_NAMES = {
+    0: "LIB_API", 1: "ND2NZ", 2: "GATHER", 3: "GATHER_SCALE1",
+    4: "GATHER_SCALE", 5: "COMM_OUT", 6: "PERMUTE_OUT", 7: "BIAS",
+    8: "MM_RESULT", 9: "RECV_BUF", 10: "COMM_INT8", 11: "DYNAMIC_QUANT",
+    12: "RUNTIME_INFO", 13: "MM_WORKSPACE", 255: "RESERVED",
+}
+
+PEERMEM_SEG_TYPE_NAMES = {
+    0: "DATA", 1: "SCALE", 2: "BIAS", 3: "FLAG", 255: "RESERVED",
+}
+
+
+def normalize(value):
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def resolve_profile(operator_name):
+    key = normalize(operator_name)
+    key = ALIASES.get(key, key)
+    if key not in PROFILES:
+        choices = ", ".join(profile["name"] for profile in PROFILES.values())
+        raise ValueError(f"不支持的算子名 {operator_name!r}。支持: {choices}; 别名: mmrs/a2amm/agmmv2/agmmv3")
+    return key, PROFILES[key]
+
+
+def classify_file(path):
+    for kind, pattern in FILE_KINDS:
+        if pattern.match(path.name):
+            return kind
+    return None
+
+
+def matches_operator(path, profile_key):
+    normalized_name = normalize(path.name)
+    if profile_key == "alltoallmatmul":
+        return "alltoallmatmul" in normalized_name and "alltoallmatmulv2" not in normalized_name
+    if profile_key == "matmulreducescatterv2":
+        return "matmulreducescatter" in normalized_name
+    return profile_key in normalized_name
+
+
+def discover_files(dump_dir, output_dir, profile_key):
+    files = []
+    for path in dump_dir.rglob("*"):
+        if not path.is_file() or output_dir in path.parents:
+            continue
+        kind = classify_file(path)
+        if kind is not None and matches_operator(path, profile_key):
+            files.append((kind, path))
+    return sorted(files, key=lambda item: (KIND_ORDER[item[0]], str(item[1]).lower()))
+
+
+def read_data(path):
+    with path.open("rb") as file_handle:
+        return file_handle.read()
+
+
+def read_preview(path, size=256):
+    with path.open("rb") as file_handle:
+        return file_handle.read(size)
+
+
+def segment_identity(path, prefix):
+    match = re.match(rf"^{prefix}_seg(\d+)_type(\d+)_", path.name, re.IGNORECASE)
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def infer_aic_core_num(profile, tiling_file):
+    sys.path.insert(0, str(SCRIPT_DIR))
+    try:
+        module = importlib.import_module(profile["module"])
+        data = read_data(tiling_file)
+        name = profile["name"]
+        if name == "AllGatherMatmulV3":
+            return module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
+        if name == "AlltoAllMatmulV2":
+            return module.parse_tiling_data(data).get("tileQbmmTilingData", {}).get("usedCoreNum")
+        if name == "AlltoAllMatmul":
+            tiling_format = module.detect_tiling_format(data)
+            if tiling_format == "apace":
+                result = module.parse_apace_tiling_data(data)
+                return result.get("tileQbmmTilingData", {}).get("usedCoreNum")
+            info = module.parse_allto_all_matmul_tiling_info(data, module.OFFSET_TILING_INFO)
+            return info.get("aicCoreNum")
+        is_quant = module.detect_quant_mode(data)
+        parser = module.parse_quant_tiling_data if is_quant else module.parse_non_quant_tiling_data
+        return parser(data).get("param", {}).get("aicCoreNum")
+    except (ImportError, OSError, struct.error, KeyError, TypeError, ValueError):
+        return None
+    finally:
+        if sys.path and sys.path[0] == str(SCRIPT_DIR):
+            sys.path.pop(0)
+
+
+def operator_suffix(path, profile):
+    """Return the invocation suffix shared by tiling/workspace files."""
+    candidates = [profile["name"]]
+    if profile["name"] == "MatmulReduceScatterV2":
+        candidates.append("MatmulReduceScatter")
+    lowered = path.name.lower()
+    for candidate in candidates:
+        index = lowered.find(candidate.lower())
+        if index >= 0:
+            return lowered[index + len(candidate):]
+    return lowered
+
+
+def build_core_index(profile, tiling_files):
+    exact = {}
+    per_parent = {}
+    values = set()
+    for tiling_file in tiling_files:
+        core_num = infer_aic_core_num(profile, tiling_file)
+        if core_num is None:
+            continue
+        exact[(tiling_file.parent, operator_suffix(tiling_file, profile))] = core_num
+        per_parent.setdefault(tiling_file.parent, set()).add(core_num)
+        values.add(core_num)
+    return exact, per_parent, values
+
+
+def core_num_for_file(path, profile, core_index):
+    exact, per_parent, values = core_index
+    core_num = exact.get((path.parent, operator_suffix(path, profile)))
+    if core_num is not None:
+        return core_num
+    parent_values = per_parent.get(path.parent, set())
+    if len(parent_values) == 1:
+        return next(iter(parent_values))
+    if len(values) == 1:
+        return next(iter(values))
+    return None
+
+
+def parse_address_table(input_path, output_path):
+    """Parse little-endian uint64 XN/CKE tables, 64 entries per row."""
+    row_count = 0
+    value_count = 0
+    carry = b""
+    row_values = []
+    with input_path.open("rb") as source, output_path.open("w", encoding="utf-8", newline="\n") as target:
+        while True:
+            chunk = source.read(64 * 8 * 64)
+            if not chunk:
+                break
+            chunk = carry + chunk
+            usable = len(chunk) - len(chunk) % 8
+            carry = chunk[usable:]
+            for (value,) in struct.iter_unpack("<Q", chunk[:usable]):
+                row_values.append(value)
+                value_count += 1
+                if len(row_values) == 64:
+                    target.write(" ".join(f"0x{item:016X}" for item in row_values) + "\n")
+                    row_values.clear()
+                    row_count += 1
+        if carry:
+            raise ValueError(f"文件长度不是 8 字节整数倍，尾部剩余 {len(carry)} 字节")
+        if row_values:
+            raise ValueError(f"文件末尾不是完整的 512 字节行，残留 {len(row_values) * 8} 字节")
+    return row_count, value_count
+
+
+def backend_command(profile, kind, path, aic_core_num):
+    command = [sys.executable, str(SCRIPT_DIR / profile["backend"]), str(path)]
+    if kind == "args":
+        command.append("--args")
+    elif kind == "workspace":
+        command.append("--workspace")
+        if aic_core_num is not None:
+            command.extend(("--aic-core-num", str(aic_core_num)))
+    elif kind == "comm_context":
+        command.append("--comm-ctx")
+    elif kind == "peermem":
+        command.append("--peermem")
+    return command
+
+
+def run_backend(profile, kind, path, aic_core_num):
+    process = subprocess.run(
+        backend_command(profile, kind, path, aic_core_num),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    return process.returncode, process.stdout.rstrip()
+
+
+def emit(lines, value=""):
+    print(value)
+    lines.append(value)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="按算子名自动解析 MC2 tiling/workspace/xn/cke/URMA dump",
+        epilog=(
+            "在 dump 目录中只需执行: python3 parse_mc2_dump.py AlltoAllMatmul\n"
+            "也可指定目录: python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/dump"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("operator", help="算子名或别名，例如 AlltoAllMatmul、AllGatherMatmulV3、mmrs")
+    parser.add_argument("dump_dir", nargs="?", default=".", help="dump 根目录，默认当前目录")
+    args = parser.parse_args(argv)
+
+    try:
+        profile_key, profile = resolve_profile(args.operator)
+    except ValueError as error:
+        parser.error(str(error))
+
+    dump_dir = Path(args.dump_dir).expanduser().resolve()
+    if not dump_dir.is_dir():
+        parser.error(f"dump 目录不存在: {dump_dir}")
+    output_dir = dump_dir / "mc2_dump_analysis" / profile["name"]
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    files = discover_files(dump_dir, output_dir, profile_key)
+    if not files:
+        parser.error(f"在 {dump_dir} 中没有找到 {profile['name']} 的受支持 dump 文件")
+
+    tiling_files = [path for kind, path in files if kind == "tiling"]
+    core_index = build_core_index(profile, tiling_files)
+    core_values = sorted(core_index[2])
+    core_summary = core_values[0] if len(core_values) == 1 else (core_values or "unknown")
+    report_lines = []
+    emit(report_lines, "=" * 88)
+    emit(report_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
+    emit(report_lines, f"dump dir: {dump_dir}")
+    emit(report_lines, f"matched files: {len(files)} | inferred AIC cores: {core_summary}")
+    emit(report_lines, "=" * 88)
+
+    failures = 0
+    for kind, path in files:
+        relative_path = path.relative_to(dump_dir)
+        emit(report_lines)
+        emit(report_lines, f"[{kind}] {relative_path}")
+        emit(report_lines, "-" * 88)
+        if kind in ("xn", "cke"):
+            relative_parent = relative_path.parent
+            address_dir = output_dir / relative_parent
+            address_dir.mkdir(parents=True, exist_ok=True)
+            output_path = address_dir / f"{path.name}.txt"
+            try:
+                rows, values = parse_address_table(path, output_path)
+                message = f"parsed {values} uint64 addresses / {rows} rows -> {output_path}"
+                emit(report_lines, message)
+            except (OSError, ValueError) as error:
+                failures += 1
+                emit(report_lines, f"ERROR: {error}")
+            continue
+
+        # Large data segments only need metadata and a short preview in the unified report.
+        # RuntimeInfo remains structurally parsed by the operator backend.
+        if kind == "workspace":
+            identity = segment_identity(path, "workspace")
+            if identity is not None and identity[1] != 12:
+                seg_index, seg_type = identity
+                emit(report_lines, f"segIdx: {seg_index}")
+                emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                emit(report_lines, f"fileSize: {path.stat().st_size} bytes")
+                emit(report_lines, f"hexPreview(256B): {read_preview(path).hex()}")
+                continue
+
+        if kind == "peermem":
+            identity = segment_identity(path, "peermem")
+            if identity is not None:
+                seg_index, seg_type = identity
+                emit(report_lines, f"segIdx: {seg_index}")
+                emit(report_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+            emit(report_lines, f"fileSize: {path.stat().st_size} bytes")
+            emit(report_lines, f"hexPreview(512B): {read_preview(path, 512).hex()}")
+            continue
+
+        aic_core_num = core_num_for_file(path, profile, core_index) if kind == "workspace" else None
+        return_code, output = run_backend(profile, kind, path, aic_core_num)
+        if output:
+            for line in output.splitlines():
+                emit(report_lines, line)
+        if return_code != 0:
+            failures += 1
+            emit(report_lines, f"ERROR: backend exited with code {return_code}")
+
+    report_path = output_dir / "analysis.txt"
+    report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+    print()
+    print(f"解析完成: {len(files) - failures}/{len(files)} 个文件成功")
+    print(f"汇总报告: {report_path}")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
