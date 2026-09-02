@@ -16,9 +16,10 @@ import random
 import numpy as np
 import math
 
-# 两种运行模式
+# 三种运行模式
 # 0 不切S2
 # 1 切S2
+# 3 切S2，FP64高精度
 
 RUN_MODE = 1
 
@@ -201,9 +202,13 @@ class GeneralizedSFAQuant:
         sinks,
         ori_topk_length_bnsd,
         cmp_topk_length_bnsd,
+        run_mode,
         return_softmax_lse=False,
     ):
-        attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
+        is_fp64_mode = run_mode == 3
+        compute_dtype = torch.float64 if is_fp64_mode else torch.float32
+        output_dtype = torch.float64 if is_fp64_mode else q_bnsd.dtype
+        attn_out = torch.zeros(q_bnsd.shape, dtype=output_dtype)
         softmax_lse = None
         if return_softmax_lse:
             softmax_lse = torch.zeros(
@@ -213,7 +218,7 @@ class GeneralizedSFAQuant:
                     q_bnsd.shape[2],
                     q_bnsd.shape[1] // ori_k_bnsd.shape[1],
                 ),
-                dtype=torch.float32,
+                dtype=compute_dtype,
             )
         B = q_bnsd.shape[0]
         act_q = self.seqused_q
@@ -349,10 +354,10 @@ class GeneralizedSFAQuant:
                         cur_cmp_k = []
                     if cur_cmp_k == []:
                         cmp_s2_loop_time = 0
-                        cur_cmp_k_fp32 = []
+                        cur_cmp_k_compute = []
                     else:
                         cmp_s2_loop_time = math.ceil(cur_cmp_k.size(0) / s2_base_size)
-                        cur_cmp_k_fp32 = cur_cmp_k.to(dtype=torch.float32)
+                        cur_cmp_k_compute = cur_cmp_k.to(dtype=compute_dtype)
 
                     if cur_ori_k_bnsd.size(0) == 0 and cur_cmp_k == []:
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = torch.zeros(
@@ -362,54 +367,57 @@ class GeneralizedSFAQuant:
 
                     cur_attn_out = attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
                     q_curr = q_bnsd[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
-                    q_curr_fp32 = q_curr.to(dtype=torch.float32)
-                    if RUN_MODE == 0:
+                    q_curr_compute = q_curr.to(dtype=compute_dtype)
+                    if run_mode == 0:
                         if empty_flag:
                             k_concat = cur_ori_k_bnsd
                         else:
                             k_concat = torch.concat([cur_ori_k_bnsd, cur_cmp_k], dim=0)
-                        k_concat_fp32 = k_concat.to(dtype=torch.float32)
-                        v_concat_fp32 = k_concat_fp32.clone()
+                        k_concat_compute = k_concat.to(dtype=compute_dtype)
+                        v_concat_compute = k_concat_compute.clone()
 
-                        mm1_res = torch.matmul(q_curr_fp32, k_concat_fp32.T)
+                        mm1_res = torch.matmul(q_curr_compute, k_concat_compute.T)
                         scale_res = mm1_res * self.softmax_scale
                         softmax_res, x_max, softmax_sum = self.sinks_softmax(
                             scale_res, cur_sinks_expand
                         )
                         softmax_res = softmax_res.to(q_bnsd.dtype).to(torch.float32)
-                        mm2_res = torch.matmul(softmax_res, v_concat_fp32)
+                        mm2_res = torch.matmul(softmax_res, v_concat_compute)
                         v2_res = torch.div(mm2_res, softmax_sum)
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = v2_res
                         if return_softmax_lse:
                             softmax_lse[i_B, i_N2, i_S1, :] = x_max[:, 0] + torch.log(
                                 softmax_sum[:, 0] + 1e-10
                             )
-                    elif RUN_MODE == 1:
+                    elif run_mode in (1, 3):
                         ori_s2_loop_time = math.ceil(
                             cur_ori_k_bnsd.size(0) / s2_base_size
                         )
                         total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
-                        cur_ori_k_bnsd_fp32 = cur_ori_k_bnsd.to(dtype=torch.float32)
-                        row_sum = torch.empty((G), dtype=torch.float32).uniform_(
+                        cur_ori_k_bnsd_compute = cur_ori_k_bnsd.to(dtype=compute_dtype)
+                        row_sum = torch.empty((G), dtype=compute_dtype).uniform_(
                             1.0, 1.0
                         )
-                        row_max = torch.empty((G, 1), dtype=torch.float32)
-                        row_max = cur_sinks
+                        row_max = (
+                            cur_sinks.to(dtype=compute_dtype)
+                            if is_fp64_mode
+                            else cur_sinks
+                        )
 
                         for i_S2 in range(total_s2_loop_time):
                             if i_S2 < ori_s2_loop_time:  # ori_kv
                                 if i_S2 < ori_s2_loop_time - 1:
-                                    k_tile = cur_ori_k_bnsd_fp32[
+                                    k_tile = cur_ori_k_bnsd_compute[
                                         i_S2 * s2_base_size : (i_S2 + 1) * s2_base_size,
                                         :,
                                     ]
                                 else:
-                                    k_tile = cur_ori_k_bnsd_fp32[
+                                    k_tile = cur_ori_k_bnsd_compute[
                                         i_S2 * s2_base_size :, :
                                     ]
                             else:  # cmp_kv
                                 if i_S2 < total_s2_loop_time - 1:
-                                    k_tile = cur_cmp_k_fp32[
+                                    k_tile = cur_cmp_k_compute[
                                         (i_S2 - ori_s2_loop_time) * s2_base_size : (
                                             i_S2 - ori_s2_loop_time + 1
                                         )
@@ -417,11 +425,11 @@ class GeneralizedSFAQuant:
                                         :,
                                     ]
                                 else:
-                                    k_tile = cur_cmp_k_fp32[
+                                    k_tile = cur_cmp_k_compute[
                                         (i_S2 - ori_s2_loop_time) * s2_base_size :, :
                                     ]
                             v_tile = k_tile.clone()
-                            mm1_res = torch.matmul(q_curr_fp32, k_tile.T)
+                            mm1_res = torch.matmul(q_curr_compute, k_tile.T)
                             scale_res = (
                                 mm1_res * self.softmax_scale
                             )  # 外层for S1 循环，据实拷入数据，因此不需要mask
@@ -438,19 +446,25 @@ class GeneralizedSFAQuant:
                             row_sum = update_mul * row_sum + torch.sum(
                                 cur_softmax_res, dim=1
                             )
-                            cur_softmax_res = cur_softmax_res.to(dtype=q_bnsd.dtype).to(
-                                dtype=torch.float
-                            )
+                            if not is_fp64_mode:
+                                cur_softmax_res = cur_softmax_res.to(
+                                    dtype=q_bnsd.dtype
+                                ).to(dtype=torch.float)
                             cur_o = torch.matmul(cur_softmax_res, v_tile)
                             cur_attn_out = cur_attn_out * update_mul_expand + cur_o
                         row_sum_expand = row_sum.unsqueeze(1)
+                        normalized_out = cur_attn_out / row_sum_expand
+                        if not is_fp64_mode:
+                            normalized_out = normalized_out.to(dtype=q_bnsd.dtype)
                         attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = (
-                            cur_attn_out / row_sum_expand
-                        ).to(dtype=q_bnsd.dtype)
+                            normalized_out
+                        )
                         if return_softmax_lse:
                             softmax_lse[i_B, i_N2, i_S1, :] = row_max + torch.log(
                                 row_sum + 1e-10
                             )
+                    else:
+                        raise ValueError(f"unsupported RUN_MODE:{run_mode}")
         return attn_out, softmax_lse
 
     def gather_ori_kv(
@@ -652,7 +666,7 @@ class GeneralizedSFAQuant:
             return new_tensor, [B, 1, max_s1, 1]
 
     def trans_bnsd_to_target_layout(
-        self, tensor, layout, cu_seqlens_q=None, seqused_q=None
+        self, tensor, layout, run_mode, cu_seqlens_q=None, seqused_q=None
     ):
         if layout in ["BSND"]:
             output = tensor.permute(0, 2, 1, 3).contiguous()
@@ -667,7 +681,8 @@ class GeneralizedSFAQuant:
                 if seqused_q is not None
                 else prefix_sum_to_original(cu_seqlens_q)
             )
-            output = torch.zeros((T, N, D), dtype=torch.float)
+            output_dtype = torch.float64 if run_mode == 3 else torch.float
+            output = torch.zeros((T, N, D), dtype=output_dtype)
             for b_index in range(B):
                 t_start = int(cu_seqlens_q[b_index])
                 cur_seqused = int(seqused_per_batch[b_index])
@@ -681,7 +696,7 @@ class GeneralizedSFAQuant:
         else:
             return tensor
 
-    def lse_trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
+    def lse_trans_bnsd_to_target_layout(self, tensor, layout, run_mode, act_seq=None):
         if layout in ["BSND"]:  # B N S G
             return tensor
         elif layout in ["TND"]:  # B N2 S1 G  --> T1 N2 G --> N2 T1 G
@@ -689,7 +704,8 @@ class GeneralizedSFAQuant:
             B = tensor.shape[0]
             N2 = tensor.shape[1]
             G = tensor.shape[3]
-            output = torch.zeros((N2, T, G), dtype=torch.float)
+            output_dtype = torch.float64 if run_mode == 3 else torch.float
+            output = torch.zeros((N2, T, G), dtype=output_dtype)
             t_start = 0
             act_seq_per_batch = prefix_sum_to_original(
                 act_seq
@@ -723,6 +739,7 @@ class GeneralizedSFAQuant:
         sinks,
         ori_topk_length,
         cmp_topk_length,
+        run_mode,
         return_softmax_lse,
     ):
         print("cpu执行中...")
@@ -799,15 +816,16 @@ class GeneralizedSFAQuant:
             sinks,
             ori_topk_length_bnsd,
             cmp_topk_length_bnsd,
+            run_mode,
             return_softmax_lse,
         )
 
         attn_out = self.trans_bnsd_to_target_layout(
-            attn_out, self.layout_q, cu_seqlens_q, self.seqused_q
+            attn_out, self.layout_q, run_mode, cu_seqlens_q, self.seqused_q
         )
         if return_softmax_lse:
             softmax_lse = self.lse_trans_bnsd_to_target_layout(
-                softmax_lse, self.layout_q, cu_seqlens_q
+                softmax_lse, self.layout_q, run_mode, cu_seqlens_q
             )
         return attn_out, softmax_lse
 
@@ -2192,7 +2210,7 @@ def save_test_case(input_data, output_dir):
     return input_filepath
 
 
-def gen_data(params, generate_golden=True):
+def gen_data(params, generate_golden=True, run_mode=RUN_MODE, bench_run_mode=None):
     """
     生成input param及cpuout
     runNpu: 生成完毕后执行npu计算
@@ -2598,7 +2616,7 @@ def gen_data(params, generate_golden=True):
         "return_softmax_lse": return_softmax_lse,
     }
     if generate_golden:
-        generate_cpu_golden({"golden_state": golden_state})
+        generate_cpu_golden({"golden_state": golden_state}, run_mode)
         cpu_result = golden_state["cpu_output"]
         cpu_lse = golden_state["cpu_lse"]
     else:
@@ -2719,6 +2737,8 @@ def gen_data(params, generate_golden=True):
             "return_softmax_lse": return_softmax_lse,
         },
         "golden_state": golden_state,
+        "run_mode": run_mode,
+        "bench_run_mode": bench_run_mode,
         "cpu_output": cpu_result,
         "cpu_lse": cpu_lse if return_softmax_lse else None,
     }
@@ -2726,7 +2746,7 @@ def gen_data(params, generate_golden=True):
     return input_data
 
 
-def generate_cpu_golden(input_data):
+def generate_cpu_golden(input_data, run_mode, return_bench=False, bench_run_mode=None):
     """Calculate MQSMLA CPU Golden from input-stage state without new random data."""
     state = input_data["golden_state"]
     test_qsmla = GeneralizedSFAQuant(
@@ -2766,23 +2786,39 @@ def generate_cpu_golden(input_data):
         state["cmp_topk_length"],
         state["template_run_mode"],
     )
-    cpu_output, cpu_lse = test_qsmla.forward(
-        state["q"],
-        state["ori_k_bnsd"],
-        state["cmp_k_bnsd"],
-        state["ori_sparse_indices"],
-        state["cmp_sparse_indices"],
-        state["cu_seqlens_q"],
-        state["seqused_ori_kv"],
-        state["seqused_cmp_kv"],
-        state["cmp_residual_kv"],
-        state["sinks"],
-        state["ori_topk_length"],
-        state["cmp_topk_length"],
-        state["return_softmax_lse"],
-    )
+
+    def run(current_run_mode):
+        return test_qsmla.forward(
+            state["q"],
+            state["ori_k_bnsd"],
+            state["cmp_k_bnsd"],
+            state["ori_sparse_indices"],
+            state["cmp_sparse_indices"],
+            state["cu_seqlens_q"],
+            state["seqused_ori_kv"],
+            state["seqused_cmp_kv"],
+            state["cmp_residual_kv"],
+            state["sinks"],
+            state["ori_topk_length"],
+            state["cmp_topk_length"],
+            current_run_mode,
+            state["return_softmax_lse"],
+        )
+
+    cpu_output, cpu_lse = run(run_mode)
     state["cpu_output"] = cpu_output
     state["cpu_lse"] = cpu_lse
     input_data["cpu_output"] = cpu_output
     input_data["cpu_lse"] = cpu_lse
+    if return_bench:
+        if bench_run_mode is None:
+            raise ValueError("bench_run_mode must be set when return_bench is True")
+        print(
+            f"[INFO]:cross_check enabled, calculating the RUN_MODE={bench_run_mode} bench..."
+        )
+        bench_output, bench_lse = run(bench_run_mode)
+        input_data["bench_outputs"] = (
+            bench_output,
+            bench_lse if state["return_softmax_lse"] else None,
+        )
     return cpu_output, cpu_lse

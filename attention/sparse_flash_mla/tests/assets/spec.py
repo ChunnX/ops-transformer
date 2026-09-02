@@ -48,16 +48,64 @@ metadata_inputs_module = load_impl_module("metadata_inputs")
 compare_module = load_impl_module("compare")
 
 
+# cross_check 三方精度标准（L0）：NPU 对标杆的 mare/mere/rmse 不得超过
+# golden 对标杆的 10/2/2 倍，小值域错误点数不超过 2 倍。
+CROSS_CHECK_TOLERANCE = {
+    "float16": {
+        "standard": "cross_check",
+        "level": "L0",
+        "mare_ratio": 10.0,
+        "mere_ratio": 2.0,
+        "rmse_ratio": 2.0,
+        "small_value": 2**-10,
+        "small_value_atol": 2**-16,
+    },
+    "bfloat16": {
+        "standard": "cross_check",
+        "level": "L0",
+        "mare_ratio": 10.0,
+        "mere_ratio": 2.0,
+        "rmse_ratio": 2.0,
+        "small_value": 2**-10,
+        "small_value_atol": 2**-16,
+    },
+}
+
+
+def _smla_compare(
+    *outputs,
+    batch_consistency_id=None,
+    batch_axis=None,
+    batch_slice_info=None,
+    batch_seed=None,
+    compare_context=None,
+    **kwargs,
+):
+    del kwargs
+    testcase_name = (
+        getattr(compare_context, "testcase_name", None)
+        if compare_context is not None
+        else None
+    )
+    return compare_module.dispatch(
+        *outputs,
+        bench_outputs=golden_module.peek_bench(testcase_name),
+        spec_tolerance=CROSS_CHECK_TOLERANCE,
+        batch_consistency_id=batch_consistency_id,
+        batch_axis=batch_axis,
+        batch_slice_info=batch_slice_info,
+        batch_seed=batch_seed,
+        compare_context=compare_context,
+    )
+
+
 class SparseFlashMlaSpec:
     golden = golden_module.cpu_sparse_flash_mla
     customize_inputs = inputs_module.generate_sparse_flash_mla_inputs
     npu_preprocess = npu_preprocess_module.run
-    tolerance = {
-        "float16": {"standard": "stat_rel_err"},
-        "bfloat16": {"standard": "stat_rel_err"},
-    }
+    tolerance = CROSS_CHECK_TOLERANCE
 
-    compare = staticmethod(compare_module.compare)
+    compare = staticmethod(_smla_compare)
 
 
 class AclnnSparseFlashMlaSpec(SparseFlashMlaSpec):

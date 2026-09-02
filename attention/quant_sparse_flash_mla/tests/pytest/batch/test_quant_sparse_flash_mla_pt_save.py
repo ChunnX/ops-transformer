@@ -307,7 +307,6 @@ def qsmla(param_combinations):
             input_data,
             batch_consistency_policy,
             persist=True,
-        )
         if config is not None:
             logging.info(f"batch consistency config: {config}")
         quant_sparse_flash_mla_golden.save_test_case(input_data, save_path)
