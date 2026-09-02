@@ -39,6 +39,8 @@ namespace ge {
 * @li y: An ND Tensor. Must be one of the following types: float16, float, bfloat16,
          the shape should be same with x.
 */
+#ifndef OPS_PROTO_DEF_MASKEDSOFTMAXWITHRELPOSBIAS
+#define OPS_PROTO_DEF_MASKEDSOFTMAXWITHRELPOSBIAS
 REG_OP(MaskedSoftmaxWithRelPosBias)
     .INPUT(x, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))
     .OPTIONAL_INPUT(atten_mask, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))
@@ -47,6 +49,7 @@ REG_OP(MaskedSoftmaxWithRelPosBias)
     .ATTR(scale_value, Float, 1.0)
     .ATTR(inner_precision_mode, Int, 0)
     .OP_END_FACTORY_REG(MaskedSoftmaxWithRelPosBias)
+#endif
 
 /**
 * @brief AttentionScore's forward calculation.
