@@ -62,22 +62,28 @@ std::string A5SocInfoHybrid = "{\n"
 
 class FlashAttentionScoreGradTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "FlashAttentionScoreGradTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "FlashAttentionScoreGradTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "FlashAttentionScoreGradTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "FlashAttentionScoreGradTiling TearDown" << std::endl;
+    }
 };
 
 static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5CompileInfo()
 {
-    return {64,                                     // aivNum
-            32,                                     // aicNum
-            196608,                                 // ubSize
-            524288,                                 // l1Size
-            65536,                                  // l0aSize
-            65536,                                  // l0bSize
-            131072,                                 // l0cSize
-            33554432,                               // l2CacheSize
-            32,                                     // coreNum
+    return {64,       // aivNum
+            32,       // aicNum
+            196608,   // ubSize
+            524288,   // l1Size
+            65536,    // l0aSize
+            65536,    // l0bSize
+            131072,   // l0cSize
+            33554432, // l2CacheSize
+            32,       // coreNum
             platform_ascendc::SocVersion::ASCEND950};
 }
 
