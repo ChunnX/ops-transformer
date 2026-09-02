@@ -89,7 +89,7 @@ constexpr uint32_t ACTIVATION_N_HALF = 2U;
 // Hcomm 批量句柄中每条普通读写描述符占 64B。
 // Layered 的数据批次仍按最多 256 个 token 组织，64 KiB 可容纳同批 token 的附加 WQE。
 constexpr uint32_t HCOMM_BATCH_WQE_BYTES = 64U;
-constexpr uint32_t LAYERED_USABLE_UB_BYTES = 256U * 1024U;
+constexpr uint32_t LAYERED_USABLE_UB_BYTES = 248U * 1024U;
 constexpr uint32_t LAYERED_HCOMM_BATCH_UB_BYTES = 64U * 1024U;
 constexpr uint32_t LAYERED_HCOMM_BATCH_UB_OFFSET = LAYERED_USABLE_UB_BYTES - LAYERED_HCOMM_BATCH_UB_BYTES;
 constexpr uint32_t LAYERED_HCOMM_BATCH_WQE_CAPACITY = LAYERED_HCOMM_BATCH_UB_BYTES / HCOMM_BATCH_WQE_BYTES;

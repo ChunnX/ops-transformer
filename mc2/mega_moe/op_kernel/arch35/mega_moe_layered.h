@@ -557,7 +557,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
 
     // Dispatch 阶段 UB 布局：Hcomm 私有区、专家计数/前缀和、分轮索引/掩码、
     // 中继标志快照/本地搬运缓冲、专家计数输出和元数据区依次排列。
-    // 按最大 256 行元数据预留后，通信工作区不得越过 192 KiB 处的 Hcomm WQE 专用区。
+    // 按最大 256 行元数据预留后，通信工作区不得越过 184 KiB 处的 Hcomm WQE 专用区。
     LocalTensor<uint8_t> hcommTensor = LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
     hcomm_.Init(hcommTensor, ALIGN_512 / sizeof(uint8_t));
     hcommBatchWqeTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, LAYERED_HCOMM_BATCH_UB_OFFSET,
