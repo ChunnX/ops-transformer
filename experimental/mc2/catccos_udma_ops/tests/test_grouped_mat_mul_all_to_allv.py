@@ -97,6 +97,49 @@ def test_no_reuse_host_and_device_use_the_same_profile_stage_count():
     assert "selectedWorkspaceStages == SelectedConfig::kWorkspaceStages" in host
 
 
+def test_no_reuse_delivery_retires_gets_once_instead_of_waiting_each_round():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "grouped_matmul_alltoallv_tla.hpp"
+    ).read_text(encoding="utf-8")
+    target_order = kernel[kernel.index("void RunTargetOrderAivWithBlock("):]
+
+    completion_signal = target_order.index(
+        "syncCommFinish, 1,\n"
+        "                            ACLSHMEM_SIGNAL_ADD, srcRankIdx"
+    )
+    signal_guard = target_order.rfind(
+        "if constexpr (!NO_REUSE_STAGING)", 0, completion_signal
+    )
+    assert signal_guard >= 0
+
+    completion_wait = target_order.index(
+        "syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum"
+    )
+    wait_guard = target_order.rfind(
+        "if constexpr (!NO_REUSE_STAGING)", 0, completion_wait
+    )
+    assert wait_guard > completion_signal
+
+    final_retirement_comment = target_order.index(
+        "Retire all remote reads once"
+    )
+    final_retirement_guard = target_order.rfind(
+        "if constexpr (NO_REUSE_STAGING)", 0, final_retirement_comment
+    )
+    final_retirement_barrier = target_order.index(
+        "aclshmemx_barrier_all_vec();", final_retirement_comment
+    )
+    assert final_retirement_guard > completion_wait
+    assert final_retirement_barrier > final_retirement_guard
+
+
 def test_delivery_producer_sync_is_selected_at_build_time():
     root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     device_cmake = (

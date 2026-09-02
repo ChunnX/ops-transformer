@@ -1028,7 +1028,10 @@ private:
         aclshmemx_barrier_all_vec();
         if (isSyncCore) {
             aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
-            aclshmemx_signal_op(syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
+            if constexpr (!NO_REUSE_STAGING) {
+                aclshmemx_signal_op(
+                    syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
+            }
         }
         // Publish the cleared state before this launch starts producing data.
         aclshmemx_barrier_all_vec();
@@ -1070,7 +1073,9 @@ private:
             bool activeRound = commIdx < commLoops;
             if (activeRound) {
                 scheduler.UpdateCommContext(commIdx);
-                receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
+                if constexpr (!NO_REUSE_STAGING) {
+                    receiveAccum += scheduler.GetActualReceiveAccum(commIdx);
+                }
                 Catlass::Arch::CrossCoreWaitFlag(
                     flagAicFinishStore[flagIdx]);
             }
@@ -1151,13 +1156,15 @@ private:
                         DiagnosticDelay(params.delayCycles);
                     }
 #endif
-                    aclshmem_fence();
-                    aclshmemx_signal_op(
-                        syncCommFinish, 1,
-                        ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+                    if constexpr (!NO_REUSE_STAGING) {
+                        aclshmem_fence();
+                        aclshmemx_signal_op(
+                            syncCommFinish, 1,
+                            ACLSHMEM_SIGNAL_ADD, srcRankIdx);
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-                    completionPublished = true;
+                        completionPublished = true;
 #endif
+                    }
                 }
 #if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
                 else if (!quietFailureReported) {
@@ -1179,9 +1186,11 @@ private:
             }
 #endif
 
-            if (isSyncCore) {
-                aclshmem_signal_wait_until(
-                    syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
+            if constexpr (!NO_REUSE_STAGING) {
+                if (isSyncCore) {
+                    aclshmem_signal_wait_until(
+                        syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum);
+                }
             }
 
             if constexpr (!NO_REUSE_STAGING) {
@@ -1208,17 +1217,26 @@ private:
                 }
             }
         }
+
+        if constexpr (NO_REUSE_STAGING) {
+            // Each commIdx owns a distinct producer stage, so AIC never needs
+            // a per-round remote-consumer acknowledgement. Every active AIV
+            // GET has already completed its local quiet before reaching this
+            // point. Retire all remote reads once, immediately before any PE
+            // may leave the kernel and reuse the symmetric data plane.
+            aclshmemx_barrier_all_vec();
+        }
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
         if (UsesNoReuseTrace(params.diagnosticMode)) {
-            // No destination may inspect producer staging until every rank has
-            // completed all GETs. Since every commIdx owns a distinct stage,
-            // no per-round recycle flag is emitted in this mode.
-            aclshmemx_barrier_all_vec();
             if constexpr (!OFFICIAL_UDMA_BLOCK) {
                 CopyNoReuseProducerTrace(
                     params, blockRemoteCopy, rankSize, rankIdx, srcRankIdx,
                     groupsPerCommInRank, stageRows, isCommCore);
             }
+            // Producer tracing performs an additional set of remote GETs
+            // after the normal no-reuse retirement barrier. Drain those
+            // diagnostic reads before any PE can reuse its producer stages.
+            aclshmemx_barrier_all_vec();
         }
         FlushTargetOrderDiagnostic(
             params, rankSize, srcRankIdx, commLoops,
