@@ -151,13 +151,6 @@ uint64_t MoeInitRoutingV3TilingArch35::GetTilingKey() const
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
 
-    // CountingSort 性能模板
-    if (countingSortMode_ != 0) {
-        return static_cast<uint64_t>(
-            COUNT_SORT_BASE + countingSortMode_ * FULL_LOAD_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE +
-            rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE + dropPadMode_ * DROP_MODE_TILINGKEY_BASE);
-    }
-
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
         // 其余非量化为0，静态量化为1，动态量化为2，即都是quantMode_+1
@@ -175,7 +168,8 @@ uint64_t MoeInitRoutingV3TilingArch35::GetTilingKey() const
     }
     return static_cast<uint64_t>(TILINGKEY_BASE + sortMode_ * SORT_CORE_TILINGKEY_BASE +
                                  quantModeFactor * QUANT_MODE_TILINGKEY_BASE +
-                                 rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE + dropPadMode_ * DROP_MODE_TILINGKEY_BASE);
+                                 rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE + dropPadMode_ * DROP_MODE_TILINGKEY_BASE +
+                                 countingSortMode_ * COUNT_SORT_BASE);
 }
 
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetWorkspaceSize()
@@ -195,9 +189,9 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::GetWorkspaceSize()
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetCountingSortWorkspaceSize()
 {
     // CountingSort 性能模板的 workspace：核间专家计数归约表 + 过滤 pairs 表。
-    //  FullLoad 单类：offset0 = pairs，offset1 = expertCount（均从 ws 起始）
-    //  CutOrigin 拆分：offset0 = sortedRowIdx / expertTotalCount / expertIdxValue /
-    //  expandedExpertIdx，pairs/expertCount 后移到 pairsWsOffset 之后
+    // FullLoad 单类：offset0 = pairs，offset1 = expertCount（均从 ws 起始）
+    // CutOrigin 拆分：offset0 = sortedRowIdx / expertTotalCount / expertIdxValue / expandedExpertIdx，pairs/expertCount
+    // 后移到 pairsWsOffset 之后
     int64_t filterNeedCoreNum = tilingDataPtr_->countingSortParamsOp.filterNeedCoreNum;
     int64_t expertCountStride = tilingDataPtr_->countingSortParamsOp.expertCountStride;
     int64_t filterPerCoreTokens = tilingDataPtr_->countingSortParamsOp.filterPerCoreTokens;
@@ -1985,6 +1979,11 @@ void MoeInitRoutingV3TilingArch35::ComputeCountingSortMode()
         }
     }
     countingSortMode_ = tilingDataPtr_->countingSortParamsOp.countingSortMode;
+    // 计数排序模板沿用主 tilingkey 公式：固定 sortMode_=0，计数排序 tilingkey 仅落在单核前缀，
+    // 与 kernel 侧 apt 的 CS_* 常量（全载 10000010/10001010，非全载 10000020/10010020 等）一一对应。
+    if (countingSortMode_ != 0) {
+        sortMode_ = 0;
+    }
 }
 
 int64_t MoeInitRoutingV3TilingArch35::EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens)
@@ -2174,8 +2173,6 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     cs->coreEntries = coreEntries;
     cs->expertCountStride = expertCountStride;
     cs->filterChunkSize = CS_FILTER_CHUNK_SIZE;
-    // 注：csPerLoopCols/csColsLoops/csLastLoopCols/maxPerLoopEntries 为旧 CutOrigin 单 kernel（Phase A/B/C 一体）
-    // 的列切字段，现 PhaseAB kernel 不消费（x 搬出由下游 gatherOutComputeParamsOp 承载），不再写入。
     // CutOrigin 拆分 workspace：pairs/expertCount 区后移到 meta 区之后（pairsWsOffset），
     // 避免与硬编码消费者偏移重叠：sortedRowIdx（ws+Align(n*k)）、expertTotalCount/expertIdxValue
     // （ws+2*Align(n*k)+Align(actualExpertNum)）、expandedExpertIdx（ws 起始）。

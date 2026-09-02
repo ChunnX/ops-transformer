@@ -916,3 +916,19 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
                               {0, EXPERT_NUM}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
+
+// CountingSort 模板1 FullLoad + 非量化 + GATHER（410000，对应用例 moe_init_routing_v3_1804）
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cs_fullload_unquant_gather)
+{
+    RunArch35ExtendedTestcase(15, 40062, 3014, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_INT8,
+                              {0, 10}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS, 410000);
+}
+
+// CountingSort 模板1 FullLoad + 非量化 + SCATTER（411000，对应用例 MoeInitRoutingV3_float32_ND_fuzz_000050）
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cs_fullload_unquant_scatter)
+{
+    RunArch35ExtendedTestcase(53, 118, 962, 0, 0, EXPERT_TOKENS_TYPE_KEY_VALUE, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
+                              {43, 49}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS, 411000);
+}
