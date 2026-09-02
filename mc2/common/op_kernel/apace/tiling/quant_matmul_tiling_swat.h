@@ -24,6 +24,7 @@ class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType>
 public:
     QuantMatmulTilingSwat()
         : maxBaseM_(BASIC_BLOCK_SIZE_256)
+        , maxBaseN_(BASIC_BLOCK_SIZE_256)
     {}
     ~QuantMatmulTilingSwat() override = default;
 
@@ -35,6 +36,11 @@ public:
     void SetMaxBaseM(uint64_t v)
     {
         maxBaseM_ = v;
+    }
+
+    void SetMaxBaseN(uint64_t v)
+    {
+        maxBaseN_ = v;
     }
 
 protected:
@@ -69,6 +75,7 @@ private:
 
     bool enableBaseMHalving_{false};
     uint64_t maxBaseM_{0};
+    uint64_t maxBaseN_{0};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -286,6 +293,12 @@ private:
         runInfo_.baseM = !args_.transA ? Align(runInfo_.baseM, CUBE_BLOCK) :
                                          Align(runInfo_.baseM, GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE));
         runInfo_.baseN = std::min(args_.n, BASIC_BLOCK_SIZE_256);
+        if (maxBaseN_ > 0UL && runInfo_.baseN > maxBaseN_) {
+            // 调用方限制 N 基块上限（如共享 BlockMmad 的 BT bias 通路在单 tile N 宽 > 128 时存在
+            // 精度问题）。在引擎内钳制，保证 nBlockCnt/nTailSize/totalBlockCnt/tailBlockCnt 等
+            // 全部派生量按钳制后的 baseN 自洽计算。
+            runInfo_.baseN = Align(maxBaseN_, CUBE_BLOCK);
+        }
         runInfo_.baseN = args_.transB ? Align(runInfo_.baseN, CUBE_BLOCK) :
                                         Align(runInfo_.baseN, GetShapeWithDataType<bDataType>(L1_ALIGN_SIZE));
         runInfo_.baseK = Align(
