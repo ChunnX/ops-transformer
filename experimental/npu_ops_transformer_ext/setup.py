@@ -14,6 +14,7 @@ import os
 import logging
 import sys
 import glob
+import re
 import shutil
 import subprocess
 import sysconfig
@@ -92,7 +93,7 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
-            f"-DPYTHON_EXECUTABLE={sys.executable}",
+            f"-DPython3_EXECUTABLE={sys.executable}",
             f"-DBUILD_TORCH_OPS=ON",
             f"-DPYTHON_EXTENSION_USE_ABI3=ON",
             f"-DPYTHON_INCLUDE_DIR={python_include}",
@@ -100,6 +101,19 @@ class CMakeBuild(build_ext):
             f"-DPy_LIMITED_API_VERSION=0x03080000",
 
         ]
+
+        selected_operators = os.getenv("NPU_OPS_TRANSFORMER_EXT_OPS", "").strip()
+        if selected_operators:
+            operator_names = [
+                name.strip() for name in re.split(r"[,;]", selected_operators) if name.strip()
+            ]
+            invalid_names = [name for name in operator_names if not re.fullmatch(r"[A-Za-z0-9_]+", name)]
+            if invalid_names:
+                raise RuntimeError(
+                    "NPU_OPS_TRANSFORMER_EXT_OPS contains invalid operator names: "
+                    + ", ".join(invalid_names)
+                )
+            cmake_args.append(f"-DNPU_EXT_OPERATOR_LIST={';'.join(operator_names)}")
 
         build_type = "Debug" if self.debug else "Release"
         build_args = ["--config", build_type]
