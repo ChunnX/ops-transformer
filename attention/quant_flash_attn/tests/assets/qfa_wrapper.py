@@ -13,6 +13,7 @@
 import logging
 import os
 import sys
+from typing import Optional
 
 import torch
 import torch_npu
@@ -22,6 +23,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
+import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 
 logger = logging.getLogger(__name__)
@@ -31,9 +33,15 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
+    quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
-    target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
+    if quant_mode == 6:
+        target = fp8_golden_mod
+    elif quant_mode == 0:
+        target = hif8_golden_mod
+    else:
+        target = mxfp8_golden_mod
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -45,20 +53,21 @@ def npu_qfa(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
-    cu_seqlens_q_t: torch.Tensor,
-    cu_seqlens_kv_t: torch.Tensor,
-    seqused_q_t: torch.Tensor,
-    seqused_kv_t: torch.Tensor,
-    sinks_t: torch.Tensor,
-    attn_mask_t: torch.Tensor,
-    metadata_t: torch.Tensor,
+    p_scale: torch.Tensor = None,
+    block_table: torch.Tensor = None,
+    cu_seqlens_q_t: torch.Tensor = None,
+    cu_seqlens_kv_t: torch.Tensor = None,
+    seqused_q_t: torch.Tensor = None,
+    seqused_kv_t: torch.Tensor = None,
+    sinks_t: torch.Tensor = None,
+    attn_mask_t: torch.Tensor = None,
+    metadata_t: torch.Tensor = None,
     *,
     batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
+    head_dim_v: Optional[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -115,12 +124,18 @@ def npu_qfa(
     # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
     # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
     B = (
-        max(1, len(cu_seqlens_q_list) - 1)
-        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
-        else 1
+        batch_size
+        if batch_size is not None and batch_size > 0
+        else (
+            max(1, len(cu_seqlens_q_list) - 1)
+            if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+            else len(list(seqused_q_list))
+            if seqused_q_list is not None and len(list(seqused_q_list)) > 0
+            else 1
+        )
     )
 
-    attn_mask_shape = tuple(attn_mask_t.shape)
+    attn_mask_shape = tuple(attn_mask_t.shape) if attn_mask_t is not None else None
 
     _apply_golden_globals(
         {
@@ -129,6 +144,7 @@ def npu_qfa(
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
+            "HEAD_DIM_V": head_dim_v,
             "CU_SEQLENS_Q": cu_seqlens_q_list,
             "CU_SEQLENS_KV": cu_seqlens_kv_list,
             "SEQUSED_Q": seqused_q_list,
@@ -148,7 +164,7 @@ def npu_qfa(
             "FP8_DTYPE": torch.float8_e4m3fn,
             "QUANT_MODE": quant_mode,
             "QUANT_GROUP_SIZE": 32,
-            "INPUT_LAYOUT": input_layout,
+            "INPUT_LAYOUT": layout_q,
             "IS_CONTIGUOUS": is_contiguous,
             "DEVICE_ID": device_id,
             "GRAPH_PATH": graph_path,
@@ -173,6 +189,29 @@ def npu_qfa(
     try:
         if quant_mode == 6:
             atten_out, lse_out = fp8_golden_mod.npu_gqa_fp8_fa(
+                q,
+                k,
+                v,
+                dequant_scale_q,
+                dequant_scale_k,
+                dequant_scale_v,
+                p_scale,
+                cu_seqlens_q_list,
+                cu_seqlens_kv_list,
+                seqused_q_list,
+                seqused_kv_list,
+                max_seqlen_q,
+                max_seqlen_kv,
+                block_table
+                if isinstance(block_table, torch.Tensor) and enable_pa
+                else None,
+                cu_seqlens_q_t=cu_seqlens_q_t,
+                cu_seqlens_kv_t=cu_seqlens_kv_t,
+                seqused_q_t=seqused_q_t,
+                seqused_kv_t=seqused_kv_t,
+            )
+        elif quant_mode == 0:
+            atten_out, lse_out = hif8_golden_mod.npu_hif8_fa(
                 q,
                 k,
                 v,
@@ -224,5 +263,11 @@ def npu_qfa(
     if not enable_lse:
         lse_out = None
     else:
-        lse_out = lse_out[:, : atten_out.shape[0]].contiguous()
+        layout_out_up = str(layout_out).upper() if layout_out else str(layout_q).upper()
+        if layout_out_up == "TND":
+            lse_out = lse_out[:, : atten_out.shape[0]].contiguous()
+        elif layout_out_up == "BNSD":
+            lse_out = lse_out[:, :, : atten_out.shape[2]].contiguous()
+        else:
+            lse_out = lse_out[:, :, : atten_out.shape[1]].contiguous()
     return atten_out, lse_out

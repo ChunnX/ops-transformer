@@ -25,6 +25,7 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
+import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,15 @@ def _apply_golden_globals(params, quant_mode=1):
     必须在调 prepare_npu_inputs 前把 csv attributes 全部注入.
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
+    quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
-    target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
+    if quant_mode == 6:
+        target = fp8_golden_mod
+    elif quant_mode == 0:
+        target = hif8_golden_mod
+    else:
+        target = mxfp8_golden_mod
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -99,9 +106,14 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         enable_lse: bool = False,
         graph_path: int = 0,
         input_layout: str = "TND",
+        layout_q: str = "TND",
+        layout_q_descale: str = "TND",
+        layout_kv: str = "TND",
+        layout_out: str = "TND",
         is_contiguous: bool = True,
         device_id: int = 0,
         softmax_scale: Optional[float] = None,
+        head_dim_v: Optional[int] = None,
         data_range_q: float = 1.0,
         data_range_k: float = 1.0,
         data_range_v: float = 1.0,
@@ -136,12 +148,18 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
         # B: 从 cu_seqlens_q 推导的正整数, 供 prepare_npu_inputs 生成 BNSD 张量。
         B = (
-            max(1, len(cu_seqlens_q_list) - 1)
-            if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
-            else 1
+            batch_size
+            if batch_size is not None and batch_size > 0
+            else (
+                max(1, len(cu_seqlens_q_list) - 1)
+                if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+                else len(list(seqused_q_list))
+                if seqused_q_list is not None and len(list(seqused_q_list)) > 0
+                else 1
+            )
         )
 
-        attn_mask_shape = tuple(attn_mask_t.shape)
+        attn_mask_shape = tuple(attn_mask_t.shape) if attn_mask_t is not None else None
 
         # ---- 2. 注入 golden 全局变量 (prepare_npu_inputs 依赖) ----
         _apply_golden_globals(
@@ -169,10 +187,15 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "QUANT_MODE": quant_mode,
                 "QUANT_GROUP_SIZE": 32,
                 "INPUT_LAYOUT": input_layout,
+                "LAYOUT_Q": layout_q,
+                "LAYOUT_Q_DESCALE": layout_q_descale,
+                "LAYOUT_KV": layout_kv,
+                "LAYOUT_OUT": layout_out,
                 "IS_CONTIGUOUS": is_contiguous,
                 "DEVICE_ID": device_id,
                 "GRAPH_PATH": graph_path,
                 "SOFTMAX_SCALE": softmax_scale,
+                "HEAD_DIM_V": head_dim_v,
                 "SEED_Q": kwargs.get("seed_q"),
                 "SEED_K": kwargs.get("seed_k"),
                 "SEED_V": kwargs.get("seed_v"),
@@ -184,22 +207,14 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         )
 
         # ---- 3. 透传 ----
-
-        def _to_cpu(t):
-            return (
-                t.detach().cpu()
-                if isinstance(t, torch.Tensor) and t.device.type == "npu"
-                else t
-            )
-
-        q_fp8 = _to_cpu(q)
-        k_fp8 = _to_cpu(k)
-        v_fp8 = _to_cpu(v)
-        dequant_scale_q_cpu = _to_cpu(dequant_scale_q)
-        dequant_scale_k_cpu = _to_cpu(dequant_scale_k)
-        dequant_scale_v_cpu = _to_cpu(dequant_scale_v)
-        p_scale_cpu = _to_cpu(p_scale)
-        block_table_cpu = _to_cpu(block_table)
+        q_fp8 = q
+        k_fp8 = k
+        v_fp8 = v
+        dequant_scale_q_cpu = dequant_scale_q
+        dequant_scale_k_cpu = dequant_scale_k
+        dequant_scale_v_cpu = dequant_scale_v
+        p_scale_cpu = p_scale
+        block_table_cpu = block_table
 
         logger.info(
             "[GRAPH] 透传 fp8+e8m0 (q=%s, k=%s, v=%s, dq=%s, dk=%s, dv=%s, enable_pa=%s)",
@@ -215,6 +230,25 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         # ---- 4. prepare_npu_inputs (按 quant_mode 派发) ----
         if quant_mode == 6:
             inputs = fp8_golden_mod.prepare_npu_inputs_gqa_fp8(
+                q_fp8,
+                k_fp8,
+                v_fp8,
+                dequant_scale_q_cpu,
+                dequant_scale_k_cpu,
+                dequant_scale_v_cpu,
+                p_scale_cpu,
+                cu_seqlens_q_list,
+                cu_seqlens_kv_list,
+                seqused_q_list,
+                seqused_kv_list,
+                max_seqlen_q,
+                max_seqlen_kv,
+                block_table_cpu
+                if isinstance(block_table_cpu, torch.Tensor) and enable_pa
+                else None,
+            )
+        elif quant_mode == 0:
+            inputs = hif8_golden_mod.prepare_npu_inputs(
                 q_fp8,
                 k_fp8,
                 v_fp8,
@@ -291,7 +325,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
             v_descale=inputs["dequant_scale_v"],
-            batch_size=batch_size,
+            batch_size=batch_size if not is_tnd_q else None,
             mask_mode=int(inputs["sparse_mode"]),
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],

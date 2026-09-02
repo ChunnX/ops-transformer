@@ -48,15 +48,15 @@ using AscendC::Reg::StoreDist;
 #else
 #include "../common/buffers_policy.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
-#include "../../common/op_kernel/buffer_manager.h"
+#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
+#include "../../common/op_kernel/attn_buffer_manager.h"
 #else
-#include "../common/buffer_manager.h"
+#include "../common/attn_buffer_manager.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer.h")
-#include "../../common/op_kernel/buffer.h"
+#if __has_include("../../common/op_kernel/attn_buffer.h")
+#include "../../common/op_kernel/attn_buffer.h"
 #else
-#include "../common/buffer.h"
+#include "../common/attn_buffer.h"
 #endif
 
 using namespace AscendC;
@@ -67,6 +67,18 @@ using namespace matmul;
 using AttentionCommon::FdRunInfo;
 
 namespace SMLAKernel {
+
+// 统一窗口公式
+struct PhyAddrValidInfo {
+    static constexpr int64_t BIAS_UNBOUND = 0x7FFFFFFF; // INT32_MAX
+    int64_t oriLeftBias = BIAS_UNBOUND;
+    int64_t oriRightBias = BIAS_UNBOUND;
+    int32_t oriS2Act = 0;
+    bool oriTopkMode = false; // oriMaskMode==0: 走topkLength语义(保持原行为)
+    bool cmpTopkMode = true;  // cmpMaskMode==0: 走topkLength语义(保持原行为)
+    int64_t cmpBase = 0;      // restoredSize - actualS1Size + 1
+};
+
 TEMPLATES_DEF
 class CSABlockVec {
 public:
@@ -259,13 +271,12 @@ private:
     __aicore__ inline int32_t GetSeqLen(int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
                                         GlobalTensor<int32_t> &actualSeqGm, GlobalTensor<int32_t> &cuSeqlensGm,
                                         int64_t defaultSize);
+    __aicore__ inline PhyAddrValidInfo CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
+                                                            int32_t restoredSize, ConstInfo &constInfo);
     __aicore__ inline int32_t CalcCurValidS2(uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size, bool isOriKv,
-                                             bool hasActualSeqKvlen, bool hasCuSeqlensKv,
-                                             GlobalTensor<int32_t> &cuSeqlensQGm,
-                                             GlobalTensor<int32_t> &actualSeqKvlenGm,
-                                             GlobalTensor<int32_t> &cuSeqlensKvGm, GlobalTensor<int32_t> &topkLengthGm,
-                                             GlobalTensor<int32_t> &cmpResidualKvGm, ConstInfo &constInfo,
-                                             int32_t sparseBlockCount);
+                                             GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &topkLengthGm,
+                                             ConstInfo &constInfo, int32_t sparseBlockCount,
+                                             const PhyAddrValidInfo &validInfo);
     __aicore__ inline void CopyPhyAddrToGm(LocalTensor<uint32_t> kvPhyAddrUb, int64_t bS1Idx, int64_t s1Idx,
                                            int64_t validS2, int64_t alignNum, GlobalTensor<uint32_t> &phyAddrGm,
                                            uint32_t alignedSparseBlockCount);
@@ -397,7 +408,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     }
 
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8U; ++i) {
+    for (uint64_t i = 0; i < 8; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
             tokenData[i] = sparseIndicesGm.GetValue(idx);
@@ -432,7 +443,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenD
             runInfo.boIdx * constInfo.s1Size * alignedSparseBlockCount + runInfo.s1oIdx * alignedSparseBlockCount;
     }
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8U; ++i) {
+    for (uint64_t i = 0; i < 8; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
             tokenData[i] = phyAddrGm64.GetValue(idx);
@@ -500,7 +511,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
                                                                       ConstInfo &constInfo)
 {
     uint32_t dealRow = 0;
-    for (uint32_t i = 0; i < 8U; i += 2U) {
+    for (uint32_t i = 0; i < 8; i += 2) { // 遍历8个元素的数组/缓冲区，每次处理2个元素
         int64_t keyOffset0;
         int64_t keyOffset1;
         if constexpr (IS_VEC_S2PHYADDR) {
@@ -540,7 +551,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        startRow += 2U;
+        startRow += 2; // 每次迭代处理2个输入元素
     }
     return dealRow;
 }
@@ -569,27 +580,31 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
-        int32_t vecCnt = (aicIdx % 2U == 0) ? (GetSubBlockIdx() == 0 ? 0 : 1) : (GetSubBlockIdx() == 0 ? 2 : 3);
-        if (aicIdx % 2U == 0) {
+        int32_t vecCnt = (aicIdx % 2U == 0) ?
+                             (GetSubBlockIdx() == 0 ? 0 : 1) :
+                             (GetSubBlockIdx() == 0 ? 2 : 3); // 2，3：根据核心索引和子块索引设置处理参数
+        if (aicIdx % 2 == 0) { // 2：根据aicIdx的奇偶性来区分不同的处理逻辑
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2U);
+                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2：处理大小为v0S2SizeFirstCore的一半
                 sparseS2Start = 0;
             } else {
-                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
-                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2U);
+                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2); // 2：处理剩余部分
+                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2); // 2：起始位置为v0S2SizeFirstCore的一半
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2U);
+                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2：处理大小为v0S2SizeSecondCore的一半
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2U);
-                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2U);
+                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2：处理剩余部分
+                sparseS2Start =
+                    v0S2SizeFirstCore +
+                    CeilDiv(v0S2SizeSecondCore, 2); // 2：起始位置为v0S2SizeFirstCore加上v0S2SizeSecondCore的一半
             }
         }
         sparseS2End = sparseS2Start + sparseCalSize;
     } else {
-        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2U);
+        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2); // 2：平均分配给两个子块
         sparseCalSize = GetSubBlockIdx() == 0 ? v0S2SizeFirstCore : runInfo.s2RealSize - v0S2SizeFirstCore;
         sparseS2Start = GetSubBlockIdx() == 0 ? 0 : v0S2SizeFirstCore;
         sparseS2End = sparseS2Start + sparseCalSize;
@@ -660,21 +675,22 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             int64_t dealRow = 0;
             LocalTensor<Q_T> stage0OutUb = this->stage0OutBuf[pingPong].template Get<Q_T>();
             WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
-            while (dealRow < Min(16U, sparseCalSize) && s2 < sparseS2End) {
-                int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+            while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) { // 每次最多处理16行数据
+                int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // 每次处理8个token数据
                 if constexpr (IS_VEC_S2PHYADDR) {
                     GetRealS2Addr(tokenData, s2, runInfo, constInfo);
                 } else {
                     GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
                 }
-                s2 += 8U;
+                s2 += 8; // 每次处理8个token数据
                 if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
-                    tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) {
+                    tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 &&
+                    tokenData[7] == -1) { // {2, 3, 4, 5, 6, 7}：tokenData索引
                     meetEnd = true;
                     break;
                 }
                 dealRow += CopyInKvSparse(stage0OutUb, dealRow, tokenData, runInfo, constInfo);
-                if (tokenData[7] == -1) {
+                if (tokenData[7] == -1) { // 7：检查最后一个token是否为无效值
                     meetEnd = true;
                     break;
                 }
@@ -733,7 +749,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(Loca
     }
     int64_t sinksOffset = 0;
     if constexpr (!IS_SPLIT_G) {
-        sinksOffset = GetBlockIdx() % 2U == 0 ? 0 : runInfo.firstHalfMRealSize;
+        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize; // 2：判断块索引的奇偶性
     } else {
         sinksOffset = runInfo.goIdx;
         if (constInfo.subBlockIdx == 1) {
@@ -1326,7 +1342,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
         tPipe->InitBuffer(softmaxFinalSumBuf[1], softmaxBufSize);
         tPipe->InitBuffer(softmaxFinalMaxBuf[0], softmaxBufSize);
         tPipe->InitBuffer(softmaxFinalMaxBuf[1], softmaxBufSize);
-        tPipe->InitBuffer(batchReduceTmpBuf, 768U * sizeof(float));
+        tPipe->InitBuffer(batchReduceTmpBuf, 768U * sizeof(float)); // batchReduceTmpBuf申请内存大小为768个float
     }
     tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
@@ -1364,12 +1380,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16U * sizeof(KV_T));
-        tPipe->InitBuffer(stage0OutBuf[1], dVTemplateType * 16U * sizeof(KV_T));
+        tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T)); // 输出缓冲区处理16个seq
+        tPipe->InitBuffer(stage0OutBuf[1], dVTemplateType * 16 * sizeof(KV_T)); // 输出缓冲区处理16个seq
     }
     if (constInfo.returnSoftmaxLse) {
-        tPipe->InitBuffer(outLseBuf[0], 256U);
-        tPipe->InitBuffer(outLseBuf[1], 256U);
+        tPipe->InitBuffer(outLseBuf[0], 256); // outLseBuf[0]内存申请256B
+        tPipe->InitBuffer(outLseBuf[1], 256); // outLseBuf[1]内存申请256B
     }
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
@@ -1405,7 +1421,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if constexpr (IS_BATCH_CONSISTENCY) {
         fdMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
         SetFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
-        for (uint32_t eventIdx = 0; eventIdx < 2U; ++eventIdx) {
+        for (uint32_t eventIdx = 0; eventIdx < 2; ++eventIdx) { // 2：两个缓冲区
             intraLseMte3ToMte2Id[eventIdx] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
             intraAttnOutMte3ToMte2Id[eventIdx] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
         }
@@ -1872,45 +1888,84 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(
-    uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size, bool isOriKv, bool hasActualSeqKvlen, bool hasCuSeqlensKv,
-    GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &actualSeqKvlenGm, GlobalTensor<int32_t> &cuSeqlensKvGm,
-    GlobalTensor<int32_t> &topkLengthGm, GlobalTensor<int32_t> &cmpResidualKvGm, ConstInfo &constInfo,
-    int32_t sparseBlockCount)
+__aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
+                                                                                    int32_t actualOriS2Size,
+                                                                                    int32_t restoredSize,
+                                                                                    ConstInfo &constInfo)
 {
-    int32_t curValidS2 = 0;
-    if (isOriKv) {
-        if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-            uint64_t topkIdx = (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) :
-                                                                (bIdx * constInfo.s1Size + s1Idx);
-            int32_t topkLen = constInfo.hasOriTopkLength ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-            curValidS2 = Min(topkLen, sparseBlockCount);
-        }
-    } else {
-        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-            if (constInfo.cmpMaskMode == 0) {
-                uint64_t topkIdx = (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) :
-                                                                    (bIdx * constInfo.s1Size + s1Idx);
-                int32_t topkLen = constInfo.hasCmpTopkLength ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-                curValidS2 = Min(topkLen, sparseBlockCount);
+    // per-batch执行一次,  per-s1循环内不再判断maskmode
+    PhyAddrValidInfo validInfo;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        validInfo.oriS2Act = actualOriS2Size;
+        if (isOriKv) {
+            if (constInfo.oriMaskMode == 0U) {
+                validInfo.oriTopkMode = true;
+            } else if (constInfo.oriMaskMode == 3U) {
+                validInfo.oriRightBias = 0;
             } else {
-                int32_t actualCmpS2Size = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
-                                                    cuSeqlensKvGm, constInfo.s2Size);
-                int32_t cmpRestoredSize =
-                    actualCmpS2Size * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
-                int32_t numerator = cmpRestoredSize - actualS1Size + 1 + s1Idx;
-                curValidS2 =
-                    (numerator > 0) ? Min(sparseBlockCount, numerator / static_cast<int32_t>(constInfo.cmpRatio)) : 0;
+                validInfo.oriLeftBias =
+                    (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
+                validInfo.oriRightBias =
+                    (constInfo.oriWinRight == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinRight;
             }
-        } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-            uint64_t topkIdx = (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) :
-                                                                (bIdx * constInfo.s1Size + s1Idx);
-            int32_t topkLen = constInfo.hasCmpTopkLength ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-            curValidS2 = Min(topkLen, sparseBlockCount);
         }
     }
-    return curValidS2;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (!isOriKv) {
+            validInfo.cmpTopkMode = (constInfo.cmpMaskMode == 0U);
+            validInfo.cmpBase = restoredSize - actualS1Size + 1;
+        }
+    }
+    return validInfo;
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size,
+                                                                     bool isOriKv, GlobalTensor<int32_t> &cuSeqlensQGm,
+                                                                     GlobalTensor<int32_t> &topkLengthGm,
+                                                                     ConstInfo &constInfo, int32_t sparseBlockCount,
+                                                                     const PhyAddrValidInfo &validInfo)
+{
+    bool topkMode = false;
+    bool hasTopk = false;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (isOriKv) {
+            topkMode = validInfo.oriTopkMode;
+            hasTopk = constInfo.hasOriTopkLength;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (!isOriKv) {
+            topkMode = validInfo.cmpTopkMode;
+            hasTopk = constInfo.hasCmpTopkLength;
+        }
+    }
+    if (topkMode) {
+        uint64_t topkIdx =
+            (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) : (bIdx * constInfo.s1Size + s1Idx);
+        int32_t topkLen = hasTopk ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
+        return Min(topkLen, sparseBlockCount);
+    }
+
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (isOriKv) {
+            int64_t thr = validInfo.oriS2Act - actualS1Size + 1 + s1Idx;
+            int64_t leftBound = Max(thr - validInfo.oriLeftBias, 0);
+            int64_t rightBound = Min(thr + validInfo.oriRightBias, static_cast<int64_t>(validInfo.oriS2Act));
+            return Min(static_cast<int32_t>(Max(0, rightBound - leftBound)), sparseBlockCount);
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        int64_t numerator = Max(validInfo.cmpBase + s1Idx, 0);
+        return Min(sparseBlockCount, static_cast<int32_t>(numerator / static_cast<int32_t>(constInfo.cmpRatio)));
+    }
+    return 0;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -2009,10 +2064,29 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             bS1IdxBase = constInfo.s1Size * bIdx;
         }
 
+        int32_t restoredSize = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (!isOriKv && constInfo.cmpMaskMode != 0) {
+                int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
+                                                 cuSeqlensKvGm, constInfo.cmpS2Size);
+                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+            }
+        }
+        int32_t actualOriS2Size = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (isOriKv && constInfo.oriMaskMode != 0) {
+                actualOriS2Size = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm, cuSeqlensKvGm,
+                                            constInfo.s2Size);
+            }
+        }
+        PhyAddrValidInfo validInfo =
+            CalcPhyAddrValidInfo(isOriKv, actualS1Size, actualOriS2Size, restoredSize, constInfo);
+
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
-            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, hasActualSeqKvlen, hasCuSeqlensKv,
-                                                cuSeqlensQGm, actualSeqKvlenGm, cuSeqlensKvGm, topkLengthGm,
-                                                cmpResidualKvGm, constInfo, static_cast<int32_t>(sparseBlockCount));
+            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, cuSeqlensQGm, topkLengthGm,
+                                                constInfo, static_cast<int32_t>(sparseBlockCount), validInfo);
             if (curValidS2 > 0) {
                 totalValidS1++;
             }
@@ -2070,6 +2144,26 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             bS2BaseHigh = static_cast<uint32_t>(bS2Base >> 32U);
         }
 
+        int32_t restoredSize = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (!isOriKv && constInfo.cmpMaskMode != 0) {
+                int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
+                                                 cuSeqlensKvGm, constInfo.cmpS2Size);
+                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+            }
+        }
+        int32_t actualOriS2Size = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (isOriKv && constInfo.oriMaskMode != 0) {
+                actualOriS2Size = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm, cuSeqlensKvGm,
+                                            constInfo.s2Size);
+            }
+        }
+        PhyAddrValidInfo validInfo =
+            CalcPhyAddrValidInfo(isOriKv, actualS1Size, actualOriS2Size, restoredSize, constInfo);
+
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(blkTableVToMte2FlagId);
             CopyPaTableToUb(blkTableUb, bIdx, blockTableGm, maxBlockNumPerBatch);
@@ -2078,9 +2172,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         }
 
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
-            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, hasActualSeqKvlen, hasCuSeqlensKv,
-                                                cuSeqlensQGm, actualSeqKvlenGm, cuSeqlensKvGm, topkLengthGm,
-                                                cmpResidualKvGm, constInfo, static_cast<int32_t>(sparseBlockCount));
+            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, cuSeqlensQGm, topkLengthGm,
+                                                constInfo, static_cast<int32_t>(sparseBlockCount), validInfo);
             if (curValidS2 <= 0) {
                 continue;
             }

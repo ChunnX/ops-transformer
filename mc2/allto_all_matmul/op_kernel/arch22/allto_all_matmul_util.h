@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file allto_all_matmul_util.h
  * \brief
@@ -18,7 +17,7 @@
 
 #include "allto_all_matmul_tiling.h"
 #include "adv_api/hccl/hccl.h"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/numeric_size.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp"
 #include <cstdint>
 
 #define MC2_NON_QUANT 0
