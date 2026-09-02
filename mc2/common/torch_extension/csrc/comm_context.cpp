@@ -224,9 +224,10 @@ public:
         }
         GetCommProtocol(hcclHandle, protocol);
 
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
-        rankNumPerServer_ = rankNumPerUbDomain_;
+        rankNumPerServer_ = rankNumPerUbDomain_ / 2;
         commContextStruct.rankSizePerServer = rankNumPerServer_;
 
         CopyContextToTensor(commContextStruct, contextTensor);
@@ -618,7 +619,7 @@ public:
     // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
     std::unordered_map<uint32_t, uint32_t> layerMap_;
     uint32_t rankNumPerUbDomain_ = 0;
-    TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
+    TopoType topoType_ = TopoType::CROSS_SUPER_NODE;
     int64_t rankNumPerServer_ = DEFAULT_RANK_NUM_PER_SERVER;
     int64_t customCclBufferSize_ = 0;
     void **customDeviceBuffer_ = nullptr;
