@@ -1254,15 +1254,16 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
     }
 }
 
-// 非量化 Combine 按给定范围逐专家重放 GMM2 scheduler。范围边界决定地址和 M 大小，
-// 函数不规划下一段、不执行 GMM2，也不负责最终 drain。
+// 非量化 Combine 的统一入口：按给定范围逐专家重放 GMM2 scheduler 并逐 tile 消费。
+// 范围边界决定地址和 M 大小；函数不规划下一段、不执行 GMM2，也不负责最终 drain。
 template <typename ElementA, typename WeightType, typename QuantScaleType, Gmm2KernelKind KernelKind,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
-          bool IsGmm1Interleaved>
-__aicore__ inline void CombinePairwiseTokenRange(const CombineRangeContext &context,
-                                                 const ExpertTokenRange &range,
-                                                 CombineRangeRuntime &runtime)
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
+__aicore__ inline void CombineTokenRange(const CombineRangeContext &context, const ExpertTokenRange &range,
+                                         CombineRangeRuntime &runtime)
 {
+    if (range.end.globalTokenIndex <= range.begin.globalTokenIndex) {
+        return;
+    }
     if constexpr (g_coreType == AscendC::AIC) {
         return;
     }
@@ -1322,20 +1323,6 @@ __aicore__ inline void CombinePairwiseTokenRange(const CombineRangeContext &cont
             position.tokenIndexInExpert = 0U;
         }
     }
-}
-
-// 非量化 Combine 的统一入口：调用方给出紧凑专家序列中的 [begin, end)，
-// AIV1 按同一范围重放 GMM2 scheduler 并逐 tile 消费。
-template <typename ElementA, typename WeightType, typename QuantScaleType, Gmm2KernelKind KernelKind,
-          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
-__aicore__ inline void CombineTokenRange(const CombineRangeContext &context, const ExpertTokenRange &range,
-                                         CombineRangeRuntime &runtime)
-{
-    if (range.end.globalTokenIndex <= range.begin.globalTokenIndex) {
-        return;
-    }
-    CombinePairwiseTokenRange<ElementA, WeightType, QuantScaleType, KernelKind, Gmm1TileM, TopkWeightsPrefetch,
-                              IsGmm1Interleaved>(context, range, runtime);
 }
 
 } // namespace MegaMoeImpl
