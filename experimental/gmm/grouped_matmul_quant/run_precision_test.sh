@@ -71,7 +71,6 @@ npu-smi info
 "${PYTHON_BIN}" - <<'PY'
 import torch
 import torch_npu
-from pathlib import Path
 
 print("torch:", torch.__version__)
 print("torch_npu:", torch_npu.__version__)
@@ -79,31 +78,6 @@ print("NPU available:", torch.npu.is_available())
 print("NPU count:", torch.npu.device_count())
 if not torch.npu.is_available() or torch.npu.device_count() < 1:
     raise RuntimeError("No available Ascend NPU was detected")
-
-include_root = Path(torch_npu.__file__).resolve().parent / "include"
-helper_candidates = (
-    include_root / "third_party/op-plugin/op_plugin/utils/op_api_common.h",
-    include_root / "op_plugin/utils/op_api_common.h",
-    include_root / "torch_npu/csrc/aten/ops/op_api/op_api_common.h",
-)
-helper = next((path for path in helper_candidates if path.is_file()), None)
-if helper is None:
-    checked = "\n  ".join(str(path) for path in helper_candidates)
-    raise RuntimeError(f"torch_npu ACLNN helper header was not found. Checked:\n  {checked}")
-if "EXEC_NPU_CMD" not in helper.read_text(encoding="utf-8", errors="ignore"):
-    raise RuntimeError(f"EXEC_NPU_CMD is not defined by torch_npu helper: {helper}")
-print("ACLNN helper:", helper)
-
-if "op_plugin" in helper.parts:
-    dependency_candidates = (
-        include_root / "op_plugin/utils/KernelNpuOutputSize.h",
-        include_root / "third_party/op-plugin/op_plugin/utils/KernelNpuOutputSize.h",
-    )
-    dependency = next((path for path in dependency_candidates if path.is_file()), None)
-    if dependency is None:
-        checked = "\n  ".join(str(path) for path in dependency_candidates)
-        raise RuntimeError(f"torch_npu op-plugin dependency was not found. Checked:\n  {checked}")
-    print("op-plugin dependency:", dependency)
 PY
 
 log "Building GroupedMatmulQuant custom operator package"

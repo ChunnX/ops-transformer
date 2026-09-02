@@ -16,16 +16,14 @@ if(BUILD_TORCH_OPS)
     set(OPERATOR_CONFIG "${OPERATOR_NAME}:${OPERATOR_TARGET}" PARENT_SCOPE)
 
     add_library(${OPERATOR_TARGET} OBJECT grouped_matmul_quant_torch.cpp)
-    target_compile_options(${OPERATOR_TARGET} PRIVATE ${COMMON_COMPILE_OPTIONS})
+    # aclnn_common.h uses a uint64_t workspace size as an at::empty dimension.
+    # Bisheng/Clang diagnoses that safe conversion as C++11 list narrowing.
+    # Keep the compatibility local to this operator instead of editing the
+    # shared official header.
+    target_compile_options(${OPERATOR_TARGET} PRIVATE
+        ${COMMON_COMPILE_OPTIONS}
+        -Wno-c++11-narrowing)
     target_include_directories(${OPERATOR_TARGET} PRIVATE ${COMMON_INCLUDE_DIRS})
-    # torch_npu wheels bundle op-plugin below include/third_party/op-plugin,
-    # while op-plugin headers include one another as "op_plugin/...".
-    # Add that directory as an include root without changing the shared
-    # npu_ops_transformer_ext build configuration.
-    if(IS_DIRECTORY "${TORCH_NPU_INCLUDE_PATH}/third_party/op-plugin")
-        target_include_directories(${OPERATOR_TARGET} PRIVATE
-            "${TORCH_NPU_INCLUDE_PATH}/third_party/op-plugin")
-    endif()
     return()
 endif()
 

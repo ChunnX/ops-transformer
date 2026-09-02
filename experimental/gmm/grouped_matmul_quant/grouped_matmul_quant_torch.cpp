@@ -9,21 +9,14 @@
  *  \brief PyTorch registration for GroupedMatmulQuant.
  */
 
-#include <ATen/ATen.h>
+#include <torch/all.h>
 #include <torch/library.h>
 
-// EXEC_NPU_CMD moved between torch_npu and op-plugin across releases. Support
-// the layouts shipped by the currently supported torch_npu packages.
-#if __has_include("third_party/op-plugin/op_plugin/utils/op_api_common.h")
-#include "third_party/op-plugin/op_plugin/utils/op_api_common.h"
-#elif __has_include("op_plugin/utils/op_api_common.h")
-#include "op_plugin/utils/op_api_common.h"
-#elif __has_include("torch_npu/csrc/aten/ops/op_api/op_api_common.h")
-#include "torch_npu/csrc/aten/ops/op_api/op_api_common.h"
-#else
-#error "Cannot find the torch_npu ACLNN op-api helper"
-#endif
-
+// aclnn_common.h is shared official code and intentionally remains unchanged.
+// Its public declarations require the full Torch C++ API and std::string to be
+// visible before inclusion when used by this standalone extension.
+using std::string;
+#include "torch_extension/cann_ops_transformer/common/aclnn_common.h"
 #include "grouped_matmul_quant_torch_adpt.h"
 
 namespace npu_ops_transformer_ext {
