@@ -450,24 +450,40 @@ public:
 
     __aicore__ inline void Process()
     {
-        const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
+        ProcessAic(computeOp_, sharedComputeOp_, taskTilingInfo_);
+        ProcessAiv(commOp_, taskTilingInfo_);
+    }
+
+    static __aicore__ inline void ProcessAic(ComputationOpType &computeOp,
+                                             SharedComputationOpType &sharedComputeOp,
+                                             const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo)
+    {
         if ASCEND_IS_AIC {
-            computeOp_.Process(0U, expertNum);
+            const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
+            computeOp.Process(0U, expertNum);
             // A source rank's expert output is striped over all AICs. Drain the
             // AIC-only FIX barrier before every AIC notifies its paired AIV;
             // only then may the AIV write the workspace result to peer memory.
             AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(AIC_ALL_READY_FLAG_IDX);
             AscendC::CrossCoreWaitFlag(AIC_ALL_READY_FLAG_IDX);
             AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(AIC_TO_AIV_READY_FLAG_IDX);
+
+            if constexpr (IsNeedMM) {
+                sharedComputeOp.Process(0U, 1U);
+            }
+            AscendC::SyncAll<false>();
         }
+    }
+
+    static __aicore__ inline void ProcessAiv(
+        CommOpType &commOp, const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo)
+    {
         if ASCEND_IS_AIV {
+            const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
             AscendC::CrossCoreWaitFlag(AIC_TO_AIV_READY_FLAG_IDX);
-            commOp_.LaunchCommData(0U, expertNum);
+            commOp.LaunchCommData(0U, expertNum);
+            commOp.End();
         }
-        if constexpr (IsNeedMM) {
-            sharedComputeOp_.Process(0U, 1U);
-        }
-        commOp_.End();
     }
 
 private:
