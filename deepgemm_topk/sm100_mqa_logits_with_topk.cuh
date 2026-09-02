@@ -112,41 +112,43 @@ CUTLASS_DEVICE void warp_bucket_topk(
         const uint32_t prefix_mask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
         const uint32_t prefix_val = kth_value & prefix_mask;
 
-        // Clear histogram via SMEM
-        for (uint32_t i = lane_idx; i < 256; i += 32)
-            histogram[i] = 0;
-        __syncwarp();
-
-        // Build histogram with SMEM atomicAdd
+        // Build histogram: each lane owns 8 buckets [lane*8 .. lane*8+7]
+        // Local register counters — no SMEM atomic
+        uint32_t lc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        const uint32_t my_base = lane_idx * 8;
         for (uint32_t i = lane_idx; i < k_len; i += 32) {
             uint32_t u = to_sortable(logits[k_start + i]);
             if ((u & prefix_mask) == prefix_val) {
-                uint32_t bucket = (u >> shift) & 0xFF;
-                atomicAdd(&histogram[bucket], 1u);
+                uint32_t b = (u >> shift) & 0xFF;
+                uint32_t bi = b - my_base;
+                if (bi < 8)
+                    lc[bi]++;
             }
         }
-        __syncwarp();
 
-        // Find cutoff: each lane reads 8 buckets [lane*8 .. lane*8+7]
-        uint32_t my_counts[8];
+        // Warp reduce: lane i gets total for buckets [i*8..i*8+7]
         #pragma unroll
-        for (int i = 0; i < 8; i++)
-            my_counts[i] = histogram[lane_idx * 8 + i];
+        for (int b = 0; b < 8; b++) {
+            uint32_t v = lc[b];
+            for (int s = 16; s > 0; s >>= 1)
+                v += __shfl_xor_sync(0xFFFFFFFF, v, s);
+            lc[b] = v;
+        }
 
+        // Find cutoff: scan from high bucket to low
         uint32_t my_sum = 0;
         #pragma unroll
-        for (int i = 0; i < 8; i++) my_sum += my_counts[i];
+        for (int i = 0; i < 8; i++) my_sum += lc[i];
 
-        // Inclusive prefix sum (lane 0 = lowest buckets, lane 31 = highest)
+        // Inclusive prefix sum across lanes
         uint32_t incl = my_sum;
-        for (int off = 1; off < 32; off <<= 1) {
-            uint32_t t = __shfl_up_sync(0xFFFFFFFF, incl, off);
-            if (lane_idx >= off) incl += t;
+        for (int s = 1; s < 32; s <<= 1) {
+            uint32_t t = __shfl_up_sync(0xFFFFFFFF, incl, s);
+            if (lane_idx >= s) incl += t;
         }
         const uint32_t total = __shfl_sync(0xFFFFFFFF, incl, 31);
 
-        const uint32_t count_ge_me = incl;
-        const uint32_t count_above_me = total - count_ge_me;
+        const uint32_t count_above_me = total - incl;
 
         uint32_t prefix_in_lane = 0;
         int32_t my_cutoff = -1;
@@ -155,12 +157,12 @@ CUTLASS_DEVICE void warp_bucket_topk(
         #pragma unroll
         for (int i = 7; i >= 0; i--) {
             uint32_t count_above = count_above_me + prefix_in_lane;
-            uint32_t count_ge = count_above + my_counts[i];
+            uint32_t count_ge = count_above + lc[i];
             if (count_above < remaining && count_ge >= remaining) {
                 my_cutoff = static_cast<int32_t>(lane_idx * 8 + i);
                 my_count_above_cutoff = count_above;
             }
-            prefix_in_lane += my_counts[i];
+            prefix_in_lane += lc[i];
         }
 
         uint32_t cutoff_mask = __ballot_sync(0xFFFFFFFF, my_cutoff >= 0);
@@ -187,9 +189,9 @@ CUTLASS_DEVICE void warp_bucket_topk(
 
     // Prefix sum for output offset
     uint32_t def_prefix = my_def;
-    for (int offset = 1; offset < 32; offset <<= 1) {
-        uint32_t t = __shfl_up_sync(0xFFFFFFFF, def_prefix, offset);
-        if (lane_idx >= offset) def_prefix += t;
+    for (int s = 1; s < 32; s <<= 1) {
+        uint32_t t = __shfl_up_sync(0xFFFFFFFF, def_prefix, s);
+        if (lane_idx >= s) def_prefix += t;
     }
     const uint32_t def_exclusive = def_prefix - my_def;
     const uint32_t total_definite = __shfl_sync(0xFFFFFFFF, def_prefix, 31);
@@ -217,9 +219,9 @@ CUTLASS_DEVICE void warp_bucket_topk(
     }
 
     uint32_t col_prefix = my_collected;
-    for (int offset = 1; offset < 32; offset <<= 1) {
-        uint32_t t = __shfl_up_sync(0xFFFFFFFF, col_prefix, offset);
-        if (lane_idx >= offset) col_prefix += t;
+    for (int s = 1; s < 32; s <<= 1) {
+        uint32_t t = __shfl_up_sync(0xFFFFFFFF, col_prefix, s);
+        if (lane_idx >= s) col_prefix += t;
     }
     const uint32_t col_exclusive = col_prefix - my_collected;
     const uint32_t total_collected = __shfl_sync(0xFFFFFFFF, col_prefix, 31);
