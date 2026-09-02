@@ -1112,8 +1112,8 @@ __aicore__ inline void ConsumeGmm2TilesForCombine(const ProblemConfig &config, u
 }
 
 // AIV1 按对应 GMM2 的配置和 block scheduler 消费 AIC 已发布的非量化 Combine tile。
-template <typename ElementA, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+template <typename ElementA, typename WeightType, typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
 __aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmConfig,
                                                  const ProblemShape &problemShape,
                                                  const GMMAddrInfo &gmmAddrInfo, const Params &params,
@@ -1125,7 +1125,7 @@ __aicore__ inline void ReplayGmm2TilesForCombine(const GmmExecutionConfig &gmmCo
     if (GetSubBlockIdx() != 1U) {
         return;
     }
-    if constexpr (std::is_same_v<WeightType, __fp4e2m1x2>) {
+    if constexpr (EnableA8W4 || EnableA4W4) {
         using GmmConfig = GmmKernel::Config<true, 0, ElementA, WeightType, bfloat16_t, QuantScaleType,
                                             QuantScaleType, false, TopkWeightsPrefetch, false, false, false, true>;
         auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, gmmConfig.blockJob, Gmm1TileM);
@@ -1238,8 +1238,8 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
 
 // 非量化 Combine 的统一入口：按给定范围逐专家重放 GMM2 scheduler 并逐 tile 消费。
 // 范围边界决定地址和 M 大小；函数不规划下一段、不执行 GMM2，也不负责最终 drain。
-template <typename ElementA, typename WeightType, typename QuantScaleType, uint32_t Gmm1TileM,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
+template <typename ElementA, typename WeightType, typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false>
 __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, const ExpertTokenRange &range,
                                          CombineRangeRuntime &runtime)
 {
@@ -1291,8 +1291,8 @@ __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, con
                 static_cast<uint64_t>(context.gmm.blockJob.jobIndex) * INT_CACHELINE;
             ProblemShape sliceProblemShape = state.problemShape;
             Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-            ReplayGmm2TilesForCombine<ElementA, WeightType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch,
-                                      IsGmm1Interleaved>(
+            ReplayGmm2TilesForCombine<ElementA, WeightType, QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
+                                      TopkWeightsPrefetch, IsGmm1Interleaved>(
                 context.gmm, sliceProblemShape, gmmAddrInfo, context.params,
                 runtime.pairwiseStartBlockIdx, runtime.pairwiseTileSequence);
         }
