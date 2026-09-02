@@ -26,15 +26,26 @@ namespace optiling {
 bool GroupedNoQuantMatmulTiling::SetTiling(gert::TilingContext *context)
 {
     auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is nullptr."), return false);
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetCompileInfo result", "nullptr",
+                                                      "compile info lookup failed"),
+                return false);
     usedCoreNum_ = compileInfoPtr->aicNum;
-    OP_CHECK_IF(!Init(context), OP_LOGE(context->GetNodeName(), "Init failed"), return false);
+    OP_CHECK_IF(
+        !Init(context),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "Init result", "false", "Init must return true"),
+        return false);
     OP_CHECK_IF(!CalMatMulTiling(context, compileInfoPtr),
-                OP_LOGE(context->GetNodeName(), "Unable to calculate matmul-tiling"), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CalMatMulTiling result", "false",
+                                                      "CalMatMulTiling must return true"),
+                return false);
     SetGMMTiling();
     SetMatMulTiling();
     SetTilingKey(context);
-    OP_CHECK_IF(!SetCustomParam(context), OP_LOGE(context->GetNodeName(), "Unable to set custom param"), return false);
+    OP_CHECK_IF(
+        !SetCustomParam(context),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "Unable to set custom param"),
+        return false);
     PrintTilingResult(context);
     return true;
 }
@@ -45,14 +56,18 @@ bool GroupedNoQuantMatmulTiling::CalBaseMMTiling(const gert::TilingContext *cont
     // according to the double buffer enabled L0B, compute baseK
     baseK_ = (compileInfoPtr->l0BSize / DB_SIZE) / (baseN_ * GetSizeByDataType(xDType_));
     baseK_ = baseK_ & ~ALIGN_DOWN_16; // 16 bytes down-align
-    OP_CHECK_IF(baseK_ == 0, OP_LOGE(context->GetNodeName(), "baseK_ cannot be 0."), return false);
+    OP_CHECK_IF(baseK_ == 0,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "baseK_ cannot be 0"),
+                return false);
     // according to the double buffer enabled L0A/L0C, compute baseM(cube)
     uint32_t maxBaseM = static_cast<uint32_t>(compileInfoPtr->l0CSize / (baseN_ * FP32_DTYPE_SIZE));
     baseM_ = std::min<uint32_t>((compileInfoPtr->l0ASize / DB_SIZE) / (baseK_ * GetSizeByDataType(xDType_)), maxBaseM);
     if (baseM_ > BASE_M_DEFAULT) {
         baseM_ = BASE_M_DEFAULT;
     }
-    OP_CHECK_IF(baseM_ == 0, OP_LOGE(context->GetNodeName(), "baseM_ cannot be 0."), return false);
+    OP_CHECK_IF(baseM_ == 0,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "baseM_ cannot be 0"),
+                return false);
     return CalL1Tiling(context, compileInfoPtr);
 }
 
@@ -140,8 +155,10 @@ bool GroupedNoQuantMatmulTiling::CalL1Tiling(const gert::TilingContext *context,
     stepKa_ = l1ASize / NUM_TWO / baseM_ / baseK_ / GetSizeByDataType(xDType_);      // 2: half of l1
     stepKb_ = l1BSize / NUM_TWO / baseN_ / baseK_ / GetSizeByDataType(weightDtype_); // 2: half of l1
 
-    OP_CHECK_IF(stepKa_ == 0 || stepKb_ == 0, OP_LOGE(context->GetNodeName(), "stepka or stepkb cannot be 0"),
-                return false);
+    OP_CHECK_IF(
+        stepKa_ == 0 || stepKb_ == 0,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "stepka or stepkb cannot be 0"),
+        return false);
     if (stepKa_ >= stepKb_) {
         stepKa_ = stepKa_ / stepKb_ * stepKb_;
     } else {
@@ -189,15 +206,18 @@ void GroupedNoQuantMatmulTiling::SetDisableL2Cache(const gert::TilingContext *co
 
 bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
 {
-    OP_CHECK_IF(!GetAttrs(context), OP_LOGE(context->GetNodeName(), "Unable to calculate matmul-tiling"), return false);
+    OP_CHECK_IF(!GetAttrs(context),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetAttrs result", "false",
+                                                      "GetAttrs must return true"),
+                return false);
 
     auto xTensor = context->GetDynamicInputTensor(INDEX_X, 0);
-    OP_CHECK_IF(xTensor == nullptr, OP_LOGE(context->GetNodeName(), "xTensor is nullptr."), return false);
+    OP_CHECK_IF(xTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x"), return false);
     gert::Shape xShape = xTensor->GetStorageShape();
     xDimNum_ = static_cast<uint32_t>(xShape.GetDimNum());
 
     auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, 0);
-    OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
+    OP_CHECK_IF(wTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"), return false);
     gert::Shape wShape = wTensor->GetOriginShape();
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
 
@@ -225,7 +245,9 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
             nzFactor_ = transposeWeight_ ? BASIC_BLOCK_SIZE_16 : static_cast<int64_t>(c0);
         }
         OP_CHECK_IF(!CheckWeightNZShape(context, static_cast<int64_t>(c0)),
-                    OP_LOGE(context->GetNodeName(), "The shape of nz weight is invalid."), return false);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight",
+                                                             "The shape of nz weight is invalid"),
+                    return false);
     }
 
     return HandleGroupTypeDispatch(context, xShape, wShape, wDimNum);
@@ -254,8 +276,12 @@ bool GroupedNoQuantMatmulTiling::HandleGroupTypeDispatch(const gert::TilingConte
 
 bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const
 {
-    OP_CHECK_IF(numInOneBlk <= 0,
-                OP_LOGE(context->GetNodeName(), "the value of numInOneBlk is invalid, %ld", numInOneBlk), return false);
+    OP_CHECK_IF(
+        numInOneBlk <= 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "numInOneBlk", Ops::Transformer::Gmm::FormatString("%ld", numInOneBlk).c_str(),
+            Ops::Transformer::Gmm::FormatString("the value of numInOneBlk is invalid, %ld", numInOneBlk).c_str()),
+        return false);
     uint32_t i = 0;
     while (true) {
         auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i++);
@@ -280,7 +306,9 @@ bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *c
 bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
 {
     auto attr = context->GetAttrs();
-    OP_CHECK_IF(attr == nullptr, OP_LOGE(context->GetNodeName(), "attr is nullptr."),
+    OP_CHECK_IF(attr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetAttrs result", "nullptr",
+                                                      "attribute lookup failed"),
                 return false); // check attr is not null
     const bool *transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_W);
     const bool *transposeXPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_X);
@@ -294,11 +322,11 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
 
     auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
-    OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "xDesc is nullptr."), return false);
+    OP_CHECK_IF(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x"), return false);
     xDType_ = xDesc->GetDataType();
 
     auto w0Desc = context->GetDynamicInputDesc(INDEX_WEIGHT, 0);
-    OP_CHECK_IF(w0Desc == nullptr, OP_LOGE(context->GetNodeName(), "w0Desc is nullptr."), return false);
+    OP_CHECK_IF(w0Desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"), return false);
     weightDtype_ = w0Desc->GetDataType();
     auto wFormat0 = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
     weightNzFlag_ = wFormat0 == ge::FORMAT_FRACTAL_NZ;
@@ -313,14 +341,14 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     // Keep the sparse grouplist restriction in the no-quant 950 tiling path so the
     // common API check does not need extra quant-state parameters just to distinguish
     // no-quant from weight-quant cases.
-    OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupListType",
-                    Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
-                    Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
-                                                        "groupListType", "{0, 1}")
-                        .c_str()),
-                return false);
+    OP_CHECK_IF(
+        groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupListType", Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
+            Ops::Transformer::Gmm::FormatString("In %s case, the value of %s must be in %s", "no-quant",
+                                                "groupListType", "{0, 1}")
+                .c_str()),
+        return false);
     return true;
 }
 
@@ -341,8 +369,10 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
             context->GetNodeName(), "K-axis of x", Ops::Transformer::Gmm::FormatString("%s", "0").c_str(),
             Ops::Transformer::Gmm::FormatString("The value of %s must be a positive number", "K-axis of x").c_str()),
         return false);
-    OP_CHECK_IF(!CalBaseMMTiling(context, compileInfoPtr),
-                OP_LOGE(context->GetNodeName(), "Unable to calculate BaseMMTiling."), return false);
+    OP_CHECK_IF(
+        !CalBaseMMTiling(context, compileInfoPtr),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "tiling", "Unable to calculate BaseMMTiling"),
+        return false);
     if (groupNum_ == 1U) {
         FormulateBasicBlock(compileInfoPtr, usedCoreNum_);
         CalcTailBasicBlock(compileInfoPtr);
@@ -404,17 +434,22 @@ void GroupedNoQuantMatmulTiling::SetMatMulTiling()
 bool GroupedNoQuantMatmulTiling::SetCustomParam(gert::TilingContext *context)
 {
     size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context->GetNodeName(), "workspaces is nullptr."),
+    OP_CHECK_IF(workspaces == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetWorkspaceSizes result", "nullptr",
+                                                      "workspace lookup failed"),
                 return false); // check workspaces is not null
     workspaces[0] = 32U;       // 32: default workspace size
 
     context->SetBlockDim(usedCoreNum_);
-    OP_CHECK_IF(context->GetRawTilingData() == nullptr, OP_LOGE(context->GetNodeName(), "RawTilingData is nullptr."),
+    OP_CHECK_IF(context->GetRawTilingData() == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetRawTilingData result", "nullptr",
+                                                      "raw tiling data lookup failed"),
                 return false);
     errno_t ret = memcpy_s(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
-        OP_LOGE(context->GetNodeName(), "memcpy_s failed, ret = %d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "memcpy_s status", std::to_string(ret),
+                                              "memcpy_s must return EOK");
         return false;
     }
     context->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
@@ -591,7 +626,7 @@ bool GroupedNoQuantMatmulTiling::SplitKSingleXSingleWeightSingleY(const gert::Ti
 
     auto groupListTensor = context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
     if (groupListTensor == nullptr) {
-        OP_LOGE(context->GetNodeName(), "groupListTensor is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "groupList");
         return false;
     }
     gert::Shape groupListShape = groupListTensor->GetStorageShape();

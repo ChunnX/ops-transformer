@@ -290,13 +290,19 @@ protected:
     ge::graphStatus SaveTilingDataToContext(const TTilingData &tilingData)
     {
         context_->SetBlockDim(aicoreParams_.aicNum);
-        OP_CHECK_IF(sizeof(tilingData) % sizeof(uint64_t) != 0,
-                    OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", sizeof(tilingData)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            sizeof(tilingData) % sizeof(uint64_t) != 0,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(), "tiling",
+                Ops::Transformer::Gmm::FormatString("%zu", sizeof(tilingData)).c_str(),
+                Ops::Transformer::Gmm::FormatString("Tiling data size[%zu] is not aligned to 8", sizeof(tilingData))
+                    .c_str()),
+            return ge::GRAPH_FAILED);
         errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                                reinterpret_cast<const void *>(&tilingData), sizeof(tilingData));
         if (ret != EOK) {
-            OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", ret);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "memcpy_s status", std::to_string(ret),
+                                                  "memcpy_s must return EOK");
             return ge::GRAPH_FAILED;
         }
         context_->GetRawTilingData()->SetDataSize(sizeof(tilingData));
