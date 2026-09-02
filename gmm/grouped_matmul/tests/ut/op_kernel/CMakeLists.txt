@@ -9,11 +9,17 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
+    # tiling 源码引用仓库根目录相对路径头文件（如 gmm/common/op_host/log_format_util.h），补充根目录 include 路径
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../../../..)
     # 算子自己的tiling文件路径
     set(grouped_matmul_tiling_files
+        # opbase log.cpp：tiling 源码使用 OP_LOGE_FOR_* 系列宏（展开为 opbase 的 REPORT 函数及 Ops::Base::ToString），
+        # kernel UT 独立链接 tiling_tmp.so 时需要其实现
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../third_party/opbase/src/op_common/log/log.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp
         )
     # 使用AddOpTestCase
