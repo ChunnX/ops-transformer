@@ -40,8 +40,9 @@ public:
 
     // score 暂存容量：1 AIC : 2 AIV 下每个 subcore 最多拿到半个 M-tile 的行；
     // 一次 flush 覆盖 MSA_STAGE_BLOCKS 个 block（= 每行 1KB 连续写回）。
+    // int8：缩到 160，给 UB 尾部腾出整页 cast（48KB）；非量化保持 256。
     static constexpr uint32_t MSA_STAGE_ROWS = MSA_ROW_TILE_M / MSA_AIV_PER_AIC;
-    static constexpr uint32_t MSA_STAGE_BLOCKS = 256;
+    static constexpr uint32_t MSA_STAGE_BLOCKS = IS_QUANT ? 160 : 256;
     static_assert(MSA_STAGE_BLOCKS % MSA_BLOCKS_PER_STILE == 0, "stage window must hold whole S-tiles");
 
     // UB 手工布局（字节偏移），catlass 不提供 UB allocator。
@@ -70,6 +71,8 @@ public:
     static constexpr uint32_t UB_SIZE_S16 = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * sizeof(half);
     static constexpr uint32_t S16_STAGES = 2;
     static constexpr uint32_t UB_TOTAL = UB_OFF_STAGE + UB_SIZE_STAGE;
+    static constexpr uint32_t UB_OFF_TAIL =
+        ((UB_TOTAL + MSA_UB_ALIGN_BYTES - 1U) / MSA_UB_ALIGN_BYTES) * MSA_UB_ALIGN_BYTES;
     static_assert(UB_TOTAL <= ArchTag::UB_SIZE, "MsaSegRowMaxEpilogue UB out of bounds");
     static_assert(UB_OFF_S16 + S16_STAGES * UB_SIZE_S16 <= UB_OFF_T64, "S16 ping-pong overlaps T64");
 
@@ -148,6 +151,42 @@ public:
         }
     }
 
+    __aicore__ inline uint32_t SubRows() const
+    {
+        return mSub_;
+    }
+
+    __aicore__ inline uint32_t SubOff() const
+    {
+        return mOff_;
+    }
+
+    __aicore__ inline void BeginSTile(uint32_t blkBase)
+    {
+        if (mSub_ == 0U) {
+            return;
+        }
+        if (stageOn_ && (blkBase >= stageBlkBase_ + MSA_STAGE_BLOCKS)) {
+            FlushStage();
+            stageBlkBase_ = blkBase;
+            stageBlkEnd_ = blkBase;
+        }
+    }
+
+    __aicore__ inline void FinishSTile(uint32_t blkBase)
+    {
+        if (mSub_ == 0U) {
+            return;
+        }
+        stageBlkEnd_ = blkBase + MSA_BLOCKS_PER_STILE;
+    }
+
+    __aicore__ inline void ProcessOnePass(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
+                                          uint32_t blkBase, uint32_t rowOff, uint32_t rows)
+    {
+        ProcessPass(gS, task, blkBase, rowOff, rows);
+    }
+
     /// 处理一个 S tile（MSA_BLOCKS_PER_STILE 个 sparse block）中属于本 subcore 的行。
     __aicore__ inline void ProcessSTile(const AscendC::GlobalTensor<ElementS> &gS, const MsaTask &task,
                                         uint32_t blkBase)
@@ -157,11 +196,7 @@ public:
         }
         const uint32_t mOff = mOff_;
         const uint32_t mSub = mSub_;
-        if (stageOn_ && (blkBase >= stageBlkBase_ + MSA_STAGE_BLOCKS)) {
-            FlushStage();
-            stageBlkBase_ = blkBase;
-            stageBlkEnd_ = blkBase;
-        }
+        BeginSTile(blkBase);
 
         if constexpr (IS_QUANT) {
             for (uint32_t p0 = 0; p0 < mSub; p0 += MSA_ROWS_PER_PASS) {
@@ -201,7 +236,7 @@ public:
                 ReleaseS16(prevStage);
             }
         }
-        stageBlkEnd_ = blkBase + MSA_BLOCKS_PER_STILE;
+        FinishSTile(blkBase);
     }
 
 private:

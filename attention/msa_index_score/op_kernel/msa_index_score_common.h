@@ -57,6 +57,9 @@ constexpr uint32_t MSA_STILE_BYTES_FP32 = MSA_STILE_ELEM_NUM * sizeof(float);
 // （AIV 先 cast，AIC 再 Mmad，避免逐 page 细粒度同步）。
 // 单页布局 [blockSize, headDim] 行主序，按 j*P*D 排列。
 constexpr uint32_t MSA_K_SCRATCH_ELEM_NUM = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * MSA_K_TILE;
+// A2/A3 int8：四槽 scratch。WaitS(st) 后 slot[st%4] 已空，gather(st+4) 叠在
+// AIC 的 cube(st+1)+cube(st+2)+cube(st+3) 上；epilogue(st) 再叠在 cube(st+4) 上。950 不用。
+constexpr uint32_t MSA_K_SCRATCH_STAGES_A2 = 4;
 // 950 一页握手：每 AIC 只需一页 K scratch。
 constexpr uint32_t MSA_A5_K_SCRATCH_ELEM_NUM = MSA_BLOCK_SIZE * MSA_K_TILE;
 constexpr uint32_t MSA_A5_S_STAGES = 2;
@@ -90,7 +93,8 @@ constexpr uint32_t MSA_A5_S_PING_BYTES = MSA_A5_S_PING_ELEM_NUM * static_cast<ui
 // UB 手工布局 512B 对齐。
 constexpr uint32_t MSA_UB_ALIGN_BYTES = 512;
 
-// BlockMmad L1B pingpong 级数：int8 用 scratch 时序保守取 2；非量化取 3。
+// BlockMmad L1B pingpong 级数：950 int8 仍为 2（单页 scratch 竞态）；A2/A3 int8 在
+// arch22 kernel 里改用 MSA_L1B_STAGES_FP16（双槽后安全）。
 constexpr uint32_t MSA_L1B_STAGES_INT8 = 2;
 constexpr uint32_t MSA_L1B_STAGES_FP16 = 3;
 
@@ -123,9 +127,11 @@ constexpr uint32_t MSA_ATTEN_MASK_SIZE = 2048;
 // FFTS cross-core flag id，合法范围 0~7（8/9/10 为保留 barrier）。
 constexpr uint16_t MSA_FLAG_S_READY = 1;
 constexpr uint16_t MSA_FLAG_S_READY_REVERSE = 2;
-// int8 路径：AIV cast K→scratch 完成后通知 AIC。
+// int8 路径：AIV cast K→scratch 完成后通知 AIC。A2 四槽用 3/4/5/6。
 constexpr uint16_t MSA_FLAG_K_READY = 3;
 constexpr uint16_t MSA_FLAG_K_READY_REVERSE = 4;
+constexpr uint16_t MSA_FLAG_K_READY_2 = 5;
+constexpr uint16_t MSA_FLAG_K_READY_3 = 6;
 
 // Ascend 950 MIX：MODE4 下 AIC 分别给两个 AIV 置位，flagId+16。
 constexpr uint32_t MSA_A5_SYNC_MODE4 = 4;
