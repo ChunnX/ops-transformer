@@ -619,10 +619,19 @@ void AllGatherQuantBmmTiling::AlignApaceCutResForKernel(CutResult &cutRes, uint6
     }
     uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, APACE_KERNEL_ALIGN_M);
     if (longTile >= mValue) {
-        cutRes.longTileLen = mValue;
-        cutRes.numLongTile = 1;
-        cutRes.shortTileLen = 0;
-        cutRes.numShortTile = 0;
+        if (mValue >= APACE_KERNEL_ALIGN_M) {
+            // 保持 tileM 256 对齐（区域边界契约）：最大 256 对齐头块，余量走 tail（paddedTailM 16 对齐）
+            cutRes.longTileLen = mc2tiling::AlignDown(mValue, APACE_KERNEL_ALIGN_M);
+            cutRes.numLongTile = 1;
+            cutRes.shortTileLen = mValue - cutRes.longTileLen;
+            cutRes.numShortTile = (cutRes.shortTileLen > 0) ? 1 : 0;
+        } else {
+            // mValue < 256：无 256 对齐头块可用，整块走纯尾块路径（tileCnt=0，全 TAIL 区域）
+            cutRes.longTileLen = 0;
+            cutRes.numLongTile = 0;
+            cutRes.shortTileLen = mValue;
+            cutRes.numShortTile = 1;
+        }
     } else {
         cutRes.longTileLen = longTile;
         cutRes.numLongTile = mValue / longTile;
