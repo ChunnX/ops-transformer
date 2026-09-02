@@ -521,26 +521,28 @@ ge::graphStatus FiaInfoParser::GetKvStrideValues()
          ValidateForwardedStrideRankLocal(opName_, "keyRope", kRopeStrides_, requiredRank) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
+    // 仅当首轴(dim0)真正非连续时才转发 bnStride：连续缓存(含连续NZ)保持 bnStride=0，
+    // 使内核走 blockSize*strideKV 的快速地址计算路径，避免非连续寻址带来的性能劣化。
     if (kvLayout_ == FiaLayout::BnBsH) {
-        if (keyStrides_ != nullptr) {
+        if (keyStrides_ != nullptr && keyNonContigDim_ == 0) {
             keyBnStride_ = keyStrides_->GetStride(0);
         }
-        if (valueStrides_ != nullptr) {
+        if (valueStrides_ != nullptr && valueNonContigDim_ == 0) {
             valueBnStride_ = valueStrides_->GetStride(0);
         }
-        if (kRopeStrides_ != nullptr) {
+        if (kRopeStrides_ != nullptr && keyRopeNonContigDim_ == 0) {
             kRopeBnStride_ = kRopeStrides_->GetStride(0);
         }
     } else if (kvLayout_ == FiaLayout::BnNBsD || kvLayout_ == FiaLayout::NZ) {
-        if (keyStrides_ != nullptr) {
+        if (keyStrides_ != nullptr && keyNonContigDim_ == 0) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(1);
         }
-        if (valueStrides_ != nullptr) {
+        if (valueStrides_ != nullptr && valueNonContigDim_ == 0) {
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(1);
         }
-        if (kRopeStrides_ != nullptr) {
+        if (kRopeStrides_ != nullptr && keyRopeNonContigDim_ == 0) {
             kRopeBnStride_ = kRopeStrides_->GetStride(0);
             kRopeN2Stride_ = kRopeStrides_->GetStride(1);
         }
