@@ -525,7 +525,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 }
 
 // W4 基类统一执行原 A8W4/A4W4 的专家 GMM2/Combine；派生模板只提供当前专家 slice。
-// 非量化路径增量采用 GMM2 tile 一对一同步，所有 Combine 均通过 CombineTokenRange 进入。
+// 非量化路径由 AIV1 在 GMM2 scheduler 内逐 tile 调用统一的 CombineTokenRange。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
@@ -558,21 +558,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // 非量化 Combine 紧跟当前 GMM2 slice，AIV1 按相同 scheduler 逐 tile 消费。
-        CombineRangeContext combineContext{commonConfig_, gmmExecutionConfig_, countWorkspace_, syncWorkspaceLayout_,
-                                           params_, moeWeightTensorListAddrs_};
-        CombineRangeRuntime combineRuntime{startBlockIdx, pairwiseTileSequence};
-        ExpertTokenRange sliceRange{
-            {state.expertIdx, tokenStartIndexInExpert,
-             static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert},
-            {state.expertIdx, tokenStartIndexInExpert + sliceTokenCount,
-             static_cast<uint64_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert + sliceTokenCount}};
-        if (sliceRange.end.tokenIndexInExpert >= expertTokenCount) {
-            sliceRange.end.expertIdx = state.expertIdx + 1U;
-            sliceRange.end.tokenIndexInExpert = 0U;
-        }
-        CombineTokenRange<ActivationQuantOutType, Weight1Type, QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
-                          GMM1_TILE_M, TopkWeightsPrefetch>(combineContext, sliceRange, combineRuntime);
+        // AIV1 已在上述 GMM2 调用中消费当前 slice；无需在外部重建 scheduler。
         return;
     }
 
