@@ -95,8 +95,8 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
                    DFX_OUT(qOut, kCacheRef, vCacheRef));
 
     // 参数检查：L2 只做空指针与 KV Cache 连续性校验（后者 tiling 侧看不到 view stride，只能在这里拦），
-    // dtype/shape/属性取值的完整校验统一在 tiling 侧
-    // （aclnn 单算子路径与图模式都会走 tiling，避免两处重复实现导致漂移）
+    // dtype/shape/属性取值的完整校验统一在 tiling 与 InferShape 两层
+    // （aclnn 单算子路径与图模式都会走，避免两处重复实现导致漂移）
     auto notNull = und_gen_qkv_rms_norm_rope_cache::CheckNotNull(undQkv, undWeightsQ, undWeightsK, cosSinCache,
                                                                  kCacheRef, vCacheRef, slotMapping, positions, qOut);
     CHECK_RET(notNull, ACLNN_ERR_PARAM_NULLPTR);
@@ -144,11 +144,14 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     // 一旦走 Contiguous 拿到的就是副本，kernel 的原地写会落到副本上而调用方看不到结果。
 
     // 调用l0接口进行计算
-    auto l0Ret = l0op::UndGenQkvRmsNormRopeCache(
+    auto qResult = l0op::UndGenQkvRmsNormRopeCache(
         undQkvContiguous, undWeightsQContiguous, undWeightsKContiguous, cosSinCacheContiguous, kCacheRef, vCacheRef,
         slotMappingContiguous, positionsContiguous, genQkvContiguous, genWeightsQContiguous, genWeightsKContiguous,
-        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, qOut, uniqueExecutor.get());
-    CHECK_RET(l0Ret == ACLNN_SUCCESS, l0Ret);
+        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, uniqueExecutor.get());
+    CHECK_RET(qResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto viewCopyResult = l0op::ViewCopy(qResult, qOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // 获取workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
