@@ -199,7 +199,6 @@ private:
     LocalTensor<T> bf16InputBuf_;
     LocalTensor<P> gammaOutUb_;
     LocalTensor<P> xRsGradMmInBuf_;
-    LocalTensor<P> c0DirectStageBuf_;
     LocalTensor<T> bf16OutputBuf_;
     LocalTensor<T> gradXPostBuf_;
 
@@ -236,10 +235,8 @@ private:
     uint16_t eleNumPerVf_;
     bool withGamma_;
     bool withGradXPost_;
-    uint32_t c0DirectProduceCount_;
-    uint32_t c0DirectReclaimCount_;
-    uint32_t c0DirectConsumeCount_;
     uint32_t c0DirectConsumeSlot_;
+    bool c0DirectTile_;
     float scaleMean_;
 };
 
@@ -340,10 +337,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
 {
     v1UsedCubeCoreNum_ = 0;
-    c0DirectProduceCount_ = 0;
-    c0DirectReclaimCount_ = 0;
-    c0DirectConsumeCount_ = 0;
     c0DirectConsumeSlot_ = 0;
+    c0DirectTile_ = false;
     cubeDealnDPeCore_ = nD_ / GetBlockNum();
     if (cubeDealnDPeCore_ == 0) {
         cubeDealnDPeCore_ = nD_;
@@ -1088,17 +1083,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         }
     }
 
-    // C1全部完成后回收最后两个仍在途的直连槽，避免残留信号污染后续执行。
-    while (c0DirectReclaimCount_ < c0DirectProduceCount_) {
-        uint32_t slot = c0DirectReclaimCount_ & 1U;
-        if (slot == 0) {
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_DONE_PING);
-        } else {
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_DONE_PONG);
-        }
-        ++c0DirectReclaimCount_;
-    }
-
     if ASCEND_IS_AIC {
         AscendC::SetHF32Mode(0);
     }
@@ -1118,26 +1102,22 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // 计算
+    uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
+    uint32_t tileIdx = 0;
+    bool directBlock = (buffIdx == 0);
     while (mm0.Iterate()) {
-        uint32_t slot = c0DirectProduceCount_ & 1U;
-        // 复用同一槽前必须等待两个AIV完成消费。
-        if (c0DirectProduceCount_ >= DOUBLE_BUFFER) {
-            if (slot == 0) {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_DONE_PING);
-            } else {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_DONE_PONG);
-            }
-            ++c0DirectReclaimCount_;
-        }
-        LocalTensor<P> c0DirectUb =
-            fp32TBuf_.GetWithOffset<P>(C0_DIRECT_UB_SLOT_ELEMS, slot * C0_DIRECT_UB_SLOT_SIZE);
-        mm0.GetTensorC(c0DirectUb, 0, true);
-        if (slot == 0) {
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
+        // 每隔一个BS块仅将前两个tile写入UB；其余tile走原GM通路。
+        // C1同步保证同一UB槽下次复用前，上一轮V2已经消费完成。
+        if (directBlock && tileIdx < DOUBLE_BUFFER) {
+            LocalTensor<P> c0DirectUb =
+                fp32TBuf_.GetWithOffset<P>(C0_DIRECT_UB_SLOT_ELEMS, tileIdx * C0_DIRECT_UB_SLOT_SIZE);
+            mm0.GetTensorC(c0DirectUb, 0, true);
         } else {
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_READY_PONG);
+            mm0.GetTensorC(workSpaceGm_[writeOffset + tileIdx * MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N],
+                           0, true);
         }
-        ++c0DirectProduceCount_;
+        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
+        ++tileIdx;
     }
     mm0.End();
 
@@ -1407,38 +1387,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
         bool isC0TileStart = ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0);
         if (isC0TileStart) {
-            c0DirectConsumeSlot_ = c0DirectConsumeCount_ & 1U;
-            if (c0DirectConsumeSlot_ == 0) {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
-            } else {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_READY_PONG);
-            }
-
-            // 将C0结果快速接力到q0暂存槽，复制完成后立即允许C0复用直连槽。
-            LocalTensor<P> c0DirectUb = fp32TBuf_.GetWithOffset<P>(
-                C0_DIRECT_UB_SLOT_ELEMS, c0DirectConsumeSlot_ * C0_DIRECT_UB_SLOT_SIZE);
-            uint32_t c0TileRows =
-                static_cast<uint32_t>(Min(static_cast<uint64_t>(MATMUL_WRITE_OFFSET_M), bsEnd - bsChunkStart));
-            vecInQueue0_.AllocTensor<P>(c0DirectStageBuf_);
-            Adds(c0DirectStageBuf_, c0DirectUb, ZERO, c0TileRows * copySizeND);
-            PipeBarrier<PIPE_V>();
-            vecInQueue0_.EnQue(c0DirectStageBuf_);
-            vecInQueue0_.DeQue<P>(c0DirectStageBuf_);
-            if (c0DirectConsumeSlot_ == 0) {
-                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PING);
-            } else {
-                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(CROSS_CORE_WAIT_FLAG_C0_DONE_PONG);
-            }
+            uint32_t tileIdx = static_cast<uint32_t>((bsChunkStart - bsStart) / MATMUL_WRITE_OFFSET_M);
+            c0DirectTile_ = (buffId == 0) && (tileIdx < DOUBLE_BUFFER);
+            c0DirectConsumeSlot_ = tileIdx;
+            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
         }
-        bool releaseC0DirectStage =
-            (((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M) + currentChunkSize == MATMUL_WRITE_OFFSET_M) ||
-            (bsChunkEnd == bsEnd);
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
                            sumBuf);
-        if (releaseC0DirectStage) {
-            vecInQueue0_.FreeTensor(c0DirectStageBuf_);
-            ++c0DirectConsumeCount_;
-        }
     }
 }
 
@@ -1581,8 +1536,28 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t buffId,
                                                            LocalTensor<P> &sumBuf)
 {
-    uint32_t rowInC0Tile = static_cast<uint32_t>((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M);
-    xRsGradMmInBuf_ = c0DirectStageBuf_[rowInC0Tile * copySizeND];
+    if (c0DirectTile_) {
+        LocalTensor<P> c0DirectUb = fp32TBuf_.GetWithOffset<P>(
+            C0_DIRECT_UB_SLOT_ELEMS, c0DirectConsumeSlot_ * C0_DIRECT_UB_SLOT_SIZE);
+        uint32_t rowInC0Tile = static_cast<uint32_t>((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M);
+        xRsGradMmInBuf_ = c0DirectUb[rowInC0Tile * copySizeND];
+    } else {
+        DataCopyPadParams dataCopyPadParams;
+        dataCopyPadParams.isPad = false;
+        uint32_t vecIdx = blockIdx_ % 2;
+        uint64_t offsetXRsGradMm = workspaceBuf_.GetXRsGradOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
+        offsetXRsGradMm += (bsChunkStart - bsStart) * ND_BLOCK_SIZE + vecIdx * (ND_BLOCK_SIZE / 2);
+
+        vecInQueue0_.AllocTensor<P>(xRsGradMmInBuf_);
+        DataCopyParams blockCopyParams;
+        blockCopyParams.blockCount = currentChunkSize;
+        blockCopyParams.blockLen = copySizeND * sizeof(P);
+        blockCopyParams.srcStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
+        blockCopyParams.dstStride = 0;
+        DataCopyPad(xRsGradMmInBuf_, workSpaceGm_[offsetXRsGradMm], blockCopyParams, dataCopyPadParams);
+        vecInQueue0_.EnQue(xRsGradMmInBuf_);
+        vecInQueue0_.DeQue<P>(xRsGradMmInBuf_);
+    }
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
@@ -1611,6 +1586,9 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uin
             Add(sumBuf, sumBuf, reduceSumBuf, copySizeND);
         }
         PipeBarrier<PIPE_V>();
+    }
+    if (!c0DirectTile_) {
+        vecInQueue0_.FreeTensor(xRsGradMmInBuf_);
     }
     PipeBarrier<PIPE_V>();
 }
