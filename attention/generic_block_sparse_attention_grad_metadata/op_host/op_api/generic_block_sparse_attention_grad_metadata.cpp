@@ -32,8 +32,7 @@ const aclTensor *GenericBlockSparseAttentionGradMetadata(
     int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t numQHeads, int64_t numKvHeads, int64_t headDim,
     int64_t blockShapeX, int64_t blockShapeY, int64_t isPackedGQA, const char *layoutQOptional,
     const char *layoutKvOptional, int64_t maskType, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight,
-    const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData,
-    aclOpExecutor *executor)
+    const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData, aclOpExecutor *executor)
 {
     L0_DFX(GenericBlockSparseAttentionGradMetadata, rsvdBlockIdx, rsvdBlockCount, cuSeqLengthsQOptional,
            cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads,
@@ -52,12 +51,12 @@ const aclTensor *GenericBlockSparseAttentionGradMetadata(
                  sequsedKvOptional),
         OP_OUTPUT(metaData),
         OP_ATTR(maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA,
-                layoutQOptional, layoutKvOptional, maskType, softmaxPrecision, winLeft, winRight, socVersion, aicCoreNum,
-                aivCoreNum));
-    OP_CHECK(ret == ACL_SUCCESS,
-             OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                     "GenericBlockSparseAttentionGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
-             return nullptr);
+                layoutQOptional, layoutKvOptional, maskType, softmaxPrecision, winLeft, winRight, socVersion,
+                aicCoreNum, aivCoreNum));
+    OP_CHECK(
+        ret == ACL_SUCCESS,
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "GenericBlockSparseAttentionGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
+        return nullptr);
     return metaData;
 }
 

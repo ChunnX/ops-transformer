@@ -35,9 +35,9 @@ int64_t AlignTo(int64_t x, int64_t align)
 
 class GenericBlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GenericBlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_) : TilingBaseClass(context_)
-    {
-    }
+    explicit GenericBlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_)
+        : TilingBaseClass(context_)
+    {}
 
 protected:
     bool IsCapable() override
@@ -64,8 +64,7 @@ protected:
         }
         // Cube tile baseN shares UB/L1 with baseM; current layout budgets baseN<=128.
         if (blockShapeY_ > BASE_M) {
-            OP_LOGE(context_->GetNodeName(),
-                    "block_shape[1]=%ld exceeds supported cube baseN=%ld (UB/L1 budget).",
+            OP_LOGE(context_->GetNodeName(), "block_shape[1]=%ld exceeds supported cube baseN=%ld (UB/L1 budget).",
                     blockShapeY_, BASE_M);
             return false;
         }
@@ -234,8 +233,8 @@ protected:
         uint32_t processS1Size = elementNum / static_cast<uint32_t>(headDim_);
         auto inputShape = ge::Shape({processS1Size, static_cast<int64_t>(headDim_)});
         uint32_t tmpSpaceSize = AscendC::GetSoftMaxGradMaxTmpSize(inputShape, sizeof(float), true, true);
-        AscendC::SoftMaxGradTilingFunc(inputShape, sizeof(float), tmpSpaceSize,
-                                       tilingData_.softmaxGradFrontTilingData, true);
+        AscendC::SoftMaxGradTilingFunc(inputShape, sizeof(float), tmpSpaceSize, tilingData_.softmaxGradFrontTilingData,
+                                       true);
         tilingData_.set_sftgTmpSpaceSize(tmpSpaceSize);
         return ge::GRAPH_SUCCESS;
     }
@@ -255,13 +254,11 @@ protected:
             dkSize = static_cast<uint64_t>(kvSeqLen_) * kvHeadNum_ * headDim_;
             // Pad sftg so DataCopy of last EvenCore tail cannot write past the buffer
             // (T=1024 / 56 AIVs leaves a non-16-aligned tail that may round up).
-            sftgSize = static_cast<uint64_t>(
-                AlignTo(static_cast<int64_t>(qSeqLen_) * qHeadNum_ * 8, 256));
+            sftgSize = static_cast<uint64_t>(AlignTo(static_cast<int64_t>(qSeqLen_) * qHeadNum_ * 8, 256));
         } else {
             dqSize = static_cast<uint64_t>(batchNum_) * qSeqLen_ * qHeadNum_ * headDim_;
             dkSize = static_cast<uint64_t>(batchNum_) * kvSeqLen_ * kvHeadNum_ * headDim_;
-            sftgSize = static_cast<uint64_t>(
-                AlignTo(static_cast<int64_t>(batchNum_) * qHeadNum_ * qSeqLen_ * 8, 256));
+            sftgSize = static_cast<uint64_t>(AlignTo(static_cast<int64_t>(batchNum_) * qHeadNum_ * qSeqLen_ * 8, 256));
         }
 
         tilingData_.set_dqSize(dqSize);
@@ -284,8 +281,7 @@ protected:
 
     ge::graphStatus PostTiling() override
     {
-        tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
-                                 context_->GetRawTilingData()->GetCapacity());
+        tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
         return ge::GRAPH_SUCCESS;
     }
@@ -307,28 +303,28 @@ protected:
 
 private:
     GenericBlockSparseAttentionGradTilingDataArch35 tilingData_;
-    ge::DataType dataType_ { ge::DT_FLOAT16 };
-    const char *qLayout_ { nullptr };
-    const char *kvLayout_ { nullptr };
+    ge::DataType dataType_{ge::DT_FLOAT16};
+    const char *qLayout_{nullptr};
+    const char *kvLayout_{nullptr};
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
     static constexpr const char *TND_STR = "TND";
-    int64_t batchNum_ { 0 };
-    int64_t qSeqLen_ { 0 };
-    int64_t kvSeqLen_ { 0 };
-    int64_t qHeadNum_ { 0 };
-    int64_t kvHeadNum_ { 0 };
-    int64_t qGroup_ { 0 };
-    int64_t headDim_ { 0 };
-    int64_t maxS1_ { 0 };
-    int64_t numJ_ { 0 };
-    int32_t blockShapeX_ { 1 };
-    int32_t blockShapeY_ { 128 };
-    int32_t isPackedGqa_ { 1 };
-    uint32_t maskType_ { 0 };
-    float softmaxScale_ { 1.0f };
-    int32_t windowSizeLeft_ { -1 };
-    int32_t windowSizeRight_ { -1 };
+    int64_t batchNum_{0};
+    int64_t qSeqLen_{0};
+    int64_t kvSeqLen_{0};
+    int64_t qHeadNum_{0};
+    int64_t kvHeadNum_{0};
+    int64_t qGroup_{0};
+    int64_t headDim_{0};
+    int64_t maxS1_{0};
+    int64_t numJ_{0};
+    int32_t blockShapeX_{1};
+    int32_t blockShapeY_{128};
+    int32_t isPackedGqa_{1};
+    uint32_t maskType_{0};
+    float softmaxScale_{1.0f};
+    int32_t windowSizeLeft_{-1};
+    int32_t windowSizeRight_{-1};
 };
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(GenericBlockSparseAttentionGrad, GenericBlockSparseAttentionGradArch35Tiling,

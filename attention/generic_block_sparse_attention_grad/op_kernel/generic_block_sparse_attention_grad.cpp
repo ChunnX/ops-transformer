@@ -22,9 +22,9 @@
 extern "C" __global__ __aicore__ void generic_block_sparse_attention_grad(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dout, __gm__ uint8_t *out,
     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *rsvdBlockIdx, __gm__ uint8_t *rsvdBlockCount, __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLengthsQ, __gm__ uint8_t *cuSeqLengthsKv,
-    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *dq, __gm__ uint8_t *dk,
-    __gm__ uint8_t *dv, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLengthsQ, __gm__ uint8_t *cuSeqLengthsKv, __gm__ uint8_t *sequsedQ,
+    __gm__ uint8_t *sequsedKv, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *tiling)
 {
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
 

@@ -59,9 +59,9 @@ private:
     TEventID event_pong_ = EVENT_ID4;
     GlobalTensor<int32_t> sparse_idx_gm_;
     GlobalTensor<float> dq_sel_workspace_;
-    int32_t q_token_stride_ { 0 };
-    int32_t base_m_ { 128 };
-    int64_t dq_sel_slot_elems_ { 0 };
+    int32_t q_token_stride_{0};
+    int32_t base_m_{128};
+    int64_t dq_sel_slot_elems_{0};
 
 public:
     __aicore__ inline CubeOp(){};
@@ -144,7 +144,7 @@ public:
      * Row r lands at fractal row r (dstNzC0Stride = mAlign), matching load_data_gm_2_l1 layout.
      */
     __aicore__ inline void GatherSparseRowsToL1(const GlobalTensor<INPUT_TYPE> &srcGm,
-                                                 const LocalTensor<INPUT_TYPE> &dstL1, const RunTimeInfo &runTimeInfo)
+                                                const LocalTensor<INPUT_TYPE> &dstL1, const RunTimeInfo &runTimeInfo)
     {
         const int32_t m = static_cast<int32_t>(runTimeInfo.s1Len);
         const int32_t mAlign = static_cast<int32_t>(runTimeInfo.s1LenAlign);
@@ -202,7 +202,6 @@ public:
         }
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
-
 
     __aicore__ inline void SendMatmulDyV(const GlobalTensor<INPUT_TYPE> &dyGm, const GlobalTensor<INPUT_TYPE> &valueGm,
                                          LocalTensor<float> &mm2OutUb, const RunTimeInfo &runTimeInfo,
@@ -571,10 +570,11 @@ private:
     }
 
     template <bool A_MATRIX>
-    __aicore__ inline void
-    load_data_gm_2_l0(const LocalTensor<INPUT_TYPE> &dstL0Tensor, const LocalTensor<INPUT_TYPE> &dstL1Tensor,
-                      const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize, const int32_t kSize,
-                      const int32_t mSizeAlign, const int32_t kSizeAlign, const int32_t srcKStride)
+    __aicore__ inline void load_data_gm_2_l0(const LocalTensor<INPUT_TYPE> &dstL0Tensor,
+                                             const LocalTensor<INPUT_TYPE> &dstL1Tensor,
+                                             const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize,
+                                             const int32_t kSize, const int32_t mSizeAlign, const int32_t kSizeAlign,
+                                             const int32_t srcKStride)
     {
         load_data_gm_2_l1(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKStride);
         SET_FLAG(MTE2, MTE1, EVENT_ID0);
@@ -588,10 +588,11 @@ private:
     }
 
     template <bool A_MATRIX>
-    __aicore__ inline void
-    load_data_gm_2_l0_trans(const LocalTensor<INPUT_TYPE> &dstL0Tensor, const LocalTensor<INPUT_TYPE> &dstL1Tensor,
-                            const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize, const int32_t kSize,
-                            const int32_t mSizeAlign, const int32_t kSizeAlign, const int32_t srcKStride)
+    __aicore__ inline void load_data_gm_2_l0_trans(const LocalTensor<INPUT_TYPE> &dstL0Tensor,
+                                                   const LocalTensor<INPUT_TYPE> &dstL1Tensor,
+                                                   const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize,
+                                                   const int32_t kSize, const int32_t mSizeAlign,
+                                                   const int32_t kSizeAlign, const int32_t srcKStride)
     {
         load_data_gm_2_l1(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKStride);
         SET_FLAG(MTE2, MTE1, EVENT_ID0);

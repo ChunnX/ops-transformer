@@ -22,14 +22,14 @@
 #include "aclnnop/aclnn_generic_block_sparse_attention_grad_metadata.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
@@ -170,8 +170,8 @@ int main()
 
     LOG_PRINT("Calling aclnnGenericBlockSparseAttentionGradMetadata...\n");
     ret = aclnnGenericBlockSparseAttentionGradMetadata(workspace, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnGenericBlockSparseAttentionGradMetadata failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGenericBlockSparseAttentionGradMetadata failed. ERROR: %d\n", ret);
+              return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

@@ -205,20 +205,18 @@ aclnnStatus CheckConsistency(const aclTensor *rsvdBlockIdx, const aclTensor *rsv
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    const uint64_t maxPossibleTasks =
-        optiling::CalcGsagMetadataMaxTasks(static_cast<uint64_t>(batchSize), static_cast<uint64_t>(numQHeads),
-                                           static_cast<uint64_t>(j));
+    const uint64_t maxPossibleTasks = optiling::CalcGsagMetadataMaxTasks(
+        static_cast<uint64_t>(batchSize), static_cast<uint64_t>(numQHeads), static_cast<uint64_t>(j));
     if (maxPossibleTasks > optiling::GSAG_METADATA_ABSOLUTE_MAX_TASKS) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            GSAG_ACLNN_OP_NAME, "task_count_upper_bound", std::to_string(maxPossibleTasks),
-            "task count upper bound B * num_q_heads * J exceeds absolute max " +
-                std::to_string(optiling::GSAG_METADATA_ABSOLUTE_MAX_TASKS));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GSAG_ACLNN_OP_NAME, "task_count_upper_bound",
+                                              std::to_string(maxPossibleTasks),
+                                              "task count upper bound B * num_q_heads * J exceeds absolute max " +
+                                                  std::to_string(optiling::GSAG_METADATA_ABSOLUTE_MAX_TASKS));
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    const int64_t requiredMetadataSize = static_cast<int64_t>(
-        optiling::CalcGsagMetadataSize(static_cast<uint64_t>(batchSize), static_cast<uint64_t>(numQHeads),
-                                       static_cast<uint64_t>(j)));
+    const int64_t requiredMetadataSize = static_cast<int64_t>(optiling::CalcGsagMetadataSize(
+        static_cast<uint64_t>(batchSize), static_cast<uint64_t>(numQHeads), static_cast<uint64_t>(j)));
 
     aclGetDataType(rsvdBlockIdx, &dataType);
     if (dataType != aclDataType::ACL_INT32) {
@@ -233,12 +231,11 @@ aclnnStatus CheckConsistency(const aclTensor *rsvdBlockIdx, const aclTensor *rsv
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (metadata->GetViewShape().GetDimNum() != 1 ||
-        metadata->GetViewShape().GetDim(0) < requiredMetadataSize) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-            GSAG_ACLNN_OP_NAME, "metadata", std::to_string(metadata->GetViewShape().GetDim(0)),
-            "metadata length must be >= " + std::to_string(requiredMetadataSize) +
-                " (TASK_LIST_OFFSET + B * num_q_heads * J * TASK_ENTRY_SIZE)");
+    if (metadata->GetViewShape().GetDimNum() != 1 || metadata->GetViewShape().GetDim(0) < requiredMetadataSize) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(GSAG_ACLNN_OP_NAME, "metadata",
+                                                  std::to_string(metadata->GetViewShape().GetDim(0)),
+                                                  "metadata length must be >= " + std::to_string(requiredMetadataSize) +
+                                                      " (TASK_LIST_OFFSET + B * num_q_heads * J * TASK_ENTRY_SIZE)");
         return ACLNN_ERR_PARAM_INVALID;
     }
     aclGetDataType(metadata, &dataType);
@@ -266,9 +263,8 @@ static aclnnStatus ParamsCheck(const aclTensor *rsvdBlockIdx, const aclTensor *r
     (void)softmaxPrecision;
     (void)socVersion;
 
-    if (CheckSingleParam(maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY,
-                         isPackedGQA, layoutQ, layoutKv, maskType, winLeft, winRight, aicCoreNum,
-                         aivCoreNum) != ACLNN_SUCCESS) {
+    if (CheckSingleParam(maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA,
+                         layoutQ, layoutKv, maskType, winLeft, winRight, aicCoreNum, aivCoreNum) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (CheckExistence(rsvdBlockIdx, rsvdBlockCount, cuSeqLengthsQOptional, cuSeqLengthsKvOptional, layoutQ, layoutKv,

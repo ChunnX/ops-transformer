@@ -75,9 +75,9 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize(
     }
 
     auto ret = ParamsCheck(rsvdBlockIdx, rsvdBlockCount, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
-                           sequsedQOptional, sequsedKvOptional, maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads,
-                           headDim, blockShapeX, blockShapeY, isPackedGQA, layoutQ, layoutKv, maskType,
-                           softmaxPrecision, winLeft, winRight, aicCoreNum, aivCoreNum, socVersion, metadata);
+                           sequsedQOptional, sequsedKvOptional, maxQSeqlen, maxKvSeqlen, numQHeads, numKvHeads, headDim,
+                           blockShapeX, blockShapeY, isPackedGQA, layoutQ, layoutKv, maskType, softmaxPrecision,
+                           winLeft, winRight, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *rsvdBlockIdxContiguous = l0op::Contiguous(rsvdBlockIdx, uniqueExecutor.get());
@@ -109,9 +109,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize(
     auto output = l0op::GenericBlockSparseAttentionGradMetadata(
         rsvdBlockIdxContiguous, rsvdBlockCountContiguous, cuSeqLengthsQOptionalContiguous,
         cuSeqLengthsKvOptionalContiguous, sequsedQOptionalContiguous, sequsedKvOptionalContiguous, maxQSeqlen,
-        maxKvSeqlen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA, layoutQ, layoutKv,
-        maskType, softmaxPrecision, winLeft, winRight, socVersion, aicCoreNum, aivCoreNum, metadata,
-        uniqueExecutor.get());
+        maxKvSeqlen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA, layoutQ, layoutKv, maskType,
+        softmaxPrecision, winLeft, winRight, socVersion, aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -119,8 +118,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(void *workspace,
+                                                                                                uint64_t workspaceSize,
+                                                                                                aclOpExecutor *executor,
+                                                                                                aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGenericBlockSparseAttentionGradMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

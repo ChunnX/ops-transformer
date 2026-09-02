@@ -53,14 +53,14 @@ static constexpr uint32_t CROSS_CORE_SYNC_MODE = 4;
 static constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 16;
 
 struct ConstInfo {
-    int32_t q_head_num { 0 };
-    int32_t kv_head_num { 0 };
-    int32_t block_x { 0 };
-    int32_t block_y { 0 };
-    int32_t head_dim { 0 };
-    int32_t max_s1 { 0 };
-    int32_t num_j { 0 };
-    int32_t group_size { 0 };
+    int32_t q_head_num{0};
+    int32_t kv_head_num{0};
+    int32_t block_x{0};
+    int32_t block_y{0};
+    int32_t head_dim{0};
+    int32_t max_s1{0};
+    int32_t num_j{0};
+    int32_t group_size{0};
 };
 
 /**
@@ -68,34 +68,34 @@ struct ConstInfo {
  * Sparse Gather uses sparseIdxOffset + count; KV share via need_copy_kv.
  */
 struct RunTimeInfo {
-    int32_t taskId { 0 };
-    int32_t bIdx { 0 };
-    int32_t n1Idx { 0 }; // n1_cur = n2*G + g
-    int32_t n2Idx { 0 };
-    int32_t gIdx { 0 };
-    int32_t kvBlockIdx { 0 }; // j
-    int32_t s1Idx { 0 };      // unused for sparse gather path; kept for VecOp compatibility
-    int32_t s2Idx { 0 };      // s2_start = j * By
-    int32_t last_q_seq_sum { 0 };
-    int32_t last_kv_seq_sum { 0 };
-    int32_t cur_q_seq_len { 0 };
-    int32_t cur_kv_seq_len { 0 };
-    int32_t need_compute { 0 };
-    int32_t need_copy_kv { 0 };
-    int32_t kv_ping_pong_idx { 0 };
-    int32_t is_singlekv_last { 0 };
-    int32_t use_sparse_gather { 1 };
-    int32_t mask_type { 0 };
-    int64_t s1Len { 0 }; // m = count
-    int64_t s2Len { 0 }; // n = kv block len
-    int64_t s1LenAlign { 0 };
-    int64_t s2LenAlign { 0 };
-    int64_t queryGmOffset { 0 }; // unused when gathering; Scatter/dQ base uses sparse path
-    int64_t keyGmOffset { 0 };
-    int64_t lseGmOffset { 0 };
-    int64_t sftgGmOffset { 0 };
-    int64_t sparseIdxOffset { 0 }; // base of sparseBlockIdx[b,n2,j,0]
-    int64_t sparseCount { 0 };
+    int32_t taskId{0};
+    int32_t bIdx{0};
+    int32_t n1Idx{0}; // n1_cur = n2*G + g
+    int32_t n2Idx{0};
+    int32_t gIdx{0};
+    int32_t kvBlockIdx{0}; // j
+    int32_t s1Idx{0};      // unused for sparse gather path; kept for VecOp compatibility
+    int32_t s2Idx{0};      // s2_start = j * By
+    int32_t last_q_seq_sum{0};
+    int32_t last_kv_seq_sum{0};
+    int32_t cur_q_seq_len{0};
+    int32_t cur_kv_seq_len{0};
+    int32_t need_compute{0};
+    int32_t need_copy_kv{0};
+    int32_t kv_ping_pong_idx{0};
+    int32_t is_singlekv_last{0};
+    int32_t use_sparse_gather{1};
+    int32_t mask_type{0};
+    int64_t s1Len{0}; // m = count
+    int64_t s2Len{0}; // n = kv block len
+    int64_t s1LenAlign{0};
+    int64_t s2LenAlign{0};
+    int64_t queryGmOffset{0}; // unused when gathering; Scatter/dQ base uses sparse path
+    int64_t keyGmOffset{0};
+    int64_t lseGmOffset{0};
+    int64_t sftgGmOffset{0};
+    int64_t sparseIdxOffset{0}; // base of sparseBlockIdx[b,n2,j,0]
+    int64_t sparseCount{0};
 };
 
 inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
@@ -173,8 +173,8 @@ __aicore__ inline int64_t GetLseGmOffset(int64_t lastBatchSum, int64_t currentSe
 }
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t currentSeqLen, int64_t headNum, int64_t batchIdx,
-                                          int64_t seqlenIdx, int64_t n1Idx)
+__aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t currentSeqLen, int64_t headNum,
+                                          int64_t batchIdx, int64_t seqlenIdx, int64_t n1Idx)
 {
     if constexpr (INPUT_LAYOUT == TND) {
         return lastBatchSum * headNum * 8 + n1Idx * currentSeqLen * 8 + seqlenIdx * 8;

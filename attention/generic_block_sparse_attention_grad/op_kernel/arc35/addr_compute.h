@@ -182,9 +182,10 @@ private:
         info.kv_ping_pong_idx = kvPingPong_;
         info.mask_type = static_cast<int32_t>(tilingData_->maskType);
         info.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(curKvPrefix_, curActS2_, constInfo_.kv_head_num,
-                                                         constInfo_.head_dim, curB_, curS2Start_, curN2_);
+                                                        constInfo_.head_dim, curB_, curS2Start_, curN2_);
         info.lseGmOffset = GetLseGmOffset<INPUT_LAYOUT>(curQPrefix_, curActS1_, constInfo_.q_head_num, curB_, 0, n1Cur);
-        info.sftgGmOffset = GetSftgGmOffset<INPUT_LAYOUT>(curQPrefix_, curActS1_, constInfo_.q_head_num, curB_, 0, n1Cur);
+        info.sftgGmOffset =
+            GetSftgGmOffset<INPUT_LAYOUT>(curQPrefix_, curActS1_, constInfo_.q_head_num, curB_, 0, n1Cur);
         info.queryGmOffset = 0;
         info.need_compute = 1;
 
@@ -206,41 +207,41 @@ private:
         }
     }
 
-    const TILING_CLASS *tilingData_ { nullptr };
-    __gm__ uint8_t *cuSeqQ_ { nullptr };
-    __gm__ uint8_t *cuSeqKv_ { nullptr };
-    __gm__ uint8_t *sequsedQ_ { nullptr };
-    __gm__ uint8_t *sequsedKv_ { nullptr };
-    __gm__ uint8_t *rsvdBlockIdx_ { nullptr };
-    __gm__ uint8_t *rsvdBlockCount_ { nullptr };
-    __gm__ int64_t *metadata_ { nullptr };
-    ConstInfo constInfo_ {};
-    int32_t cubeCoreIdx_ { 0 };
-    int32_t taskStart_ { 0 };
-    int32_t taskEnd_ { 0 };
-    int32_t cursor_ { 0 };
-    int32_t lastB_ { -1 };
-    int32_t lastN2_ { -1 };
-    int32_t lastJ_ { -1 };
-    int32_t kvPingPong_ { 0 };
-    int32_t baseM_ { 128 };
+    const TILING_CLASS *tilingData_{nullptr};
+    __gm__ uint8_t *cuSeqQ_{nullptr};
+    __gm__ uint8_t *cuSeqKv_{nullptr};
+    __gm__ uint8_t *sequsedQ_{nullptr};
+    __gm__ uint8_t *sequsedKv_{nullptr};
+    __gm__ uint8_t *rsvdBlockIdx_{nullptr};
+    __gm__ uint8_t *rsvdBlockCount_{nullptr};
+    __gm__ int64_t *metadata_{nullptr};
+    ConstInfo constInfo_{};
+    int32_t cubeCoreIdx_{0};
+    int32_t taskStart_{0};
+    int32_t taskEnd_{0};
+    int32_t cursor_{0};
+    int32_t lastB_{-1};
+    int32_t lastN2_{-1};
+    int32_t lastJ_{-1};
+    int32_t kvPingPong_{0};
+    int32_t baseM_{128};
 
     // Current metadata task state (for baseM tiling of count)
-    bool inMetaTask_ { false };
-    int32_t curB_ { 0 };
-    int32_t curN2_ { 0 };
-    int32_t curJ_ { 0 };
-    int32_t curG_ { 0 };
-    int32_t curCount_ { 0 };
-    int64_t curIdxBase_ { 0 };
-    int32_t curS2Start_ { 0 };
-    int32_t curKvBlockLen_ { 0 };
-    int64_t curQPrefix_ { 0 };
-    int64_t curKvPrefix_ { 0 };
-    int64_t curActS1_ { 0 };
-    int64_t curActS2_ { 0 };
-    int32_t s1Offset_ { 0 };
-    int32_t s1Remain_ { 0 };
+    bool inMetaTask_{false};
+    int32_t curB_{0};
+    int32_t curN2_{0};
+    int32_t curJ_{0};
+    int32_t curG_{0};
+    int32_t curCount_{0};
+    int64_t curIdxBase_{0};
+    int32_t curS2Start_{0};
+    int32_t curKvBlockLen_{0};
+    int64_t curQPrefix_{0};
+    int64_t curKvPrefix_{0};
+    int64_t curActS1_{0};
+    int64_t curActS2_{0};
+    int32_t s1Offset_{0};
+    int32_t s1Remain_{0};
 };
 
 } // namespace GSAG_ARC35
