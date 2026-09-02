@@ -196,7 +196,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     int64_t groupType = 0L;
     int64_t groupListType = 0L;
     int64_t actType = 0L;
-    std::vector<int8_t> xHostData(m * k, 10);
+    std::vector<int16_t> xHostData(m * k, 10);
     std::vector<int8_t> weightHostData(groupnum * k * n / 2, 17);           // 0001 0001
     std::vector<int8_t> weightTransposedHostData(groupnum * k * n / 2, 17); // 0001 0001
     std::vector<int16_t> biasHostData(groupnum * n, 10);
