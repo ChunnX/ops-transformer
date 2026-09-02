@@ -1248,31 +1248,33 @@ __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, con
         return;
     }
 
-    ExpertTokenPosition position = range.begin;
     ExpertLoopState state = CreateExpertLoopState(context.common);
     state.expertIdx = range.begin.expertIdx;
     state.globalTokenStartIndex = static_cast<int64_t>(range.begin.globalTokenIndex) -
                                   static_cast<int64_t>(range.begin.tokenIndexInExpert);
     uint32_t gmm2TilesPerMGroup =
         Ops::Base::CeilDiv(context.common.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
-    while ((position.expertIdx != range.end.expertIdx ||
-            position.tokenIndexInExpert != range.end.tokenIndexInExpert) &&
-           position.expertIdx < context.common.moeExpertPerRank) {
+    uint32_t expertEndExclusive =
+        range.end.expertIdx + (range.end.tokenIndexInExpert == 0U ? 0U : 1U);
+    if (expertEndExclusive > context.common.moeExpertPerRank) {
+        expertEndExclusive = context.common.moeExpertPerRank;
+    }
+    for (uint32_t expertIdx = range.begin.expertIdx; expertIdx < expertEndExclusive; ++expertIdx) {
         uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
             context.params.workspaceInfo.expertRevTokenNumsPtr, context.countWorkspace,
-            context.common.moeExpertPerRank, position.expertIdx);
-        UpdateExpertLoopState(state, position.expertIdx, expertTokenCount);
-        if (expertTokenCount == 0U || position.tokenIndexInExpert >= expertTokenCount) {
-            ++position.expertIdx;
-            position.tokenIndexInExpert = 0U;
+            context.common.moeExpertPerRank, expertIdx);
+        UpdateExpertLoopState(state, expertIdx, expertTokenCount);
+        uint32_t sliceBeginIndexInExpert =
+            expertIdx == range.begin.expertIdx ? range.begin.tokenIndexInExpert : 0U;
+        if (expertTokenCount == 0U || sliceBeginIndexInExpert >= expertTokenCount) {
             continue;
         }
 
         uint32_t sliceEndIndexInExpert = expertTokenCount;
-        if (position.expertIdx == range.end.expertIdx) {
+        if (expertIdx == range.end.expertIdx) {
             sliceEndIndexInExpert = range.end.tokenIndexInExpert;
         }
-        uint32_t sliceTokenCount = sliceEndIndexInExpert - position.tokenIndexInExpert;
+        uint32_t sliceTokenCount = sliceEndIndexInExpert - sliceBeginIndexInExpert;
         uint32_t problemTileCount =
             GetMGroupCountForRows(sliceTokenCount, Gmm1TileM) * gmm2TilesPerMGroup;
         if (!HandleWaveProblemWithoutWork(problemTileCount, context.gmm.blockJob,
@@ -1280,7 +1282,7 @@ __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, con
             GMMAddrInfo gmmAddrInfo{};
             UpdateMoeExpertGmm2GlobalBuffer<WeightType, ElementA, QuantScaleType>(
                 context.gmm, context.syncLayout, context.params.workspaceInfo, context.weights,
-                gmmAddrInfo, state, position.tokenIndexInExpert);
+                gmmAddrInfo, state, sliceBeginIndexInExpert);
             gmmAddrInfo.gmmToEpilogueFlag =
                 reinterpret_cast<__gm__ int32_t *>(context.params.workspaceInfo.flagGmmToEpiloguePtr) +
                 static_cast<uint64_t>(context.gmm.blockJob.jobIndex) * INT_CACHELINE;
@@ -1290,13 +1292,6 @@ __aicore__ inline void CombineTokenRange(const CombineRangeContext &context, con
                                       TopkWeightsPrefetch, IsGmm1Interleaved>(
                 context.gmm, sliceProblemShape, gmmAddrInfo, context.params,
                 runtime.pairwiseStartBlockIdx, runtime.pairwiseTileSequence);
-        }
-
-        position.tokenIndexInExpert = sliceEndIndexInExpert;
-        position.globalTokenIndex += sliceTokenCount;
-        if (position.tokenIndexInExpert >= expertTokenCount) {
-            ++position.expertIdx;
-            position.tokenIndexInExpert = 0U;
         }
     }
 }
