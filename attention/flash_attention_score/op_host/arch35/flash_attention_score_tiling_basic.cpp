@@ -91,7 +91,8 @@ protected:
             (s1Size % DN_S1_128 == 0) &&
             (s2Size % MIN_DN_S2 == 0) &&
             !hasAttenMask && !hasPse && !hasDropOut && (inputDtypeBytes != DATA_TYPE_FP32) && 
-            (inputDtypeBytes != DATA_TYPE_FP8) && !hasRope) ||
+            (inputDtypeBytes != DATA_TYPE_FP8) && !hasRope &&
+            implMode != ImplMode::AA_INVALID_LINE_HIGH_PRECISION) ||
             ((inputDtype == ge::DT_FLOAT8_E5M2 || inputDtype == ge::DT_FLOAT8_E4M3FN) &&
               !hasAttenMask && !hasPse && !hasDropOut && !hasRope)) {
             s1TemplateType = STemplateType::ALIGNED_128;
@@ -158,11 +159,16 @@ protected:
     uint64_t GetTilingKey() const override
     {
         uint8_t pseMode = hasPse ? static_cast<uint8_t>(pseType) : static_cast<uint8_t>(PseType::PSE_NONE_TYPE);
+        // Mode 2 reuses the existing attention-mask kernel to enable invalid-line processing. The kernel uses
+        // attenMaskS2Size to distinguish a real mask from the virtual all-zero mask used by the no-mask case.
+        const bool enableAttenPipeline =
+            hasAttenMask || implMode == ImplMode::AA_INVALID_LINE_HIGH_PRECISION;
         OP_LOGD(opName, "TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
-            "dVTemplateType:%d, pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, outDtype:%d, regbase:%d,"
-            "optionalDn:%d", static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
+            "dVTemplateType:%d, pseMode:%d, hasAttenMask:%d, enableAttenPipeline:%d, hasDropOut:%d, hasRope:%d, "
+            "outDtype:%d, regbase:%d, optionalDn:%d", static_cast<uint8_t>(implMode),
+            static_cast<uint16_t>(s1TemplateType),
             static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType),
-            static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask, hasDropOut, hasRope,
+            static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask, enableAttenPipeline, hasDropOut, hasRope,
             static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
 
         // Const 128
@@ -170,12 +176,12 @@ protected:
             return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
                 static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
                 static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED),
-                pseMode, hasAttenMask, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
+                pseMode, enableAttenPipeline, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
                 static_cast<uint8_t>(regbase), optionalDn);
         }
         return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
             static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
+            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, enableAttenPipeline,
             hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase), optionalDn);
     }
 
