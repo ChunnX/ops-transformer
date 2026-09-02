@@ -39,7 +39,7 @@
 
   其中，$S_{t-1},S_t \in \mathbb{R}^{D_v \times D_k}$，$q_t, k_t \in \mathbb{R}^{D_k}$，$v_t \in \mathbb{R}^{D_v}$，$\alpha_t \in \mathbb{R}$，$\beta_t \in \mathbb{R}$，$o_t \in \mathbb{R}^{D_v}$。
 
-  Chunked Gated Delta Rule是GDR的chunk版实现([参考论文](https://arxiv.org/abs/2412.06464))，它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，该算子可以计算出每一步的输出 $o_t, t \in \{1, .., L\}$ 以及最终的状态矩阵 $S_L$。
+  Chunked Gated Delta Rule是GDR的chunk版实现（[参考论文](https://arxiv.org/abs/2412.06464)），它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，该算子可以计算出每一步的输出 $o_t, t \in \{1, .., L\}$ 以及最终的状态矩阵 $S_L$。
 
 ## 函数原型
 
@@ -281,12 +281,12 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>在Device侧申请的workspace大小，由第一段接口aclnnChunkGatedDeltaRuleGetWorkspaceSize获取。</td>
     </tr>
     <tr>
-      <td>workspace (void*)</td>
+      <td>executor (aclOpExecutor*)</td>
       <td>输入</td>
       <td>op执行器，包含算子计算流程。</td>
     </tr>
     <tr>
-      <td>workspace (void*)</td>
+      <td>stream (aclrtStream)</td>
       <td>输入</td>
       <td>指定执行任务的Stream。</td>
     </tr>
@@ -318,6 +318,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
 ```cpp
 #include <iostream>
 #include <vector>
+#include <cstring>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_chunk_gated_delta_rule.h"
 
@@ -345,7 +346,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char* name)
 {
     auto size = GetShapeSize(shape);
-    std::vector<aclFloat16> resultData(size, 0);
+    std::vector<uint16_t> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
                            size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
@@ -353,7 +354,10 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char* 
         if (i >= 5) { // print the first five data
             break;
         }
-        LOG_PRINT("%s result[%ld] is: %f\n", name, i, aclFloat16ToFloat(resultData[i]));
+        float result = 0.0f;
+        uint32_t val = static_cast<uint32_t>(resultData[i]) << 16U;
+        std::memcpy(&result, &val, sizeof(result));
+        LOG_PRINT("%s result[%ld] is: %f\n", name, i, result);
     }
 }
 
@@ -425,7 +429,7 @@ int main()
 
     // 自定义输入与属性
     int32_t batchSize = 2;
-    int32_t seqLength = 200;
+    int32_t seqLength = 32;
     int32_t headKNum = 4;
     int32_t headVNum = 8;
     int32_t dimV = 32;
@@ -444,21 +448,25 @@ int main()
     std::vector<float> gamaHostData(GetShapeSize(gamaShape));
     std::vector<int16_t> betaHostData(GetShapeSize(gamaShape));
     std::vector<int32_t> actSeqLenHostData(batchSize, seqLength);
-    int16_t bfloatOne = 16256;  // int16_t的16256的二进制对应bfloat16的1.0
+    int16_t bfloatHalf = 16128;   // int16_t的16128的二进制对应bfloat16的0.5
+    int16_t bfloatQuarter = 15936; // int16_t的15936的二进制对应bfloat16的0.25
     for (int i = 0; i < initStateHostData.size(); i++) {
-        initStateHostData[i] = bfloatOne;
+        initStateHostData[i] = bfloatQuarter;
     }
     for (int i = 0; i < queryHostData.size(); i++) {
-        queryHostData[i] = bfloatOne;
+        queryHostData[i] = bfloatQuarter;
     }
     for (int i = 0; i < keyHostData.size(); i++) {
-        keyHostData[i] = bfloatOne;
+        keyHostData[i] = bfloatQuarter;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = bfloatOne;
+        valueHostData[i] = bfloatHalf;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = bfloatOne;
+        betaHostData[i] = bfloatHalf;
+    }
+    for (int i = 0; i < gamaHostData.size(); i++) {
+        gamaHostData[i] = -0.5f;
     }
 
     std::vector<int16_t> attnOutHostData(valueHostData);
