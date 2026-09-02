@@ -165,16 +165,15 @@
 /*
  * CountingSort 性能模板（计数排序）
  */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 410000   // 模板1、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 411000 // 模板1、非量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED 420000  // 模板2、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT 430000 // 模板2、静态量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S 421000  // 模板2、非量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S 431000 // 模板2、静态量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D 420100 // 模板2、非量化、GATHER、dropPad
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER 10000010          // 模板1、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_SCATTER 10001010         // 模板1、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER 10000020         // 模板2、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER 10010020        // 模板2、静态量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER 10001020        // 模板2、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER 10011020       // 模板2、静态量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER 10000120 // 模板2、非量化、GATHER、dropPad
 
 #define EMPTY_TENSOR 3000000
-
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -328,8 +327,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
     // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化/静态量化场景（dynamic 已被 tiling IsCountingSortApplicable 排除），
     // 其余扩展类型（fp8/fp4/hifloat8/int8 X 等）回退到原分阶段路径。
-    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_SCATTER)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
@@ -343,11 +342,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
         return;
-    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D)) {
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER)) {
         TPipe phasePipe;
         MoeV3CutOriginPhaseAB<DTYPE_X> phaseOp;
         phaseOp.Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &phasePipe);
@@ -427,11 +426,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     sortPipe.Destroy();
 
     // 2.TokensCount阶段，计算输出expertTokensCountOrCumsum
-    if(!TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) &&
-       !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT) &&
-       !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S) &&
-       !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S) &&
-       !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D)) {
+    if (!TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER) &&
+        !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER) &&
+        !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER) &&
+        !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER) &&
+        !TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER)) {
         TPipe histogramPipe;
         ExpertTokensCount countOp;
         countOp.Init(expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &histogramPipe);
@@ -468,11 +467,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT)) {
-            RowIdxGather rowIdxGatherOp;
-            rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
-            rowIdxGatherOp.Process();
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER)) {
+        RowIdxGather rowIdxGatherOp;
+        rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
+        rowIdxGatherOp.Process();
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
@@ -490,7 +489,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER)) {
         // GATHER索引 + DropPad
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
@@ -520,8 +519,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER)) {
         if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
             TPipe gatherPipe;
@@ -536,17 +535,17 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         } else {
-                // 非量化
-                TPipe gatherPipe;
-                MoeGatherOut<DTYPE_X> gatherOp;
-                gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-                gatherOp.Process();
-                gatherPipe.Destroy();
+            // 非量化
+            TPipe gatherPipe;
+            MoeGatherOut<DTYPE_X> gatherOp;
+            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherOp.Process();
+            gatherPipe.Destroy();
         }
         // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
@@ -561,8 +560,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float>::value) {
             TPipe gatherPipe;

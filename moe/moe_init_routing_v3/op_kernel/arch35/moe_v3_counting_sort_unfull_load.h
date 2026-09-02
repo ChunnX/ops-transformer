@@ -97,7 +97,6 @@ private:
     int64_t chunkAligned_;
     int64_t maskBytes_;
 
-    // dropPad（500100）专用：下游 srcToDst 分核参数（Stage3 RowIdxGatherDropPad 按此分块读）
     int64_t dropPadNeedCoreNum_;
     int64_t dropPadPerCoreRows_;
     int64_t dropPadLastCoreRows_;
