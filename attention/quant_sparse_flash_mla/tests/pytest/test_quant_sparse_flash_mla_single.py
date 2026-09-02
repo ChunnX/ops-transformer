@@ -121,7 +121,10 @@ def qsmla(param_combinations):
 
     # 生成测试数据及golden
     test_data = quant_sparse_flash_mla_golden.generate_and_save_testdata(
-        params, save_pt=save_pt, save_path=pt_save_path
+        params,
+        quant_sparse_flash_mla_golden.RUN_MODE,
+        save_pt=save_pt,
+        save_path=pt_save_path,
     )
 
     # 获得cpu结果(真值)和算子结果（测试值）

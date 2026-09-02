@@ -268,7 +268,10 @@ def qsmla(param_combinations):
 
         # 生成测试数据
         quant_sparse_flash_mla_golden.generate_and_save_testdata(
-            params, save_pt=True, save_path=save_path
+            params,
+            quant_sparse_flash_mla_golden.RUN_MODE,
+            save_pt=True,
+            save_path=save_path,
         )
     except Exception as e:
         record_failed_case(param_combinations, e)

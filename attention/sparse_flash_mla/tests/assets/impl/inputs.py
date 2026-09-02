@@ -824,13 +824,21 @@ class SparseFlashMlaInputAdapter:
         )
         if batch_random is None:
             data = pytest_golden.gen_data(
-                case_params, prepare_device_storage=False, generate_golden=False
+                case_params,
+                pytest_golden.RUN_MODE,
+                prepare_device_storage=False,
+                generate_golden=False,
+                bench_run_mode=3,
             )
         else:
             batch_random.validate_params(case_params)
             with batch_random:
                 data = pytest_golden.gen_data(
-                    case_params, prepare_device_storage=False, generate_golden=False
+                    case_params,
+                    pytest_golden.RUN_MODE,
+                    prepare_device_storage=False,
+                    generate_golden=False,
+                    bench_run_mode=3,
                 )
             batch_random.normalize_block_tables(data)
         return data

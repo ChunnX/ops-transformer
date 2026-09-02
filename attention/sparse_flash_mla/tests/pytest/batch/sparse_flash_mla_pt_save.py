@@ -62,7 +62,9 @@ def generate_and_save(param_combinations):
         test_data = utils.generate_case_with_default_param(param_combinations)
         print("data parsed.", test_data)
         print("strat to generate data")
-        input_data = sparse_flash_mla_golden.gen_data(test_data)
+        input_data = sparse_flash_mla_golden.gen_data(
+            test_data, sparse_flash_mla_golden.RUN_MODE
+        )
         print("strat to save data")
         sparse_flash_mla_golden.save_test_case(input_data, save_path)
     except Exception as e:
