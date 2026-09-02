@@ -70,7 +70,7 @@ cann_ops_transformer.all_gather_quant_matmul(
     x1_scale_dtype=None,
     x2_scale_dtype=None,
     y_dtype=None,
-    comm_mode="ai_cpu",
+    comm_mode=None,
 ) -> (Tensor, Tensor, Tensor)
 ```
 
