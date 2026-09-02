@@ -72,13 +72,10 @@ public:
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
                                               uint64_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                              uint32_t currentN, uint32_t buffId, uint64_t nextBsChunkStart,
-                                              uint32_t nextChunkSize, LocalTensor<P> &sumBuf);
+                                              uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkLoadInvRms(uint64_t bsChunkStart, uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
                                                      uint32_t currentChunkSize, uint32_t currentN, uint64_t bsStart);
-    __aicore__ inline void PrefetchV2ChunkX(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                           uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
                                                        uint64_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
@@ -86,8 +83,7 @@ public:
                                                           uint32_t currentChunkSize, uint32_t buffId,
                                                           LocalTensor<P> &sumBuf);
     __aicore__ inline void ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                                     uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                                     uint64_t nextBsChunkStart, uint32_t nextChunkSize);
+                                                     uint32_t currentChunkSize, uint32_t chunkNDSize);
 
     // V3 流程 (向量计算)
     __aicore__ inline void ProcessV3();
@@ -1265,10 +1261,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
     ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
 
-    uint32_t firstChunkSize = static_cast<uint32_t>(Min(static_cast<uint64_t>(chunkSize), bsEnd - bsStart));
-    // 首块x提前入队，使其MTE2搬运与首次C0等待及hIn计算重叠。
-    PrefetchV2ChunkX(offsetND, copySizeND, bsStart, firstChunkSize);
-
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
     // ==========================================================
@@ -1276,18 +1268,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         uint64_t bsChunkEnd = Min(bsChunkStart + chunkSize, bsEnd);
         uint32_t currentChunkSize = static_cast<uint32_t>(bsChunkEnd - bsChunkStart);
         uint32_t chunkNDSize = currentChunkSize * copySizeND;
-        uint64_t nextBsChunkStart = bsChunkEnd;
-        uint32_t nextChunkSize =
-            nextBsChunkStart < bsEnd
-                ? static_cast<uint32_t>(Min(static_cast<uint64_t>(chunkSize), bsEnd - nextBsChunkStart))
-                : 0U;
 
         // N=4每chunk等待一次，N=6/8每两个64行chunk等待一次，尾块同样配对。
         if ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0) {
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
         }
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
-                           nextBsChunkStart, nextChunkSize, sumBuf);
+                           sumBuf);
     }
 }
 
@@ -1295,8 +1282,7 @@ template <class T, class P>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart,
                                                uint64_t bsChunkStart, uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                               uint32_t currentN, uint32_t buffId, uint64_t nextBsChunkStart,
-                                               uint32_t nextChunkSize, LocalTensor<P> &sumBuf)
+                                               uint32_t currentN, uint32_t buffId, LocalTensor<P> &sumBuf)
 {
     // 2. 加载hInGrad并进行向量计算
     ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart);
@@ -1308,8 +1294,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
 
     // 5. 融合处理gradXPost并输出grad_x
-    ProcessV2ChunkOutputXGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, chunkNDSize, nextBsChunkStart,
-                              nextChunkSize);
+    ProcessV2ChunkOutputXGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, chunkNDSize);
 }
 
 // 子函数1: 加载inv_rms和inv_rms_grad
@@ -1367,10 +1352,12 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_
     vecInQueue0_.FreeTensor(gradHInInBuf_);
 }
 
-// 将指定chunk的x搬入q1并保持入队，供后续ProcessV2ChunkLoadXAndGamma消费。
+// 子函数3: 加载x和gamma，计算xRs
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkX(uint32_t offsetND, uint32_t copySizeND,
-                                                                   uint64_t bsChunkStart, uint32_t currentChunkSize)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
+                                                                               uint64_t bsStart, uint64_t bsChunkStart,
+                                                                               uint32_t currentChunkSize,
+                                                                               uint32_t buffId)
 {
     DataCopyExtParams xCopyParams;
     DataCopyPadExtParams<T> xCopyPadParams;
@@ -1383,15 +1370,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PrefetchV2ChunkX(uint32_t off
     // 先提升为64位再乘，避免大T乘ND超过2^32个元素时地址回绕。
     DataCopyPad(bf16InputBuf_, xGm_[static_cast<uint64_t>(bsChunkStart) * nD_ + offsetND], xCopyParams, xCopyPadParams);
     vecInQueue1_.EnQue(bf16InputBuf_);
-}
-
-// 子函数3: 消费已预取的x并计算xRs和gamma
-template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
-                                                                               uint64_t bsStart, uint64_t bsChunkStart,
-                                                                               uint32_t currentChunkSize,
-                                                                               uint32_t buffId)
-{
     bf16InputBuf_ = vecInQueue1_.DeQue<T>();
 
     // 计算xRs和gamma
@@ -1521,8 +1499,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2AddGradXPostAndCast(
 template <class T, class P>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_t copySizeND, uint64_t bsChunkStart,
-                                                      uint32_t currentChunkSize, uint32_t chunkNDSize,
-                                                      uint64_t nextBsChunkStart, uint32_t nextChunkSize)
+                                                      uint32_t currentChunkSize, uint32_t chunkNDSize)
 {
     bf16OutputBuf_ = vecOutQueue1_.AllocTensor<T>();
     __ubuf__ T *outputAddr = (__ubuf__ T *)bf16OutputBuf_.GetPhyAddr();
@@ -1540,15 +1517,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
         vecInQueue1_.EnQue(gradXPostBuf_);
         gradXPostBuf_ = vecInQueue1_.DeQue<T>();
         __ubuf__ T *gradXPostAddr = (__ubuf__ T *)gradXPostBuf_.GetPhyAddr();
-        // 当前grad_x_post出队后再预取下一块x，保持q1中两类BF16输入的FIFO顺序。
-        if (nextChunkSize > 0U) {
-            PrefetchV2ChunkX(offsetND, copySizeND, nextBsChunkStart, nextChunkSize);
-        }
         VFDoV2AddGradXPostAndCast<true>(outputAddr, xGradAddr, gradXPostAddr, chunkNDSize);
     } else {
-        if (nextChunkSize > 0U) {
-            PrefetchV2ChunkX(offsetND, copySizeND, nextBsChunkStart, nextChunkSize);
-        }
         VFDoV2AddGradXPostAndCast<false>(outputAddr, xGradAddr, nullptr, chunkNDSize);
     }
     PipeBarrier<PIPE_V>();
