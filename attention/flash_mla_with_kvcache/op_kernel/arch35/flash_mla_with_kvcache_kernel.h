@@ -203,6 +203,7 @@ public:
             constInfo_.attenMaskS1Size = flashMlaWithKvcacheAttenMaskParams.attenMaskS1Size;
             constInfo_.attenMaskS2Size = flashMlaWithKvcacheAttenMaskParams.attenMaskS2Size;
         }
+        constInfo_.l2CacheOffFlag = flashMlaWithKvcacheBaseParams.l2CacheOffFlag;
         constInfo_.isRowInvalidOpen = flashMlaWithKvcacheAttenMaskParams.isRowInvalidOpen;
         constInfo_.isExistRowInvalid = flashMlaWithKvcacheAttenMaskParams.isExistRowInvalid;
         constInfo_.accumOutSize = flashMlaWithKvcacheWorkspaceParams.accumOutSize;
