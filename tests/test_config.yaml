@@ -2275,6 +2275,19 @@ mhc:
     test:
       examples: True
       ut: False
+  block_attention_residuals_grad:
+    module: True
+    src:
+      - attention/block_attention_residuals_grad
+    exclude:
+      - attention/block_attention_residuals_grad/docs
+      - attention/block_attention_residuals_grad/README.md
+    ut_cov_exclude:
+      - attention/block_attention_residuals_grad/examples
+      - attention/block_attention_residuals_grad/tests
+    test:
+      examples: True
+      ut: False
 
 mamba:
     causal_conv1d:
