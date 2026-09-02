@@ -227,7 +227,7 @@ private:
     uint32_t dispatchRoundSendTotalNum_ = 0;  // dispatch分轮次：每轮处理的 token*topK 数量（256 对齐）
     uint32_t dispatchTotalRounds_ = 0;        // dispatch分轮次：总轮数
     uint32_t dispatchRoundMaskAlignSize_ = 0; // dispatch分轮次：每轮mask的字节大小（32B对齐）
-    uint64_t maskWinOffset_ = 0;              // routeRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
+    uint64_t maskWinOffset_ = 0;              // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;             // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t dispatchWinOffset_ = 0;          // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
     uint64_t dispatchFlagWinOffset_ = 0;      // peermemInfo dispatchFlagPtr 相对 URMA win 基址的偏移
@@ -392,7 +392,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
                       .activationAlpha = 1.0f,
                       .activationBeta = 1.0f});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
-    maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.routeRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
+    maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ =
         static_cast<uint64_t>(params_.peermemInfo.dispatchRecivePtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchFlagWinOffset_ =
@@ -1233,7 +1233,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendCntCa
     // Phase 1: 逐 rank 直接从 GM 读 count，累计 cumsum（不再加载完整 mask slot 到 UB）
     for (int32_t calRankId = 0; calRankId < static_cast<int32_t>(worldSize_); ++calRankId) {
         __gm__ int32_t *rankCountPtr = reinterpret_cast<__gm__ int32_t *>(
-            params_.peermemInfo.routeRecvPtr + static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+            params_.peermemInfo.maskRecvPtr + static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
             static_cast<uint64_t>(calRankId) * maskSlotSize_ + maskAlignSize_);
         int32_t perRankCnt = ReadGmByPassDCache(rankCountPtr);
         sendCnt += static_cast<uint64_t>(perRankCnt);
@@ -1504,7 +1504,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
             }
 
             __gm__ uint8_t *rankMaskBasePtr = reinterpret_cast<__gm__ uint8_t *>(
-                params_.peermemInfo.routeRecvPtr + static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+                params_.peermemInfo.maskRecvPtr + static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
                 static_cast<uint64_t>(dstRankIdx) * maskSlotSize_);
 
             __gm__ int32_t *rankCountPtr = reinterpret_cast<__gm__ int32_t *>(rankMaskBasePtr + maskAlignSize_);
