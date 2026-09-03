@@ -48,7 +48,7 @@ __simd_callee__ inline void StoreSwiGluOaiFp32AsBf16(
     AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst, outputReg, storeMask);
 }
 
-__simd_callee__ inline void ComputeSwiGluOaiVector(
+__simd_callee__ inline void ComputeSwiGluOaiRegFlow(
     AscendC::Reg::RegTensor<float> &outputFp32Reg, AscendC::Reg::RegTensor<float> &gateFp32Reg,
     AscendC::Reg::RegTensor<float> &upFp32Reg, AscendC::Reg::RegTensor<float> &negReg,
     AscendC::Reg::RegTensor<float> &expReg, AscendC::Reg::RegTensor<float> &denominatorReg,
@@ -125,8 +125,8 @@ __simd_vf__ inline void RunSwiGLUOAI(GatedActivationTileContext<InputType> conte
                 gateFp32Reg, gateReg, gate + inputRowOffset + vectorOffset, fullMask);
             LoadSwiGluOaiInputAsFp32<InputType>(
                 upFp32Reg, upReg, up + inputRowOffset + vectorOffset, fullMask);
-            ComputeSwiGluOaiVector(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
-                                   sigmoidReg, fullMask, clampLimit, alpha, beta);
+            ComputeSwiGluOaiRegFlow(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
+                                    sigmoidReg, fullMask, clampLimit, alpha, beta);
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, fullMask);
             }
@@ -139,8 +139,8 @@ __simd_vf__ inline void RunSwiGLUOAI(GatedActivationTileContext<InputType> conte
                 gateFp32Reg, gateReg, gateTail + inputRowOffset, tailComputeMask);
             LoadSwiGluOaiInputAsFp32<InputType>(
                 upFp32Reg, upReg, upTail + inputRowOffset, tailComputeMask);
-            ComputeSwiGluOaiVector(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
-                                   sigmoidReg, tailComputeMask, clampLimit, alpha, beta);
+            ComputeSwiGluOaiRegFlow(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
+                                    sigmoidReg, tailComputeMask, clampLimit, alpha, beta);
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::Reg::Mul(outputFp32Reg, outputFp32Reg, weightReg, tailComputeMask);
             }

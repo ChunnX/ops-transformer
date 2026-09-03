@@ -25,7 +25,6 @@
 #include "../../common/mega_moe_constants.h"
 
 namespace MegaMoeImpl {
-namespace Detail {
 
 struct ActivationMxQuantUbOffsets {
     uint32_t firstInputOffsetBytes;
@@ -113,7 +112,6 @@ __aicore__ inline ActivationMxQuantUbPointers<InputType> ResolveActivationMxQuan
     return pointers;
 }
 
-} // namespace Detail
 } // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)

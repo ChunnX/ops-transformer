@@ -50,7 +50,7 @@ __simd_callee__ inline void StoreSituGluFp32AsBf16(
     AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst, outputReg, storeMask);
 }
 
-__simd_callee__ inline void ComputeSituGluTanhTwoPath(
+__simd_callee__ inline void ComputeSituGluTanhPiecewiseApprox(
     AscendC::Reg::RegTensor<float> &resultReg, AscendC::Reg::RegTensor<float> &zReg,
     AscendC::Reg::RegTensor<float> &oneReg, AscendC::Reg::RegTensor<float> &absReg,
     AscendC::Reg::RegTensor<float> &squareReg, AscendC::Reg::RegTensor<float> &polynomialReg,
@@ -80,7 +80,7 @@ __simd_callee__ inline void ComputeSituGluTanhTwoPath(
 }
 
 template <bool IsLinear>
-__simd_callee__ inline void ComputeSituGluVector(
+__simd_callee__ inline void ComputeSituGluRegFlow(
     AscendC::Reg::RegTensor<float> &outputFp32Reg, AscendC::Reg::RegTensor<float> &gateFp32Reg,
     AscendC::Reg::RegTensor<float> &upFp32Reg, AscendC::Reg::RegTensor<float> &negReg,
     AscendC::Reg::RegTensor<float> &expReg, AscendC::Reg::RegTensor<float> &denominatorReg,
@@ -97,8 +97,8 @@ __simd_callee__ inline void ComputeSituGluVector(
     AscendC::Reg::Maxs(upFp32Reg, upFp32Reg, -clampLimit, computeMask);
 
     AscendC::Reg::Muls(zReg, gateFp32Reg, invBeta, computeMask);
-    ComputeSituGluTanhTwoPath(sigmoidReg, zReg, oneReg, absReg, squareReg, polynomialReg, tanhTemporaryReg,
-                              expReg, c1Reg, c2Reg, compareMask, computeMask);
+    ComputeSituGluTanhPiecewiseApprox(sigmoidReg, zReg, oneReg, absReg, squareReg, polynomialReg, tanhTemporaryReg,
+                                      expReg, c1Reg, c2Reg, compareMask, computeMask);
     AscendC::Reg::Muls(negReg, gateFp32Reg, -1.0F, computeMask);
     AscendC::Reg::Exp(expReg, negReg, computeMask);
     AscendC::Reg::Adds(denominatorReg, expReg, 1.0F, computeMask);
@@ -109,8 +109,8 @@ __simd_callee__ inline void ComputeSituGluVector(
     if constexpr (IsLinear) {
         AscendC::Reg::Muls(gateFp32Reg, outputFp32Reg, 1.0F, computeMask);
         AscendC::Reg::Muls(zReg, upFp32Reg, invAlpha, computeMask);
-        ComputeSituGluTanhTwoPath(sigmoidReg, zReg, oneReg, absReg, squareReg, polynomialReg,
-                                  tanhTemporaryReg, expReg, c1Reg, c2Reg, compareMask, computeMask);
+        ComputeSituGluTanhPiecewiseApprox(sigmoidReg, zReg, oneReg, absReg, squareReg, polynomialReg,
+                                          tanhTemporaryReg, expReg, c1Reg, c2Reg, compareMask, computeMask);
         AscendC::Reg::Muls(sigmoidReg, sigmoidReg, alpha, computeMask);
         AscendC::Reg::Mul(outputFp32Reg, gateFp32Reg, sigmoidReg, computeMask);
     } else {
@@ -193,7 +193,7 @@ __simd_vf__ inline void RunSiTUGLU(GatedActivationTileContext<InputType> context
                 gateFp32Reg, gateReg, gate + inputRowOffset + vectorOffset, fullMask);
             LoadSituGluInputAsFp32<InputType>(
                 upFp32Reg, upReg, up + inputRowOffset + vectorOffset, fullMask);
-            ComputeSituGluVector<IsLinear>(
+            ComputeSituGluRegFlow<IsLinear>(
                 outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg, sigmoidReg, zReg, betaReg,
                 oneReg, absReg, squareReg, polynomialReg, tanhTemporaryReg, c1Reg, c2Reg, compareMask, fullMask,
                 clampLimit, beta, invBeta, alpha, invAlpha);
@@ -209,7 +209,7 @@ __simd_vf__ inline void RunSiTUGLU(GatedActivationTileContext<InputType> context
                 gateFp32Reg, gateReg, gateTail + inputRowOffset, tailComputeMask);
             LoadSituGluInputAsFp32<InputType>(
                 upFp32Reg, upReg, upTail + inputRowOffset, tailComputeMask);
-            ComputeSituGluVector<IsLinear>(
+            ComputeSituGluRegFlow<IsLinear>(
                 outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg, sigmoidReg, zReg, betaReg,
                 oneReg, absReg, squareReg, polynomialReg, tanhTemporaryReg, c1Reg, c2Reg, compareMask,
                 tailComputeMask, clampLimit, beta, invBeta, alpha, invAlpha);
