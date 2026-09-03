@@ -164,14 +164,13 @@ public:
                 auto addrRegScalar = AscendC::Reg::CreateAddrReg<C_T>(batchIdx, alignM_, mIdx, countMPerVL);
                 if constexpr (sizeof(A_T) == sizeof(float)) {
                     AscendC::Reg::LoadAlign<A_T, AscendC::Reg::LoadDist::DIST_E2B_B32>(scalarReg, aubPtr,
-                                                                                                 addrRegScalar);
+                                                                                       addrRegScalar);
                 } else {
                     AscendC::Reg::LoadAlign<A_T, AscendC::Reg::LoadDist::DIST_E2B_B16>(scalarReg, aubPtr,
-                                                                                                 addrRegScalar);
+                                                                                       addrRegScalar);
                 }
                 AscendC::Reg::Mul(vDstReg0, vSrcReg0, scalarReg, maskReg);
-                auto addrRegDst =
-                    AscendC::Reg::CreateAddrReg<C_T>(batchIdx, mAub * nBub, mIdx, countMPerVL * nBub);
+                auto addrRegDst = AscendC::Reg::CreateAddrReg<C_T>(batchIdx, mAub * nBub, mIdx, countMPerVL * nBub);
                 AscendC::Reg::StoreAlign(dstPtr, vDstReg0, addrRegDst, maskReg);
             }
         }
@@ -191,10 +190,10 @@ public:
                 auto addrRegScalar = AscendC::Reg::CreateAddrReg<C_T>(batchIdx, mAub, mIdx, 1);
                 if constexpr (sizeof(A_T) == sizeof(float)) {
                     AscendC::Reg::LoadAlign<B_T, AscendC::Reg::LoadDist::DIST_BRC_B32>(scalarReg, aubPtr,
-                                                                                                 addrRegScalar);
+                                                                                       addrRegScalar);
                 } else {
                     AscendC::Reg::LoadAlign<B_T, AscendC::Reg::LoadDist::DIST_BRC_B16>(scalarReg, aubPtr,
-                                                                                                 addrRegScalar);
+                                                                                       addrRegScalar);
                 }
                 tmpCount = count;
                 for (uint16_t i = 0; i < repeatTimes; ++i) {

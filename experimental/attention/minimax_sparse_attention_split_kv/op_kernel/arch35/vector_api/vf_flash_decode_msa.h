@@ -58,8 +58,8 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubu
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
 
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(
-            vregLse, (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(vregLse,
+                                                   (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         // rowSum is per-row (constant across the D-dim z-blocks): broadcast-load once per row.
         Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float *&)rowSumUb + k);
         for (z = 0; z < dLoops; z++) {
@@ -116,8 +116,8 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __
     uint32_t stride = (0x1 << 16) | 0x8;
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(
-            vregLse, (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(vregLse,
+                                                   (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         // rowSum is per-row (constant across the D-dim z-blocks): broadcast-load once per row.
         Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float *&)rowSumUb + k);
         for (z = 0; z < dLoops; z++) {
