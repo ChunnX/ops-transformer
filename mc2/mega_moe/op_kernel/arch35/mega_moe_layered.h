@@ -1403,14 +1403,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PublishEx
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopy<int32_t>(expertRevNumsGlobalTensor_[expertIdx * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
                       expertTokenCntTensor_, INT32_PER_256B);
-    if (expertIdx == 0U || expertIdx + 1U == moeExpertPerRank_) {
-        printf("[MegaMoe][cumsum] rank=%u block=%u/%u expert=%u/%u base=%p dst=%p src=%p bytes=%u\n",
-               rankId_, blockIdx_, aicNum_, expertIdx, moeExpertPerRank_, params_.workspaceInfo.cumsumInfoPtr,
-               cumsumInfoGlobalTensor_[expertRankOffset].GetPhyAddr(),
-               cumsumInfoTensor_[expertRankOffset].GetPhyAddr(), worldSize_ * sizeof(int32_t));
+    uint32_t cumsumCopyBytes = static_cast<uint32_t>(worldSize_ * sizeof(int32_t));
+    if (cumsumCopyBytes % static_cast<uint32_t>(ALIGN_32) == 0U) {
+        DataCopyPad(cumsumInfoGlobalTensor_[expertRankOffset], cumsumInfoTensor_[expertRankOffset],
+                    {1U, cumsumCopyBytes, 0U, 0U, 0U});
+    } else {
+        // Packed expert slices are not UB-aligned when worldSize_ is not a multiple of 8.
+        __gm__ int32_t *cumsumDst = cumsumInfoGlobalTensor_[expertRankOffset].GetPhyAddr();
+        for (uint32_t srcRank = 0U; srcRank < worldSize_; ++srcRank) {
+            WriteGmByPassDCache(cumsumDst + srcRank, cumsumInfoTensor_.GetValue(expertRankOffset + srcRank));
+        }
     }
-    DataCopyPad(cumsumInfoGlobalTensor_[expertRankOffset], cumsumInfoTensor_[expertRankOffset],
-                {1U, static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), 0U, 0U, 0U});
     // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
     // PipeBarrier<PIPE_ALL>();
     // if constexpr (TopkWeightsPrefetch) {
