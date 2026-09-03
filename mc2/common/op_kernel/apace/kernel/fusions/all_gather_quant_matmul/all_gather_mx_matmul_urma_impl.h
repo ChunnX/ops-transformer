@@ -161,10 +161,10 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
     commTilingScale_.nonSplitAxisSize = scaleKLen_;
     commTilingScale_.bufferCount = 0; // scale 全量，不复用
-    allGatherData_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_, aGM_, commBuf.Get(), rankSize_,
-                                               static_cast<uint32_t>(GetBlockIdx()));
-    allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_, aScaleGM_, commScaleBuf.Get(), rankSize_,
-                         static_cast<uint32_t>(GetBlockIdx()), scaleWinOffset_);
+    allGatherData_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_, aGM_,
+                                               commBuf.Get(), rankSize_, static_cast<uint32_t>(GetBlockIdx()));
+    allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_, aScaleGM_, commScaleBuf.Get(),
+                         rankSize_, static_cast<uint32_t>(GetBlockIdx()), scaleWinOffset_);
 }
 
 template <typename AType, typename BType, typename CType>

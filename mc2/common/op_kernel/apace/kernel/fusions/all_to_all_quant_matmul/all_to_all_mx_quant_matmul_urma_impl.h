@@ -34,6 +34,7 @@
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
+#include "apace/basic/buffer/buffer_channel.h"
 
 namespace Apace {
 
@@ -42,18 +43,12 @@ using namespace Blaze::Gemm;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
-// SyncAll 硬件同步接口保留的 flagId 上界：SyncAll<true> 使用 flagId 14。
-// release 方向的 flagId 用它取模后落在 [0,13]，避免与 SyncAll 抢同一个 AIV 计数器。
-constexpr uint32_t SYNCALL_FLAG_ID_MAX = 14;
-
+// release 方向的 flagId 取模上限见 Apace::Basic::BufferChannel::FLAG_ID_MODULO(14)，
+// 使 flagId 落在 [0,13]，避免与 SyncAll<true> 抢同一个 AIV 计数器。
 struct UrmaCommWaitPolicy {
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
-    }
-    __aicore__ inline void ReleaseTile(uint32_t tileIdx)
-    {
-        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tileIdx % SYNCALL_FLAG_ID_MAX);
     }
     uint32_t bufferCount{0};
 };
@@ -153,7 +148,8 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
-        uint32_t bufferCount{0};    // win区复用槽位数，0=不复用
+        uint32_t bufferCount{0};      // win区复用槽位数，0=不复用
+        uint64_t effBufferCount{0};  // 归一化后的 slot 数（复用值或 commTiles），用于计算 scale 段 winOffset
         uint64_t scaleWinOffset{0}; // win区data部分字节大小，用作scale的winOffset
     } baseParams_;
 
@@ -236,7 +232,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         // win buffer 复用：写 tile tid 会覆盖槽位 tid%bufferCount，需等本端 cube 消费完 tile tid-bufferCount，
         // 并跨 device 屏障保证对端 cube 也已释放该槽位
         if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>((tid - baseParams_.bufferCount) % SYNCALL_FLAG_ID_MAX);
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(
+                (tid - baseParams_.bufferCount) % Apace::Basic::BufferChannel::FLAG_ID_MODULO);
             AscendC::SyncAll<true>();
             if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
                 teamBarrier_.CrossDevice();
@@ -291,12 +288,12 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     // release 门控用（0 表示不复用）
     baseParams_.bufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
                               static_cast<uint32_t>(rawBufferCount) : 0;
-    // A 数据补齐后的 footprint → scale 偏移
-    uint64_t effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
+    // 归一化后的 slot 数（不复用时 = commTiles），用于计算 scale 段 winOffset
+    baseParams_.effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
     uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
         tilingData->commTilingData.splitAxisTailSize ?
         tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
-    baseParams_.scaleWinOffset = static_cast<uint64_t>(baseParams_.rankSize) * effBufferCount *
+    baseParams_.scaleWinOffset = static_cast<uint64_t>(baseParams_.rankSize) * baseParams_.effBufferCount *
                            maxTileSize * baseParams_.axisKa * sizeof(AType);
 }
 
