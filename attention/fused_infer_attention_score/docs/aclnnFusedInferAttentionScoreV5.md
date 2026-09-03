@@ -1755,7 +1755,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - PagedAttention必须开启，blockSize仅支持128或512
       - Mask：当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3（传入优化后的attenMask矩阵，shape为2048*2048）
       - per-channel（keyAntiquantMode=0、valueAntiquantMode=0）：keyAntiquantScale的shape，inputLayout为BSH时为[H]，inputLayout为BNSD时为[N,1,D]，inputLayout为BSND时为[N,D]；valueAntiquantScale同keyAntiquantScale
-      - per-token（keyAntiquantMode=1、valueAntiquantMode=1）：keyAntiquantScale的shape为[B,S]，S需要大于等于blockTable的第二维 * blockSize；valueAntiquantScale同keyAntiquantScale
+      - per-token（keyAntiquantMode=1、valueAntiquantMode=1）：keyAntiquantScale的shape为[B,S]，S需要大于等于blockTable第二维大小（shape[1]）与blockSize的乘积；valueAntiquantScale同keyAntiquantScale
       - 不支持左padding、tensorlist、pse、prefix、后量化
   - 全量化场景
     - Decode MLA全量化
