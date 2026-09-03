@@ -148,11 +148,18 @@ PR 10729 的 A2AvGmm 是先由 AIV 拉取专家输入，再通知 AIC 计算，�
 `comm(e + 1) || GMM(e)`；本算子则必须先完成本地 GMM，才能发布其输出，形成
 `GMM(e + 1) || comm(e)`，依赖方向相反。因此只复用以下成熟思路：
 
-- 持久化 HCCL window 使用 epoch + completion/ack 防 ABA；
+- 持久化 HCCL window 使用 epoch 区分连续 invocation；
+- source 将阶段值写入各目标 window 中按 source rank 独占的 slot，目标只轮询
+  本地 window；
+- publish/release 两阶段保证源 window 被复用前，所有 peer 已完成读取；
 - 空专家仍参与完整同步序列；
-- 本地多次通知需要 counted flag 和反向确认。
+- 本地多次通知必须处理 CrossCore flag 的有限 set-count。
 
-不能直接复用其专家循环、数据地址或按 `sequence / 15` 增长本地 flag ID 的方式。
+PR 的 header 保留了位于 user workspace 的 expert-ready 地址和 helper，但实际
+执行路径没有调用这些 helper；生效的本卡 AIV→AIC 专家通知直接使用
+`CrossCoreSetFlag/WaitFlag(sequence / 15)`。它不是跨 rank 专家 ready。本文由于
+最大 `E` 更大，改用固定 ready/reverse ID 周期性回收计数，不能直接复用其专家
+循环、数据地址或按 `sequence / 15` 增长本地 flag ID 的方式。
 
 ## 5. 元数据发布协议
 
@@ -374,12 +381,58 @@ bulk-ready、completion、ack 的区域基址完全不依赖运行时 `W/E`。
 独立专家 slot 允许快 rank 提前发布后续专家，而不会覆盖慢 rank 正在等待的前序
 专家值；数据 payload 本身也按专家使用不重叠地址。
 
+### 7.4 与 PR 10729 跨 rank slot 的参考关系
+
+本节方案参考了 PR 10729（ref `209917a4f3`）中 A2AvGmm 的同步原则，但没有
+直接复制其 slot 布局。该 PR 在
+`mc2/allto_allv_grouped_mat_mul/op_kernel/allto_allv_grouped_mat_mul_aiv_comm.h`
+中的 peer-window 控制布局为：
+
+```text
+epoch                         : 1 * 32 bytes
+publish[sourceRank]           : W * 32 bytes
+release[sourceRank]           : W * 32 bytes
+peerControlBytes              = (1 + 2 * W) * 32
+```
+
+source rank `s` 将某个 phase 的 epoch 写到每个 destination window 的
+`phaseBase + s * 32`；destination 只轮询本地 window 中所有 source slot。完整
+输入和 count 发布后进入 publish phase，全部消费者完成拉取后进入 release phase，
+防止下一次 invocation 提前覆盖源 window。peer control 大小不含 `E`，因此
+连续 case 改变专家数时，跨 rank phase 地址不会漂移。
+
+PR 的 publish/release 数组长度和贴尾 `controlOffset` 仍由运行时 `W` 及 512-byte
+对齐结果计算；它只保证地址不随 `E` 改变。本文进一步按规格上限固定所有区域
+基址，使其同时不随 `W/E` 改变，这一加强没有被 PR 直接验证。
+
+需要明确区分：PR 的 header 虽保留了位于 user workspace 的 expert-ready helper，
+但实际路径未调用；生效的专家 handoff 是本卡 CrossCore `sequence / 15` 通知。
+其 peer window 没有 `(source, expert)` 远端 ready，也没有独立 acknowledgement
+phase。因此本文的来源关系是：
+
+- **直接参考**：epoch 精确等值等待、按 source rank 独占 phase slot、source
+  写所有 destination 而 destination 只读本地 window、publish/release 所有权、
+  peer control 地址不依赖 `E`；
+- **继承当前 GMMA2Av**：64-byte slot、bulk payload-ready、completion/ack；
+- **本文新增**：固定 `MAX_RANK_SIZE/MAX_COUNT_NUM` 的区域基址、跨 rank
+  `expert-ready[source, expert]`、expert 0 ready 保护 count table，以及 epoch
+  耗尽时禁止无清零直接回绕。
+
+所以 PR 10729 能作为“跨 rank phase slot + 持久 window 生命周期”的依据，不能
+作为“逐专家跨 rank ready 已经过实机验证”的依据；后者必须单独上板验证。
+
 ## 8. 连续调用与 epoch 防 ABA
 
 HCCL window 不会在连续 case 之间自动清零。每次调用必须使用新的非零
 invocation epoch，并将相同 epoch 写入本轮各专家 ready、completion 和
 acknowledgement slot；count table 本身不承载 epoch，其可见性由 expert 0 ready
 的 release/acquire 关系保护。
+
+该方案与 PR 10729 一样，不额外执行跨 rank epoch 协商：每个 rank 从自己的
+持久化状态独立推进到下一 epoch。因此前置条件是同一通信域内所有 rank 以相同
+顺序、相同次数调用该算子；任一 rank 漏调、多调或在协议中单边退出，都会造成
+epoch 不一致并使精确等值等待永久阻塞。host/runtime 必须保证调用序列一致，
+device 侧进入协议后必须走完 drain/completion/ack。
 
 建议流程：
 
@@ -437,7 +490,7 @@ uint32_t expertPipelineMode;
 
 ### 10.2 使能条件
 
-第一版建议：
+在 `HW-01`～`HW-09` 全部通过并允许正式使能后，第一版建议：
 
 ```text
 commMode == "aiv"
@@ -450,7 +503,28 @@ and 当前 dtype/SOC 已由 AIV-MTE 通路支持
 属性/shape（例如 W、E、dtype、SOC），不能依据某张卡的非空专家数或本地
 sendCounts 分布，否则不同 rank 可能选择不同协议并死锁。
 
-### 10.3 回退
+### 10.3 实机 A/B 强制模式
+
+公开算子接口不新增属性。为保证实机门禁能在同一个算子包中对同一 case 切换
+路径，host tiling 增加仅供测试/调试的进程级开关
+`GMMA2AV_EXPERT_PIPELINE_MODE`：
+
+```text
+unset / auto    使用当前发布默认值和全局一致的自动使能条件
+bulk            强制 expertPipelineMode = BULK
+overlap         满足安全支持条件时强制 EXPERT_OVERLAP，否则 tiling 明确报错
+```
+
+解析优先级为：非 AIV 路径隔离及 dtype/SOC/容量等安全检查最高，随后是测试强制
+模式，最后才是自动性能策略。`bulk` 与 `overlap` 必须写入同一个现有 tiling 字段，
+不能生成新的 tiling key 或另一套二进制。
+
+该开关本身是各 rank 进程的本地状态，不提供协议协商。`ep_test`/模型测试 launcher
+必须在调用算子前 all-gather 请求模式，确认通信域内所有 rank 完全一致；host
+tiling 同时打印最终解析模式及 `W/E`。在实机硬门禁完成前，`auto` 的发布默认值
+为 `BULK`；门禁全部通过后才可改为 10.2 节的自动选择。
+
+### 10.4 回退
 
 保留当前 bulk 实现作为回退和 A/B 基线：
 
@@ -458,7 +532,7 @@ sendCounts 分布，否则不同 rank 可能选择不同协议并死锁。
 - `expertPipelineMode == EXPERT_OVERLAP`：本文专家流水；
 - 非 AIV tiling key：完全不进入本文代码。
 
-### 10.4 数据类型扩展
+### 10.5 数据类型扩展
 
 第一版沿用当前 AIV-MTE 已支持的 BF16，不在该特性中同时扩 dtype。协议层的
 count/offset/flag 分别固定为 `int32_t`、`uint32_t`、`int32_t`，与 payload 类型
@@ -591,7 +665,8 @@ metadata -> expert 0 -> ... -> expert E-1 -> completion -> ack
 - 有/无共享专家，且 `transMmWeight` 开/关；
 - remote slot 地址、边界与 64-byte 隔离；
 - ready/reverse 每个方向使用固定合法 flag ID，未确认 ready 不超过 15；
-- count/payload 与 ready 跨不同 window 的 release/acquire 可见性；
+- count/payload 与 ready 的地址、状态机和 release/acquire 调用顺序；实际跨
+  window 可见性不能由 UT 证明，必须通过 15.5 节 `HW-02`；
 - device 计数不一致时协议不发生单边提前退出。
 
 ### 15.3 多卡功能验证
@@ -628,6 +703,108 @@ comm(e) 与 GMM(e+1) 时间区间重叠
 应增加逐专家时间戳/事件，至少报告首包延迟、overlap ratio、AIC wait-reverse、
 AIV wait-ready 及 last-GMM 后的通信 tail。
 
+### 15.5 实机硬门禁
+
+以下行为依赖真实 AIC/AIV、MTE、HCCL window 和多 rank 时序，静态检查、host UT
+或 kernel stub 均不能替代。任一门禁未执行或未通过时，可以保留实验代码，但
+`expertPipelineMode` 必须默认选择 `BULK`，不得默认使能 `EXPERT_OVERLAP`。
+
+#### HW-01：每专家 AIC→AIV 可见性与 reverse 长链
+
+- 平台：Ascend 910B 与 Ascend 910_93 分别执行；
+- 用例：`E=14、15、16、29、30、31、128` 及当前 `W` 下可达到的最大 `E`
+  （至少覆盖一次 `W * E = 1024`），组合首/中/尾全局空专家、共享专家开关；
+- 调度：分别制造 AIC 快/AIV 慢和 AIC 慢/AIV 快的失衡；
+- 观测：逐专家 GMM done、ready set/wait、reverse set/wait 计数；
+- 通过（同步）：watchdog 下多轮无死锁、无 ready 丢失/串轮，未确认 ready
+  不超过 15，每 15 次通知均能由 reverse 正常回收；
+- 通过（路径一致性）：同一包、同一输入和随机种子下，overlap 与 bulk 的
+  `y/mm_y` shape、dtype 相同，BF16 有效元素逐 bit 一致；任一 NaN/Inf 直接失败；
+- 通过（双标杆）：overlap 和 bulk 分别使用 `ep_test` 现有
+  `compute_double_benchmark_metrics`，以 NPU 小算子
+  `GroupedMatMul→重排→AllToAllV` 为 normal golden、CPU FP64 为高精度 golden；
+  最大相对误差比、平均相对误差比、RMSE 比和小值域错误数比分别不得超过
+  `5.0、1.5、1.5、2.0`，所有 rank、所有存在的输出均必须通过。
+
+该门禁用于验证真实平台的 CrossCore set-count/reverse 语义；flag ID 静态范围检查
+不能替代它。第一版仅支持 BF16；未来新增 dtype 时，必须先在测试公共配置中定义
+该 dtype 的阈值并单独执行本门禁，不能沿用未确认的 BF16 判据。
+
+#### HW-02：跨 window release/acquire 可见性
+
+- 平台：Ascend 910B 与 Ascend 910_93 分别执行；
+- 场景：count/payload 写入 source window，而 ready 写入 destination window；
+- 用例：每个 invocation/source/expert 使用可区分的数据 pattern，覆盖 expert 0
+  为空、非对齐尾块、首尾 cache line、冷/热启动、高并发和延迟消费者；
+- 通过：目标观察到 ready 后，读取到的 count 和 payload 必须全部属于本轮，不能
+  出现旧表、旧 payload 或半写数据。
+
+若失败，必须增加经过平台验证的 system-scope fence 或额外 handshake，并重新
+通过本门禁；禁止仅依据 MTE3 源码顺序宣称可见。
+
+#### HW-03：A2/A3 HCCL window 映射差异
+
+- A2：覆盖 `HcclCombineOpParam` 的 `windowsIn[]` 与运行环境可触发的
+  `multiFlag/data[]` 形式；
+- A3：覆盖 `HcclOpResParam.localWindowsIn` 与 `remoteRes[].nextDevicePtr` 映射；
+- 规模：至少执行 2/4/8 卡，并在资源允许时覆盖 `W > AIV workerNum` 和更大正式
+  支持规模；
+- 通过：本地/远端 window 地址、容量检查、payload/count 读写和所有同步 phase
+  均正确。一个 SOC 通过不能替代另一个 SOC。
+
+#### HW-04：跨 rank expert slot 隔离
+
+- 让多个 source rank 以不同速度推进专家，覆盖 `E` 改变以及 bulk/overlap 交替；
+- 检查 `(sourceRank, expertIdx)` 唯一映射、64-byte slot 隔离，以及 bulk-ready、
+  expert-ready、completion、ack 区域互不串扰；
+- 通过：快 rank 不能覆盖慢 rank 尚未观察的专家状态，任何等待都不能接受旧
+  epoch，同一轮不得出现跨专家或跨 phase 误唤醒。
+
+#### HW-05：空专家与全 rank 一致控制流
+
+- 覆盖 expert 0 为空、首/中/尾连续空专家、某专家在整个通信域为空、各 rank
+  非空专家集合不同、zero-peer 和热点专家；
+- 2/4/8 卡分别多轮执行，资源允许时补充更大 `W`；
+- 通过：expert 0 为空时 count table 仍然可见，所有 rank 均走完相同 ready、
+  completion、ack 序列，watchdog 无超时且输出正确。
+
+#### HW-06：持久通信域连续调用
+
+- communicator/window 全程不销毁；同一个通信域内 `W` 固定，不把“改变 W”
+  作为同域测试；
+- 功能门禁至少连续 100 轮，另执行至少 1000 轮同步压力测试；
+- 交替 `E`、shape、count pattern、共享专家开关及 bulk/overlap mode；
+- 通过：无 ABA、脏 count、脏 expert slot、下一 invocation 提前覆盖 payload、
+  偶发精度错误或挂死。
+
+不同 `W` 必须使用各自通信域分别验证。
+
+#### HW-07：device 错误排水
+
+- 在受 watchdog 保护的专项用例中注入
+  `peerSendCount != localRecvCount`，并让不同 rank 在不同专家发现错误；
+- 通过：错误可观测，所有 rank 跳过不安全 copy 后仍排水到 completion/ack，
+  不能单边 return 或永久等待。
+
+#### HW-08：专家级重叠与性能证据
+
+- 逐专家记录 GMM done、AIV ready wait、local publish done、peer-ready seen、
+  pull done 和 reverse wait；
+- trace 必须直接显示 `comm(e)` 与 `GMM(e+1)` 时间区间交叠，并排除共享 MM
+  与 bulk 通信造成的假重叠；
+- bulk/overlap 必须由同一算子包切换，每卡 30 次、至少 3 轮，按 15.4 节口径
+  保存原始样本并比较。
+
+#### HW-09：双 SOC 生成物加载与运行
+
+在 15.1 节 sanitizer + `ccec_g` 双 SOC 编译通过后，分别安装对应算子包，并在
+Ascend 910B、Ascend 910_93 上执行 bulk/overlap、共享专家开/关的 smoke 与精度
+回归。编译门禁用于发现核类型实例化/栈问题，实机门禁用于确认生成物、HCCL
+context 和真实核路径可加载运行，二者不能互相替代。
+
+每项实机门禁必须保存：算子 commit、CANN 包版本、SOC、卡数、通信域、用例
+参数、随机种子、命令、watchdog 结果；性能项还需保存 30 次原始数据和 trace。
+
 ## 16. 验收标准
 
 1. AIV-MTE 全量精度用例通过，无新增偶发错误。
@@ -637,3 +814,5 @@ AIV wait-ready 及 last-GMM 后的通信 tail。
 5. 性能 trace 证明主路专家 `e` 通信与专家 `e+1` GMM 实际重叠。
 6. `E == 1` 或 overlap 不可用时可稳定回退到 bulk 模式。
 7. 非 AIV-MTE 通路的行为、tiling ABI 和性能不受影响。
+8. `HW-01`～`HW-09` 全部通过后，才允许将 `EXPERT_OVERLAP` 设为默认模式；
+   否则默认保持 `BULK`。
