@@ -57,6 +57,11 @@ struct GmmTensorAddrs {
     GM_ADDR gmm2OutGlobal;
 };
 
+struct BlockJobContext {
+    uint32_t jobIndex;
+    uint32_t totalJobs;
+};
+
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
 // 根据数据类型路径选择对应的 BlockMmad 实现。
@@ -310,16 +315,16 @@ struct Config {
         LayoutBiasType bias;
     };
 
-    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config)
+    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config, const BlockJobContext &blockJob)
     {
-        config.blockNum = GetBlockNum();
-        config.blockIdx = GetBlockIdx() / GetTaskRation();
+        config.blockNum = blockJob.totalJobs;
+        config.blockIdx = blockJob.jobIndex;
         config.scaleK = Ops::Base::CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         config.blockMmadTiling = SelectBlockMmadTilingConfig(config.m, config.k, config.tileM);
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
-                                                                  uint32_t gmm1TileM)
+                                                                  const BlockJobContext &blockJob, uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -328,11 +333,12 @@ struct Config {
         config.outputN = config.n / ACTIVATION_N_HALF;
         config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
         config.tileM = gmm1TileM;
-        FinalizeProblemConfig(config);
+        FinalizeProblemConfig(config, blockJob);
         return config;
     }
 
-    __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape)
+    __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
+                                                                  const BlockJobContext &blockJob)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -341,7 +347,7 @@ struct Config {
         config.outputN = config.n;
         config.schedulerN = config.outputN;
         config.tileM = L1_TILE_M_256;
-        FinalizeProblemConfig(config);
+        FinalizeProblemConfig(config, blockJob);
         return config;
     }
 

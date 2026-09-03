@@ -125,12 +125,12 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
         RunGmm1Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
                        true, Gmm1TileM, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx,
-            sync, persistentBlockMmadContext, allowWeightL2Bypass);
+            gmmConfig.blockJob, sync, persistentBlockMmadContext, allowWeightL2Bypass);
     } else {
         RunGmm1Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx,
-            sync, persistentBlockMmadContext, allowWeightL2Bypass);
+            gmmConfig.blockJob, sync, persistentBlockMmadContext, allowWeightL2Bypass);
     }
 }
 
@@ -202,7 +202,7 @@ __aicore__ inline void RunSharedExpertGmm1ActivationStage(
             gmmAddrInfo, static_cast<uint32_t>(Get<M_VALUE>(problemShape)), Gmm1TileM, sharedExpertIdx,
             *gmm1TileReadySequence);
         RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType,QuantScaleType, Gmm1TileM, false>(
-            epilogueOp, problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx, sync);
+            epilogueOp, problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx, gmmConfig.blockJob, sync);
     } else {
         RunGmm1GenericByWeightFormat<QuantOutType, ActivationOutType, QuantScaleType, Gmm1TileM, false,
                                      IsGmm1Interleaved, IsWaveFlagGrained, true>(

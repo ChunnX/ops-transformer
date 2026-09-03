@@ -103,9 +103,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
     Gmm1A8W4SyncPolicy<false, true, TopkWeightsPrefetch> sync(
         gmmAddrInfo, sliceTokenCount, GMM1_TILE_M, state.expertIdx, gmm1TileReadySequence);
     RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
-                QuantScaleOutType,
-                GMM1_TILE_M, TopkWeightsPrefetch>(
-        epilogueOp_, sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx, sync);
+                QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+        epilogueOp_, sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx,
+        gmmExecutionConfig_.blockJob, sync);
 }
 
 // 对已完成 Wave 中的一个专家执行 GMM2 及后续 Combine 调度。
@@ -130,7 +130,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
                                                            tokenStartIndexInExpert);
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                     QuantScaleOutType>(sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx,
-                                       sync);
+                                       gmmExecutionConfig_.blockJob, sync);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;

@@ -32,6 +32,7 @@ using namespace AscendC;
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 using Apace::Gemm::Kernel::GmmTensorAddrs;
+using BlockJobContext = Apace::Gemm::Kernel::BlockJobContext;
 
 // GMM1/GMM2 逐专家遍历的公共状态。expertIdx 标识当前专家，globalTokenStartIndex 表示该专家
 // 在本卡 MoE 专家紧凑 token 序列中的起始索引。
@@ -109,11 +110,6 @@ struct Params {
 enum class AddrUpdateMode : int32_t {
     GMM1,
     GMM2
-};
-
-struct BlockJobContext {
-    uint32_t jobIndex;
-    uint32_t totalJobs;
 };
 
 // Count/flag workspace 的物理分区；当前与 BlockJobContext 同值，但其编号由 workspace 生产者和消费者共同约定。

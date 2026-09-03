@@ -370,22 +370,20 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, SyncPolicy &sync, cons
     }
 }
 
-
-
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool PrefetchToGm = false, bool IsGmm1Interleaved = false, bool EnableL2CacheHint = false,
           typename EpilogueOp, typename SyncPolicy>
 __aicore__ inline void RunGmm1Generic(
     EpilogueOp &epilogueOp, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-    const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
+    const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx, const BlockJobContext &blockJob,
     SyncPolicy &sync, void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false)
 {
 
     using GmmConfig =
         Config<false, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
                           IsWeightNZ, IsGmm1Interleaved>;
-    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, Gmm1TileM);
+    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     BlockScheduler scheduler({config.m, config.schedulerN, config.k},
                                         BlockScheduler::Params{Te::MakeCoord(
@@ -414,18 +412,35 @@ __aicore__ inline void RunGmm1Generic(
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 
-// RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、SwiGLU 和量化。
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
+          typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
+          bool PrefetchToGm = false, bool IsGmm1Interleaved = false, bool EnableL2CacheHint = false,
+          typename EpilogueOp, typename SyncPolicy>
+__aicore__ inline void RunGmm1Generic(
+    EpilogueOp &epilogueOp, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
+    SyncPolicy &sync, void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false)
+{
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    RunGmm1Generic<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ, Gmm1TileM,
+                   PrefetchToGm, IsGmm1Interleaved, EnableL2CacheHint>(
+        epilogueOp, problemShape, tensorAddrs, startBlockIdx, blockJob, sync, blockMmadContext,
+        allowWeightL2Bypass);
+}
+
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool PrefetchToGm = false, typename EpilogueOp, typename SyncPolicy>
 __aicore__ inline void RunGmm1A8W4(EpilogueOp &activationQuantOp,
                                    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                                   const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx, SyncPolicy &sync)
+                                   const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
+                                   const BlockJobContext &blockJob, SyncPolicy &sync)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = Config<true, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false>;
-    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, Gmm1TileM);
+    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     if constexpr (g_coreType == AIV) {
         activationQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
@@ -451,6 +466,18 @@ __aicore__ inline void RunGmm1A8W4(EpilogueOp &activationQuantOp,
         scheduler, sync, tensorAddrs, config, startLoopIdx, tileNum, activationQuantOp);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+}
+
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
+          uint32_t Gmm1TileM = L1_TILE_M_256, bool PrefetchToGm = false, typename EpilogueOp, typename SyncPolicy>
+__aicore__ inline void RunGmm1A8W4(EpilogueOp &activationQuantOp,
+                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                   const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx, SyncPolicy &sync)
+{
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    RunGmm1A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, PrefetchToGm>(
+        activationQuantOp, problemShape, tensorAddrs, startBlockIdx, blockJob, sync);
 }
 
 } // namespace Kernel

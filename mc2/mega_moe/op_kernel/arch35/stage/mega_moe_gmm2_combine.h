@@ -604,20 +604,22 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
             gmmAddrInfo, problemShape, activationTileM, gmmConfig.blockJob.totalJobs,
             static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
         RunGmm2A8W4<A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType>(
-            problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx, sync);
+            problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx, gmmConfig.blockJob, sync);
     } else if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         Gmm2UbSyncPolicy<false, IsShared, IsWaveFlagGrained, IsGmm1Interleaved> sync(
             gmmAddrInfo, problemShape, activationTileM, gmmConfig.blockJob.totalJobs);
         RunGmm2Generic<GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
                         IsWaveFlagGrained>(problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx,
-                                           sync, persistentBlockMmadContext, allowWeightL2Bypass);
+                                           gmmConfig.blockJob, sync, persistentBlockMmadContext,
+                                           allowWeightL2Bypass);
     } else {
         Gmm2UbSyncPolicy<false, IsShared, IsWaveFlagGrained, IsGmm1Interleaved> sync(
             gmmAddrInfo, problemShape, activationTileM, gmmConfig.blockJob.totalJobs);
         RunGmm2Generic<GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
-                        IsWaveFlagGrained>(problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx, 
-                                           sync, persistentBlockMmadContext, allowWeightL2Bypass);
+                        IsWaveFlagGrained>(problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx,
+                                           gmmConfig.blockJob, sync, persistentBlockMmadContext,
+                                           allowWeightL2Bypass);
     }
 }
 

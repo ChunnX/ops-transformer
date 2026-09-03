@@ -205,12 +205,12 @@ template <typename ElementA, typename ElementB, typename ElementC,
           bool IsWaveFlagGrained = false, typename SyncPolicy>
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
-                                      SyncPolicy &sync,
+                                      const BlockJobContext &blockJob, SyncPolicy &sync,
                                       void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false)
 {
     using GmmConfig =
         Config<false, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ>;
-    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape);
+    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob);
 
     BlockScheduler scheduler({config.m, config.schedulerN, config.k},
                                         BlockScheduler::Params{Te::MakeCoord(
@@ -228,18 +228,32 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 
+template <typename ElementA, typename ElementB, typename ElementC,
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
+          bool IsWaveFlagGrained = false, typename SyncPolicy>
+__aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                      const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
+                                      SyncPolicy &sync,
+                                      void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false)
+{
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    RunGmm2Generic<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ, IsWaveFlagGrained>(
+        problemShape, tensorAddrs, startBlockIdx, blockJob, sync, blockMmadContext, allowWeightL2Bypass);
+}
+
 // RunGmm2A8W4：执行 A8W4 prologue（W4→W8）和 GMM2；Combine 由调用路径独立调度。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, typename SyncPolicy>
 __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
-                                   SyncPolicy &sync)
+                                   const BlockJobContext &blockJob, SyncPolicy &sync)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = Config<true, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false>;
-    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape);
+    auto config = GmmConfig::BuildGmm2ProblemConfig(problemShape, blockJob);
 
     using BlockMmad = typename GmmConfig::BlockMmad;
     using BlockPrologue = typename GmmConfig::BlockPrologue;
@@ -258,6 +272,18 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
                             decltype(config)>(scheduler, sync, tensorAddrs, config, startLoopIdx, tileNum);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+}
+
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
+          typename ElementMxScaleB, typename SyncPolicy>
+__aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+                                   const GmmTensorAddrs &tensorAddrs, uint32_t &startBlockIdx,
+                                   SyncPolicy &sync)
+{
+    BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
+                             static_cast<uint32_t>(GetBlockNum())};
+    RunGmm2A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB>(
+        problemShape, tensorAddrs, startBlockIdx, blockJob, sync);
 }
 
 } // namespace Kernel

@@ -124,7 +124,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
                                                            tokenStartIndexInExpert);
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                     QuantScaleOutType>(sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx,
-                                       sync);
+                                       gmmExecutionConfig_.blockJob, sync);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
