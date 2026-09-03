@@ -274,6 +274,8 @@ private:
     ge::graphStatus SetScenarioInfo();
     ge::graphStatus SetTemplateId();
     ge::graphStatus SetInnerSplitInfo();
+    ge::graphStatus SetFullLoadSplitInfo();
+    ge::graphStatus SetNormalSplitInfo();
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus GenTilingKey() const;
