@@ -834,6 +834,11 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 long long t1 = clock64();
                 if (acc == 0xDEADBEEF) printf("never");
                 if (lane_idx == 0) printf("[CAL] empty_scan_32iters=%lld\n", t1 - t0);
+                long long t2 = clock64();
+                #pragma unroll
+                for (int j = 0; j < 8; ++j) __syncwarp();
+                long long t3 = clock64();
+                if (lane_idx == 0) printf("[CAL] eight_syncwarps=%lld\n", t3 - t2);
             }
             __syncwarp();
 
