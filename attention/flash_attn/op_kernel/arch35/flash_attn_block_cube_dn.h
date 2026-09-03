@@ -371,7 +371,7 @@ public:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (realN + 7) >> 3 << 3;
         fixpipeParams.mSize = mBaseSize;
-        fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
+        fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = (dVBaseSize + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;

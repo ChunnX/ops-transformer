@@ -15,6 +15,12 @@
 #ifndef CONST_DEF_H
 #define CONST_DEF_H
 
+#if (__NPU_ARCH__ == 5102) || (__NPU_ARCH__ == 9201)
+constexpr uint32_t CV_RATIO = 1;
+#else
+constexpr uint32_t CV_RATIO = 2;
+#endif
+
 namespace AttentionCommon {
 constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);
@@ -31,7 +37,7 @@ enum class TASK_DEAL_MODE : uint32_t {
 };
 
 template <typename T>
-__aicore__ inline T Align(T num, T rnd)
+__aicore__ constexpr T Align(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }

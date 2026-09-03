@@ -88,6 +88,8 @@ public:
     static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
         mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
+    // bmm1/bmm2(mmRes) 区域总字节数：FD block 以此作为 FD 业务区的 UB 起始偏移
+    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
     LocalTensor<uint8_t> ubMmResBuffers_;
     uint32_t mmResBufId_ = 0;
 
@@ -104,17 +106,21 @@ public:
     uint32_t vec1ResUbBufId_ = 0;
 
     static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = 3U;
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES = 256U;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxSumBuf_;
     static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = 3U;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES = 256U;
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxMaxBuf_;
     static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = 3U;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES = 256U;
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxExpBuf_;
 
     static constexpr uint32_t UB_LSE_OUT_BUFCNT = 2U;
-    static constexpr uint32_t UB_LSE_OUT_BUF_BYTES = 2048U;
+    static constexpr uint32_t UB_LSE_OUT_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * 8 * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<uint8_t> ubLseOutBuffers_;
     uint32_t lseOutUbBufId_ = 0;
 

@@ -516,7 +516,7 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
-        info.actVecMSize = (info.actMSize + 1) >> 1;
+        info.actVecMSize = (info.actMSize + CV_RATIO - 1) / CV_RATIO;
         info.vecMbaseIdx = 0;
         if (constInfo_.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -574,7 +574,7 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock_.InitBuffers();
+        vecFdBlock_.InitBuffers(VecFaBlockType::UB_MM_RES_TOTAL_BYTES);
         AscendC::ICachePreLoad(2);
         AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);

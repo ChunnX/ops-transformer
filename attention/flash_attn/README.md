@@ -54,10 +54,10 @@ cd build_out
   bash build.sh --pkg --soc=ascend950 --ops=flash_attn,flash_attn_metadata -j16 --op_debug_config dump_cce
   ```
 
-- **`--tiling_key`（只编译指定 tiling key 变体）**：默认全量编译会生成所有 tiling key 的 kernel 变体，耗时较长。当只需要调试/验证特定布局与配置组合（如仅 BSND/BNSD/TND × 无 mask × D=128）时，可只编译对应变体以加速：
+- **`--tiling_key`（只编译指定 tiling key 变体）**：默认全量编译会生成所有 tiling key 的 kernel 变体，耗时较长。当只需要调试/验证特定布局与配置组合（如仅 BSND/BNSD/TND × 无 mask × D=128，走 DN 模板）时，可只编译对应变体以加速：
 
   ```bash
-  bash build.sh --pkg --soc=ascend950 --ops=flash_attn,flash_attn_metadata --tiling_key="2279866368;2279866369;2279866370"
+  bash build.sh --pkg --soc=ascend950 --ops=flash_attn,flash_attn_metadata --tiling_key="67239936;67239937;67239938"
   ```
 
   各 tiling key 的编码含义见[开发者指南 §5](#5-tilingkey)。
@@ -418,39 +418,45 @@ FD 段  [section][aivIdx(72)][16 字段]：bN2Idx, mIdx(gS1Idx), workspaceIdx, s
 
 ### 5. TilingKey
 
-**作用**：编译期决定生成哪些 kernel 变体，运行期选择变体。4 个模板参数按 8+8+1+3 位从 bit0 起拼成 tiling key（`flash_attn_template_tiling_key.h`）：
+**作用**：编译期决定生成哪些 kernel 变体，运行期选择变体。5 个模板参数按 8+8+1+8+3 位从 bit0 起拼成 tiling key（`flash_attn_template_tiling_key.h`）：
 
 | bits | 参数 | 取值 |
 |---|---|---|
 | 0-7 | InOutLayoutType | 0=BSND, 1=BNSD, 2=TND, 3=BNSD_BSND |
 | 8-15 | KvLayoutType | 0=连续, 1=PA_BBND, 2=PA_BNBD, 3=PA_NZ |
 | 16 | HasAttenMask | false/true |
-| 17-19 | Config | 0~5（sOuter×sInner×D×DV 组合，见 §3 基本块） |
+| 17-24 | TemplateId | 0=ND模板, 1=DN模板 |
+| 25-27 | Config | 0~5（sOuter×sInner×D×DV 组合，见 §3 基本块） |
 
-**生成**：host tiling 的 `GenTilingKey` 一步 —— `UpdateTilingKeyInfo`（按布局/mask/config 填 tilingKeyInfo）→ `GET_TPL_TILING_KEY`（`arch35/flash_attn_tiling.cpp:194-204`）。
+**SEL 实例化范围**（两段，编译期按组合枚举 kernel 变体）：
+
+- ND（templateId=0）：全组合 4×4×2×6=192 个；
+- DN（templateId=1）：仅无 attenMask 且 config∈{0,2}，4×4×1×2=32 个。
+
+**生成**：host tiling 的 `GenTilingKey` 一步 —— `UpdateTilingKeyInfo`（按布局/mask/templateId/config 填 tilingKeyInfo）→ `GET_TPL_TILING_KEY`（`arch35/flash_attn_tiling.cpp`）。其中 `UpdateTilingKeyTemplateId` 按无mask且config∈{0,2}选 DN（templateId=1），其余选 ND（templateId=0），并同步置 `dnFlag_` 供 workspace 分配使用。
 
 **下发与选择**：tiling 期 `SetTilingKey` 写入 TilingContext；运行时 kernel 按 key 选择变体执行。编译期可用 `--tiling_key` 指定只生成部分变体（见 Quick Start 编译）。
 
-**示例解码**：tiling key `2279866368` = 0x87E40000 → InOutLayoutType=0(BSND)、KvLayout=0(连续)、无mask、config=2(D=128, sOuter=64, sInner=128)。
+**示例解码**：tiling key `67239936` = 0x4020000 → InOutLayoutType=0(BSND)、KvLayout=0(连续)、无mask、templateId=1(DN)、config=2(D=128, sOuter=64, sInner=128)。
 
-**与 Dn/Nd 的关系**：`useDn = !hasAttenMask && (config==0||config==2)`，见 §6。
+**与 Dn/Nd 的关系**：`templateId = (!hasAttenMask && (config==0||config==2)) ? 1 : 0`（host 侧 `UpdateTilingKeyTemplateId`），kernel 侧保留 `EnableSoftmaxDn` 作 `static_assert` 校验，见 §6。
 
 ### 6. kernel 入口与模板范围
 
-kernel 按 tiling key 的 4 个模板参数编译出不同变体；运行时入口 `op_kernel/flash_attn.cpp` 同时编译 AIC 与 AIV（`KERNEL_TYPE_MIX_AIC_1_2`，`__DAV_C310_CUBE__` 区分 Cube 编译/Vector 编译），每个 AIC 配 2 个 AIV（CV_RATIO=2）。
+kernel 按 tiling key 的 5 个模板参数编译出不同变体；运行时入口 `op_kernel/flash_attn.cpp` 同时编译 AIC 与 AIV（`KERNEL_TYPE_MIX_AIC_1_2`，`__DAV_C310_CUBE__` 区分 Cube 编译/Vector 编译），每个 AIC 配 2 个 AIV（CV_RATIO=2）。
 
-Dn/Nd 路由（`EnableSoftmaxDn`）：
+Dn/Nd 路由（按模板参数 `templateId`，host 侧 `UpdateTilingKeyTemplateId` 决定）：
 
 ```cpp
-useDn = !hasAttenMask && (config == 0 || config == 2)
+templateId = (!hasAttenMask && (config == 0 || config == 2)) ? 1 : 0
 ```
 
 | 路径 | 条件 | 调度框架 | softmax VF | 适用 |
 |---|---|---|---|---|
-| Dn | 无mask 且 config∈{0,2} | flash_attn_kernel_dn.h | ProcessVec1VfDn（无mask专用优化） | 无mask、D≤128 |
-| Nd | 其余（有mask 或 config∈{1,3,4,5}） | flash_attn_kernel_nd.h | ProcessVec1Vf（按 actS2 四档通用） | 有mask或 D=256 |
+| Dn（templateId=1） | 无mask 且 config∈{0,2} | flash_attn_kernel_dn.h | ProcessVec1VfDn（无mask专用优化） | 无mask、D≤128 |
+| Nd（templateId=0） | 其余（有mask 或 config∈{1,3,4,5}） | flash_attn_kernel_nd.h | ProcessVec1Vf（按 actS2 四档通用） | 有mask或 D=256 |
 
-加新模板组合（如新 config、新布局）的改动点：`flash_attn_template_tiling_key.h`（参数声明）→ host `UpdateTilingKeyConfig`（映射）→ `flash_attn.cpp` 的路由与 kernel 模板实例化处。
+加新模板组合（如新 config、新布局）的改动点：`flash_attn_template_tiling_key.h`（参数声明与 SEL 实例化范围）→ host `UpdateTilingKeyConfig`/`UpdateTilingKeyTemplateId`（映射）→ `flash_attn.cpp` 的路由与 kernel 模板实例化处。
 
 ### 7. kernel 层：调度框架（flash_attn_kernel_dn.h / flash_attn_kernel_nd.h）
 

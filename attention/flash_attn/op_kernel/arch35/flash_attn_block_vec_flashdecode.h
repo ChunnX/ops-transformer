@@ -163,28 +163,26 @@ public:
         this->accumOutGm_ = accumOutGm;
     }
 
-    __aicore__ inline void InitBuffers()
+    __aicore__ inline void InitBuffers(uint32_t baseOffset)
     {
         if ASCEND_IS_AIV {
             // 与 FA block 共享UB布局：bmm1/bmm2 区域在前，FD 业务缓冲区紧随其后。
             // 使用 LocalTensor 构造函数直接指定绝对字节偏移，实现内存完全自主管理，
             // 无需 LocalMemAllocator 线性分配器。
-            // bmm1和bmm2复用buffer
-            constexpr uint32_t mmSz = mBaseSize / 2U * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
-
-            // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mmSz * ((dVBaseSize > 128) ? 2U : 4U);
+            // FD 业务区起始字节偏移（跳过 FA 侧 bmm1/bmm2/mm2In 区域），
+            // 由调用方按 FA vec block 的 UB 布局（UB_MM_RES_TOTAL_BYTES）传入，避免两侧重复推导漂移
+            const uint32_t BASE = baseOffset;
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
-            constexpr uint32_t OFF_BUF2A = BASE;
+            const uint32_t OFF_BUF2A = BASE;
             // Skip attenMaskBuf[1]：8192 bytes
             // SharedBuffer3：stage2OutBuf(FA) / fdSum/Max/LseExp(FD)，32768 bytes
-            constexpr uint32_t OFF_BUF3 = BASE + BUFFER_SIZE_BYTE_8K + BUFFER_SIZE_BYTE_8K;
+            const uint32_t OFF_BUF3 = BASE + BUFFER_SIZE_BYTE_8K + BUFFER_SIZE_BYTE_8K;
             // SharedBuffer1[0]：stage1OutBuf[0](FA) / fdMm2Res(FD)，33024 bytes
-            constexpr uint32_t OFF_BUF1A = OFF_BUF3 + 32768U;
+            const uint32_t OFF_BUF1A = OFF_BUF3 + 32768U;
             // SharedBuffer1[1]：stage1OutBuf[1](FA) / fdReduce/Output(FD)，33024 bytes
-            constexpr uint32_t OFF_BUF1B = OFF_BUF1A + 33024U;
+            const uint32_t OFF_BUF1B = OFF_BUF1A + 33024U;
 
             // sharedBuf1a 内：fdMm2ResBuf1_（前16K）、fdMm2ResBuf2_（后16K）
             fdMm2ResBuf1_ =
