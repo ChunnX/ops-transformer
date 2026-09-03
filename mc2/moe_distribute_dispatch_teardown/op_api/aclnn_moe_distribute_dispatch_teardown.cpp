@@ -56,9 +56,8 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *y, const aclTensor
 
 // check invalid parameters
 static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *y, const aclTensor *expertIds,
-                               const aclTensor *commCmdInfo, const char *groupEp, int64_t expertShardType,
-                               int64_t sharedExpertRankNum, int64_t moeExpertNum, int64_t quantMode, int64_t globalBs,
-                               int64_t commType, char *commAlg, aclTensor *expandXOut, aclTensor *dynamicScalesOut,
+                               const aclTensor *commCmdInfo, const char *groupEp, int64_t quantMode, int64_t commType,
+                               char *commAlg, aclTensor *expandXOut, aclTensor *dynamicScalesOut,
                                aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut)
 {
     CHECK_RET(CheckNotNull(x, y, expertIds, commCmdInfo, groupEp, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
@@ -94,9 +93,8 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
             "unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    auto ret_param = CheckParams(x, y, expertIds, commCmdInfo, groupEp, expertShardType, sharedExpertRankNum,
-                                 moeExpertNum, quantMode, globalBs, commType, commAlg, expandXOut, dynamicScalesOut,
-                                 assistInfoForCombineOut, expertTokenNumsOut);
+    auto ret_param = CheckParams(x, y, expertIds, commCmdInfo, groupEp, quantMode, commType, commAlg, expandXOut,
+                                 dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchTeardownGetWorkspaceSize(
