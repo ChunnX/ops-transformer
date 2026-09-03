@@ -14,15 +14,28 @@
 ## 功能说明
 
 KeyPool 是推理场景下的 Key 压缩算子。算子对每个输入 token 分别执行 K
-投影和 Gate 投影，按 `cmpRatio` 个 token 进行 Gate 加权池化，并将未完成
-压缩组所需的中间状态写入分页 `stateCache`。
+投影和 Gate 投影，将连续的 `cmpRatio` 个 token 分为一组，按 Gate 与位置偏置
+确定的权重将组内 K 合并为一个 Key，并将未完成压缩组所需的中间状态写入分页
+`stateCache`。
+
+### 术语说明
+
+- **BSH**：Batch-Sequence-Hidden 的输入布局，`hiddenStates` 的 shape 为
+  `[B,S,H]`。其中 `B` 表示 Batch Size，`S` 表示每个 Batch 当前输入的序列
+  长度，`H` 表示 hidden size。
+- **TH**：Token-Hidden 的输入布局，`hiddenStates` 的 shape 为 `[T,H]`。
+  其中 `T` 表示所有 Batch 当前输入 token 数的总和；`cuSeqlensOptional`
+  是 shape 为 `[B+1]` 的前缀和数组，用于描述各 Batch 在首轴上的 token 边界。
+- **RoPE**：Rotary Position Embedding，一种位置编码方式，通常使用 `cos`
+  和 `sin` 对 K 的最后一维中的成对通道执行旋转。本算子当前仅保留 RoPE
+  参数入口，不执行 RoPE，`cosOptional` 和 `sinOptional` 必须传空指针。
 
 对当前输入的每个 token：
 
 ```text
-K = hidden_states @ wk.T
-G = hidden_states @ gate_weight.T
-K_norm = LayerNorm(K, dim=-1)  # 提供 normWeight/normBias 时
+K = hiddenStates @ wk.T
+G = hiddenStates @ gateWeight.T
+K_norm = LayerNorm(K, dim=-1)  # 提供 normWeightOptional/normBiasOptional 时
 ```
 
 对第 `q` 个全局压缩组：
@@ -30,8 +43,7 @@ K_norm = LayerNorm(K, dim=-1)  # 提供 normWeight/normBias 时
 ```text
 logits[q, r] = G[q * cmpRatio + r] + ape[r]
 weight = softmax(logits, dim=0)
-pooled_key[b, q - startPool[b]] =
-    sum(weight[r] * K_norm[q * cmpRatio + r], dim=0)
+pooledKeyOut[b, q - startPool[b]] = sum(weight[r] * K_norm[q * cmpRatio + r], dim=0)
 ```
 
 历史 token 通过 `cacheBlockTable` 从 `stateCache` 读取，当前输入 token 的投影
@@ -85,34 +97,240 @@ aclnnStatus aclnnKeyPool(
 
 ### 参数说明
 
-| 参数 | 输入/输出 | 数据类型 | Shape | 说明 |
-| --- | --- | --- | --- | --- |
-| `hiddenStates` | 输入 | BF16/FP16 | BSH `[B,S,H]` 或 TH `[T,H]` | 当前调用的 token |
-| `wk` | 输入 | 与 `hiddenStates` 相同 | `[D,H]` | K 投影权重 |
-| `gateWeight` | 输入 | 与 `hiddenStates` 相同 | `[D,H]` | Gate 投影权重 |
-| `ape` | 输入 | FP32 | `[R,D]` | `R=cmpRatio` 的位置偏置 |
-| `stateCacheRef` | 输入/输出 | FP32 | `[N,BS,2D]` | 前 `D` 列保存 LayerNorm 后、未加 APE 的 K，后 `D` 列保存原始 Gate |
-| `cacheBlockTable` | 输入 | INT32 | `[B,L]` | 逻辑 block 到物理 block 的映射 |
-| `startPos` | 输入 | INT32 | `[B]` | 每个 batch 的逻辑起始位置 |
-| `normWeightOptional` | 可选输入 | FP32 | `[D]` | 与 `normBiasOptional` 成对出现 |
-| `normBiasOptional` | 可选输入 | FP32 | `[D]` | 与 `normWeightOptional` 成对出现 |
-| `cosOptional` | 可选输入 | BF16 | 保留接口 | 当前版本必须为空 |
-| `sinOptional` | 可选输入 | BF16 | 保留接口 | 当前版本必须为空 |
-| `cuSeqlensOptional` | 可选输入 | INT32 | TH 时 `[B+1]` | BSH 时必须为空 |
-| `sequsedOptional` | 可选输入 | INT32 | 保留接口 | 当前版本必须为空 |
-| `cmpRatio` | 属性 | INT64 | 标量 | 压缩率 |
-| `normEps` | 属性 | `double`（内部按 FLOAT 使用） | 标量 | LayerNorm epsilon |
-| `rotaryMode` | 属性 | INT64 | 标量 | RoPE 模式入口，当前仅作扩展占位 |
-| `stateCacheStrideDim0` | 属性 | INT64 | 标量 | - |
-| `pooledKeyOut` | 输出 | 与 `hiddenStates` 相同 | `[B,Pcap,D]` | 固定容量池化结果 |
+<table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 100px">
+  <col style="width: 260px">
+  <col style="width: 380px">
+  <col style="width: 180px">
+  <col style="width: 100px">
+  <col style="width: 230px">
+  <col style="width: 140px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>使用说明</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    <th>维度(shape)</th>
+    <th>非连续Tensor</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>hiddenStates（aclTensor*）</td>
+    <td>输入</td>
+    <td>表示当前调用的 hidden states。</td>
+    <td><ul><li>支持 BSH 和 TH 两种输入布局。</li><li>支持 B=0、S=0 或 T=0 的空 Tensor。</li></ul></td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    <td>BSH：[B,S,H]<br>TH：[T,H]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>wk（aclTensor*）</td>
+    <td>输入</td>
+    <td>表示 K 投影权重。</td>
+    <td>不支持空 Tensor，数据类型必须与 hiddenStates 一致。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    <td>[D,H]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>gateWeight（aclTensor*）</td>
+    <td>输入</td>
+    <td>表示 Gate 投影权重。</td>
+    <td>不支持空 Tensor，数据类型必须与 hiddenStates 一致。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    <td>[D,H]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>ape（aclTensor*）</td>
+    <td>输入</td>
+    <td>表示位置偏置，对应公式中的 <span class="math-inline">Ape</span>。</td>
+    <td>不支持空 Tensor，第一维必须与 cmpRatio 相等。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
+    <td>[cmpRatio,D]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>stateCacheRef（aclTensor*）</td>
+    <td>输入/输出</td>
+    <td>表示 K 和 Gate 的历史状态，并由算子原地更新。</td>
+    <td><ul><li>不支持空 Tensor，要求 block_num &gt; 0。</li><li>前 D 列保存 LayerNorm 后且未执行 RoPE 的 K，后 D 列保存原始 Gate。</li><li>支持第 0 轴非连续，stateCacheStrideDim0 由调用方提供实际 stride。</li></ul></td>
+    <td>FLOAT</td>
+    <td>ND</td>
+    <td>[block_num,block_size,2*D]</td>
+    <td>支持0轴非连续</td>
+  </tr>
+  <tr>
+    <td>cacheBlockTable（aclTensor*）</td>
+    <td>输入</td>
+    <td>表示逻辑 block 到物理 cache block 的映射表。</td>
+    <td>不支持空 Tensor，每个 Batch 对应一行逻辑 block 映射。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>[B,L]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>startPos（aclTensor*）</td>
+    <td>输入</td>
+    <td>表示每个 Batch 当前输入在逻辑序列中的起始位置。</td>
+    <td>不支持空 Tensor。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>[B]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>normWeightOptional（aclTensor*）</td>
+    <td>可选输入</td>
+    <td>表示 LayerNorm 的权重参数。</td>
+    <td>与 normBiasOptional 必须同时提供或同时为空；提供时沿每个 token 的 D 维执行 LayerNorm。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
+    <td>[D]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>normBiasOptional（aclTensor*）</td>
+    <td>可选输入</td>
+    <td>表示 LayerNorm 的偏置参数。</td>
+    <td>与 normWeightOptional 必须同时提供或同时为空；提供时沿每个 token 的 D 维执行 LayerNorm。</td>
+    <td>FLOAT</td>
+    <td>ND</td>
+    <td>[D]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>cosOptional（aclTensor*）</td>
+    <td>可选输入</td>
+    <td>表示 RoPE 使用的余弦参数。</td>
+    <td>保留接口，当前版本必须传空指针。</td>
+    <td>BFLOAT16</td>
+    <td>ND</td>
+    <td>当前版本不适用</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>sinOptional（aclTensor*）</td>
+    <td>可选输入</td>
+    <td>表示 RoPE 使用的正弦参数。</td>
+    <td>保留接口，当前版本必须传空指针。</td>
+    <td>BFLOAT16</td>
+    <td>ND</td>
+    <td>当前版本不适用</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>cuSeqlensOptional（aclTensor*）</td>
+    <td>可选输入</td>
+    <td>表示 TH 场景下各 Batch 在 hiddenStates 首轴上的累计 token 边界。</td>
+    <td><ul><li>TH 场景必须提供，首元素为 0，末元素为 T，且单调不减。</li><li>BSH 场景必须传空指针。</li></ul></td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>TH：[B+1]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>sequsedOptional（aclTensor*）</td>
+    <td>可选输入</td>
+    <td>预留的有效序列长度参数。</td>
+    <td>当前版本必须传空指针，不支持通过该参数选择参与计算的 token。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>[B]（预留）</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>cmpRatio（int64_t）</td>
+    <td>输入</td>
+    <td>表示压缩率，即每组参与池化的 token 数。</td>
+    <td>取值范围为 {2, 4, 8, 16, 32, 64, 128}。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>normEps（double）</td>
+    <td>输入</td>
+    <td>表示 LayerNorm 的 epsilon。</td>
+    <td>默认值为 1e-6，取值必须大于 0。</td>
+    <td>FLOAT（内部按 FLOAT 使用）</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>rotaryMode（int64_t）</td>
+    <td>输入</td>
+    <td>表示 RoPE 模式。</td>
+    <td>取值范围为 {0, 1}；当前版本不执行 RoPE，cosOptional 和 sinOptional 必须为空。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>stateCacheStrideDim0（int64_t）</td>
+    <td>输入</td>
+    <td>表示 stateCache 第 0 轴的 stride。</td>
+    <td>由调用方根据 stateCache 的实际 stride 传入。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>pooledKeyOut（aclTensor*）</td>
+    <td>输出</td>
+    <td>表示按 cmpRatio 个 token 池化后的 K。</td>
+    <td>支持 B=0、S=0 或 T=0 的空 Tensor；输出为固定容量的 BSH Tensor。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    <td>[B,Sr,D]</td>
+    <td>×</td>
+  </tr>
+  <tr>
+    <td>workspaceSize（uint64_t*）</td>
+    <td>输出</td>
+    <td>返回需要在 Device 侧申请的 workspace 大小。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>executor（aclOpExecutor**）</td>
+    <td>输出</td>
+    <td>返回包含算子计算流程的执行器。</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  </tr>
+</tbody>
+</table>
 
 其中：
 
+- `D` 为 K 和 Gate 的 head dimension，由 `wk` 的第 0 维决定；
 - `R = cmpRatio`；
 - `N` 为物理 block 数；
 - `BS` 为 block size；
-- `L` 为每个 batch 的最大逻辑 block 数；
-- `Pcap = ceil(L * BS / cmpRatio)`。
+- `L` 为每个 Batch 的最大逻辑 block 数；
+- `Sr = ceil(L * BS / cmpRatio)`，表示 pooledKeyOut 的容量。
 
 输入 tensor 使用 ND 格式。`stateCacheRef` 是原地输入，用于保存跨算子调用
 的未完成压缩组状态。
@@ -132,23 +350,90 @@ aclnnStatus aclnnKeyPool(
 
 常见错误类型包括：
 
-| 返回值 | 含义 |
-| --- | --- |
-| `ACLNN_ERR_PARAM_NULLPTR` | 必须提供的参数为空 |
-| `ACLNN_ERR_PARAM_INVALID` | shape、dtype、属性或布局不支持 |
-| `ACLNN_ERR_RUNTIME_ERROR` | Runtime 或内存申请失败 |
-| `ACLNN_ERR_INNER_TILING_ERROR` | Tiling 失败 |
+<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
+  <col style="width: 300px">
+  <col style="width: 150px">
+  <col style="width: 650px">
+</colgroup>
+<thead>
+  <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
+    <td>必选参数中存在空指针。</td>
+  </tr>
+  <tr>
+    <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
+    <td rowspan="4">161002</td>
+    <td>输入输出 Tensor 的数据类型、shape 或数据格式不在支持范围内。</td>
+  </tr>
+  <tr>
+    <td>cmpRatio、normEps 或 rotaryMode 的取值不在支持范围内。</td>
+  </tr>
+  <tr>
+    <td>BSH/TH 场景与 cuSeqlensOptional、sequsedOptional 的组合不满足约束。</td>
+  </tr>
+  <tr>
+    <td>normWeightOptional 与 normBiasOptional 未同时提供，或 cosOptional 与 sinOptional 未按当前版本要求传空。</td>
+  </tr>
+  <tr>
+    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+    <td>561002</td>
+    <td>tiling 发生异常，入参 dtype、shape 或属性组合错误。</td>
+  </tr>
+  <tr>
+    <td>ACLNN_ERR_RUNTIME_ERROR</td>
+    <td>361001</td>
+    <td>调用 NPU Runtime 接口时发生异常，例如 Runtime 服务未启动或内存申请失败。</td>
+  </tr>
+</tbody>
+</table>
 
 ## aclnnKeyPool
 
 第二段接口的参数含义与其他 aclnn 两段式接口一致：
 
-| 参数 | 说明 |
-| --- | --- |
-| `workspace` | Device 侧 workspace 地址 |
-| `workspaceSize` | 第一段接口返回的 workspace 大小 |
-| `executor` | 第一段接口生成的算子执行器 |
-| `stream` | 执行算子的 ACL stream |
+<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 130px">
+  <col style="width: 770px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在 Device 侧申请的 workspace 内存地址。</td>
+  </tr>
+  <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在 Device 侧申请的 workspace 大小，由第一段接口 aclnnKeyPoolGetWorkspaceSize 获取。</td>
+  </tr>
+  <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op 执行器，包含算子计算流程。</td>
+  </tr>
+  <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的 Stream。</td>
+  </tr>
+</tbody>
+</table>
 
 ## 约束说明
 
