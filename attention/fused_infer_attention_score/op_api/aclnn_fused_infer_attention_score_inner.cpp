@@ -446,25 +446,42 @@ void SetTensorFormatToND(const aclTensor *tensor)
     mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
 }
 
+const aclTensor *CreateStrideAwareView(const aclTensor *tensor, const char *name, aclOpExecutor *executor)
+{
+    if (tensor == nullptr || executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Tensor or executor is nullptr when creating stride view for %s.", name);
+        return nullptr;
+    }
+
+    auto strideView = executor->CreateView(tensor, tensor->GetViewShape(), tensor->GetStorageShape(),
+                                           tensor->GetViewStrides(), tensor->GetViewOffset());
+    if (strideView == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try create stride view for %s failed.", name);
+        return nullptr;
+    }
+    const_cast<aclTensor *>(strideView)->SetStorageShape(tensor->GetViewShape());
+    return strideView;
+}
+
+// 对 view 维度连续的输入做零拷贝描述符归一化:
+// PTA/入图路径5传入的 aclTensor 的 storageShape 可能为扁平存储形状(如 1D), 宿侧校验(common_checker CheckDimNum)
+// 与 tiling(GetQueryN 等)按 GetStorageShape() 读取形状, 因此不能直接透传原始描述符;
+// 而无条件 l0op::Contiguous 会在图模式路径5中固化拷贝节点, 导致每个 step 全量搬运 KV cache, 造成性能劣化。
+// 故对连续输入改用 executor->CreateView 建立零拷贝 view 并将 storageShape 归一化为 viewShape, 失败时回退 Contiguous。
+const aclTensor *NormalizeContiguousTensor(const aclTensor *tensor, const char *name, aclOpExecutor *executor)
+{
+    auto normalizedTensor = CreateStrideAwareView(tensor, name, executor);
+    if (normalizedTensor != nullptr) {
+        return normalizedTensor;
+    }
+    return l0op::Contiguous(tensor, executor);
+}
+
 aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
 {
     if (tensorList == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
         return ACLNN_ERR_PARAM_NULLPTR;
-    }
-
-    bool allContiguous = true;
-    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
-        auto tensor = (*tensorList)[i];
-        if (tensor != nullptr && !IsContiguous(tensor)) {
-            allContiguous = false;
-            break;
-        }
-    }
-    // 已连续的输入直接透传: 图模式路径5(GetMaxWorkspaceSize)入图时, 无条件的 l0op::Contiguous
-    // 会在图中固化连续化拷贝节点, 导致每个 step 全量搬运 KV cache, 造成性能劣化。
-    if (allContiguous) {
-        return ACLNN_SUCCESS;
     }
 
     std::vector<const aclTensor *> tensors;
@@ -475,17 +492,19 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
             tensors.emplace_back(nullptr);
             continue;
         }
+        std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
+        const aclTensor *normalizedTensor = nullptr;
         if (IsContiguous(tensor)) {
-            tensors.emplace_back(tensor);
-            continue;
+            normalizedTensor = NormalizeContiguousTensor(tensor, itemName.c_str(), executor);
+        } else {
+            normalizedTensor = l0op::Contiguous(tensor, executor);
         }
-        auto contiguousTensor = l0op::Contiguous(tensor, executor);
-        if (contiguousTensor == nullptr) {
+        if (normalizedTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s[%lu] contiguous failed.", name, i);
             return ACLNN_ERR_INNER_NULLPTR;
         }
-        SetTensorFormatToND(contiguousTensor);
-        tensors.emplace_back(contiguousTensor);
+        SetTensorFormatToND(normalizedTensor);
+        tensors.emplace_back(normalizedTensor);
     }
 
     auto contiguousList = executor->AllocTensorList(tensors.data(), tensors.size());
@@ -503,35 +522,20 @@ aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, acl
     if (tensor == nullptr) {
         return ACLNN_SUCCESS;
     }
-    // 已连续的输入直接透传, 避免图模式下生成冗余的 Contiguous 拷贝节点(理由同上)。
+    const aclTensor *normalizedTensor = nullptr;
     if (IsContiguous(tensor)) {
-        return ACLNN_SUCCESS;
+        // 零拷贝归一化, 避免图模式路径5生成冗余的 Contiguous 拷贝节点(理由同 NormalizeContiguousTensor)。
+        normalizedTensor = NormalizeContiguousTensor(tensor, name, executor);
+    } else {
+        normalizedTensor = l0op::Contiguous(tensor, executor);
     }
-
-    tensor = l0op::Contiguous(tensor, executor);
-    if (tensor == nullptr) {
+    if (normalizedTensor == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s contiguous failed.", name);
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    SetTensorFormatToND(tensor);
+    SetTensorFormatToND(normalizedTensor);
+    tensor = normalizedTensor;
     return ACLNN_SUCCESS;
-}
-
-const aclTensor *CreateStrideAwareView(const aclTensor *tensor, const char *name, aclOpExecutor *executor)
-{
-    if (tensor == nullptr || executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Tensor or executor is nullptr when creating stride view for %s.", name);
-        return nullptr;
-    }
-
-    auto strideView = executor->CreateView(tensor, tensor->GetViewShape(), tensor->GetStorageShape(),
-                                           tensor->GetViewStrides(), tensor->GetViewOffset());
-    if (strideView == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try create stride view for %s failed.", name);
-        return nullptr;
-    }
-    const_cast<aclTensor *>(strideView)->SetStorageShape(tensor->GetViewShape());
-    return strideView;
 }
 
 aclnnStatus NormalizeDim0CacheTensorList(const aclTensorList *&tensorList, const char *name,
