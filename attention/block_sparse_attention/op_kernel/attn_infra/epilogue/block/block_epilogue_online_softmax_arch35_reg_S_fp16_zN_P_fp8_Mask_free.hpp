@@ -116,6 +116,7 @@ public:
         TensorP &l1PTensorTlaTile,
         uint32_t rowNumCurSubCore,
         uint32_t colNumCurSubCore,
+        uint32_t zNRowNumSplit,
         uint32_t isFirstKvSTile,
         uint32_t isLastKvSTile,
         uint32_t ubSBufId,
@@ -135,7 +136,7 @@ public:
         __ubuf__ int32_t *tailMaskUbAddr = (__ubuf__ int32_t *)tailMaskUbTensor.GetPhyAddr();
         __ubuf__ int16_t *tailMaskUbAddr16 = (__ubuf__ int16_t *)tailMaskUbTensor16.GetPhyAddr();
 
-        uint32_t rowAligned16 = (rowNumCurSubCore + 15) / 16 * 16;
+        uint32_t rowAligned16 = (zNRowNumSplit + 15) / 16 * 16;
         uint32_t colAligned16 = (colNumCurSubCore + 15) / 16 * 16;
         uint32_t colAligned32 = (colNumCurSubCore + 31) / 32 * 32;
         // for unaligned col
@@ -258,9 +259,7 @@ public:
         // copy P to L1
         // wait till P L1 space is fully released
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-        uint32_t rowNumAligned16 = RoundUp(rowNumCurSubCore, 16);
-        uint32_t colNumAligned32 = RoundUp(colNumCurSubCore, 32);
-        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(rowNumAligned16, colNumAligned32);
+        auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(rowAligned16, colAligned32);
         auto ubPTensorTla = tla::MakeTensor(pUbTensor[ubSBufId], ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
                 tla::MakeCoord(0, 0), tla::MakeShape(rowNumCurSubCore, colNumCurSubCore));
@@ -299,6 +298,7 @@ public:
         uint32_t rowNumAligned8 = RoundUp(rowNum, 8);
         uint32_t colNumAligned16 = RoundUp(colNum, 16);
         uint32_t rowNumSplit = rowNumAligned8 / subBlockNum_;
+        uint32_t zNRowNumSplit = rowNumSplit;
         rowNumSplit = (rowNum < rowNumSplit) ? rowNum : rowNumSplit;
         uint32_t rowNumCurSubCore = (subBlockIdx_ == 0) ? rowNumSplit : (rowNum - rowNumSplit);
         uint32_t rowOffsetCurSubCore = rowNumSplit * subBlockIdx_;
@@ -318,6 +318,7 @@ public:
                 l1PTensorTlaTile,
                 rowNumCurSubCore,
                 colNumCurSubCore,
+                zNRowNumSplit,
                 isFirstKvSTile,
                 isLastKvSTile,
                 ubSBufId,
