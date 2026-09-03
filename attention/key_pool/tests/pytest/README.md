@@ -1,32 +1,22 @@
 # KeyPool Tests
 
-This directory contains the maintained KeyPool validation entry points. The
-tests use the public `torch_npu.key_pool` interface and the independent CPU
-Golden implementation. Legacy parameter-combination, batch data conversion,
-profiling, and ad-hoc JIT loader scripts are intentionally not part of the
-release tree.
+This directory contains the maintained KeyPool precision validation entry
+point. The test uses the public `torch_npu.key_pool` interface and the
+independent CPU Golden implementation. Legacy parameter-combination,
+equivalence, profiling, and ad-hoc regression scripts are intentionally not
+part of the release tree.
 
 ## Maintained Files
 
 | File | Purpose |
 | --- | --- |
-| `key_pool_golden.py` | Scalar Golden and independent Torch Oracle |
-| `key_pool_test_utils.py` | Deterministic input builders and Golden checks |
+| `test_key_pool_precision_standalone.py` | Direct NPU-versus-Golden precision check |
+| `key_pool_golden.py` | CPU Golden and independent Torch Oracle used by the precision check |
 | `key_pool_public_loader.py` | Loads only the installed KeyPool public module |
-| `test_key_pool_golden.py` | CPU Golden and cache-boundary unit tests |
-| `test_key_pool_step01_baseline.py` | Baseline BSH/TH, history, ratio, and block cases |
-| `test_key_pool_public_interface.py` | Public signature, schema, Meta, and rejection checks |
-| `test_key_pool_public_npu.py` | Direct NPU functional and precision regression |
-| `test_key_pool_precision_standalone.py` | Standalone NPU-versus-Golden precision check |
-| `test_key_pool_layout_equivalence_npu.py` | BSH/TH and batch-position equivalence |
-| `test_key_pool_chunk_equivalence_npu.py` | Single-call versus chunked-call equivalence |
-| `test_key_pool_determinism_npu.py` | Repeatability and cache determinism |
-| `key_pool_long_sequence_npu.py` | Long-sequence regression, including 32K cases |
-| `pytest.ini` | Pytest markers and local test configuration |
 
 ## Coverage
 
-The maintained tests cover:
+The standalone check covers representative:
 
 ```text
 BSH [B, S, H]
@@ -37,7 +27,7 @@ state-cache update and Block Table addressing
 Gate + APE pooling
 all supported compression ratios
 fixed-capacity pooled output and zero tail
-non-empty RoPE rejection
+non-empty RoPE rejection through the public interface contract
 ```
 
 RoPE remains an interface placeholder. Non-empty `cos`/`sin` inputs must be
@@ -46,13 +36,15 @@ rejected explicitly and must not be silently ignored.
 The NPU scripts are intended to run after the CANN, custom OPP, and wheel
 environments have been loaded. They do not require `torchair`.
 
-Typical commands:
+Run the maintained validation directly:
 
 ```bash
-python3 -m pytest -q test_key_pool_golden.py test_key_pool_step01_baseline.py
-python3 -m pytest -q test_key_pool_public_interface.py
-python3 test_key_pool_public_npu.py --case all
-python3 test_key_pool_public_npu.py --case all --norm-on
-python3 key_pool_long_sequence_npu.py --norm-off
-python3 key_pool_long_sequence_npu.py --norm-on
+python3 test_key_pool_precision_standalone.py
 ```
+
+The script has no command-line parameters. It generates four representative
+BSH/TH cases, with and without LayerNorm, historical cache data, non-trivial
+start positions, shuffled block tables, zero-length TH batches, and multiple
+compression ratios. It validates both `pooled_key` and the in-place
+`state_cache` update against the CPU Golden and exits with a non-zero status
+when any case fails.
