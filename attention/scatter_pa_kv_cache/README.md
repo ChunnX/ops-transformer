@@ -5,6 +5,8 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
+| <term>Ascend 350               </term>                 |    √     |
+| <term>Ascend 350</term>                                          |    √     |                 |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
@@ -115,7 +117,8 @@
     ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
-- <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、三、四、五。
+- <term>Ascend 950PR/Ascend 950DT</term>
+| <term>Ascend 350</term>                                          |    √     |：仅支持场景一、二、三、四、五。
 
 ## 参数说明
 
@@ -222,7 +225,8 @@
   </tbody></table>
 
 - 各产品对key/value/keyCacheRef/valueCacheRef数据类型的支持范围：
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
+  - <term>Ascend 950PR/Ascend 950DT</term>
+| <term>Ascend 350</term>                                          |    √     |：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
 
 ## 约束说明

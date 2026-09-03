@@ -13,7 +13,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         scatter_pa_kv_cache_with_k_scale_def.cpp
     )
-    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950" OR "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend350")
         add_ops_compile_options(
             OP_NAME ScatterPaKvCacheWithKScale
             COMPUTE_UNIT Ascend950PR_9599
