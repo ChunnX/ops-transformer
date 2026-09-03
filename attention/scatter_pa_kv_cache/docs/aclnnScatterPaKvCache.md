@@ -7,6 +7,9 @@
 <!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
+<!-- npu="350" id12 -->
+- <term>Ascend 350</term>：支持
+<!-- end id12 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
