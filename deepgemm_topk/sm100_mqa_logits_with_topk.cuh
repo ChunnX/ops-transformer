@@ -741,25 +741,22 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     if (threadIdx.x == 0 && blockIdx.x == 0)
         printf("[SPLIT] phase1_cycles=%lld\n", clock64() - dbg_p1_start);
     // ========================================================================
-    // PHASE 2: 8-warp split TopK — each warp runs a local radix TopK on its
-    // own segment (cached in SMEM when the segment fits), then merges the
-    // 8x512 candidates into a final radix TopK executed by warp 0.
+    // PHASE 2: 8-warp split TopK with distributed final radix.
+    // NOTE: all __syncthreads() are executed uniformly by the WHOLE block
+    // (warps 8-11 also arrive), only the work is guarded by warp_idx checks.
     // ========================================================================
-    if (warp_idx < kNumTopkWarps) {
-        constexpr uint32_t kSegFloats = 1024;                       // 4KB cache per warp
-        constexpr uint32_t kCandPerWarp = kSparseCount;             // local candidate budget
-        const uint32_t kStageBytes = ((kSparseCount + 31) * 4 > 2048) ? ((kSparseCount + 31) * 4) : 2048; // boundary staging
+    {
+        constexpr uint32_t kSegFloats = 1024;
+        constexpr uint32_t kCandPerWarp = kSparseCount;
+        const uint32_t kStageBytes = ((kSparseCount + 31) * 4 > 2048) ? ((kSparseCount + 31) * 4) : 2048;
         const uint32_t kPerWarpBytes = kSegFloats * 4 + 256 * 4 + kStageBytes + kCandPerWarp * 4;
 
-        // Block-level merge area at the head of smem_buffer:
-        //   merge_vals  : float[kNumTopkWarps * kCandPerWarp]
-        //   merge_idx   : int32 [kNumTopkWarps * kCandPerWarp]
         constexpr uint32_t kNumCand = kNumTopkWarps * kCandPerWarp;  // 4096
-        constexpr uint32_t kSlice = kCandPerWarp;           // 512 per wrap
+        constexpr uint32_t kSlice = kCandPerWarp;                    // 512
         float* merge_vals = reinterpret_cast<float*>(smem_buffer);
         int32_t* merge_idx = reinterpret_cast<int32_t*>(merge_vals + kNumCand);
-        uint32_t* ghist = reinterpret_cast<uint32_t*>(merge_idx + kNumCand);   // [256]
-        uint32_t* gslots = ghist + 256;                                        // [16]
+        uint32_t* ghist = reinterpret_cast<uint32_t*>(merge_idx + kNumCand);
+        uint32_t* gslots = ghist + 256;
         uint8_t* warp_base = reinterpret_cast<uint8_t*>(gslots + 8 + kNumTopkWarps);
 
         uint8_t* wregion = warp_base + static_cast<uint64_t>(warp_idx) * kPerWarpBytes;
@@ -768,14 +765,16 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
         int32_t* wstage = reinterpret_cast<int32_t*>(wregion + kSegFloats * 4 + 256 * 4);
         int32_t* wcand = reinterpret_cast<int32_t*>(wregion + kSegFloats * 4 + 256 * 4 + kStageBytes);
 
+        const uint32_t sms = gridDim.x;
+        const bool i_active = (warp_idx < kNumTopkWarps);
+
         auto scheduler = make_scheduler(sm_idx, seq_k_start, seq_k_end);
         const uint32_t num_q_tokens = [&] {
             if constexpr (decltype(scheduler)::kIsPaged) return scheduler.num_q_tokens_total;
             else return scheduler.num_q_tokens;
         }();
-        const uint32_t num_sms = gridDim.x;
 
-        for (uint32_t q_token = sm_idx; q_token < num_q_tokens; q_token += num_sms) {
+        for (uint32_t q_token = sm_idx; q_token < num_q_tokens; q_token += sms) {
             uint32_t k_start, k_end;
             if constexpr (decltype(scheduler)::kIsPaged) {
                 k_start = 0;
@@ -784,38 +783,34 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 k_start = cute::min(scheduler.cu_seq_len_k_start[q_token], scheduler.num_kv_tokens);
                 k_end = cute::min(scheduler.cu_seq_len_k_end[q_token], scheduler.num_kv_tokens);
             }
-
             const uint32_t k_len = k_end > k_start ? (k_end - k_start) : 0;
             const float* logits_row = logits_buffer + static_cast<uint64_t>(q_token) * logits_stride;
             int32_t* out_ptr = sparse_indices + static_cast<uint64_t>(q_token) * kSparseCount;
 
             const long long dbg_t0 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
-            if (k_len == 0) {
-                if (warp_idx == 0)
-                    for (uint32_t i = lane_idx; i < kSparseCount; i += 32)
-                        out_ptr[i] = -1;
-                __syncthreads();
-                continue;
+            if (i_active && k_len == 0) {
+                for (uint32_t i = lane_idx; i < kSparseCount; i += 32)
+                    out_ptr[i] = -1;
             }
-
-            if (k_len <= kSparseCount) {
-                // block-wide straight fill
+            __syncthreads();
+            if (k_len == 0) continue;
+            if (k_len > 0 && k_len <= kSparseCount) {
                 for (uint32_t i = warp_idx * 32 + lane_idx; i < kSparseCount; i += kNumTopkWarps * 32)
                     out_ptr[i] = (i < k_len) ? static_cast<int32_t>(k_start + i) : -1;
                 __syncthreads();
                 continue;
             }
 
-            // ---- segment split: warp w handles [w*segL, min(k_len,(w+1)*segL)) ----
             const uint32_t segL = (k_len + kNumTopkWarps - 1) / kNumTopkWarps;
             const uint32_t my_start = warp_idx * segL;
             const uint32_t my_len = (my_start < k_len) ? ((my_start + segL > k_len) ? k_len - my_start : segL) : 0;
 
             __threadfence();
             const long long dbg_t1 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
-            if (my_len > 0 && my_len <= kSegFloats) {
-                // load own segment into SMEM cache
+
+            // ==== stage 1: per-warp segment local TopK ====
+            if (i_active && my_len > 0 && my_len <= kSegFloats) {
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < my_len; i += 32)
                     ptx::st_shared(reinterpret_cast<uint32_t*>(wcache) + i,
@@ -823,20 +818,19 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 __syncwarp();
                 warp_bucket_topk<kSparseCount, true>(wcache, k_start + my_start, my_len,
                                                      wcand, whist, wstage, nullptr, lane_idx);
-            } else if (my_len > 0) {
-                // segment exceeds cache: read GMEM directly
+            } else if (i_active && my_len > 0) {
                 warp_bucket_topk<kSparseCount, false>(logits_row + k_start + my_start,
                                                       k_start + my_start, my_len,
                                                       wcand, whist, wstage, nullptr, lane_idx);
-            } else {
+            } else if (i_active) {
                 for (uint32_t i = lane_idx; i < kCandPerWarp; i += 32)
                     wcand[i] = -1;
             }
             __syncthreads();
             const long long dbg_t2 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
-            // ---- build merged candidate arrays (all 8 warps cooperate) ----
-            {
+            // ==== stage 2: build merged candidate arrays ====
+            if (i_active) {
                 const bool all_seg_cached = (k_len <= kNumTopkWarps * kSegFloats);
                 const uint32_t kCandOffU32 = kSegFloats + 256 + kStageBytes / 4;
                 const int32_t* cand_base = reinterpret_cast<int32_t*>(warp_base);
@@ -849,7 +843,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     if (c >= 0) {
                         merge_idx[j] = c;
                         if (all_seg_cached) {
-                            // value lives in warp w's SMEM segment cache
                             const uint32_t cache_pos = static_cast<uint32_t>(c) - k_start - w * segL;
                             merge_vals[j] = __uint_as_float(
                                 ptx::ld_shared(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
@@ -865,27 +858,24 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             __syncthreads();
             const long long dbg_t3 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
-            // ==== distributed final radix: 8 warps x 512-slice, per-warp SMEM hist ====
-            {
-                const float* mv = merge_vals;
-                uint32_t* wh = reinterpret_cast<uint32_t*>(whist);
-                constexpr uint32_t kPerLane2 = (kSparseCount + 31) / 32;
+            // ==== stage 3: distributed final radix (uniform barriers) ====
+            auto to_sortable2 = [](float f) -> uint32_t {
+                uint32_t u = __float_as_uint(f);
+                return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
+            };
+            const float* mv = merge_vals;
 
-                auto to_sortable2 = [](float f) -> uint32_t {
-                    uint32_t u = __float_as_uint(f);
-                    return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
-                };
+            uint32_t kth = 0, def_cnt = 0, rem = kSparseCount;
+            for (int round = 0; round < 4 && rem > 0; ++round) {
+                const int shift = (3 - round) * 8;
+                const uint32_t pmask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
+                const uint32_t pval = kth & pmask;
 
-                uint32_t kth = 0, def_cnt = 0, rem = kSparseCount;
-                for (int round = 0; round < 4 && rem > 0; ++round) {
-                    const int shift = (3 - round) * 8;
-                    const uint32_t pmask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
-                    const uint32_t pval = kth & pmask;
-
+                if (i_active) {
+                    uint32_t* wh = reinterpret_cast<uint32_t*>(whist);
                     for (uint32_t i = lane_idx; i < 256; i += 32)
                         wh[i] = 0;
-                    __syncthreads();
-
+                    __syncwarp();
                     #pragma unroll 4
                     for (uint32_t i = lane_idx; i < kSlice; i += 32) {
                         uint32_t u = to_sortable2(__uint_as_float(
@@ -895,86 +885,69 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                             atomicAdd(&wh[b], 1u);
                         }
                     }
-                    __syncthreads();
+                }
+                __syncthreads();
 
-                    // warp 0 merges 8 per-warp hists into global
-                    if (warp_idx == 0) {
-                        const uint32_t* wp = reinterpret_cast<const uint32_t*>(warp_base);
-                        for (uint32_t i = lane_idx; i < 256; i += 32) {
-                            uint32_t s = 0;
-                            #pragma unroll
-                            for (uint32_t w = 0; w < kNumTopkWarps; ++w)
-                                s += wp[w * (kPerWarpBytes / 4) + kSegFloats + i];
-                            ghist[i] = s;
-                        }
-                    }
-                    __syncthreads();
-
-                    // cutoff (warp 0)
-                    if (warp_idx == 0) {
-                        uint32_t mc[8];
+                if (warp_idx == 0) {
+                    const uint32_t* wp = reinterpret_cast<const uint32_t*>(warp_base);
+                    for (uint32_t i = lane_idx; i < 256; i += 32) {
+                        uint32_t s = 0;
                         #pragma unroll
-                        for (int i = 0; i < 8; i++) mc[i] = ghist[lane_idx * 8 + i];
-                        uint32_t my_sum = 0;
-                        #pragma unroll
-                        for (int i = 0; i < 8; i++) my_sum += mc[i];
-                        uint32_t incl = my_sum;
-                        for (int s = 1; s < 32; s <<= 1) {
-                            uint32_t t = __shfl_up_sync(0xFFFFFFFF, incl, s);
-                            if (lane_idx >= s) incl += t;
-                        }
-                        const uint32_t total = __shfl_sync(0xFFFFFFFF, incl, 31);
-                        const uint32_t count_above_me = total - incl;
-                        uint32_t prefix_in_lane = 0;
-                        int32_t my_cutoff = -1;
-                        uint32_t my_cao = 0;
-                        #pragma unroll
-                        for (int i = 7; i >= 0; i--) {
-                            uint32_t ca = count_above_me + prefix_in_lane;
-                            uint32_t cge = ca + mc[i];
-                            if (ca < rem && cge >= rem) {
-                                my_cutoff = static_cast<int32_t>(lane_idx * 8 + i);
-                                my_cao = ca;
-                            }
-                            prefix_in_lane += mc[i];
-                        }
-                        uint32_t m = __ballot_sync(0xFFFFFFFF, my_cutoff >= 0);
-                        gslots[2] = (m != 0);
-                        if (m) {
-                            uint32_t cl = __ffs(m) - 1;
-                            gslots[0] = __shfl_sync(0xFFFFFFFF, static_cast<uint32_t>(my_cutoff), cl);
-                            gslots[1] = __shfl_sync(0xFFFFFFFF, my_cao, cl);
-                        }
-                    }
-                    __syncthreads();
-                    if (gslots[2] == 0) break;
-                    kth |= (gslots[0] << shift);
-                    def_cnt += gslots[1];
-                    rem = kSparseCount - def_cnt;
-                    if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0) {
-                        uint32_t hs = 0;
-                        for (uint32_t ii = 0; ii < 256; ++ii) hs += ghist[ii];
-                        printf("[FDBG] r=%d cutoff=%u cao=%u rem=%u hist_sum=%u\n",
-                               round, gslots[0], gslots[1], rem, hs);
+                        for (uint32_t w = 0; w < kNumTopkWarps; ++w)
+                            s += wp[w * (kPerWarpBytes / 4) + kSegFloats + i];
+                        ghist[i] = s;
                     }
                 }
+                __syncthreads();
 
-                const uint32_t kth_full = kth;
-                if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0) {
-                    uint32_t cnt_gt = 0;
-                    for (uint32_t ii = 0; ii < kSlice; ++ii) {
-                        uint32_t u = __float_as_uint(merge_vals[ii]);
-                        u = (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
-                        if (u > kth_full) cnt_gt++;
+                if (warp_idx == 0) {
+                    uint32_t mc[8];
+                    #pragma unroll
+                    for (int i = 0; i < 8; i++) mc[i] = ghist[lane_idx * 8 + i];
+                    uint32_t my_sum = 0;
+                    #pragma unroll
+                    for (int i = 0; i < 8; i++) my_sum += mc[i];
+                    uint32_t incl = my_sum;
+                    for (int s = 1; s < 32; s <<= 1) {
+                        uint32_t t = __shfl_up_sync(0xFFFFFFFF, incl, s);
+                        if (lane_idx >= s) incl += t;
                     }
-                    uint32_t v0u = __float_as_uint(merge_vals[0]);
-                    uint32_t v0s = (v0u & 0x80000000u) ? ~v0u : (v0u ^ 0x80000000u);
-                    printf("[CHK] kth=0x%08x slice0_gt=%u v0_raw=0x%08x v0_sort=0x%08x idx0=%d\n",
-                           kth_full, cnt_gt, v0u, v0s, merge_idx[0]);
+                    const uint32_t total = __shfl_sync(0xFFFFFFFF, incl, 31);
+                    const uint32_t count_above_me = total - incl;
+                    uint32_t prefix_in_lane = 0;
+                    int32_t my_cutoff = -1;
+                    uint32_t my_cao = 0;
+                    #pragma unroll
+                    for (int i = 7; i >= 0; i--) {
+                        uint32_t ca = count_above_me + prefix_in_lane;
+                        uint32_t cge = ca + mc[i];
+                        if (ca < rem && cge >= rem) {
+                            my_cutoff = static_cast<int32_t>(lane_idx * 8 + i);
+                            my_cao = ca;
+                        }
+                        prefix_in_lane += mc[i];
+                    }
+                    uint32_t m = __ballot_sync(0xFFFFFFFF, my_cutoff >= 0);
+                    gslots[2] = (m != 0);
+                    if (m) {
+                        uint32_t cl = __ffs(m) - 1;
+                        gslots[0] = __shfl_sync(0xFFFFFFFF, static_cast<uint32_t>(my_cutoff), cl);
+                        gslots[1] = __shfl_sync(0xFFFFFFFF, my_cao, cl);
+                    }
                 }
+                __syncthreads();
+                if (gslots[2] == 0) break;
+                kth |= (gslots[0] << shift);
+                def_cnt += gslots[1];
+                rem = kSparseCount - def_cnt;
+            }
 
-                // ---- distributed selection pass: count definite + stage boundary ----
-                uint32_t my_def = 0, my_col = 0;
+            const uint32_t kth_full = kth;
+
+            // ==== stage 4: distributed selection ====
+            constexpr uint32_t kPerLane2 = (kSparseCount + 31) / 32;
+            uint32_t my_def = 0, my_col = 0;
+            if (i_active) {
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < kSlice; i += 32) {
                     uint32_t u = to_sortable2(__uint_as_float(
@@ -987,33 +960,34 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         my_col++;
                     }
                 }
-
-                // warp prefix for definite
+            }
+            uint32_t def_excl_l = 0;
+            if (i_active) {
                 uint32_t def_prefix = my_def;
                 for (int s = 1; s < 32; s <<= 1) {
                     uint32_t t = __shfl_up_sync(0xFFFFFFFF, def_prefix, s);
                     if (lane_idx >= s) def_prefix += t;
                 }
-                const uint32_t def_excl = def_prefix - my_def;
+                def_excl_l = def_prefix - my_def;
+            }
 
-                // block prefix across 8 warps
-                if (lane_idx == 0) gslots[8 + warp_idx] = my_def;
-                __syncthreads();
-                if (warp_idx == 0) {
-                    uint32_t acc = 0;
-                    for (uint32_t w = 0; w < kNumTopkWarps; ++w) {
-                        uint32_t v = gslots[8 + w];
-                        gslots[8 + w] = acc;
-                        acc += v;
-                    }
-                    gslots[0] = acc;   // total definite
+            if (i_active && lane_idx == 0) gslots[8 + warp_idx] = my_def;
+            __syncthreads();
+            if (warp_idx == 0) {
+                uint32_t acc = 0;
+                for (uint32_t w = 0; w < kNumTopkWarps; ++w) {
+                    uint32_t v = gslots[8 + w];
+                    gslots[8 + w] = acc;
+                    acc += v;
                 }
-                __syncthreads();
-                const uint32_t total_def = gslots[0];
-                const uint32_t def_base = gslots[8 + warp_idx];
+                gslots[0] = acc;
+            }
+            __syncthreads();
+            const uint32_t total_def = gslots[0];
+            const uint32_t def_base = gslots[8 + warp_idx];
 
-                // write definite
-                uint32_t run = def_base + def_excl;
+            if (i_active) {
+                uint32_t run = def_base + def_excl_l;
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < kSlice; i += 32) {
                     uint32_t u = to_sortable2(__uint_as_float(
@@ -1023,52 +997,48 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         run++;
                     }
                 }
-                __syncthreads();
+            }
+            __syncthreads();
 
-                // block prefix for boundary collected
-                uint32_t my_wc = 0;
+            uint32_t my_wc = 0;
+            if (i_active) {
                 for (int s = 16; s > 0; s >>= 1)
                     my_wc += __shfl_xor_sync(0xFFFFFFFF, my_col, s);
                 if (lane_idx == 0) gslots[8 + warp_idx] = my_wc;
-                __syncthreads();
-                if (warp_idx == 0) {
-                    uint32_t acc = 0;
-                    for (uint32_t w = 0; w < kNumTopkWarps; ++w) {
-                        uint32_t v = gslots[8 + w];
-                        gslots[8 + w] = acc;
-                        acc += v;
-                    }
-                    gslots[1] = acc;   // total collected
+            }
+            __syncthreads();
+            if (warp_idx == 0) {
+                uint32_t acc = 0;
+                for (uint32_t w = 0; w < kNumTopkWarps; ++w) {
+                    uint32_t v = gslots[8 + w];
+                    gslots[8 + w] = acc;
+                    acc += v;
                 }
-                __syncthreads();
-                const uint32_t col_warp_base = gslots[8 + warp_idx];
+                gslots[1] = acc;
+            }
+            __syncthreads();
+            const uint32_t col_warp_base = gslots[8 + warp_idx];
 
+            if (i_active) {
                 uint32_t col_incl = my_col;
                 for (int s = 1; s < 32; s <<= 1) {
                     uint32_t t = __shfl_up_sync(0xFFFFFFFF, col_incl, s);
                     if (lane_idx >= s) col_incl += t;
                 }
                 const uint32_t col_lane_base = col_incl - my_col;
-
                 for (uint32_t j = 0; j < my_col; ++j) {
                     uint32_t pos = total_def + col_warp_base + col_lane_base + j;
                     if (pos < kSparseCount)
                         out_ptr[pos] = wstage[lane_idx * kPerLane2 + j];
                 }
-                __syncthreads();
-
-                // fill trailing -1 (warp 0)
-                if (warp_idx == 0) {
-                    const uint32_t filled = total_def + gslots[1];
-                    for (uint32_t i = filled + lane_idx; i < kSparseCount; i += 32)
-                        out_ptr[i] = -1;
-                }
-                if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0)
-                    printf("[SEL] total_def=%u collected=%u kth=0x%08x out[0..5]=%d,%d,%d,%d,%d,%d\n",
-                           total_def, gslots[1], kth_full,
-                           out_ptr[0], out_ptr[1], out_ptr[2], out_ptr[3], out_ptr[4], out_ptr[5]);
             }
             __syncthreads();
+
+            if (warp_idx == 0) {
+                const uint32_t filled = total_def + gslots[1];
+                for (uint32_t i = filled + lane_idx; i < kSparseCount; i += 32)
+                    out_ptr[i] = -1;
+            }
 
             if (threadIdx.x == 0 && blockIdx.x == 0)
                 printf("[TOPK8] token=%u k_len=%u fence=%lld load+local=%lld merge=%lld final=%lld\n",
