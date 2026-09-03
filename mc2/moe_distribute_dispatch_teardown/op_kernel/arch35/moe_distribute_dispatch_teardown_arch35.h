@@ -35,6 +35,10 @@
 #ifndef MC2_DTD_OPT_WINCOPY_PIPELINE
 #define MC2_DTD_OPT_WINCOPY_PIPELINE 1
 #endif
+// 仅 bs<=16：WaitDispatch 少搬 flag（1 个专家直接标量读，多个专家 Compact+Sum），等齐后再补搬 32B 取 count
+#ifndef MC2_DTD_OPT_SMALL_BS_WAIT
+#define MC2_DTD_OPT_SMALL_BS_WAIT 1
+#endif
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
@@ -413,15 +417,48 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1,
                                static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
-    SyncFunc<AscendC::HardEvent::S_V>();
-    // 乘 2 是因为 dispatch_setup 每块写的 flag 为 float 2.0，而 sumTarget_ 按 1.0 计
-    while (sumOfFlag != compareTarget * 2) {
-        DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
-                 intriParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = statusSumOutTensor.GetValue(0);
+    const float waitTarget = compareTarget * 2; // dispatch_setup 每块写 float 2.0
+#if MC2_DTD_OPT_SMALL_BS_WAIT
+    if (axisBS_ <= 16U) {
+        if (recStatusNumPerCore_ == 1U) {
+            while (sumOfFlag != waitTarget) {
+                DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+                         intriParams);
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                sumOfFlag = statusFp32Tensor_.GetValue(0);
+            }
+        } else {
+            DataCopyExtParams flagCopyParams{static_cast<uint16_t>(recStatusNumPerCore_), sizeof(float),
+                                             static_cast<uint32_t>(stateOffset_ - sizeof(float)), 0U, 0U};
+            DataCopyPadExtParams<float> flagCopyPadParams{false, 0U, 0U, 0.0f};
+            uint32_t flagSumInner = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+            SumParams flagSumParams{1, flagSumInner, recStatusNumPerCore_};
+            SyncFunc<AscendC::HardEvent::S_V>();
+            while (sumOfFlag != waitTarget) {
+                DataCopyPad<float, PaddingMode::Compact>(
+                    statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+                    flagCopyParams, flagCopyPadParams);
+                SyncFunc<AscendC::HardEvent::MTE2_V>();
+                Sum(statusSumOutTensor, statusFp32Tensor_, flagSumParams);
+                SyncFunc<AscendC::HardEvent::V_S>();
+                sumOfFlag = statusSumOutTensor.GetValue(0);
+            }
+            DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+                     intriParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+        }
+    } else
+#endif
+    {
+        SyncFunc<AscendC::HardEvent::S_V>();
+        while (sumOfFlag != waitTarget) {
+            DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+                     intriParams);
+            SyncFunc<AscendC::HardEvent::MTE2_V>();
+            ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
+            SyncFunc<AscendC::HardEvent::V_S>();
+            sumOfFlag = statusSumOutTensor.GetValue(0);
+        }
     }
     // 清状态
     SyncFunc<AscendC::HardEvent::MTE3_S>();

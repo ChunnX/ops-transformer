@@ -37,9 +37,9 @@
 #ifndef MC2_CTD_OPT_SPLIT_H
 #define MC2_CTD_OPT_SPLIT_H 0
 #endif
-// bs8/bs16：k 循环下一片 win 搬入提前一拍；bs256 不走进该分支
+// bs8/bs16：k 循环预取默认关闭（额外 DCCI/屏障在小 bs 上劣化）；需要时可置 1
 #ifndef MC2_CTD_OPT_SMALL_BS_KPIPE
-#define MC2_CTD_OPT_SMALL_BS_KPIPE 1
+#define MC2_CTD_OPT_SMALL_BS_KPIPE 0
 #endif
 // 无 token 的核跳过 CopyIn/LocalWindowCopy；bs256 每核都有 token，不会走进该跳过
 #ifndef MC2_CTD_OPT_SKIP_IDLE
