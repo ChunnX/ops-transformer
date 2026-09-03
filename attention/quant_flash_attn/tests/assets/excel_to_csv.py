@@ -369,7 +369,20 @@ def _build_tensor_lists(row, cols, quant_mode):
             drange = None
 
         if shape is None:
-            shape = (0,)
+            # 可选 tensor 空 → None (省略): 主算子收到 None 而非空 (0,) 张量。
+            # 空张量会被 checker 拦截 (如 seqused_q 的 dim0 必须等于 B)。
+            shape = (
+                None
+                if shape_col
+                in (
+                    "seqused_q_shape",
+                    "seqused_kv_shape",
+                    "learnable_sink_shape",
+                    "attn_mask_shape",
+                    "block_table_shape",
+                )
+                else (0,)
+            )
 
         # HIF8 (quant_mode=0): descale 是 per-tensor 标量 (1,), Excel 可能不填 shape
         if (

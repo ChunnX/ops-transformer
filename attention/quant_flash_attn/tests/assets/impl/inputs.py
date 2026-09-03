@@ -395,7 +395,7 @@ def generate_qfa_mxfp8_inputs(
 
     if enable_pa:
         block_table[...] = bt_real
-    else:
+    elif block_table is not None:
         block_table[...] = 0
 
     # ----- 新增 slot 8-14: 用 attributes 真实值覆盖 ttk 随机生成的 cu_seqlens/seqused。
@@ -958,7 +958,8 @@ def generate_qfa_hif8_inputs(
     if isinstance(p_scale_value, torch.Tensor):
         p_scale_value = float(p_scale_value.item())
     p_scale.copy_(torch.tensor([float(p_scale_value)], dtype=torch.float32))
-    block_table.copy_(torch.zeros_like(block_table))
+    if block_table is not None:
+        block_table.copy_(torch.zeros_like(block_table))
 
     # ----- slot 8-14: 用 attributes 真实值覆盖 ttk 随机生成的 cu_seqlens/seqused -----
     _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
