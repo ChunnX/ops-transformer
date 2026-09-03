@@ -239,6 +239,7 @@ static ge::graphStatus TilingParseForCumprod(gert::TilingParseContext *context)
 }
 
 IMPL_OP_OPTILING(Cumprod)
+    .TilingInputsDataDependency({1})
     .Tiling(CumprodTilingFunc)
     .TilingParse<CumprodCompileInfo>(TilingParseForCumprod);
 
