@@ -12,11 +12,10 @@
 #         解析异常 dump 产生的 tiling_data_*.bin、args_info_*.bin 或 workspace_seg*.bin 文件。
 #
 # 用法:
-#   python parse_allto_all_matmul_tiling.py <bin_file> [--quant] [--args] [--json] [--ws-layout]
+#   python parse_allto_all_matmul_tiling.py <bin_file> [--args] [--json] [--ws-layout]
 #
 # 模式:
-#   默认         解析 tiling_data_*.bin（非量化 AlltoAllMatmulTilingData）
-#   --quant      解析 tiling_data_*.bin（量化 AlltoAllQuantMatmulTilingData）
+#   默认         自动识别主线非量化、主线量化或 Apace CCU tiling_data_*.bin
 #   --args       解析 args_info_*.bin（GM 地址指针）
 #   --ws-layout  从 tiling_data_*.bin 尾部解析 WorkspaceLayoutInfo
 #   --workspace  解析 workspace_seg*_type*_*.bin（自动识别段类型，type=12 解析 RuntimeInfo）
@@ -39,8 +38,10 @@ TCUBE_TILING_SIZE = 200
 MC2_MM_V3_TILING_DATA_SIZE = 236  # TCubeTiling(200) + 9*uint32(36)
 MC2_QUANT_BMM_TILING_PARAMS_SIZE = 360  # params(128) + TCubeTiling(200) + L2cache(24) + slidingWindow(8)
 
-ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 1152  # 非量化: 64+512+104+236+236
-ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = 1400  # 量化: 64+512+104+360+360
+ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = 1152  # 64+512+104+236+236
+ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = 1400  # 64+512+104+360+360
+ALLTO_ALL_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE + 208  # 1360
+ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE + 208  # 1608
 APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 896  # 64+512+40+64+4+4+208
 TILING_DUMP_SIZE = 2048  # dump 固定大小
 
@@ -54,8 +55,8 @@ RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE  # 
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
 # WorkspaceLayoutInfo 在 TilingData 中的偏移（追加在结构体末尾）
-OFFSET_WS_LAYOUT_NON_QUANT = ALLTO_ALL_MATMUL_TILING_DATA_SIZE  # 1144
-OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE  # 1392
+OFFSET_WS_LAYOUT_NON_QUANT = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE  # 1152
+OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE  # 1400
 OFFSET_APACE_COMM_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
 OFFSET_APACE_QUANT_MATMUL = OFFSET_APACE_COMM_TILING + 40  # 616
 OFFSET_APACE_LOCAL_MATMUL = OFFSET_APACE_QUANT_MATMUL + 64  # 680
@@ -80,10 +81,10 @@ X2_QUANT_MODE_MAP = {
 OFFSET_MC2_INIT_TILING = 0
 OFFSET_MC2_CC_TILING = MC2_INIT_TILING_SIZE  # 64
 OFFSET_TILING_INFO = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 672
-OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 908
-OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 672
-OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1032
+OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 680
+OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 916
+OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 680
+OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1040
 
 # args_info_*.bin 中 kernel 参数索引
 ARGS_INDEX_NAMES = [
@@ -340,7 +341,7 @@ def parse_mc2_quant_bmm_tiling_data_params(data: bytes, offset: int) -> dict:
 
 
 def parse_non_quant_tiling_data(data: bytes) -> dict:
-    """解析非量化 AlltoAllMatmulTilingData（1136B）。"""
+    """解析非量化 AlltoAllMatmulTilingData（完整结构 1360B）。"""
     return {
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
         "mc2CcTiling": parse_mc2_cc_tiling_inner(data, OFFSET_MC2_CC_TILING),
@@ -351,7 +352,7 @@ def parse_non_quant_tiling_data(data: bytes) -> dict:
 
 
 def parse_quant_tiling_data(data: bytes) -> dict:
-    """解析量化 AlltoAllQuantMatmulTilingData（1384B）。"""
+    """解析量化 AlltoAllQuantMatmulTilingData（完整结构 1608B）。"""
     return {
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
         "mc2CcTiling": parse_mc2_cc_tiling_inner(data, OFFSET_MC2_CC_TILING),
@@ -391,6 +392,11 @@ def parse_apace_comm_tiling(data: bytes, offset: int) -> dict:
 
 def parse_apace_tiling_data(data: bytes) -> dict:
     """解析主算子 usingApaceImpl_ 分支的 hcommAllToAllMatmulTilingData。"""
+    if len(data) < APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE:
+        return {
+            "error": f"data too short for Apace tiling data: "
+                     f"{len(data)} < {APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE}"
+        }
     return {
         "format": "APACE_CCU",
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
@@ -412,14 +418,16 @@ def is_valid_workspace_layout(layout: dict) -> bool:
     segments = layout.get("segments", [])
     if total_size <= 0 or not 0 < seg_count <= MAX_WORKSPACE_SEGMENTS or len(segments) != seg_count:
         return False
-    last_offset = 0
-    for index, segment in enumerate(segments):
+    last_end = 0
+    for segment in segments:
         offset = segment.get("offset", 0)
         size = segment.get("size", 0)
-        if size <= 0 or offset + size > total_size or (index > 0 and offset < last_offset):
+        seg_type = segment.get("type")
+        if (size <= 0 or offset != last_end or offset + size > total_size or
+                seg_type not in WS_SEG_TYPE_MAP):
             return False
-        last_offset = offset
-    return True
+        last_end = offset + size
+    return last_end == total_size
 
 
 def detect_tiling_format(data: bytes) -> str:
@@ -793,11 +801,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 示例:
-  # 解析非量化 tiling data
+  # 解析 tiling data（自动识别主线非量化、主线量化或 Apace CCU）
   python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin
-
-  # 解析量化 tiling data
-  python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --quant
 
   # 解析 args_info（验证 tilingGM offset）
   python parse_allto_all_matmul_tiling.py args_info_AlltoAllMatmul.0.1.20260819.bin --args
@@ -895,7 +900,6 @@ def main():
         if "error" in ws_layout:
             logging.error("解析失败: %s", ws_layout["error"])
             logging.error("可能原因: dump 文件不含 WorkspaceLayoutInfo（旧版本 dump），或量化模式不匹配。")
-            logging.error("尝试使用 --quant 切换量化/非量化模式。")
             sys.exit(1)
         if args.json:
             print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
@@ -909,6 +913,9 @@ def main():
         logging.info("解析模式: Apace CCU (usingApaceImpl_=true, workspaceLayout offset=%d)",
                      OFFSET_WS_LAYOUT_APACE)
         result = parse_apace_tiling_data(data)
+        if "error" in result:
+            logging.error("解析失败: %s", result["error"])
+            sys.exit(1)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         else:
