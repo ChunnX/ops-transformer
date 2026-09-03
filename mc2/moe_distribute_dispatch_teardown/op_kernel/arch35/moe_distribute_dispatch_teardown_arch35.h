@@ -552,7 +552,9 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
                 // 将数据从Window拷贝到UB
                 xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
                 DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+#if !MC2_DTD_OPT_WINCOPY_PIPELINE
                 SyncFunc<AscendC::HardEvent::MTE2_S>();
+#endif
                 xQueue_.EnQue(xTmpTensor_);
                 xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
                 xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();

@@ -37,9 +37,13 @@
 #ifndef MC2_CTD_OPT_SPLIT_H
 #define MC2_CTD_OPT_SPLIT_H 0
 #endif
-// bs8/bs16：k 循环下一片 win 搬入提前一拍；bs256 不走进该分支
+// bs8/bs16：k 循环预取默认关闭（额外 DCCI/屏障在小 bs 上劣化）；需要时可置 1
 #ifndef MC2_CTD_OPT_SMALL_BS_KPIPE
-#define MC2_CTD_OPT_SMALL_BS_KPIPE 1
+#define MC2_CTD_OPT_SMALL_BS_KPIPE 0
+#endif
+// bs8/bs16：Muls+Add 合成 Axpy；bs256 不进该分支
+#ifndef MC2_CTD_OPT_SMALL_BS_AXPY
+#define MC2_CTD_OPT_SMALL_BS_AXPY 1
 #endif
 // 无 token 的核跳过 CopyIn/LocalWindowCopy；bs256 每核都有 token，不会走进该跳过
 #ifndef MC2_CTD_OPT_SKIP_IDLE
@@ -506,14 +510,23 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
                 PipeBarrier<PIPE_V>();
                 Add(sumFloatBufTensor, sumFloatBufTensor, rowTmpFloatTensor, hLen);
 #else
-                // 转为float
-                Cast(rowTmpFloatTensor, tmpUb, AscendC::RoundMode::CAST_NONE, moeDistributeCombineTeardownInfo_->h);
-                PipeBarrier<PIPE_V>();
-                // 乘量化系数
-                Muls(rowTmpFloatTensor, rowTmpFloatTensor, scaleVal, moeDistributeCombineTeardownInfo_->h);
-                PipeBarrier<PIPE_V>();
-                // 累加token
-                Add(sumFloatBufTensor, sumFloatBufTensor, rowTmpFloatTensor, moeDistributeCombineTeardownInfo_->h);
+#if MC2_CTD_OPT_SMALL_BS_AXPY
+                if (moeDistributeCombineTeardownInfo_->bs <= 16U) {
+                    Cast(rowTmpFloatTensor, tmpUb, AscendC::RoundMode::CAST_NONE, moeDistributeCombineTeardownInfo_->h);
+                    PipeBarrier<PIPE_V>();
+                    Axpy(sumFloatBufTensor, rowTmpFloatTensor, scaleVal, moeDistributeCombineTeardownInfo_->h);
+                } else
+#endif
+                {
+                    // 转为float
+                    Cast(rowTmpFloatTensor, tmpUb, AscendC::RoundMode::CAST_NONE, moeDistributeCombineTeardownInfo_->h);
+                    PipeBarrier<PIPE_V>();
+                    // 乘量化系数
+                    Muls(rowTmpFloatTensor, rowTmpFloatTensor, scaleVal, moeDistributeCombineTeardownInfo_->h);
+                    PipeBarrier<PIPE_V>();
+                    // 累加token
+                    Add(sumFloatBufTensor, sumFloatBufTensor, rowTmpFloatTensor, moeDistributeCombineTeardownInfo_->h);
+                }
 #endif
 
                 moeSumQueue_.FreeTensor<ExpandXType>(tmpUb);
