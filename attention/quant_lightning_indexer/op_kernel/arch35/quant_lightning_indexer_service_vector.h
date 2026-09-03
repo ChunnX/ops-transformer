@@ -342,6 +342,14 @@ __aicore__ inline void QLIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offs
     // init -1 and copy to output
     Duplicate(outInvalidLocal_, constInfo_.INVALID_IDX, constInfo_.sparseCount);
 
+    // BUG-4 fix: the row-cycle invariant is "ID6 armed between rows" (every row ends
+    // with Set<MTE3_V>). The V_MTE3 pair below fired on an already-armed flag: Set
+    // no-oped and Wait consumed the row-cycle arm, leaving ID6 disarmed -> the next
+    // row's Wait<MTE3_V> blocked forever (prefill multi-task hang, >=9 tasks).
+    // Normalize first (deterministically drains the arm), then the pair, then re-arm
+    // after the copy to restore the invariant.
+    SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
+    WaitFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
     SetFlag<HardEvent::V_MTE3>(TOPK_IDX_CYCLE);
     WaitFlag<HardEvent::V_MTE3>(TOPK_IDX_CYCLE);
 
@@ -351,6 +359,7 @@ __aicore__ inline void QLIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offs
     dataCopyOutParams.srcStride = 0;
     dataCopyOutParams.dstStride = 0;
     AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
+    SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);  // re-arm row-cycle token (BUG-4 invariant)
 }
 
 template <typename QLIT>
@@ -884,9 +893,15 @@ __aicore__ inline void QLIVector<QLIT>::WriteLDParam(uint32_t slot, const QLICom
 }
 
 // L-fix: flush MTE3 pipe before cross-core SyncAll
+// Wait<MTE3_V> consumes the last LD write arm; the flag only arms after the MTE3
+// copies complete (in-order MTE3 queue), so passing this Wait proves every GM list
+// is fully written before SyncAll releases the merge cores (Bug1 torn-read fix).
+// Re-arm afterwards so the FreeEventID drain stays balanced.
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::FlushLDWrites()
 {
+    WaitFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
+    SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
 }
 
 // LD phase (after AIV-only SyncAll): the row-start core of each split row merges
@@ -903,7 +918,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
     if (curAivS1ProcNum == 0) {
-        return;
+        continue;  // zero rows for this AIV in this task; a return here silently
+                   // skipped every remaining task's merge rows
     }
     uint32_t aic = (uint32_t)(blockId_ / 2);
     uint32_t aiv = (uint32_t)(blockId_ % 2);
@@ -943,8 +959,11 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
         WaitFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
         Duplicate(mrgValueLocal_, zero, 2 * topkCountAlign256_);
         Duplicate(fullIdx, (uint32_t)0, 2 * topkCountAlign256_);
-        SetFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
-        WaitFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
+        // BUG-4 fix: Dups -> MTE2 loads ordering via the fill-guard pair (ID5, same
+        // shape as direct rows). The old S/W<V_MTE2>(ID4) pair here made rows
+        // 3W+2S on ID4 (net -1): the ring starved from row 2 of a task.
+        SetFlag<HardEvent::V_MTE2>(TOPK_FILL_GUARD);
+        WaitFlag<HardEvent::V_MTE2>(TOPK_FILL_GUARD);
 
         // load carry (own slot1) + remote (next core slot0): vals into mrgValue, GLOBAL idx into fullIdx
         copyInParams.blockLen = topkCount_ * sizeof(SCORE_T);
@@ -963,6 +982,10 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
         // v2 merge: single-shot topk over 4096, positions -> gather GLOBAL indices
         topkOp_.LdTopK(mrgValueLocal_, fullIdx, indicesOutLocal_, scoreOutLocal_,
                        2 * topkCountAlign256_);
+
+        // BUG-4 fix: release mrgValue to MTE2 for the next row (direct-row protocol:
+        // ID4 rows are 2W+2S state-preserving; the missing end-Set starved the ring)
+        SetFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
 
         // final output: proven pair + arm (WriteLDList-style, no extra choreography)
         SetFlag<HardEvent::V_MTE3>(TOPK_IDX_CYCLE);
