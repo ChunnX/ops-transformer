@@ -27,8 +27,13 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+        // axis mirrors the built-in Cumprod IR (INPUT axis, IndexNumberType): the aclnn layer
+        // materializes the api scalar into an int64 const tensor input. ValueDepend(REQUIRED)
+        // is the official declaration for value-dependent tensor inputs (SplitV2 size_splits /
+        // split_dim pattern): the host tiling reads the value to fold the scan axes.
         this->Input("axis")
             .ParamType(REQUIRED)
+            .ValueDepend(REQUIRED)
             .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();

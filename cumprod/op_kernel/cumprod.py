@@ -16,13 +16,15 @@ Inclusive cumulative product along an axis:
 Layout normalization: [outer, scan, inner]
     outer = prod(shape[:dim]); scan = shape[dim]; inner = prod(shape[dim+1:])
 
-Two axis resolution paths (TilingKey bit0 = axis_known):
-    axis_known == 1 (GE static flow): host tiling read the const axis input,
-        folded shape to [outer, scan, inner] and computed segmentation;
-        scan_mode (TilingKey bit1) picks the FOLD/SCAN body at compile time.
-    axis_known == 0 (aclnn single-op flow): axis lives on device; the kernel
-        reads it from the axis tensor, folds the three axes and computes the
-        segmentation at runtime (scan_mode bit ignored, both bodies present).
+Axis handling (official Cumprod IR: axis is an INPUT, ValueDepend(REQUIRED)):
+    axis_known == 1 (aclnn flow: the api scalar is materialized into a host
+        const tensor via executor ConvertToTensor; GE flow: constant-folded
+        Const): the host tiling reads it, folds the shape to [outer, scan,
+        inner] and computes the segmentation; scan_mode picks the FOLD/SCAN
+        body at compile time.
+    axis_known == 0 (device-resident axis tensor): the kernel reads it from
+        GM, folds the three axes and computes the segmentation at runtime
+        (scan_mode bit unused, both bodies present).
 
 Kernel bodies (same launch for every input shape):
     FOLD (inner > 1): lane = inner; per scan-row acc = acc * x_row fold,
@@ -37,7 +39,7 @@ Kernel bodies (same launch for every input shape):
         with the exclusive prefix product of preceding segments as carry.
 
 Numerical policy (AP-007): fp16/bf16 widen to fp32 on load, chain-multiply
-in fp32 and narrow back per element with a single nearest-even rounding (CAST_ROUND → ROUND_R on this toolchain)
+in fp32 and narrow back per element with a single round-to-nearest-even
 (segmented pass B re-reads x, never cascading pass A results); fp32 native.
 Cross-core carry (workspace) stays fp32.
 
@@ -103,11 +105,11 @@ A16_FOLD_OUT0, A16_FOLD_OUT1 = 0x2DA00, 0x2E200
 # ================================================================
 @dataclass
 class CumprodTiling:
-    outer: int       # prod(shape[:dim])            (valid when axis_known)
-    scan: int        # shape[dim]                   (valid when axis_known)
-    inner: int       # prod(shape[dim+1:])          (valid when axis_known)
-    seg_count: int   # segments per scan line       (valid when axis_known)
-    seg_len: int     # segment length               (valid when axis_known)
+    outer: int       # prod(shape[:axis])     (valid when axis_known)
+    scan: int        # shape[axis]            (valid when axis_known)
+    inner: int       # prod(shape[axis+1:])   (valid when axis_known)
+    seg_count: int   # segments per scan line (valid when axis_known)
+    seg_len: int     # segment length         (valid when axis_known)
     rank: int        # rank of x (always valid; device path folds dims itself)
     dims: int[8]
 
@@ -117,7 +119,7 @@ class CumprodTiling:
 # ================================================================
 class CumprodTilingKey:
     axis_known = TilingKeyField(bits=1, values=[0, 1])   # bit0: 1 = host-resolved axes
-    scan_mode = TilingKeyField(bits=1, values=[0, 1])    # bit1: 0 = FOLD, 1 = SCAN (valid when axis_known=1)
+    scan_mode = TilingKeyField(bits=1, values=[0, 1])    # bit1: 0 = FOLD, 1 = SCAN (used when axis_known=1)
 
 
 # ================================================================
@@ -465,19 +467,23 @@ def cumprod(
 
     # ---- three-fold axis resolution ----
     if axis_known == 1:
-        # Host tiling read the const axis and folded the shape.
+        # Host tiling read the axis (aclnn materialized host const / GE constant).
         outer = tiling.outer
         scan = tiling.scan
         inner = tiling.inner
     else:
-        # axis lives on device: read it and fold the shape at runtime.
-        # The fold is unrolled (rank <= 8) straight-line arithmetic WITHOUT
-        # loop-carried phis: make_tensor stride args snapshot loop phis to
-        # their pre-loop values, which would bake strides of 1.
+        # axis is device-resident: read it and fold the shape at runtime. The fold is
+        # unrolled (rank <= 8) straight-line arithmetic WITHOUT loop-carried phis or
+        # name rebinding: make_tensor stride args capture the first binding of a name.
         tensor_axis = pl.make_tensor(axis, [1], [1], dtype=pl.DT_INT64)
         axis_val = pl.getval(tensor_axis, 0)
         if axis_val < 0:
             axis_val = axis_val + tiling.rank
+        # per-dim selection masks (pure int arithmetic, no branches):
+        #   mlt_i = 1 iff i < axis_val (multiplies into outer)
+        #   meq_i = 1 iff i == axis_val (multiplies into scan)
+        #   mgt_i = 1 iff i > axis_val (multiplies into inner; guarded by min(d_i,1)
+        #           so zero-filled tail dims [rank..7] are never selected)
         mlt0 = pl.min(pl.max(axis_val - 0, 0), 1)
         meq0 = 1 - pl.min((axis_val - 0) * (axis_val - 0), 1)
         mgt0 = pl.min(pl.max(0 - axis_val, 0), 1) * pl.min(tiling.dims[0], 1)
@@ -510,8 +516,6 @@ def cumprod(
         d5 = tiling.dims[5]
         d6 = tiling.dims[6]
         d7 = tiling.dims[7]
-        # single-assignment products: stride args capture the FIRST binding of a
-        # name, so the folded values must never be rebound after their first assignment
         outer = (d0 * mlt0 + (1 - mlt0)) * (d1 * mlt1 + (1 - mlt1)) * (d2 * mlt2 + (1 - mlt2)) * (d3 * mlt3 + (1 - mlt3)) * (d4 * mlt4 + (1 - mlt4)) * (d5 * mlt5 + (1 - mlt5)) * (d6 * mlt6 + (1 - mlt6)) * (d7 * mlt7 + (1 - mlt7))
         scan = (d0 * meq0 + (1 - meq0)) * (d1 * meq1 + (1 - meq1)) * (d2 * meq2 + (1 - meq2)) * (d3 * meq3 + (1 - meq3)) * (d4 * meq4 + (1 - meq4)) * (d5 * meq5 + (1 - meq5)) * (d6 * meq6 + (1 - meq6)) * (d7 * meq7 + (1 - meq7))
         inner = (d0 * mgt0 + (1 - mgt0)) * (d1 * mgt1 + (1 - mgt1)) * (d2 * mgt2 + (1 - mgt2)) * (d3 * mgt3 + (1 - mgt3)) * (d4 * mgt4 + (1 - mgt4)) * (d5 * mgt5 + (1 - mgt5)) * (d6 * mgt6 + (1 - mgt6)) * (d7 * mgt7 + (1 - mgt7))
@@ -532,15 +536,14 @@ def cumprod(
             seg_len = tiling.seg_len
         else:
             # Device-side segmentation (same formula as host tiling): aim for
-            # total jobs ~ 2 * cores; seg_count*outer <= (4*num_cores-1)*rows,
-            # bounded by the workspace the host reserved for this path.
+            # total jobs ~ 2 * cores; bounded by the workspace the host reserved.
             jobs_base = (outer + ROWS - 1) // ROWS
             jobs_base = pl.max(jobs_base, 1)
             seg_count = pl.min(pl.min(MAXP, scan), (2 * num_cores + jobs_base - 1) // jobs_base)
             seg_count = pl.max(seg_count, 1)
             seg_len = (scan + seg_count - 1) // seg_count
             seg_len = pl.max(seg_len, 1)
-            seg_count = (scan + seg_len - 1) // seg_len   # 0 for empty scan: jobs=0, no access
+            seg_count = (scan + seg_len - 1) // seg_len
         ws = pl.make_tensor(workspace, [seg_count, outer], [outer, 1], dtype=pl.DT_FP32)
         carry_slot = carry_group.current()
 

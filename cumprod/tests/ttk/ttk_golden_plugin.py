@@ -31,21 +31,28 @@ def _cumprod_golden_fp32(x, dim):
 
 
 def _axis_to_dim(axis):
-    """axis is a small tensor (numpy or torch) holding the scan axis value."""
+    """axis value: plain int (op attr), small tensor, or numpy array."""
     if axis is None:
         return 0
+    if isinstance(axis, int):
+        return axis
     if torch.is_tensor(axis):
         return int(axis.reshape(-1)[0].item())
+    if isinstance(axis, (list, tuple)):
+        return int(axis[0])
     arr = np.asarray(axis).reshape(-1)
     return int(arr[0])
 
 
 class CumprodTestSpec:
-    """Cumprod golden for the kernel / geir paths (numpy inputs)."""
+    """Cumprod golden for the kernel / geir paths (numpy inputs).
+
+    axis arrives as an op attribute (int) after the attr-interface refactor.
+    """
 
     @staticmethod
     def golden(x, axis=None, exclusive=False, reverse=False, **kwargs):
-        return [_cumprod_golden_fp32(x, _axis_to_dim(axis)).numpy()]
+        return [_cumprod_golden_fp32(x, _axis_to_dim(axis))]
 
     tolerance = {
         "float32": {"standard": "stat_rel_err"},
@@ -55,11 +62,17 @@ class CumprodTestSpec:
 
 
 class AclnnCumprodTestSpec:
-    """aclnnCumprod golden for the aclnn path (torch tensor inputs)."""
+    """aclnnCumprod golden for the aclnn path (torch tensor inputs).
+
+    Official signature: aclnnCumprod(input, dim: aclScalar, dtype, out) — the
+    golden receives (x, dim, dtype, out) in API order; `axis` kept as an alias
+    for older callers.
+    """
 
     @staticmethod
-    def golden(x, axis=None, exclusive=False, reverse=False, out=None, **kwargs):
-        return [_cumprod_golden_fp32(x, _axis_to_dim(axis))]
+    def golden(x, dim=None, axis=None, dtype=None, out=None, **kwargs):
+        d = dim if dim is not None else axis
+        return [_cumprod_golden_fp32(x, _axis_to_dim(d))]
 
     tolerance = {
         "float32": {"standard": "stat_rel_err"},

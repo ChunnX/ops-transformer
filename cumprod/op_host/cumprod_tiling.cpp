@@ -10,10 +10,12 @@
 
 /*!
  * \file cumprod_tiling.cpp
- * \brief Cumprod tiling: fold shape to [outer, scan, inner], compute the
- *        segmentation for the low-outer/long-scan path, set TilingKey,
- *        BlockDim (full AIV launch: the in-kernel INTER_BLOCK stage barrier
- *        requires all-core participation) and Workspace.
+ * \brief Cumprod tiling: read the axis input (host const in the aclnn flow after
+ *        ConvertToTensor materialization, or a GE constant), fold shape to
+ *        [outer, scan, inner], compute the segmentation for the low-outer/long-scan
+ *        path, set TilingKey (axis_known / scan_mode), BlockDim (full AIV launch:
+ *        the in-kernel INTER_BLOCK stage barrier requires all-core participation)
+ *        and Workspace.
  */
 
 #include "cumprod_tiling.h"
@@ -29,8 +31,10 @@ static constexpr int64_t CUMPROD_MAX_RANK = 8;
 static constexpr int64_t CUMPROD_MAX_SEGMENTS = 64;   // MAXP in the kernel
 static constexpr int64_t CUMPROD_ROWS_FP32 = 64;      // ROWS32 in the kernel
 static constexpr int64_t CUMPROD_ROWS_NARROW = 128;   // ROWS16 in the kernel
-static constexpr int64_t CUMPROD_CHUNK_FP32 = 64;     // CHUNK32 in the kernel
-static constexpr int64_t CUMPROD_CHUNK_NARROW = 128;  // CHUNK16 in the kernel
+
+// Attr indices (cumprod_def.cpp): 0 = exclusive, 1 = reverse
+static constexpr uint32_t CUMPROD_ATTR_EXCLUSIVE = 0;
+static constexpr uint32_t CUMPROD_ATTR_REVERSE = 1;
 
 static bool CumprodGetConstAxis(gert::TilingContext *context, int64_t &axis)
 {
@@ -38,10 +42,10 @@ static bool CumprodGetConstAxis(gert::TilingContext *context, int64_t &axis)
     if (axisTensor == nullptr) {
         return false;
     }
-    // Only host-resident tensors are readable here. In the aclnn single-op
-    // flow the axis input is a device tensor: dereferencing it on host
-    // segfaults, so the kernel resolves it on device instead (TilingKey
-    // bit0 = axis_known = 0).
+    // Only host-resident tensors are readable here. The aclnn layer materializes the
+    // api scalar into a host const tensor (executor ConvertToTensor); GE constants are
+    // host-resident as well. A genuine device tensor (if a graph feeds one) is resolved
+    // by the kernel on device (TilingKey axis_known = 0).
     if (axisTensor->GetPlacement() != gert::kOnHost && axisTensor->GetPlacement() != gert::kFollowing) {
         return false;
     }
@@ -98,16 +102,18 @@ static ge::graphStatus CumprodTilingFunc(gert::TilingContext *context)
     OP_CHECK_IF(attrs == nullptr,
                 OP_LOGE(context->GetNodeName(), "GetAttrs is nullptr."),
                 return ge::GRAPH_PARAM_INVALID);
-    const bool *exclusivePtr = attrs->GetAttrPointer<bool>(0);
-    const bool *reversePtr = attrs->GetAttrPointer<bool>(1);
+    const bool *exclusivePtr = attrs->GetAttrPointer<bool>(CUMPROD_ATTR_EXCLUSIVE);
+    const bool *reversePtr = attrs->GetAttrPointer<bool>(CUMPROD_ATTR_REVERSE);
     if ((exclusivePtr != nullptr && *exclusivePtr) || (reversePtr != nullptr && *reversePtr)) {
         OP_LOGE(context->GetNodeName(), "Cumprod only supports exclusive=false and reverse=false.");
         return ge::GRAPH_PARAM_INVALID;
     }
 
-    // axis: const tensor input (index 1); readable on host only in the GE
-    // static flow (constant folding, host placement). In the aclnn single-op
-    // flow it is a device tensor and the kernel resolves it on device.
+    // axis: input tensor (index 1). In the aclnn flow the api scalar is materialized
+    // into a host const tensor (executor ConvertToTensor); in the GE flow it is a
+    // constant-folded Const. Host-resolved values drive the TilingKey specialization;
+    // a device-resident axis falls back to the kernel's device-side fold (every
+    // tiling key stays correct).
     int64_t dim = 0;
     const bool axisIsConst = CumprodGetConstAxis(context, dim);
 
@@ -197,8 +203,8 @@ static ge::graphStatus CumprodTilingFunc(gert::TilingContext *context)
         tilingData->seg_count = segCount;
         tilingData->seg_len = segLen;
     } else {
-        // Device-side axis resolution: the kernel folds the axes and computes
-        // the segmentation itself (same formula, cores = launched AIV count).
+        // Device-side axis resolution: the kernel folds the axes and computes the
+        // segmentation itself (same formula, cores = launched AIV count).
         // Workspace bound: seg_count * outer <= (4*aivNum - 1) * rows, since
         // seg_count > 1 implies jobsBase < 2*aivNum (outer <= jobsBase*rows)
         // and seg_count <= ceil(2*aivNum / jobsBase).
@@ -213,9 +219,9 @@ static ge::graphStatus CumprodTilingFunc(gert::TilingContext *context)
 
     // TilingKey: bit0 = axis_known (host-resolved axes), bit1 = scan_mode
     //            (0 = FOLD, 1 = SCAN; only meaningful when axis_known = 1).
-    //            Matches CumprodTilingKey in op_kernel/cumprod.py.
-    uint64_t tilingKey = static_cast<uint64_t>(axisIsConst ? 1 : 0) |
-                         (static_cast<uint64_t>(mode) << 1);
+    //            Matches CumprodTilingKey in op_kernel/cumprod.py; GET_TPL_TILING_KEY
+    //            packs each field per its candidate-value index.
+    uint64_t tilingKey = GET_TPL_TILING_KEY(axisIsConst ? 1 : 0, mode);
     context->SetTilingKey(tilingKey);
     workSpaces[0] = workspaceSize;
 

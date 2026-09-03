@@ -12,10 +12,20 @@ require_pypto_pro(cumprod)
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    # op_host_aclnnExc (not op_host_aclnn): with hand-written op_api the def must stay out of
+    # the aclnn autogen library, otherwise the generated aclnn_cumprod.cpp (op-def-derived
+    # signature x/axisTensor/exclusive/reverse/out) collides with our official-signature
+    # implementation in ../op_api.
+    target_sources(op_host_aclnnExc PRIVATE
     cumprod_def.cpp
     )
-    add_modules_sources(OPTYPE cumprod ACLNNTYPE aclnn)
+    # Hand-written op_api with the official aclnnCumprod signatures (aclScalar dim +
+    # aclDataType dtype): torch_npu's torch.cumprod adapter calls these symbols, so the
+    # op-def-derived autogen aclnn must not be generated nor exported.
+    add_modules_sources(OP_API_INDEPENDENT ON
+                        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+                        OPTYPE cumprod
+                        ACLNNTYPE aclnn_exclude)
     enable_pypto_kernel(cumprod)
 endif()
 
@@ -46,7 +56,10 @@ else()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE cumprod ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OP_API_INDEPENDENT ON
+                        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+                        OPTYPE cumprod
+                        ACLNNTYPE aclnn_exclude)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
