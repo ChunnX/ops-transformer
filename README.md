@@ -1,5 +1,6 @@
 # ops-transformer
 
+
 ## 🔥Latest News
 
 - [2026/07] A5上新支持算子[quant_flash_attn](attention/quant_flash_attn)，Dense Attention全量化场景专用，以及experimental目录新增[同名算子](experimental/attention/quant_flash_attn)支持A5的MxFP4全量化；[chunk_gated_delta_rule](attention/chunk_gated_delta_rule)算子支持A5；A5新增DSV4 dense训练阶段TopK筛选反向算子[dense_lightning_indexer_grad_kl_loss](attention/dense_lightning_indexer_grad_kl_loss)、[dense_lightning_indexer_softmax_lse](attention/dense_lightning_indexer_softmax_lse)；mc2新支持算子[engram_fetch_grad](mc2/engram_fetch_grad)。
