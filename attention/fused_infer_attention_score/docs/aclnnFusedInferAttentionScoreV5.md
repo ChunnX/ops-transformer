@@ -1745,9 +1745,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - per-token叠加per-head模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
         - per-token-group模式，shape的倒数第二维应大于等于maxBlockNumPerBatch * blockSize
     - 不支持合并rope
-    - kv cache排布为NZ且最后一维D0维等于32的场景（kv cache排布为[blockNum, KV_N, D/32, blockSize, 32]，K_D=V_D=128）：
+    - kv cache排布为NZ且最后一维D0维等于32的场景（kv cache排布为[blockNum, KV_N, D/32, blockSize, 32]）：
       - query：BFLOAT16，Q_S支持[1,16]，Q_D=128
-      - key/value：INT8
+      - key/value：INT8，K_D=V_D=128
       - inputLayout仅支持BSH、BSND、BNSD
       - innerPrecise仅支持1（高性能模式）
       - 仅支持KV参数分离量化，不支持非对称量化，不支持传入antiquantOffset、keyAntiquantOffset、valueAntiquantOffset
