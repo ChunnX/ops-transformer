@@ -29,6 +29,10 @@ constexpr size_t INPUT_PROB_IDX = 3;
 constexpr size_t ATTR_PADDEDMODE_IDX = 0;
 constexpr size_t DIM_0 = 0;
 constexpr size_t DIM_1 = 1;
+constexpr size_t DIM_NUM_ONE = 1;
+constexpr size_t DIM_NUM_TWO = 2;
+constexpr size_t ATTR_RANGE_IDX = 2;
+constexpr size_t ATTR_TOPK_IDX = 3;
 constexpr int64_t DEFAULT_END = 0;
 constexpr int64_t EP_RANGE_SIZE = 2;
 constexpr int64_t MAX_TOPK = 512;
@@ -349,36 +353,49 @@ static ge::graphStatus SetInfoForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tiling
     return ge::GRAPH_SUCCESS;
 }
 
+static bool GetRangeInfoForTiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext *context, int64_t totalNum,
+                                                              int64_t &start, int64_t &end)
+{
+    auto attrPtr = context->GetAttrs();
+    if (attrPtr == nullptr) {
+        OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] attrs is nullptr.");
+        return false;
+    }
+    auto epRangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(ATTR_RANGE_IDX);
+    start = 0;
+    end = totalNum;
+    if (epRangePtr == nullptr) {
+        return true;
+    }
+    OP_CHECK_IF(epRangePtr->GetSize() != EP_RANGE_SIZE,
+                OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return false);
+    const int64_t *epRangeList = static_cast<const int64_t *>(epRangePtr->GetData());
+    start = epRangeList[0];
+    end = epRangeList[1];
+    end = (end < 0) ? end + totalNum : end;
+    start = (start < 0) ? start + totalNum : start;
+    end = std::min(end, totalNum);
+    end = std::max(end, static_cast<int64_t>(0));
+    start = std::min(start, totalNum);
+    start = std::max(start, static_cast<int64_t>(0));
+    return end >= start;
+}
+
 static bool SetStartEndInfoForTiling4MoeTokenUnpermuteWithEpGrad(gert::TilingContext *context,
                                                                  MoeTokenUnpermuteWithEpGradTilingData &tiling,
                                                                  int64_t totalNum, int64_t numOutTokens)
 {
-    auto attrPtr = context->GetAttrs();
     MoeTokenUnpermuteWithEpGradInitSplitInfo(context, tiling); // 核间切分
     OP_LOGD("MoeTokenUnpermuteWithEpGradTiling MoeTokenUnpermuteWithEpGradInitSplitInfo finished");
     MoeTokenUnpermuteWithEpGradCoreSplitInfo(context, tiling); // 核内切分
     OP_LOGD("MoeTokenUnpermuteWithEpGradTiling MoeTokenUnpermuteWithEpGradCoreSplitInfo finished");
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-    auto epRangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(2);
     int64_t start = 0;
     int64_t end = totalNum;
-    if (epRangePtr != nullptr) {
-        OP_CHECK_IF(epRangePtr->GetSize() != EP_RANGE_SIZE,
-                    OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return ge::GRAPH_FAILED);
-        const int64_t *epRangeList = static_cast<const int64_t *>(epRangePtr->GetData());
-        start = epRangeList[0];
-        end = epRangeList[1];
-        end = (end < 0) ? end + totalNum : end;
-        start = (start < 0) ? start + totalNum : start;
-        end = std::min(end, totalNum);
-        end = std::max(end, static_cast<int64_t>(0));
-        start = std::min(start, totalNum);
-        start = std::max(start, static_cast<int64_t>(0));
-        if (end < start) {
-            return false;
-        }
-    }
+    OP_CHECK_IF(!GetRangeInfoForTiling4MoeTokenUnpermuteWithEpGrad(context, totalNum, start, end),
+                OP_LOGE(context->GetNodeName(), "rangeOptional[1] should not less than rangeOptional[0]"),
+                return false);
     if (start != 0) {
         numOutTokens = end;
     }
@@ -403,14 +420,14 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
     int64_t hiddenSize = unpermutedOutputDShape->GetStorageShape().GetDim(DIM_1);
     auto attrPtr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
-    const int64_t *topKPtr = attrPtr->GetAttrPointer<int64_t>(3);
+    const int64_t *topKPtr = attrPtr->GetAttrPointer<int64_t>(ATTR_TOPK_IDX);
     int64_t topK = 1;
     if (topKPtr != nullptr) {
         topK = *topKPtr;
     }
     const gert::StorageShape *rowMap = context->GetInputShape(INPUT_ROWIDMAP_IDX);
     size_t rowMapDimNnum = rowMap->GetStorageShape().GetDimNum();
-    if (rowMapDimNnum != DIM_1) {
+    if (rowMapDimNnum != DIM_NUM_ONE) {
         OP_LOGE(context->GetNodeName(), "The dim number of sort_indices should be 1.");
         return ge::GRAPH_FAILED;
     }
@@ -441,6 +458,31 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
     OP_CHECK_IF(topK > 512,
                 OP_LOGE(context->GetNodeName(), "[MoeTokenUnpermuteWithEpGrad] topK only support no greater than 512."),
                 return ge::GRAPH_FAILED);
+
+    int64_t start = 0;
+    int64_t end = totalNum;
+    OP_CHECK_IF(!GetRangeInfoForTiling4MoeTokenUnpermuteWithEpGrad(context, totalNum, start, end),
+                OP_LOGE(context->GetNodeName(), "rangeOptional[1] should not less than rangeOptional[0]"),
+                return ge::GRAPH_FAILED);
+    if (permutedTokensShape != nullptr) {
+        const auto &permutedTokensStorageShape = permutedTokensShape->GetStorageShape();
+        OP_CHECK_IF(permutedTokensStorageShape.GetDimNum() != DIM_NUM_TWO,
+                    OP_LOGE(context->GetNodeName(),
+                            "[MoeTokenUnpermuteWithEpGrad] permutedTokens should be 2D."),
+                    return ge::GRAPH_FAILED);
+        if (start != end) {
+            int64_t expectedPermutedTokensDim0 = end - start;
+            OP_CHECK_IF(permutedTokensStorageShape.GetDim(DIM_0) != expectedPermutedTokensDim0,
+                        OP_LOGE(context->GetNodeName(),
+                                "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim0 should be %ld, but got %ld.",
+                                expectedPermutedTokensDim0, permutedTokensStorageShape.GetDim(DIM_0)),
+                        return ge::GRAPH_FAILED);
+        }
+        OP_CHECK_IF(permutedTokensStorageShape.GetDim(DIM_1) != hiddenSize,
+                    OP_LOGE(context->GetNodeName(),
+                            "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim1 should equal hiddenSize."),
+                    return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF(!SetStartEndInfoForTiling4MoeTokenUnpermuteWithEpGrad(context, tiling, totalNum, numOutTokens),
                 OP_LOGE(context->GetNodeName(), "rangeOptional[1] should not less than rangeOptional[0]"),
