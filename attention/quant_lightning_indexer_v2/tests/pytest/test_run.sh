@@ -32,8 +32,8 @@ show_help() {
   -M, --run-mode MODE       eager|graph，默认 eager
   -O, --output FILE         结果 Excel 路径；single 默认 single_result.xlsx，batch 默认 result.xlsx
 
-batch/batch_exec 选项:
-  -C, --cases NAMES         按给定顺序执行 case 名，逗号分隔，可省略 .pt
+用例筛选及 batch/batch_exec 选项:
+  -C, --cases NAMES         single 可选场景名或展开名（如 NAME_003）；batch 按 case 名筛选
   -I, --indexes INDEXES     按自然排序后的 1-based 序号执行，如 3,1,5-7
   -E, --excel FILE          Excel 路径；batch 不传时跳过 PT 生成
   -S, --sheet NAME          Sheet 名，默认 Sheet1
@@ -41,8 +41,10 @@ batch/batch_exec 选项:
 
 single 选项:
       --save-pt DIR         single 保存本次实际输入和 CPU golden 的目录
+      --paramset NAME       参数文件：default、stc 或可导入模块名，默认 default
 
 示例:
+  $0 single --paramset stc -C MXFP8_S1_21
   $0 single --save-pt ./single_pt -O ./result/single.xlsx
   $0 batch -P ./pt_path
   $0 batch -E ./excel/test_cases.xlsx -P ./pt_path -O ./result/batch.xlsx
@@ -78,9 +80,11 @@ run_batch_pytest() {
 }
 
 run_single() {
-    echo "===== QLI_V2 single: mode=$RUN_MODE result=$RESULT_PATH ====="
+    echo "===== QLI_V2 single: paramset=$PARAMSET_MODULE cases=${CASE_NAMES:-all} mode=$RUN_MODE result=$RESULT_PATH ====="
     QLIV2_SINGLE_SAVE_PT_DIR="$SAVE_PT_DIR" \
     QLIV2_SINGLE_RESULT_PATH="$RESULT_PATH" \
+    QLIV2_PARAMSET_MODULE="$PARAMSET_MODULE" \
+    QLIV2_CASE_NAMES="$CASE_NAMES" \
     QLIV2_RUN_MODE="$RUN_MODE" \
         python3 -m pytest -rA -s "$SINGLE_TEST_SCRIPT" -v -m ci \
         -W ignore::UserWarning -W ignore::DeprecationWarning
@@ -137,6 +141,7 @@ RESULT_PATH=""
 CASE_NAMES=""
 CASE_INDEXES=""
 SAVE_PT_DIR=""
+PARAMSET_MODULE="default"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -178,6 +183,11 @@ while [ $# -gt 0 ]; do
         --save-pt)
             require_value "$1" "$2"
             SAVE_PT_DIR="$2"
+            shift 2
+            ;;
+        --paramset)
+            require_value "$1" "$2"
+            PARAMSET_MODULE="$2"
             shift 2
             ;;
         -h|--help)

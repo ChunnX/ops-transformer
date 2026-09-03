@@ -9,108 +9,117 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# ====================== 配置区======================
-# 需要读取的用例excel表格路径，如下：
-PATH1="./excel/*"
-# 用例pt的文件存放路径，如下：
-PATH2="./pt_path"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PATH1="${SCRIPT_DIR}/excel/*"
+PATH2="${SCRIPT_DIR}/pt_path"
 
-# 脚本路径
-LIV2_PT_SAVE_SCRIPT="./batch/lightning_indexer_v2_pt_save.py"
-TEST_LIV2_BATCH_SCRIPT="test_lightning_indexer_v2_batch.py"
-REPLACE_PATH_SCRIPT="./batch/replace_path.py"
-TEST_LIV2_SINGLE_SCRIPT="test_lightning_indexer_v2_single.py"
+LIV2_PT_SAVE_SCRIPT="${SCRIPT_DIR}/batch/lightning_indexer_v2_pt_save.py"
+TEST_LIV2_BATCH_SCRIPT="${SCRIPT_DIR}/test_lightning_indexer_v2_batch.py"
+REPLACE_PATH_SCRIPT="${SCRIPT_DIR}/batch/replace_path.py"
+TEST_LIV2_SINGLE_SCRIPT="${SCRIPT_DIR}/test_lightning_indexer_v2_single.py"
 
-# ====================== 执行区======================
 
-# 单用例算子调测
-run_single() {
-    echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_LIV2_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+show_help() {
+    echo "Usage: $0 <command> [options]"
+    echo "Commands:"
+    echo "  single [--paramset default|stc|MODULE] [-C CASE[,CASE...]] [-M eager|graph]"
+    echo "  batch [eager|graph]"
+    echo "  help"
+    echo "Examples:"
+    echo "  $0 single --paramset stc"
+    echo "  $0 single --paramset stc -C META_TRAILING_K_ZERO_41"
+    echo "  $0 single --paramset stc -C S2_16_003 -M graph"
+    echo "  $0 batch graph"
 }
 
-# 用例批量生成调试
-# 用法: run_batch [eager|graph]
-#   eager - 直接调用算子（默认）
-#   graph - 通过 torch.compile + torchair 后端执行
+
+run_single() {
+    local paramset_module="$1"
+    local case_names="$2"
+    local run_mode="$3"
+    LIV2_PARAMSET_MODULE="${paramset_module}" \
+    LIV2_CASE_NAMES="${case_names}" \
+    LIV2_RUN_MODE="${run_mode}" \
+        python3 -m pytest -rA -s "${TEST_LIV2_SINGLE_SCRIPT}" -v -m ci \
+        -W ignore::UserWarning -W ignore::DeprecationWarning
+}
+
+
 run_batch() {
     local run_mode="${1:-eager}"
-    echo "===== 执行用例批量生成测试 (模式: ${run_mode}) ====="
+    echo "===== Generate LI V2 batch inputs ====="
+    # PATH1 intentionally remains unquoted so the shell expands the Excel glob.
+    python3 "${LIV2_PT_SAVE_SCRIPT}" ${PATH1} "${PATH2}" || exit 1
 
-    echo -e "\n===== 第一步：执行lightning_indexer_v2_pt_save.py ====="
-    python3 $LIV2_PT_SAVE_SCRIPT $PATH1 $PATH2
-    if [ $? -ne 0 ]; then
-        echo "lightning_indexer_v2_pt_save.py 执行失败，退出"
-        exit 1
+    echo "===== Update batch input paths ====="
+    python3 "${REPLACE_PATH_SCRIPT}" "${TEST_LIV2_BATCH_SCRIPT}" "${PATH2}" || exit 1
+
+    echo "===== Run LI V2 batch tests (${run_mode}) ====="
+    LIV2_RUN_MODE="${run_mode}" \
+        python3 -m pytest -rA -s "${TEST_LIV2_BATCH_SCRIPT}" -v -m ci
+    local test_status=$?
+
+    if [ -f "${TEST_LIV2_BATCH_SCRIPT}.bak" ]; then
+        cp "${TEST_LIV2_BATCH_SCRIPT}.bak" "${TEST_LIV2_BATCH_SCRIPT}"
     fi
-
-    echo -e "\n===== 第二步：替换test_lightning_indexer_v2_batch.py中的路径 ====="
-    python3 $REPLACE_PATH_SCRIPT $TEST_LIV2_BATCH_SCRIPT $PATH2
-    if [ $? -ne 0 ]; then
-        echo "替换路径失败，退出"
-        exit 1
-    fi
-
-    echo -e "\n===== 第三步：执行pytest命令 (LIV2_RUN_MODE=${run_mode}) ====="
-    LIV2_RUN_MODE="${run_mode}" python3 -m pytest -rA -s $TEST_LIV2_BATCH_SCRIPT -v -m ci
-    if [ $? -ne 0 ]; then
-        echo "pytest执行失败"
-        exit 1
-    fi
-
-    cp test_lightning_indexer_v2_batch.py.bak test_lightning_indexer_v2_batch.py
-
-    echo -e "\n=====执行完成！====="
+    return "${test_status}"
 }
 
-# 显示帮助信息
-show_help() {
-    echo "用法: $0 <command> [run_mode]"
-    echo "命令说明："
-    echo "  single              执行单算子用例调测"
-    echo "  batch [eager|graph] 执行用例批量生成调试"
-    echo "                        eager - 直接调用算子（默认）"
-    echo "                        graph - torch.compile + torchair 后端"
-    echo "  help                显示本帮助信息"
-    echo "示例："
-    echo "  $0 single        # 执行single模式"
-    echo "  $0 batch         # 执行batch模式（默认eager）"
-    echo "  $0 batch eager   # 显式指定eager模式"
-    echo "  $0 batch graph   # 使用graph模式"
-}
 
-# ====================== 主逻辑 ======================
-# 检查传入的参数数量
 if [ $# -lt 1 ]; then
- 	     echo "错误：必须传入至少一个参数"
     show_help
     exit 1
 fi
 
-COMMAND="$1"
-RUN_MODE="${2:-eager}"
+command_name="$1"
+shift
 
-# 根据参数执行对应函数
-case "$COMMAND" in
+case "${command_name}" in
     single)
-        run_single
-        ;;
-    batch)
-        if [[ "$RUN_MODE" != "eager" && "$RUN_MODE" != "graph" ]]; then
-            echo "错误：batch 模式仅支持 eager/graph，当前值: $RUN_MODE"
-            show_help
+        paramset_module="default"
+        case_names=""
+        run_mode="eager"
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --paramset)
+                    paramset_module="$2"
+                    shift 2
+                    ;;
+                -C|--cases)
+                    case_names="$2"
+                    shift 2
+                    ;;
+                -M|--run-mode)
+                    run_mode="$2"
+                    shift 2
+                    ;;
+                *)
+                    echo "Unknown single option: $1"
+                    show_help
+                    exit 1
+                    ;;
+            esac
+        done
+        if [[ "${run_mode}" != "eager" && "${run_mode}" != "graph" ]]; then
+            echo "single run mode must be eager or graph: ${run_mode}"
             exit 1
         fi
-        run_batch "$RUN_MODE"
+        run_single "${paramset_module}" "${case_names}" "${run_mode}"
         ;;
-    help)
+    batch)
+        run_mode="${1:-eager}"
+        if [[ "${run_mode}" != "eager" && "${run_mode}" != "graph" ]]; then
+            echo "batch run mode must be eager or graph: ${run_mode}"
+            exit 1
+        fi
+        run_batch "${run_mode}"
+        ;;
+    help|-h|--help)
         show_help
         ;;
     *)
-        echo "错误：未知命令 '$COMMAND'"
+        echo "Unknown command: ${command_name}"
         show_help
         exit 1
         ;;
 esac
-
-exit 0

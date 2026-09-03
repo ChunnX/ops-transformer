@@ -10,13 +10,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import importlib
 import itertools
 import os
 from pathlib import Path
 
 import torch
 import torch_npu
-from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMSETS
 import result_compare_method
 import quant_lightning_indexer_v2_golden
 import pytest
@@ -26,6 +26,24 @@ from qliv2_test_utils import QliV2ResultWriter, ensure_comparison_passed
 
 SAVE_PT_DIR = os.environ.get("QLIV2_SINGLE_SAVE_PT_DIR", "").strip()
 RESULT_PATH = os.environ.get("QLIV2_SINGLE_RESULT_PATH", "").strip()
+
+PARAMSET_MODULE_ALIASES = {
+    "default": "test_quant_lightning_indexer_v2_paramset",
+    "stc": "test_quant_lightning_indexer_v2_stc",
+}
+paramset_module_name = os.environ.get(
+    "QLIV2_PARAMSET_MODULE", "test_quant_lightning_indexer_v2_paramset"
+).strip()
+paramset_module_name = PARAMSET_MODULE_ALIASES.get(
+    paramset_module_name, paramset_module_name
+)
+ENABLED_PARAMSETS = importlib.import_module(paramset_module_name).ENABLED_PARAMSETS
+
+requested_case_names = [
+    name.strip()
+    for name in os.environ.get("QLIV2_CASE_NAMES", "").split(",")
+    if name.strip()
+]
 
 param_names = [
     "batch_size",
@@ -65,6 +83,7 @@ param_names = [
 ]
 
 param_combinations = []
+matched_case_names = set()
 for paramset_name, params in ENABLED_PARAMSETS:
     param_values = [
         params.get(
@@ -80,7 +99,24 @@ for paramset_name, params in ENABLED_PARAMSETS:
             if len(combinations) == 1
             else f"{paramset_name}_{combo_index:03d}"
         )
-        param_combinations.append(param_dict)
+        if requested_case_names and (
+            paramset_name not in requested_case_names
+            and param_dict["case_name"] not in requested_case_names
+        ):
+            continue
+        matched_case_names.add(paramset_name)
+        matched_case_names.add(param_dict["case_name"])
+        param_combinations.append(
+            pytest.param(param_dict, id=param_dict["case_name"])
+        )
+
+unknown_case_names = [
+    name for name in requested_case_names if name not in matched_case_names
+]
+if unknown_case_names:
+    raise ValueError(
+        f"unknown case(s) in {paramset_module_name}: {unknown_case_names}"
+    )
 
 
 @pytest.mark.ci
