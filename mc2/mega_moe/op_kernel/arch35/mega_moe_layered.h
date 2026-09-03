@@ -369,7 +369,7 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::IsChannel
 
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline uint32_t MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CalcTargetWaveCount() const
-{
+{//todo:这里需要改
     if (moeExpertPerRank_ <= 1U) {
         return moeExpertPerRank_;
     }
