@@ -106,9 +106,14 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         enable_lse: bool = False,
         graph_path: int = 0,
         input_layout: str = "TND",
+        layout_q: str = "TND",
+        layout_q_descale: str = "TND",
+        layout_kv: str = "TND",
+        layout_out: str = "TND",
         is_contiguous: bool = True,
         device_id: int = 0,
         softmax_scale: Optional[float] = None,
+        head_dim_v: Optional[int] = None,
         data_range_q: float = 1.0,
         data_range_k: float = 1.0,
         data_range_v: float = 1.0,
@@ -143,12 +148,18 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
         # B: 从 cu_seqlens_q 推导的正整数, 供 prepare_npu_inputs 生成 BNSD 张量。
         B = (
-            max(1, len(cu_seqlens_q_list) - 1)
-            if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
-            else 1
+            batch_size
+            if batch_size is not None and batch_size > 0
+            else (
+                max(1, len(cu_seqlens_q_list) - 1)
+                if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+                else len(list(seqused_q_list))
+                if seqused_q_list is not None and len(list(seqused_q_list)) > 0
+                else 1
+            )
         )
 
-        attn_mask_shape = tuple(attn_mask_t.shape)
+        attn_mask_shape = tuple(attn_mask_t.shape) if attn_mask_t is not None else None
 
         # ---- 2. 注入 golden 全局变量 (prepare_npu_inputs 依赖) ----
         _apply_golden_globals(
@@ -176,10 +187,15 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "QUANT_MODE": quant_mode,
                 "QUANT_GROUP_SIZE": 32,
                 "INPUT_LAYOUT": input_layout,
+                "LAYOUT_Q": layout_q,
+                "LAYOUT_Q_DESCALE": layout_q_descale,
+                "LAYOUT_KV": layout_kv,
+                "LAYOUT_OUT": layout_out,
                 "IS_CONTIGUOUS": is_contiguous,
                 "DEVICE_ID": device_id,
                 "GRAPH_PATH": graph_path,
                 "SOFTMAX_SCALE": softmax_scale,
+                "HEAD_DIM_V": head_dim_v,
                 "SEED_Q": kwargs.get("seed_q"),
                 "SEED_K": kwargs.get("seed_k"),
                 "SEED_V": kwargs.get("seed_v"),
@@ -191,22 +207,14 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         )
 
         # ---- 3. 透传 ----
-
-        def _to_cpu(t):
-            return (
-                t.detach().cpu()
-                if isinstance(t, torch.Tensor) and t.device.type == "npu"
-                else t
-            )
-
-        q_fp8 = _to_cpu(q)
-        k_fp8 = _to_cpu(k)
-        v_fp8 = _to_cpu(v)
-        dequant_scale_q_cpu = _to_cpu(dequant_scale_q)
-        dequant_scale_k_cpu = _to_cpu(dequant_scale_k)
-        dequant_scale_v_cpu = _to_cpu(dequant_scale_v)
-        p_scale_cpu = _to_cpu(p_scale)
-        block_table_cpu = _to_cpu(block_table)
+        q_fp8 = q
+        k_fp8 = k
+        v_fp8 = v
+        dequant_scale_q_cpu = dequant_scale_q
+        dequant_scale_k_cpu = dequant_scale_k
+        dequant_scale_v_cpu = dequant_scale_v
+        p_scale_cpu = p_scale
+        block_table_cpu = block_table
 
         logger.info(
             "[GRAPH] 透传 fp8+e8m0 (q=%s, k=%s, v=%s, dq=%s, dk=%s, dv=%s, enable_pa=%s)",

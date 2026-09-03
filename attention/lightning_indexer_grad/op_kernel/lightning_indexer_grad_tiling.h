@@ -17,6 +17,8 @@
 #include <stdint.h>
 
 namespace optiling {
+constexpr uint32_t LIG_MAX_CORE_NUM = 64;
+
 // -----------算子TilingData定义---------------
 class LIGTilingData {
 public:
@@ -39,84 +41,196 @@ public:
     int64_t scatterAddWorkspaceOffset;
     uint64_t sparseMode;
     bool deterministic;
+    uint64_t totalS1;
+    uint64_t coreS1StartIdx[LIG_MAX_CORE_NUM + 1];
 
     // ========================
     // Getter & Setter 方法
     // ========================
-    uint32_t get_batch() const { return batch; }
-    void set_batch(uint32_t batch) { this->batch = batch; }
+    uint32_t get_batch() const
+    {
+        return batch;
+    }
+    void set_batch(uint32_t batch)
+    {
+        this->batch = batch;
+    }
 
-    uint32_t get_seqlenQ() const { return seqlenQ; }
-    void set_seqlenQ(uint32_t seqlenQ) { this->seqlenQ = seqlenQ; }
+    uint32_t get_seqlenQ() const
+    {
+        return seqlenQ;
+    }
+    void set_seqlenQ(uint32_t seqlenQ)
+    {
+        this->seqlenQ = seqlenQ;
+    }
 
-    uint32_t get_seqlenK() const { return seqlenK; }
-    void set_seqlenK(uint32_t seqlenK) { this->seqlenK = seqlenK; }
+    uint32_t get_seqlenK() const
+    {
+        return seqlenK;
+    }
+    void set_seqlenK(uint32_t seqlenK)
+    {
+        this->seqlenK = seqlenK;
+    }
 
-    uint32_t get_topK() const { return topK; }
-    void set_topK(uint32_t topK) { this->topK = topK; }
+    uint32_t get_topK() const
+    {
+        return topK;
+    }
+    void set_topK(uint32_t topK)
+    {
+        this->topK = topK;
+    }
 
-    uint32_t get_headNumQ() const { return headNumQ; }
-    void set_headNumQ(uint32_t headNumQ) { this->headNumQ = headNumQ; }
+    uint32_t get_headNumQ() const
+    {
+        return headNumQ;
+    }
+    void set_headNumQ(uint32_t headNumQ)
+    {
+        this->headNumQ = headNumQ;
+    }
 
-    uint32_t get_headNumK() const { return headNumK; }
-    void set_headNumK(uint32_t headNumK) { this->headNumK = headNumK; }
+    uint32_t get_headNumK() const
+    {
+        return headNumK;
+    }
+    void set_headNumK(uint32_t headNumK)
+    {
+        this->headNumK = headNumK;
+    }
 
-    uint32_t get_groupNum() const { return groupNum; }
-    void set_groupNum(uint32_t groupNum) { this->groupNum = groupNum; }
+    uint32_t get_groupNum() const
+    {
+        return groupNum;
+    }
+    void set_groupNum(uint32_t groupNum)
+    {
+        this->groupNum = groupNum;
+    }
 
-    float get_headDim() const { return headDim; }
-    void set_headDim(float headDim) { this->headDim = headDim; }
+    float get_headDim() const
+    {
+        return headDim;
+    }
+    void set_headDim(float headDim)
+    {
+        this->headDim = headDim;
+    }
 
-    float get_usedCoreNum() const { return usedCoreNum; }
-    void set_usedCoreNum(float usedCoreNum) { this->usedCoreNum = usedCoreNum; }
+    float get_usedCoreNum() const
+    {
+        return usedCoreNum;
+    }
+    void set_usedCoreNum(float usedCoreNum)
+    {
+        this->usedCoreNum = usedCoreNum;
+    }
 
-    int64_t get_dkSize() const { return dkSize; }
-    void set_dkSize(int64_t dkSize) { this->dkSize = dkSize; }
+    int64_t get_dkSize() const
+    {
+        return dkSize;
+    }
+    void set_dkSize(int64_t dkSize)
+    {
+        this->dkSize = dkSize;
+    }
 
-    int64_t get_dkCoreSize() const { return dkCoreSize; }
-    void set_dkCoreSize(int64_t dkCoreSize) { this->dkCoreSize = dkCoreSize; }
+    int64_t get_dkCoreSize() const
+    {
+        return dkCoreSize;
+    }
+    void set_dkCoreSize(int64_t dkCoreSize)
+    {
+        this->dkCoreSize = dkCoreSize;
+    }
 
-    int64_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
+    int64_t get_dkWorkSpaceOffset() const
+    {
+        return dkWorkSpaceOffset;
+    }
     void set_dkWorkSpaceOffset(int64_t dkWorkSpaceOffset)
     {
         this->dkWorkSpaceOffset = dkWorkSpaceOffset;
     }
 
-    int64_t get_dkCoreWorkspaceOffset() const { return dkCoreWorkspaceOffset; }
+    int64_t get_dkCoreWorkspaceOffset() const
+    {
+        return dkCoreWorkspaceOffset;
+    }
     void set_dkCoreWorkspaceOffset(int64_t dkCoreWorkspaceOffset)
     {
         this->dkCoreWorkspaceOffset = dkCoreWorkspaceOffset;
     }
 
-    int64_t get_keyGatherWorkspaceOffset() const { return keyGatherWorkspaceOffset; }
+    int64_t get_keyGatherWorkspaceOffset() const
+    {
+        return keyGatherWorkspaceOffset;
+    }
     void set_keyGatherWorkspaceOffset(int64_t keyGatherWorkspaceOffset)
     {
         this->keyGatherWorkspaceOffset = keyGatherWorkspaceOffset;
     }
 
-    int64_t get_reluInWorkspaceOffset() const { return reluInWorkspaceOffset; }
+    int64_t get_reluInWorkspaceOffset() const
+    {
+        return reluInWorkspaceOffset;
+    }
     void set_reluInWorkspaceOffset(int64_t reluInWorkspaceOffset)
     {
         this->reluInWorkspaceOffset = reluInWorkspaceOffset;
     }
 
-    int64_t get_reluGradWorkspaceOffset() const { return reluGradWorkspaceOffset; }
+    int64_t get_reluGradWorkspaceOffset() const
+    {
+        return reluGradWorkspaceOffset;
+    }
     void set_reluGradWorkspaceOffset(int64_t reluGradWorkspaceOffset)
     {
         this->reluGradWorkspaceOffset = reluGradWorkspaceOffset;
     }
 
-    int64_t get_scatterAddWorkspaceOffset() const { return scatterAddWorkspaceOffset; }
+    int64_t get_scatterAddWorkspaceOffset() const
+    {
+        return scatterAddWorkspaceOffset;
+    }
     void set_scatterAddWorkspaceOffset(int64_t scatterAddWorkspaceOffset)
     {
         this->scatterAddWorkspaceOffset = scatterAddWorkspaceOffset;
     }
 
-    uint32_t get_sparseMode() const { return sparseMode; }
-    void set_sparseMode(uint32_t sparseMode) { this->sparseMode = sparseMode; }
+    uint32_t get_sparseMode() const
+    {
+        return sparseMode;
+    }
+    void set_sparseMode(uint32_t sparseMode)
+    {
+        this->sparseMode = sparseMode;
+    }
 
-    bool get_determinstic() const { return deterministic; }
-    void set_deterministic(bool deterministic) { this->deterministic = deterministic; }
+    bool get_determinstic() const
+    {
+        return deterministic;
+    }
+    void set_deterministic(bool deterministic)
+    {
+        this->deterministic = deterministic;
+    }
+
+    uint64_t get_totalS1() const
+    {
+        return totalS1;
+    }
+    void set_totalS1(uint64_t totalS1)
+    {
+        this->totalS1 = totalS1;
+    }
+
+    uint64_t *get_coreS1StartIdxPtr()
+    {
+        return coreS1StartIdx;
+    }
 
     void reset()
     {
@@ -138,7 +252,11 @@ public:
         set_groupNum(0);
         set_headNumK(0);
         set_deterministic(false);
+        set_totalS1(0);
+        for (uint32_t i = 0; i <= LIG_MAX_CORE_NUM; i++) {
+            coreS1StartIdx[i] = 0;
+        }
     }
 };
-}  // namespace optiling
+} // namespace optiling
 #endif // LIGHTNING_INDEXER_GRAD_TILING_H_

@@ -334,3 +334,214 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 [INFO] 卡0 <-> 卡1完全一致(顺序+内容+次数相同)<br>
 [INFO] graph图文件分析完成<br>
 <b>上述结果为对GRAPH_PATH下对应卡的graph图文件分析，并根据文件中的信息,判断每张卡的算子执行顺序、次数、内容是否完全一致,不一致则视为异常</b>
+
+## moe_ep 异常 dump 分析 (IS_MOE_EP=1)
+
+### 背景
+
+A5(950)芯片的 MoeEpDispatch/MoeEpCombine 算子采用结构化 win 区布局, 与原有 V2 算子的固定 1MB raw dump 不同。新增 `IS_MOE_EP` 参数, 为 1 时调用 `dump_analysis_moe_ep.py` 脚本进行结构化解析, 仅 `SOC_VERSION=950` 时生效。
+
+### dump_analysis.sh 参数说明
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `TARGET_DIR` | 是 | dump 数据路径, 单卡为 exception_info 所在目录, 多卡为包含数字子目录(如 0/ 1/ 3/ 4/)的父目录 |
+| `TOOL_PATH` | 是 | 装包路径下 tools 目录所在路径, 如 `xxx/xxx/pkg/cann-x.x.x/` |
+| `SOC_VERSION` | 是 | 芯片版本, 当前仅支持 `950` |
+| `IS_MOE_EP` | 否 | 0: 使用原 `dump_analysis.py`, 1: 使用 `dump_analysis_moe_ep.py`, 仅 `SOC_VERSION=950` 生效, 默认 0 |
+| `SP_MOE_NUM` | 否 | 特殊专家数, 不填默认 0 |
+| `TP_WORLDSIZE` | 否 | TP_WORLDSIZE, 不填默认 1 |
+| `SHARE_EXPERT_CARD_COUNT` | 否 | 共享专家卡数, 不填默认 0 |
+| `SHARE_EXPERT_NUM` | 否 | 共享专家数, 不填默认 0 |
+
+### 调用方式
+
+通过 `dump_analysis.sh` 调用 (单卡多卡命令相同, 由 TARGET_DIR 目录结构区分):
+
+```bash
+# 基本调用
+bash dump_analysis.sh TARGET_DIR=/path/to/dump TOOL_PATH=/path/to/cann SOC_VERSION=950 IS_MOE_EP=1
+
+# 完整参数示例
+bash dump_analysis.sh \
+    TARGET_DIR=/path/to/dump \
+    TOOL_PATH=/path/to/cann \
+    SOC_VERSION=950 \
+    IS_MOE_EP=1 \
+    SP_MOE_NUM=0 \
+    TP_WORLDSIZE=1 \
+    SHARE_EXPERT_CARD_COUNT=0 \
+    SHARE_EXPERT_NUM=0
+```
+
+单卡: TARGET_DIR 下直接有 exception_info 文件; 多卡: TARGET_DIR 下有数字命名的子目录(如 0/ 1/ 3/ 4/), 卡号无需连续。
+
+### dump 文件说明
+
+- `exception_info.*` — CANN 框架 dump, 经 CANN 解析脚本解析后生成 `input.0*bin`(context)、`input.2*bin`(topk_idx) 等输入输出文件
+- `*.metadata.bin` — Metadata 区, 包含 `MoeEpDumpMetadata` 结构体(10 个 uint32 字段 + 6 个 Region 的 offset/size, offset/size 为 uint64)
+- `*.per_core_diag.bin` — Per-core 诊断区, 100 个核 x 512B, 每核 512B slot 内含 4 个 MoeEpCoreDiagRecord(各 64B), 按 byte offset 固定映射:
+
+  | byte offset | op_index | 算子 |
+  |-------------|----------|------|
+  | 0           | 0        | dispatch |
+  | 64          | 1        | dispatch_epilogue |
+  | 128         | 2        | combine |
+  | 192         | 3        | combine_epilogue |
+
+  record 布局: uint64 opCnt + uint32 runPosition + uint32 epRankId + uint32 aivId
+- `*.count_notify.bin` — Count Notify 区, epWorldSize 个 512B 块, 每块第一个 uint32
+- `*.expert_count.bin` — Expert Count 区, epWorldSize 个 512B 块, 每块取 localExpertNum 个 uint32
+- `*.combine_token_state.bin` — Combine Token State 区, nmt*topK 个 512B 块, 每块第一个 uint32
+
+### dump 文件数据结构说明
+
+#### Metadata 结构体 (`metadata.bin`)
+
+Metadata 区固定 64 KiB, 有效结构体 <=512B 位于区域开头, 剩余保留。
+
+```cpp
+struct MoeEpDumpRegion {
+    uint64_t offset;
+    uint64_t size;
+};
+
+struct MoeEpDumpMetadata {
+    uint32_t layoutVersion;        // 布局版本
+    uint32_t nmt;                  // numMaxTokensPerRank
+    uint32_t topK;                 // topk 值
+    uint32_t hidden;               // hidden 维度
+    uint32_t epWorldSize;          // EP 总卡数
+    uint32_t localExpertNum;       // 本卡专家数
+    uint32_t aivNum;               // AIV 核数
+    uint32_t networkMode;          // 0=direct, 1=hybrid
+    uint32_t serverNum;            // 服务器数
+    uint32_t rankNumPerServer;     // 每服务器卡数
+    MoeEpDumpRegion regions[6];   // 6 个固定 Region (offset: uint64, size: uint64)
+};
+```
+
+Region 下标定义:
+
+| 下标 | Region 名称 | 说明 |
+|------|------------|------|
+| 0 | PER_CORE_DIAG | 每核诊断信息, 100x512B |
+| 1 | COUNT_NOTIFY | Dispatch 每源 rank 的 token 计数 |
+| 2 | EXPERT_COUNT | 每卡每专家 token 计数 |
+| 3 | DISPATCH_SLOT_STATE | Dispatch 通信完成状态 |
+| 4 | COMBINE_TOKEN_STATE | Combine 每(token,topk)状态 |
+| 5 | HYBRID_SCALEOUT_STATUS | Hybrid scaleout 状态(direct 模式填{0,0}) |
+
+#### Per-core 诊断记录 (`per_core_diag.bin`)
+
+Per-core 诊断区固定 100 个核 x 512B, 每个 AIV 使用一个 512B slot。每个 slot 内前 4 个 64B 分别分配给四个算子, 剩余 256B 保留。
+
+`MoeEpCoreDiagRecord` 固定 64B, 有效字段占前 20B:
+
+```cpp
+struct MoeEpCoreDiagRecord {
+    uint64_t opCnt;        // 执行轮次, 每次 Init 加 1
+    uint32_t runPosition;  // 最后完成的检查点, 0=Init 未完成
+    int32_t  epRankId;     // 本地 EP rank
+    uint32_t aivId;        // AIV ID
+    uint8_t  reserved[44]; // 保留
+};
+```
+
+字段 offset:
+
+| 字段 | Offset | Size |
+|------|--------|------|
+| opCnt | 0 | 8B |
+| runPosition | 8 | 4B |
+| epRankId | 12 | 4B |
+| aivId | 16 | 4B |
+| reserved | 20 | 44B |
+
+`runPosition` 按算子独立编号, 不同算子定义不同:
+
+| 值 | dispatch | dispatch_epilogue | combine | combine_epilogue |
+|----|----------|-------------------|---------|------------------|
+| 0 | Init 未完成 | Init 未完成 | Init 未完成 | Init 未完成 |
+| 1 | Init 完成 | Init 完成 | Init 完成 | Init 完成 |
+| 2 | count 等待和接收完成 | 已等待全部 Dispatch 状态到达 | URMA 发起完成 | 已等待全部 Combine 状态到达 |
+| 3 | URMA 发起完成 | 输出处理完成 | - | 输出处理完成 |
+
+#### Count Notify (`count_notify.bin`)
+
+布局: `epWorldSize` 个 512B 块, 每块第一个 uint32 为该源 rank 发送的 token 计数。
+
+| 偏移 | 大小 | 字段 |
+|------|------|------|
+| rank_id * 512B | 4B | 该 rank 发送的 token 计数 (uint32) |
+| rank_id * 512B + 4B | 508B | 保留 |
+
+#### Expert Count (`expert_count.bin`)
+
+布局: `epWorldSize` 个 512B 块, 每块包含 `localExpertNum` 个 uint32, 为该 rank 每个专家收到的 token 计数。
+
+| 偏移 | 大小 | 字段 |
+|------|------|------|
+| rank_id * 512B + expert_id * 4B | 4B | 该专家收到的 token 计数 (uint32) |
+| rank_id * 512B + localExpertNum * 4B | 512 - localExpertNum*4 B | 保留 |
+
+#### Dispatch Slot State (`dispatch_slot_state.bin`)
+
+布局: `dispatchNotifyCount * epWorldSize` 个 512B 块, 每块第一个 uint32 为该 (源 rank, notify 批次) 的通信完成状态。
+
+#### Combine Token State (`combine_token_state.bin`)
+
+布局: `nmt * topK` 个 512B 块, 每块第一个 uint32 为该 (token, topk) 的回传完成状态。
+
+| 偏移 | 大小 | 字段 |
+|------|------|------|
+| (token_id * topK + topk_id) * 512B | 4B | 回传完成状态 (uint32) |
+| ... + 4B | 508B | 保留 |
+
+#### Hybrid Scaleout Status (`hybrid_scaleout_status.bin`)
+
+布局: `serverNum * nmt` 个 512B 块, 每块为 hybrid 模式下的 scaleout 状态。direct 模式下 Region 为 `{0, 0}`, 不输出数据。
+
+### MoeCommContext 结构体 (context / input.0)
+
+```cpp
+struct MoeCommContext {
+    uint32_t epRankId;              // 卡id
+    uint32_t rankSizePerServer;    // 每服务器rank数 (epWorldSize = rankSizePerServer * serverNum)
+    uint64_t epHcclBuffer[1024];   // Win区地址, 打印前 rankSize 个
+    uint64_t hcommHandle[1024];    // Handle地址, 打印前 rankSize 个
+    uint32_t channelsPerRank;       // 每卡channel数
+};
+```
+
+### 分析流程
+
+1. **解析参数, 构建卡目录列表** — 接收 `target_dir`, `file_num`, `is_multi`, 单卡直接使用 target_dir, 多卡按 `target_dir/0`~`target_dir/(N-1)` 构建
+2. **收集所有卡 Metadata** — 遍历每张卡读 `.metadata.bin`, 解析 10 个 uint32 + 6 个 Region(offset/size 为 uint64), 计算全局专家数 = sum(各卡 localExpertNum)
+3. **逐卡执行单卡分析**:
+   - 打印该卡 Metadata (含开始/结束提示)
+   - 解析 context (MoeCommContext 结构体): epRankId, rankSizePerServer, Win区地址, Handle地址, channelsPerRank
+   - 解析 topk_idx (input.2): 按 Metadata 的 topK reshape 为 (bs, k), 校验值范围 0 <= val < 全局专家数, 打印全部数据
+   - 分析 Per-core 诊断区: 读取 4 个 op record(dispatch/dispatch_epilogue/combine/combine_epilogue), 核数判断(4 个 record 全为 0 时停止), 逐核逐 op 打印 opCnt/runPosition/epRankId/aivId
+   - 分析 Count Notify / Expert Count / Combine Token State: 各 Region 数据解析, 打印时附带 shape 说明
+4. **写入 Excel** — 输出 `moe_ep_dump_analysis_result.xlsx`, 共 7 个 sheet
+
+### Excel 输出 sheet 说明
+
+| Sheet | 列 | 说明 |
+|-------|----|----|
+| `metadata` | card_num + 10 字段 + 6 个 Region(offset/size 交替) + bs + core_count | 每卡一行 |
+| `context` | card_num, epRankId, rankSizePerServer, Win区地址_0~N, Handle地址_0~N, channelsPerRank | 按 MoeCommContext 结构体平铺, 每卡一行, N 取各卡最大 rankSizePerServer |
+| `topk_idx` | card_num, token_id, topk_id, expert_id | 每(token, topk)一行 |
+| `per_card_per_core` | card_num, core_count, core_id, op_index, op_name, op_count, run_pos, ep_rank_id, aiv_id | 每核每 op 一行 |
+| `count_notify` | card_num, epWorldSize, rank_id, count | 每卡每 rank 一行 |
+| `expert_count` | card_num, localExpertNum, rank_id, expert_id, count | 每卡每 rank 每 expert 一行 |
+| `combine_token_state` | card_num, idx, token_state | 每卡每(token,topk)一行 |
+
+### 边界保护
+
+- Region 数据读取: `(i+1)*512 > raw_data.shape[0]` 时 break 并 warning
+- `collect_all_metadata` 失败卡: 追加默认值(字段 0, Region [0, 0]) 保证索引不错位
+- `get_topk_idx`: 用 `//` 整除, 不能整除时截断并 warning
+- `read_region_file`: 文件未找到返回空数组 `np.array([], dtype=np.uint8)`, 避免 IndexError
+- input 文件模糊匹配: `"input.0" in filename and filename.endswith("bin")`, 兼容 `exception_info.*.input.0.undefined.bin` 格式

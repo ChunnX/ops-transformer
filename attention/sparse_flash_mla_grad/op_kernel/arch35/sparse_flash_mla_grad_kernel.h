@@ -25,12 +25,12 @@ namespace SfagBaseApi {
 template <typename CubeBlockType, typename VecBlockType>
 
 class SparseFlashMlaGradKernel
-    : public SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>,
-                                               CubeBlockType, VecBlockType> {
+    : public SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>, CubeBlockType,
+                                          VecBlockType> {
 public:
     ARGS_TRAITS;
-    using BaseClass = SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>,
-                                                        CubeBlockType, VecBlockType>;
+    using BaseClass = SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>, CubeBlockType,
+                                                   VecBlockType>;
     __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
     __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
     __aicore__ inline void Process();
@@ -46,19 +46,17 @@ private:
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
-{
-}
+{}
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
-{
-}
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(
+    FagConstInfo &constInfo)
+{}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
-                                                                                                  int64_t taskId,
-                                                                                                  bool &isFirstBlock)
+                                                                                             int64_t taskId,
+                                                                                             bool &isFirstBlock)
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -97,7 +95,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     }
     runInfo.taskStep = TASK_C1C2;
 }
-
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo)
@@ -156,7 +153,13 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     }
 
     // compute dk
-    this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(this->mm4ResWorkSpaceGm, this->dSL1Buf,
+    GlobalTensor<CALC_TYPE> dkOutTensor = this->mm4ResWorkSpaceGm;
+    if constexpr (!IsDETER) {
+        if (!runInfo.isSparse) {
+            dkOutTensor = runInfo.isOriKV ? this->dOriKVWorkSpaceGm : this->dCmpKVWorkSpaceGm;
+        }
+    }
+    this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(dkOutTensor, this->dSL1Buf,
                                                                                 this->constInfo, runInfo); // c4
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
@@ -169,7 +172,13 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V4_TO_C5_FLAG);
     }
     // compute dv
-    this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(this->mm5ResWorkSpaceGm, this->pL1Buf,
+    GlobalTensor<CALC_TYPE> dvOutTensor = this->mm5ResWorkSpaceGm;
+    if constexpr (!IsDETER) {
+        if (!runInfo.isSparse) {
+            dvOutTensor = runInfo.isOriKV ? this->dOriVWorkSpaceGm : this->dCmpVWorkSpaceGm;
+        }
+    }
+    this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(dvOutTensor, this->pL1Buf,
                                                                                 this->constInfo, runInfo); // c5
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
@@ -199,7 +208,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Sc
             // wait mm4 mm5 result
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C5_TO_V5_FLAG);
         }
-        
+
         GlobalTensor<CALC_TYPE> outWorkspace = runInfo.isOriKV ? this->dOriKVWorkSpaceGm : this->dCmpKVWorkSpaceGm;
         bool isSparse = runInfo.isOriKV ? IsOriKVSparse : IsCmpKVSparse;
         if (isSparse) {
@@ -216,7 +225,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Sc
         runInfo.taskStep = TASK_SCATTERADD;
     }
 }
-
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Process()
@@ -471,7 +479,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
                     if (taskId > 1) {
                         ScatterAddUnDeter(runInfos[(taskId + 1) % 3]);
                     }
-                    
+
                     taskId++;
                     if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
                         break;
@@ -520,6 +528,5 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     this->FreeEventID();
 }
 } // namespace SfagBaseApi
-
 
 #endif

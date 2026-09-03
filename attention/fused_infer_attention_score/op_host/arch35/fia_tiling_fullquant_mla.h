@@ -71,23 +71,15 @@ protected:
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
-    bool CheckS1OutSplit();
-    void SplitOutSeq();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
-    void UpdateTilingKeyPseMode();
     void UpdateTilingKeyQuantMode();
-    void UpdateTilingKeyHasRope();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
-    void GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
-    void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                int64_t &nextTokensLeftUp);
     void InitImplParam();
     bool IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo);
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
@@ -95,6 +87,7 @@ private:
                          int64_t &safePreToken, int64_t &safeNextToken);
     bool CheckQKVActualSeqLengthsRight();
     void PrintAllTilingData();
+    void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
     void CreateSplitInput(split_core_v2::BaseInfo &baseInfo, split_core_v2::SplitParam &splitParam);
     void SetSplitOutput(const split_core_v2::FAMetaData &splitRes);
