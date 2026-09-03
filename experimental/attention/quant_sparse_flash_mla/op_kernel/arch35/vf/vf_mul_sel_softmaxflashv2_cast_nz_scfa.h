@@ -147,9 +147,9 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxVF(__ubuf__ T * maxUb, __ubuf__ T *
     LoadAlign(vreg_max, tmpMaxUb);
     LoadAlign(vreg_in_max, inMaxUb);
     FusedExpSub(vreg_exp_max, vreg_in_max, vreg_max, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)maxUb, vreg_max, preg_all);
     LoadAlign(vreg_in_exp_sum, inExpSumUb);
 
@@ -157,7 +157,7 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxVF(__ubuf__ T * maxUb, __ubuf__ T *
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb);
     Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
     Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)expSumUb, vreg_exp_sum_update, preg_all);
 }
 
@@ -182,11 +182,11 @@ __aicore__ inline void SCFAUpdateExpSumAndExpMax(
 
 template <typename T>
 __simd_vf__ inline void DuplicateSumWithR0VF(__ubuf__ T * sumUb, const T R0, uint32_t m) {
-    AscendC::MicroAPI::RegTensor<T> vreg_sum;
-    AscendC::MicroAPI::MaskReg preg_m = AscendC::MicroAPI::UpdateMask<T>(m);
-    AscendC::MicroAPI::UnalignRegForStore ureg;
-    AscendC::MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_sum, R0, preg_m);
-    AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(sumUb, vreg_sum, preg_m);
+    AscendC::Reg::RegTensor<T> vreg_sum;
+    AscendC::Reg::MaskReg preg_m = AscendC::Reg::UpdateMask<T>(m);
+    AscendC::Reg::UnalignRegForStore ureg;
+    AscendC::Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_sum, R0, preg_m);
+    AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(sumUb, vreg_sum, preg_m);
 }
 
 template <typename T>
