@@ -95,8 +95,6 @@ private:
                                        int64_t segEndCol, bool isSegStart);
     __aicore__ inline void WriteLDList(uint32_t slot, uint32_t s1RowLocal, const LocalTensor<SCORE_T> &valLocal,
                                        const LocalTensor<uint32_t> &idxLocal);
-    __aicore__ inline void WriteLDParam(uint32_t slot, const QLICommon::RunInfo &info, int64_t segStartCol,
-                                        int64_t segEndCol);
     __aicore__ inline int64_t LDValElemOffset(uint32_t aic, uint32_t aiv, uint32_t slot, uint32_t s1RowLocal);
     __aicore__ inline int64_t LDIdxElemOffset(uint32_t aic, uint32_t aiv, uint32_t slot, uint32_t s1RowLocal);
     __aicore__ inline int64_t LDParamElemOffset(uint32_t aic, uint32_t aiv, uint32_t slot);
@@ -851,7 +849,7 @@ __aicore__ inline void QLIVector<QLIT>::SegmentTopK(const QLICommon::RunInfo &in
     const LocalTensor<uint32_t> &idxLocal = singleTrunkIdxInSharedTmp ? topkSharedTmpLocal_ :
                                                                             indicesOutLocal_;
     WriteLDList(slot, s1RowLocal, valLocal, idxLocal);
-    WriteLDParam(slot, info, segStartCol, segEndCol);
+    // WriteLDParam removed: ldParamGm has no reader anywhere (dead GM scalar traffic)
     (void)rowIdx;
 }
 
@@ -875,21 +873,6 @@ __aicore__ inline void QLIVector<QLIT>::WriteLDList(uint32_t slot, uint32_t s1Ro
     copyOutParams.blockLen = topkCount_ * sizeof(uint32_t);
     AscendC::DataCopyPad(ldIdxGm[idxOff], idxLocal, copyOutParams);
     SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);  // arm only, no wait: next row's Wait consumes it
-}
-
-template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::WriteLDParam(uint32_t slot, const QLICommon::RunInfo &info,
-                                                     int64_t segStartCol, int64_t segEndCol)
-{
-    uint32_t aic = (uint32_t)(blockId_ / 2);
-    uint32_t aiv = (uint32_t)(blockId_ % 2);
-    int64_t pOff = LDParamElemOffset(aic, aiv, slot);
-    ldParamGm.SetValue(pOff + 0, (int64_t)1);  // valid
-    ldParamGm.SetValue(pOff + 1, (int64_t)(slot == 0 ? 1 : 0));  // isS2End: tail segment reaches row end
-    ldParamGm.SetValue(pOff + 2, (int64_t)info.bN2Idx);
-    ldParamGm.SetValue(pOff + 3, (int64_t)info.gS1Idx);
-    ldParamGm.SetValue(pOff + 4, segStartCol);
-    ldParamGm.SetValue(pOff + 5, segEndCol);
 }
 
 // L-fix: flush MTE3 pipe before cross-core SyncAll
