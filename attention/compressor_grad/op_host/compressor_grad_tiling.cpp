@@ -588,33 +588,50 @@ ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::St
     return ge::GRAPH_SUCCESS;
 }
 
+struct ShapeCheckItem {
+    const char *tensorName;
+    const gert::StorageShape *shape;
+    uint32_t dimIdx;
+    const char *expectName;
+    uint32_t expectValue;
+};
+
+static ge::graphStatus CheckShapeList(const char *opName, const ShapeCheckItem *items, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (LogErrorShapeConsistency(items[i].tensorName, items[i].shape, items[i].dimIdx, items[i].expectName,
+                                     items[i].expectValue, opName) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradContext,
                                       CompressorGradBaseParams &compressorGradBaseParams)
 {
     uint8_t coff =
         compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
     auto coffD = compressorGradBaseParams.headDim * coff;
-    if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency(
-                                 "cuSeqlens", compressorGradContext.cuSeqlens.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
-                                 "batchSize+1", compressorGradBaseParams.batchSize + 1, compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS !=
-            LogErrorShapeConsistency("seqUsed", compressorGradContext.seqUsed.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
-                                     "batchSize", compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS !=
-            LogErrorShapeConsistency("startPos", compressorGradContext.startPos.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
-                                     "batchSize", compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS !=
-            LogErrorShapeConsistency("wkv", compressorGradContext.wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize",
-                                     compressorGradBaseParams.hiddenSize, compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS !=
-            LogErrorShapeConsistency("wgate", compressorGradContext.wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_1,
-                                     "hiddenSize", compressorGradBaseParams.hiddenSize, compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", compressorGradContext.wkv.shape,
-                                                      COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim",
-                                                      static_cast<uint32_t>(coffD), compressorGradContext.opName) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", compressorGradContext.wgate.shape,
-                                                      COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim",
-                                                      static_cast<uint32_t>(coffD), compressorGradContext.opName)) {
+    const char *opName = compressorGradContext.opName;
+    // 公共部分：cuSeqlens/seqUsed/startPos + wkv/wgate 的 hiddenSize 和 coff*headDim
+    const ShapeCheckItem commonChecks[] = {
+        {"cuSeqlens", compressorGradContext.cuSeqlens.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize+1",
+         compressorGradBaseParams.batchSize + 1},
+        {"seqUsed", compressorGradContext.seqUsed.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+         compressorGradBaseParams.batchSize},
+        {"startPos", compressorGradContext.startPos.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+         compressorGradBaseParams.batchSize},
+        {"wkv", compressorGradContext.wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize",
+         compressorGradBaseParams.hiddenSize},
+        {"wgate", compressorGradContext.wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize",
+         compressorGradBaseParams.hiddenSize},
+        {"wkv", compressorGradContext.wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim",
+         static_cast<uint32_t>(coffD)},
+        {"wgate", compressorGradContext.wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim",
+         static_cast<uint32_t>(coffD)},
+    };
+    if (CheckShapeList(opName, commonChecks, sizeof(commonChecks) / sizeof(commonChecks[0])) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -622,24 +639,19 @@ ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradConte
         compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_2 &&
         compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
         compressorGradContext.kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3) {
-        if (ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_1,
-                                         "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
-                                                          coff * compressorGradBaseParams.cmpRatio,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
-                                                          compressorGradBaseParams.headDim,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("kv", compressorGradContext.kv.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
-                                                          coff * compressorGradBaseParams.cmpRatio,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
-                                         compressorGradBaseParams.headDim, compressorGradContext.opName)) {
+        const ShapeCheckItem checks2D[] = {
+            {"dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "headDim",
+             compressorGradBaseParams.headDim},
+            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
+             coff * compressorGradBaseParams.cmpRatio},
+            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
+             compressorGradBaseParams.headDim},
+            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
+             coff * compressorGradBaseParams.cmpRatio},
+            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
+             compressorGradBaseParams.headDim},
+        };
+        if (CheckShapeList(opName, checks2D, sizeof(checks2D) / sizeof(checks2D[0])) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -648,34 +660,25 @@ ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradConte
         compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
         compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4 &&
         compressorGradContext.kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4) {
-        if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency(
-                                     "dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
-                                     "batchSize", compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_2,
-                                         "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-                                                          compressorGradBaseParams.batchSize,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
-                                                          coff * compressorGradBaseParams.cmpRatio,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
-                                                          compressorGradBaseParams.headDim,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-                                         compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS != LogErrorShapeConsistency("kv", compressorGradContext.kv.shape,
-                                                          COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
-                                                          coff * compressorGradBaseParams.cmpRatio,
-                                                          compressorGradContext.opName) ||
-            ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
-                                         compressorGradBaseParams.headDim, compressorGradContext.opName)) {
+        const ShapeCheckItem checks3D[] = {
+            {"dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+             compressorGradBaseParams.batchSize},
+            {"dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
+             compressorGradBaseParams.headDim},
+            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+             compressorGradBaseParams.batchSize},
+            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
+             coff * compressorGradBaseParams.cmpRatio},
+            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
+             compressorGradBaseParams.headDim},
+            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+             compressorGradBaseParams.batchSize},
+            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
+             coff * compressorGradBaseParams.cmpRatio},
+            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
+             compressorGradBaseParams.headDim},
+        };
+        if (CheckShapeList(opName, checks3D, sizeof(checks3D) / sizeof(checks3D[0])) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -787,73 +790,52 @@ ge::graphStatus CheckSinglePara(CompressorGradContext &compressorGradContext)
     return ge::GRAPH_SUCCESS;
 }
 
+// ── 辅助函数：检查单个 tensor 的 shape 和 desc 均不为空 ──
+static ge::graphStatus CheckTensorShapeAndDesc(const char *opName, const char *tensorName,
+                                               const gert::CompileTimeTensorDesc *desc, const gert::StorageShape *shape)
+{
+    OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, tensorName, "shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, tensorName, "desc is nullptr"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+struct TensorCheckItem {
+    const char *name;
+    const gert::CompileTimeTensorDesc *desc;
+    const gert::StorageShape *shape;
+};
+
+static ge::graphStatus CheckTensorList(const char *opName, const TensorCheckItem *items, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (CheckTensorShapeAndDesc(opName, items[i].name, items[i].desc, items[i].shape) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckRequiredInOutExistence(CompressorGradContext &context)
 {
-    OP_CHECK_IF(context.x.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "x", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.x.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "x", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wkv.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wkv", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wkv.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wkv", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wgate.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wgate", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wgate.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wgate", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dCmpKv.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_cmp_kv", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dCmpKv.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_cmp_kv", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.softmaxScore.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "softmax_score", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.softmaxScore.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "softmax_score", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.kv.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "kv", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.kv.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "kv", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(context.dX.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_x", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dX.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_x", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(context.dWkv.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wkv", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dWkv.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wkv", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(context.dWgate.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wgate", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dWgate.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wgate", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(context.dApe.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_ape", "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dApe.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_ape", "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-
+    const TensorCheckItem requiredTensors[] = {
+        {"x", context.x.desc, context.x.shape},
+        {"wkv", context.wkv.desc, context.wkv.shape},
+        {"wgate", context.wgate.desc, context.wgate.shape},
+        {"d_cmp_kv", context.dCmpKv.desc, context.dCmpKv.shape},
+        {"softmax_score", context.softmaxScore.desc, context.softmaxScore.shape},
+        {"kv", context.kv.desc, context.kv.shape},
+        {"d_x", context.dX.desc, context.dX.shape},
+        {"d_wkv", context.dWkv.desc, context.dWkv.shape},
+        {"d_wgate", context.dWgate.desc, context.dWgate.shape},
+        {"d_ape", context.dApe.desc, context.dApe.shape},
+    };
+    if (CheckTensorList(context.opName, requiredTensors, sizeof(requiredTensors) / sizeof(requiredTensors[0])) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    // cuSeqlens 特殊校验：TH 布局必须非空，BSH 布局必须为空
     if (context.layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context.cuSeqlens.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cu_seqlens",

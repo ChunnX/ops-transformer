@@ -279,6 +279,8 @@ private:
     ge::graphStatus SetScenarioInfo();
     ge::graphStatus SetTemplateId();
     ge::graphStatus SetInnerSplitInfo();
+    ge::graphStatus SetFullLoadSplitInfo();
+    ge::graphStatus SetNormalSplitInfo();
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
     // ================================通用检查辅助函数==================================
