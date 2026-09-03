@@ -17,7 +17,7 @@
 
 namespace AscendC {
 #ifndef __CCE_KT_TEST__
-using namespace MicroAPI;
+using namespace Reg;
 /* **************************************************************************************************
 
 SoftmaxGradFrontCast *
@@ -95,40 +95,40 @@ __simd_vf__ inline void CastAligned768F32VF576(uint64_t srcLocalInt, uint64_t ds
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         // 手动unroll 128个数分64个数做mul和add
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
                                                                HEAD_DIM_ALIGN);
         Mul(vregMul, vregGrad, vregSrc, pregFullExe);
         Mul(vregMul1, vregGrad1, vregSrc1, pregFullExe);
@@ -148,7 +148,7 @@ __simd_vf__ inline void CastAligned768F32VF576(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd6, vregAdd4, vregAdd2, pregFullExe);
         Add(vregAdd7, vregAdd6, vregAdd5, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd7, pregFullExe);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
                                                                      uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
@@ -226,44 +226,44 @@ __simd_vf__ inline void CastAligned768F32VF640(uint64_t srcLocalInt, uint64_t ds
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         // 手动unroll 128个数分64个数做mul和add
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc8, ((__ubuf__ T1 *&)srcLocalInt8),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc8, ((__ubuf__ T1 *&)srcLocalInt8),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad8, ((__ubuf__ T1 *&)gradLocalInt8),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad8, ((__ubuf__ T1 *&)gradLocalInt8),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
                                                                HEAD_DIM_ALIGN);
         Mul(vregMul, vregGrad, vregSrc, pregFullExe);
         Mul(vregMul1, vregGrad1, vregSrc1, pregFullExe);
@@ -285,7 +285,7 @@ __simd_vf__ inline void CastAligned768F32VF640(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd7, vregAdd5, vregAdd2, pregFullExe);
         Add(vregAdd8, vregAdd7, vregAdd6, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd8, pregFullExe);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
                                                                      uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
@@ -369,48 +369,48 @@ __simd_vf__ inline void CastAligned768F32VF704(uint64_t srcLocalInt, uint64_t ds
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         // 手动unroll 128个数分64个数做mul和add
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc8, ((__ubuf__ T1 *&)srcLocalInt8),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc8, ((__ubuf__ T1 *&)srcLocalInt8),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad8, ((__ubuf__ T1 *&)gradLocalInt8),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad8, ((__ubuf__ T1 *&)gradLocalInt8),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc9, ((__ubuf__ T1 *&)srcLocalInt9),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc9, ((__ubuf__ T1 *&)srcLocalInt9),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad9, ((__ubuf__ T1 *&)gradLocalInt9),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad9, ((__ubuf__ T1 *&)gradLocalInt9),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
                                                                HEAD_DIM_ALIGN);
         Mul(vregMul, vregGrad, vregSrc, pregFullExe);
         Mul(vregMul1, vregGrad1, vregSrc1, pregFullExe);
@@ -434,7 +434,7 @@ __simd_vf__ inline void CastAligned768F32VF704(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd8, vregAdd5, vregAdd7, pregFullExe);
         Add(vregAdd9, vregAdd6, vregAdd8, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd9, pregFullExe);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
                                                                      uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
@@ -524,52 +524,52 @@ __simd_vf__ inline void CastAligned768F32VF768(uint64_t srcLocalInt, uint64_t ds
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         // 手动unroll 128个数分64个数做mul和add
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), HEAD_DIM_ALIGN);
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad, ((__ubuf__ T1 *&)gradLocalInt),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc1, ((__ubuf__ T1 *&)srcLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad1, ((__ubuf__ T1 *&)gradLocalInt1),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc2, ((__ubuf__ T1 *&)srcLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad2, ((__ubuf__ T1 *&)gradLocalInt2),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc3, ((__ubuf__ T1 *&)srcLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad3, ((__ubuf__ T1 *&)gradLocalInt3),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc4, ((__ubuf__ T1 *&)srcLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad4, ((__ubuf__ T1 *&)gradLocalInt4),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc5, ((__ubuf__ T1 *&)srcLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad5, ((__ubuf__ T1 *&)gradLocalInt5),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc6, ((__ubuf__ T1 *&)srcLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad6, ((__ubuf__ T1 *&)gradLocalInt6),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc7, ((__ubuf__ T1 *&)srcLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad7, ((__ubuf__ T1 *&)gradLocalInt7),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc8, ((__ubuf__ T1 *&)srcLocalInt8),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc8, ((__ubuf__ T1 *&)srcLocalInt8),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad8, ((__ubuf__ T1 *&)gradLocalInt8),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad8, ((__ubuf__ T1 *&)gradLocalInt8),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc9, ((__ubuf__ T1 *&)srcLocalInt9),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc9, ((__ubuf__ T1 *&)srcLocalInt9),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad9, ((__ubuf__ T1 *&)gradLocalInt9),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad9, ((__ubuf__ T1 *&)gradLocalInt9),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc10, ((__ubuf__ T1 *&)srcLocalInt10),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc10, ((__ubuf__ T1 *&)srcLocalInt10),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGrad10, ((__ubuf__ T1 *&)gradLocalInt10),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGrad10, ((__ubuf__ T1 *&)gradLocalInt10),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalIntTail),
                                                                HEAD_DIM_ALIGN);
-        LoadAlign<T1, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregGradTail, ((__ubuf__ T1 *&)gradLocalIntTail),
                                                                HEAD_DIM_ALIGN);
 
         Mul(vregMul, vregGrad, vregSrc, pregFullExe);
@@ -596,7 +596,7 @@ __simd_vf__ inline void CastAligned768F32VF768(uint64_t srcLocalInt, uint64_t ds
         Add(vregAdd9, vregAdd6, vregAdd8, pregFullExe);
         Add(vregAdd10, vregAdd9, vregAdd7, pregFullExe);
         ReduceSum(vregReduceSum, vregAdd10, pregFullExe);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ float *&)dstLocalInt), vregReduceSum,
                                                                      uregReduceSum, 1);
     }
     vstas(uregReduceSum, ((__ubuf__ float *&)dstLocalInt), 0, POST_UPDATE);
