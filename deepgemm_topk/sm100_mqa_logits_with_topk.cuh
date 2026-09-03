@@ -106,66 +106,78 @@ CUTLASS_DEVICE void warp_bucket_topk(
     };
 
     // SMEM: merged 16-bin histogram (histogram[0..15]) + per-lane sub-histogram
-    uint32_t* histogram = reinterpret_cast<uint32_t*>(smem_vals);
-    uint32_t* sub_hist = reinterpret_cast<uint32_t*>(smem_idxs);  // 32 lanes x 16 bins
+    uint32_t* histogram = reinterpret_cast<uint32_t*>(smem_vals);   // 256 bins
 
     uint32_t kth_value = 0;
     uint32_t definite_count = 0;
     uint32_t remaining = kSparseCount;
 
-    // === 8 rounds of 4-bit radix select (atom-free) ===
-    for (int round = 0; round < 8 && remaining > 0; ++round) {
-        const int shift = (7 - round) * 4;
-        const uint32_t prefix_mask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 4));
+    // === 4 rounds of 8-bit radix select (cache-resident + ld_shared) ===
+    for (int round = 0; round < 4 && remaining > 0; ++round) {
+        const int shift = (3 - round) * 8;
+        const uint32_t prefix_mask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
         const uint32_t prefix_val = kth_value & prefix_mask;
 
-        // Clear own 16 bins
-        #pragma unroll
-        for (int b = 0; b < 16; ++b)
-            ptx::st_shared(sub_hist + lane_idx * 16 + b, 0u);
+        // Clear 256-bucket histogram
+        for (uint32_t i = lane_idx; i < 256; i += 32)
+            histogram[i] = 0;
         __syncwarp();
 
-        // Count into own sub-histogram (own region, no atomic contention)
+        // Build histogram with SMEM atomicAdd
         #pragma unroll 4
         for (uint32_t i = lane_idx; i < k_len; i += 32) {
             uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
             if ((u & prefix_mask) == prefix_val) {
-                uint32_t b = (u >> shift) & 0xF;
-                uint32_t v = ptx::ld_shared(sub_hist + lane_idx * 16 + b);
-                ptx::st_shared(sub_hist + lane_idx * 16 + b, v + 1);
+                uint32_t bucket = (u >> shift) & 0xFF;
+                atomicAdd(&histogram[bucket], 1u);
             }
         }
         __syncwarp();
 
-        // Merge: lane L sums bin L across all 32 lanes
-        if (lane_idx < 16) {
-            uint32_t s = 0;
-            #pragma unroll
-            for (int l = 0; l < 32; ++l)
-                s += ptx::ld_shared(sub_hist + l * 16 + lane_idx);
-            ptx::st_shared(histogram + lane_idx, s);
-        }
-        __syncwarp();
-
-        // All lanes read 16 global bins, find cutoff identically
-        uint32_t cnt[16];
+        // Find cutoff: each lane reads 8 buckets [lane*8 .. lane*8+7]
+        uint32_t my_counts[8];
         #pragma unroll
-        for (int i = 0; i < 16; i++) cnt[i] = ptx::ld_shared(histogram + i);
+        for (int i = 0; i < 8; i++)
+            my_counts[i] = histogram[lane_idx * 8 + i];
 
-        uint32_t ca = 0;
+        uint32_t my_sum = 0;
+        #pragma unroll
+        for (int i = 0; i < 8; i++) my_sum += my_counts[i];
+
+        // Inclusive prefix sum across lanes
+        uint32_t incl = my_sum;
+        for (int s = 1; s < 32; s <<= 1) {
+            uint32_t t = __shfl_up_sync(0xFFFFFFFF, incl, s);
+            if (lane_idx >= s) incl += t;
+        }
+        const uint32_t total = __shfl_sync(0xFFFFFFFF, incl, 31);
+
+        const uint32_t count_above_me = total - incl;
+
+        uint32_t prefix_in_lane = 0;
         int32_t my_cutoff = -1;
-        uint32_t my_cao = 0;
+        uint32_t my_count_above_cutoff = 0;
+
         #pragma unroll
-        for (int b = 15; b >= 0; --b) {
-            if (ca < remaining && ca + cnt[b] >= remaining) {
-                my_cutoff = b;
-                my_cao = ca;
+        for (int i = 7; i >= 0; i--) {
+            uint32_t count_above = count_above_me + prefix_in_lane;
+            uint32_t count_ge = count_above + my_counts[i];
+            if (count_above < remaining && count_ge >= remaining) {
+                my_cutoff = static_cast<int32_t>(lane_idx * 8 + i);
+                my_count_above_cutoff = count_above;
             }
-            ca += cnt[b];
+            prefix_in_lane += my_counts[i];
         }
-        if (my_cutoff < 0) break;
-        kth_value |= (static_cast<uint32_t>(my_cutoff) << shift);
-        definite_count += my_cao;
+
+        uint32_t cutoff_mask = __ballot_sync(0xFFFFFFFF, my_cutoff >= 0);
+        if (cutoff_mask == 0) break;
+        uint32_t cutoff_lane = __ffs(cutoff_mask) - 1;
+        uint32_t cutoff_bucket = static_cast<uint32_t>(
+            __shfl_sync(0xFFFFFFFF, static_cast<uint32_t>(my_cutoff), cutoff_lane));
+        uint32_t count_above_cutoff = __shfl_sync(0xFFFFFFFF, my_count_above_cutoff, cutoff_lane);
+
+        kth_value |= (cutoff_bucket << shift);
+        definite_count += count_above_cutoff;
         remaining = kSparseCount - definite_count;
     }
 
@@ -768,7 +780,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             if (k_len <= kCacheFloats) {
                 // Cached path: load row into own SMEM once
                 const long long dbg_ld0 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
-                asm volatile("membar.gl;" :: "memory");
+                __threadfence();
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < k_len; i += 32)
                     ptx::st_shared(reinterpret_cast<uint32_t*>(my_cache) + i,
