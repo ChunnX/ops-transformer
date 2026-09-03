@@ -64,7 +64,7 @@ if _HERE not in sys.path:
 
 from _xlsx_minireader import load_sheet, list_sheet_names
 
-_XLSX = os.path.join(_HERE, "redline1.xlsx")
+_XLSX = os.path.join(_HERE, "redline.xlsx")
 
 # 11 列 header
 HEADER = [
@@ -375,6 +375,8 @@ def _build_tensor_lists(row, cols, quant_mode):
                 None
                 if shape_col
                 in (
+                    "cu_seqlens_q_shape",
+                    "cu_seqlens_kv_shape",
                     "seqused_q_shape",
                     "seqused_kv_shape",
                     "learnable_sink_shape",
