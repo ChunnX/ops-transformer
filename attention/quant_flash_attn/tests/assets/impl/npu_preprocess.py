@@ -44,6 +44,22 @@ def get_values(kwargs, name):
     return [int(item) for item in value]
 
 
+def _resolve_tensor(tensor, kwargs, name):
+    """把 cu_seqlens/seqused 位置参数归一成 None 或有效 tensor。
+
+    直调 op 后, 这些位置参数可能是空 (0,) 张量 (CSV 空 slot 生成); 当对应的
+    ``*_values`` 属性也为 None (未填写) 时, 归一成 None 而非空张量——否则
+    torch_extension 的 metadata 实现 (quant_flash_attn.py 的 _calculate_batch_size)
+    会把空张量的 size(0)=0 误当 batch_size。参考 flash_attn 资产的 _resolve_tensor。
+    """
+    if tensor is not None and int(torch.as_tensor(tensor).numel()) > 0:
+        return tensor
+    values = get_values(kwargs, name)
+    if values is None:
+        return None
+    return torch.as_tensor(values, dtype=torch.int32)
+
+
 def _num_heads_q(q_shape, layout_q):
     if layout_q == "BSND":
         return int(q_shape[2])
@@ -129,10 +145,14 @@ def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, se
     # Mirror the original two-phase golden implementations:
     #   - cu_seqlens only feeds the metadata op for TND layouts (otherwise None),
     #     and batch_size is only provided for non-TND layouts.
-    cu_q = cu_seqlens_q if is_tnd_q else None
-    cu_kv = cu_seqlens_kv if is_tnd_kv else None
+    # 空 (0,) 张量归一成 None, 否则 torch_extension 重算 batch_size 时会把
+    # size(0)=0 误当 batch (参考 flash_attn 资产的 _resolve_tensor)。
+    cu_q = _resolve_tensor(cu_seqlens_q, kwargs, "cu_seqlens_q") if is_tnd_q else None
+    cu_kv = _resolve_tensor(cu_seqlens_kv, kwargs, "cu_seqlens_kv") if is_tnd_kv else None
+    seq_q = _resolve_tensor(seqused_q, kwargs, "seqused_q")
+    seq_kv = _resolve_tensor(seqused_kv, kwargs, "seqused_kv")
     batch_size = None if is_tnd_q else _derive_batch_size(
-        q_shape, layout_q, cu_seqlens_q, seqused_q, kwargs
+        q_shape, layout_q, cu_q, seq_q, kwargs
     )
 
     q_fallback = q_shape[1] if layout_q != "BSND" else q_shape[1]
@@ -149,14 +169,14 @@ def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, se
         "quant_mode": int(get_attribute(kwargs, "quant_mode", 1)),
         "cu_seqlens_q": cu_q,
         "cu_seqlens_kv": cu_kv,
-        "seqused_q": seqused_q,
-        "seqused_kv": seqused_kv,
+        "seqused_q": seq_q,
+        "seqused_kv": seq_kv,
         "batch_size": None if batch_size is None else int(batch_size),
         "max_seqlen_q": _max_seqlen(
-            kwargs, "q", seqused_q, cu_seqlens_q, q_fallback
+            kwargs, "q", seq_q, cu_q, q_fallback
         ),
         "max_seqlen_kv": _max_seqlen(
-            kwargs, "kv", seqused_kv, cu_seqlens_kv, kv_fallback
+            kwargs, "kv", seq_kv, cu_kv, kv_fallback
         ),
         "head_dim_v": get_attribute(kwargs, "head_dim_v"),
         "mask_mode": int(get_attribute(kwargs, "mask_mode", 0)),

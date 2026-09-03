@@ -163,7 +163,7 @@ _TENSOR_SPECS = [
         False,
     ),
     ("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange", "int8", False),
-    ("metadata_shape", "metadata_dtype", "metadata_datarange", "float32", False),
+    ("metadata_shape", "metadata_dtype", "metadata_datarange", "int32", False),
 ]
 
 _DRANGE_PLACEHOLDER = (0, 1)
@@ -383,6 +383,13 @@ def _build_tensor_lists(row, cols, quant_mode):
         if shape_col == "p_scale_shape" and shape == (0,) and quant_mode in (6, 0):
             shape = (1,)
             dtype = "float32"
+
+        # metadata slot: 元素 shape 固定为 op 输出 (2, max_schedule_size)=(2,4096) int32,
+        # 由 npu_preprocess copy_ 填充生成的 metadata; 不读 Excel metadata_shape
+        # (空则 (0,) 与生成 shape 不一致, 会报 metadata shape mismatch)。
+        if shape_col == "metadata_shape":
+            shape = (2, 4096)
+            dtype = "int32"
 
         if drange is None:
             drange = _DRANGE_PLACEHOLDER
