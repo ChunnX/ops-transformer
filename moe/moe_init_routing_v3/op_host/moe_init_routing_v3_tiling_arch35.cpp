@@ -1942,9 +1942,10 @@ bool MoeInitRoutingV3TilingArch35::IsCountingSortApplicable()
     }
 
     if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
-        if (actualExpertNum * NUM_TWO > expertNum_) {
-            return false;
-        }
+        // if (actualExpertNum * NUM_TWO > expertNum_) {
+        //     return false;
+        // }
+        return true;
     } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         if (n_ < HALF_MAX_EXPERT_NUM) {
             return false;
