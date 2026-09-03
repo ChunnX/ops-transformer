@@ -767,11 +767,16 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
 
             if (k_len <= kCacheFloats) {
                 // Cached path: load row into own SMEM once
+                const long long dbg_ld0 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
                 for (uint32_t i = lane_idx; i < k_len; i += 32)
                     my_cache[i] = logits_row[k_start + i];
                 __syncwarp();
+                const long long dbg_ld1 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
                 warp_bucket_topk<kSparseCount>(my_cache, k_start, k_len,
                                                out_ptr, my_hist, my_idxs, lane_idx);
+                if (threadIdx.x == 0 && blockIdx.x == 0)
+                    printf("[TOPK-C] token=%u load=%lld topk=%lld\n",
+                           q_token, dbg_ld1 - dbg_ld0, clock64() - dbg_ld1);
             } else {
                 // Fallback: read GMEM directly
                 warp_bucket_topk<kSparseCount>(logits_row + k_start, k_start, k_len,
