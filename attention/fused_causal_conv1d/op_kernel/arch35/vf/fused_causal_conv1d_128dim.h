@@ -19,707 +19,266 @@
 #include "kernel_operator.h"
 #include "fused_causal_conv1d_state_single_tail.h"
 
-template <typename T>
-__simd_vf__ void Conv1dNeedStateNoConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                          __ubuf__ T *yAddr, uint32_t dimLen)
+// The a5 headers are included directly, not via <pto/pto-inst.hpp>: that aggregate pulls
+// TTrans.hpp, whose file-scope `using namespace pto;` makes TPipe and GlobalTensor ambiguous.
+#include <pto/common/type.hpp>
+#include <pto/common/memory.hpp>
+#include <pto/common/arch_macro.hpp>
+#include <pto/common/pto_tile.hpp>
+#include <pto/npu/a5/common.hpp>
+#include <pto/npu/a5/utils.hpp>
+#include <pto/npu/a5/TCvt.hpp>
+
+namespace FusedCausalConv1dPtoVf {
+
+constexpr int32_t PTO_LANES_B32 = 64;      // fp32 lanes in one 256-byte vector register
+constexpr uint32_t PTO_ROT = 3;            // output rows per rotated iteration
+constexpr uint32_t PTO_SHORT_RUN_ROWS = 8; // decode passes seqLen - (K-1), at most 7
+
+// SiLU in registers: x / (1 + exp(-x)).
+__aicore__ inline void SiluInReg(pto::RegTensor<float> &acc, pto::RegTensor<float> &tmp, pto::MaskReg &preg)
 {
-    Reg::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32, mul13B32,
-        y1B32;
-    Reg::RegTensor<float> x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32, y2B32;
-    Reg::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
-    Reg::RegTensor<T> x21B16, x22B16, x23B16, y2B16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight11B32, weight11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight12B32, weight12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight13B32, weight13B16, maskB32);
+    using namespace pto;
+    vmuls(tmp, acc, (float)-1, preg, MODE_ZEROING);
+    vexp(tmp, tmp, preg, MODE_ZEROING);
+    vadds(tmp, tmp, (float)1, preg, MODE_ZEROING);
+    vdiv(acc, acc, tmp, preg, MODE_ZEROING);
+}
 
-        Reg::Duplicate(y1B32, 0, maskB32);
-        Reg::Duplicate(y2B32, 0, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, stateAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, stateAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset);
+#define CC1D_LOAD(reg, stage, base, off) \
+    do { \
+        vlds((stage), (base), (off), UNPK_B16); \
+        vcvt((reg), (stage), pg16, PART_EVEN); \
+    } while (0)
 
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16, stateAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16, xAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16, xAddr + offset + dimLen);
+#define CC1D_STORE(acc, xr, off) \
+    do { \
+        if constexpr (HASBIAS) { \
+            vadd((acc), (acc), bias, preg, MODE_ZEROING); \
+        } \
+        if constexpr (HASACT) { \
+            SiluInReg((acc), tmp, preg); \
+        } \
+        if constexpr (RESIDUAL) { \
+            vadd((acc), (acc), (xr), preg, MODE_ZEROING); \
+        } \
+        /* The kernels replaced zero their accumulator and add into it, so an all -0.0 row gives \
+           +0.0 there; these start from the multiply and give -0.0. +0.0 normalises just that. */ \
+        vadds((acc), (acc), (float)0.0, preg, MODE_ZEROING); \
+        vcvt(y16, (acc), preg, ROUND_R, RS_DISABLE, PART_EVEN); \
+        vsts(y16, yAddr, (off), PK_B32, preg); \
+    } while (0)
 
-        Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-        Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-        Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-        Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-        Reg::Mul(mul21B32, x21B32, weight11B32, maskB32);
-        Reg::Mul(mul22B32, x22B32, weight12B32, maskB32);
-        Reg::Mul(mul23B32, x23B32, weight13B32, maskB32);
+template <typename T, bool RESIDUAL, bool HASBIAS = false, bool HASACT = false>
+__aicore__ inline void Conv1dNoNeedStateShortRunPtoVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr,
+                                                      uint32_t xSLen, uint32_t dimLen, __ubuf__ T *biasAddr = nullptr)
+{
+    using namespace pto;
+    const int32_t rowStride = (int32_t)dimLen;
+    const int32_t stride2 = 2 * rowStride;
+    const uint16_t groups = (uint16_t)(dimLen / (uint32_t)PTO_LANES_B32);
+    const uint16_t rows = (uint16_t)xSLen;
 
-        Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul13B32, maskB32);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> w0, w1, w2, x0, x1, x2, acc, bias, tmp;
+        RegTensor<T> s0, s1, s2, y16;
+        MaskReg preg = PSetWithType<float>(PAT_ALL);
+        uint32_t len16 = ELE_CNT_B16;
+        MaskReg pg16 = CreatePredicate<half>(len16);
 
-        Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul23B32, maskB32);
+        int32_t go = 0;
+        for (uint16_t g = 0; g < groups; ++g) {
+            CC1D_LOAD(w0, s0, weightAddr, go);
+            CC1D_LOAD(w1, s1, weightAddr, go + rowStride);
+            CC1D_LOAD(w2, s2, weightAddr, go + stride2);
+            if constexpr (HASBIAS) {
+                CC1D_LOAD(bias, s0, biasAddr, go);
+            }
 
-        Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset, y1B16, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + dimLen, y2B16, maskB32);
-        offset += B32_REP_SIZE;
+            int32_t ro = go;
+            for (uint16_t r = 0; r < rows; ++r) {
+                CC1D_LOAD(x0, s0, xAddr, ro);
+                CC1D_LOAD(x1, s1, xAddr, ro + rowStride);
+                CC1D_LOAD(x2, s2, xAddr, ro + stride2);
+                vmul(acc, x0, w0, preg, MODE_ZEROING);
+                vmula(acc, x1, w1, preg, MODE_ZEROING);
+                vmula(acc, x2, w2, preg, MODE_ZEROING);
+                CC1D_STORE(acc, x2, ro);
+                ro += rowStride;
+            }
+            go += PTO_LANES_B32;
+        }
     }
 }
 
-template <typename T>
-__simd_vf__ void Conv1dNeedStateConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                        __ubuf__ T *yAddr, uint32_t dimLen)
+template <typename T, bool RESIDUAL, bool HASBIAS = false, bool HASACT = false>
+__aicore__ inline void Conv1dNoNeedStateLongRunPtoVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr,
+                                                     uint32_t xSLen, uint32_t dimLen, __ubuf__ T *biasAddr = nullptr)
 {
-    Reg::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32, mul13B32,
-        y1B32;
-    Reg::RegTensor<float> x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32, y2B32;
-    Reg::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
-    Reg::RegTensor<T> x21B16, x22B16, x23B16, y2B16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight11B32, weight11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight12B32, weight12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight13B32, weight13B16, maskB32);
+    using namespace pto;
+    const int32_t rowStride = (int32_t)dimLen;
+    const int32_t stride2 = 2 * rowStride;
+    const int32_t stride3 = 3 * rowStride;
+    const uint16_t groups = (uint16_t)(dimLen / (uint32_t)PTO_LANES_B32);
+    const uint16_t steps = (uint16_t)(xSLen / PTO_ROT);
+    const uint16_t tail = (uint16_t)(xSLen % PTO_ROT);
 
-        Reg::Duplicate(y1B32, 0, maskB32);
-        Reg::Duplicate(y2B32, 0, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, stateAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, stateAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> w0, w1, w2, a0, a1, a2, x0, x1, x2, bias, tmp;
+        RegTensor<T> s0, s1, s2, y16;
+        MaskReg preg = PSetWithType<float>(PAT_ALL);
+        uint32_t len16 = ELE_CNT_B16;
+        MaskReg pg16 = CreatePredicate<half>(len16);
 
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16, stateAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16, xAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16, xAddr + offset + dimLen);
+// Input row xr completes output (old): store it, then open the two later outputs. Accumulator
+// and staging names rotate with the body.
+#define CC1D_STEP(fresh, mid, old, xr, stage, inOff, outOff) \
+    do { \
+        CC1D_LOAD((xr), (stage), xAddr, (inOff)); \
+        vmula((old), (xr), w2, preg, MODE_ZEROING); \
+        CC1D_STORE((old), (xr), (outOff)); \
+        vmul((fresh), (xr), w0, preg, MODE_ZEROING); \
+        vmula((mid), (xr), w1, preg, MODE_ZEROING); \
+    } while (0)
 
-        Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-        Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-        Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-        Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-        Reg::Mul(mul21B32, x21B32, weight11B32, maskB32);
-        Reg::Mul(mul22B32, x22B32, weight12B32, maskB32);
-        Reg::Mul(mul23B32, x23B32, weight13B32, maskB32);
+        int32_t go = 0;
+        for (uint16_t g = 0; g < groups; ++g) {
+            CC1D_LOAD(w0, s0, weightAddr, go);
+            CC1D_LOAD(w1, s1, weightAddr, go + rowStride);
+            CC1D_LOAD(w2, s2, weightAddr, go + stride2);
+            if constexpr (HASBIAS) {
+                CC1D_LOAD(bias, s0, biasAddr, go);
+            }
 
-        Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-        Reg::Add(y1B32, y1B32, x13B32, maskB32);
+            CC1D_LOAD(x0, s0, xAddr, go);
+            vmul(a0, x0, w0, preg, MODE_ZEROING);
+            CC1D_LOAD(x1, s1, xAddr, go + rowStride);
+            vmul(a1, x1, w0, preg, MODE_ZEROING);
+            vmula(a0, x1, w1, preg, MODE_ZEROING);
 
-        Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-        Reg::Add(y2B32, y2B32, x23B32, maskB32);
-
-        Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset, y1B16, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + dimLen, y2B16, maskB32);
-        offset += B32_REP_SIZE;
+            int32_t in = go + stride2;
+            int32_t out = go;
+            for (uint16_t t = 0; t < steps; ++t) {
+                CC1D_STEP(a2, a1, a0, x2, s2, in, out);
+                CC1D_STEP(a0, a2, a1, x0, s0, in + rowStride, out + rowStride);
+                CC1D_STEP(a1, a0, a2, x1, s1, in + stride2, out + stride2);
+                in += stride3;
+                out += stride3;
+            }
+            if (tail >= 1) {
+                CC1D_STEP(a2, a1, a0, x2, s2, in, out);
+            }
+            if (tail >= 2) {
+                CC1D_STEP(a0, a2, a1, x0, s0, in + rowStride, out + rowStride);
+            }
+            go += PTO_LANES_B32;
+        }
+#undef CC1D_STEP
     }
 }
 
-// 对stateAddr的数据进行原地读写出操作， stateAddr=yAddr
-template <typename T>
-__simd_vf__ void Conv1dNeedStateConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                      __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen)
+/*
+ * One output row whose K-wide window straddles the state buffer: STATE_ROWS rows from stateAddr,
+ * the rest from xAddr, tap k applying to window position k either way. STATE_ROWS is a template
+ * parameter so the vector scope stays branch-free. Matches Conv1dNeedState*VF.
+ */
+template <typename T, bool RESIDUAL, uint32_t STATE_ROWS, bool HASBIAS = false, bool HASACT = false>
+__aicore__ inline void Conv1dNeedStatePtoVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
+                                            __ubuf__ T *yAddr, uint32_t dimLen, __ubuf__ T *biasAddr = nullptr)
 {
-    Reg::RegTensor<float> xB32, mulB32, weightB32, yB32;
-    Reg::RegTensor<T> xB16, weightB16, yB16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::Duplicate(yB32, 0, maskB32);
-        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
-        for (uint8_t stateLoop = 0; stateLoop < stateSLen; stateLoop++) {
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weightB16, weightAddr + offset + stateLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xB16, stateAddr + offset + stateLoop * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(weightB32, weightB16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(xB32, xB16, maskB32);
-            // Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(fAddr, weightB32, maskB32);
-            Reg::Mul(mulB32, xB32, weightB32, maskB32);
-            Reg::Add(yB32, yB32, mulB32, maskB32);
+    using namespace pto;
+    static_assert(STATE_ROWS >= 1 && STATE_ROWS <= 2, "K = 3 leaves 1 or 2 rows in the state buffer");
+    const int32_t rowStride = (int32_t)dimLen;
+    const uint16_t groups = (uint16_t)(dimLen / (uint32_t)PTO_LANES_B32);
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> w0, w1, w2, d0, d1, d2, acc, bias, tmp;
+        RegTensor<T> s0, s1, s2, y16;
+        MaskReg preg = PSetWithType<float>(PAT_ALL);
+        uint32_t len16 = ELE_CNT_B16;
+        MaskReg pg16 = CreatePredicate<half>(len16);
+
+        int32_t go = 0;
+        for (uint16_t g = 0; g < groups; ++g) {
+            CC1D_LOAD(w0, s0, weightAddr, go);
+            CC1D_LOAD(w1, s1, weightAddr, go + rowStride);
+            CC1D_LOAD(w2, s2, weightAddr, go + 2 * rowStride);
+            if constexpr (HASBIAS) {
+                CC1D_LOAD(bias, s0, biasAddr, go);
+            }
+            if constexpr (STATE_ROWS == 1) {
+                CC1D_LOAD(d0, s0, stateAddr, go);
+                CC1D_LOAD(d1, s1, xAddr, go);
+                CC1D_LOAD(d2, s2, xAddr, go + rowStride);
+            } else {
+                CC1D_LOAD(d0, s0, stateAddr, go);
+                CC1D_LOAD(d1, s1, stateAddr, go + rowStride);
+                CC1D_LOAD(d2, s2, xAddr, go);
+            }
+            vmul(acc, d0, w0, preg, MODE_ZEROING);
+            vmula(acc, d1, w1, preg, MODE_ZEROING);
+            vmula(acc, d2, w2, preg, MODE_ZEROING);
+            CC1D_STORE(acc, d2, go);
+            go += PTO_LANES_B32;
         }
-        for (uint8_t xLoop = 0; xLoop < xSLen; xLoop++) {
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weightB16,
-                                                              weightAddr + offset + (xLoop + stateSLen) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xB16, xAddr + offset + xLoop * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(weightB32, weightB16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(xB32, xB16, maskB32);
-            Reg::Mul(mulB32, xB32, weightB32, maskB32);
-            Reg::Add(yB32, yB32, mulB32, maskB32);
-        }
-        Reg::Add(yB32, yB32, xB32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
-        offset += B32_REP_SIZE;
     }
 }
 
-template <typename T>
-__simd_vf__ void Conv1dNeedStateNoConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                        __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen)
+/*
+ * Decode with a full K-1 state: two output rows share one pass over four loads.
+ * Matches Conv1dNeedState*BHVF, selected when convStateLen == 2.
+ *   y0 = s0*w0 + s1*w1 + x0*w2      y1 = s1*w0 + x0*w1 + x1*w2
+ */
+template <typename T, bool RESIDUAL, bool HASBIAS = false, bool HASACT = false>
+__aicore__ inline void Conv1dNeedStateBHPtoVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
+                                              __ubuf__ T *yAddr, uint32_t dimLen, __ubuf__ T *biasAddr = nullptr)
 {
-    Reg::RegTensor<float> xB32, mulB32, weightB32, yB32;
-    Reg::RegTensor<T> xB16, weightB16, yB16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::Duplicate(yB32, 0, maskB32);
-        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
-        for (uint8_t stateLoop = 0; stateLoop < stateSLen; stateLoop++) {
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weightB16, weightAddr + offset + stateLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xB16, stateAddr + offset + stateLoop * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(weightB32, weightB16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(xB32, xB16, maskB32);
-            // Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(fAddr, weightB32, maskB32);
-            Reg::Mul(mulB32, xB32, weightB32, maskB32);
-            Reg::Add(yB32, yB32, mulB32, maskB32);
+    using namespace pto;
+    const int32_t rowStride = (int32_t)dimLen;
+    const uint16_t groups = (uint16_t)(dimLen / (uint32_t)PTO_LANES_B32);
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> w0, w1, w2, st0, st1, xr0, xr1, acc, bias, tmp;
+        RegTensor<T> s0, s1, s2, y16;
+        MaskReg preg = PSetWithType<float>(PAT_ALL);
+        uint32_t len16 = ELE_CNT_B16;
+        MaskReg pg16 = CreatePredicate<half>(len16);
+
+        int32_t go = 0;
+        for (uint16_t g = 0; g < groups; ++g) {
+            CC1D_LOAD(w0, s0, weightAddr, go);
+            CC1D_LOAD(w1, s1, weightAddr, go + rowStride);
+            CC1D_LOAD(w2, s2, weightAddr, go + 2 * rowStride);
+            if constexpr (HASBIAS) {
+                CC1D_LOAD(bias, s0, biasAddr, go);
+            }
+            CC1D_LOAD(st0, s0, stateAddr, go);
+            CC1D_LOAD(st1, s1, stateAddr, go + rowStride);
+            CC1D_LOAD(xr0, s2, xAddr, go);
+            CC1D_LOAD(xr1, s0, xAddr, go + rowStride);
+
+            vmul(acc, st0, w0, preg, MODE_ZEROING);
+            vmula(acc, st1, w1, preg, MODE_ZEROING);
+            vmula(acc, xr0, w2, preg, MODE_ZEROING);
+            CC1D_STORE(acc, xr0, go);
+
+            vmul(acc, st1, w0, preg, MODE_ZEROING);
+            vmula(acc, xr0, w1, preg, MODE_ZEROING);
+            vmula(acc, xr1, w2, preg, MODE_ZEROING);
+            CC1D_STORE(acc, xr1, go + rowStride);
+            go += PTO_LANES_B32;
         }
-        for (uint8_t xLoop = 0; xLoop < xSLen; xLoop++) {
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weightB16,
-                                                              weightAddr + offset + (xLoop + stateSLen) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(xB16, xAddr + offset + xLoop * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(weightB32, weightB16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(xB32, xB16, maskB32);
-            Reg::Mul(mulB32, xB32, weightB32, maskB32);
-            Reg::Add(yB32, yB32, mulB32, maskB32);
-        }
-        Reg::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
-        offset += B32_REP_SIZE;
     }
 }
 
-////残差连接模式，不含尾行
-template <typename T>
-__simd_vf__ void Conv1dNoNeedStateConNoResVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr,
-                                             uint32_t xLoopNum, uint32_t dimLen)
-{
-    Reg::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32, mul13B32,
-        y1B32;
-    Reg::RegTensor<float> weight21B32, weight22B32, weight23B32, x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32,
-        y2B32;
-    Reg::RegTensor<float> x31B32, x32B32, x33B32, mul31B32, mul32B32, mul33B32, y3B32;
-    Reg::RegTensor<float> x41B32, x42B32, x43B32, mul41B32, mul42B32, mul43B32, y4B32;
-    Reg::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
-    Reg::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
-    Reg::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
-    Reg::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE / 2;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight11B32, weight11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight12B32, weight12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight13B32, weight13B16, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight21B16, weightAddr + offset + B32_REP_SIZE);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight22B16, weightAddr + offset + B32_REP_SIZE + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight23B16, weightAddr + offset + B32_REP_SIZE + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight21B32, weight21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight22B32, weight22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight23B32, weight23B16, maskB32);
-        for (uint32_t xLoop = 0; xLoop < xLoopNum; xLoop++) {
-            Reg::Duplicate(y1B32, 0, maskB32);
-            Reg::Duplicate(y2B32, 0, maskB32);
-            Reg::Duplicate(y3B32, 0, maskB32);
-            Reg::Duplicate(y4B32, 0, maskB32);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16,
-                                                              xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x41B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x42B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x43B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 3) * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x31B32, x31B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x32B32, x32B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x33B32, x33B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x41B32, x41B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x42B32, x42B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x43B32, x43B16, maskB32);
-            Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-            Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-            Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-            Reg::Mul(mul21B32, x21B32, weight21B32, maskB32);
-            Reg::Mul(mul22B32, x22B32, weight22B32, maskB32);
-            Reg::Mul(mul23B32, x23B32, weight23B32, maskB32);
-            Reg::Mul(mul31B32, x31B32, weight11B32, maskB32);
-            Reg::Mul(mul32B32, x32B32, weight12B32, maskB32);
-            Reg::Mul(mul33B32, x33B32, weight13B32, maskB32);
-            Reg::Mul(mul41B32, x41B32, weight21B32, maskB32);
-            Reg::Mul(mul42B32, x42B32, weight22B32, maskB32);
-            Reg::Mul(mul43B32, x43B32, weight23B32, maskB32);
+#undef CC1D_LOAD
+#undef CC1D_STORE
 
-            Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-            Reg::Add(y1B32, y1B32, x13B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-            Reg::Add(y2B32, y2B32, x23B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul31B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul32B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul33B32, maskB32);
-            Reg::Add(y3B32, y3B32, x33B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul41B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul42B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul43B32, maskB32);
-            Reg::Add(y4B32, y4B32, x43B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y3B16, y3B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y4B16, y4B32, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + 2 * xLoop * dimLen, y1B16, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen, y2B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + (2 * xLoop + 1) * dimLen, y3B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen,
-                                                              y4B16, maskB32);
-        }
-        offset += 2 * B32_REP_SIZE;
-    }
-}
-
-// 残差连接模式，含尾行
-template <typename T>
-__simd_vf__ void Conv1dNoNeedStateConResVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr,
-                                           uint32_t xLoopNum, uint32_t dimLen)
-{
-    Reg::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32, mul13B32,
-        y1B32;
-    Reg::RegTensor<float> weight21B32, weight22B32, weight23B32, x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32,
-        y2B32;
-    Reg::RegTensor<float> x31B32, x32B32, x33B32, mul31B32, mul32B32, mul33B32, y3B32;
-    Reg::RegTensor<float> x41B32, x42B32, x43B32, mul41B32, mul42B32, mul43B32, y4B32;
-    Reg::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
-    Reg::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
-    Reg::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
-    Reg::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE / 2;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight11B32, weight11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight12B32, weight12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight13B32, weight13B16, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight21B16, weightAddr + offset + B32_REP_SIZE);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight22B16, weightAddr + offset + B32_REP_SIZE + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight23B16, weightAddr + offset + B32_REP_SIZE + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight21B32, weight21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight22B32, weight22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight23B32, weight23B16, maskB32);
-        for (uint32_t xLoop = 0; xLoop < xLoopNum; xLoop++) {
-            Reg::Duplicate(y1B32, 0, maskB32);
-            Reg::Duplicate(y2B32, 0, maskB32);
-            Reg::Duplicate(y3B32, 0, maskB32);
-            Reg::Duplicate(y4B32, 0, maskB32);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16,
-                                                              xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x41B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x42B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x43B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 3) * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x31B32, x31B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x32B32, x32B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x33B32, x33B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x41B32, x41B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x42B32, x42B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x43B32, x43B16, maskB32);
-            Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-            Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-            Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-            Reg::Mul(mul21B32, x21B32, weight21B32, maskB32);
-            Reg::Mul(mul22B32, x22B32, weight22B32, maskB32);
-            Reg::Mul(mul23B32, x23B32, weight23B32, maskB32);
-            Reg::Mul(mul31B32, x31B32, weight11B32, maskB32);
-            Reg::Mul(mul32B32, x32B32, weight12B32, maskB32);
-            Reg::Mul(mul33B32, x33B32, weight13B32, maskB32);
-            Reg::Mul(mul41B32, x41B32, weight21B32, maskB32);
-            Reg::Mul(mul42B32, x42B32, weight22B32, maskB32);
-            Reg::Mul(mul43B32, x43B32, weight23B32, maskB32);
-
-            Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-            Reg::Add(y1B32, y1B32, x13B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-            Reg::Add(y2B32, y2B32, x23B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul31B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul32B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul33B32, maskB32);
-            Reg::Add(y3B32, y3B32, x33B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul41B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul42B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul43B32, maskB32);
-            Reg::Add(y4B32, y4B32, x43B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y3B16, y3B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y4B16, y4B32, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + 2 * xLoop * dimLen, y1B16, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen, y2B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + (2 * xLoop + 1) * dimLen, y3B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen,
-                                                              y4B16, maskB32);
-        }
-        Reg::Duplicate(y1B32, 0, maskB32);
-        Reg::Duplicate(y2B32, 0, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoopNum * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoopNum + 1) * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoopNum + 2) * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16,
-                                                          xAddr + offset + B32_REP_SIZE + 2 * xLoopNum * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16,
-                                                          xAddr + offset + B32_REP_SIZE + (2 * xLoopNum + 1) * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16,
-                                                          xAddr + offset + B32_REP_SIZE + (2 * xLoopNum + 2) * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-        Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-        Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-        Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-        Reg::Mul(mul21B32, x21B32, weight21B32, maskB32);
-        Reg::Mul(mul22B32, x22B32, weight22B32, maskB32);
-        Reg::Mul(mul23B32, x23B32, weight23B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-        Reg::Add(y1B32, y1B32, x13B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-        Reg::Add(y2B32, y2B32, x23B32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + 2 * xLoopNum * dimLen, y1B16, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + 2 * xLoopNum * dimLen, y2B16,
-                                                          maskB32);
-
-        offset += 2 * B32_REP_SIZE;
-    }
-}
-
-// 非残差连接模式，不含尾行
-template <typename T>
-__simd_vf__ void Conv1dNoNeedStateNoConNoResVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr,
-                                               uint32_t xLoopNum, uint32_t dimLen)
-{
-    Reg::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32, mul13B32,
-        y1B32;
-    Reg::RegTensor<float> weight21B32, weight22B32, weight23B32, x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32,
-        y2B32;
-    Reg::RegTensor<float> x31B32, x32B32, x33B32, mul31B32, mul32B32, mul33B32, y3B32;
-    Reg::RegTensor<float> x41B32, x42B32, x43B32, mul41B32, mul42B32, mul43B32, y4B32;
-    Reg::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
-    Reg::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
-    Reg::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
-    Reg::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE / 2;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight11B32, weight11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight12B32, weight12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight13B32, weight13B16, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight21B16, weightAddr + offset + B32_REP_SIZE);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight22B16, weightAddr + offset + B32_REP_SIZE + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight23B16, weightAddr + offset + B32_REP_SIZE + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight21B32, weight21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight22B32, weight22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight23B32, weight23B16, maskB32);
-        for (uint32_t xLoop = 0; xLoop < xLoopNum; xLoop++) {
-            Reg::Duplicate(y1B32, 0, maskB32);
-            Reg::Duplicate(y2B32, 0, maskB32);
-            Reg::Duplicate(y3B32, 0, maskB32);
-            Reg::Duplicate(y4B32, 0, maskB32);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16,
-                                                              xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x41B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x42B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x43B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 3) * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x31B32, x31B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x32B32, x32B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x33B32, x33B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x41B32, x41B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x42B32, x42B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x43B32, x43B16, maskB32);
-            Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-            Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-            Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-            Reg::Mul(mul21B32, x21B32, weight21B32, maskB32);
-            Reg::Mul(mul22B32, x22B32, weight22B32, maskB32);
-            Reg::Mul(mul23B32, x23B32, weight23B32, maskB32);
-            Reg::Mul(mul31B32, x31B32, weight11B32, maskB32);
-            Reg::Mul(mul32B32, x32B32, weight12B32, maskB32);
-            Reg::Mul(mul33B32, x33B32, weight13B32, maskB32);
-            Reg::Mul(mul41B32, x41B32, weight21B32, maskB32);
-            Reg::Mul(mul42B32, x42B32, weight22B32, maskB32);
-            Reg::Mul(mul43B32, x43B32, weight23B32, maskB32);
-
-            Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul31B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul32B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul33B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul41B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul42B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul43B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y3B16, y3B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y4B16, y4B32, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + 2 * xLoop * dimLen, y1B16, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen, y2B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + (2 * xLoop + 1) * dimLen, y3B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen,
-                                                              y4B16, maskB32);
-        }
-        offset += 2 * B32_REP_SIZE;
-    }
-}
-
-// 非残差连接模式，含尾行
-template <typename T>
-__simd_vf__ void Conv1dNoNeedStateNoConResVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *yAddr,
-                                             uint32_t xLoopNum, uint32_t dimLen)
-{
-    Reg::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32, mul13B32,
-        y1B32;
-    Reg::RegTensor<float> weight21B32, weight22B32, weight23B32, x21B32, x22B32, x23B32, mul21B32, mul22B32, mul23B32,
-        y2B32;
-    Reg::RegTensor<float> x31B32, x32B32, x33B32, mul31B32, mul32B32, mul33B32, y3B32;
-    Reg::RegTensor<float> x41B32, x42B32, x43B32, mul41B32, mul42B32, mul43B32, y4B32;
-    Reg::RegTensor<T> weight11B16, weight12B16, weight13B16, x11B16, x12B16, x13B16, y1B16;
-    Reg::RegTensor<T> weight21B16, weight22B16, weight23B16, x21B16, x22B16, x23B16, y2B16;
-    Reg::RegTensor<T> x31B16, x32B16, x33B16, y3B16;
-    Reg::RegTensor<T> x41B16, x42B16, x43B16, y4B16;
-    Reg::MaskReg maskB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-    uint8_t dimLoopNum = dimLen / B32_REP_SIZE / 2;
-    int32_t offset = 0;
-    for (uint8_t dimLoop = 0; dimLoop < dimLoopNum; dimLoop++) {
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight11B16, weightAddr + offset);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight12B16, weightAddr + offset + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight13B16, weightAddr + offset + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight11B32, weight11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight12B32, weight12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight13B32, weight13B16, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight21B16, weightAddr + offset + B32_REP_SIZE);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight22B16, weightAddr + offset + B32_REP_SIZE + dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(weight23B16, weightAddr + offset + B32_REP_SIZE + 2 * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(weight21B32, weight21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight22B32, weight22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(weight23B32, weight23B16, maskB32);
-        for (uint32_t xLoop = 0; xLoop < xLoopNum; xLoop++) {
-            Reg::Duplicate(y1B32, 0, maskB32);
-            Reg::Duplicate(y2B32, 0, maskB32);
-            Reg::Duplicate(y3B32, 0, maskB32);
-            Reg::Duplicate(y4B32, 0, maskB32);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16,
-                                                              xAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x31B16, xAddr + offset + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x32B16, xAddr + offset + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x33B16, xAddr + offset + (2 * xLoop + 3) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x41B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x42B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 2) * dimLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x43B16,
-                                                              xAddr + offset + B32_REP_SIZE + (2 * xLoop + 3) * dimLen);
-            Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x31B32, x31B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x32B32, x32B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x33B32, x33B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x41B32, x41B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x42B32, x42B16, maskB32);
-            Reg::Cast<float, T, castTraitB162B32>(x43B32, x43B16, maskB32);
-            Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-            Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-            Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-            Reg::Mul(mul21B32, x21B32, weight21B32, maskB32);
-            Reg::Mul(mul22B32, x22B32, weight22B32, maskB32);
-            Reg::Mul(mul23B32, x23B32, weight23B32, maskB32);
-            Reg::Mul(mul31B32, x31B32, weight11B32, maskB32);
-            Reg::Mul(mul32B32, x32B32, weight12B32, maskB32);
-            Reg::Mul(mul33B32, x33B32, weight13B32, maskB32);
-            Reg::Mul(mul41B32, x41B32, weight21B32, maskB32);
-            Reg::Mul(mul42B32, x42B32, weight22B32, maskB32);
-            Reg::Mul(mul43B32, x43B32, weight23B32, maskB32);
-
-            Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-            Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-            Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul31B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul32B32, maskB32);
-            Reg::Add(y3B32, y3B32, mul33B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul41B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul42B32, maskB32);
-            Reg::Add(y4B32, y4B32, mul43B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y3B16, y3B32, maskB32);
-            Reg::Cast<T, float, castTraitB322B16>(y4B16, y4B32, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + 2 * xLoop * dimLen, y1B16, maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + 2 * xLoop * dimLen, y2B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + (2 * xLoop + 1) * dimLen, y3B16,
-                                                              maskB32);
-            Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + (2 * xLoop + 1) * dimLen,
-                                                              y4B16, maskB32);
-        }
-        Reg::Duplicate(y1B32, 0, maskB32);
-        Reg::Duplicate(y2B32, 0, maskB32);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x11B16, xAddr + offset + 2 * xLoopNum * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x12B16, xAddr + offset + (2 * xLoopNum + 1) * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x13B16, xAddr + offset + (2 * xLoopNum + 2) * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x21B16,
-                                                          xAddr + offset + B32_REP_SIZE + 2 * xLoopNum * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x22B16,
-                                                          xAddr + offset + B32_REP_SIZE + (2 * xLoopNum + 1) * dimLen);
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(x23B16,
-                                                          xAddr + offset + B32_REP_SIZE + (2 * xLoopNum + 2) * dimLen);
-        Reg::Cast<float, T, castTraitB162B32>(x11B32, x11B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x12B32, x12B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x13B32, x13B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x21B32, x21B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x22B32, x22B16, maskB32);
-        Reg::Cast<float, T, castTraitB162B32>(x23B32, x23B16, maskB32);
-        Reg::Mul(mul11B32, x11B32, weight11B32, maskB32);
-        Reg::Mul(mul12B32, x12B32, weight12B32, maskB32);
-        Reg::Mul(mul13B32, x13B32, weight13B32, maskB32);
-        Reg::Mul(mul21B32, x21B32, weight21B32, maskB32);
-        Reg::Mul(mul22B32, x22B32, weight22B32, maskB32);
-        Reg::Mul(mul23B32, x23B32, weight23B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul11B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul12B32, maskB32);
-        Reg::Add(y1B32, y1B32, mul13B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul21B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul22B32, maskB32);
-        Reg::Add(y2B32, y2B32, mul23B32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(y1B16, y1B32, maskB32);
-        Reg::Cast<T, float, castTraitB322B16>(y2B16, y2B32, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + 2 * xLoopNum * dimLen, y1B16, maskB32);
-        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(yAddr + offset + B32_REP_SIZE + 2 * xLoopNum * dimLen, y2B16,
-                                                          maskB32);
-
-        offset += 2 * B32_REP_SIZE;
-    }
-}
+} // namespace FusedCausalConv1dPtoVf
 
 template <typename T>
 __aicore__ inline void Conv1dNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
@@ -730,10 +289,17 @@ __aicore__ inline void Conv1dNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weig
     __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
     __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
-    if (isResidualConnection == 1) {
-        Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+    // stateSLen is 1 or 2 for K = 3; selecting it here keeps the vector scope branch-free.
+    if (stateSLen == 1) {
+        if (isResidualConnection == 1) {
+            FusedCausalConv1dPtoVf::Conv1dNeedStatePtoVF<T, true, 1>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+        } else {
+            FusedCausalConv1dPtoVf::Conv1dNeedStatePtoVF<T, false, 1>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+        }
+    } else if (isResidualConnection == 1) {
+        FusedCausalConv1dPtoVf::Conv1dNeedStatePtoVF<T, true, 2>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
     } else {
-        Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        FusedCausalConv1dPtoVf::Conv1dNeedStatePtoVF<T, false, 2>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
     }
 }
 
@@ -748,19 +314,15 @@ __aicore__ inline void Conv1dNeedStateBH(LocalTensor<T> &xUb, LocalTensor<T> &we
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
     if (isResidualConnection == 1) {
         if (convStateLen == 2) {
-            Conv1dNeedStateConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+            FusedCausalConv1dPtoVf::Conv1dNeedStateBHPtoVF<T, true>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
         } else {
-            uint32_t stateSLen = 2;
-            uint32_t xSLen = 1;
-            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+            FusedCausalConv1dPtoVf::Conv1dNeedStatePtoVF<T, true, 2>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
         }
     } else {
         if (convStateLen == 2) {
-            Conv1dNeedStateNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
+            FusedCausalConv1dPtoVf::Conv1dNeedStateBHPtoVF<T, false>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
         } else {
-            uint32_t stateSLen = 2;
-            uint32_t xSLen = 1;
-            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+            FusedCausalConv1dPtoVf::Conv1dNeedStatePtoVF<T, false, 2>(xAddr, weightAddr, stateAddr, yAddr, dimLen);
         }
     }
 }
@@ -772,20 +334,18 @@ __aicore__ inline void Conv1dNoNeedState(LocalTensor<T> &xUb, LocalTensor<T> &we
     __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
     __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
-    uint32_t xLoopNum = xSLen / 2;
-    uint8_t xLoopRem = xSLen % 2;
-    if (isResidualConnection == 1) {
-        if (xLoopRem == 1) {
-            Conv1dNoNeedStateConResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
-        } else if (xLoopRem == 0) {
-            Conv1dNoNeedStateConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
+    // Below this row count the rotated body's priming prologue costs more than it saves. The split
+    // is on the scalar side so neither kernel carries a branch inside its vector scope.
+    if (xSLen < FusedCausalConv1dPtoVf::PTO_SHORT_RUN_ROWS) {
+        if (isResidualConnection == 1) {
+            FusedCausalConv1dPtoVf::Conv1dNoNeedStateShortRunPtoVF<T, true>(xAddr, weightAddr, yAddr, xSLen, dimLen);
+        } else {
+            FusedCausalConv1dPtoVf::Conv1dNoNeedStateShortRunPtoVF<T, false>(xAddr, weightAddr, yAddr, xSLen, dimLen);
         }
+    } else if (isResidualConnection == 1) {
+        FusedCausalConv1dPtoVf::Conv1dNoNeedStateLongRunPtoVF<T, true>(xAddr, weightAddr, yAddr, xSLen, dimLen);
     } else {
-        if (xLoopRem == 1) {
-            Conv1dNoNeedStateNoConResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
-        } else if (xLoopRem == 0) {
-            Conv1dNoNeedStateNoConNoResVF(xAddr, weightAddr, yAddr, xLoopNum, dimLen);
-        }
+        FusedCausalConv1dPtoVf::Conv1dNoNeedStateLongRunPtoVF<T, false>(xAddr, weightAddr, yAddr, xSLen, dimLen);
     }
 }
 
