@@ -97,7 +97,7 @@ static torch::Tensor fp8_fp4_mqa_logits_with_topk(
         stride_logits = align(align(max_seqlen_k, block_kv), stride_logits_alignment);
     }
     auto logits_buffer = torch::empty({align(seq_len, block_q), stride_logits},
-        q_fp.options().dtype(torch::kFloat32));
+        q_fp.options().dtype(torch::kBFloat16));
 
     // Allocate sparse_indices (output, int32)
     auto sparse_indices = torch::empty({seq_len, sparse_count},
@@ -217,7 +217,7 @@ static torch::Tensor fp8_fp4_paged_mqa_logits_with_topk(
     const int stride_logits_alignment = 1024 / static_cast<int>(sizeof(float));
     const auto aligned_max_context_len = align(align(max_context_len, split_kv), stride_logits_alignment);
     auto logits_buffer = torch::empty({batch_size * next_n, aligned_max_context_len},
-        q_fp.options().dtype(torch::kFloat32));
+        q_fp.options().dtype(torch::kBFloat16));
 
     auto sparse_indices = torch::empty({batch_size * next_n, sparse_count},
         q_fp.options().dtype(torch::kInt32));

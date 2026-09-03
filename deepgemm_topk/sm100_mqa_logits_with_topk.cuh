@@ -63,16 +63,6 @@ CUTLASS_DEVICE void dispatch_num_block_tokens(const uint32_t& num_block_tokens, 
     }
 }
 
-namespace {
-// Non-volatile shared load: unlike ptx::ld_shared (asm volatile), allows the
-// compiler to reorder/pipeline independent loads (real ILP under unroll).
-CUTLASS_DEVICE uint32_t ptx::ld_shared(const uint32_t* p) {
-    uint32_t v;
-    asm("ld.shared.u32 %0, [%1];" : "=r"(v) : "l"(__cvta_generic_to_shared(p)));
-    return v;
-}
-}
-
 // =============================================================================
 // Warp-level 8-bit radix-select TopK (reads from local buffer, not GMEM)
 // logits: local buffer, indexed [0 .. k_end-k_start)
@@ -282,7 +272,7 @@ template <uint32_t kNumHeads, uint32_t kHeadDim,
           uint32_t kNumMathWarpGroups = kNumMathThreads / 128>
 CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     const uint32_t logits_stride,
-    float* __restrict__ logits_buffer,                 // Phase 1 output (temp)
+    nv_bfloat16* __restrict__ logits_buffer,            // Phase 1 output (temp, bf16)
     int32_t* __restrict__ sparse_indices,              // Phase 2 output (final)
     const cute::TmaDescriptor& tensor_map_q,
     const cute::TmaDescriptor& tensor_map_sf_q,
@@ -734,10 +724,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                             const uint32_t rel_kv = kv_offset - seq_k_start[i];
                             const uint32_t len = seq_k_end[i] - seq_k_start[i];
                             if (rel_kv < len)
-                                logits_buffer[q_offset + rel_kv] = result;
+                                logits_buffer[q_offset + rel_kv] = __float2bfloat16(result);
                         } else {
                             if (kv_offset < logits_stride)
-                                logits_buffer[q_offset + kv_offset] = result;
+                                logits_buffer[q_offset + kv_offset] = __float2bfloat16(result);
                         }
                     }
                 }
@@ -807,7 +797,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 k_end = cute::min(scheduler.cu_seq_len_k_end[q_token], scheduler.num_kv_tokens);
             }
             const uint32_t k_len = k_end > k_start ? (k_end - k_start) : 0;
-            const float* logits_row = logits_buffer + static_cast<uint64_t>(q_token) * logits_stride;
+            const nv_bfloat16* logits_row = logits_buffer + static_cast<uint64_t>(q_token) * logits_stride;
             int32_t* out_ptr = sparse_indices + static_cast<uint64_t>(q_token) * kSparseCount;
 
 
@@ -835,7 +825,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < my_len; i += 32)
                     ptx::st_shared(reinterpret_cast<uint32_t*>(wcache) + i,
-                                   __float_as_uint(__ldcg(logits_row + k_start + my_start + i)));
+                                   __float_as_uint(__bfloat162float(logits_row[k_start + my_start + i])));
                 __syncwarp();
                 warp_bucket_topk<kSparseCount, true>(wcache, k_start + my_start, my_len,
                                                      wcand, whist, wstage, nullptr, lane_idx);
@@ -867,7 +857,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                             merge_vals[j] = __uint_as_float(
                                 ptx::ld_shared(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
                         } else {
-                            merge_vals[j] = __ldcg(logits_row + (static_cast<uint32_t>(c) - k_start));
+                            merge_vals[j] = __bfloat162float(logits_row[static_cast<uint32_t>(c) - k_start]);
                         }
                     } else {
                         merge_vals[j] = -CUDART_INF_F;
@@ -1101,7 +1091,7 @@ void sm100_mqa_logits_with_topk(
     const uint32_t logits_stride,
     const uint32_t* cu_seq_len_k_start,
     const uint32_t* cu_seq_len_k_end,
-    float* __restrict__ logits_buffer,
+    nv_bfloat16* __restrict__ logits_buffer,
     int32_t* __restrict__ sparse_indices,
     const __grid_constant__ cute::TmaDescriptor tensor_map_q,
     const __grid_constant__ cute::TmaDescriptor tensor_map_sf_q,
@@ -1142,7 +1132,7 @@ CUTLASS_GLOBAL __launch_bounds__(kNumSpecializedThreads + kNumMathThreads, 1)
 void sm100_paged_mqa_logits_with_topk(
     const uint32_t num_q_tokens_total,
     const uint32_t logits_stride, const uint32_t block_table_stride,
-    const uint32_t* context_lens, float* __restrict__ logits_buffer,
+    const uint32_t* context_lens, nv_bfloat16* __restrict__ logits_buffer,
     int32_t* __restrict__ sparse_indices,
     const uint32_t* block_table, const uint32_t* indices,
     const uint32_t* schedule_meta,

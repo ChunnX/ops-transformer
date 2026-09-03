@@ -40,7 +40,7 @@ public:
 
         int* cu_seq_len_k_start;
         int* cu_seq_len_k_end;
-        float* logits_buffer;
+        nv_bfloat16* logits_buffer;
         int* sparse_indices;
 
         CUtensorMap tensor_map_q;
@@ -179,7 +179,7 @@ static void sm100_mqa_logits_with_topk(
         .sparse_count = sparse_count,
         .cu_seq_len_k_start = cu_seq_len_k_start.data_ptr<int>(),
         .cu_seq_len_k_end = cu_seq_len_k_end.data_ptr<int>(),
-        .logits_buffer = logits_buffer.data_ptr<float>(),
+        .logits_buffer = logits_buffer.data_ptr<nv_bfloat16>(),
         .sparse_indices = sparse_indices.data_ptr<int>(),
         .tensor_map_q = tensor_map_q,
         .tensor_map_sf_q = tensor_map_sf_q,
@@ -223,7 +223,7 @@ public:
         int splits_per_chunk;
 
         int* context_lens;
-        float* logits_buffer;
+        nv_bfloat16* logits_buffer;
         int* sparse_indices;
         int* block_table;
         int* indices;
@@ -368,7 +368,7 @@ static void sm100_paged_mqa_logits_with_topk(
         .split_kv = split_kv,
         .splits_per_chunk = splits_per_chunk,
         .context_lens = context_lens.data_ptr<int>(),
-        .logits_buffer = logits_buffer.data_ptr<float>(),
+        .logits_buffer = logits_buffer.data_ptr<nv_bfloat16>(),
         .sparse_indices = sparse_indices.data_ptr<int>(),
         .block_table = block_table.data_ptr<int>(),
         .indices = is_varlen ? indices.data_ptr<int>() : nullptr,
