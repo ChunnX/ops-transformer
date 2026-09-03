@@ -1051,6 +1051,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     for (uint32_t i = filled + lane_idx; i < kSparseCount; i += 32)
                         out_ptr[i] = -1;
                 }
+                if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0)
+                    printf("[SEL] total_def=%u collected=%u kth=0x%08x out[0..5]=%d,%d,%d,%d,%d,%d\n",
+                           total_def, gslots[1], kth_full,
+                           out_ptr[0], out_ptr[1], out_ptr[2], out_ptr[3], out_ptr[4], out_ptr[5]);
             }
             __syncthreads();
 
