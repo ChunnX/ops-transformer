@@ -7,12 +7,12 @@
 #  See LICENSE in the root of the software repository for the full text of the License.
 
 # !
-#  \file parse_workspace_seg.py
+#  \file parse_matrix.py
 #  \brief Workspace 段数据解析脚本。
 #         解析异常 dump 产生的 workspace_seg*_type*_*.bin 文件，按指定数据类型和 shape 展示矩阵内容。
 #
 # 用法:
-#   python parse_workspace_seg.py <seg_bin> --dtype <type> --rows <M> --cols <K> [options]
+#   python parse_matrix.py <seg_bin> --dtype <type> --rows <M> --cols <K> [options]
 #
 # 数据类型:
 #   fp16       IEEE FP16 (2B/element)
@@ -65,7 +65,9 @@ def fp16_to_float(bits: int) -> float:
             return 0.0 if sign == 0 else -0.0
         val = (mant / 1024.0) * (2 ** -14)
     elif exp == 0x1F:
-        return float("inf") if mant == 0 else float("nan")
+        if mant != 0:
+            return float("nan")
+        return float("-inf") if sign else float("inf")
     else:
         val = (1.0 + mant / 1024.0) * (2 ** (exp - 15))
     return -val if sign else val
@@ -75,7 +77,7 @@ def fp16_to_float(bits: int) -> float:
 def parse_bf16(data: bytes, offset: int, count: int):
     vals = []
     for i in range(count):
-        raw = struct.unpack_from("<I", data, offset + i * 2)[0]
+        raw = struct.unpack_from("<H", data, offset + i * 2)[0]
         # BF16: truncate FP32 to upper 16 bits, so expand: raw << 16
         fp32_bits = raw << 16
         vals.append(struct.unpack("<f", struct.pack("<I", fp32_bits))[0])
@@ -122,11 +124,11 @@ def fp8_e5m2_to_float(b: int) -> float:
     if exp == 0 and mant == 0:
         return 0.0 if sign == 0 else -0.0
     if exp == 0:
-        val = (mant / 4.0) * (2 ** -6)  # subnormal, bias=15
-    elif exp == 0x1F and mant == 0x3:
-        return float("nan")
+        val = (mant / 4.0) * (2 ** -14)  # subnormal, exponent = 1 - bias = -14
     elif exp == 0x1F:
-        return float("inf")
+        if mant != 0:
+            return float("nan")
+        return float("-inf") if sign else float("inf")
     else:
         val = (1.0 + mant / 4.0) * (2 ** (exp - 15))  # bias=15
     return -val if sign else val
@@ -163,12 +165,9 @@ def parse_e8m0(data: bytes, offset: int, count: int):
     vals = []
     for i in range(count):
         b = data[offset + i]
-        # E8M0: 8-bit exponent with bias 127, no mantissa
-        # value = 2^(exp - 127)
-        if b == 0:
-            vals.append(0.0)
-        else:
-            vals.append(2.0 ** (b - 127))
+        # E8M0: 8-bit exponent with bias 127, no mantissa/sign。
+        # 0x00 表示 2^-127，0xFE 表示 2^127，0xFF 表示 NaN。
+        vals.append(float("nan") if b == 0xFF else 2.0 ** (b - 127))
     return vals
 
 
@@ -204,6 +203,16 @@ def get_element_size(dtype: str) -> float:
     return float(DTYPE_INFO[dtype]["size"])
 
 
+def parse_element(data: bytes, dtype: str, element_index: int):
+    """按逻辑元素下标读取一个值，避免把大文件全部展开为 Python 对象。"""
+    if dtype == "fp4_e2m1":
+        packed = data[element_index // 2]
+        nibble = (packed >> 4) & 0xF if element_index % 2 == 0 else packed & 0xF
+        return fp4_e2m1_to_float(nibble)
+    byte_offset = element_index * DTYPE_INFO[dtype]["size"]
+    return PARSE_FUNCS[dtype](data, byte_offset, 1)[0]
+
+
 def format_value(v) -> str:
     if isinstance(v, float):
         if math.isnan(v):
@@ -225,19 +234,19 @@ def main():
                 epilog="""\
 示例:
   # 解析 COMM_OUT 段 (fp8_e4m3, shape 57086x1536, 只看前 8 行)
-  python parse_workspace_seg.py workspace_seg1_type5_*.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --head 8
+  python parse_matrix.py workspace_seg1_type5_*.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --head 8
 
   # 看行 5:10 列 5:10 的数据（空格分隔）
-  python parse_workspace_seg.py seg.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --row-range 5 10 --col-range 5 10
+  python parse_matrix.py seg.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --row-range 5 10 --col-range 5 10
 
   # 看指定行和列
-  python parse_workspace_seg.py seg.bin --dtype fp16 --rows 4096 --cols 1024 --row 0 100 200 --col 0 63 1023
+  python parse_matrix.py seg.bin --dtype fp16 --rows 4096 --cols 1024 --row 0 100 200 --col 0 63 1023
 
   # 解析 scale 通信段 (e8m0, shape 57086x48, 48=24*2)
-  python parse_workspace_seg.py workspace_seg4_type11_*.bin --dtype e8m0 --rows 57086 --cols 48 --head 8
+  python parse_matrix.py workspace_seg4_type11_*.bin --dtype e8m0 --rows 57086 --cols 48 --head 8
 
   # JSON 输出
-  python parse_workspace_seg.py seg.bin --dtype fp8_e4m3 --rows 100 --cols 50 --json
+  python parse_matrix.py seg.bin --dtype fp8_e4m3 --rows 100 --cols 50 --json
         """,
     )
     parser.add_argument("bin_file", help="workspace_seg*_type*_*.bin 文件路径")
@@ -247,9 +256,9 @@ def main():
     parser.add_argument("--cols", type=int, required=True, help="矩阵列数 K")
     parser.add_argument("--head", type=int, default=16, help="只显示前 N 行（默认 16）")
     parser.add_argument("--tail", type=int, default=0, help="同时显示后 N 行（默认不显示）")
-    parser.add_argument("--row-range", metavar="START END", type=int, nargs=2, default=None,
+    parser.add_argument("--row-range", metavar=("START", "END"), type=int, nargs=2, default=None,
                         help="显示指定行范围 [start, end)，如 --row-range 5 10")
-    parser.add_argument("--col-range", metavar="START END", type=int, nargs=2, default=None,
+    parser.add_argument("--col-range", metavar=("START", "END"), type=int, nargs=2, default=None,
                         help="显示指定列范围 [start, end)，如 --col-range 5 10")
     parser.add_argument("--row", type=int, nargs="+", default=None,
                         help="只显示指定行号（可指定多个，如 --row 0 100 57085）")
@@ -258,6 +267,9 @@ def main():
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     parser.add_argument("--transpose", action="store_true", help="按列优先顺序解析（AlltoAll 通信结果布局）")
     args = parser.parse_args()
+
+    if args.rows <= 0 or args.cols <= 0:
+        parser.error("--rows 和 --cols 必须为正整数")
 
     if not os.path.isfile(args.bin_file):
         logging.error("文件不存在: %s", args.bin_file)
@@ -278,34 +290,23 @@ def main():
         logging.warning("文件元素数 %d < 矩阵元素数 %d, 只解析文件中存在的数据", file_elems, total_elems)
         total_elems = file_elems
 
-    # 解析所有元素
-    parse_func = PARSE_FUNCS[dtype]
-    all_vals = parse_func(data, 0, total_elems)
-
-            # 重塑为矩阵
+    # 确定要显示的列
     col_start = 0
     col_end = args.cols
     if args.col_range:
-        col_start = args.col_range[0]
+        col_start = max(args.col_range[0], 0)
         col_end = min(args.col_range[1], args.cols)
-
-    matrix = []
-    for r in range(min(args.rows, total_elems // args.cols)):
-        row_start = r * args.cols
-        row = all_vals[row_start:row_start + args.cols]
-        matrix.append(row)
 
     # 确定要显示的行
     if args.row:
-        display_rows = sorted(set(r for r in args.row if 0 <= r < min(args.rows, total_elems // args.cols)))
+        display_rows = sorted(set(r for r in args.row if 0 <= r < args.rows))
     elif args.row_range:
-        display_rows = list(range(args.row_range[0], min(args.row_range[1], min(args.rows, total_elems // args.cols))))
+        display_rows = list(range(max(args.row_range[0], 0), min(args.row_range[1], args.rows)))
     else:
-        display_rows = list(range(min(args.head, len(matrix))))
-        if args.tail > 0 and len(matrix) > args.head:
-            display_rows += list(range(max(args.head, len(matrix) - args.tail), len(matrix)))
+        display_rows = list(range(min(args.head, args.rows)))
+        if args.tail > 0 and args.rows > args.head:
+            display_rows += list(range(max(args.head, args.rows - args.tail), args.rows))
 
-    # 确定要显示的列
     if args.col:
         display_cols = sorted(set(c for c in args.col if 0 <= c < args.cols))
     elif args.col_range:
@@ -316,10 +317,26 @@ def main():
     else:
         display_cols = list(range(col_start, col_end))
 
+    # 只解析用户选择的行列。普通布局按 row-major 取数；--transpose
+    # 表示文件按 column-major 存储，逻辑坐标 (r, c) 的下标为 c * rows + r。
+    matrix = {}
+    selected_values = []
+    for row_index in display_rows:
+        row = {}
+        for col_index in display_cols:
+            element_index = (col_index * args.rows + row_index) if args.transpose \
+                else (row_index * args.cols + col_index)
+            if element_index >= total_elems:
+                continue
+            value = parse_element(data, dtype, element_index)
+            row[col_index] = value
+            selected_values.append(value)
+        matrix[row_index] = row
+
     if args.json:
         import json
-        selected = {str(r): {str(c): matrix[r][c] for c in display_cols if c < len(matrix[r])}
-                    for r in display_rows if r < len(matrix)}
+        selected = {str(r): {str(c): matrix[r][c] for c in display_cols if c in matrix[r]}
+                    for r in display_rows}
         output = {
             "dtype": dtype,
             "rows": args.rows,
@@ -358,18 +375,16 @@ def main():
     if compact:
         # 紧凑模式：每个数据用空格分隔
         for r in display_rows:
-            if r >= len(matrix):
-                continue
             row = matrix[r]
             parts = []
             for c in display_cols:
-                if c < len(row):
+                if c in row:
                     v = row[c]
                     if isinstance(v, float):
                         if math.isnan(v):
                             parts.append("NaN")
                         elif math.isinf(v):
-                            parts.append("Inf")
+                            parts.append("-Inf" if v < 0 else "Inf")
                         elif v == 0.0:
                             parts.append("0")
                         else:
@@ -388,24 +403,24 @@ def main():
         print("-" * len(header))
 
         for r in display_rows:
-            if r >= len(matrix):
-                continue
             row = matrix[r]
             line = f"{r:>6} |"
             for c in display_cols:
-                if c < len(row):
+                if c in row:
                     line += format_value(row[c])
                 else:
                     line += "      N/A"
             print(line)
 
-    # 统计信息
+    # 统计信息仅针对本次显示范围，避免大文件被展开为数千万个 Python 对象。
     print()
-    print("--- 统计信息 ---")
-    non_zero = [v for v in all_vals if v != 0 and not (isinstance(v, float) and math.isnan(v))]
-    if non_zero:
+    print("--- 显示范围统计信息 ---")
+    non_zero = [v for v in selected_values if v != 0 and not (isinstance(v, float) and math.isnan(v))]
+    if not selected_values:
+        print("  显示范围内没有可解析元素")
+    elif non_zero:
         if all(isinstance(v, (int, float)) for v in non_zero):
-            print(f"  非零元素数: {len(non_zero)} / {total_elems}")
+            print(f"  非零元素数: {len(non_zero)} / {len(selected_values)}")
             print(f"  最小值: {min(non_zero):.6e}")
             print(f"  最大值: {max(non_zero):.6e}")
             abs_vals = [abs(v) for v in non_zero]
@@ -414,7 +429,7 @@ def main():
             avg = sum(abs_vals) / len(abs_vals)
             print(f"  绝对值平均: {avg:.6e}")
         else:
-            print(f"  非零元素数: {len(non_zero)} / {total_elems}")
+            print(f"  非零元素数: {len(non_zero)} / {len(selected_values)}")
     else:
         print("  全部为零")
 
