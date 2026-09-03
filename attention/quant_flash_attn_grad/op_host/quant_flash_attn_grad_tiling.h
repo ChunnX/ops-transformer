@@ -83,6 +83,10 @@ TILING_DATA_FIELD_DEF(int64_t, v_post_block_factor)
 TILING_DATA_FIELD_DEF(int64_t, v_post_block_total)
 TILING_DATA_FIELD_DEF(int64_t, v_post_base_num)
 TILING_DATA_FIELD_DEF(int64_t, v_post_tail_num)
+TILING_DATA_FIELD_DEF(int64_t, deter_max_round)
+TILING_DATA_FIELD_DEF(int64_t, mask_mode)
+TILING_DATA_FIELD_DEF(int64_t, s1_token)
+TILING_DATA_FIELD_DEF(int64_t, s2_token)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantFlashAttnGrad, QuantFlashAttnGradTilingData)
 

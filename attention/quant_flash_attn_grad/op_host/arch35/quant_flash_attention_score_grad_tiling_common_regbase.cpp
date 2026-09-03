@@ -680,6 +680,8 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
     fBaseParams.queryType = queryType;
     fBaseParams.calTypeSize = FP32_BYTES;
 
+    fBaseParams.sparseMode =
+        *(context_->GetAttrs()->GetAttrPointer<uint32_t>(static_cast<size_t>(AttrIndex::SPARSE_MODE)));
     fBaseParams.scaleValue =
         *(context_->GetAttrs()->GetAttrPointer<float>(static_cast<size_t>(AttrIndex::SCALE_VALUE)));
     auto metadataShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::METADATA));
@@ -948,7 +950,11 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
         return ge::GRAPH_FAILED;
     }
     fBaseParams.attenMaskCompressMode = 0;
-    fBaseParams.attenMaskOptional = EMPTY_TENSOR;
+    if (attnMaskShape == nullptr || attnMaskShape->GetStorageShape().GetDimNum() == 0) {
+        fBaseParams.attenMaskOptional = EMPTY_TENSOR;
+    } else {
+        fBaseParams.attenMaskOptional = NORMAL_TENSOR;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
