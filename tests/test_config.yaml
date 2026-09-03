@@ -2277,7 +2277,7 @@ mhc:
       ut: False
 
 mamba:
-    causal_conv1d:
+  causal_conv1d:
     module: True
     src:
       - mamba/causal_conv1d
