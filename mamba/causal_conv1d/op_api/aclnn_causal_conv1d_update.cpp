@@ -358,7 +358,7 @@ ACLNN_API aclnnStatus aclnnCausalConv1dUpdateGetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnCausalConv1dUpdate,
                    DFX_IN(x, weight, convStatesRef, biasOptional, queryStartLocOptional, cacheIndicesOptional,
-                          numAcceptedTokensOptional),
+                          numAcceptedTokensOptional, activation, nullBlockId),
                    DFX_OUT(convStatesRef, y));
     return CausalConv1dUpdateCommonProcess(x, weight, convStatesRef, biasOptional, queryStartLocOptional,
                                            cacheIndicesOptional, numAcceptedTokensOptional,
