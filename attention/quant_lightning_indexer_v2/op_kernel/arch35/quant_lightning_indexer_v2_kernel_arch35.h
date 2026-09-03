@@ -153,6 +153,8 @@ protected:
     TempLoopInfo tempLoopInfo{};
     QLIV2Common::SplitCoreInfo splitCoreInfo{};
     QLIV2Common::LdSplitCoreInfo ldInfo{};
+    bool enableDirectIndicesFastPath = false;
+    bool useDirectIndicesFastPath = false;
 
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const QLIV2TilingData *__restrict tilingData);
@@ -170,6 +172,7 @@ protected:
                                             uint32_t qScaleLoop, uint32_t kScaleLoop);
     __aicore__ inline void ProcessDecode();
     __aicore__ inline void ProcessInvalid();
+    __aicore__ inline bool AllBatchesSupportDirectIndicesFastPath();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
@@ -206,6 +209,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.maxSeqlenQ = tilingData->maxSeqlenQ;
     constInfo.quantMode = tilingData->quantMode;
+    enableDirectIndicesFastPath = tilingData->enableDirectIndicesFastPath != 0U;
     constInfo.outputLayout = Q_LAYOUT_T; // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -219,6 +223,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     if (constInfo.sparseCount > TOPK_6K) {
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
         constInfo.mBaseSizeMax = M_BASE_SIZE_SMALL;
+    } else if (tilingData->enableS1Base8FastPath != 0U) {
+        constInfo.s1BaseSize = 8U;
+        constInfo.mBaseSizeMax = M_BASE_SIZE;
     } else {
         constInfo.s1BaseSize = S1_BASE_SIZE;
         constInfo.mBaseSizeMax = M_BASE_SIZE;
@@ -629,9 +636,30 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Process()
         return;
     }
 
+    useDirectIndicesFastPath = AllBatchesSupportDirectIndicesFastPath();
     ProcessMain();
 
-    ProcessDecode();
+    if (!useDirectIndicesFastPath) {
+        ProcessDecode();
+    }
+}
+
+template <typename QLIV2T>
+__aicore__ inline bool QLIV2Preload<QLIV2T>::AllBatchesSupportDirectIndicesFastPath()
+{
+    if (!enableDirectIndicesFastPath) {
+        return false;
+    }
+    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
+        uint32_t actS1Size = 0U;
+        uint32_t actS2Size = 0U;
+        uint32_t actS2SizeOrig = 0U;
+        GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
+        if (actS2SizeOrig > constInfo.sparseCount) {
+            return false;
+        }
+    }
+    return true;
 }
 
 template <typename QLIV2T>
@@ -671,10 +699,20 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessMain()
         return;
     }
 
+    if ASCEND_IS_AIC {
+        if (useDirectIndicesFastPath) {
+            return;
+        }
+    }
+
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
+        if (!useDirectIndicesFastPath) {
+            CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_VC_EVENT +
+                                                                               0);
+            CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_VC_EVENT +
+                                                                               1);
+        }
     } else {
         matmulService.AllocEventID();
     }
@@ -690,6 +728,23 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessMain()
         }
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+            if (useDirectIndicesFastPath) {
+                // An S1 group may be split across cores along S2. Only the
+                // owner of its first S2 block writes the final index rows.
+                if ASCEND_IS_AIV {
+                    if (splitCoreInfo.s2Start == 0U) {
+                        QLIV2Common::RunInfo directRunInfo;
+                        directRunInfo.s2Start = splitCoreInfo.s2Start;
+                        directRunInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
+                        CalcRunInfo(gloop, splitCoreInfo.s2Start, directRunInfo, qScaleLoop, 0U);
+                        vectorService.ProcessDirectIndices(directRunInfo);
+                    }
+                }
+                gloop += tempLoopInfo.s2LoopEnd - splitCoreInfo.s2Start + 1U;
+                ++qScaleLoop;
+                splitCoreInfo.s2Start = 0U;
+                continue;
+            }
             uint32_t kScaleLoop = 0;
             runInfo.s2Start = splitCoreInfo.s2Start;
             runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;

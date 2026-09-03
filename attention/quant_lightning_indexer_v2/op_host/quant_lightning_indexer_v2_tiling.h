@@ -118,6 +118,8 @@ TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
 TILING_DATA_FIELD_DEF(uint32_t, quantMode)
+TILING_DATA_FIELD_DEF(uint32_t, enableS1Base8FastPath)
+TILING_DATA_FIELD_DEF(uint32_t, enableDirectIndicesFastPath)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLIV2TilingData)
 
@@ -166,6 +168,7 @@ public:
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
+    uint32_t totalQueryTokens = 0;
     int64_t s2Size = 0;
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
