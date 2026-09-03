@@ -730,7 +730,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
 
     // ========================================================================
     // PHASE 1 → PHASE 2 SYNC
+    // __threadfence flushes this block's logits writes to L2 so that
+    // other SMs' Phase 2 reads (via __ldcg) can see them without stalling.
     // ========================================================================
+    __threadfence();
     __syncthreads();
     // ========================================================================
     // PHASE 2: 8-warp split TopK — each warp runs a local radix TopK on its
