@@ -453,6 +453,20 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
+    bool allContiguous = true;
+    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+        auto tensor = (*tensorList)[i];
+        if (tensor != nullptr && !IsContiguous(tensor)) {
+            allContiguous = false;
+            break;
+        }
+    }
+    // 已连续的输入直接透传: 图模式路径5(GetMaxWorkspaceSize)入图时, 无条件的 l0op::Contiguous
+    // 会在图中固化连续化拷贝节点, 导致每个 step 全量搬运 KV cache, 造成性能劣化。
+    if (allContiguous) {
+        return ACLNN_SUCCESS;
+    }
+
     std::vector<const aclTensor *> tensors;
     tensors.reserve(tensorList->Size());
     for (uint64_t i = 0; i < tensorList->Size(); ++i) {
@@ -461,11 +475,16 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
             tensors.emplace_back(nullptr);
             continue;
         }
+        if (IsContiguous(tensor)) {
+            tensors.emplace_back(tensor);
+            continue;
+        }
         auto contiguousTensor = l0op::Contiguous(tensor, executor);
         if (contiguousTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s[%lu] contiguous failed.", name, i);
             return ACLNN_ERR_INNER_NULLPTR;
         }
+        SetTensorFormatToND(contiguousTensor);
         tensors.emplace_back(contiguousTensor);
     }
 
@@ -476,19 +495,16 @@ aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const cha
     }
     tensorList = contiguousList;
 
-    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
-        auto tensor = (*tensorList)[i];
-        if (tensor != nullptr) {
-            SetTensorFormatToND(tensor);
-        }
-    }
-
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
 {
     if (tensor == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    // 已连续的输入直接透传, 避免图模式下生成冗余的 Contiguous 拷贝节点(理由同上)。
+    if (IsContiguous(tensor)) {
         return ACLNN_SUCCESS;
     }
 
