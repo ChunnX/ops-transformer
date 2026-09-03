@@ -101,14 +101,15 @@ public:
         l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         // value_l1
         value_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
         value_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
+        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        // dy is the left matrix of dY * V^T, so its row count follows Q/base_m.
+        dy_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
         l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
-        // dy_l1
-        dy_l1_tensor_ping_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
-        dy_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_n * head_dim_align_, l1_offset);
-        l1_offset += base_n * head_dim_align_ * sizeof(INPUT_TYPE);
+        dy_l1_tensor_pong_ = l1_buffer.GetWithOffset<INPUT_TYPE>(base_m * head_dim_align_, l1_offset);
+        l1_offset += base_m * head_dim_align_ * sizeof(INPUT_TYPE);
+
         // l0
         l0_a_tensor_ping_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
         l0_a_tensor_pong_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
@@ -381,10 +382,11 @@ private:
     }
 
     template <bool A_MATRIX>
-    __aicore__ inline void
-    load_data_gm_2_l0(const LocalTensor<INPUT_TYPE> &dstL0Tensor, const LocalTensor<INPUT_TYPE> &dstL1Tensor,
-                      const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize, const int32_t kSize,
-                      const int32_t mSizeAlign, const int32_t kSizeAlign, const int32_t srcKStride)
+    __aicore__ inline void load_data_gm_2_l0(const LocalTensor<INPUT_TYPE> &dstL0Tensor,
+                                             const LocalTensor<INPUT_TYPE> &dstL1Tensor,
+                                             const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize,
+                                             const int32_t kSize, const int32_t mSizeAlign, const int32_t kSizeAlign,
+                                             const int32_t srcKStride)
     {
         load_data_gm_2_l1(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKStride);
         SET_FLAG(MTE2, MTE1, EVENT_ID0);
@@ -398,10 +400,11 @@ private:
     }
 
     template <bool A_MATRIX>
-    __aicore__ inline void
-    load_data_gm_2_l0_trans(const LocalTensor<INPUT_TYPE> &dstL0Tensor, const LocalTensor<INPUT_TYPE> &dstL1Tensor,
-                            const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize, const int32_t kSize,
-                            const int32_t mSizeAlign, const int32_t kSizeAlign, const int32_t srcKStride)
+    __aicore__ inline void load_data_gm_2_l0_trans(const LocalTensor<INPUT_TYPE> &dstL0Tensor,
+                                                   const LocalTensor<INPUT_TYPE> &dstL1Tensor,
+                                                   const GlobalTensor<INPUT_TYPE> &srcGmTensor, const int32_t mSize,
+                                                   const int32_t kSize, const int32_t mSizeAlign,
+                                                   const int32_t kSizeAlign, const int32_t srcKStride)
     {
         load_data_gm_2_l1(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKStride);
         SET_FLAG(MTE2, MTE1, EVENT_ID0);
