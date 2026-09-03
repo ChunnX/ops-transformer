@@ -297,24 +297,23 @@ struct CompressorGradCompileInfo {
     int64_t core_num;
 };
 
-// 参照 compressor 的 arch35 tiling 风格，将自由函数封装为类结构
-class CompressorGradTilingEngine {
+class CompressorGradTiling {
 public:
-    explicit CompressorGradTilingEngine(CompressorGradContext *context, uint32_t aicNum, uint32_t aivNum)
-        : context_(context),
-          aicNum_(aicNum),
-          aivNum_(aivNum)
+    explicit CompressorGradTiling(CompressorGradContext *context)
+        : context_(context)
     {}
-    ~CompressorGradTilingEngine() = default;
+    ~CompressorGradTiling() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
-    ge::graphStatus RunBigKernelTiling(void *data);
+    ge::graphStatus RunBigKernelTiling();
 
 private:
     static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
                                                  CompressorGradContext &compressorGradContext);
     static void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
+    ge::graphStatus SetTilingData();
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus GenTilingKey() const;
@@ -359,11 +358,13 @@ private:
     uint32_t coreNum_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     size_t libapiSize_ = 0;
     size_t workspaceSize_ = 0;
     uint8_t coff_ = 1;
     CompressorGradBaseParams baseParams_;
     CompressorGradWorkspaceParams workspaceParams_;
+    CompressorGradTiling *tilingData;
     CompressorGradContext *context_ = nullptr;
 };
 
