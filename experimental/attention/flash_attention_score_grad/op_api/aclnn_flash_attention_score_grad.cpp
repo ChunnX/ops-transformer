@@ -2491,9 +2491,9 @@ aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
     L2_DFX_PHASE_1(aclnnFlashAttentionScoreGradV3,
                    DFX_IN(query, keyIn, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional,
                           attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, softmaxInOptional,
-                          attentionInOptional, prefixOptional, qStartIdxOptional, kvStartIdxOptional,
+                          attentionInOptional, sinkInOptional, prefixOptional, qStartIdxOptional, kvStartIdxOptional,
                           scaleValue, keepProb, preTokens, nextTokens, headNum,
-                          inputLayout, innerPrecise, sparseMode, pseType, sinkInOptional),
+                          inputLayout, innerPrecise, sparseMode, pseType),
                    DFX_OUT(dqOut, dkOut, dvOut, dpseOut, dsinkOut));
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -3240,8 +3240,9 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
     aclOpExecutor    **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantFlashAttentionScoreGrad,
-        DFX_IN(query, keyIn, value, dy, softmaxMax, softmaxSum, attentionIn, dScaleQ, dScaleK, dScaleV, dScaleDy,
-        scaleValue, headNum, inputLayout, outDtype, dsScale, pScale),
+        DFX_IN(query, keyIn, value, dy, attenMaskOptional, softmaxMax, softmaxSum, attentionIn, dScaleQ, dScaleK,
+               dScaleV, dScaleDy, dsScale, pScale, scaleValue, preTokens, nextTokens, headNum, inputLayout, sparseMode,
+               outDtype),
         DFX_OUT(dqOut, dkOut, dvOut));
  
     // 固定写法，创建OpExecutor
