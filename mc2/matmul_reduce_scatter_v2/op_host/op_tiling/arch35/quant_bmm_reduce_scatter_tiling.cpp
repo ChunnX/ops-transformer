@@ -594,6 +594,66 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     return tilingKey;
 }
 
+ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
+{
+    static_assert(Mc2Tiling::MAX_WORKSPACE_SEGMENTS >= 6U, "Quant MMRS workspace layout capacity is insufficient");
+    // The matmul helper includes LIB_API in its workspace size. Kernel workspaceGM
+    // starts after LIB_API: send/result, optional receive, then matmul scratch.
+    OP_TILING_CHECK(myWorkSpaceSize_ < libApiWorkSpaceSize_,
+                    OP_LOGE(opName_, "matmul workspace is smaller than LIB_API"), return ge::GRAPH_FAILED);
+    const uint64_t resultSize = MutableRCSTilingDataA5().cToFloatLen;
+    const uint64_t helperUserSize = myWorkSpaceSize_ - libApiWorkSpaceSize_;
+    // The original A2A allocation reserves a third cToFloatLen after send/recv for the Matmul workSpace pointer.
+    // Direct RS has no such extra reserve; any real helper scratch is still kept in helperUserSize.
+    const uint64_t a2aMatmulReserveSize = isA2APath_ ? resultSize : 0U;
+    const uint64_t matmulWorkspaceSize = helperUserSize + a2aMatmulReserveSize;
+    workspaceLayout_ = {};
+    uint32_t idx = 0;
+    uint64_t offset = 0;
+    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    offset += libApiWorkSpaceSize_;
+    // Direct RS: gmToFloat_ = workspaceGM. A2A: sendBuf_ = workspaceGM.
+    workspaceLayout_.segments[idx++] = {offset, resultSize,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
+    offset += resultSize;
+    if (isA2APath_) {
+        // recvBuf_ = sendBuf_ + cfg.cToFloatLen.
+        workspaceLayout_.segments[idx++] = {offset, resultSize,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
+        offset += resultSize;
+    }
+    if (matmulWorkspaceSize != 0U) {
+        // Direct RS: workspaceGM_ = gmToFloat_ + cfg.cToFloatLen.
+        // A2A: workspaceGM_ = recvBuf_ + cfg.cToFloatLen.
+        workspaceLayout_.segments[idx++] = {offset, matmulWorkspaceSize,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_WORKSPACE), {}};
+        offset += matmulWorkspaceSize;
+    }
+#if MC2_DFX_ENABLE
+    // DFX: 运行时信息段前做512B对齐padding，再追加64KB RUNTIME_INFO段
+    const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - (offset - libApiWorkSpaceSize_) % alignment) % alignment;
+    if (padding != 0U) {
+        workspaceLayout_.segments[idx++] = {offset, padding,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
+        offset += padding;
+    }
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+#endif
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+    for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
+        const auto &seg = workspaceLayout_.segments[i];
+        const uint64_t userOffset = seg.type == Mc2Tiling::WS_SEG_LIB_API ? 0U : seg.offset - libApiWorkSpaceSize_;
+        OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, userOffset=%lu, size=%lu",
+                i, seg.type, seg.offset, userOffset, seg.size);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
 {
     // A2A 路径需要 3 倍 cToFloatLen (senBuf + recvBuf + matmul)，否则只需 1 倍
@@ -606,7 +666,11 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
         OP_LOGE_WITH_INVALID_INPUT(opName_, "WorkspaceSizes");
         return ge::GRAPH_FAILED;
     }
-    workspaces[0] = myWorkSpaceSize_;
+    OP_TILING_CHECK(BuildQuantWorkspaceLayout() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Failed to build quant MMRS workspace layout"), return ge::GRAPH_FAILED);
+    workspaces[0] = workspaceLayout_.totalSize;
+    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u",
+            workspaceLayout_.totalSize, workspaceLayout_.segCount);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -664,6 +728,9 @@ void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTi
 
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
+    quantBmmMatmulReducescatterTilingData_->workspaceLayout = workspaceLayout_;
+    quantBmmMatmulReducescatterTilingData_->quantMode = 1;
+    quantBmmMatmulReducescatterTilingData_->tilingKey = GetTilingKey();
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
@@ -743,6 +810,7 @@ DequantBmm::Mc2SlidingWindowParams &QuantBmmReduceScatterTiling::MutableTailTCub
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
 {
+    myWorkSpaceSize_ = 0U;
     // 主块切分
     uint32_t tempMValue = tileMValue_ == 0 ? MutableRCSTilingDataA5().rankM : tileMValue_;
     args_.mValue = ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||

@@ -710,6 +710,25 @@ protected:
 
         OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
 
+        td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        td->workspaceLayout.segCount = 2;
+        td->workspaceLayout.segments[0] = {0UL, libApiWorkSpaceSize_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+ 
+        double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
+        uint64_t scaleKDim = (k_ + 63UL) / 64UL;
+        uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
+        uint64_t scaleRegionBytes = worldSize_ * m_ * scaleKDim * 2UL;
+        td->peermemDataSize = dataRegionBytes + scaleRegionBytes;
+        td->peermemLayout.totalSize = td->peermemDataSize;
+        td->peermemLayout.segCount = 2;
+        td->peermemLayout.segments[0] = {0UL, dataRegionBytes,
+                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
+        td->peermemLayout.segments[1] = {dataRegionBytes, scaleRegionBytes,
+                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
+
         return ge::GRAPH_SUCCESS;
     }
 
@@ -732,7 +751,8 @@ protected:
             return ge::GRAPH_FAILED;
         }
         platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-        workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+        libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+        workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;
@@ -751,6 +771,7 @@ private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
     uint32_t precisionMode_{0};
+    uint64_t libApiWorkSpaceSize_{0};
     QuantMatmulPlatformInfo quantPlatformInfo_;
 };
 

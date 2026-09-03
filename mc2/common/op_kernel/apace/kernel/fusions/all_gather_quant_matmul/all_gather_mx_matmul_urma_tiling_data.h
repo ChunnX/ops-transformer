@@ -19,6 +19,7 @@
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
+#include "../../../../mc2_tiling_struct.h"
 
 namespace Apace {
 namespace AivComm {
@@ -36,5 +37,8 @@ struct alignas(8) AllGatherMxMatmulUrmaTilingData {
     QuantMatmulTilingData mmTile;
     CommTilingData commTile;
     uint8_t isBias{0};
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
+    uint64_t peermemDataSize{0};
+    Mc2Tiling::PeermemLayoutInfo peermemLayout{};
 };
 #pragma pack(pop)
