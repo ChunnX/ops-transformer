@@ -98,8 +98,8 @@ public:
         : tilingData_(tilingData)
     {}
 
-    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-                                GM_ADDR gatherOut, GM_ADDR workspaceGM);
+    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR biasGM,
+                                GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM);
     __aicore__ inline void Run();
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, HcommCommWaitPolicy<ServerType>>;
@@ -119,6 +119,7 @@ private:
     GM_ADDR aScaleGM_{};
     GM_ADDR bGM_{};
     GM_ADDR bScaleGM_{};
+    GM_ADDR biasGM_{};
     GM_ADDR cGM_{};
     GM_ADDR workspaceGM_{};
     GM_ADDR gatherDataAddr_{};
@@ -181,12 +182,14 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::Init(
-    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM)
+    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherOut,
+    GM_ADDR workspaceGM)
 {
     aGM_ = aGM;
     aScaleGM_ = aScaleGM;
     bGM_ = bGM;
     bScaleGM_ = bScaleGM;
+    biasGM_ = biasGM;
     cGM_ = cGM;
     workspaceGM_ = workspaceGM;
 
@@ -271,6 +274,8 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     params.aScaleGM = aScaleGM_;
     params.bGM = bGM_;
     params.bScaleGM = bScaleGM_;
+    params.biasGM = biasGM_;
+    params.isBias = (biasGM_ != nullptr); // bias optional 输入缺失时框架传 nullptr（同 gatherOut 判空惯例）
     params.cGM = cGM_;
     params.winDataBase = gatherDataAddr_;
     params.winScaleBase = gatherScaleAddr_;
