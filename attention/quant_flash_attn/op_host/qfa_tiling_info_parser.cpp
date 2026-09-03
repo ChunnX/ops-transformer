@@ -213,10 +213,13 @@ void QfaInfoParser::GetInputParaInfo()
     opParamInfo_.vDescale.shape = context_->GetInputShape(V_DESCALE_INDEX);
 
     // 获取 k/v/k_descale/v_descale 的 stride，用于非连续 Tensor 校验
-    keyStrides_ = context_->GetInputStride(KEY_INDEX);
-    valueStrides_ = context_->GetInputStride(VALUE_INDEX);
-    kDescaleStrides_ = context_->GetInputStride(K_DESCALE_INDEX);
-    vDescaleStrides_ = context_->GetInputStride(V_DESCALE_INDEX);
+    if (context_->InputIsView(KEY_INDEX) == true) {
+        hasStride_ = true;
+        keyStrides_ = context_->GetInputStride(KEY_INDEX);
+        valueStrides_ = context_->GetInputStride(VALUE_INDEX);
+        kDescaleStrides_ = context_->GetInputStride(K_DESCALE_INDEX);
+        vDescaleStrides_ = context_->GetInputStride(V_DESCALE_INDEX);
+    }
 
     GetOptionalInputParaInfo();
 }
@@ -269,13 +272,15 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
     if (quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
         quantModeVal !=
             static_cast<int64_t>(
-                QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)) {
+                QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
+        quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(quantModeVal).c_str(),
                                               "quant_mode must be 1 "
                                               "(A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
                                               "6 (A8C8_QK_FP8_"
                                               "E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_"
-                                              "P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)");
+                                              "P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
+                                              "0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)");
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<QfaQuantMode>(quantModeVal);
@@ -519,7 +524,10 @@ ge::graphStatus QfaInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetActualSeqInfo() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QfaInfoParser::GetActualSeqInfo()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
 {
@@ -549,7 +557,10 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
-void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo) { qfaInfo.quantMode = quantMode_; }
+void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
+{
+    qfaInfo.quantMode = quantMode_;
+}
 
 void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
 {
@@ -580,6 +591,7 @@ void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.opName = opName_;
     qfaInfo.platformInfo = platformInfo_;
     qfaInfo.opParamInfo = opParamInfo_;
+    qfaInfo.hasStride = hasStride_;
     qfaInfo.keyStrides = keyStrides_;
     qfaInfo.valueStrides = valueStrides_;
     qfaInfo.kDescaleStrides = kDescaleStrides_;
@@ -624,7 +636,15 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
     using QM = QfaQuantMode;
-    if (quantMode_ == QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+    if (quantMode_ == QM::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
+        if (qDescaleDimNum != 1) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, Q_DESCALE_NAME.c_str(),
+                                                     (std::to_string(qDescaleDimNum) + "D").c_str(),
+                                                     "In HIF8 scenario, the shape dim of q_descale must be 1D");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (quantMode_ ==
+               QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         if (qDescaleDimNum != 2) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),

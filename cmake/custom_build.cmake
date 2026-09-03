@@ -530,7 +530,13 @@ if (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_e
             message(STATUS "  - ${_cann_skipped_op}")
         endforeach()
     endif()
-    file(WRITE "${CMAKE_BINARY_DIR}/no_ops.flag" "all requested ops skipped by CANN version check\n")
+    # 只有确实被 CANN 版本检查跳过时才写 no_ops.flag；
+    # 纯 AICPU 算子（如 metadata 类）没有 _def.cpp，aclnn 列表为空是正常的，不应被误判为跳过
+    if (_cann_skipped_ops)
+        file(WRITE "${CMAKE_BINARY_DIR}/no_ops.flag" "all requested ops skipped by CANN version check\n")
+    else()
+        file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+    endif()
 else()
     file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
 endif()
@@ -1037,6 +1043,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
+    install(DIRECTORY ${CATLASS_DIR}/include
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/catlass/include
+    )
     install(DIRECTORY ${BLAZE}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
@@ -1052,9 +1061,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${TENSOR_API}/include/c_api
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
     )
-    # Shared kernel headers for whitelist deps (contents -> ascendc/common).
+    # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -1094,11 +1103,11 @@ endforeach(    )
         file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
         filter_copy_files(SELECTED_FILES SELECTED_DIRS)
         install(FILES ${SELECTED_FILES}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
             OPTIONAL
         )
         install(DIRECTORY ${SELECTED_DIRS}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
             OPTIONAL
         )
 
@@ -1110,11 +1119,11 @@ endforeach(    )
             filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
             if (NOT op_depend_dir IN_LIST OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS)
                 install(FILES ${SELECTED_DEPEND_FILES}
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}/op_kernel
                         OPTIONAL
                 )
                 install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}/op_kernel
                         OPTIONAL
                 )
             endif ()

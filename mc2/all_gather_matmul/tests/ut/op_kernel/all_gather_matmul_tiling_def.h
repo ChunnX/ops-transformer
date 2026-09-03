@@ -16,7 +16,7 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
-#include "../../../op_kernel/all_gather_matmul_tiling.h"
+#include "../../../op_kernel/all_gather_matmul_op_tiling.h"
 
 constexpr uint16_t MAX_TENSOR_CONT = 256;
 constexpr uint16_t MAX_CORE_CONT = 64;
@@ -26,7 +26,7 @@ inline void InitAllGatherMatmulTilingData(uint8_t *tiling, Mc2Tiling::AllGatherM
     memcpy(constData, tiling, sizeof(Mc2Tiling::AllGatherMatmulTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
-    Mc2Tiling::AllGatherMatmulTilingData tilingData;                                                                   \
+#define GET_TILING_DATA(tilingData, tilingArg) \
+    Mc2Tiling::AllGatherMatmulTilingData tilingData; \
     InitAllGatherMatmulTilingData(tilingArg, &tilingData)
 #endif // FOREACH_MINIMUM_SCALAR_TILING_DEF_H

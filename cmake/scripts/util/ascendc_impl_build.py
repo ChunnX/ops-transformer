@@ -206,6 +206,7 @@ def {}({}, kernel_name="{}"{}):
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
         tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "catlass", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
     options.append("-I" + tikcpp_path)
@@ -215,6 +216,7 @@ def {}({}, kernel_name="{}"{}):
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "interface"))
     options.append("-I" + os.path.join(tikcpp_path, "..", "ascendc", "act"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common"))
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "op_kernel"))
     toolkit_path = os.environ.get('ASCEND_HOME_PATH')
     if toolkit_path is None:
         toolkit_path = os.path.realpath("/usr/local/Ascend/latest/")

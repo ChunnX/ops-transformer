@@ -26,7 +26,7 @@
 #else
 #include "lib/hccl/hccl.h"
 #endif
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_quant_perchannel.h"
@@ -46,22 +46,20 @@ template <typename xType, typename wType, int fFormat, int wFormat, typename sca
           typename commType, bool aTrans, bool bTrans>
 class MatmulAllReduceQuantPertokenInt8 {
 public:
-    __aicore__ inline MatmulAllReduceQuantPertokenInt8()
-    {
-    }
+    __aicore__ inline MatmulAllReduceQuantPertokenInt8() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM,
                                 GM_ADDR pertokenScaleGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM,
                                 GM_ADDR cGM, GM_ADDR workspaceGM, Mc2Tiling::QuantMatmulAllReduceTilingData *tilingData,
                                 TPipe *tPipe);
-    __aicore__ inline void
-    Process(BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true> &opTile,
-            BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true> &opTail);
+    __aicore__ inline void Process(
+        BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true> &opTile,
+        BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true> &opTail);
 
 private:
-    __aicore__ inline void
-    InnerProcess(BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true> &op,
-                 uint32_t tileCnt, uint32_t padM, Mc2QuantBatchMatmulV3TilingData *mmTiling, uint32_t isAdd,
-                 uint32_t needUbBuffer, bool isTailFlag);
+    __aicore__ inline void InnerProcess(
+        BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true> &op,
+        uint32_t tileCnt, uint32_t padM, Mc2QuantBatchMatmulV3TilingData *mmTiling, uint32_t isAdd,
+        uint32_t needUbBuffer, bool isTailFlag);
     __aicore__ inline void PrepareInit();
     __aicore__ inline uint32_t SendCountCheck(uint32_t prepareIndex);
 

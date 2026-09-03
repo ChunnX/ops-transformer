@@ -14,7 +14,7 @@
  */
 #ifndef MC2_ADD_RMS_NORM_MERGE_N_H
 #define MC2_ADD_RMS_NORM_MERGE_N_H
-#include "rms_norm_base.h"
+#include "mararn_rms_norm_base.h"
 #include "adv_api/pad/broadcast.h"
 #include "adv_api/quantization/ascend_dequant.h"
 
@@ -24,9 +24,7 @@ constexpr uint32_t DOUBLE_BUFFER_QUEUE = 2;
 template <typename T>
 class KernelAddRmsNormMergeN {
 public:
-    __aicore__ inline KernelAddRmsNormMergeN()
-    {
-    }
+    __aicore__ inline KernelAddRmsNormMergeN() {}
     __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData &tiling, TPipe *pipe,
                                 uint32_t numBlocks)
     {

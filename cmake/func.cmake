@@ -269,7 +269,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         get_filename_component(OP_NAME "${OP_DIR}" NAME)
 
         if (NOT BUILD_OPEN_PROJECT)
-            if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${OP_NAME})
+            if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${OP_NAME}/op_kernel)
                 continue()
             endif ()
         endif ()
@@ -340,7 +340,7 @@ function(op_add_depend_directory)
 
                 get_filename_component(_depend_op_name "${depend_info}" NAME)
                 if (NOT BUILD_OPEN_PROJECT)
-                    if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${_depend_op_name})
+                    if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${_depend_op_name}/op_kernel)
                         continue()
                     endif ()
                 endif ()
@@ -559,6 +559,7 @@ function(add_ops_src_copy)
                 ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*
                 ${OPS_GMM_COMMON_KERNEL_INC}/*
+                ${CATLASS}/include/*
                 ${BLAZE}/*
                 ${TENSOR_API}/impl/tensor_api/*
                 ${TENSOR_API}/include/tensor_api/*
@@ -571,6 +572,7 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${CATLASS}/include ${OPS_UTILS_INC_KERNEL_DIR}/catlass/include
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/tensor_api
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/tensor_api
