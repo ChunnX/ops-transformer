@@ -173,7 +173,7 @@ static bool CheckAttr(int64_t streamMode)
 }
 
 static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *bias,
-                        aclTensor *gatherOut, aclTensor *amaxOut)
+                        const aclTensor *gatherOut, const aclTensor *amaxOut)
 {
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
@@ -228,6 +228,7 @@ static bool IsGatherOut(const aclTensor *gatherOut)
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
                        bool isTransA)
 {
+    static_cast<void>(gatherOut);
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
                                                  (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
@@ -276,7 +277,7 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
 // 分别对输入类型为fp8/hif8和fp16/bf16数据类型进行分别校验
 static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, int64_t streamMode,
-                               const aclTensor *output, aclTensor *gatherOut, aclTensor *amaxOut)
+                               const aclTensor *output, const aclTensor *gatherOut, const aclTensor *amaxOut)
 {
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
@@ -305,6 +306,7 @@ static aclnnStatus CheckShapeForAIVMode(const aclTensor *x1, const aclTensor *x2
                                         const aclTensor *output, const aclTensor *gatherOut, bool isTransA,
                                         bool isViewTransB)
 {
+    static_cast<void>(bias);
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
                                                  (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
@@ -499,7 +501,7 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
+static bool checkX1InputEmptyTensor(const aclTensor *x1)
 {
     const auto kValX1 = x1->GetViewShape().GetDim(1);
     if (kValX1 != 0) {
@@ -516,6 +518,7 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum)
 {
+    static_cast<void>(group);
     // 获取通信引擎参数
     if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
@@ -540,8 +543,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     auto retParam = CheckParams(x1, x2, bias, streamMode, output, gatherOut, amaxOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
-    if (checkX1InputEmptyTensor(x1, x2)) {
+    // 处理空tensor：x1为空(k轴非0)时直接走空tensor流程
+    if (checkX1InputEmptyTensor(x1)) {
         return DealWithX1Empty(workspaceSize, executor);
     }
 
