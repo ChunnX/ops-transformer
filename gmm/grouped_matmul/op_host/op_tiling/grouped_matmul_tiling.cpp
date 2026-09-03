@@ -306,7 +306,12 @@ ge::graphStatus GMMTiling::PrepareTilingData(const gert::TilingContext *context)
         }
         return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "groupType", std::to_string(groupType_), Ops::Transformer::Gmm::FormatString( "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_, isSingleWeight_, isSingleX_, isSingleY_) .c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+        context->GetNodeName(), "groupType", std::to_string(groupType_),
+        Ops::Transformer::Gmm::FormatString(
+            "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
+            isSingleWeight_, isSingleX_, isSingleY_)
+            .c_str());
     return ge::GRAPH_FAILED;
 }
 
@@ -331,7 +336,12 @@ ge::graphStatus GMMTiling::GMMGetTensorShapeSplitM(const gert::TilingContext *co
     if (!isSingleX_ && !isSingleWeight_ && !isSingleY_) { // split M, m-m-m
         return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "groupType", std::to_string(groupType_), Ops::Transformer::Gmm::FormatString( "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_, isSingleWeight_, isSingleX_, isSingleY_) .c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+        context->GetNodeName(), "groupType", std::to_string(groupType_),
+        Ops::Transformer::Gmm::FormatString(
+            "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
+            isSingleWeight_, isSingleX_, isSingleY_)
+            .c_str());
     return ge::GRAPH_FAILED;
 }
 
@@ -347,7 +357,12 @@ ge::graphStatus GMMTiling::GMMGetTensorShapeSplitK(const gert::TilingContext *co
     if (!isSingleX_ && isSingleWeight_) { // splitK, m-s-m/m-s-s
         return SeparatedXSingleWeight(context, wShape);
     }
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "groupType", std::to_string(groupType_), Ops::Transformer::Gmm::FormatString( "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_, isSingleWeight_, isSingleX_, isSingleY_) .c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+        context->GetNodeName(), "groupType", std::to_string(groupType_),
+        Ops::Transformer::Gmm::FormatString(
+            "GMM_tiling: not support groupType_=%ld, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
+            isSingleWeight_, isSingleX_, isSingleY_)
+            .c_str());
     return ge::GRAPH_FAILED;
 }
 
@@ -518,7 +533,10 @@ ge::graphStatus GMMTiling::Init(const gert::TilingContext *context)
 
     // check tuningConfig_
     if (tuningConfig_ < 0 || tuningConfig_ > maxM_) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "tuningConfig", Ops::Transformer::Gmm::FormatString("%ld", tuningConfig_).c_str(), Ops::Transformer::Gmm::FormatString("Invalid tuningConfig_: %ld. Valid range: [0, maxM]", tuningConfig_) .c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "tuningConfig", Ops::Transformer::Gmm::FormatString("%ld", tuningConfig_).c_str(),
+            Ops::Transformer::Gmm::FormatString("Invalid tuningConfig_: %ld. Valid range: [0, maxM]", tuningConfig_)
+                .c_str());
         return ge::GRAPH_FAILED;
     }
     // check whether x, weight and y are all single tensor
@@ -549,7 +567,10 @@ ge::graphStatus GMMTiling::Init(const gert::TilingContext *context)
         } else if (scaleDimNum == 2U) {
             quantGroupNum = 1UL;
         } else {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON( context->GetNodeName(), "scale", Ops::Transformer::Gmm::FormatString("%u", scaleDimNum).c_str(), Ops::Transformer::Gmm::FormatString("GMM A4W4: scale dim should be 2 or 3, but now is %u", scaleDimNum) .c_str());
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context->GetNodeName(), "scale", Ops::Transformer::Gmm::FormatString("%u", scaleDimNum).c_str(),
+                Ops::Transformer::Gmm::FormatString("GMM A4W4: scale dim should be 2 or 3, but now is %u", scaleDimNum)
+                    .c_str());
             return ge::GRAPH_FAILED;
         }
         tilingData.gmmBaseParams.set_k(maxK_);
@@ -927,7 +948,10 @@ bool GMMTiling::StaticTilingProcess(gert::TilingContext *context)
     }
     // cond.8 only support milan platform
     auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetCompileInfo result", "nullptr", "compile info lookup failed"), return false);
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "GetCompileInfo result", "nullptr",
+                                                      "compile info lookup failed"),
+                return false);
     if (!(compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
           compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)) {
         return false;
@@ -1937,7 +1961,12 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             false;
     if (useHighPerf) {
         if (!isSingleTensor) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON( context->GetNodeName(), "weight", Ops::Transformer::Gmm::FormatString("%zu", wDimNum).c_str(), Ops::Transformer::Gmm::FormatString("A8W4 MSD high performance path only support single tensor input, " "but current weight dim num is %zu", wDimNum) .c_str());
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context->GetNodeName(), "weight", Ops::Transformer::Gmm::FormatString("%zu", wDimNum).c_str(),
+                Ops::Transformer::Gmm::FormatString("A8W4 MSD high performance path only support single tensor input, "
+                                                    "but current weight dim num is %zu",
+                                                    wDimNum)
+                    .c_str());
             return ge::GRAPH_FAILED;
         }
         OP_LOGD(context->GetNodeName(), "Enter GMM A8W4 MSD high performance path...");
@@ -2144,17 +2173,27 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
         context->SetBlockDim(aicNum);
 
         if (quantGroupNum == 0U || k % quantGroupNum != 0U) {
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON( context->GetNodeName(), "K, quantGroupNum", Ops::Transformer::Gmm::FormatString("%u, %u", k, quantGroupNum).c_str(), "GMM_tiling: K should be divisible by quantGroupNum");
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                context->GetNodeName(), "K, quantGroupNum",
+                Ops::Transformer::Gmm::FormatString("%u, %u", k, quantGroupNum).c_str(),
+                "GMM_tiling: K should be divisible by quantGroupNum");
             return ge::GRAPH_FAILED;
         }
         const uint32_t K_UNIT = 64; // 64: int4 in 32B
         if (k % K_UNIT != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "K", Ops::Transformer::Gmm::FormatString("%u", k).c_str(), Ops::Transformer::Gmm::FormatString("GMM_tiling: k should be divisible by 64, but now k=%u", k) .c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context->GetNodeName(), "K", Ops::Transformer::Gmm::FormatString("%u", k).c_str(),
+                Ops::Transformer::Gmm::FormatString("GMM_tiling: k should be divisible by 64, but now k=%u", k)
+                    .c_str());
             return ge::GRAPH_FAILED;
         }
         const uint32_t MAX_K_A8W4_MSD = 18432; // k is limited by pre process, a line of X should be able to put in UB
         if (k > MAX_K_A8W4_MSD) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON( context->GetNodeName(), "K", Ops::Transformer::Gmm::FormatString("%u", k).c_str(), Ops::Transformer::Gmm::FormatString( "GMM_tiling: K should be less than 18432 on the A8W4 scenario, but now is %u", k) .c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context->GetNodeName(), "K", Ops::Transformer::Gmm::FormatString("%u", k).c_str(),
+                Ops::Transformer::Gmm::FormatString(
+                    "GMM_tiling: K should be less than 18432 on the A8W4 scenario, but now is %u", k)
+                    .c_str());
             return ge::GRAPH_FAILED;
         }
         matmul_tiling::PlatformInfo platformInfo;
