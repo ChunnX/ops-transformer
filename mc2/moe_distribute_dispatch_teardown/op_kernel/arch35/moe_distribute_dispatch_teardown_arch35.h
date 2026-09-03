@@ -35,6 +35,10 @@
 #ifndef MC2_DTD_OPT_WINCOPY_PIPELINE
 #define MC2_DTD_OPT_WINCOPY_PIPELINE 1
 #endif
+// 仅 bs<=16：空专家跳过 DCCI；去掉每 token 冗余 MTE2_S（EnQue/DeQue 已做 MTE2→MTE3）
+#ifndef MC2_DTD_OPT_SMALL_BS_COPY
+#define MC2_DTD_OPT_SMALL_BS_COPY 1
+#endif
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
@@ -506,64 +510,93 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
     DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
                                                           *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
-        uint32_t i = index - startExpertId_;
-        uint32_t count = statusTensor_.GetValue(i * 8 + 1);
-        outCountLocal.SetValue(i, beginIdx + count);
-        uint32_t winOffset = index;
-        if constexpr (!IsShareExpertRank) {
-            if (moeExpertNumPerRank_ > 1) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
-                winOffset = index % epWorldSize_ * moeExpertNumPerRank_ + index / epWorldSize_;
-            }
-        }
-        GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
-        GlobalTensor<ExpandXOutType> tokGlobal;
-        GlobalTensor<ExpandXOutType> expandXOutGlobal;
-        tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-        tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
-        DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
 #if MC2_DTD_OPT_WINCOPY_PIPELINE
-        // 仅 bs>16 走双缓冲：bs8/bs16 每专家 token 很少，预取只增加排队开销
-        if (axisBS_ > 16U && count > 0U) {
-            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
-            LocalTensor<ExpandXOutType> preTok = xQueue_.AllocTensor<ExpandXOutType>();
-            DataCopyPad(preTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
-            xQueue_.EnQue(preTok);
-            for (uint32_t j = 0; j < count; j++) {
-                xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
-                if (j + 1U < count) {
-                    tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + (j + 1U) * hAlignWinSize_));
-                    LocalTensor<ExpandXOutType> nextTok = xQueue_.AllocTensor<ExpandXOutType>();
-                    DataCopyPad(nextTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
-                    xQueue_.EnQue(nextTok);
+    // 判断提到专家循环外：避免 bs8/16 每个专家都为 bs256 流水付分支/寄存器代价
+    if (axisBS_ > 16U) {
+        for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
+            uint32_t i = index - startExpertId_;
+            uint32_t count = statusTensor_.GetValue(i * 8 + 1);
+            outCountLocal.SetValue(i, beginIdx + count);
+            uint32_t winOffset = index;
+            if constexpr (!IsShareExpertRank) {
+                if (moeExpertNumPerRank_ > 1) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
+                    winOffset = index % epWorldSize_ * moeExpertNumPerRank_ + index / epWorldSize_;
                 }
-                CopyScalesToOut(beginIdx + j, xTmpTensor_);
-                expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
-                                                 axisH_);
-                DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-                xQueue_.FreeTensor(xTmpTensor_);
             }
-        } else
+            GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
+            GlobalTensor<ExpandXOutType> tokGlobal;
+            GlobalTensor<ExpandXOutType> expandXOutGlobal;
+            tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+            DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
+            if (count > 0U) {
+                tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+                LocalTensor<ExpandXOutType> preTok = xQueue_.AllocTensor<ExpandXOutType>();
+                DataCopyPad(preTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+                xQueue_.EnQue(preTok);
+                for (uint32_t j = 0; j < count; j++) {
+                    xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+                    if (j + 1U < count) {
+                        tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + (j + 1U) * hAlignWinSize_));
+                        LocalTensor<ExpandXOutType> nextTok = xQueue_.AllocTensor<ExpandXOutType>();
+                        DataCopyPad(nextTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+                        xQueue_.EnQue(nextTok);
+                    }
+                    CopyScalesToOut(beginIdx + j, xTmpTensor_);
+                    expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
+                                                     axisH_);
+                    DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
+                    xQueue_.FreeTensor(xTmpTensor_);
+                }
+            }
+            beginIdx += count;
+        }
+    } else
 #endif
-        {
-            LocalTensor<int32_t> xTmpTensorInt;
+    {
+        for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
+            uint32_t i = index - startExpertId_;
+            uint32_t count = statusTensor_.GetValue(i * 8 + 1);
+            outCountLocal.SetValue(i, beginIdx + count);
+#if MC2_DTD_OPT_SMALL_BS_COPY
+            if (count == 0U) {
+                continue;
+            }
+#endif
+            uint32_t winOffset = index;
+            if constexpr (!IsShareExpertRank) {
+                if (moeExpertNumPerRank_ > 1) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
+                    winOffset = index % epWorldSize_ * moeExpertNumPerRank_ + index / epWorldSize_;
+                }
+            }
+            GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
+            GlobalTensor<ExpandXOutType> tokGlobal;
+            GlobalTensor<ExpandXOutType> expandXOutGlobal;
+            tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+            DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
             for (uint32_t j = 0; j < count; j++) {
                 tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
                 // 将数据从Window拷贝到UB
                 xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
                 DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+#if !MC2_DTD_OPT_SMALL_BS_COPY
                 SyncFunc<AscendC::HardEvent::MTE2_S>();
+#endif
                 xQueue_.EnQue(xTmpTensor_);
                 xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+#if !MC2_DTD_OPT_SMALL_BS_COPY
+                LocalTensor<int32_t> xTmpTensorInt;
                 xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();
+#endif
                 CopyScalesToOut(beginIdx + j, xTmpTensor_);
                 expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
                                                  axisH_);
                 DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
                 xQueue_.FreeTensor(xTmpTensor_);
             }
+            beginIdx += count;
         }
-        beginIdx += count;
     }
     totalCnt_ = beginIdx;
     lastCore_ = MIN(rscvStatusNum_, aivNum_) - 1;
