@@ -18,7 +18,7 @@ AlltoAllMatmul 的主线和 Apace 通路由脚本根据 TilingData 自动识别�
 ## 2. 环境和目录
 
 - 使用 Python 3.8 或更高版本。
-- 脚本仅使用 Python 标准库，无需安装额外依赖。
+- Tiling/Workspace 解析使用 Python 标准库；XN/CKE 和异常张量导出 NPY 需要 NumPy。
 - 建议在 `mc2/tools/dump_analysis` 目录执行命令；也可以使用脚本绝对路径。
 
 ```bash
@@ -77,6 +77,8 @@ python3 parse_mc2_dump.py --help
 - `cke_addr_info_*`：CKE 地址信息。
 - `comm_context_*`：URMA 通信上下文。
 - `peermem_window_*`、`peermem_seg_*`：URMA Peer Memory 信息。
+- `exception_info.*`：原始异常 Dump；自动调用 `msaicerr.py` 后导出 NPY。
+- 算子 `.o`、`_host.o`、`.json`：作为 `msaicerr.py` 解包时的配套文件使用。
 
 ### 输出目录
 
@@ -89,7 +91,9 @@ python3 parse_mc2_dump.py --help
 主要结果包括：
 
 - `analysis.txt`：TilingData、Args、Workspace 等汇总结果。
-- XN、CKE、通信上下文和 Peer Memory 的独立解析结果。
+- XN、CKE 地址表的 `.npy` 文件，以及通信上下文和 Peer Memory 的独立解析结果。
+- `exception/<exception_info文件名>/msaicerr`：CANN 异常解包结果。
+- `exception/<exception_info文件名>/npy`：异常 input/output/workspace 的 `.npy` 和 `manifest.json`。
 
 例如：
 
@@ -97,7 +101,64 @@ python3 parse_mc2_dump.py --help
 /path/to/dump/mc2_dump_analysis/MatmulReduceScatterV2/analysis.txt
 ```
 
-## 4. 单独解析某个文件
+## 4. 解析 exception_info 并导出 NPY
+
+统一入口已将两步整合到一次执行中：
+
+```text
+exception_info.*
+    -> 内部调用 CANN DumpDataParser（即 msaicerr.py 的 -d 核心逻辑）
+    -> 内部调用 NPY 导出逻辑
+```
+
+因此正常使用不需要再单独执行 `msaicerr.py` 或异常报告脚本：
+
+```bash
+python3 parse_mc2_dump.py mmrs /path/to/dump
+```
+
+如果当前 Python 环境无法直接导入 CANN 的 `ms_interface`，且 `msaicerr.py` 不在默认位置，再设置环境变量：
+
+```bash
+export MSAICERR_PATH=/home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
+python3 parse_mc2_dump.py mmrs /path/to/dump
+```
+
+也可在单次命令中指定：
+
+```bash
+python3 parse_mc2_dump.py mmrs /path/to/dump \
+  --msaicerr /home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
+```
+
+若 `msaicerr.py` 已经执行完，可只转换它输出的异常张量：
+
+```bash
+python3 parse_mc2_exception_report.py /path/to/exception_report \
+  --operator MatmulReduceScatterV2 \
+  --export-npy /path/to/npy_output
+```
+
+生成的 `manifest.json` 会标注每个数组的 `role`、`index`、源文件、dtype、shape 和解释方式：
+
+- 文件名携带已支持 dtype：按该 dtype 保存。
+- BF16/FP8 等 NumPy 无法稳定直接表示的格式：用 `uint16`/`uint8` 保存原始位模式，标记 `raw_bits`。
+- dtype 为 `undefined` 或未携带 dtype：用 `uint8` 无损保存，标记 `raw_bytes`。
+- 自动导出的 shape 是文件的一维存储 shape；真实逻辑 shape 仍需结合算子输入和 TilingData reshape。
+
+查看导出的 NPY：
+
+```bash
+python3 -c "import numpy as np; a=np.load('/path/to/result.npy'); print(a.shape, a.dtype); print(a[:10])"
+```
+
+XN/CKE 的 NPY 已经是二维 `(行数, 64)`，例如查看前两行、前八列：
+
+```bash
+python3 -c "import numpy as np; a=np.load('/path/to/xn_addr_info_xxx.npy'); print(a[:2, :8])"
+```
+
+## 5. 单独解析某个文件
 
 需要 JSON、Workspace Layout 或只解析一个文件时，可直接调用算子脚本。
 
@@ -169,7 +230,7 @@ python3 parse_all_gather_matmul_v3_tiling.py \
 
 AlltoAllMatmulV2 的参数相同，替换成对应解析脚本即可。
 
-## 5. 按行列查看 Workspace 数据
+## 6. 按行列查看 Workspace 数据
 
 `parse_matrix.py` 用来按照指定数据类型、矩阵形状和行列范围读取 Workspace 原始数据。
 
@@ -216,7 +277,7 @@ python3 parse_matrix.py workspace.bin \
 
 支持的 `--dtype`：`bf16`、`fp16`、`fp32`、`int8`、`uint8`、`fp8_e4m3`、`fp8_e5m2`、`e8m0`、`fp4_e2m1`。
 
-## 6. Workspace Segment 怎么看
+## 7. Workspace Segment 怎么看
 
 文件名中的 `segN` 是 Workspace 布局中的段序号，`typeM` 是段的语义类型。段序号会随实际布局变化，判断数据含义时应优先看 `typeM` 和 TilingData 中的 Workspace Layout。
 
@@ -242,7 +303,7 @@ python3 parse_matrix.py workspace.bin \
 
 统一入口对普通 Workspace 段显示前 64 个原始字节的十进制值，并同时打印 `dataMeaning`、`previewType` 和字节范围。`type13/MM_WORKSPACE` 是 Matmul 内部临时区，不是结果矩阵；MMRS 的 Matmul 输出对应 `type8/MM_RESULT`。由于 `type13` 没有固定 dtype 和逻辑 shape，脚本不会把它强行解释成 BF16 或 FP16。
 
-## 7. 如何确定 dtype、rows 和 cols
+## 8. 如何确定 dtype、rows 和 cols
 
 1. 在 Tiling 代码的 `BuildWorkspaceLayout()` 中确认段长度和类型。
 2. 在 Kernel 初始化代码中确认对应 GlobalTensor 的数据类型和地址偏移。
@@ -265,7 +326,7 @@ FP4 文件大小        = ceil(rows × cols / 2) 字节
 - 数据类型判断错误。
 - 文件属于 RuntimeInfo、Scale 或其他非普通矩阵段。
 
-## 8. 常见问题
+## 9. 常见问题
 
 ### 只想快速解析，使用哪个命令？
 
@@ -304,7 +365,7 @@ MMRS 解析器会按预期核逐行输出 `commit`、`wait`、`pending=commit-wa
 - 使用相同逻辑形状和相同行列范围查看数据。
 - 确认比较的是通信、转置或 ReduceScatter 的同一执行阶段。
 
-## 9. 推荐流程
+## 10. 推荐流程
 
 ```text
 执行算子并生成 Dump

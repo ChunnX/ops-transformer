@@ -10,11 +10,15 @@
 
 Only the operator name is required when this script is run in a dump directory.
 The script discovers and dispatches tiling_data, args_info, workspace segments,
-CCU xn/cke address tables, and URMA context/peermem files automatically.
+CCU xn/cke address tables, URMA context/peermem files, and exception_info
+files automatically. Structured address and exception tensor data is exported
+as NumPy NPY files.
 """
 
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
 import importlib
+import io
 import os
 from pathlib import Path
 import re
@@ -78,6 +82,7 @@ FILE_KINDS = (
     ("comm_context", re.compile(r"^comm_context_", re.IGNORECASE)),
     ("peermem", re.compile(r"^peermem_(?:window|seg\d+_type\d+)_", re.IGNORECASE)),
     ("workspace", re.compile(r"^workspace_seg\d+_type\d+_", re.IGNORECASE)),
+    ("exception", re.compile(r"^exception_info(?:\.|$)", re.IGNORECASE)),
 )
 
 KIND_ORDER = {
@@ -88,6 +93,7 @@ KIND_ORDER = {
     "comm_context": 4,
     "peermem": 5,
     "workspace": 6,
+    "exception": 7,
 }
 
 WORKSPACE_SEG_TYPE_NAMES = {
@@ -138,8 +144,19 @@ def resolve_profile(operator_name):
 def classify_file(path):
     for kind, pattern in FILE_KINDS:
         if pattern.match(path.name):
+            if kind == "exception" and not is_raw_exception(path):
+                return None
             return kind
     return None
+
+
+def is_raw_exception(path):
+    """Return True only for the raw exception container, not msaicerr products."""
+    lowered = path.name.lower()
+    if not lowered.startswith("exception_info"):
+        return False
+    parsed_markers = (".input.", ".output.", ".workspace.", ".npy")
+    return not any(marker in lowered for marker in parsed_markers)
 
 
 def matches_operator(path, profile_key):
@@ -152,12 +169,23 @@ def matches_operator(path, profile_key):
 
 
 def discover_files(dump_dir, output_dir, profile_key):
+    all_files = [
+        path for path in dump_dir.rglob("*")
+        if path.is_file() and output_dir not in path.parents
+    ]
+    operator_dirs = {path.parent for path in all_files if matches_operator(path, profile_key)}
+    raw_exceptions = [path for path in all_files if is_raw_exception(path)]
+    # A raw exception filename does not contain the operator name. Associate it
+    # with the operator through sibling dump/.o/.json files in the same rank dir.
+    if not operator_dirs and raw_exceptions:
+        operator_dirs = {path.parent for path in raw_exceptions}
+
     files = []
-    for path in dump_dir.rglob("*"):
-        if not path.is_file() or output_dir in path.parents:
-            continue
+    for path in all_files:
         kind = classify_file(path)
-        if kind is not None and matches_operator(path, profile_key):
+        if kind == "exception" and path.parent in operator_dirs:
+            files.append((kind, path))
+        elif kind is not None and matches_operator(path, profile_key):
             files.append((kind, path))
     return sorted(files, key=lambda item: (KIND_ORDER[item[0]], str(item[1]).lower()))
 
@@ -257,31 +285,162 @@ def core_num_for_file(path, profile, core_index):
 
 
 def parse_address_table(input_path, output_path):
-    """Parse little-endian uint64 XN/CKE tables, 64 entries per row."""
-    row_count = 0
-    value_count = 0
-    carry = b""
-    row_values = []
-    with input_path.open("rb") as source, output_path.open("w", encoding="utf-8", newline="\n") as target:
-        while True:
-            chunk = source.read(64 * 8 * 64)
-            if not chunk:
-                break
-            chunk = carry + chunk
-            usable = len(chunk) - len(chunk) % 8
-            carry = chunk[usable:]
-            for (value,) in struct.iter_unpack("<Q", chunk[:usable]):
-                row_values.append(value)
-                value_count += 1
-                if len(row_values) == 64:
-                    target.write(" ".join(f"0x{item:016X}" for item in row_values) + "\n")
-                    row_values.clear()
-                    row_count += 1
-        if carry:
-            raise ValueError(f"文件长度不是 8 字节整数倍，尾部剩余 {len(carry)} 字节")
-        if row_values:
-            raise ValueError(f"文件末尾不是完整的 512 字节行，残留 {len(row_values) * 8} 字节")
-    return row_count, value_count
+    """Parse a little-endian uint64 XN/CKE table and save a (rows, 64) NPY."""
+    try:
+        import numpy as np
+    except ImportError as error:
+        raise RuntimeError("解析 XN/CKE 并导出 NPY 需要 NumPy，请先安装 numpy") from error
+
+    byte_size = input_path.stat().st_size
+    row_size = 64 * 8
+    if byte_size % row_size != 0:
+        raise ValueError(f"文件大小 {byte_size} 不是完整 512 字节行的整数倍")
+    values = np.fromfile(input_path, dtype="<u8")
+    table = values.reshape((-1, 64))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(output_path, table, allow_pickle=False)
+    return table.shape[0], table.size, int(np.count_nonzero(table))
+
+
+def find_msaicerr(explicit_path=None):
+    candidates = []
+    if explicit_path:
+        candidates.append(Path(explicit_path).expanduser())
+    for variable in ("MSAICERR_PATH", "ASCEND_TOOLKIT_HOME", "TOOL_PATH"):
+        value = os.environ.get(variable)
+        if not value:
+            continue
+        candidate = Path(value).expanduser()
+        if variable != "MSAICERR_PATH":
+            candidate = candidate / "tools" / "msaicerr" / "msaicerr.py"
+        candidates.append(candidate)
+    candidates.extend((
+        Path("/home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py"),
+        Path("/usr/local/Ascend/ascend-toolkit/latest/tools/msaicerr/msaicerr.py"),
+    ))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def safe_path_component(value):
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+
+
+def run_command(command, cwd=None):
+    child_env = os.environ.copy()
+    child_env["PYTHONIOENCODING"] = "utf-8"
+    process = subprocess.run(
+        [str(item) for item in command],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=child_env,
+        cwd=str(cwd) if cwd is not None else None,
+        check=False,
+    )
+    return process.returncode, process.stdout.rstrip()
+
+
+def run_embedded_msaicerr(source, output_dir, msaicerr_path):
+    """Call the parsing core used by msaicerr.py directly.
+
+    ``msaicerr.py`` is only a CLI wrapper. Its ``-d`` branch ultimately calls
+    ``DumpDataParser(...).parse()``; using that API here removes the extra
+    manual command while keeping the implementation supplied by CANN.
+    """
+    added_path = None
+    if msaicerr_path is not None:
+        added_path = str(msaicerr_path.parent)
+        if added_path not in sys.path:
+            sys.path.insert(0, added_path)
+        else:
+            added_path = None
+
+    capture = io.StringIO()
+    try:
+        try:
+            from ms_interface.aic_error_info import AicErrorInfo
+            from ms_interface.dump_data_parser import DumpDataParser
+        except ImportError as error:
+            return None, f"embedded msaicerr unavailable: {error}"
+
+        try:
+            with redirect_stdout(capture), redirect_stderr(capture):
+                dump_info = AicErrorInfo()
+                DumpDataParser(str(source), dump_info, "", str(output_dir)).parse()
+            return 0, capture.getvalue().rstrip()
+        except Exception as error:  # CANN parser uses several implementation-specific exception types.
+            output = capture.getvalue().rstrip()
+            message = f"embedded DumpDataParser failed: {type(error).__name__}: {error}"
+            return 1, "\n".join(item for item in (output, message) if item)
+    finally:
+        if added_path is not None and sys.path and sys.path[0] == added_path:
+            sys.path.pop(0)
+
+
+def export_exception_npy(report_dir, npy_output, operator):
+    sys.path.insert(0, str(SCRIPT_DIR))
+    capture = io.StringIO()
+    try:
+        module = importlib.import_module("parse_mc2_exception_report")
+        with redirect_stdout(capture), redirect_stderr(capture):
+            module.export_report(report_dir, npy_output, operator)
+        return 0, capture.getvalue().rstrip()
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        output = capture.getvalue().rstrip()
+        message = f"NPY export failed: {type(error).__name__}: {error}"
+        return 1, "\n".join(item for item in (output, message) if item)
+    finally:
+        if sys.path and sys.path[0] == str(SCRIPT_DIR):
+            sys.path.pop(0)
+
+
+def parse_exception_info(profile, source, relative_path, output_dir, msaicerr_path):
+    invocation_dir = output_dir / "exception" / relative_path.parent / safe_path_component(source.name)
+    msaicerr_output = invocation_dir / "msaicerr"
+    npy_output = invocation_dir / "npy"
+    msaicerr_output.mkdir(parents=True, exist_ok=True)
+    details = [f"msaicerr output: {msaicerr_output}"]
+    return_code, output = run_embedded_msaicerr(source, msaicerr_output, msaicerr_path)
+    if return_code is None:
+        details.append(output)
+        if msaicerr_path is None:
+            details.append(
+                "ERROR: 未找到 CANN ms_interface；请确认 CANN 环境已加载，"
+                "或使用 --msaicerr 指定 msaicerr.py"
+            )
+            return 1, details
+        msaicerr_command = [
+            sys.executable,
+            str(msaicerr_path),
+            "-d",
+            str(source),
+            "--output_path",
+            str(msaicerr_output),
+        ]
+        # Compatibility fallback for CANN versions whose Python API cannot be
+        # imported directly from this process.
+        return_code, output = run_command(msaicerr_command, cwd=source.parent)
+        details.append("msaicerr mode: command-line fallback")
+    else:
+        details.append("msaicerr mode: embedded DumpDataParser")
+    if output:
+        details.extend(output.splitlines())
+    if return_code != 0:
+        details.append(f"ERROR: msaicerr exited with code {return_code}")
+        return return_code, details
+
+    return_code, output = export_exception_npy(msaicerr_output, npy_output, profile["name"])
+    details.append(f"NPY output: {npy_output}")
+    if output:
+        details.extend(output.splitlines())
+    if return_code != 0:
+        details.append(f"ERROR: exception report parser exited with code {return_code}")
+    return return_code, details
 
 
 def backend_command(profile, kind, path, aic_core_num):
@@ -300,6 +459,8 @@ def backend_command(profile, kind, path, aic_core_num):
 
 
 def run_backend(profile, kind, path, aic_core_num):
+    child_env = os.environ.copy()
+    child_env["PYTHONIOENCODING"] = "utf-8"
     process = subprocess.run(
         backend_command(profile, kind, path, aic_core_num),
         stdout=subprocess.PIPE,
@@ -307,6 +468,7 @@ def run_backend(profile, kind, path, aic_core_num):
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=child_env,
         check=False,
     )
     return process.returncode, process.stdout.rstrip()
@@ -319,7 +481,7 @@ def emit(lines, value=""):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="按算子名自动解析 MC2 tiling/workspace/xn/cke/URMA dump",
+        description="按算子名自动解析 MC2 tiling/workspace/xn/cke/URMA/exception dump",
         epilog=(
             "在 dump 目录中只需执行: python3 parse_mc2_dump.py AlltoAllMatmul\n"
             "也可指定目录: python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/dump"
@@ -328,6 +490,10 @@ def main(argv=None):
     )
     parser.add_argument("operator", help="算子名或别名，例如 AlltoAllMatmul、AllGatherMatmulV3、mmrs")
     parser.add_argument("dump_dir", nargs="?", default=".", help="dump 根目录，默认当前目录")
+    parser.add_argument(
+        "--msaicerr",
+        help="msaicerr.py 路径；未指定时读取 MSAICERR_PATH/ASCEND_TOOLKIT_HOME/TOOL_PATH 并检查常用路径",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -357,6 +523,8 @@ def main(argv=None):
     emit(report_lines, "=" * 88)
 
     failures = 0
+    exception_files = [path for kind, path in files if kind == "exception"]
+    msaicerr_path = find_msaicerr(args.msaicerr) if exception_files else None
     for kind, path in files:
         relative_path = path.relative_to(dump_dir)
         emit(report_lines)
@@ -366,14 +534,28 @@ def main(argv=None):
             relative_parent = relative_path.parent
             address_dir = output_dir / relative_parent
             address_dir.mkdir(parents=True, exist_ok=True)
-            output_path = address_dir / f"{path.name}.txt"
+            output_path = address_dir / f"{path.name}.npy"
             try:
-                rows, values = parse_address_table(path, output_path)
-                message = f"parsed {values} uint64 addresses / {rows} rows -> {output_path}"
+                rows, values, nonzero = parse_address_table(path, output_path)
+                message = (
+                    f"saved NPY: dtype=uint64 shape=({rows}, 64) values={values} "
+                    f"nonzero={nonzero} -> {output_path}"
+                )
                 emit(report_lines, message)
-            except (OSError, ValueError) as error:
+            except (OSError, RuntimeError, ValueError) as error:
                 failures += 1
                 emit(report_lines, f"ERROR: {error}")
+            continue
+
+        if kind == "exception":
+            emit(report_lines, f"msaicerr: {msaicerr_path or 'CANN ms_interface from Python environment'}")
+            return_code, details = parse_exception_info(
+                profile, path, relative_path, output_dir, msaicerr_path
+            )
+            for line in details:
+                emit(report_lines, line)
+            if return_code != 0:
+                failures += 1
             continue
 
         # Large data segments only need metadata and a short preview in the unified report.
