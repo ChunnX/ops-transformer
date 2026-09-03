@@ -74,6 +74,7 @@ TEST_F(CausalConv1dFnTiling, fn_3d_fp16_b2_s16_d8192_w4_bias)
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, UINT64_MAX);
 }
 
+
 TEST_F(CausalConv1dFnTiling, fn_2d_varlen_fp16_d8192_w4)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
