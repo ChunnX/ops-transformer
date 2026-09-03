@@ -71,7 +71,7 @@ CUTLASS_DEVICE void dispatch_num_block_tokens(const uint32_t& num_block_tokens, 
 // =============================================================================
 template <uint32_t kSparseCount, bool kCached, bool kUseMap = false>
 CUTLASS_DEVICE void warp_bucket_topk(
-    const float* __restrict__ logits,
+    const void* __restrict__ logits,
     // local buffer, reads logits[i], i in [0, k_len)
     const uint32_t out_base,            // output index base (real k_start)
     const uint32_t k_len,               // local buffer length
@@ -107,9 +107,10 @@ CUTLASS_DEVICE void warp_bucket_topk(
 
     // Explicit shared-space element loader (avoids generic loads)
     const uint32_t* logits_u = reinterpret_cast<const uint32_t*>(logits);
+    const nv_bfloat16* logits_b = reinterpret_cast<const nv_bfloat16*>(logits);
     auto load_u32 = [&](uint32_t i) -> uint32_t {
         if constexpr (kCached) return ptx::ld_shared(logits_u + i);
-        else return __float_as_uint(__ldcg(reinterpret_cast<const float*>(logits_u) + i));
+        else return __float_as_uint(__bfloat162float(logits_b[i]));
     };
 
     // SMEM: merged 16-bin histogram (histogram[0..15]) + per-lane sub-histogram
