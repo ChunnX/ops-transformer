@@ -2871,13 +2871,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
     uint32_t currentWaveBegin = 0U;
     uint32_t currentWaveEnd = firstWaveExpertCount;
 
-    // if constexpr (g_coreType == AIV) {
-    //     if (subBlockIdx_ == 1U) {
-    //         PrepareDispatch(firstWaveExpertCount);
-    //         // 首个宏 Wave 就绪后即可启动计算，不再等待全部专家的二级 Dispatch。
-    //         ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
-    //     }
-    // }
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ == 1U) {
+            PrepareDispatch(firstWaveExpertCount);
+            // 首个宏 Wave 就绪后即可启动计算，不再等待全部专家的二级 Dispatch。
+            ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
+        }
+    }
 
     // while (currentWaveBegin < moeExpertPerRank_) {
     //     const uint32_t waveStartBlockIdx = startBlockIdx_;
