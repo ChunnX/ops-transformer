@@ -29,8 +29,8 @@ public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                           int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                          int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
-                                          int64_t winRight, const char *layoutQ, const char *layoutKv,
+                                          int64_t numHeadsKv, int64_t headDim, int64_t headDimV, int64_t maskMode,
+                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutKv,
                                           const char *layoutOut, const aclTensor *metadata);
 
 private:
@@ -41,8 +41,8 @@ private:
     static inline aclnnStatus CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens);
 
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, const char *layoutQ,
-                                            const char *layoutKv, const char *layoutOut);
+                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t headDimV,
+                                            const char *layoutQ, const char *layoutKv, const char *layoutOut);
 
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
 
@@ -61,11 +61,11 @@ private:
 inline aclnnStatus FlashAttnMetadataCheck::ParamsCheck(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-    int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
-    const char *layoutKv, const char *layoutOut, const aclTensor *metadata)
+    int64_t numHeadsKv, int64_t headDim, int64_t headDimV, int64_t maskMode, int64_t winLeft, int64_t winRight,
+    const char *layoutQ, const char *layoutKv, const char *layoutOut, const aclTensor *metadata)
 {
-    auto ret =
-        CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, layoutQ, layoutKv, layoutOut);
+    auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, headDimV, layoutQ,
+                             layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode, winLeft, winRight);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -91,7 +91,7 @@ inline bool FlashAttnMetadataCheck::IsPA(const char *layout)
 
 inline aclnnStatus FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                                          int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                                         const char *layoutQ, const char *layoutKv,
+                                                         int64_t headDimV, const char *layoutQ, const char *layoutKv,
                                                          const char *layoutOut)
 {
     int64_t MIN_BATCH = 0;
@@ -109,11 +109,28 @@ inline aclnnStatus FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int6
     constexpr int64_t HEAD_DIM_64 = 64;
     constexpr int64_t HEAD_DIM_72 = 72;
     constexpr int64_t HEAD_DIM_128 = 128;
+    constexpr int64_t HEAD_DIM_192 = 192;
     constexpr int64_t HEAD_DIM_256 = 256;
-    static const std::unordered_set<int64_t> headDimSet = {HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128, HEAD_DIM_256};
+    static const std::unordered_set<int64_t> headDimSet = {HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128, HEAD_DIM_192,
+                                                           HEAD_DIM_256};
     CHECK_COND(headDimSet.count(headDim) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "headDim only supports %ld, %ld, %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128,
-               HEAD_DIM_256, headDim);
+               "headDim only supports %ld, %ld, %ld, %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128,
+               HEAD_DIM_192, HEAD_DIM_256, headDim);
+
+    // headDimV 为 -1（NONE_VALUE）时表示 v 的 head_dim 等于 headDim
+    static const std::unordered_set<int64_t> headDimVSet = {NONE_VALUE, HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128,
+                                                            HEAD_DIM_256};
+    CHECK_COND(headDimVSet.count(headDimV) > 0, ACLNN_ERR_RUNTIME_ERROR,
+               "headDimV only supports %ld, %ld, %ld, %ld, %ld, but got %ld", NONE_VALUE, HEAD_DIM_64, HEAD_DIM_72,
+               HEAD_DIM_128, HEAD_DIM_256, headDimV);
+    // 组合白名单需与 flash_attn 主算子 checker 保持一致：(64,64)/(72,72)/(128,128)/(256,256)/(192,128)
+    const int64_t effectiveHeadDimV = (headDimV == NONE_VALUE) ? headDim : headDimV;
+    const bool isSupportedDimComb =
+        (headDim == effectiveHeadDimV) || (headDim == HEAD_DIM_192 && effectiveHeadDimV == HEAD_DIM_128);
+    CHECK_COND(isSupportedDimComb, ACLNN_ERR_RUNTIME_ERROR,
+               "The (head_dim, head_dim_v) combination is not supported, supported: (64,64), (72,72), (128,128), "
+               "(256,256), (192,128), but got (%ld, %ld)",
+               headDim, headDimV);
 
     static const std::unordered_set<std::string> layoutQSet = {"BSND", "TND", "BNSD"};
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,
