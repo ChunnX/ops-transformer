@@ -384,9 +384,9 @@ bool GetInputs(GMMSQWeightQuantInputParams &params, const gert::TilingContext &c
     }
     uint64_t expectedWeightDim = params.isSingleMultiSingle ? DIM_NUM_WEIGHT_ND - 1 : DIM_NUM_WEIGHT_ND;
     if (unlikely(wShapeLen != expectedWeightDim)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight", std::to_string(wShapeLen),
-                                                 "The shape dim of weight must be " +
-                                                     std::to_string(expectedWeightDim));
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            OP_NAME, "weight", std::to_string(wShapeLen),
+            "The shape dim of weight must be " + std::to_string(expectedWeightDim));
         return false;
     }
 
@@ -452,17 +452,17 @@ bool CheckInputShape(const char *variableName, const gert::Shape &shape, const s
 {
     auto shapeLen = shape.GetDimNum();
     if (unlikely(shapeLen != expectedShape.size())) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, variableName, std::to_string(shapeLen),
-                                                 "The shape dim of " + std::string(variableName) + " must be " +
-                                                     std::to_string(expectedShape.size()));
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            OP_NAME, variableName, std::to_string(shapeLen),
+            "The shape dim of " + std::string(variableName) + " must be " + std::to_string(expectedShape.size()));
         return false;
     }
     size_t i = 0;
     for (auto dim : expectedShape) {
         if (unlikely(dim != shape.GetDim(i++))) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, variableName, Ops::Base::ToString(shape),
-                                                  "Shape does not match the expected value " +
-                                                      ToShapeString(expectedShape));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                OP_NAME, variableName, Ops::Base::ToString(shape),
+                "Shape does not match the expected value " + ToShapeString(expectedShape));
             return false;
         }
     }
@@ -497,9 +497,9 @@ bool IsInputShapeValid([[maybe_unused]] gert::TilingContext &context, const GMMS
         return false;
     }
     if (unlikely(params.groupNum < 1 || params.groupNum > MAX_GROUP_NUM)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight", "groupNum=" + std::to_string(params.groupNum),
-                                              "groupNum of weight must be in range [1, " +
-                                                  std::to_string(MAX_GROUP_NUM) + "]");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            OP_NAME, "weight", "groupNum=" + std::to_string(params.groupNum),
+            "groupNum of weight must be in range [1, " + std::to_string(MAX_GROUP_NUM) + "]");
         return false;
     }
     return true;
@@ -635,9 +635,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetPlatformInfo()
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(OP_NAME, "CompileInfo is null"), return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
     OP_LOGI(context_, "Compile info: aicNum(%u) aivNum(%u) ubSize(%llu) baseM(%u) baseN(%u) supportL12BtBf16(%s).",
-            compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_,
-            compileInfoPtr_->ubSize_, compileInfoPtr_->baseM_, compileInfoPtr_->baseN_,
-            compileInfoPtr_->supportL12BtBf16 ? "true" : "false");
+            compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_, compileInfoPtr_->ubSize_, compileInfoPtr_->baseM_,
+            compileInfoPtr_->baseN_, compileInfoPtr_->supportL12BtBf16 ? "true" : "false");
 
     if (!CheckCoreNum(compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_)) {
         return ge::GRAPH_FAILED;
