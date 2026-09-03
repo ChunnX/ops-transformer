@@ -469,6 +469,16 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
                 OP_LOGE(context_->GetNodeName(), "baseN=%lu exceeds the MX epilogue UB capacity.", basicTiling_.baseN),
                 return ge::GRAPH_FAILED);
     basicTiling_.baseM = std::min(alignedBaseM, maxBaseMByUb);
+
+    // Experiment: reduce the M tile by one 16-row cube unit for the target
+    // shape so the Epilogue can allocate two UB output slots. Keep the
+    // experiment shape-scoped until the performance result is confirmed.
+    constexpr uint32_t EPILOGUE_DB_EXPERIMENT_BASE_M = 224;
+    if (inputParams_.mSize == 51200 && inputParams_.nSize == 1536 && inputParams_.kSize == 4096 &&
+        inputParams_.groupNum == 80 && basicTiling_.baseM == GmmConstant::BASIC_BLOCK_SIZE_256 &&
+        basicTiling_.baseN == GmmConstant::BASIC_BLOCK_SIZE_256) {
+        basicTiling_.baseM = EPILOGUE_DB_EXPERIMENT_BASE_M;
+    }
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
