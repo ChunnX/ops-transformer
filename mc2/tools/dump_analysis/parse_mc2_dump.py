@@ -97,6 +97,26 @@ WORKSPACE_SEG_TYPE_NAMES = {
     12: "RUNTIME_INFO", 13: "MM_WORKSPACE", 255: "RESERVED",
 }
 
+WORKSPACE_SEG_DESCRIPTIONS = {
+    0: "系统库预留 Workspace，不属于算子用户数据",
+    1: "ND 到 NZ 格式转换的中间缓冲区",
+    2: "Gather 通信数据缓冲区",
+    3: "Gather 的第一路 Scale 缓冲区",
+    4: "Gather Scale 缓冲区",
+    5: "通信输出缓冲区",
+    6: "转置输出缓冲区",
+    7: "Bias 缓冲区",
+    8: "Matmul 结果；在部分融合通路中也作为通信发送缓冲区",
+    9: "通信接收缓冲区",
+    10: "INT8 通信临时缓冲区",
+    11: "动态量化临时缓冲区",
+    12: "每核 RuntimeInfo，记录执行位置和通信 commit/wait 情况",
+    13: "Matmul 内部临时 Workspace，不是 Matmul 结果，元素类型和逻辑形状不固定",
+    255: "对齐或预留空间",
+}
+
+WORKSPACE_PREVIEW_SIZE = 64
+
 PEERMEM_SEG_TYPE_NAMES = {
     0: "DATA", 1: "SCALE", 2: "BIAS", 3: "FLAG", 255: "RESERVED",
 }
@@ -150,6 +170,18 @@ def read_data(path):
 def read_preview(path, size=256):
     with path.open("rb") as file_handle:
         return file_handle.read(size)
+
+
+def emit_decimal_byte_preview(lines, data):
+    """Print an unambiguous decimal preview when the segment element type is unknown."""
+    emit(lines, "previewType: uint8 raw bytes")
+    emit(lines, f"previewRange: byte[0:{len(data)}]")
+    emit(lines, f"previewAllZero: {not any(data)}")
+    emit(lines, "decimalPreview (each value is one raw uint8 byte):")
+    for offset in range(0, len(data), 16):
+        row = data[offset:offset + 16]
+        values = " ".join(f"{value:3d}" for value in row)
+        emit(lines, f"  byte[{offset:04d}:{offset + len(row):04d}] : {values}")
 
 
 def segment_identity(path, prefix):
@@ -352,8 +384,10 @@ def main(argv=None):
                 seg_index, seg_type = identity
                 emit(report_lines, f"segIdx: {seg_index}")
                 emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
                 emit(report_lines, f"fileSize: {path.stat().st_size} bytes")
-                emit(report_lines, f"hexPreview(256B): {read_preview(path).hex()}")
+                emit_decimal_byte_preview(report_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
+                emit(report_lines, "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
                 continue
 
         if kind == "peermem":

@@ -33,6 +33,8 @@ RUNTIME_INFO_PER_CORE_SIZE = 512
 RUNTIME_INFO_CORE_MAX = 128
 RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
+MMRS_AIV_PER_AIC = 2
+WORKSPACE_PREVIEW_SIZE = 64
 
 OFFSET_RCS_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
 OFFSET_QUANT_MODE = OFFSET_RCS_TILING + RCS_TILING_SIZE + 4 + 4  # 712
@@ -54,9 +56,10 @@ ARGS_INDEX_NAMES = [
 ]
 
 POS_TAG_MAP_MRSV2 = {
-    0: "COMM_BEFORE",              # AlltoAll提交/hccl.Wait 前
-    2: "COMP_CUBE_MATMUL_BEFORE",  # C核 matmul 前
-    3: "COMP_VEC_REDUCE_BEFORE",   # V核 reduceSum 前
+    0: "COMM_BEFORE",         # AlltoAll/ReduceScatter 提交或 Wait 前
+    1: "MATMUL_BEFORE",       # C 核 Matmul 前
+    2: "REDUCE_BEFORE",       # V 核 ReduceSum 前
+    3: "FINALIZE_BEFORE",     # HCCL Finalize 前
 }
 
 RUNTIME_PHASE_MAP = {
@@ -65,12 +68,31 @@ RUNTIME_PHASE_MAP = {
     2: "COMM_COMMIT",
     3: "COMM_WAIT",
     4: "COMM_FINALIZE",
+    255: "RESERVED",
 }
 
 WS_SEG_TYPE_MAP = {
     0: "LIB_API", 1: "ND2NZ", 2: "GATHER", 3: "GATHER_SCALE1", 4: "GATHER_SCALE",
     5: "COMM_OUT", 6: "PERMUTE_OUT", 7: "BIAS", 8: "MM_RESULT", 9: "RECV_BUF",
     10: "COMM_INT8", 11: "DYNAMIC_QUANT", 12: "RUNTIME_INFO", 13: "MM_WORKSPACE", 255: "RESERVED",
+}
+
+WS_SEG_DESCRIPTION_MAP = {
+    0: "系统库预留 Workspace，不属于算子用户数据",
+    1: "ND 到 NZ 格式转换的中间缓冲区",
+    2: "Gather 通信数据缓冲区",
+    3: "Gather 的第一路 Scale 缓冲区",
+    4: "Gather Scale 缓冲区",
+    5: "通信输出缓冲区",
+    6: "转置输出缓冲区",
+    7: "Bias 缓冲区",
+    8: "Matmul 结果；MMRS 中也可作为通信发送缓冲区",
+    9: "通信接收缓冲区；A2A 路径中供后续 ReduceSum 使用",
+    10: "INT8 通信临时缓冲区",
+    11: "动态量化临时缓冲区",
+    12: "每核 RuntimeInfo，记录执行位置和通信 commit/wait 情况",
+    13: "Matmul 内部临时 Workspace，不是 Matmul 结果，元素类型和逻辑形状不固定",
+    255: "对齐或预留空间",
 }
 
 
@@ -186,24 +208,71 @@ def parse_runtime_info_segment(data, aic_core_num=None):
     for i in range(max_slots):
         slot = parse_runtime_info_per_core(data, i * RUNTIME_INFO_PER_CORE_SIZE)
         slot["slotIdx"] = i
+        if aic_core_num is None:
+            slot["coreType"] = "未知"
+        elif i < aic_core_num:
+            slot["coreType"] = "C核"
+        elif i < aic_core_num * (1 + MMRS_AIV_PER_AIC):
+            slot["coreType"] = "V核"
+        else:
+            slot["coreType"] = "未使用"
         if slot.get("magicValid", False):
             active_count += 1
-            slot["coreType"] = "C核" if aic_core_num is not None and slot["coreId"] < aic_core_num else ("V核" if aic_core_num is not None else "未知")
-            slots.append(slot)
+        commit_count = slot.get("commCommitCount", 0)
+        wait_count = slot.get("commWaitCount", 0)
+        slot["outstandingComm"] = max(commit_count - wait_count, 0)
+        if not slot.get("magicValid", False):
+            slot["commState"] = "NOT_WRITTEN"
+        elif wait_count > commit_count:
+            slot["commState"] = "COUNT_ERROR"
+        elif commit_count > wait_count:
+            slot["commState"] = "PENDING"
         else:
-            slots.append(slot)
+            slot["commState"] = "BALANCED"
+        slots.append(slot)
+
+    if aic_core_num is None:
+        expected_slots = max_slots
+        aiv_core_num = None
+    else:
+        aiv_core_num = aic_core_num * MMRS_AIV_PER_AIC
+        expected_slots = min(max_slots, aic_core_num + aiv_core_num)
+
+    magic_bytes = struct.pack("<I", RUNTIME_INFO_MAGIC)
+    magic_offsets = []
+    search_from = 0
+    while True:
+        found = data.find(magic_bytes, search_from)
+        if found < 0:
+            break
+        magic_offsets.append(found)
+        search_from = found + 1
+    unaligned_magic_offsets = [offset for offset in magic_offsets if offset % RUNTIME_INFO_PER_CORE_SIZE != 0]
+
+    expected = slots[:expected_slots]
+    valid_expected = [slot for slot in expected if slot.get("magicValid", False)]
     return {"segmentSize": len(data), "maxSlots": max_slots, "activeSlots": active_count,
-            "aicCoreNum": aic_core_num, "slots": slots}
+            "expectedSlots": expected_slots, "validExpectedSlots": len(valid_expected),
+            "aicCoreNum": aic_core_num, "aivCoreNum": aiv_core_num,
+            "commitTotal": sum(slot["commCommitCount"] for slot in valid_expected),
+            "waitTotal": sum(slot["commWaitCount"] for slot in valid_expected),
+            "pendingCoreCount": sum(slot["outstandingComm"] > 0 for slot in valid_expected),
+            "unalignedMagicOffsets": unaligned_magic_offsets[:16], "slots": slots}
 
 
 def parse_workspace_segment_file(data, seg_type, aic_core_num=None):
     result = {"segmentType": seg_type,
               "segmentTypeName": WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})"),
+              "segmentDescription": WS_SEG_DESCRIPTION_MAP.get(seg_type, "未知 Workspace 段"),
               "fileSize": len(data)}
     if seg_type == 12:
         result["runtimeInfo"] = parse_runtime_info_segment(data, aic_core_num)
     else:
-        result["hexPreview"] = data[:256].hex()
+        preview = data[:WORKSPACE_PREVIEW_SIZE]
+        result["previewType"] = "uint8 raw bytes"
+        result["previewOffset"] = 0
+        result["decimalPreview"] = list(preview)
+        result["previewAllZero"] = not any(preview)
     return result
 
 
@@ -253,31 +322,61 @@ def print_tiling_data(result, is_quant):
 def print_runtime_info_segment(rt_info):
     print_section("RuntimeInfo Segment (type=12, 64KB)")
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
-    logging.info("  %-30s: %d / %d", "activeSlots", rt_info["activeSlots"], rt_info["maxSlots"])
+    logging.info("  %-30s: %d", "maxSlots", rt_info["maxSlots"])
+    logging.info("  %-30s: %d", "expectedSlots", rt_info["expectedSlots"])
+    logging.info("  %-30s: %d / %d", "validExpectedSlots", rt_info["validExpectedSlots"],
+                 rt_info["expectedSlots"])
     if rt_info.get("aicCoreNum") is None:
-        logging.warning("  未提供 --aic-core-num，C/V 核分类不可靠。")
+        logging.warning("  未提供 --aic-core-num，将显示文件中的全部 slot，C/V 核分类未知。")
     else:
         logging.info("  %-30s: %d", "aicCoreNum", rt_info["aicCoreNum"])
+        logging.info("  %-30s: %d", "aivCoreNum", rt_info["aivCoreNum"])
+    logging.info("  %-30s: %d", "commitTotal(valid slots)", rt_info["commitTotal"])
+    logging.info("  %-30s: %d", "waitTotal(valid slots)", rt_info["waitTotal"])
+    logging.info("  %-30s: %d", "pendingCoreCount", rt_info["pendingCoreCount"])
     logging.info("")
-    logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
-    active = [s for s in rt_info["slots"] if s.get("magicValid", False)]
-    if not active:
-        logging.warning("  无有效 slot。")
-    else:
-        for s in active:
-            logging.info("  Core %-4d (%s):  turn=%d, pos=%d (%s), phase=%s, commit=%d, wait=%d",
-                         s["coreId"], s.get("coreType", "未知"),
-                         s["execTurn"], s["execPosition"], s["execPositionName"],
-                         s["commPhaseName"], s["commCommitCount"], s["commWaitCount"])
+    if rt_info["validExpectedSlots"] == 0:
+        logging.warning("  预期核对应的 slot 均未发现 magic 0x%08X。", RUNTIME_INFO_MAGIC)
+        logging.warning("  这表示 RuntimeInfo 未被 Kernel 写入，或 Dump 的 RuntimeInfo 起始地址/时机不正确；"
+                        "下表仍显示每个 slot 的原始 commit/wait 字节。")
+    if rt_info["unalignedMagicOffsets"]:
+        logging.warning("  在非 512B 对齐位置发现 magic，可能存在段起点错位: %s",
+                        rt_info["unalignedMagicOffsets"])
+
+    logging.info("  --- 每核通信计数（valid=no 时数值只是未初始化的原始字节） ---")
+    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s %-7s %s",
+                 "slot", "核型", "valid", "storedCore", "turn", "position", "phase",
+                 "commit", "wait", "pending", "state")
+    for slot in rt_info["slots"][:rt_info["expectedSlots"]]:
+        is_valid = slot["magicValid"]
+        stored_core = str(slot["coreId"]) if is_valid else "-"
+        turn = str(slot["execTurn"]) if is_valid else "-"
+        position = f"{slot['execPosition']}/{slot['execPositionName']}" if is_valid else "-"
+        phase = slot["commPhaseName"] if is_valid else "-"
+        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d %-7d %s",
+                     slot["slotIdx"], slot["coreType"], "yes" if is_valid else "no",
+                     stored_core, turn, position, phase,
+                     slot["commCommitCount"], slot["commWaitCount"],
+                     slot["outstandingComm"], slot["commState"])
 
 
 def print_workspace_segment(result):
     seg_type = result["segmentType"]
     print_section(f"Workspace Segment (type={seg_type}/{result['segmentTypeName']}, {result['fileSize']}B)")
+    logging.info("  %-30s: %s", "dataMeaning", result["segmentDescription"])
     if seg_type == 12:
         print_runtime_info_segment(result["runtimeInfo"])
     else:
-        logging.info("  Hex: %s", result.get("hexPreview", "")[:128])
+        values = result.get("decimalPreview", [])
+        logging.info("  %-30s: %s", "previewType", result.get("previewType"))
+        logging.info("  %-30s: %s", "previewRange", f"byte[0:{len(values)}]")
+        logging.info("  %-30s: %s", "previewAllZero", result.get("previewAllZero"))
+        logging.info("  --- 十进制预览（每个值对应一个原始 uint8 字节） ---")
+        for offset in range(0, len(values), 16):
+            row = values[offset:offset + 16]
+            logging.info("  byte[%04d:%04d] : %s", offset, offset + len(row),
+                         " ".join(f"{value:3d}" for value in row))
+        logging.info("  如需按 BF16/FP16/FP8 等真实类型查看矩阵，请使用 parse_matrix.py 并指定 dtype/rows/cols。")
 
 
 def main():
