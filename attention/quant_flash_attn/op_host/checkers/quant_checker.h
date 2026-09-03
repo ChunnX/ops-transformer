@@ -104,6 +104,11 @@ private:
     ge::graphStatus CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckInputAxisFullquant(const QfaTilingInfo &qfaInfo) const;
 
+    // --- Feature: V尾块(高精窗口)参数组校验 ---
+    ge::graphStatus CheckVTailFeature(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVTailExistence(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVTailShape(const QfaTilingInfo &qfaInfo) const;
+
 private:
     std::shared_ptr<QfaTilingShapeCompare> queryShapeCmp_ = nullptr;
     std::shared_ptr<QfaTilingShapeCompare> keyShapeCmp_ = nullptr;

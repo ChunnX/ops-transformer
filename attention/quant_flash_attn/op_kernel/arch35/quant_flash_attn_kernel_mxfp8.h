@@ -59,6 +59,7 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+    static constexpr bool HAS_V_TAIL = CubeBlockType::HAS_V_TAIL;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
@@ -88,6 +89,7 @@ public:
     GlobalTensor<int32_t> cuSeqLensGmKv_;
     GlobalTensor<int32_t> seqUsedGmQ_;
     GlobalTensor<int32_t> seqUsedGmKv_;
+    GlobalTensor<int32_t> seqUsedKvTailGm_;
     GlobalTensor<uint32_t> faMetaDataGm_;
     GlobalTensor<uint32_t> fdMetaDataGm_;
     GlobalTensor<float> softmaxLseGm_;
@@ -107,6 +109,7 @@ public:
     // schduler params
     uint64_t actSeqLensKv_ = 0;
     uint64_t actSeqLensQ_ = 0;
+    uint32_t actTailLen_ = 0;
     uint32_t curS2Start_ = 0;
     uint32_t curS2End_ = 0;
     uint32_t prevBIdx_ = 0;
@@ -150,7 +153,8 @@ public:
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
-                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *vTail,
+                                __gm__ uint8_t *blockTableTail, __gm__ uint8_t *sequsedKvTail,
                                 const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
@@ -173,6 +177,11 @@ public:
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         } else {
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
+        }
+        if constexpr (HAS_V_TAIL) {
+            if (constInfo_.seqUsedKvTailSize > 0) {
+                seqUsedKvTailGm_.SetGlobalBuffer((__gm__ int32_t *)sequsedKvTail, constInfo_.seqUsedKvTailSize);
+            }
         }
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
 
@@ -199,10 +208,12 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
+                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_,
+                                         vTail, blockTableTail);
             } else {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
+                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_, vTail,
+                                         blockTableTail);
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -233,7 +244,9 @@ public:
 
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
+        constexpr uint32_t mm2LeftSize =
+            mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32 +
+            (HAS_V_TAIL ? (mBaseSize * MXFP8_V_TAIL_BOUNDARY * sizeof(bfloat16_t)) : 0);
         l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         // TODO，共享buffer初始化放到block层
@@ -292,6 +305,11 @@ public:
 
         constInfo_.accumOutSize = qfaWorkspaceParams.accumOutSize;
         constInfo_.logSumExpSize = qfaWorkspaceParams.logSumExpSize;
+
+        // V tail params
+        const auto &qfaVTailParams = this->tilingData_->baseTiling.quantFlashAttnVTailParams;
+        constInfo_.seqUsedKvTailSize = qfaVTailParams.seqUsedKvTailSize;
+        constInfo_.tailMaxBlockNum = qfaVTailParams.tailMaxBlockNum;
 
         // strides
         constInfo_.keyStrides.bnStride = qfaBaseParams.keyStrides.bnStride;
@@ -445,6 +463,23 @@ public:
                 actSeqLensQ_ = qCuSeqLensParser_.GetActualSeqLength(bIdx);
             } else {
                 actSeqLensQ_ = qSeqUsedParser_.GetActualSeqLength(bIdx);
+            }
+            if constexpr (HAS_V_TAIL) {
+                // 定义A: seqused_kv仍为总kvLen, tail为其尾部余数。防御: 信任满足约束的tail
+                // (0<=tail<64 且 kvLen-tail==align_down(kvLen,64)), 违反约束时强制纠正为真余数,
+                // 保证kMain恒为64倍数(主体段VScale组寻址依赖此约束)
+                if (constInfo_.seqUsedKvTailSize > 0) {
+                    int32_t tailInput = seqUsedKvTailGm_.GetValue(bIdx);
+                    uint32_t kvLen = static_cast<uint32_t>(actSeqLensKv_);
+                    uint32_t alignedDown = kvLen / MXFP8_V_TAIL_BOUNDARY * MXFP8_V_TAIL_BOUNDARY;
+                    uint32_t tailLenU = (tailInput < 0) ? 0 : static_cast<uint32_t>(tailInput);
+                    if ((tailLenU >= MXFP8_V_TAIL_BOUNDARY) || (kvLen - tailLenU != alignedDown)) {
+                        tailLenU = kvLen - alignedDown;
+                    }
+                    actTailLen_ = tailLenU;
+                } else {
+                    actTailLen_ = 0;
+                }
             }
         }
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
@@ -669,6 +704,7 @@ public:
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
+        info.kvTailLen = actTailLen_;
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
