@@ -28,27 +28,6 @@ using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace fa_base_matmul;
-
-
-
-#ifndef FA_BASE_MATMUL_MATMUL_BASE_DEFINED
-#define FA_BASE_MATMUL_MATMUL_BASE_DEFINED
-template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
-          typename L0AType, typename L0BType>
-__aicore__ inline void MatmulBase(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
-                                  L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, struct MMParam &param)
-{
-    if ((param.singleK + baseK - 1) / baseK > 1) {
-        MatmulK<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
-    } else if ((param.singleN + baseN - 1) / baseN > 1) {
-        MatmulN<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
-    } else {
-        MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor,
-                                                         param);
-    }
-}
-#endif
-
 namespace NoQuantCube {
 
 template <LayOutTypeEnum LAYOUT>
@@ -836,9 +815,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(
                             mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
                             param);
                     } else {
-                        MatmulBase<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                            mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
-                            param);
+if ((param.singleK + 128 - 1) / 128 > 1) {
+                            MatmulK<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+                        } else if ((param.singleN + (uint32_t)dVTemplateType - 1) / (uint32_t)dVTemplateType > 1) {
+                            MatmulN<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+                        } else {
+                            MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+                        }
                     }
                 }
             }
@@ -1536,8 +1519,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(
     mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
     if (runInfo.s2RealSize > s2SplitSize) {
-        MatmulBase<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(
-            mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+if ((param.singleK + 256 - 1) / 256 > 1) {
+            MatmulK<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+        } else if ((param.singleN + 128 - 1) / 128 > 1) {
+            MatmulN<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+        } else {
+            MatmulFull<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+        }
     } else {
         MatmulFull<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(
             mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
@@ -1688,9 +1676,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         0,                            // isLeftTranspose
         1                             // isRightTranspose
     };
-    MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-        mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-        param);
+if ((param.singleK + dBaseSize - 1) / dBaseSize > 1) {
+        MatmulK<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+    } else if ((param.singleN + 128 - 1) / 128 > 1) {
+        MatmulN<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+    } else {
+        MatmulFull<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+    }
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         mm1A.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
@@ -1977,9 +1969,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         0,                            // isLeftTranspose
         1                             // isRightTranspose
     };
-    MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-        mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-        param);
+if ((param.singleK + dBaseSize - 1) / dBaseSize > 1) {
+        MatmulK<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+    } else if ((param.singleN + 128 - 1) / 128 > 1) {
+        MatmulN<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+    } else {
+        MatmulFull<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
+    }
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1Q
