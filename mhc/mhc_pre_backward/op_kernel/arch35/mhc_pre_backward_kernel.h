@@ -1550,24 +1550,24 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV21Process(LocalTensor<P> &
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<P> invRmsInReg;
-        MicroAPI::RegTensor<P> invRmsTempReg;
-        MicroAPI::RegTensor<P> invRmsUbReg;
-        MicroAPI::RegTensor<P> invRmsGradUb;
-        MicroAPI::RegTensor<P> scaleMeanReg;
-        MicroAPI::MaskReg maskAll, mask;
-        maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::Duplicate<P>(scaleMeanReg, (-scaleMean_), maskAll);
+        Reg::RegTensor<P> invRmsInReg;
+        Reg::RegTensor<P> invRmsTempReg;
+        Reg::RegTensor<P> invRmsUbReg;
+        Reg::RegTensor<P> invRmsGradUb;
+        Reg::RegTensor<P> scaleMeanReg;
+        Reg::MaskReg maskAll, mask;
+        maskAll = Reg::CreateMask<P, Reg::MaskPattern::ALL>();
+        Reg::Duplicate<P>(scaleMeanReg, (-scaleMean_), maskAll);
         for (uint16_t vfBlockIdx = 0; vfBlockIdx < static_cast<uint16_t>(vfloopCnt); vfBlockIdx++) {
             uint32_t elemOffset = vfBlockIdx * eleNumPerVf_;
-            mask = MicroAPI::UpdateMask<P>(curLen);
-            MicroAPI::LoadAlign(invRmsInReg, invRmsInBufAddr + elemOffset);
-            MicroAPI::Mul(invRmsTempReg, invRmsInReg, invRmsInReg, mask);
-            MicroAPI::Mul(invRmsUbReg, invRmsTempReg, invRmsInReg, mask);
-            MicroAPI::LoadAlign(invRmsGradUb, invRmsGradUbAddr + elemOffset);
-            MicroAPI::Mul(invRmsUbReg, invRmsUbReg, invRmsGradUb, mask);
-            MicroAPI::Mul(invRmsUbReg, invRmsUbReg, scaleMeanReg, mask);
-            MicroAPI::StoreAlign(invRmsUbAddr + elemOffset, invRmsUbReg, mask);
+            mask = Reg::UpdateMask<P>(curLen);
+            Reg::LoadAlign(invRmsInReg, invRmsInBufAddr + elemOffset);
+            Reg::Mul(invRmsTempReg, invRmsInReg, invRmsInReg, mask);
+            Reg::Mul(invRmsUbReg, invRmsTempReg, invRmsInReg, mask);
+            Reg::LoadAlign(invRmsGradUb, invRmsGradUbAddr + elemOffset);
+            Reg::Mul(invRmsUbReg, invRmsUbReg, invRmsGradUb, mask);
+            Reg::Mul(invRmsUbReg, invRmsUbReg, scaleMeanReg, mask);
+            Reg::StoreAlign(invRmsUbAddr + elemOffset, invRmsUbReg, mask);
         }
     }
 }
