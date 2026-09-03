@@ -160,9 +160,8 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitCubeBuffer(FagConstInfo 
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline GlobalTensor<INPUT_TYPE>
-FAGBlockCube<TEMPLATE_ARGS>::GetKVGlobalTensor(FagRunInfo &runInfo,
-                                               const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm)
+__aicore__ inline GlobalTensor<INPUT_TYPE> FAGBlockCube<TEMPLATE_ARGS>::GetKVGlobalTensor(
+    FagRunInfo &runInfo, const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm)
 {
     if (runInfo.isOriKV) {
         if constexpr (IsOriKVSparse) {
@@ -180,9 +179,7 @@ FAGBlockCube<TEMPLATE_ARGS>::GetKVGlobalTensor(FagRunInfo &runInfo,
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::GetCubeVecSharedParams(FagRunInfo &runInfo)
-{
-}
+__aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::GetCubeVecSharedParams(FagRunInfo &runInfo) {}
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CALC_TYPE> &mm1ResTensor,
@@ -470,10 +467,9 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
-__aicore__ inline void
-FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                                BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf,
-                                                FagConstInfo &constInfo, FagRunInfo &runInfo)
+__aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf, FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     if (runInfo.commonRunInfo.s2RealSize == 0) {
         return;
@@ -553,8 +549,18 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
+        if constexpr (!IsDETER) {
+            if (!runInfo.isSparse) {
+                SetAtomicAdd<CALC_TYPE>();
+            }
+        }
         Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.mm4ResWsAddr + n * CUBE_BASEN],
                                                  dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+        if constexpr (!IsDETER) {
+            if (!runInfo.isSparse) {
+                SetAtomicNone();
+            }
+        }
 
         dkL0CBuffer.Set<HardEvent::FIX_M>();
         SetFlag<HardEvent::FIX_M>(eventIDFIXToM);
@@ -564,10 +570,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
-__aicore__ inline void
-FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                                BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buf,
-                                                FagConstInfo &constInfo, FagRunInfo &runInfo)
+__aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buf, FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     if (runInfo.commonRunInfo.s2RealSize == 0) {
         return;
@@ -636,8 +641,18 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(typename DqkvResPos<T, IS_WRITE_
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         constexpr static FixpipeConfig DV_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
+        if constexpr (!IsDETER) {
+            if (!runInfo.isSparse) {
+                SetAtomicAdd<CALC_TYPE>();
+            }
+        }
         Fixpipe<T, CALC_TYPE, DV_FIXPIPE_CONFIG>(outTensor[runInfo.mm5ResWsAddr + n * CUBE_BASEN],
                                                  dvL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+        if constexpr (!IsDETER) {
+            if (!runInfo.isSparse) {
+                SetAtomicNone();
+            }
+        }
         dvL0CBuffer.Set<HardEvent::FIX_M>();
     }
 }
@@ -653,20 +668,18 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
-__aicore__ inline void
-FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                          BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf,
-                                          FagConstInfo &constInfo, FagRunInfo &runInfo)
+__aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf, FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     IterateMmDsQNormal<T, IS_WRITE_UB>(outTensor, dSL1Buf, constInfo, runInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB>
-__aicore__ inline void
-FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
-                                          BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buf,
-                                          FagConstInfo &constInfo, FagRunInfo &runInfo)
+__aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buf, FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
     IterateMmPDyNormal<T, IS_WRITE_UB>(outTensor, pL1Buf, constInfo, runInfo);
 }
@@ -709,11 +722,11 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS)                                                                     \
-    TEMPLATES_DEF_NO_DEFAULT                                                                                           \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> {                                                          \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE)                                                                  \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)                                                                \
+#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     };
 
 DEFINE_CUBE_BLOCK_TRAITS(FAGBlockCube);
@@ -722,10 +735,9 @@ DEFINE_CUBE_BLOCK_TRAITS(FAGBlockCubeDummy);
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
-#define ARGS_TRAITS                                                                                                    \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
+#define ARGS_TRAITS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
-
 
 } // namespace SfagBaseApi
 #endif

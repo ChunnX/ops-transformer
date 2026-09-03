@@ -121,6 +121,7 @@ class QuantFlashAttnGradTiling:
     s2_tail: int
     has_seq_used_q: bool
     has_seq_used_k: bool
+    metadata_len: int
 
     dq_work_space_offset: int
     dk_work_space_offset: int
@@ -2205,8 +2206,8 @@ def quant_flash_attn_grad(
     )
     tensor_metadata = pl.make_tensor(
         metadata,
-        [1, 64],
-        [64, 1],
+        [2, tiling.metadata_len],
+        [tiling.metadata_len, 1],
         dtype=pl.DT_INT32,
     )
     tensor_workspace_sfmg = pl.make_tensor(
@@ -2567,14 +2568,14 @@ def quant_flash_attn_grad(
             shape=[TS, TS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=[VA2, VA2 + 256],
-        mutex_ids=[4, 5],
+        mutex_ids=[29, 30],
     )
     dq_vec = pl.make_tile_group(
         type=pl.TileType(
             shape=[TS, TS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=VA3,
-        mutex_ids=[6],
+        mutex_ids=[31],
     )
     lse_vec = pl.make_tile_group(
         type=pl.TileType(
@@ -2774,7 +2775,7 @@ def quant_flash_attn_grad(
             compact=1,
         ),
         addrs=CA1,
-        mutex_ids=[1],
+        mutex_ids=[2],
     )
     acc_db = pl.make_tile_group(
         type=pl.TileType(
@@ -2784,7 +2785,7 @@ def quant_flash_attn_grad(
             compact=1,
         ),
         addrs=CA2,
-        mutex_ids=[2, 3],
+        mutex_ids=[4, 6],
     )
     ## post
     post_in = pl.make_tile_group(
@@ -2924,7 +2925,8 @@ def quant_flash_attn_grad(
 
     # process kernel
     alloc_event_id()
-    loop_max = cal_deter_max_loop_num(const_info)
+    loop_max = 0
+    loop_max = loop_max + tensor_metadata[1, 0]
     task_id = 0
 
     init_coordinate_info(const_info, 0, 0, coordinate_infos[0])

@@ -326,8 +326,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
             MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
-            csOp.Init(x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                      userWS, t, &csPipe);
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS,
+                      t, &csPipe);
             csOp.Process();
             csPipe.Destroy();
         }
@@ -477,11 +477,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     // topkWeight/expandedTopkWeight 传 nullptr 仅为占位，不可在 isInputTopkWeight==1 时执行，
     // 否则 Init 内 SetGlobalBuffer 会解引用空指针。V4 通过 tiling 设置 isInputTopkWeight=1 启用此路径。
     if (t->isInputTopkWeight == 1) {
-        TPipe topkWeightPipe;
         MoeV3TopkWeightOut topkWeightOp;
-        topkWeightOp.Init(nullptr, expandedRowIdx, nullptr, userWS, t, &topkWeightPipe);
+        topkWeightOp.Init(nullptr, expandedRowIdx, nullptr, userWS, t);
         topkWeightOp.Process();
-        topkWeightPipe.Destroy();
     }
 
     // 5.直接搬运或是搬运的过程中对x进行量化
