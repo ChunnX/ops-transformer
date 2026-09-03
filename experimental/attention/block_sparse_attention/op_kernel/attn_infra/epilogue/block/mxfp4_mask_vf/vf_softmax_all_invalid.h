@@ -80,7 +80,7 @@ __simd_vf__ inline void init_global_max_vf(__ubuf__ T *global_max)
 {
     MaskReg preg_all_16 = CreateMask<uint16_t, MaskPattern::ALL>();
     RegTensor<T> neg_reg;
-    Duplicate(neg_reg, static_cast<T>(-60000));
+    Duplicate(neg_reg, static_cast<T>(MIN_VALUE));
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(global_max, neg_reg, preg_all_16);
 }
 
