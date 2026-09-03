@@ -51,6 +51,7 @@ static constexpr int64_t DIM_NUM_ONE = 1;
 static constexpr int64_t AICPU_STRLEN = 6;
 static constexpr int64_t CCU_STRLEN = 3;
 static constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
+static constexpr char GRAPH_CCU_MODE[] = "ccu_graph";
 typedef struct {
     uint32_t id;
     const char *funcName;
@@ -214,9 +215,9 @@ static aclnnStatus CheckAndSetCommMode(const char *commMode, CommType &commModeE
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "[aclnnMatmulReduceScatterV2GetWorkspaceSize] commMode must not be nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
-    if (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0) {
+    if (strncmp(commMode, "ai_cpu", AICPU_STRLEN + 1) == 0) {
         commModeEnum = CommType::AI_CPU;
-    } else if (strncmp(commMode, "ccu", CCU_STRLEN) == 0) {
+    } else if (strncmp(commMode, "ccu", CCU_STRLEN + 1) == 0 || std::strcmp(commMode, GRAPH_CCU_MODE) == 0) {
         commModeEnum = CommType::CCU;
     } else {
         OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode,
@@ -453,8 +454,10 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor *x1, const a
     }
     // Keep peer-only as an ACLNN-only optimization. Graph execution uses its own comm-mode marker.
     const char *innerCommMode = commMode;
-    if (commModeEnum == CommType::CCU) {
-        innerCommMode = std::strcmp(commMode, "ccu") == 0 ? ACLNN_CCU_PEER_ONLY_MODE : "ccu";
+    if (std::strcmp(commMode, "ccu") == 0) {
+        innerCommMode = ACLNN_CCU_PEER_ONLY_MODE;
+    } else if (std::strcmp(commMode, GRAPH_CCU_MODE) == 0) {
+        innerCommMode = "ccu";
     }
     ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
         x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char *>(group), const_cast<char *>(reduceOp),
