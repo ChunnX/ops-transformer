@@ -156,7 +156,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 {
     OP_LOGD("enter to the  aclnnMoeDistributeCombineBaseGetWorkspaceSize\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
                                        groupTp, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -216,7 +216,7 @@ aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSiz
                                           aclrtStream stream)
 {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);
         uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);

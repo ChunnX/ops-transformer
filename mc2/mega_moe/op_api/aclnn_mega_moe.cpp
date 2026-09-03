@@ -145,7 +145,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
 
     // weight scales dtype: arch35 → E8M0, arch22 → UINT64
-    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201;
+    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201;
     aclDataType weightScalesDtype = isArch22 ? ACL_UINT64 : ACL_FLOAT8_E8M0;
     CreateEmptyTensor(weightScalesDtype, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(weightScalesDtype, weightScales2Optional, tmpScaleList, *executor);
@@ -153,7 +153,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(weightScalesDtype, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
 
     // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
             weight1 = ConvertTensorListToInt4(weight1, *executor);
         }

@@ -30,7 +30,7 @@ static const std::initializer_list<DataType> NPUARCH3510_CONVBP_DTYPE_SUPPORT_LI
 const std::initializer_list<DataType> &GetDtypeSupportListBySocVersion()
 {
     auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
+    if (npuArch == Ops::Base::DAV_3510) {
         return NPUARCH3510_DTYPE_SUPPORT_LIST;
     }
     return (IsCubeSupportFp32()) ? V200_DTYPE_SUPPORT_LIST : V100_DTYPE_SUPPORT_LIST;
@@ -39,7 +39,7 @@ const std::initializer_list<DataType> &GetDtypeSupportListBySocVersion()
 const std::initializer_list<DataType> &GetDtypeSupportListBySocVersion4ConvBackward(bool transposed)
 {
     auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
+    if (npuArch == Ops::Base::DAV_3510) {
         return transposed ? NPUARCH3510_DTYPE_SUPPORT_LIST : NPUARCH3510_CONVBP_DTYPE_SUPPORT_LIST;
     }
     return (IsCubeSupportFp32()) ? V200_DTYPE_SUPPORT_LIST : V100_DTYPE_SUPPORT_LIST;
