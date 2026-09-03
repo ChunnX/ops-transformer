@@ -21,9 +21,7 @@
 #include <fstream>
 #include <getopt.h>
 #include <cstring>
-#include <sys/wait.h>
 #include <bits/stdc++.h>
-#include <unistd.h>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_moe_distribute_dispatch_setup.h"
@@ -43,17 +41,19 @@ static int64_t GetCeil(int64_t a, int64_t b)
     return (a + b - 1) / b;
 }
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
+
+constexpr int DEV_NUM = 2;
 
 struct Args {
     uint32_t rankId;
@@ -93,7 +93,6 @@ int64_t g_rankId = 0;
 int64_t g_epWorldSize = 2;
 int64_t g_tpWorldSize = 1;
 int64_t g_hasSmoothScale = 0;
-int64_t FIRST_RANK_ID = 0;
 int64_t commType = 2;
 
 int64_t globalBS = g_bs * g_epWorldSize;
@@ -101,11 +100,10 @@ int64_t localExpertNum = g_moeExpertNum / (g_epWorldSize - g_sharedExpertRankNum
 int64_t localToken = globalBS * (localExpertNum < g_k ? localExpertNum : g_k);
 uint64_t tokenMsgSize = 0;
 uint64_t expandIdxOutSize = 16;
-uint64_t assistInfoForCombineOutSize = localToken * 128;
+int64_t assistInfoForCombineOutSize = localToken * 128;
 bool hasSmoothScale = g_hasSmoothScale != 0;
 
 int64_t g_timeOut = 100000000;
-int64_t g_hcclBufferSize = 12000;
 std::string g_xDtype = "fp16";
 std::string g_caseName = "./";
 std::string g_ranktablePath = "./";
@@ -554,7 +552,6 @@ int CreateAclcommCmdInfoOutforCombine(Args &args)
     return ret;
 }
 
-
 int ProcessDispatchSetup(char *hcomEpName, char *hcomTpName, Args &args)
 {
     int ret = 0;
@@ -861,85 +858,50 @@ int LaunchOneProcess(Args &args)
     return 0;
 }
 
-int RunInProcess(int rank, int rankSize)
-{
-    int ret = aclInit(nullptr);
-    LOG_PRINT("aclInit: %d \n", ret);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
-    aclrtStream dispatchsetupstream;
-    aclrtStream dispatchteardownstream;
-    aclrtContext context;
-    ret = aclrtSetDevice(rank);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d\n", ret); return ret);
-    ret = aclrtCreateContext(&context, rank);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d\n", ret); return ret);
-    ret = aclrtCreateStream(&dispatchsetupstream);
-    ret = aclrtCreateStream(&dispatchteardownstream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d\n", ret); return ret);
-
-    HcclComm commsEp;
-    HcclCommConfig config;
-    HcclCommConfigInit(&config);
-    config.hcclDeterministic = 1;
-    config.hcclBufferSize = g_hcclBufferSize;
-    strncpy(config.hcclCommName, "hccl_comm_test", COMM_NAME_MAX_LENGTH - 1);
-    std::string rankTableFile = std::getenv("RANK_TABLE_FILE");
-    std::cout << "rankTableFilePath is :" << rankTableFile << std::endl;
-    int rank_id = rank + FIRST_RANK_ID;
-
-    ret = HcclCommInitClusterInfoConfig(rankTableFile.c_str(), rank_id, &config, &commsEp);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("[ERROR] HcclCommInitClusterInfoConfig ep world %d failed. ret = %d\n", g_rankId, ret);
-              return ret);
-
-    Args args;
-    uint32_t epRankId = rank_id / g_tpWorldSize;
-    uint32_t tpRankId = rank_id % g_tpWorldSize;
-    args.rankId = rank;
-    args.epRankId = epRankId;
-    args.tpRankId = tpRankId;
-    args.hcclEpComm = commsEp;
-    args.dispatchsetupstream = dispatchsetupstream;
-    args.dispatchteardownstream = dispatchteardownstream;
-    args.context = context;
-    int res = LaunchOneProcess(args);
-    if (res != ACL_SUCCESS) {
-        std::cout << "run LaunchOneProcess failed, ret = " << res << std::endl;
-        return res;
-    }
-    LOG_PRINT("[INFO] aclFinalize success\n");
-    return res;
-}
-
 int main(int argc, char *argv[])
 {
-    char *env_rankID = std::getenv("FIRST_RANK_ID");
-    if (!env_rankID) {
-        std::cerr << "FIRST_RANK_ID环境变量未设置！\n";
-        return 1;
-    }
-    FIRST_RANK_ID = std::stoi(std::string(env_rankID));
-    std::cout << "FIRST_RANK_ID is: " << FIRST_RANK_ID << std::endl;
+    int ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
 
-    const int processCount = 2;
-    pid_t pids[processCount];
-
-    for (int i = 0; i < processCount; ++i) {
-        pids[i] = fork();
-        if (pids[i] < 0) {
-            std::cout << "fork failed ! " << pids[i] << std::endl;
-        } else if (pids[i] == 0) {
-            // 子进程，完成任务后退出
-            int ret = RunInProcess(i, processCount);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] RunInProcess failed. ret = %d\n", ret); return ret);
-            exit(0);
-        }
+    aclrtStream dispatchSetupStream[DEV_NUM];
+    aclrtStream dispatchTeardownStream[DEV_NUM];
+    aclrtContext context[DEV_NUM];
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        ret = aclrtSetDevice(rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
+        ret = aclrtCreateContext(&context[rankId], rankId);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
+        ret = aclrtCreateStream(&dispatchSetupStream[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
+        ret = aclrtCreateStream(&dispatchTeardownStream[rankId]);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
     }
 
-    // 父进程等待所有子进程完成
-    for (int i = 0; i < processCount; ++i) {
-        waitpid(pids[i], nullptr, 0);
+    int32_t devices[DEV_NUM];
+    for (int i = 0; i < DEV_NUM; i++) {
+        devices[i] = i;
     }
 
+    HcclComm comms[DEV_NUM];
+    ret = HcclCommInitAll(DEV_NUM, devices, comms);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
+
+    Args args[DEV_NUM];
+    std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        args[rankId].rankId = rankId;
+        args[rankId].epRankId = rankId / g_tpWorldSize;
+        args[rankId].tpRankId = rankId % g_tpWorldSize;
+        args[rankId].hcclEpComm = comms[rankId];
+        args[rankId].dispatchsetupstream = dispatchSetupStream[rankId];
+        args[rankId].dispatchteardownstream = dispatchTeardownStream[rankId];
+        args[rankId].context = context[rankId];
+        threads[rankId].reset(new (std::nothrow) std::thread(&LaunchOneProcess, std::ref(args[rankId])));
+    }
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+        threads[rankId]->join();
+    }
+
+    aclFinalize();
     return 0;
 }
