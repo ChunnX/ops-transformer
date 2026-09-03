@@ -46,11 +46,15 @@ enum RegionTag {
     TAIL
 };
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB = true>
 class AllGatherQbmmMxKernel {
 public:
     __aicore__ inline AllGatherQbmmMxKernel() {}
     __aicore__ inline ~AllGatherQbmmMxKernel() {}
+
+    // ---- B layout: TransB -> DN (x2 [N,K]), non-TransB -> ND (x2 [K,N]) ----
+    static constexpr bool transB = TransB;
+    using LayoutB = AscendC::Std::conditional_t<TransB, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
 
     // ---- Component types ----
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, 0>;
@@ -74,8 +78,9 @@ public:
     using MakeLayoutScaleA =
         AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<kScaleC0>>;
     using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<kC0Size>>;
-    using MakeLayoutScaleB =
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<kScaleC0>>;
+    using MakeLayoutScaleB = AscendC::Std::conditional_t<
+        TransB, AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<kScaleC0>>,
+        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<kScaleC0>>>;
     using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<AscendC::Te::C0_ELEMENT<CType>>>;
 
     // ---- Fragment MMAD types ----
@@ -239,8 +244,8 @@ private:
     uint64_t tileMCStride_{};
 };
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Init(const Params &params)
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::Init(const Params &params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -253,35 +258,56 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::I
     biasGmAddr_ = reinterpret_cast<__gm__ float *>(params.biasGM);
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
 template <typename TensorB, typename TensorScaleB>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::SetL2Cache(
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::SetL2Cache(
     const ProblemShape &problemShape, int64_t baseM, int64_t baseN, TensorB &gmB, TensorScaleB &gmScaleB)
 {
     const bool fullMBlock = (baseM >= AscendC::Te::Get<Blaze::Gemm::MNK_M>(problemShape));
 
-    // B (DN layout): K 轴为 leading dim，对齐 128B 时关闭 L2 cache 以 streaming
+    // B L2 hint: 对齐 128B 时关闭 L2 cache 以 streaming
     if constexpr (weightNz) {
         gmB.SetL2CacheHint(fullMBlock ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
                                         AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
     } else {
-        // DN: transB → fast dim = K
-        const bool bAlignForL2Stream = (AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
-        gmB.SetL2CacheHint((fullMBlock && bAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
-                                                               AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        if constexpr (transB) {
+            // DN: fast dim = K
+            const bool bAlignForL2Stream =
+                (AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
+            gmB.SetL2CacheHint((fullMBlock && bAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
+                                                                   AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        } else {
+            // ND: fast dim = N
+            const bool bAlignForL2Stream =
+                (AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape) & kCacheLineAlignMask) == 0 &&
+                (baseN & kCacheLineAlignMask) == 0;
+            gmB.SetL2CacheHint((fullMBlock && bAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
+                                                                   AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        }
     }
 
-    // ScaleB (DN layout): N * scaleC0 bytes 对齐
-    const int64_t scaleNStrideBytes = AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape) * kScaleC0;
-    const int64_t scaleBaseNStrideBytes = baseN * kScaleC0;
-    const bool scaleAlignForL2Stream =
-        (scaleNStrideBytes & kCacheLineAlignMask) == 0 && (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
-    gmScaleB.SetL2CacheHint((fullMBlock && scaleAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
-                                                                    AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+    // ScaleB L2 hint
+    if constexpr (transB) {
+        // ScaleBDN: 连续段为 scaleK 方向
+        const int64_t scaleKRowBytes = Blaze::Gemm::CeilDiv(AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape),
+                                                            static_cast<int64_t>(Blaze::Gemm::MXFP_DIVISOR_SIZE)) *
+                                       Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+        const bool scaleAlignForL2Stream = (scaleKRowBytes & kCacheLineAlignMask) == 0;
+        gmScaleB.SetL2CacheHint((fullMBlock && scaleAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
+                                                                        AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+    } else {
+        // ScaleBND: 连续段为 N 方向
+        const int64_t scaleNStrideBytes = AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape) * kScaleC0;
+        const int64_t scaleBaseNStrideBytes = baseN * kScaleC0;
+        const bool scaleAlignForL2Stream =
+            (scaleNStrideBytes & kCacheLineAlignMask) == 0 && (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
+        gmScaleB.SetL2CacheHint((fullMBlock && scaleAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
+                                                                        AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+    }
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Run(const Params &params)
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::Run(const Params &params)
 {
     Init(params);
 
@@ -325,11 +351,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::R
     Process(params, problemShape, sch, mmadFrag);
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::Process(const Params &params,
-                                                                                       const ProblemShape &problemShape,
-                                                                                       BlockScheduler &sch,
-                                                                                       BlockMmadFragC &mmadFrag)
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::Process(
+    const Params &params, const ProblemShape &problemShape, BlockScheduler &sch, BlockMmadFragC &mmadFrag)
 {
     const auto &mmT = *params.mmTile;
     const auto &fp = params.fragParams;
@@ -420,10 +444,10 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
     }
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline Apace::Basic::FragmentParam<AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::DIMS_NUM>
-AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::MakeFragParam(uint64_t fragSize, uint64_t realFragSize,
-                                                                      uint32_t fragCnt, uint64_t shape1) const
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline Apace::Basic::FragmentParam<AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::DIMS_NUM>
+AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::MakeFragParam(uint64_t fragSize, uint64_t realFragSize,
+                                                                              uint32_t fragCnt, uint64_t shape1) const
 {
     Apace::Basic::FragmentParam<DIMS_NUM> param{};
     param.assembleAxis = 0;
@@ -435,8 +459,8 @@ AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::MakeFragParam(uint64_t f
     return param;
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildFragmentTensors(
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::BuildFragmentTensors(
     const Params &params)
 {
     const auto &fp = params.fragParams;
@@ -462,8 +486,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::B
     // main / tail 的 fragment tensor 延迟到首次使用时构建，构建开销被 comm wait 掩盖。
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::EnsureWinRankBasesReady(
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::EnsureWinRankBasesReady(
     const Params &params)
 {
     if (winBasesReady_) {
@@ -477,9 +501,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::E
     winBasesReady_ = true;
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildMainFragment(const Params &params,
-                                                                                                 uint32_t roundIdx)
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::BuildMainFragment(
+    const Params &params, uint32_t roundIdx)
 {
     EnsureWinRankBasesReady(params);
     const auto &fp = params.fragParams;
@@ -507,8 +531,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::B
     curMainRoundIdx_ = roundIdx;
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::BuildTailFragment(const Params &params)
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::BuildTailFragment(
+    const Params &params)
 {
     EnsureWinRankBasesReady(params);
     const auto &fp = params.fragParams;
@@ -536,8 +561,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::B
         MakeFragParam(fp.paddedTailM, fp.tailM, fp.rankSize, fp.n), tailAddrListC_);
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::UpdateMainRoundAddrs(
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::UpdateMainRoundAddrs(
     const Params &params, uint32_t roundIdx)
 {
     const auto &fp = params.fragParams;
@@ -562,11 +587,13 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::U
     curMainRoundIdx_ = roundIdx;
 }
 
-template <typename AType, typename BType, typename CType, typename CommPolicy>
-__aicore__ inline typename AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::TileCtx
-AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::ResolveTileCtx(int64_t mPos, int64_t headMainRows,
-                                                                       int64_t mainRoundRows, int64_t mainSectionRows,
-                                                                       uint32_t rankSize, uint32_t commTurn) const
+template <typename AType, typename BType, typename CType, typename CommPolicy, bool TransB>
+__aicore__ inline typename AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::TileCtx
+AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy, TransB>::ResolveTileCtx(int64_t mPos, int64_t headMainRows,
+                                                                               int64_t mainRoundRows,
+                                                                               int64_t mainSectionRows,
+                                                                               uint32_t rankSize,
+                                                                               uint32_t commTurn) const
 {
     TileCtx ctx{};
     if (mPos < headMainRows) {
