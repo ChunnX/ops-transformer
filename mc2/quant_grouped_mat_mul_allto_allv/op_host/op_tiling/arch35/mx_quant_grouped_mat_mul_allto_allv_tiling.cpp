@@ -65,11 +65,12 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::MxCheckShapeDimensions(cons
 bool MxQuantGroupedMatmulAllToAllvTiling::IsCapable()
 {
     QuantModePair mode = GetQuantMode(context_, opName_);
-    OP_TILING_CHECK(mode == QUANT_PAIR_ERROR,
+    OP_TILING_CHECK(mode == QuantModePair::QUANT_PAIR_ERROR,
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "quantMode", "QUANT_PAIR_ERROR", "valid quant mode"),
                     return false);
-    OP_LOGD(opName_, "QuantMode=%d, expected MX mode=%d", mode, QUANT_PAIR_MX);
-    if (mode == QUANT_PAIR_MX) {
+    OP_LOGD(opName_, "QuantMode=%d, expected MX mode=%d", static_cast<int>(mode),
+            static_cast<int>(QuantModePair::QUANT_PAIR_MX));
+    if (mode == QuantModePair::QUANT_PAIR_MX) {
         OP_LOGD(opName_, "MxQuantGroupedMatmulAllToAllvTiling MX mode capable.");
         return true;
     }
@@ -228,21 +229,21 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationGmm()
     OP_TILING_CHECK(gmmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmWeightScale"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.gmmXQuantMode != QUANT_MX,
+    OP_TILING_CHECK(localParams_.gmmXQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_MX),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "gmmXQuantMode", std::to_string(localParams_.gmmXQuantMode),
-                                              std::to_string(QUANT_MX)),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_MX))),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(localParams_.gmmWeightQuantMode != QUANT_MX,
+    OP_TILING_CHECK(localParams_.gmmWeightQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_MX),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "gmmWeightQuantMode",
                                               std::to_string(localParams_.gmmWeightQuantMode),
-                                              std::to_string(QUANT_MX)),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_MX))),
                     return ge::GRAPH_FAILED);
     ge::graphStatus status = MxCheckShapeDimensions(gmmXScaleStorageShape, DIM_THREE, "gmmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
     status = MxCheckShapeDimensions(gmmWeightScaleStorageShape, DIM_FOUR, "gmmWeightScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
 
-    localParams_.gmmQuantSuit = QUANT_PAIR_MX;
+    localParams_.gmmQuantSuit = static_cast<uint8_t>(QuantModePair::QUANT_PAIR_MX);
     if (!localParams_.isGmmWeightTrans) {
         OP_TILING_CHECK(localParams_.H1 != localParams_.gmmWeightDim1,
                         OP_LOGE_FOR_INVALID_SHAPE(opName_, "gmmX, gmmWeight",
@@ -310,21 +311,22 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
     OP_TILING_CHECK(mmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScale"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.mmXQuantMode != QUANT_MX,
+    OP_TILING_CHECK(localParams_.mmXQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_MX),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "mmXQuantMode", std::to_string(localParams_.mmXQuantMode),
-                                              std::to_string(QUANT_MX)),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_MX))),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.mmWeightQuantMode != QUANT_MX,
+    OP_TILING_CHECK(localParams_.mmWeightQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_MX),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "mmWeightQuantMode",
-                                              std::to_string(localParams_.mmWeightQuantMode), std::to_string(QUANT_MX)),
+                                              std::to_string(localParams_.mmWeightQuantMode),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_MX))),
                     return ge::GRAPH_FAILED);
     ge::graphStatus status = MxCheckShapeDimensions(mmXScaleStorageShape, DIM_THREE, "mmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
     status = MxCheckShapeDimensions(mmWeightScaleStorageShape, DIM_THREE, "mmWeightScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
 
-    localParams_.mmQuantSuit = QUANT_PAIR_MX;
+    localParams_.mmQuantSuit = static_cast<uint8_t>(QuantModePair::QUANT_PAIR_MX);
     if (!localParams_.isMmWeightTrans) {
         OP_TILING_CHECK(localParams_.H2 != localParams_.mmWeightDim0,
                         OP_LOGE_FOR_INVALID_SHAPE(opName_, "mmX, mmWeight",

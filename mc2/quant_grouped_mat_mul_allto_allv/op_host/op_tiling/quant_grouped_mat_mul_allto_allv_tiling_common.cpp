@@ -298,7 +298,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsA
     OP_TILING_CHECK(commQuantDtypeptr == nullptr,
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "commQuantDtype", "null", "not null"), return ge::GRAPH_FAILED);
     localParams_.commQuantDtype = *commQuantDtypeptr;
-    OP_TILING_CHECK(localParams_.commQuantMode != QUANT_NONE,
+    OP_TILING_CHECK(localParams_.commQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_NONE),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commQuantMode",
                                                           std::to_string(localParams_.commQuantMode).c_str(),
                                                           "commQuant is not supported yet; only 0 is allowed"),
@@ -481,16 +481,18 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsRelationGmm(
     OP_TILING_CHECK(gmmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmWeightScale"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.gmmXQuantMode != QUANT_PERTENSOR,
+    OP_TILING_CHECK(localParams_.gmmXQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "gmmXQuantMode", std::to_string(localParams_.gmmXQuantMode),
-                                              std::to_string(QUANT_PERTENSOR) + " (PERTENSOR)"),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR)) +
+                                                  " (PERTENSOR)"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(localParams_.gmmWeightQuantMode != QUANT_PERTENSOR,
+    OP_TILING_CHECK(localParams_.gmmWeightQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "gmmWeightQuantMode",
                                               std::to_string(localParams_.gmmWeightQuantMode),
-                                              std::to_string(QUANT_PERTENSOR) + " (PERTENSOR)"),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR)) +
+                                                  " (PERTENSOR)"),
                     return ge::GRAPH_FAILED);
-    localParams_.gmmQuantSuit = QUANT_PAIR_TT;
+    localParams_.gmmQuantSuit = static_cast<uint8_t>(QuantModePair::QUANT_PAIR_TT);
 
     ge::graphStatus status = CheckShapeDimensions(gmmXScaleStorageShape, DIM_ONE, "gmmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
@@ -572,18 +574,20 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsRelationMm()
     OP_TILING_CHECK(mmWeightScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmWeightScale"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.mmXQuantMode != QUANT_PERTENSOR,
+    OP_TILING_CHECK(localParams_.mmXQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "mmXQuantMode", std::to_string(localParams_.mmXQuantMode),
-                                              std::to_string(QUANT_PERTENSOR) + " (PERTENSOR)"),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR)) +
+                                                  " (PERTENSOR)"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(localParams_.mmWeightQuantMode != QUANT_PERTENSOR,
+    OP_TILING_CHECK(localParams_.mmWeightQuantMode != static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR),
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "mmWeightQuantMode",
                                               std::to_string(localParams_.mmWeightQuantMode),
-                                              std::to_string(QUANT_PERTENSOR) + " (PERTENSOR)"),
+                                              std::to_string(static_cast<int64_t>(QuantizationMode::QUANT_PERTENSOR)) +
+                                                  " (PERTENSOR)"),
                     return ge::GRAPH_FAILED);
 
-    localParams_.mmQuantSuit = QUANT_PAIR_TT;
+    localParams_.mmQuantSuit = static_cast<uint8_t>(QuantModePair::QUANT_PAIR_TT);
     ge::graphStatus status = CheckShapeDimensions(mmXScaleStorageShape, DIM_ONE, "mmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
     status = CheckShapeDimensions(mmWeightScaleStorageShape, DIM_ONE, "mmWeightScaleShape");

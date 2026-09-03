@@ -18,7 +18,6 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace Mc2Tiling {
@@ -61,7 +60,7 @@ enum GmmA2AvAttrIndex : uint32_t {
     ATTR_COMM_MODE_INDEX
 };
 
-enum QuantizationMode {
+enum class QuantizationMode : uint32_t {
     QUANT_NONE = 0,            // 不量化
     QUANT_PERTENSOR = 1,       // pertensor
     QUANT_PERCHANNEL = 2,      // perchannel
@@ -72,7 +71,7 @@ enum QuantizationMode {
     QUANT_PERTOKEN_DYNAMIC = 7 // pertoken动态量化
 };
 
-enum QuantModePair {
+enum class QuantModePair : uint32_t {
     QUANT_PAIR_NONE = 0, // 不量化
     QUANT_PAIR_TT = 1,   // pertensor - pertensor
     QUANT_PAIR_KC = 2,   // pertoken - perchannel
@@ -148,7 +147,7 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     ge::graphStatus PostTiling() override;
-    QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName);
+    QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName) const;
     const char *opName_{nullptr};
 
     NpuArch npuArch_;
