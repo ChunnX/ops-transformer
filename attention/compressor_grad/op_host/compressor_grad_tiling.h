@@ -295,26 +295,24 @@ struct CompressorGradCompileInfo {
     int64_t core_num;
 };
 
-// 类名不可用 CompressorGradTiling，与 pypto codegen 生成的 tiling data 类重名，
-// C++ injected-class-name 会遮蔽外部同名类型，导致 tilingData 成员类型错误。
-class CompressorGradTilingImpl {
+// 参照 compressor 的 arch35 tiling 风格，将自由函数封装为类结构
+class CompressorGradTilingEngine {
 public:
-    explicit CompressorGradTilingImpl(CompressorGradContext *context)
-        : context_(context)
+    explicit CompressorGradTilingEngine(CompressorGradContext *context, uint32_t aicNum, uint32_t aivNum)
+        : context_(context),
+          aicNum_(aicNum),
+          aivNum_(aivNum)
     {}
-    ~CompressorGradTilingImpl() = default;
+    ~CompressorGradTilingEngine() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
-    ge::graphStatus RunBigKernelTiling();
-    CompressorGradTiling *tilingData = nullptr;
+    ge::graphStatus RunBigKernelTiling(void *data);
 
 private:
     static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
                                                  CompressorGradContext &compressorGradContext);
     static void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
-    ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
-    ge::graphStatus SetTilingData();
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus GenTilingKey() const;
@@ -359,7 +357,6 @@ private:
     uint32_t coreNum_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     size_t libapiSize_ = 0;
     size_t workspaceSize_ = 0;
     uint8_t coff_ = 1;

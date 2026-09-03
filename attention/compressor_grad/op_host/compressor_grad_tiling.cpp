@@ -114,8 +114,6 @@ std::string LayoutTypeToStr(LayoutType layout)
 }
 } // namespace compressor_grad_tiling
 
-static std::string DataTypeToSerialString(ge::DataType type);
-
 void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
                           const std::string &name, const char *opName)
 {
@@ -207,8 +205,8 @@ static ge::graphStatus CheckTensorList(const char *opName, const TensorCheckItem
 
 } // namespace
 
-ge::graphStatus CompressorGradTilingImpl::ConvertRequiredParams(gert::TilingContext &context,
-                                                                CompressorGradContext &compressorGradContext)
+ge::graphStatus CompressorGradTilingEngine::ConvertRequiredParams(gert::TilingContext &context,
+                                                                  CompressorGradContext &compressorGradContext)
 {
     compressorGradContext.x.desc = context.GetRequiredInputDesc(TOKEN_X_INPUT_INDEX);
     compressorGradContext.x.shape = context.GetRequiredInputShape(TOKEN_X_INPUT_INDEX);
@@ -252,8 +250,8 @@ ge::graphStatus CompressorGradTilingImpl::ConvertRequiredParams(gert::TilingCont
     return ge::GRAPH_SUCCESS;
 }
 
-void CompressorGradTilingImpl::ConvertOptionalParams(gert::TilingContext &context,
-                                                     CompressorGradContext &compressorGradContext)
+void CompressorGradTilingEngine::ConvertOptionalParams(gert::TilingContext &context,
+                                                       CompressorGradContext &compressorGradContext)
 {
     compressorGradContext.cuSeqlens.desc = context.GetOptionalInputDesc(CU_SEQ_LEN_INPUT_INDEX);
     compressorGradContext.cuSeqlens.shape = context.GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);
@@ -263,8 +261,8 @@ void CompressorGradTilingImpl::ConvertOptionalParams(gert::TilingContext &contex
     compressorGradContext.startPos.shape = context.GetOptionalInputShape(START_POS_INPUT_INDEX);
 }
 
-ge::graphStatus CompressorGradTilingImpl::ConvertContext(gert::TilingContext &context,
-                                                         CompressorGradContext &compressorGradContext)
+ge::graphStatus CompressorGradTilingEngine::ConvertContext(gert::TilingContext &context,
+                                                           CompressorGradContext &compressorGradContext)
 {
     if (context.GetNodeName() == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "opName", "got from TilingContext is nullptr");
@@ -294,33 +292,7 @@ ge::graphStatus CompressorGradTilingImpl::ConvertContext(gert::TilingContext &co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::GetNpuInfo()
-{
-    OP_CHECK_IF(context_->platformInfo == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "platformInfo", "is nullptr"),
-                return ge::GRAPH_FAILED);
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
-    socVersion_ = ascendcPlatform.GetSocVersion();
-
-    libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
-
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size_);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0cSize_);
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0bSize_);
-
-    aivNum_ = ascendcPlatform.GetCoreNumAiv();
-    aicNum_ = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(
-        aicNum_ == 0 || aivNum_ == 0,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "aicNum/aivNum", "num of core obtained is 0"),
-        return GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus CompressorGradTilingImpl::SetBaseInfo()
+ge::graphStatus CompressorGradTilingEngine::SetBaseInfo()
 {
     if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3) {
         baseParams_.batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_0);
@@ -345,7 +317,7 @@ ge::graphStatus CompressorGradTilingImpl::SetBaseInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CalcWorkSpace()
+ge::graphStatus CompressorGradTilingEngine::CalcWorkSpace()
 {
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
     constexpr uint32_t M_BASE_SIZE = 128;
@@ -389,7 +361,7 @@ ge::graphStatus CompressorGradTilingImpl::CalcWorkSpace()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::GenTilingKey() const
+ge::graphStatus CompressorGradTilingEngine::GenTilingKey() const
 {
     // 0:BF16, 1:FP16
     uint8_t dtype = 0;
@@ -420,9 +392,9 @@ ge::graphStatus CompressorGradTilingImpl::GenTilingKey() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckDimNumInLayoutSupport(const std::string &layout,
-                                                                     const gert::StorageShape *shape,
-                                                                     const std::string &name) const
+ge::graphStatus CompressorGradTilingEngine::CheckDimNumInLayoutSupport(const std::string &layout,
+                                                                       const gert::StorageShape *shape,
+                                                                       const std::string &name) const
 {
     const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
@@ -433,8 +405,8 @@ ge::graphStatus CompressorGradTilingImpl::CheckDimNumInLayoutSupport(const std::
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                            const std::string &name) const
+ge::graphStatus CompressorGradTilingEngine::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
+                                                              const std::string &name) const
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
@@ -451,8 +423,8 @@ ge::graphStatus CompressorGradTilingImpl::CheckDtypeSupport(const gert::CompileT
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                             const std::string &name) const
+ge::graphStatus CompressorGradTilingEngine::CheckDimNumSupport(const gert::StorageShape *shape,
+                                                               const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -471,7 +443,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckDimNumSupport(const gert::Storage
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaX() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaX() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->x.desc, X_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->x.shape, X_NAME) ||
@@ -482,7 +454,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaX() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaWkv() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaWkv() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wkv.desc, WKV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wkv.shape, WKV_NAME)) {
@@ -491,7 +463,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaWkv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaWgate() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaWgate() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wgate.desc, WGATE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wgate.shape, WGATE_NAME)) {
@@ -500,7 +472,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaWgate() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDCmpKv() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaDCmpKv() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->dCmpKv.desc, D_CMP_KV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->dCmpKv.shape, D_CMP_KV_NAME)) {
@@ -509,7 +481,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDCmpKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaSoftmaxScore() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaSoftmaxScore() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->softmaxScore.desc, SOFTMAX_SCORE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->softmaxScore.shape, SOFTMAX_SCORE_NAME)) {
@@ -518,7 +490,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaSoftmaxScore() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaKV() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaKV() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->kv.desc, KV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->kv.shape, KV_NAME)) {
@@ -527,7 +499,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaKV() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaCuSeqlens() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaCuSeqlens() const
 {
     if (context_->cuSeqlens.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -539,7 +511,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaCuSeqlens() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaSeqused() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaSeqused() const
 {
     if (context_->seqUsed.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -551,7 +523,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaSeqused() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaStartPos() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaStartPos() const
 {
     if (context_->startPos.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -563,7 +535,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaStartPos() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDX() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaDX() const
 {
     if (context_->dX.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -575,7 +547,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDX() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDWkv() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaDWkv() const
 {
     if (context_->dWkv.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -587,7 +559,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDWkv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDWgate() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaDWgate() const
 {
     if (context_->dWgate.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -599,7 +571,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDWgate() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDApe() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaDApe() const
 {
     if (context_->dApe.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -611,7 +583,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaDApe() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaCmpRatio() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaCmpRatio() const
 {
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupportInterval(context_->cmpRatio, MIN_CMP_RATIO, MAX_CMP_RATIO,
                                                            CMP_RATIO_NAME, context_->opName)) {
@@ -620,7 +592,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaCmpRatio() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSingleParaCoff() const
+ge::graphStatus CompressorGradTilingEngine::CheckSingleParaCoff() const
 {
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupportList(context_->coff, COFF, COFF_NAME, context_->opName)) {
         return ge::GRAPH_FAILED;
@@ -628,7 +600,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckSingleParaCoff() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckFeature() const
+ge::graphStatus CompressorGradTilingEngine::CheckFeature() const
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&baseParams_.headDim, HEAD_DIM, "headDim", context_->opName)) {
         return ge::GRAPH_FAILED;
@@ -643,10 +615,10 @@ ge::graphStatus CompressorGradTilingImpl::CheckFeature() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::LogErrorShapeConsistency(const std::string &name,
-                                                                   const gert::StorageShape *shape,
-                                                                   const uint32_t &dimNum, const std::string &subName,
-                                                                   const uint32_t &expectNum) const
+ge::graphStatus CompressorGradTilingEngine::LogErrorShapeConsistency(const std::string &name,
+                                                                     const gert::StorageShape *shape,
+                                                                     const uint32_t &dimNum, const std::string &subName,
+                                                                     const uint32_t &expectNum) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -662,95 +634,57 @@ ge::graphStatus CompressorGradTilingImpl::LogErrorShapeConsistency(const std::st
     return ge::GRAPH_SUCCESS;
 }
 
-struct ShapeCheckItem {
-    const char *tensorName;
-    const gert::StorageShape *shape;
-    uint32_t dimIdx;
-    const char *expectName;
-    uint32_t expectValue;
-};
-
-static ge::graphStatus CheckShapeList(const char *opName, const ShapeCheckItem *items, size_t count)
+ge::graphStatus CompressorGradTilingEngine::CheckShapeConsistency() const
 {
-    for (size_t i = 0; i < count; i++) {
-        if (LogErrorShapeConsistency(items[i].tensorName, items[i].shape, items[i].dimIdx, items[i].expectName,
-                                     items[i].expectValue, opName) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradContext,
-                                      CompressorGradBaseParams &compressorGradBaseParams)
-{
-    uint8_t coff =
-        compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
-    auto coffD = compressorGradBaseParams.headDim * coff;
-    const char *opName = compressorGradContext.opName;
+    uint8_t coff = coff_;
+    auto coffD = baseParams_.headDim * coff;
+    const char *opName = context_->opName;
     // 公共部分：cuSeqlens/seqUsed/startPos + wkv/wgate 的 hiddenSize 和 coff*headDim
     const ShapeCheckItem commonChecks[] = {
-        {"cuSeqlens", compressorGradContext.cuSeqlens.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize+1",
-         compressorGradBaseParams.batchSize + 1},
-        {"seqUsed", compressorGradContext.seqUsed.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-         compressorGradBaseParams.batchSize},
-        {"startPos", compressorGradContext.startPos.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-         compressorGradBaseParams.batchSize},
-        {"wkv", compressorGradContext.wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize",
-         compressorGradBaseParams.hiddenSize},
-        {"wgate", compressorGradContext.wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize",
-         compressorGradBaseParams.hiddenSize},
-        {"wkv", compressorGradContext.wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim",
-         static_cast<uint32_t>(coffD)},
-        {"wgate", compressorGradContext.wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim",
-         static_cast<uint32_t>(coffD)},
+        {"cuSeqlens", context_->cuSeqlens.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize+1", baseParams_.batchSize + 1},
+        {"seqUsed", context_->seqUsed.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize", baseParams_.batchSize},
+        {"startPos", context_->startPos.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize", baseParams_.batchSize},
+        {"wkv", context_->wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize", baseParams_.hiddenSize},
+        {"wgate", context_->wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "hiddenSize", baseParams_.hiddenSize},
+        {"wkv", context_->wkv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim", static_cast<uint32_t>(coffD)},
+        {"wgate", context_->wgate.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "coff*headDim", static_cast<uint32_t>(coffD)},
     };
     if (CheckShapeList(opName, commonChecks, sizeof(commonChecks) / sizeof(commonChecks[0])) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    if (compressorGradContext.x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_2 &&
-        compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_2 &&
-        compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
-        compressorGradContext.kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3) {
+    if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_2 &&
+        context_->dCmpKv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_2 &&
+        context_->softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
+        context_->kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3) {
         const ShapeCheckItem checks2D[] = {
-            {"dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "headDim",
-             compressorGradBaseParams.headDim},
-            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
-             coff * compressorGradBaseParams.cmpRatio},
-            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
-             compressorGradBaseParams.headDim},
-            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
-             coff * compressorGradBaseParams.cmpRatio},
-            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
-             compressorGradBaseParams.headDim},
+            {"dCmpKv", context_->dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "headDim", baseParams_.headDim},
+            {"softmaxScore", context_->softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
+             coff * baseParams_.cmpRatio},
+            {"softmaxScore", context_->softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim", baseParams_.headDim},
+            {"kv", context_->kv.shape, COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio", coff * baseParams_.cmpRatio},
+            {"kv", context_->kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim", baseParams_.headDim},
         };
         if (CheckShapeList(opName, checks2D, sizeof(checks2D) / sizeof(checks2D[0])) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
 
-    if (compressorGradContext.x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
-        compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
-        compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4 &&
-        compressorGradContext.kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4) {
+    if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
+        context_->dCmpKv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_3 &&
+        context_->softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4 &&
+        context_->kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4) {
         const ShapeCheckItem checks3D[] = {
-            {"dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-             compressorGradBaseParams.batchSize},
-            {"dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
-             compressorGradBaseParams.headDim},
-            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-             compressorGradBaseParams.batchSize},
-            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
-             coff * compressorGradBaseParams.cmpRatio},
-            {"softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
-             compressorGradBaseParams.headDim},
-            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
-             compressorGradBaseParams.batchSize},
-            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
-             coff * compressorGradBaseParams.cmpRatio},
-            {"kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
-             compressorGradBaseParams.headDim},
+            {"dCmpKv", context_->dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize", baseParams_.batchSize},
+            {"dCmpKv", context_->dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "headDim", baseParams_.headDim},
+            {"softmaxScore", context_->softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+             baseParams_.batchSize},
+            {"softmaxScore", context_->softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
+             coff * baseParams_.cmpRatio},
+            {"softmaxScore", context_->softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim", baseParams_.headDim},
+            {"kv", context_->kv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize", baseParams_.batchSize},
+            {"kv", context_->kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio", coff * baseParams_.cmpRatio},
+            {"kv", context_->kv.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim", baseParams_.headDim},
         };
         if (CheckShapeList(opName, checks3D, sizeof(checks3D) / sizeof(checks3D[0])) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -759,8 +693,8 @@ ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradConte
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc,
-                                                                 const std::string &name) const
+ge::graphStatus CompressorGradTilingEngine::CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc,
+                                                                   const std::string &name) const
 {
     const auto actualDtype = desc->GetDataType();
     OP_CHECK_IF(
@@ -771,7 +705,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckDtypeConsistencyX(const gert::Com
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckDtypeConsistency() const
+ge::graphStatus CompressorGradTilingEngine::CheckDtypeConsistency() const
 {
     if (CheckDtypeConsistencyX(context_->wkv.desc, WKV_NAME) != ge::GRAPH_SUCCESS ||
         CheckDtypeConsistencyX(context_->wgate.desc, WGATE_NAME) != ge::GRAPH_SUCCESS ||
@@ -784,7 +718,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckDtypeConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckDimNumConsistency() const
+ge::graphStatus CompressorGradTilingEngine::CheckDimNumConsistency() const
 {
     auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(xDimNum != context_->dX.shape->GetStorageShape().GetDimNum(),
@@ -814,7 +748,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckDimNumConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckBlockDimConstrain() const
+ge::graphStatus CompressorGradTilingEngine::CheckBlockDimConstrain() const
 {
     uint32_t minBlockNum = baseParams_.headDim / 128; // 128 is the largest dBaseSize
     OP_CHECK_IF(aicNum_ < minBlockNum,
@@ -824,7 +758,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckBlockDimConstrain() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckMultiParaConsistency() const
+ge::graphStatus CompressorGradTilingEngine::CheckMultiParaConsistency() const
 {
     if (CheckShapeConsistency() != ge::GRAPH_SUCCESS || CheckDtypeConsistency() != ge::GRAPH_SUCCESS ||
         CheckDimNumConsistency() != ge::GRAPH_SUCCESS) {
@@ -833,7 +767,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckMultiParaConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckSinglePara() const
+ge::graphStatus CompressorGradTilingEngine::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaX() || ge::GRAPH_SUCCESS != CheckSingleParaWkv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaWgate() || ge::GRAPH_SUCCESS != CheckSingleParaDCmpKv() ||
@@ -847,55 +781,28 @@ ge::graphStatus CompressorGradTilingImpl::CheckSinglePara() const
     return ge::GRAPH_SUCCESS;
 }
 
-// ── 辅助函数：检查单个 tensor 的 shape 和 desc 均不为空 ──
-static ge::graphStatus CheckTensorShapeAndDesc(const char *opName, const char *tensorName,
-                                               const gert::CompileTimeTensorDesc *desc, const gert::StorageShape *shape)
-{
-    OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, tensorName, "shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, tensorName, "desc is nullptr"),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-struct TensorCheckItem {
-    const char *name;
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-};
-
-static ge::graphStatus CheckTensorList(const char *opName, const TensorCheckItem *items, size_t count)
-{
-    for (size_t i = 0; i < count; i++) {
-        if (CheckTensorShapeAndDesc(opName, items[i].name, items[i].desc, items[i].shape) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus CheckRequiredInOutExistence(CompressorGradContext &context)
+ge::graphStatus CompressorGradTilingEngine::CheckRequiredInOutExistence() const
 {
     const TensorCheckItem requiredTensors[] = {
-        {"x", context.x.desc, context.x.shape},
-        {"wkv", context.wkv.desc, context.wkv.shape},
-        {"wgate", context.wgate.desc, context.wgate.shape},
-        {"d_cmp_kv", context.dCmpKv.desc, context.dCmpKv.shape},
-        {"softmax_score", context.softmaxScore.desc, context.softmaxScore.shape},
-        {"kv", context.kv.desc, context.kv.shape},
-        {"d_x", context.dX.desc, context.dX.shape},
-        {"d_wkv", context.dWkv.desc, context.dWkv.shape},
-        {"d_wgate", context.dWgate.desc, context.dWgate.shape},
-        {"d_ape", context.dApe.desc, context.dApe.shape},
+        {"x", context_->x.desc, context_->x.shape},
+        {"wkv", context_->wkv.desc, context_->wkv.shape},
+        {"wgate", context_->wgate.desc, context_->wgate.shape},
+        {"d_cmp_kv", context_->dCmpKv.desc, context_->dCmpKv.shape},
+        {"softmax_score", context_->softmaxScore.desc, context_->softmaxScore.shape},
+        {"kv", context_->kv.desc, context_->kv.shape},
+        {"d_x", context_->dX.desc, context_->dX.shape},
+        {"d_wkv", context_->dWkv.desc, context_->dWkv.shape},
+        {"d_wgate", context_->dWgate.desc, context_->dWgate.shape},
+        {"d_ape", context_->dApe.desc, context_->dApe.shape},
     };
-    if (CheckTensorList(context.opName, requiredTensors, sizeof(requiredTensors) / sizeof(requiredTensors[0])) !=
+    if (CheckTensorList(context_->opName, requiredTensors, sizeof(requiredTensors) / sizeof(requiredTensors[0])) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     // cuSeqlens 特殊校验：TH 布局必须非空，BSH 布局必须为空
-    if (context.layout == LayoutType::LAYOUT_TH) {
-        OP_CHECK_IF(context.cuSeqlens.desc == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cu_seqlens",
+    if (context_->layout == LayoutType::LAYOUT_TH) {
+        OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
                                                              "in TH layout, should not be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
@@ -915,7 +822,7 @@ ge::graphStatus CheckRequiredInOutExistence(CompressorGradContext &context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckRequiredAttrExistence() const
+ge::graphStatus CompressorGradTilingEngine::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(context_->cmpRatio == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cmp_ratio", "attr is nullptr"),
@@ -923,7 +830,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckRequiredAttrExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckRequiredParaExistence() const
+ge::graphStatus CompressorGradTilingEngine::CheckRequiredParaExistence() const
 {
     if (CheckRequiredInOutExistence() != ge::GRAPH_SUCCESS || CheckRequiredAttrExistence() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -931,7 +838,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::CheckEmptyTensor() const
+ge::graphStatus CompressorGradTilingEngine::CheckEmptyTensor() const
 {
     // CompressorGrad 不支持空 tensor：与正向不同（正向 x 支持 B/S/T=0 走 EMPTY_X 分支），
     // 反向无空 tensor 分支——所有输入/输出 shapeSize 必须 > 0，空则直接拦截
@@ -954,8 +861,48 @@ ge::graphStatus CompressorGradTilingImpl::CheckEmptyTensor() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorGradTilingImpl::SetTilingData()
+ge::graphStatus CompressorGradTilingEngine::RunBigKernelTiling(void *data)
 {
+    CompressorGradTilingData *tilingData = static_cast<CompressorGradTilingData *>(data);
+
+    if (CheckRequiredParaExistence() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckEmptyTensor() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckSinglePara() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (SetBaseInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckFeature() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckMultiParaConsistency() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckBlockDimConstrain() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    libapiSize_ = 0;
+    workspaceSize_ = 0;
+
+    if (CalcWorkSpace() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (GenTilingKey() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     uint8_t coff = coff_;
     tilingData->batch_size = baseParams_.batchSize;
     tilingData->token_size = baseParams_.tokenSize;
@@ -964,8 +911,8 @@ ge::graphStatus CompressorGradTilingImpl::SetTilingData()
     tilingData->hidden_size = baseParams_.hiddenSize;
     tilingData->head_dim = baseParams_.headDim;
     // ── 核数（与 launch block_dim 一致；vec 每核 2 子核）──
-    tilingData->cube_core_num = aicNum_;
-    tilingData->core_num = aicNum_ * 2;
+    tilingData->cube_core_num = context_->blockDim;
+    tilingData->core_num = context_->blockDim * 2;
     // ── shape 派生 ──
     tilingData->total_head_dim = coff * baseParams_.headDim;
     tilingData->cmp_row_cnt = coff * baseParams_.cmpRatio;
@@ -981,7 +928,7 @@ ge::graphStatus CompressorGradTilingImpl::SetTilingData()
     }
     // ── 分核派生 ──
     tilingData->group_size = baseParams_.headDim / 128;
-    tilingData->group_num = aicNum_ / tilingData->group_size;
+    tilingData->group_num = context_->blockDim / tilingData->group_size;
     tilingData->cube_m_base_size = 128 * (2 / coff);
     // coff=1 时每 group 每轮只布置 2*dealScNum 块（保证子槽 dealScNum*cmpRatio <= 128，不超 L1/L0 物理行）
     tilingData->deal_sc_num = 128 / baseParams_.cmpRatio;
@@ -1002,66 +949,48 @@ ge::graphStatus CompressorGradTilingImpl::SetTilingData()
     tilingData->x_ws_size =
         2 * tilingData->group_num * tilingData->group_row_stride * baseParams_.hiddenSize * tilingData->group_size;
     tilingData->d_x_cache_ws_size = 2 * baseParams_.cmpRatio * baseParams_.hiddenSize;
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus CompressorGradTilingImpl::RunBigKernelTiling()
-{
-    using StatusFunction = std::function<ge::graphStatus()>;
-    std::vector<StatusFunction> requiredTilingFuncs{
-        std::bind(&CompressorGradTilingImpl::GetNpuInfo, this),
-        std::bind(&CompressorGradTilingImpl::CheckRequiredParaExistence, this),
-        std::bind(&CompressorGradTilingImpl::CheckEmptyTensor, this),
-        std::bind(&CompressorGradTilingImpl::CheckSinglePara, this),
-        std::bind(&CompressorGradTilingImpl::SetBaseInfo, this),
-        std::bind(&CompressorGradTilingImpl::CheckFeature, this),
-        std::bind(&CompressorGradTilingImpl::CheckMultiParaConsistency, this),
-        std::bind(&CompressorGradTilingImpl::CheckBlockDimConstrain, this),
-        std::bind(&CompressorGradTilingImpl::SetTilingData, this)};
-    for (const auto &func : requiredTilingFuncs) {
-        if (func() != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-
-    std::vector<StatusFunction> optionalTilingFuncs{std::bind(&CompressorGradTilingImpl::CalcWorkSpace, this),
-                                                    std::bind(&CompressorGradTilingImpl::GenTilingKey, this)};
-    for (const auto &func : optionalTilingFuncs) {
-        if (func() != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-
-    context_->blockDim = aicNum_;
-
-    OP_LOGI("Run big kernel");
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingCompressorGrad(gert::TilingContext *context)
+static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
 {
+    CompressorGradContext compressorGradContext{};
     OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
 
     OP_LOGI("Getting Tiling");
 
-    CompressorGradContext compressorGradContext{};
-    if (CompressorGradTilingImpl::ConvertContext(*context, compressorGradContext) != ge::GRAPH_SUCCESS) {
+    OP_CHECK_IF(context->GetPlatformInfo() == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "platformInfo", "is nullptr"),
+                return ge::GRAPH_FAILED);
+
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    OP_CHECK_IF(
+        aicNum == 0 || aivNum == 0,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "aicNum/aivNum", "num of core obtained is 0"),
+        return ge::GRAPH_FAILED);
+
+    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    context->SetBlockDim(blockDim);
+
+    if (CompressorGradTilingEngine::ConvertContext(*context, compressorGradContext) != ge::GRAPH_SUCCESS) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
             context->GetNodeName(), "context",
             "error occurred while converting tilingContext to CompressorGrad context");
         return ge::GRAPH_FAILED;
     }
 
-    CompressorGradTilingImpl compressorGradTiling(&compressorGradContext);
-    compressorGradTiling.tilingData = context->GetTilingData<CompressorGradTiling>();
-    OP_CHECK_IF(compressorGradTiling.tilingData == nullptr,
+    compressorGradContext.blockDim = aicNum;
+    CompressorGradTilingEngine engine(&compressorGradContext, aicNum, aivNum);
+    CompressorGradTiling *tilingData = context->GetTilingData<CompressorGradTiling>();
+    OP_CHECK_IF(tilingData == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(compressorGradContext.opName, "tilingData", "is nullptr"),
                 return ge::GRAPH_FAILED);
-    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    context->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    if (compressorGradTiling.RunBigKernelTiling() != ge::GRAPH_SUCCESS) {
+    if (engine.RunBigKernelTiling(tilingData) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     context->SetTilingKey(compressorGradContext.tilingKey);
