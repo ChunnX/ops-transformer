@@ -1029,7 +1029,63 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     // waterline：MoE expert 的平均 token 路由数，平均每个 expert/block 分到多少 token
     // uint32_t waterline = (axisBS_ * axisK_) / moeExpertNum_;
 
-    for (uint32_t dstRankId = startRankId; dstRankId < endRankId; ++dstRankId) {
+    uint32_t middleRank = epRankId_ < startRankId ? startRankId : epRankId_;
+    for (uint32_t dstRankId = middleRank; dstRankId < endRankId; ++dstRankId) {
+        if (dstRankId < sharedExpertRankNum_) {
+            continue;
+        }
+        // 本卡通信：仅搬运数据
+        if (dstRankId == epRankId_) {
+            CurRankComm(statusTensor_, moeStartToken);
+            continue;
+        }
+
+        // 给共享专家卡发数据和状态，每张共享专家卡上只会有一个共享专家
+        if (dstRankId < sharedExpertRankNum_) {
+        }
+        // 给moe专家卡发数据和状态，每张moe专家卡上有moeExpertNumPerRank_个moe专家
+        else {
+            // 非本卡通信：发完 epRankId_-->dstExpertId 的所有token后，统一敲doorbell
+            auto channelId = GetCommHandle(dstRankId);
+            uint32_t preExpertNum = sharedExpertRankNum_ + (dstRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+            for (uint32_t dstExpertId = 0; dstExpertId < moeExpertNumPerRank_; ++dstExpertId) {
+                // 当前rank --> dstExpertId 的所有 token 数量
+                uint32_t tokenNum = statusTensor_((preExpertNum + dstExpertId) * 8 + 1);
+
+                // 发送token
+                if (tokenNum > 0) {
+                    // 起始地址应该为rankId在本卡的起始偏移加上专家偏移，卡内的偏移为先前moe专家的偏移总量
+                    GM_ADDR srcTokenAddr = (GM_ADDR)(yOutGM_ + moeStartToken * hAlignWinSize_);
+                    // 目的地址的token偏移量
+                    uint32_t tokenOffset = expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ + dstExpertId);
+                    GM_ADDR dstTokenAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) + tokenOffset);
+                    uint32_t length = tokenNum * hAlignWinSize_;
+                    hcomm_.WriteNbi<false>(channelId, dstTokenAddr, srcTokenAddr, length);
+                    moeStartToken += tokenNum;
+                }
+
+                // 发送状态
+                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET +
+                                                  (preExpertNum + dstExpertId) * 8 * sizeof(uint32_t));
+                uint32_t offset = stateOffset_ * epRankId_;
+                if (moeExpertNumPerRank_ > 1) {
+                    offset = (epRankId_ + dstExpertId * epWorldSize_) * stateOffset_;
+                }
+                GM_ADDR dstStatusAddr = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
+                hcomm_.WriteNbi<false>(channelId, dstStatusAddr, srcStatusAddr, UB_ALIGN);
+            }
+
+            if (moeExpertNumPerRank_ > 0) {
+                hcomm_.Commit(channelId);
+                // 回收 CQ，避免联跑后续 combine 复用 jetty/window 时迟到写污染
+                // 开启时会造成性能下降
+                // hcomm_.Drain(channelId);
+            }
+        }
+    }
+
+    middleRank = epRankId_ < endRankId ? epRankId_ : endRankId;
+    for (uint32_t dstRankId = startRankId; dstRankId < middleRank; ++dstRankId) {
         if (dstRankId < sharedExpertRankNum_) {
             continue;
         }

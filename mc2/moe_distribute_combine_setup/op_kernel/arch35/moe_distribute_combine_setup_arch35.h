@@ -277,7 +277,44 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     }
 
     // 数据和状态分离：有token才发数据，每个dstRank始终单独发一次状态
-    for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
+    uint32_t middleRank = epRankId_ < startRankId_ ? startRankId_ : epRankId_;
+    for (uint32_t dstRankId = middleRank; dstRankId < endRankId_; ++dstRankId) {
+        if (unlikely(dstRankId == epRankId_)) {
+            continue;
+        }
+        // 每 dst 只取一次 channelId（内含单行 DCCI），Commit 后立刻 Drain，避免二次读 handle
+        auto channelId = GetCommHandle(dstRankId);
+        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
+        for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
+            uint32_t preCount = 0U;
+            uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
+            if (likely(assistInfoIdx > 0U)) {
+                // 计算其他卡或专家已经发了多少token
+                preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
+            }
+            const uint32_t curCount = assistInfoForCombineLocal.GetValue(assistInfoIdx);
+            // 当前要发送的token数量
+            uint32_t curTokenNum = curCount - preCount;
+            if (curTokenNum == 0U) {
+                continue;
+            }
+            GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
+            GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
+            uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);
+            // 数据与状态在同一 Commit 批次里，状态排在最后：任一数据 WQE 失败都会让队列进 error 态
+            // 并 flush 掉后面的状态 WQE，表现为对端状态恒为 0。所以这里必须查返回值。
+            int32_t dataRet = hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, static_cast<uint32_t>(lengthU64));
+        }
+        // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
+        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
+        hcomm_.Commit(channelId);
+        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
+        // 开启时会造成性能下降
+        // hcomm_.Drain(channelId);
+    }
+
+    middleRank = epRankId_ < endRankId_ ? epRankId_ : endRankId_;
+    for (uint32_t dstRankId = startRankId_; dstRankId < middleRank; ++dstRankId) {
         if (unlikely(dstRankId == epRankId_)) {
             continue;
         }
