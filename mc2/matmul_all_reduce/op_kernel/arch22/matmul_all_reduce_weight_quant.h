@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 #if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
 #include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_weight_nz.h"
 #define WEIGH_QUANT_MATMUL_CLASS_NAME Mc2WeightQuantBatchMatmulV2::Mc2WeightQuantBatchMatmulV2CustomWeightNzKernel
@@ -86,17 +86,17 @@ private:
     mmType mmOp_;
 };
 
-#define INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag)                                         \
-    do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM);            \
-        using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false,           \
-                                                     bTransFlag, quantType, offsetFlag, Mc2QuantType::NONE>;           \
-        MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
-        QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr};                             \
-        MatmulAllReduceWeightQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType> op(&addrs, &quantAddrs, nullptr,               \
-                                                                           (MC2TilingHeader *)&tilingData, &tPipe);    \
-        op.Init();                                                                                                     \
-        op.Process();                                                                                                  \
+#define INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag) \
+    do { \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM); \
+        using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false, \
+                                                     bTransFlag, quantType, offsetFlag, Mc2QuantType::NONE>; \
+        MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM}; \
+        QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr}; \
+        MatmulAllReduceWeightQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType> op(&addrs, &quantAddrs, nullptr, \
+                                                                           (MC2TilingHeader *)&tilingData, &tPipe); \
+        op.Init(); \
+        op.Process(); \
     } while (0)
 } // namespace MatmulAllReduceImpl
 #endif // MATMUL_ALL_REDUCE_WEIGHT_QUANT_H

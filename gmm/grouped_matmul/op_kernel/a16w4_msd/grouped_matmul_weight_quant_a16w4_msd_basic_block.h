@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "lib/matmul_intf.h"
-#include "tool.h"
+#include "gmm_a16w4_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 #define GMM_WQ_A16W4_MSD_BASIC_BLOCK_TEMPLATE_PARAM template <typename xType, typename wType, typename biasType>
@@ -140,6 +140,6 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_BASIC_BLOCK_CLASS::EndMsd(const A16W4Msd
     }
 }
 
-}  // namespace GROUPED_MATMUL::A16W4Msd
+} // namespace GROUPED_MATMUL::A16W4Msd
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_BASIC_BLOCK_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_BASIC_BLOCK_H

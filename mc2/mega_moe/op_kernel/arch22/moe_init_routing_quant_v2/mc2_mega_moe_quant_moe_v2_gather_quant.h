@@ -16,7 +16,7 @@
 #ifndef MC2_MOE_V2_QUANT_GATHER_QUANT_H
 #define MC2_MOE_V2_QUANT_GATHER_QUANT_H
 
-#include "moe_v2_common.h"
+#include "mega_moe_quant_moe_v2_common.h"
 #include "kernel_operator.h"
 
 namespace MoeInitRoutingQuantV2 {
@@ -210,9 +210,9 @@ __aicore__ inline void MoeV2GatherQuant<T>::Init(GM_ADDR inputX, GM_ADDR scale, 
 
     inputXGm.SetGlobalBuffer((__gm__ T *)inputX);
     expandedXGm.SetGlobalBuffer((__gm__ int8_t *)expandedX);
-    expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx +
-                                         this->blockIdx * this->gatherOutTilingData->perCoreRows,
-                                     Align(this->coreRows, sizeof(int32_t)));
+    expandedRowIdxGm.SetGlobalBuffer(
+        (__gm__ int32_t *)expandedRowIdx + this->blockIdx * this->gatherOutTilingData->perCoreRows,
+        Align(this->coreRows, sizeof(int32_t)));
     scaleGm.SetGlobalBuffer((__gm__ float *)scale, 1);
     offsetGm.SetGlobalBuffer((__gm__ float *)offset, 1);
     this->scale = scaleGm.GetValue(0);

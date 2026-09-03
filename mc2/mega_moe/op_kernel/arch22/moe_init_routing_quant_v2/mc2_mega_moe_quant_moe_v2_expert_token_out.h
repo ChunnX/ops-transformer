@@ -16,7 +16,7 @@
 #ifndef MC2_MOE_V2_QUANT_EXPERT_TOKEN_OUT_H
 #define MC2_MOE_V2_QUANT_EXPERT_TOKEN_OUT_H
 
-#include "moe_v2_common.h"
+#include "mega_moe_quant_moe_v2_common.h"
 
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
@@ -289,9 +289,9 @@ __aicore__ inline void MoeV2ExpertTokenOut::Init(GM_ADDR expertTokensCountOrCums
         expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensBeforeCapacity, this->expertNum);
     }
 
-    expandedExpertIdxGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            this->blockIdx * this->srcToDstTilingData->perCoreRows,
-                                        Align(this->coreRows, sizeof(int32_t)));
+    expandedExpertIdxGm.SetGlobalBuffer(
+        (__gm__ int32_t *)workspace + this->blockIdx * this->srcToDstTilingData->perCoreRows,
+        Align(this->coreRows, sizeof(int32_t)));
     expertIdxValueGm.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength, sizeof(int32_t)) * 2,
                                      this->coreNum * 2);
 

@@ -16,12 +16,11 @@
 #ifndef MC2_MOE_V2_EXPERT_TOKEN_OUT_H
 #define MC2_MOE_V2_EXPERT_TOKEN_OUT_H
 
-#include "moe_v2_common.h"
+#include "mega_moe_moe_v2_common.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
 using namespace Mc2Tiling;
-
 
 constexpr int64_t EXPERT_ID_VALUE_NUM = 2;
 
@@ -332,9 +331,9 @@ __aicore__ inline void MoeV2ExpertTokenOut::Init(GM_ADDR expertTokensCountOrCums
         expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensBeforeCapacity, this->expertNum);
     }
 
-    expandedExpertIdxGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            this->blockIdx * this->srcToDstTilingData->perCoreRows,
-                                        Align(this->coreRows, sizeof(int32_t)));
+    expandedExpertIdxGm.SetGlobalBuffer(
+        (__gm__ int32_t *)workspace + this->blockIdx * this->srcToDstTilingData->perCoreRows,
+        Align(this->coreRows, sizeof(int32_t)));
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
     syncTmpSpaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                         Align(this->totalLength, sizeof(int32_t)) * EXERPT_TOKENS_COUNT +

@@ -40,6 +40,7 @@
 #include "aclnn_common.h"
 
 // torch_npu stream utilities
+#include "torch_npu/csrc/aten/common/from_blob.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 
 namespace Mc2Api {
@@ -119,7 +120,7 @@ struct EngramCommContext {
     uint32_t rankId = 0;
     uint32_t rankSize = 0;
     uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE * 2] = {};
     uint32_t channelsPerRank = 1;
 };
 
@@ -392,12 +393,22 @@ private:
     static void QueryHcclBufferResource(const HcclComm &commHandle, EngramContextResources &resources)
     {
         uint32_t rankId = resources.context.rankId;
-        constexpr uint32_t channelsPerPeer = 2U;
+        uint32_t rankSize = resources.context.rankSize;
+        constexpr uint32_t aivNum = 72U;
+        uint32_t numSendCores = aivNum / 2U;
+        if (numSendCores == 0U) {
+            numSendCores = 1U;
+        }
+        uint32_t groupSize = numSendCores / rankSize;
+        if (groupSize == 0U) {
+            groupSize = 1U;
+        }
+        uint32_t channelsPerPeer = groupSize * 2U;
         resources.context.channelsPerRank = channelsPerPeer;
-        ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE * 2] = {};
-        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerPeer, resources.memHandle,
-                           handlesByRank);
-        for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
+
+        std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
+        GetHcclCommChannel(commHandle, rankSize, rankId, channelsPerPeer, resources.memHandle, handlesByRank.data());
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (peer == rankId)
                 continue;
             for (uint32_t ch = 0; ch < channelsPerPeer; ++ch) {
@@ -470,23 +481,27 @@ public:
         GetCommProtocol(hcclComm, protocol);
 
         MoeCommContext context;
-        BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
-        TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after building MoE context");
+        TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after resolving MoE topology");
         context.rankSizePerServer = rankNumPerServer_;
         rankSizePerServer = rankNumPerServer_;
 
-        return CreateCommContextTensor(context);
+        void *ctx = nullptr;
+        BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize, ctx);
+        TORCH_CHECK(ctx != nullptr, "Create MoE context tensor failed: ctx is nullptr");
+        int64_t numElements = (sizeof(MoeCommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
+        auto options = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
+        // HCCL owns ctx; the tensor only provides a non-owning view of the cached device context.
+        return at_npu::native::from_blob(ctx, {numElements}, options);
     }
 
 private:
     void BuildContext(const HcclComm &commHandle, const std::string &groupName, const std::string &opName,
-                      const CommProtocol &protocol, MoeCommContext &context, int64_t &cclBufferSize)
+                      const CommProtocol &protocol, MoeCommContext &context, int64_t &cclBufferSize, void *&ctx)
     {
         std::string contextTag = groupName + opName;
         CheckContextTag(contextTag);
         CommEngine engine = CommEngine::COMM_ENGINE_AIV;
-        void *ctx = nullptr;
         uint64_t hcclBufferSize = 0;
 
         GetOrCreateContext(commHandle, contextTag, engine, protocol, ctx, hcclBufferSize, context);
@@ -759,11 +774,26 @@ public:
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
-    int64_t GetHostBufPtr() const { return reinterpret_cast<int64_t>(engramHostBufPtr_); }
-    const at::Tensor &GetContextTensor() const { return engramContextTensor_; }
-    const at::Tensor &GetLocalStorageAddrTensor() const { return localStorageAddrTensor_; }
-    int64_t GetCommBufferSize() const { return commBufferSize_; }
-    uint32_t GetRankSize() const { return engramCommContext_.rankSize; }
+    int64_t GetHostBufPtr() const
+    {
+        return reinterpret_cast<int64_t>(engramHostBufPtr_);
+    }
+    const at::Tensor &GetContextTensor() const
+    {
+        return engramContextTensor_;
+    }
+    const at::Tensor &GetLocalStorageAddrTensor() const
+    {
+        return localStorageAddrTensor_;
+    }
+    int64_t GetCommBufferSize() const
+    {
+        return commBufferSize_;
+    }
+    uint32_t GetRankSize() const
+    {
+        return engramCommContext_.rankSize;
+    }
 
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum);
@@ -778,7 +808,20 @@ public:
                                                        const at::Tensor &sendCounts, const at::Tensor &recvCounts,
                                                        const at::Tensor &recvLocalEntry, const at::Tensor &numRecv);
 
-    bool IsWithGrad() const { return withGrad_; }
+    // Stateless static method for training backward (graph-mode compatible).
+    // Outputs: gradUnique [maxR, H], uniqueLocalEntry [maxR], numUnique [1] (NOT narrowed).
+    // Caller is responsible for narrowing by numUnique.item() outside the graph.
+    using EngramFetchGradOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
+    static EngramFetchGradOutput EngramFetchGrad(const at::Tensor &context, const at::Tensor &gradFetched,
+                                                 const at::Tensor &perm, const at::Tensor &sendCounts,
+                                                 const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
+                                                 const at::Tensor &numRecv, int64_t numEntries, int64_t commBufferSize,
+                                                 int64_t numMaxTokensPerRank, int64_t rankSize);
+
+    bool IsWithGrad() const
+    {
+        return withGrad_;
+    }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -1062,6 +1105,29 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(const at::Tens
     return {gradUnique, uniqueLocalEntry};
 }
 
+// EngramFetchGrad - stateless static method for training backward (graph-mode compatible).
+ElasticBuffer::EngramFetchGradOutput ElasticBuffer::EngramFetchGrad(
+    const at::Tensor &context, const at::Tensor &gradFetched, const at::Tensor &perm, const at::Tensor &sendCounts,
+    const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry, const at::Tensor &numRecv, int64_t numEntries,
+    int64_t commBufferSize, int64_t numMaxTokensPerRank, int64_t rankSize)
+{
+    int64_t hidden = gradFetched.size(1);
+    TORCH_CHECK(rankSize > 0 && numMaxTokensPerRank <= INT64_MAX / rankSize,
+                "numMaxTokensPerRank * rankSize overflow, got numMaxTokensPerRank=", numMaxTokensPerRank,
+                ", rankSize=", rankSize);
+    int64_t maxR = numMaxTokensPerRank * rankSize;
+
+    auto gradUnique =
+        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+
+    ACLNN_CMD(aclnnEngramFetchGrad, context, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
+              gradUnique, uniqueLocalEntry, numUnique, numEntries, commBufferSize);
+
+    return std::make_tuple(gradUnique, uniqueLocalEntry, numUnique);
+}
+
 // EngramBarrier - cross-rank synchronization
 void ElasticBuffer::EngramBarrier(bool useCommStream, bool withCpuSync)
 {
@@ -1179,7 +1245,10 @@ public:
         }
     }
 
-    void Reset() { *reinterpret_cast<volatile int64_t *>(hostPtr_) = -1; }
+    void Reset()
+    {
+        *reinterpret_cast<volatile int64_t *>(hostPtr_) = -1;
+    }
 
     int64_t SpinWait()
     {
@@ -1191,9 +1260,15 @@ public:
         }
     }
 
-    uintptr_t DevicePtr() const { return reinterpret_cast<uintptr_t>(devPtr_); }
+    uintptr_t DevicePtr() const
+    {
+        return reinterpret_cast<uintptr_t>(devPtr_);
+    }
 
-    uintptr_t HostPtr() const { return reinterpret_cast<uintptr_t>(hostPtr_); }
+    uintptr_t HostPtr() const
+    {
+        return reinterpret_cast<uintptr_t>(hostPtr_);
+    }
 
 private:
     void *hostPtr_ = nullptr;
@@ -1371,10 +1446,24 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                     pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
-        .def("engram_fetch_grad", &Mc2Api::ElasticBuffer::EngramFetchGrad, pybind11::arg("gradFetched").noconvert(),
-             pybind11::arg("perm").noconvert(), pybind11::arg("sendCounts").noconvert(),
-             pybind11::arg("recvCounts").noconvert(), pybind11::arg("recvLocalEntry").noconvert(),
-             pybind11::arg("numRecv").noconvert())
+        .def("engram_fetch_grad",
+             static_cast<std::tuple<at::Tensor, at::Tensor> (Mc2Api::ElasticBuffer::*)(
+                 const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
+                 const at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetchGrad),
+             pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
+             pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
+             pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert())
+        .def_static(
+            "engram_fetch_grad_op",
+            static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
+                const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
+                const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t, int64_t)>(
+                &Mc2Api::ElasticBuffer::EngramFetchGrad),
+            pybind11::arg("context"), pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
+            pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
+            pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert(),
+            pybind11::arg("numEntries"), pybind11::arg("commBufferSize"), pybind11::arg("numMaxTokensPerRank"),
+            pybind11::arg("rankSize"))
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)

@@ -15,8 +15,8 @@
 #include "../pipeline/pipeline_stage_singlecore_copy_in_advance.h"
 #include "../pipeline/pipeline_state.h"
 #include "../tile/mc2_3rd_copy_gm_to_l1.h"
-#include "../utils/constant.h"
-#include "../utils/device_utils.h"
+#include "../utils/wq_utils_constant.h"
+#include "../utils/wq_device_utils.h"
 #include "../utils/math_utils.h"
 #include "block_decl.h"
 #include "block_utils.h"
@@ -130,9 +130,7 @@ public:
     using PipelineAiv2Aic = PipelineStageMixCore<PIPE_MTE3, PIPE_MTE1, SubBlockNum>;
 
 public:
-    DEVICE BlockMmad()
-    {
-    }
+    DEVICE BlockMmad() {}
 
     template <class ProblemShape, typename TilingData>
     DEVICE static Params GetParams(ProblemShape const &problemShape, Arguments const &args, TilingData const &tiling)
@@ -192,8 +190,7 @@ public:
 
     template <class ProblemShape>
     DEVICE static Params GetParams(ProblemShape const &problemShape, Arguments const &args)
-    {
-    }
+    {}
 
     template <class ProblemShape>
     DEVICE auto Init(ProblemShape const &problemShape, Params const &params)

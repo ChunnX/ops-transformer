@@ -16,13 +16,12 @@
 #ifndef MC2_MOE_V2_MRGSORT_H
 #define MC2_MOE_V2_MRGSORT_H
 
-#include "moe_v2_common.h"
+#include "mega_moe_moe_v2_common.h"
 #include "kernel_operator.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
 using namespace Mc2Tiling;
-
 
 struct MoeV2MrgsortParam {
     int64_t perListElements;

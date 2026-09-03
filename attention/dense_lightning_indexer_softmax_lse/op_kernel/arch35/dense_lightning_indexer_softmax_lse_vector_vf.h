@@ -20,7 +20,7 @@
 
 namespace DenseLISoftmaxLseVF {
 using namespace AscendC;
-using namespace MicroAPI;
+using namespace Reg;
 
 constexpr static CastTrait castTraitB162B32Even = {
     RegLayout::ZERO,
@@ -30,10 +30,9 @@ constexpr static CastTrait castTraitB162B32Even = {
 };
 
 template <typename T, bool outerGidxZero>
-__simd_vf__ inline void DoScaleVF(__ubuf__ float *reduceCacheBuf, __ubuf__ float *mmOutUb,
-                                    __ubuf__ float *weightsUb, __ubuf__ T *weightsTUb,
-                                    int64_t groupInner, int64_t s2Inner,
-                                    uint64_t repeatTimes, uint64_t countPerRepeat)
+__simd_vf__ inline void DoScaleVF(__ubuf__ float *reduceCacheBuf, __ubuf__ float *mmOutUb, __ubuf__ float *weightsUb,
+                                  __ubuf__ T *weightsTUb, int64_t groupInner, int64_t s2Inner, uint64_t repeatTimes,
+                                  uint64_t countPerRepeat)
 {
     RegTensor<float> mmReg;
     RegTensor<float> weightReg;
@@ -42,30 +41,30 @@ __simd_vf__ inline void DoScaleVF(__ubuf__ float *reduceCacheBuf, __ubuf__ float
     RegTensor<float> reduceReg;
     RegTensor<half> weightHalfReg;
     RegTensor<bfloat16_t> weightBfReg;
-    
+
     MaskReg pregAllB32 = CreateMask<float, MaskPattern::ALL>();
     MaskReg pregWeightB16 = CreateMask<T, MaskPattern::ALL>();
 
     for (int32_t i = 0; i < groupInner; i++) {
         if constexpr (IsSameType<T, half>::value) {
-            AscendC::MicroAPI::LoadAlign<T, LoadDist::DIST_BRC_B16>(weightHalfReg, weightsTUb + i);
-            AscendC::MicroAPI::Cast<float, T, castTraitB162B32Even>(weightReg, weightHalfReg, pregWeightB16);
+            AscendC::Reg::LoadAlign<T, LoadDist::DIST_BRC_B16>(weightHalfReg, weightsTUb + i);
+            AscendC::Reg::Cast<float, T, castTraitB162B32Even>(weightReg, weightHalfReg, pregWeightB16);
         } else if constexpr (IsSameType<T, bfloat16_t>::value) {
-            AscendC::MicroAPI::LoadAlign<T, LoadDist::DIST_BRC_B16>(weightBfReg, weightsTUb + i);
-            AscendC::MicroAPI::Cast<float, T, castTraitB162B32Even>(weightReg, weightBfReg, pregWeightB16);
+            AscendC::Reg::LoadAlign<T, LoadDist::DIST_BRC_B16>(weightBfReg, weightsTUb + i);
+            AscendC::Reg::Cast<float, T, castTraitB162B32Even>(weightReg, weightBfReg, pregWeightB16);
         } else {
-            AscendC::MicroAPI::LoadAlign<T, LoadDist::DIST_BRC_B32>(weightReg, weightsUb + i);
+            AscendC::Reg::LoadAlign<T, LoadDist::DIST_BRC_B32>(weightReg, weightsUb + i);
         }
-        
+
         for (int32_t j = 0; j < repeatTimes; j++) {
             uint32_t offset = i * s2Inner + j * countPerRepeat;
             LoadAlign(mmReg, mmOutUb + offset);
             Mul(tmpReg, mmReg, weightReg, pregAllB32);
 
             if constexpr (outerGidxZero) {
-                AscendC::MicroAPI::Duplicate(reduceReg, 0.0f);
+                AscendC::Reg::Duplicate(reduceReg, 0.0f);
             } else {
-                AscendC::MicroAPI::LoadAlign(reduceReg, reduceCacheBuf + offset);
+                AscendC::Reg::LoadAlign(reduceReg, reduceCacheBuf + offset);
             }
             Add(reduceReg, reduceReg, tmpReg, pregAllB32);
             StoreAlign(reduceCacheBuf + offset, reduceReg, pregAllB32);
@@ -75,17 +74,17 @@ __simd_vf__ inline void DoScaleVF(__ubuf__ float *reduceCacheBuf, __ubuf__ float
 }
 
 __simd_vf__ inline void DoReduceSumBlockVF(__ubuf__ float *dstTensor, __ubuf__ float *srcTensor,
-                                            __ubuf__ float *maxValueTensor, __ubuf__ float *prevSumTensor,
-                                            uint32_t count)
+                                           __ubuf__ float *maxValueTensor, __ubuf__ float *prevSumTensor,
+                                           uint32_t count)
 {
     RegTensor<float> srcReg;
     RegTensor<float> dstReg;
     RegTensor<float> maxReg;
     RegTensor<float> expReg;
     RegTensor<float> prevReg;
-    
+
     MaskReg pregTail = UpdateMask<float>(count);
-    
+
     LoadAlign(maxReg, maxValueTensor);
     LoadAlign(prevReg, prevSumTensor);
     LoadAlign(srcReg, srcTensor);

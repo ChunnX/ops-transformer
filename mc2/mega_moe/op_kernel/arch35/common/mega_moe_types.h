@@ -19,6 +19,11 @@
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
 #endif
+#if __has_include("../../../common/mc2_moe_context.h")
+#include "../../../common/mc2_moe_context.h"
+#else
+#include "../../../../common/op_kernel/mc2_moe_context.h"
+#endif
 
 namespace MegaMoeImpl {
 
@@ -32,13 +37,13 @@ struct ExpertLoopState {
     ProblemShape problemShape;
     int64_t globalTokenStartIndex = 0;
     uint32_t expertIdx = 0U;
+    bool expertCountTableReady = false;
 };
 
 // GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
 struct GmmRuntimeState {
     uint32_t &startBlockIdx;
     int32_t &vecSetSyncCom;
-    int32_t &gmTileSequence;
     uint16_t &pingpongIdx;
 };
 
@@ -46,15 +51,17 @@ struct GmmRuntimeState {
 struct ExpertTokenPosition {
     uint32_t expertIdx = 0U;
     uint32_t tokenIndexInExpert = 0U;
+    // 从全部本卡 MoE 专家起点累计的全局连续 row，避免末波 Combine 重新标量扫描 count 表。
+    uint64_t globalTokenIndex = 0U;
 };
 
-struct Mc2MoeContext {
-    uint32_t epRankId = 0;
-    uint32_t rankSizePerServer = 0;
-    uint64_t kfcContextAddr = 0; // 通信 API 所需的地址
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {}; // 支持 ROCE 或 URMA
+// 标识 MoE 专家紧凑 token 序列中的左闭右开区间 [begin, end)。
+struct ExpertTokenRange {
+    ExpertTokenPosition begin{};
+    ExpertTokenPosition end{};
 };
+
+using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
 struct GMMAddrInfo {
     GM_ADDR aGlobal;
@@ -159,7 +166,6 @@ struct MoeSyncWorkspaceLayout {
     int32_t dispatchFlagSlotCountPerExpert;
     int32_t activationFlagSlotCountPerExpert;
     uint32_t gmm1TileStatusCountPerExpert;
-    uint64_t combineSyncSlotCountPerExpert;
 };
 
 struct GroupSyncSlotLayout {

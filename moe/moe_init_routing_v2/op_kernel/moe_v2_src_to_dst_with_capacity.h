@@ -15,7 +15,7 @@
 #ifndef MOE_V2_SRC_TO_DST_WITH_CAPACITY_H
 #define MOE_V2_SRC_TO_DST_WITH_CAPACITY_H
 
-#include "moe_v2_common.h"
+#include "moe_init_routing_v2_common.h"
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
@@ -239,12 +239,12 @@ __aicore__ inline void MoeV2SrcToDstWithCapacity<T, TilingData>::Init(GM_ADDR ex
     expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, length);
     expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->expertNum * this->expertCapacity * this->cols);
 
-    expandedExpertIdxGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            this->blockIdx * this->srcToDstTilingData->perCoreRows,
-                                        Align(this->coreRows, sizeof(int32_t)));
-    expandDstToSrcRowGm.SetGlobalBuffer((__gm__ int32_t *)workspace + length +
-                                            this->blockIdx * this->srcToDstTilingData->perCoreRows,
-                                        Align(this->coreRows, sizeof(int32_t)));
+    expandedExpertIdxGm.SetGlobalBuffer(
+        (__gm__ int32_t *)workspace + this->blockIdx * this->srcToDstTilingData->perCoreRows,
+        Align(this->coreRows, sizeof(int32_t)));
+    expandDstToSrcRowGm.SetGlobalBuffer(
+        (__gm__ int32_t *)workspace + length + this->blockIdx * this->srcToDstTilingData->perCoreRows,
+        Align(this->coreRows, sizeof(int32_t)));
     expertIdxValueGm.SetGlobalBuffer((__gm__ int32_t *)workspace + length * 2, this->coreNum * 2);
 
     pipe->InitBuffer(copyInQueue, 1, AlignBytes(this->perLoopRows, sizeof(int32_t)) * 2);

@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "matmul_all_reduce_dynamic_quant_pertile_utils.h"
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 
 namespace MatmulAllReduceMixedDequantReduceQuantImpl {
 using namespace AscendC;
@@ -56,9 +56,7 @@ public:
     TBuf<TPosition::VECCALC> tempMskBuf_;
     TBuf<TPosition::VECCALC> tempReduceOut_;
 
-    __aicore__ inline MatmulAllReduceMixedDequantReduceQuant()
-    {
-    }
+    __aicore__ inline MatmulAllReduceMixedDequantReduceQuant() {}
 
     __aicore__ inline void Init(GM_ADDR inputAddr, GM_ADDR outputAddr, uint32_t tileMPerRank, uint32_t tileN,
                                 uint32_t oneLineScaleCnt, uint32_t coreNum, uint32_t maxProcRows, TPipe *tPipe)

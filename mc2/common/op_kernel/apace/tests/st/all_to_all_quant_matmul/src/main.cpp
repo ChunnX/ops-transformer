@@ -28,12 +28,12 @@
 #include "hccl/hccl_types.h"
 #include "hccl/hccl_rank_graph.h"
 #include <cstdlib>
-#include "utils.h"
+#include "apace_st_utils.h"
 #include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
-#include "kernel_launcher.h"
+#include "apace_a2a_kernel_launcher.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
 
 #define HCCL_CHECK(status) \

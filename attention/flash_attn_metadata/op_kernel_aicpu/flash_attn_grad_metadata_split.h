@@ -1071,16 +1071,16 @@ bool FlashAttnMetadataCpuKernel::DoFagBn2SparseBlockInfo()
 }
 
 // ===== GenFagMetadata: serialize FAG split results to metadata tensor =====
-// FAG data is appended after FA data: offset = 16 + 1728 * sectionNum
+// FAG data is appended after FA/FD data, core counts are dynamic (read from attrs)
 void FlashAttnMetadataCpuKernel::GenFagMetadata(uint32_t sectionNum)
 {
     auto *basePtr = static_cast<FA_METADATA_T *>(metadata_->GetData());
-    // FAG start offset = Head(16) + FA(sectionNum*36*16) + FD(sectionNum*72*16)
-    //                  = 16 + sectionNum * (36*16 + 72*16) = 16 + 1728 * sectionNum
-    uint32_t fagOffset = HEAD_METADATA_STRIDE +
-        sectionNum * (AIC_CORE_NUM * FA_METADATA_STRIDE + AIV_CORE_NUM * FD_METADATA_STRIDE);
+    // FAG start offset = Head(16) + FA(sectionNum*aicNum*16) + FD(sectionNum*aivNum*16)
+    uint32_t fagOffset = METADATA_STRIDE +
+        sectionNum * (static_cast<uint32_t>(aicCoreNum_) * METADATA_STRIDE +
+                      static_cast<uint32_t>(aivCoreNum_) * METADATA_STRIDE);
 
-    // Record FAG start offset in head[4]
+    // Record FAG start offset in head[7]
     basePtr[HEAD_FAG_START_OFFSET_INDEX] = fagOffset;
 
     auto *fag = basePtr + fagOffset;

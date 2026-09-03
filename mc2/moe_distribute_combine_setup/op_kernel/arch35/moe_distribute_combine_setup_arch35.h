@@ -27,7 +27,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../moe_distribute_base.h"
+#include "../moe_distribute_combine_setup_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
 
 namespace MoeDistributeCombineSetupImpl {
@@ -402,8 +402,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const WriteWithNotifySQEInfoParams &params)
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
+    const WriteWithNotifySQEInfoParams &params)
 {
     // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
     GlobalTensor<uint8_t> selfDataSrcTensor;
