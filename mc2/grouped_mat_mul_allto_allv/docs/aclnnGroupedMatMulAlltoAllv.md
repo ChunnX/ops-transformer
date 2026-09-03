@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
+- 接口功能：完成路由专家 GroupedMatMul、Unpermute、AlltoAllv 融合并实现与共享专家 MatMul 并行融合，**先计算后通信**。
 
 - 计算公式：
 
@@ -342,10 +342,10 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 - 通信引擎约束：
 
   <!-- npu="A3" id7 -->
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持 AI_CPU 通信。
   <!-- end id7 -->
   <!-- npu="950" id8 -->
-  - Ascend 950DT：支持AI_CPU通信。
+  - Ascend 950DT：支持 AI_CPU 通信。
 
   <!-- end id8 -->
 

@@ -79,7 +79,7 @@ constexpr int64_t N2 = 4096;
 constexpr int64_t A = BS * K;
 
 std::vector<int16_t> pPermuteData(A *H, 0);
-std::vector<int16_t> pGmmyData(A *N1, 0);
+std::vector<int16_t> pGmmYData(A *N1, 0);
 std::vector<int16_t> pmmXData(BS *H, 0);
 std::vector<int16_t> pmmWData(H *N2, 0);
 std::vector<int16_t> pmmYData(BS *N2, 0);
@@ -191,7 +191,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     }
     if (args.rankId == 0) {
         size_t size = A * N1 * sizeof(int16_t);
-        aclrtMemcpy(pGmmyData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
+        aclrtMemcpy(pGmmYData.data(), size, gmmYDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
     }
     if (gmmX != nullptr) {
         aclDestroyTensor(gmmX);

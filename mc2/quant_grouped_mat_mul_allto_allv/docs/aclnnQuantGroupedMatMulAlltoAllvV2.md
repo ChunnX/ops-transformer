@@ -535,7 +535,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
 - 通信引擎约束：
 
   <!-- npu="950" id8 -->
-  - Ascend 950DT：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
+  - Ascend 950DT：支持 CCU 通信和 AI_CPU 通信，CCU 仅支持单机 UB 域内互联，AI_CPU 可支持跨机 UB 域内互联。
   <!-- end id8 -->
 
 - e * epWorldSize 乘积最大支持 256，其中 e（单卡专家数），最大支持 32，epWorldSize 支持 2/4/8/16/32/64/128/256;

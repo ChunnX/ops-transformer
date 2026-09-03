@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
+- 接口功能：完成路由专家 GroupedMatMul、Unpermute、AlltoAllv 融合并实现与共享专家 MatMul 并行融合，**先计算后通信**。
 
 - 计算公式：
 
