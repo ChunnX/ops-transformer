@@ -111,6 +111,9 @@ private:
     __aicore__ inline TileExecutionContext PrepareTileExecutionContext(
         const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx);
 
+    __aicore__ inline Activation::GatedActivationTileContext<DataTypeIn> BuildGatedActivationContext(
+        const TileExecutionContext &tileContext);
+
     __aicore__ inline void RunGatedActivationTile(const TileExecutionContext &tileContext);
 
     __aicore__ inline void RunMxQuantTile(const TileExecutionContext &tileContext);
@@ -252,9 +255,10 @@ BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeig
 
 template <typename DataTypeOut_, typename DataTypeIn_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch,
           bool IsInterleaved_>
-__aicore__ inline void
+__aicore__ inline Activation::GatedActivationTileContext<DataTypeIn_>
 BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeightsPrefetch,
-                               IsInterleaved_>::RunGatedActivationTile(const TileExecutionContext &tileContext)
+                               IsInterleaved_>::BuildGatedActivationContext(
+    const TileExecutionContext &tileContext)
 {
     const UbPointers &ubPointers = tileContext.buffers;
     __ubuf__ DataTypeIn *firstSrc = ubPointers.firstInput;
@@ -309,7 +313,7 @@ BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeig
         additionalPaddingOutput = outputTail + needTailVectorCompute * Activation::VECTOR_LENGTH_FP32;
     }
 
-    Activation::GatedActivationTileContext<DataTypeIn> gatedActivationContext;
+    Activation::GatedActivationTileContext<DataTypeIn> gatedActivationContext{};
     gatedActivationContext.gate = firstSrc;
     gatedActivationContext.up = secondSrc;
     gatedActivationContext.output = gluResAddr;
@@ -331,6 +335,17 @@ BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeig
     gatedActivationContext.tailComputeMaskElementCount = tailComputeMaskElementCount;
     gatedActivationContext.tailStoreMaskElementCount = tailStoreMaskElementCount;
     gatedActivationContext.additionalPaddingStoreMaskElementCount = additionalPaddingStoreMaskElementCount;
+    return gatedActivationContext;
+}
+
+template <typename DataTypeOut_, typename DataTypeIn_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch,
+          bool IsInterleaved_>
+__aicore__ inline void
+BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeightsPrefetch,
+                               IsInterleaved_>::RunGatedActivationTile(const TileExecutionContext &tileContext)
+{
+    Activation::GatedActivationTileContext<DataTypeIn> gatedActivationContext =
+        BuildGatedActivationContext(tileContext);
 
     const ActMode actMode = static_cast<ActMode>(actMode_);
     const ActSubMode actSubMode = static_cast<ActSubMode>(actSubMode_);
