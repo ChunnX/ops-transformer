@@ -893,11 +893,13 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     }
                 }
 
-                // block prefix for definite (warp-wide reduce first)
+                // block prefix for definite: warp-wide reduce into a SEPARATE var,
+                // keeping per-lane my_def intact for the within-warp exclusive prefix
+                uint32_t warp_def = my_def;
                 if (i_active) {
                     for (int s = 16; s > 0; s >>= 1)
-                        my_def += __shfl_xor_sync(0xFFFFFFFF, my_def, s);
-                    if (lane_idx == 0) gslots[8 + warp_idx] = my_def;
+                        warp_def += __shfl_xor_sync(0xFFFFFFFF, warp_def, s);
+                    if (lane_idx == 0) gslots[8 + warp_idx] = warp_def;
                 }
                 __syncthreads();
                 if (warp_idx == 0) {
