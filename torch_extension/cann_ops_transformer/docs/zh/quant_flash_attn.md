@@ -224,8 +224,8 @@ cann_ops_transformer.quant_flash_attn(
 | q                    | Tensor        | 必选    | 公式中的Q                                                | float8_e4m3fn/hifloat8 | ND   | (Q_T, Q_N, D)                                                                                                    | ×         |
 | k                    | Tensor        | 必选    | 公式中的K                                                | float8_e4m3fn/hifloat8 | ND   | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul>                   | √         |
 | v                    | Tensor        | 必选    | 公式中的V                                                | float8_e4m3fn/hifloat8 | ND   | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul>                   | √         |
-| q_descale           | Tensor        | 必选    | q的反量化scale                                           | float8_e8m0/float32    | ND   | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li><li>(Q_N, Q_T)</li></ul>                     | ×         |
-| k_descale           | Tensor        | 必选    | k的反量化scale                                           | float8_e8m0/float32    | ND   | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li></ul> | √         |
+| q_descale           | Tensor        | 必选    | q的反量化scale                                           | float8_e8m0/float32    | ND   | <ul><li>(Q_T, Q_N, ⌈D/64⌉, 2)</li><li>(KV_N, Q_T, G, ⌈D/64⌉, 2)</li><li>(Q_N, Q_T)</li></ul>                     | ×         |
+| k_descale           | Tensor        | 必选    | k的反量化scale                                           | float8_e8m0/float32    | ND   | <ul><li>(KV_T, KV_N, ⌈D/64⌉, 2)</li><li>(Bn, KV_N, Bs, ⌈D/64⌉, 2)</li><li>(Bn, KV_N, Bs/16, ⌈D/64⌉, 16, 2)</li></ul> | √         |
 | v_descale           | Tensor        | 必选    | v的反量化scale                                           | float8_e8m0/float32    | ND   | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | √         |
 | quant_mode          | int/QuantMode | 必选    | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」           | int32                   | -    | -                                                                                                                  | -         |
 | block_table         | Tensor        | 可选    | 用于分块注意力计算中的块索引映射                                     | int32                   | ND   | (B, Bn)                                                                                                            | ×         |
@@ -664,11 +664,11 @@ q_descale shape匹配关系表：<a name="descale_shape匹配关系表"></a>
             <td rowspan="2">1</td>
             <td rowspan="2">q_descale</td>
             <td>TND</td>
-            <td>(Q_T, Q_N, D/64, 2)<br>用于Prefill场景，推荐G*Q_S > 80时传入</td>
+            <td>(Q_T, Q_N, ⌈D/64⌉, 2)<br>用于Prefill场景，推荐G*Q_S > 80时传入</td>
         </tr>
         <tr>
             <td>N2TGD</td>
-            <td>(KV_N, Q_T, G, D/64, 2)<br>用于Decode场景，推荐G*Q_S <= 80时传入</td>
+            <td>(KV_N, Q_T, G, ⌈D/64⌉, 2)<br>用于Decode场景，推荐G*Q_S <= 80时传入</td>
         </tr>
     </tbody>
 </table>
@@ -706,19 +706,19 @@ k_descale/v_descale shape匹配关系表：
             <td rowspan="8">1</td>
             <td rowspan="4">k_descale</td>
             <td>TND</td>
-            <td>(KV_T, KV_N, D/64, 2)</td>
+            <td>(KV_T, KV_N, ⌈D/64⌉, 2)</td>
         </tr>
         <tr>
             <td>PA_BBND</td>
-            <td>(Bn, Bs, KV_N, D/64, 2)</td>
+            <td>(Bn, Bs, KV_N, ⌈D/64⌉, 2)</td>
         </tr>
         <tr>
             <td>PA_BNBD</td>
-            <td>(Bn, KV_N, Bs, D/64, 2)</td>
+            <td>(Bn, KV_N, Bs, ⌈D/64⌉, 2)</td>
         </tr>
         <tr>
             <td>PA_NZ</td>
-            <td>(Bn, KV_N, Bs/16, D/64, 16, 2)</td>
+            <td>(Bn, KV_N, Bs/16, ⌈D/64⌉, 16, 2)</td>
         </tr>
         <tr>
             <td rowspan="4">v_descale</td>
