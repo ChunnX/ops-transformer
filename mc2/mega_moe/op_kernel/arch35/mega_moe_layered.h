@@ -1409,8 +1409,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PublishEx
                     {1U, cumsumCopyBytes, 0U, 0U, 0U});
     } else {
         // Packed expert slices are not UB-aligned when worldSize_ is not a multiple of 8.
-        __gm__ int32_t *cumsumDst =
-            reinterpret_cast<__gm__ int32_t *>(cumsumInfoGlobalTensor_[expertRankOffset].GetPhyAddr());
+        uint64_t cumsumStride =
+            Ops::Base::CeilAlign(static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), ALIGN_32);
+        __gm__ int32_t *cumsumDst = reinterpret_cast<__gm__ int32_t *>(
+            params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_) + expertRankOffset;
         for (uint32_t srcRank = 0U; srcRank < worldSize_; ++srcRank) {
             WriteGmByPassDCache(cumsumDst + srcRank, cumsumInfoTensor_.GetValue(expertRankOffset + srcRank));
         }
