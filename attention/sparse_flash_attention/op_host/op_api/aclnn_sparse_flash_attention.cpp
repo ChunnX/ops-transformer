@@ -9,6 +9,7 @@
  */
 
 #include <cstring>
+#include <memory>
 #include "graph/types.h"
 #include "aclnn_sparse_flash_attention.h"
 
@@ -92,6 +93,8 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     const aclTensor *valueTensor = (value == nullptr) ? key : value;
+    std::unique_ptr<TensorHolder> softmaxMaxHolder;
+    std::unique_ptr<TensorHolder> softmaxSumHolder;
     if (returnSoftmaxLse) {
         if (softmaxMax == nullptr || softmaxSum == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
@@ -100,8 +103,10 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
         }
     } else {
         if (softmaxMax == nullptr && softmaxSum == nullptr) {
-            auto softmaxMaxHolder = TensorHolder(softmaxMax, aclDataType::ACL_FLOAT, std::string("softmaxMax"));
-            auto softmaxSumHolder = TensorHolder(softmaxSum, aclDataType::ACL_FLOAT, std::string("softmaxSum"));
+            softmaxMaxHolder23 =
+                std::make_unique<TensorHolder>(softmaxMax, aclDataType::ACL_FLOAT, std::string("softmaxMax"));
+            softmaxSumHolder =
+                std::make_unique<TensorHolder>(softmaxSum, aclDataType::ACL_FLOAT, std::string("softmaxSum"));
             if (softmaxMax == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxMax!");
                 return ge::GRAPH_FAILED;
