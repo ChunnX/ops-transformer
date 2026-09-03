@@ -2915,21 +2915,21 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
     //     currentWaveEnd = nextWaveEnd;
     // }
 
-    if constexpr (TopkWeightsPrefetch) {
-        PublishOrWaitGmm1AllDone();
-    } else {
-        EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
-    }
-    gmm1PingPongIdx_ = 0U;
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ == 1U) {
-            PipeBarrier<PIPE_ALL>();
-            ExpertTokenNumCopyOut();
-            DrainAndUnlockOwnedRemoteChannels();
-        }
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    }
+    // if constexpr (TopkWeightsPrefetch) {
+    //     PublishOrWaitGmm1AllDone();
+    // } else {
+    //     EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
+    // }
+    // gmm1PingPongIdx_ = 0U;
+    // if constexpr (g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1U) {
+    //         PipeBarrier<PIPE_ALL>();
+    //         ExpertTokenNumCopyOut();
+    //         DrainAndUnlockOwnedRemoteChannels();
+    //     }
+    //     PipeBarrier<PIPE_ALL>();
+    //     SyncAll<true>();
+    // }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
