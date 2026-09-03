@@ -77,7 +77,7 @@ using namespace AllGatherMatmulImpl;
     do { \
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommAllGatherMatmulTilingData, tilingData, tilingGM); \
         ImplClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, hcclServerType, isMxFp4> impl(&tilingData); \
-        impl.Init(aGM, scaleInv1, bGM, scaleInv2, cGM, gatherOut, workspaceGM); \
+        impl.Init(aGM, scaleInv1, bGM, scaleInv2, biasGM, cGM, gatherOut, workspaceGM); \
         impl.Run(); \
     } while (0)
 
