@@ -2879,41 +2879,41 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
         }
     }
 
-    while (currentWaveBegin < moeExpertPerRank_) {
-        const uint32_t waveStartBlockIdx = startBlockIdx_;
-        const uint32_t nextWaveBegin = currentWaveEnd;
-        const uint32_t proposedWaveEnd = nextWaveBegin + steadyWaveExpertCount;
-        const uint32_t nextWaveEnd = proposedWaveEnd < moeExpertPerRank_ ?
-            proposedWaveEnd : moeExpertPerRank_;
+    // while (currentWaveBegin < moeExpertPerRank_) {
+    //     const uint32_t waveStartBlockIdx = startBlockIdx_;
+    //     const uint32_t nextWaveBegin = currentWaveEnd;
+    //     const uint32_t proposedWaveEnd = nextWaveBegin + steadyWaveExpertCount;
+    //     const uint32_t nextWaveEnd = proposedWaveEnd < moeExpertPerRank_ ?
+    //         proposedWaveEnd : moeExpertPerRank_;
 
-        if constexpr (g_coreType == AIV) {
-            if (subBlockIdx_ == 1U && nextWaveBegin < moeExpertPerRank_) {
-                // 通信核预取下一宏 Wave；AIC/AIV0 同时计算当前宏 Wave。
-                ReceiveDispatchExpertRange(nextWaveBegin, nextWaveEnd);
-            }
-        }
+    //     if constexpr (g_coreType == AIV) {
+    //         if (subBlockIdx_ == 1U && nextWaveBegin < moeExpertPerRank_) {
+    //             // 通信核预取下一宏 Wave；AIC/AIV0 同时计算当前宏 Wave。
+    //             ReceiveDispatchExpertRange(nextWaveBegin, nextWaveEnd);
+    //         }
+    //     }
 
-        for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
-            RunGmm1ActivationForExpert(
-                gmm1State, gmm1AddrInfo, vecSetSyncCom, gmTileSequence, expertIdx);
-        }
-        const uint32_t gmm1EndBlockIdx = startBlockIdx_;
-        ExpertLoopState combineWaveBeginState = gmm2State;
-        for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
-            RunGmm2ForExpert(gmm2State, gmm2AddrInfo, expertIdx);
-        }
-        ProcessCombineExpertRange(combineWaveBeginState, currentWaveBegin, currentWaveEnd);
-        if constexpr (!ENABLE_A8W4) {
-            const bool hasNextWave = currentWaveEnd < moeExpertPerRank_;
-            const bool fixedRoleResonance =
-                startBlockIdx_ == waveStartBlockIdx && gmm1EndBlockIdx != waveStartBlockIdx;
-            if (hasNextWave && fixedRoleResonance) {
-                startBlockIdx_ = gmm1EndBlockIdx;
-            }
-        }
-        currentWaveBegin = nextWaveBegin;
-        currentWaveEnd = nextWaveEnd;
-    }
+    //     for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
+    //         RunGmm1ActivationForExpert(
+    //             gmm1State, gmm1AddrInfo, vecSetSyncCom, gmTileSequence, expertIdx);
+    //     }
+    //     const uint32_t gmm1EndBlockIdx = startBlockIdx_;
+    //     ExpertLoopState combineWaveBeginState = gmm2State;
+    //     for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
+    //         RunGmm2ForExpert(gmm2State, gmm2AddrInfo, expertIdx);
+    //     }
+    //     ProcessCombineExpertRange(combineWaveBeginState, currentWaveBegin, currentWaveEnd);
+    //     if constexpr (!ENABLE_A8W4) {
+    //         const bool hasNextWave = currentWaveEnd < moeExpertPerRank_;
+    //         const bool fixedRoleResonance =
+    //             startBlockIdx_ == waveStartBlockIdx && gmm1EndBlockIdx != waveStartBlockIdx;
+    //         if (hasNextWave && fixedRoleResonance) {
+    //             startBlockIdx_ = gmm1EndBlockIdx;
+    //         }
+    //     }
+    //     currentWaveBegin = nextWaveBegin;
+    //     currentWaveEnd = nextWaveEnd;
+    // }
 
     if constexpr (TopkWeightsPrefetch) {
         PublishOrWaitGmm1AllDone();
