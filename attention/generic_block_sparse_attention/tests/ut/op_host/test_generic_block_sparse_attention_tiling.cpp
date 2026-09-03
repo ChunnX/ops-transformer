@@ -224,10 +224,10 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_block_shape_x)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     std::vector<int64_t> badBlockShape = {128, 128};
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PA_BBND", badBlockShape), &compileInfo, "Ascend910B", 40,
-        196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false),
+                                              MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PA_BBND", badBlockShape),
+                                              &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
