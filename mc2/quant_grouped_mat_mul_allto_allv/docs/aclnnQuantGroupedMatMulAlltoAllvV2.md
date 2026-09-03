@@ -671,7 +671,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
     constexpr int64_t N2 = 4096;
     constexpr int64_t A = BS * K;
 
-    std::vector<int16_t> pGmmyData(BS *K *N1, 0);
+    std::vector<int16_t> pGmmYData(BS *K *N1, 0);
     std::vector<int16_t> pmmYData(BS *N2, 0);
 
     int LaunchOneThreadAlltoAllvGmm(Args &args)
@@ -837,7 +837,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
         // 释放device资源，需要根据具体API的接口定义修改
         if (args.rankId == 0) {
             size_t size = A * N1 * sizeof(int16_t);
-            aclrtMemcpy(pGmmyData.data(), size, yDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
+            aclrtMemcpy(pGmmYData.data(), size, yDeviceAddr, size, ACL_MEMCPY_DEVICE_TO_HOST);
         }
         if (gmmX != nullptr) {
             aclDestroyTensor(gmmX);
