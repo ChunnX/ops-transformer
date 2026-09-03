@@ -42,7 +42,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-123,123]],
         "cmp_ratio":[1],
         "return_value": [0],
-        "max_seqlen_q": [-1]
+        "max_seqlen_q": [1]
     },
 }
 
