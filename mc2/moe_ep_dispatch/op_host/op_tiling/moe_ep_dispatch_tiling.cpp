@@ -739,8 +739,9 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
     uint64_t superNodeCount = static_cast<uint64_t>(info.hybrid.serverNum);
 
-    // counter 区: 两边都按每核一份, 多核并行写
-    uint64_t counterBytes = aivNum * AlignUpWin(epWorldSize * sizeof(int32_t));
+    // counter 区: [aivNum][ep] 布局，每格 512B（每核写自己的行，独占 cache line），
+    // 有效载荷为格首 32B（state + cnt），格地址 (core*ep + rank)*512 单维连续，读写均单维 stride
+    uint64_t counterBytes = aivNum * epWorldSize * WIN_ADDR_ALIGN;
     // sendCntPerExpert 区: 两边一致
     uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
 
@@ -748,12 +749,17 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
-    // hitPerRank 转置存储区 [ep][aivNum][perCoreTokenAlign]，每元素 int64，按核分片避免多核写冲突
+
+    // slotStart 区 [aivNum][epAlignWin] int32：GetSlotStartNum 落盘各核 slot 起始值，发送侧直接读
+    uint64_t slotStartBytes = static_cast<uint64_t>(info.aivNum) * AlignUpWin(epWorldSize * sizeof(int32_t));
+
+    // compact 发送列表区 [ep][aivNum][perCoreEntries]：统一存 tokenId(int32)，
+    // slot 由发送侧 scaleupCounter 前缀和恢复（cached 的 handle.slot 与顺序分配一一对应）
     uint64_t perCoreTokens = (info.cfg.numTokens + info.aivNum - 1UL) / info.aivNum;
-    uint64_t tokenHitPerCoreBytes = AlignUpWin(perCoreTokens * sizeof(int64_t));
+    uint64_t tokenHitPerCoreBytes = AlignUpWin(perCoreTokens * sizeof(int32_t));
     uint64_t hitPerRankBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * info.aivNum * tokenHitPerCoreBytes;
-    // 每核 token 计数区 [aivNum][512B]：各核写入实际处理的 token 数，发送侧恢复全局 tokenId
-    uint64_t coreTokenCntBytes = aivNum * WIN_ADDR_ALIGN;
+
+    info.workspace.slotStartOffset = sendCntBytes;
     info.workspace.tokenHitPerCoreBytes = tokenHitPerCoreBytes;
 
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
@@ -776,7 +782,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + coreTokenCntBytes + hitPerRankBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + slotStartBytes + hitPerRankBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
