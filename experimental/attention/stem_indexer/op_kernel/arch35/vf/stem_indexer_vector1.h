@@ -52,7 +52,6 @@ struct FloatSortConstCtx {
     AscendC::MicroAPI::RegTensor<UInt> nan;
 };
 
-
 template <typename FloatT>
 __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
 {
@@ -64,10 +63,9 @@ __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx
 }
 
 template <typename FloatT>
-__simd_callee__ inline void
-FloatToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
-                   AscendC::MicroAPI::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx,
-                   AscendC::MicroAPI::MaskReg &maskAll)
+__simd_callee__ inline void FloatToSortableKey(
+    AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
+    AscendC::MicroAPI::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
@@ -96,11 +94,11 @@ FloatToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>
 }
 
 template <typename FloatT>
-__simd_callee__ inline void
-FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
-                     AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1,
-                     AscendC::MicroAPI::RegTensor<FloatT> &inVal0, AscendC::MicroAPI::RegTensor<FloatT> &inVal1,
-                     FloatSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
+__simd_callee__ inline void FloatX2ToSortableKey(
+    AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
+    AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1,
+    AscendC::MicroAPI::RegTensor<FloatT> &inVal0, AscendC::MicroAPI::RegTensor<FloatT> &inVal1,
+    FloatSortConstCtx<FloatT> &ctx, AscendC::MicroAPI::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
