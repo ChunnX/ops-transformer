@@ -283,6 +283,9 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     constexpr uint32_t kSpecWarpStart = kNumMathWarpGroups * 4;
     constexpr uint32_t kNumTopkWarps = 8;   // Phase 2 warps (segment-split local TopK + merge)
 
+    const long long dbg_kernel_start = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
+    const long long dbg_p1_start = dbg_kernel_start;
+
     if (warp_idx == kSpecWarpStart) {
         cute::prefetch_tma_descriptor(&tensor_map_q);
         cute::prefetch_tma_descriptor(&tensor_map_sf_q);
@@ -735,6 +738,8 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     // ========================================================================
     __threadfence();
     __syncthreads();
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+        printf("[SPLIT] phase1_cycles=%lld\n", clock64() - dbg_p1_start);
     // ========================================================================
     // PHASE 2: 8-warp split TopK — each warp runs a local radix TopK on its
     // own segment (cached in SMEM when the segment fits), then merges the
@@ -871,6 +876,9 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     }
 
     __syncthreads();
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+        printf("[SPLIT] phase2_cycles=%lld total_cycles=%lld\n",
+               clock64() - dbg_p1_start, clock64() - dbg_kernel_start);
 }
 
 // =============================================================================
