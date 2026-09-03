@@ -54,7 +54,7 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_0)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 197122;
-    std::string expectTilingData = "1099511627778 274877906944 2199023255680 1024 274877906944 0 3 ";
+    std::string expectTilingData = "1099511627778 274877906944 2199023255680 1024 274877906944 0 3 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -89,7 +89,7 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_1)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 570622466;
-    std::string expectTilingData = "824633720835 68719476736 1649267441664 512 274877906944 0 0 ";
+    std::string expectTilingData = "824633720835 68719476736 1649267441664 512 274877906944 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -123,7 +123,8 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_2)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1090716162;
-    std::string expectTilingData = "549755813890 274877906944 2199023255616 8796093022464 274877906960 137438953488 3 ";
+    std::string expectTilingData =
+        "549755813890 274877906944 2199023255616 8796093022464 274877906960 137438953488 3 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

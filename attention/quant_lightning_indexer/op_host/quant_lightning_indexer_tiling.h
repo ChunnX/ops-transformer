@@ -101,6 +101,8 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
+TILING_DATA_FIELD_DEF(uint32_t, enableS1Base8FastPath)
+TILING_DATA_FIELD_DEF(uint32_t, enableDirectIndicesFastPath)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
 
