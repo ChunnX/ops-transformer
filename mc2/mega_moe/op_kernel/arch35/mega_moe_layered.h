@@ -1398,24 +1398,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PublishEx
                                    static_cast<int32_t>(cumsumRevCntInRank_));
     }
 
-    // 仅写当前专家的 cumsum slice；随后发布 token 数和 AIC ready flag。
-    expertTokenCntTensor_.SetValue(0, static_cast<int32_t>(tokenCount));
-    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
-    DataCopy<int32_t>(expertRevNumsGlobalTensor_[expertIdx * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
-                      expertTokenCntTensor_, INT32_PER_256B);
-    DataCopyPad(cumsumInfoGlobalTensor_[expertRankOffset], cumsumInfoTensor_[expertRankOffset],
-                {1U, static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), 0U, 0U, 0U});
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
-    PipeBarrier<PIPE_ALL>();
-    if constexpr (TopkWeightsPrefetch) {
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    }
+    // // 仅写当前专家的 cumsum slice；随后发布 token 数和 AIC ready flag。
+    // expertTokenCntTensor_.SetValue(0, static_cast<int32_t>(tokenCount));
+    // SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+    // DataCopy<int32_t>(expertRevNumsGlobalTensor_[expertIdx * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
+    //                   expertTokenCntTensor_, INT32_PER_256B);
+    // DataCopyPad(cumsumInfoGlobalTensor_[expertRankOffset], cumsumInfoTensor_[expertRankOffset],
+    //             {1U, static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), 0U, 0U, 0U});
+    // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
+    // PipeBarrier<PIPE_ALL>();
+    // if constexpr (TopkWeightsPrefetch) {
+    //     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+    // }
 
-    __gm__ int32_t *tokenCountReadyFlag =
-        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
-        static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
-        static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
-    AscendC::AtomicAdd(tokenCountReadyFlag, static_cast<int32_t>(1));
+    // __gm__ int32_t *tokenCountReadyFlag =
+    //     reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
+    //     static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
+    //     static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+    // AscendC::AtomicAdd(tokenCountReadyFlag, static_cast<int32_t>(1));
 }
 
 // ============================================================================
