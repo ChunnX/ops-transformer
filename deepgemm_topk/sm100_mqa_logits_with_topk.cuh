@@ -66,7 +66,7 @@ CUTLASS_DEVICE void dispatch_num_block_tokens(const uint32_t& num_block_tokens, 
 namespace {
 // Non-volatile shared load: unlike ptx::ld_shared (asm volatile), allows the
 // compiler to reorder/pipeline independent loads (real ILP under unroll).
-CUTLASS_DEVICE inline uint32_t ld_sh(const uint32_t* p) {
+CUTLASS_DEVICE uint32_t ld_sh(const uint32_t* p) {
     uint32_t v;
     asm("ld.shared.u32 %0, [%1];" : "=r"(v) : "l"(__cvta_generic_to_shared(p)));
     return v;
@@ -819,6 +819,23 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             const uint32_t my_len = (my_start < k_len) ? ((my_start + segL > k_len) ? k_len - my_start : segL) : 0;
 
             __threadfence();
+
+            // ==== calibration: empty 32-iteration plain shared scan ====
+            if (blockIdx.x == 0 && warp_idx == 0 && q_token == 0 && my_len > 0 && my_len <= kSegFloats) {
+                long long t0 = clock64();
+                uint32_t acc = 0;
+                #pragma unroll 4
+                for (uint32_t i = lane_idx; i < my_len; i += 32) {
+                    uint32_t u;
+                    asm("ld.shared.u32 %0, [%1];" : "=r"(u) : "l"(__cvta_generic_to_shared(
+                        reinterpret_cast<uint32_t*>(wcache) + i)));
+                    acc += u;
+                }
+                long long t1 = clock64();
+                if (acc == 0xDEADBEEF) printf("never");
+                if (lane_idx == 0) printf("[CAL] empty_scan_32iters=%lld\n", t1 - t0);
+            }
+            __syncwarp();
 
             // ==== stage 1: per-warp segment local TopK ====
             const long long dbg_s1a = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
