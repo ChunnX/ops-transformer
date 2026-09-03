@@ -79,7 +79,8 @@ CUTLASS_DEVICE void warp_bucket_topk(
     float* __restrict__ smem_vals,
     int32_t* __restrict__ smem_idxs,
     const int32_t* __restrict__ imap,   // when kUseMap: output = imap[i] instead of out_base+i
-    const uint32_t lane_idx
+    const uint32_t lane_idx,
+    uint32_t* __restrict__ kth_slot = nullptr   // when non-null: only compute kth, skip output
 ) {
     // index mapper
     auto get_idx = [&](uint32_t i) -> int32_t {
@@ -185,6 +186,12 @@ CUTLASS_DEVICE void warp_bucket_topk(
         kth_value |= (cutoff_bucket << shift);
         definite_count += count_above_cutoff;
         remaining = kSparseCount - definite_count;
+    }
+
+    if (kth_slot != nullptr) {
+        if (lane_idx == 0) *kth_slot = kth_value;
+        __syncwarp();
+        return;
     }
 
     // === Final pass: count definite + stage boundary in ONE scan ===
@@ -850,11 +857,119 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             }
             __syncthreads();
 
-            // ==== stage 3+4: final radix (warp 0, proven correct) ====
+            // ==== stage 3: warp 0 computes global kth (rounds only) ====
             if (warp_idx == 0)
                 warp_bucket_topk<kSparseCount, true, true>(merge_vals, 0, kNumCand,
-                                                           out_ptr, whist, wstage, merge_idx, lane_idx);
+                                                           out_ptr, whist, wstage, merge_idx,
+                                                           lane_idx, gslots);
             __syncthreads();
+            const uint32_t kth_full = gslots[0];
+
+            // ==== stage 4: distributed selection over 8 slices (block-level prefixes) ====
+            {
+                constexpr uint32_t kPerLane2 = (kSparseCount + 31) / 32;
+                const float* mv = merge_vals;
+                auto to_sortable2 = [](float f) -> uint32_t {
+                    uint32_t u = __float_as_uint(f);
+                    return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
+                };
+                auto load_val = [&](uint32_t i) -> uint32_t {
+                    return ptx::ld_shared(reinterpret_cast<const uint32_t*>(mv) + warp_idx * kSlice + i);
+                };
+
+                // per-warp count definite + stage boundary
+                uint32_t my_def = 0, my_col = 0;
+                if (i_active) {
+                    #pragma unroll 4
+                    for (uint32_t i = lane_idx; i < kSlice; i += 32) {
+                        uint32_t u = to_sortable2(__uint_as_float(load_val(i)));
+                        if (u > kth_full) {
+                            my_def++;
+                        } else if (u == kth_full && my_col < kPerLane2) {
+                            wstage[lane_idx * kPerLane2 + my_col] =
+                                merge_idx[warp_idx * kSlice + i];
+                            my_col++;
+                        }
+                    }
+                }
+
+                // block prefix for definite
+                if (i_active && lane_idx == 0) gslots[8 + warp_idx] = my_def;
+                __syncthreads();
+                if (warp_idx == 0) {
+                    uint32_t acc = 0;
+                    for (uint32_t w = 0; w < kNumTopkWarps; ++w) {
+                        uint32_t v = gslots[8 + w];
+                        gslots[8 + w] = acc;
+                        acc += v;
+                    }
+                    gslots[0] = acc;   // total definite
+                }
+                __syncthreads();
+                const uint32_t total_definite = gslots[0];
+
+                // write definite (within-warp prefix + block base)
+                if (i_active) {
+                    uint32_t def_prefix = my_def;
+                    for (int s = 1; s < 32; s <<= 1) {
+                        uint32_t t = __shfl_up_sync(0xFFFFFFFF, def_prefix, s);
+                        if (lane_idx >= s) def_prefix += t;
+                    }
+                    uint32_t run = gslots[8 + warp_idx] + (def_prefix - my_def);
+                    #pragma unroll 4
+                    for (uint32_t i = lane_idx; i < kSlice; i += 32) {
+                        uint32_t u = to_sortable2(__uint_as_float(load_val(i)));
+                        if (u > kth_full) {
+                            out_ptr[run] = merge_idx[warp_idx * kSlice + i];
+                            run++;
+                        }
+                    }
+                }
+                __syncthreads();
+
+                // block prefix for boundary
+                uint32_t my_wc = 0;
+                if (i_active) {
+                    for (int s = 16; s > 0; s >>= 1)
+                        my_wc += __shfl_xor_sync(0xFFFFFFFF, my_col, s);
+                    if (lane_idx == 0) gslots[8 + warp_idx] = my_wc;
+                }
+                __syncthreads();
+                if (warp_idx == 0) {
+                    uint32_t acc = 0;
+                    for (uint32_t w = 0; w < kNumTopkWarps; ++w) {
+                        uint32_t v = gslots[8 + w];
+                        gslots[8 + w] = acc;
+                        acc += v;
+                    }
+                    gslots[1] = acc;   // total collected
+                }
+                __syncthreads();
+                const uint32_t col_warp_base = gslots[8 + warp_idx];
+
+                if (i_active) {
+                    uint32_t col_incl = my_col;
+                    for (int s = 1; s < 32; s <<= 1) {
+                        uint32_t t = __shfl_up_sync(0xFFFFFFFF, col_incl, s);
+                        if (lane_idx >= s) col_incl += t;
+                    }
+                    const uint32_t col_lane_base = col_incl - my_col;
+                    for (uint32_t j = 0; j < my_col; ++j) {
+                        uint32_t pos = total_definite + col_warp_base + col_lane_base + j;
+                        if (pos < kSparseCount)
+                            out_ptr[pos] = wstage[lane_idx * kPerLane2 + j];
+                    }
+                }
+                __syncthreads();
+
+                if (warp_idx == 0) {
+                    const uint32_t rem_slots = kSparseCount - total_definite;
+                    const uint32_t filled = total_definite +
+                        (gslots[1] < rem_slots ? gslots[1] : rem_slots);
+                    for (uint32_t i = filled + lane_idx; i < kSparseCount; i += 32)
+                        out_ptr[i] = -1;
+                }
+            }
 
         }
     }
