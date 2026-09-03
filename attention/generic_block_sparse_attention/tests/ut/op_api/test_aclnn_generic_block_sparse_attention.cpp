@@ -66,8 +66,6 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
     char layoutKv[] = "PA_BBND";
-    auto cuSeqLengthsQ = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS1});
-    auto cuSeqLengthsKv = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS2});
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
@@ -82,8 +80,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
                               nullptr,          // kDequantScaleOptional
                               nullptr,          // vDequantScaleOptional
                               nullptr,          // pQuantScaleOptional
-                              cuSeqLengthsQ,    // cuSeqLengthsQOptional
-                              cuSeqLengthsKv,   // cuSeqLengthsKvOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
                               nullptr,          // sequsedQOptional
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
@@ -334,8 +332,6 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
     char layoutKv[] = "PA_BBND";
-    auto cuSeqLengthsQ = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS1});
-    auto cuSeqLengthsKv = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS2});
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto softmaxLse = TensorDesc({kT, kN1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
 
@@ -351,8 +347,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
                               nullptr,          // kDequantScaleOptional
                               nullptr,          // vDequantScaleOptional
                               nullptr,          // pQuantScaleOptional
-                              cuSeqLengthsQ,    // cuSeqLengthsQOptional
-                              cuSeqLengthsKv,   // cuSeqLengthsKvOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
                               nullptr,          // sequsedQOptional
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
