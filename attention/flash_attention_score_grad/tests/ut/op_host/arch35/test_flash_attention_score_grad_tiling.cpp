@@ -7497,27 +7497,27 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_83_tnd_
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_84_tnd_band_deter_bns2_small_m)
 {
-    // TND + deter + BAND + n2=1 (skip line deter). Cube is 128; S2<=128 keeps n=1 so SupportTNDBns2
-    // can pass with n1%aic=1. S1>128 keeps BN2 (deter off) from winning. token < S keeps isSparse
-    // so deterSparseType is BAND rather than DENSE. p+q>m -> UpdateSeparateDkOffsetSmallM.
-    int64_t actual_seq_qlist[2] = {256, 512};
+    // Stay TND: different per-batch S1 so isAllSame is false (equal lengths are rewritten to pad
+    // in ProcessSparseModeInfo and CalcleTNDDeterParam never runs). S2=128 keeps n=1 for
+    // SupportTNDBns2. S1>128 / token<S / n2=1 as before. p+q>m -> SmallM.
+    int64_t actual_seq_qlist[2] = {256, 640};
     int64_t actual_seq_kvlist[2] = {128, 256};
     auto compileInfo = MakeA5CompileInfo();
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
         {
-            {{{512, 1, 64}, {512, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 64}, {640, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{512, 1, 64}, {512, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 64}, {640, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},
-            {{{512, 1, 8}, {512, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{512, 1, 8}, {512, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{640, 1, 8}, {640, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{640, 1, 8}, {640, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{512, 1, 64}, {512, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 64}, {640, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
             {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
@@ -7532,7 +7532,7 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_84_tnd_
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
-            {{{512, 1, 64}, {512, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{640, 1, 64}, {640, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -7558,26 +7558,25 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_84_tnd_
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_85_tnd_band_deter_bns2_large_m)
 {
-    // Same BN2S2 + SupportTNDBns2 gate as tiling_84 (S2=128 -> n=1), but S1=512 so p+q<=m
-    // after BAND token rewrite (LargeM / UpdateSeparateDkOffsetLargeM).
-    int64_t actual_seq_qlist[2] = {512, 1024};
+    // Same TND/BN2S2/SupportTNDBns2 gates as tiling_84 (unequal S1, S2=128). Larger S1 so p+q<=m.
+    int64_t actual_seq_qlist[2] = {512, 1152};
     int64_t actual_seq_kvlist[2] = {128, 256};
     auto compileInfo = MakeA5CompileInfo();
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
         {
-            {{{1024, 1, 64}, {1024, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1152, 1, 64}, {1152, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1024, 1, 64}, {1024, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1152, 1, 64}, {1152, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},
-            {{{1024, 1, 8}, {1024, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1024, 1, 8}, {1024, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1152, 1, 8}, {1152, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1152, 1, 8}, {1152, 1, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1024, 1, 64}, {1024, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1152, 1, 64}, {1152, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
             {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
             {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
@@ -7592,7 +7591,7 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_85_tnd_
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
-            {{{1024, 1, 64}, {1024, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1152, 1, 64}, {1152, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{256, 1, 64}, {256, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
