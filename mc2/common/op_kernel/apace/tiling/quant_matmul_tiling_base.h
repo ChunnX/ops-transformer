@@ -47,7 +47,7 @@ public:
         PrintTilingData(tilingData);
     }
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData &tilingData) const
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData &tilingData)
     {
         // Keep compatibility with the common sample default:
         // A is not transposed and B is transposed.

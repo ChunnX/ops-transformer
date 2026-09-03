@@ -209,7 +209,7 @@ private:
         CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize);
     }
 
-    void AdjustBasicBlock() const
+    void AdjustBasicBlock()
     {
         // Re-balance the initial M/N split when the first guess underutilizes
         // cores or produces a highly skewed tile.
@@ -312,7 +312,7 @@ private:
             runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
     }
 
-    void HalveBaseMForPipeline() const
+    void HalveBaseMForPipeline()
     {
         // baseM/baseN may still be zero at this point (CHECK_COND runs later in
         // CalcBasicBlock), so guard against divide-by-zero in the CeilDiv below.
