@@ -721,7 +721,6 @@ ge::graphStatus GBSATiling::CheckQuantConfig(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "returnSoftmaxlse=1 is not supported for FP8 full-quant path.");
         return ge::GRAPH_FAILED;
     }
-    // Runtime FD is selected by metadata; its combine stage also writes the final LSE when requested.
     fdStaticEnabled_ = topK_ >= 12U;
     return ge::GRAPH_SUCCESS;
 }

@@ -50,8 +50,6 @@ public:
         globalLseUb_ = resource.ubBuf.template GetBufferByByte<float>(GLOBAL_LSE_OFFSET);
         oTmpUb_ = resource.ubBuf.template GetBufferByByte<float>(O_TMP_OFFSET);
         oAccUb_ = resource.ubBuf.template GetBufferByByte<float>(O_ACC_OFFSET);
-        // The partial O tile is dead after accumulation, so its storage can be
-        // reused for the cast output without overlapping any live data.
         oOutUb_ = resource.ubBuf.template GetBufferByByte<ElementO>(O_TMP_OFFSET);
         reduceTmpUb_ = resource.ubBuf.template GetBufferByByte<uint8_t>(REDUCE_TMP_OFFSET);
     }
@@ -80,13 +78,8 @@ public:
             return;
         }
 
-        // On C220, GetBlockIdx() is the global AIV lane id in the vector
-        // branch, while GetBlockNum() is the launched AIC count.
         const uint32_t aivIdx = AscendC::GetBlockIdx();
         const uint32_t aivNum = blockNum * subBlockNum;
-        // Keep source row ownership identical to the Arch22 partial writers.
-        // For the single-row case, source sub-block 0 is empty and source
-        // sub-block 1 owns the only row.
         const uint32_t rowSplit = groupSize == 1 ? 0 : groupSize / subBlockNum;
         const uint32_t sub0Rows = rowSplit;
         const uint32_t sub1Rows = groupSize - rowSplit;
@@ -99,9 +92,6 @@ public:
         const uint32_t lseSubStride = tilingData->fdLseSubStride;
         const uint32_t lsePartialStride = 2 * lseSubStride;
 
-        // Flatten (combine task, source sub-block, row tile) and distribute the
-        // work globally across all AIVs. A tile never crosses the partial
-        // writer's sub-block boundary, so its LSE rows remain contiguous in GM.
         for (uint32_t work = aivIdx; work < workCount; work += aivNum) {
             const uint32_t combineTask = work / tilesPerTask;
             const uint32_t tileInTask = work % tilesPerTask;

@@ -138,9 +138,6 @@ public:
         uint32_t embedRound = RoundUp(embed_, 16);
 
 #ifdef __DAV_VEC__
-        // Metadata schedules packed actual Q tokens. Explicitly initialize the
-        // storage-only tail of every request so graph padding can never expose
-        // allocator residue through the attention output (or public LSE).
         if (hasSequsedQ) {
             uint32_t paddingTask = 0U;
             for (uint32_t batchIdx = 0U; batchIdx < batch_; ++batchIdx) {
@@ -244,7 +241,6 @@ public:
             auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, 1);
             auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
-            // Causal decode requires kvSeqlen >= qSeqlen; otherwise historyLen would underflow.
             if (qSeqlen == 0U || kvSeqlen == 0U || kvSeqlen < qSeqlen) {
 #ifdef __DAV_VEC__
                 if (isFdPartial) {

@@ -189,8 +189,6 @@ public:
         uint32_t rowNumRound = RoundUp(groupSize, 16);
 
 #ifdef __DAV_C220_VEC__
-        // The scheduler omits storage padding from its packed task space.
-        // Initialize those rows explicitly to avoid propagating stale GM data.
         if (hasSequsedQ) {
             uint32_t paddingTask = 0U;
             for (uint32_t batchIdx = 0U; batchIdx < batch_; ++batchIdx) {
@@ -436,7 +434,6 @@ public:
 
                     NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
 
-                    // LSE GM must use storage token index (same as O), not packed task index.
                     if (isFdPartial) {
                         epilogueRescaleO.ProcessPartial(
                             gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],

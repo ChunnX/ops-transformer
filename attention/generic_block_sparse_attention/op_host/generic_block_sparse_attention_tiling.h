@@ -63,7 +63,6 @@ TILING_DATA_FIELD_DEF(uint32_t, pL1BufNum);
 // PAGED_BBND page base stride in elements (dim0). Allows first-axis non-contiguous KV cache.
 TILING_DATA_FIELD_DEF(uint64_t, kStride0);
 TILING_DATA_FIELD_DEF(uint64_t, vStride0);
-// Flash Decoding runtime capability and worst-case partial workspace.
 TILING_DATA_FIELD_DEF(uint32_t, fdStaticEnabled);
 TILING_DATA_FIELD_DEF(uint32_t, fdLseSubStride);
 TILING_DATA_FIELD_DEF(uint32_t, fdPartialCapacity);

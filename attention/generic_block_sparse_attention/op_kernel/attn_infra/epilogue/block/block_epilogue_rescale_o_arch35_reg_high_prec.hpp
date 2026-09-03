@@ -643,10 +643,6 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         AscendC::Duplicate(goUbTensor16, static_cast<ElementO>(0), rowNum * colStride);
         if constexpr (DispatchPolicy::LSE_MODE == LseMode::OUT_ONLY) {
-            // TN1/BSN1 LSE rows use an 8-float UB stride in CopyUbToGmLse.
-            // Initialize the complete strided span, otherwise only head 0 is
-            // deterministic and the remaining empty-head LSE values expose UB
-            // residue.
             AscendC::Duplicate(lseUbTensor32, -3.402823466e+38F, rowNum * 8U);
         }
         AscendC::PipeBarrier<PIPE_V>();
