@@ -416,8 +416,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline Apace::Basic::FragmentParam<AllGatherQbmmMxKernel<AType, BType, CType>::DIMS_NUM>
-AllGatherQbmmMxKernel<AType, BType, CType>::MakeFragParam(
-    uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt, uint64_t shape1) const
+AllGatherQbmmMxKernel<AType, BType, CType>::MakeFragParam(uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt,
+                                                          uint64_t shape1) const
 {
     Apace::Basic::FragmentParam<DIMS_NUM> param{};
     param.assembleAxis = 0;
