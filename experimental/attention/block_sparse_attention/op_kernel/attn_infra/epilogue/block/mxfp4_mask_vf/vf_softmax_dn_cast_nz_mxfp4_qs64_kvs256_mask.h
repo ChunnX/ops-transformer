@@ -15,10 +15,10 @@
  * \brief
  */
 
-#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS64_KVS256_H_
-#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS64_KVS256_H_
+#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS64_KVS256_MASK_H_
+#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS64_KVS256_MASK_H_
 #include "kernel_tensor.h"
-#include "vf_common_def.h"
+#include "../mxfp4_vf/vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
 using AscendC::LocalTensor;
@@ -293,4 +293,4 @@ __aicore__ inline void SoftmaxWithGroupMaxQs64Kvs256ChunkCallVF(
 }
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS64_KVS256_H_
+#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS64_KVS256_MASK_H_

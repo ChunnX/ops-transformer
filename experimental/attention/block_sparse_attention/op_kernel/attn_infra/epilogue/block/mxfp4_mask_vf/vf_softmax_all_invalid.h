@@ -11,7 +11,7 @@
 #ifndef VF_SOFTMAX_ALL_INVALID_H_
 #define VF_SOFTMAX_ALL_INVALID_H_
 #include "kernel_tensor.h"
-#include "vf_common_def.h"
+#include "../mxfp4_vf/vf_common_def.h"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
 using AscendC::LocalTensor;
 using namespace AscendC;

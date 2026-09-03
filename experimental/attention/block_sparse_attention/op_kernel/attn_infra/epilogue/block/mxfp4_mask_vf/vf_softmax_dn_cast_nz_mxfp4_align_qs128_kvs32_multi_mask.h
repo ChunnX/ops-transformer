@@ -12,9 +12,9 @@
  * \brief softmax + mxfp4 quant for qs=128, kvs padding 32 multi (kvsActBaseTileAlign32 >= 64, runtime variable)
  */
 
-#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
-#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
-#include "vf_common_def.h"
+#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_MASK_H_
+#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_MASK_H_
+#include "../mxfp4_vf/vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -299,4 +299,4 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiChunkCallVF(
 }
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
+#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_MASK_H_

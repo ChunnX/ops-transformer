@@ -8,9 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_H_
-#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_H_
-#include "vf_common_def.h"
+#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_MASK_H_
+#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_MASK_H_
+#include "../mxfp4_vf/vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -283,4 +283,4 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32MultiChunkCallVF(
 }
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_H_
+#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS64_KVS32_MULTI_MASK_H_

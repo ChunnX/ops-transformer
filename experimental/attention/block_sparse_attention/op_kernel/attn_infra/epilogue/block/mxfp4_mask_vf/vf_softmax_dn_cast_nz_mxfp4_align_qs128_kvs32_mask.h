@@ -15,9 +15,9 @@
  * \brief
  */
 
-#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_H_
-#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_H_
-#include "vf_common_def.h"
+#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MASK_H_
+#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MASK_H_
+#include "../mxfp4_vf/vf_common_def.h"
 #include "../../bsa_epilogue_dispatch_policy.hpp"
 
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
@@ -224,4 +224,4 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32CallVF(
 }
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF
-#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_H_
+#endif // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MASK_H_
