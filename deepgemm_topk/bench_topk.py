@@ -192,14 +192,6 @@ def main():
 
     print()
 
-if __name__ == '__main__':
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == 'l2':
-        bench_l2_reuse_experiment()
-    else:
-        main()
-
-
 def bench_l2_reuse_experiment():
     """A/B: next_n=4 shared-KV vs next_n=1 no-sharing (equal work), Phase 1 only."""
     import deep_gemm
@@ -263,3 +255,11 @@ def bench_l2_reuse_experiment():
     print(f"[L2REUSE] A(next_n=4 shared KV, 156MB): {ta:.1f} us")
     print(f"[L2REUSE] B(next_n=1 no-share,   624MB): {tb:.1f} us")
     print(f"[L2REUSE] A/B = {ta/tb:.2f}  (若显著<1 → 复用已在生效; 若≈1 → 有优化空间)")
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'l2':
+        bench_l2_reuse_experiment()
+    else:
+        main()
+
