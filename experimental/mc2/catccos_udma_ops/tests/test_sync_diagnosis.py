@@ -294,7 +294,10 @@ def test_mssanitizer_build_enables_only_ready_wait_timeout_diagnostics():
     assert "-DASCENDC_DUMP=1" in mssanitizer_branch
     assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1" not in mssanitizer_branch
 
-    assert "READY_WAIT_TIMEOUT_CYCLES = 6000000000LL" in kernel
+    assert "READY_WAIT_TIMEOUT_CYCLES = 15000000000LL" in kernel
+    assert '"observed=0x%x expected=0x%x "' in kernel
+    assert "observed_hi=" not in kernel
+    assert "expected_hi=" not in kernel
     assert "dcci_cacheline((__gm__ uint8_t *)readyAddress)" in kernel
     assert "AscendC::GetSystemCycle() - startCycle" in kernel
     assert "trap();" in kernel
