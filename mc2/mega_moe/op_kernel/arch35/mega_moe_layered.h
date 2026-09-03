@@ -1403,8 +1403,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PublishEx
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopy<int32_t>(expertRevNumsGlobalTensor_[expertIdx * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
                       expertTokenCntTensor_, INT32_PER_256B);
-    // DataCopyPad(cumsumInfoGlobalTensor_[expertRankOffset], cumsumInfoTensor_[expertRankOffset],
-    //             {1U, static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), 0U, 0U, 0U});
+    DataCopyPad(cumsumInfoGlobalTensor_[expertRankOffset], cumsumInfoTensor_[expertRankOffset],
+                {1U, static_cast<uint32_t>(worldSize_ * sizeof(int32_t)), 0U, 0U, 0U});
     // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
     // PipeBarrier<PIPE_ALL>();
     // if constexpr (TopkWeightsPrefetch) {
