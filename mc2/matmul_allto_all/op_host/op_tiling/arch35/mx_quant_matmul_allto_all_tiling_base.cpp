@@ -701,7 +701,7 @@ const gert::Shape &MxQuantMatmulAlltoAllHelper::GetScaleShape(const size_t index
 const gert::StorageShape *MxQuantMatmulAlltoAllHelper::GetOffsetShape(const size_t index)
 {
     (void)index;
-    return (gert::StorageShape *)nullptr;
+    return nullptr;
 }
 
 const gert::StorageShape *MxQuantMatmulAlltoAllHelper::GetPertokenShape(const size_t index)
@@ -793,8 +793,8 @@ ge::graphStatus MxQuantMatmulAlltoAllHelper::PostTiling()
  */
 MxQuantMatmulAlltoAllHelper::MxQuantMatmulAlltoAllHelper(
     MxQuantMatmulAllToAllTilingBase &mxQuantMatmulAllToAllTilingBase,
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mmMvalueLen)
-    : Mc2AdaptiveSlidingWindowTiling(mxQuantMatmulAllToAllTilingBase.context_, &data),
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen)
+    : Mc2AdaptiveSlidingWindowTiling(mxQuantMatmulAllToAllTilingBase.context_, &out),
       tilingProcesser_(mxQuantMatmulAllToAllTilingBase),
       mmLen_(mmMvalueLen)
 {}
@@ -881,10 +881,10 @@ void MxQuantMatmulAllToAllTilingBase::PrintMxQuantMatmulAlltoAllTilingInfo(const
     OP_LOGD(opName, "tilingInfo.rankK: %u", tilingInfo.rankK);
     OP_LOGD(opName, "tilingInfo.rankN: %u", tilingInfo.rankN);
     OP_LOGD(opName, "tilingInfo.biasLen: %u", tilingInfo.biasLen);
-    OP_LOGD(opName, "tilingInfo.permuteLen: %u", tilingInfo.permuteLen);
-    OP_LOGD(opName, "tilingInfo.mmResultLen: %u", tilingInfo.mmResultLen);
+    OP_LOGD(opName, "tilingInfo.permuteLen: %lu", tilingInfo.permuteLen);
+    OP_LOGD(opName, "tilingInfo.mmResultLen: %lu", tilingInfo.mmResultLen);
     OP_LOGD(opName, "tilingInfo.aicCoreNum: %u", tilingInfo.aicCoreNum);
-    OP_LOGD(opName, "tilingInfo.hcclDataType: %u", tilingInfo.hcclDataType);
+    OP_LOGD(opName, "tilingInfo.hcclDataType: %lu", tilingInfo.hcclDataType);
 }
 
 /**
