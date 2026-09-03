@@ -23,7 +23,9 @@ constexpr static int64_t QUANTIZE_TENSOR_NUM = 2;
 constexpr static int64_t ROPE_LAST_DIM_SPLIT = 2;
 constexpr static int64_t FP16_ONE_BLOCK_NUM = 16;
 constexpr static int64_t FP16_ONE_REPEAT_NUM = 128;
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
 constexpr static DivConfig DIV_PRECISION_0ULP = {DivAlgo::PRECISION_0ULP_FTZ_FALSE};
+#endif
 class RopeQuantKvcache {
 public:
     __aicore__ inline RopeQuantKvcache(const RopeQuantKvcacheTilingData *tilingData)
@@ -77,9 +79,8 @@ public:
                             qDataNum * sizeof(half) + kvDataNum * sizeof(half) +
                                 this->hiddenSize * sizeof(half) * ROPE_TENSOR_NUM +
                                 this->hiddenSize * sizeof(float) * QUANTIZE_TENSOR_NUM);
-            pipe.InitBuffer(
-                outQueue, 1, qDataNum * sizeof(half) + kvDataNum * sizeof(float) +
-                    this->hiddenSize * sizeof(float) * 4);
+            pipe.InitBuffer(outQueue, 1,
+                            qDataNum * sizeof(half) + kvDataNum * sizeof(float) + this->hiddenSize * sizeof(float) * 4);
         } else if (taskId == 0) {
             inputGm.SetGlobalBuffer((__gm__ half *)qkv + qkvBlockOffset + this->qHiddenSize);
 
@@ -103,8 +104,7 @@ public:
             pipe.InitBuffer(inQueue, 1,
                             kvDataNum * sizeof(half) + this->hiddenSize * sizeof(half) * ROPE_TENSOR_NUM +
                                 this->hiddenSize * sizeof(float) * QUANTIZE_TENSOR_NUM);
-            pipe.InitBuffer(
-                outQueue, 1, kvDataNum * sizeof(float) + this->hiddenSize * sizeof(float) * 3);
+            pipe.InitBuffer(outQueue, 1, kvDataNum * sizeof(float) + this->hiddenSize * sizeof(float) * 3);
         }
     }
 
@@ -172,7 +172,11 @@ private:
         }
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
             Div<float, DIV_PRECISION_0ULP>(vOutUbF32[rowOffset], vOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
+#else
+            Div(vOutUbF32[rowOffset], vOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
+#endif
         }
         PipeBarrier<PIPE_V>();
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
@@ -247,7 +251,11 @@ private:
 
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
             Div<float, DIV_PRECISION_0ULP>(kOutUbF32[rowOffset], kOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
+#else
+            Div(kOutUbF32[rowOffset], kOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
+#endif
         }
         PipeBarrier<PIPE_V>();
 
