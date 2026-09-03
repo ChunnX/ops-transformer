@@ -894,14 +894,20 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoHcommMxQuantMMTiling()
     uint64_t nValue = contextInfo_.args_.nValue;
     bool transB = contextInfo_.args_.isBTrans;
     constexpr uint32_t localMatmulDisabled = 0; // 不使用LOCAL前置, 默认为融合REMOTE模式
+    // bias 与 A/B/scale 同样驻留 L1（kernel 侧 l1BufferBiasOffset_ 布局），tiling 预算须同步计入；
+    // hasBias 与 kernel 侧 isBias_ 同源（optional bias 输入的存在性）
+    bool hasBias = contextInfo_.args_.isBias;
+    uint64_t biasDataSize = hasBias ? mc2tiling::GetDataTypeSize(opName_, contextInfo_.args_.geBiasType) : 0UL;
 
     if (isMxFp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
         tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(hasBias, biasDataSize);
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
         tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(hasBias, biasDataSize);
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
     hcommTilingData_.localMatmul = localMatmulDisabled;
