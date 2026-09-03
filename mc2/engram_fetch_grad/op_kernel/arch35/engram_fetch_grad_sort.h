@@ -379,9 +379,10 @@ __aicore__ inline uint64_t EngramFetchGradSort::GetWorkspaceSize(uint32_t totalE
     uint64_t sortTempBytes = static_cast<uint64_t>(totalElements) * sizeof(int32_t);
     uint64_t sortTempSize = (sortTempBytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
     uint64_t simtStagingBytes = static_cast<uint64_t>(numCores) * SimtStagingPerCore(MAX_SINGLE_CORE_ELEMENTS);
-    return INDICE_AND_INDEX_NUMBER * sortTempSize + INDICE_AND_INDEX_NUMBER * static_cast<uint64_t>(sortTileCount) *
-           HISTOGRAM_BINS * sizeof(int32_t) + HISTOGRAM_BINS * sizeof(int32_t) +
-           static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) + simtStagingBytes;
+    return INDICE_AND_INDEX_NUMBER * sortTempSize +
+           INDICE_AND_INDEX_NUMBER * static_cast<uint64_t>(sortTileCount) * HISTOGRAM_BINS * sizeof(int32_t) +
+           HISTOGRAM_BINS * sizeof(int32_t) + static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) +
+           simtStagingBytes;
 }
 
 __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements, uint32_t numCores)
