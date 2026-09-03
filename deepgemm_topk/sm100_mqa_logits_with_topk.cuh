@@ -951,6 +951,15 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     kth |= (gslots[0] << shift);
                     def_cnt += gslots[1];
                     rem = kSparseCount - def_cnt;
+                    if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0) {
+                        uint32_t hsum = 0;
+                        for (uint32_t ii = lane_idx; ii < 256; ii += 32) hsum += ghist[ii];
+                        hsum = hsum + 0;
+                        uint32_t hs = 0;
+                        for (int s = 16; s > 0; s >>= 1) hs += __shfl_xor_sync(0xFFFFFFFF, hsum, s);
+                        printf("[FDBG] r=%d cutoff=%u cao=%u rem=%u hist_sum=%u\n",
+                               round, gslots[0], gslots[1], rem, hs);
+                    }
                 }
 
                 const uint32_t kth_full = kth;
