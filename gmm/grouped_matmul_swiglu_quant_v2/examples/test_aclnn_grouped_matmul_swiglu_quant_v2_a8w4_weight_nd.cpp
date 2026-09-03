@@ -232,8 +232,6 @@ int main() {
         aclrtFree(weightScaleDeviceAddr[i]);
         aclrtFree(weightAssistMatrixDeviceAddr[i]);
     }
-    aclrtFree(weightDeviceAddr);
-    aclrtFree(weightScaleDeviceAddr);
     aclrtFree(xScaleDeviceAddr);
     aclrtFree(groupListDeviceAddr);
     aclrtFree(outputDeviceAddr);
