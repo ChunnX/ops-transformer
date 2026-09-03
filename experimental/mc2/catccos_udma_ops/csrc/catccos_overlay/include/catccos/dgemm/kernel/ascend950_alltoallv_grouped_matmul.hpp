@@ -512,9 +512,6 @@ public:
         aclshmemx_barrier_all_vec();
 
         uint32_t receiveAccum = 0;
-#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-        bool quietFailureReported = false;
-#endif
         auto commLoops = scheduler.GetCommLoops();
         if constexpr (EXPORT_ALLTOALLV) {
             static_assert(!std::is_void_v<BlockExport>,
@@ -699,26 +696,14 @@ public:
                 // quiet has drained this worker's queue; a fence alone does
                 // not make the remote stage consumable by the export path.
                 if constexpr (EXPORT_ALLTOALLV) {
-                    uint32_t quietStatus = 0;
                     if (isCommWorker) {
                         if (params.completionMode ==
                             COMPLETION_MODE_GENERATION_AFTER_QUIET) {
-                            quietStatus =
-                                blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                            (void)blockRemoteCopy.FinalizeBlockLoopWithStatus();
                         } else {
                             blockRemoteCopy.FinalizeBlockLoop();
                         }
                     }
-#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-                    if (quietStatus != 0 && !quietFailureReported) {
-                        AscendC::printf(
-                            "[CATCCOS_UDMA_SYNC_DIAG] "
-                            "quiet_poll_failure rank=%u peer=%u comm=%u "
-                            "status=0x%x\n",
-                            rankIdx, completionPeerIdx, commIdx, quietStatus);
-                        quietFailureReported = true;
-                    }
-#endif
                     if (!useStrongReady && completedBlocks > 0) {
                         if (useGenerationReady) {
                             // Diagnostic midpoint: preserve the legacy UDMA
@@ -808,15 +793,21 @@ public:
                             // The local MTE copy is joined by the AIV
                             // inter-block barrier below. Only remote sources
                             // need WWN slots.
-                            if (srcRankIdx == rankIdx ||
+                            if (srcRankIdx == rankIdx) {
+                                continue;
+                            }
+                            uint32_t receiveRows =
                                 scheduler.GetActualReceiveRows(
-                                    commIdx, srcRankIdx) == 0) {
+                                    commIdx, srcRankIdx);
+                            if (receiveRows == 0) {
                                 continue;
                             }
                             auto readyAddress = syncCommReady +
                                 stageIdx * READY_SLOT_RANKS + srcRankIdx;
-                            aclshmemi_signal_wait_until_eq<uint64_t>(
-                                readyAddress, readyGeneration);
+                            WaitForStrongReady(
+                                readyAddress, readyGeneration, rankIdx,
+                                srcRankIdx, commIdx, stageIdx,
+                                receiveRows);
                         }
                     }
                 } else {
@@ -881,6 +872,69 @@ public:
     }
 
 private:
+    CATLASS_DEVICE
+    static void WaitForStrongReady(
+        __gm__ volatile uint64_t *readyAddress,
+        uint64_t expectedGeneration,
+        uint32_t rankIdx,
+        uint32_t srcRankIdx,
+        uint32_t commIdx,
+        uint32_t stageIdx,
+        uint32_t receiveRows)
+    {
+#if defined(CATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS) && \
+    CATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS
+        // GetSystemCycle uses a fixed 50 MHz clock: 120 s * 50,000,000.
+        constexpr int64_t READY_WAIT_TIMEOUT_CYCLES = 6000000000LL;
+        // Reading the clock less often keeps the diagnostic close to the
+        // original SHMEM wait loop, whose only operations are DCCI + GM load.
+        constexpr uint32_t CLOCK_CHECK_POLL_MASK = 0xFFFU;
+        int64_t startCycle = AscendC::GetSystemCycle();
+        uint32_t pollCount = 0;
+
+        while (true) {
+            dcci_cacheline((__gm__ uint8_t *)readyAddress);
+            uint64_t observedGeneration = *readyAddress;
+            if (observedGeneration == expectedGeneration) {
+                return;
+            }
+            if ((++pollCount & CLOCK_CHECK_POLL_MASK) != 0) {
+                continue;
+            }
+
+            int64_t elapsedCycles =
+                AscendC::GetSystemCycle() - startCycle;
+            if (elapsedCycles < READY_WAIT_TIMEOUT_CYCLES) {
+                continue;
+            }
+
+            uint64_t readyAddressValue =
+                reinterpret_cast<uint64_t>(readyAddress);
+            AscendC::printf(
+                "[CATCCOS_UDMA_A2AV_GMM_READY_TIMEOUT] "
+                "rank=%u source=%u comm=%u stage=%u rows=%u "
+                "observed_hi=0x%x observed_lo=0x%x "
+                "expected_hi=0x%x expected_lo=0x%x "
+                "address_hi=0x%x address_lo=0x%x elapsed_ms=%u\n",
+                rankIdx, srcRankIdx, commIdx, stageIdx, receiveRows,
+                static_cast<uint32_t>(observedGeneration >> 32),
+                static_cast<uint32_t>(observedGeneration),
+                static_cast<uint32_t>(expectedGeneration >> 32),
+                static_cast<uint32_t>(expectedGeneration),
+                static_cast<uint32_t>(readyAddressValue >> 32),
+                static_cast<uint32_t>(readyAddressValue),
+                static_cast<uint32_t>(elapsedCycles / 50000LL));
+            // Emit exactly one diagnostic record, then fail the kernel so the
+            // host-side synchronizer receives an actionable device exception.
+            trap();
+            return;
+        }
+#else
+        aclshmemi_signal_wait_until_eq<uint64_t>(
+            readyAddress, expectedGeneration);
+#endif
+    }
+
     template <class ExportCopy>
     CATLASS_DEVICE
     void ExportCurrentStage(

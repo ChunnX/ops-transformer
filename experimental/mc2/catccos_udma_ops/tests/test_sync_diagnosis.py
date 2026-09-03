@@ -266,11 +266,38 @@ def test_kernel_and_runner_keep_the_five_modes_isolated():
     assert '"generation_after_quiet",' in runner
     assert "syncCommReady" in kernel
     assert "aclshmemi_signal_wait_until_eq<uint64_t>" in kernel
-    assert "quiet_poll_failure" in kernel
+    assert "quiet_poll_failure" not in kernel
+    assert "CATCCOS_UDMA_A2AV_GMM_READY_TIMEOUT" in kernel
     assert "aclshmemx_udma_put_signal_nbi" in tile
     assert "aclshmemi_udma_poll_cq" in tile
     assert 'caller_repeats = (' in worker
     assert '"all_to_allv_export"' in worker
+
+
+def test_mssanitizer_build_enables_only_ready_wait_timeout_diagnostics():
+    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+
+    mssanitizer_branch = root_cmake.split(
+        "elseif(CATCCOS_UDMA_MSSANITIZER)", 1
+    )[1].split("else()", 1)[0]
+    assert "-DCATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS=1" in mssanitizer_branch
+    assert "-DASCENDC_DUMP=1" in mssanitizer_branch
+    assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1" not in mssanitizer_branch
+
+    assert "READY_WAIT_TIMEOUT_CYCLES = 6000000000LL" in kernel
+    assert "dcci_cacheline((__gm__ uint8_t *)readyAddress)" in kernel
+    assert "AscendC::GetSystemCycle() - startCycle" in kernel
+    assert "trap();" in kernel
 
 
 def test_production_default_uses_strong_ready_without_l2_bypass(monkeypatch):
