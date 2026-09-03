@@ -1730,14 +1730,14 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - key/value的数据类型为INT8时，inputLayout不支持TND
     - Q_S = 1时：
       - inputLayout不支持BNSD_BSND
-      - 当key/value的数据类型为INT8, keyAntiquantMode = 0且valueAntiquantMode = 1时，query和output的数据类型仅支持FLOAT16（key/value五维排布且D0维等于32的场景除外，该场景query和output仅支持BFLOAT16）
+      - 当key/value的数据类型为INT8, keyAntiquantMode = 0且valueAntiquantMode = 1时，query和output的数据类型仅支持FLOAT16（PagedAttention的NZ排布场景除外，该场景query和output仅支持BFLOAT16）
     - Q_S > 1时：
       - key/value的数据类型为INT8时，keyAntiquantMode不支持2，3，4，5
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，query和output的数据类型仅支持BFLOAT16
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，Q_S长度不能大于16
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持tensor list
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持左padding
-      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持page attention（key/value五维排布且D0维等于32的场景除外，该场景PagedAttention必须开启）
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持page attention（PagedAttention的NZ排布场景除外，该场景PagedAttention必须开启）
       - key/value的数据类型不支持INT4、INT32
     - page attention场景下，入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
       - tensor shape应满足以下条件：
@@ -1745,17 +1745,17 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - per-token叠加per-head模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
         - per-token-group模式，shape的倒数第二维应大于等于maxBlockNumPerBatch * blockSize
     - 不支持合并rope
-    - key/value五维排布且D0维等于32的场景（key/value shape为五维[blockNum, N, D/32, blockSize, 32]，K_D=V_D=128）：
+    - PagedAttention的NZ排布场景（kv cache排布为[blockNum, KV_N, D/32, blockSize, 32]，K_D=V_D=128）：
       - query：BFLOAT16，Q_S支持[1,16]，Q_D=128
       - key/value：INT8
       - inputLayout仅支持BSH、BSND、BNSD
       - innerPrecise仅支持1（高性能模式）
-      - 仅支持KV分离，不支持非对称量化（antiquantOffset、keyAntiquantOffset、valueAntiquantOffset）
+      - 仅支持KV参数分离量化，不支持非对称量化，不支持传入antiquantOffset、keyAntiquantOffset、valueAntiquantOffset
       - 不支持配置queryRope和keyRope
       - PagedAttention必须开启，blockSize仅支持128或512
       - Mask：当MTP等于0时，支持sparseMode=0且attenMask为nullptr；当MTP大于0、小于16时，支持sparseMode=3（传入优化后的attenMask矩阵，shape为2048*2048）
       - per-channel（keyAntiquantMode=0、valueAntiquantMode=0）：keyAntiquantScale的shape，inputLayout为BSH时为[H]，inputLayout为BNSD时为[N,1,D]，inputLayout为BSND时为[N,D]；valueAntiquantScale同keyAntiquantScale
-      - per-token（keyAntiquantMode=1、valueAntiquantMode=1）：keyAntiquantScale的shape为[B,S]，S需要大于等于blockTable的第二维*blockSize；valueAntiquantScale同keyAntiquantScale
+      - per-token（keyAntiquantMode=1、valueAntiquantMode=1）：keyAntiquantScale的shape为[B,S]，S需要大于等于blockTable的第二维 * blockSize；valueAntiquantScale同keyAntiquantScale
       - 不支持左padding、tensorlist、pse、prefix、后量化
   - 全量化场景
     - Decode MLA全量化
