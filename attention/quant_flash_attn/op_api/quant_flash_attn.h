@@ -36,6 +36,9 @@ namespace l0op {
  * @param sinksOptional       learnable sink weights (optional, FLOAT32)
  * @param attnMaskOptional    attention mask (optional, INT8)
  * @param metadataOptional    pre-computed tiling metadata (optional, INT32)
+ * @param vTailOptional       V tail block in bf16 for high-precision window (optional, BF16)
+ * @param blockTableTailOptional block index table for v_tail (optional, INT32)
+ * @param sequsedKvTailOptional per-batch tail length <64, main = seqused_kv - tail (optional, INT32)
  * @param quantMode           quantization mode (int64_t): 1=A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32
  * @param softmaxScale        softmax scaling factor (double)
  * @param maskMode            mask mode (int64_t)
@@ -57,9 +60,11 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     const aclTensor *vDescale, const aclTensor *blockTableOptional, const aclTensor *pScaleOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
-    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutQDescale,
-    const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse, aclOpExecutor *executor);
+    const aclTensor *metadataOptional, const aclTensor *vTailOptional, const aclTensor *blockTableTailOptional,
+    const aclTensor *sequsedKvTailOptional, int64_t quantMode, double softmaxScale, int64_t maskMode,
+    int64_t winLeft, int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ,
+    const char *layoutQDescale, const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse,
+    aclOpExecutor *executor);
 
 } // namespace l0op
 

@@ -34,6 +34,9 @@ static constexpr float FLOAT_INF = 3e+99;
 static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 static constexpr uint32_t QFA_HEAD_NEED_INIT_OUTPUT_INDEX = 15U;
 
+// V尾块(高精窗口)边界: 与 v_descale 的 64 粒度保持一致, kernel与量化cache写入侧共享的单一事实来源
+static constexpr uint32_t MXFP8_V_TAIL_BOUNDARY = 64U;
+
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
@@ -197,6 +200,7 @@ struct RunInfoX {
     uint32_t actSingleLoopS2SizeAlign;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0;
+    uint32_t kvTailLen = 0; // 当前batch的V尾块长度(<64), 定义A: 主体 = actS2Size - kvTailLen
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;
@@ -243,6 +247,10 @@ struct CommonConstInfo {
 
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
+
+    // V tail (高精窗口)
+    uint32_t seqUsedKvTailSize = 0;
+    uint32_t tailMaxBlockNum = 0;
 
     FA_LAYOUT outputLayout;
     bool needInitOutput;

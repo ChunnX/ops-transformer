@@ -27,6 +27,8 @@ extern aclnnStatus aclnnInnerQuantFlashAttnGetWorkspaceSize(
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional,
+    const aclTensor *vTailOptional, const aclTensor *blockTableTailOptional,
+    const aclTensor *sequsedKvTailOptional,
     int64_t quantMode,
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,

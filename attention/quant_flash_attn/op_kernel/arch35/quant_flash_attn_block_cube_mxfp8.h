@@ -64,11 +64,11 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
 }
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool isDAligned = true>
+           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+           DTemplateType dTemplateType = DTemplateType::Aligned128,
+           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
+           bool isDAligned = true, bool hasVTail = false>
 class QuantFlashAttnBlockCubeMxfp8 {
 public:
     /* ============确定L0A的类型============= */
@@ -100,6 +100,7 @@ public:
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool USE_DN = useDn;
+    static constexpr bool HAS_V_TAIL = hasVTail;
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
@@ -161,6 +162,7 @@ public:
     using FaGmTensorQScale = FaGmTensor<SCALE_T, Q_SCALE_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKScale = FaGmTensor<SCALE_T, K_SCALE_FORMAT, int32_t, KV_NEEDS_WZH>;
     using FaGmTensorVScale = FaGmTensor<SCALE_T, V_SCALE_FORMAT, int32_t, KV_NEEDS_WZH>;
+    using FaGmTensorVTail = FaGmTensor<bfloat16_t, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
 
     using ConstInfoX = ConstInfo_t;
     TPipe *tPipe_ = nullptr;
@@ -172,12 +174,15 @@ public:
     FaGmTensorKScale keyScaleGm_;
     FaGmTensorVScale valueScaleGm_;
     GlobalTensor<int32_t> blockTableGm_;
+    FaGmTensorVTail vTailGm_;
+    GlobalTensor<int32_t> blockTableTailGm_;
 
     QSeqParserType *qSeqParserPtr_ = nullptr;
     KvSeqParserType *kvSeqParserPtr_ = nullptr;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
+    CopyKvGmToL1<bfloat16_t, KV_FORMAT> copyVTailGmToL1_;
     CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1_;
     KeyScaleGmToL1Type copyKeyScaleGmToL1_;
     ValueScaleGmToL1Type copyValueScaleGmToL1_;
@@ -189,7 +194,7 @@ public:
     BufferManager<BufferType::L0C> l0cBufferManager_;
 
     BuffersPolicyDB<BufferType::L1> l1QBuffers_;
-    L1KvType l1KVBuffers_;
+    L1KvType l1KVBuffers_; // 尾块V(bf16)复用本4buff轮转slot, 零新增L1: 主片slot按fp8全尺寸分配, 容量足以容纳bf16尾块(static_assert保证)
 
     L0AType mmL0ABuffers_;
     L0BType mmL0BBuffers_;
@@ -208,13 +213,15 @@ public:
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
                                          __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                          __gm__ uint8_t *dequantScaleValue, QSeqParserType &qParser,
-                                         KvSeqParserType &kvParser)
+                                         KvSeqParserType &kvParser, __gm__ uint8_t *vTail = nullptr,
+                                         __gm__ uint8_t *blockTableTail = nullptr)
     {
         tPipe_ = pipe;
         l1BufferManagerPtr_ = l1BuffMgr;
         this->qSeqParserPtr_ = &qParser;
         this->kvSeqParserPtr_ = &kvParser;
-        InitCubeInput(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey, dequantScaleValue);
+        InitCubeInput(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey, dequantScaleValue, vTail,
+                      blockTableTail);
     }
 
     __aicore__ inline void InitBuffers()
@@ -227,11 +234,18 @@ public:
             constexpr uint32_t mmKVScaleSize = s2BaseSize * dBaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T);
             l1QBuffers_.Init((*l1BufferManagerPtr_), mm1QSize + mm1QScaleSize);
             l1KVBuffers_.Init((*l1BufferManagerPtr_), mmKVSize + mmKVScaleSize);
+            // 尾块V零新增L1: 复用主V slot, 编译期保证slot容量足够容纳bf16尾块(含d=72档的128对齐)
+            static_assert(HAS_V_TAIL == false ||
+                          MXFP8_V_TAIL_BOUNDARY * dVBaseSize * sizeof(bfloat16_t) <= mmKVSize + mmKVScaleSize,
+                          "v_tail bf16 block must fit in main KV L1 slot");
         } else {
             constexpr uint32_t mmKVSize = dBaseSize * s2BaseSizeCur * sizeof(INPUT_T);
             constexpr uint32_t mmKVScaleSize = s2BaseSizeCur * dBaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T);
             l1QBuffers_.Init((*l1BufferManagerPtr_), mm1QSize + mm1QScaleSize);
             l1KVBuffers_.Init((*l1BufferManagerPtr_), mmKVSize + mmKVScaleSize);
+            static_assert(HAS_V_TAIL == false ||
+                          MXFP8_V_TAIL_BOUNDARY * dVBaseSize * sizeof(bfloat16_t) <= mmKVSize + mmKVScaleSize,
+                          "v_tail bf16 block must fit in main KV L1 slot");
         }
 
         // L0A B C 当前写死，能否通过基础api获取
@@ -252,7 +266,8 @@ public:
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery,
-                                         __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue)
+                                         __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
+                                         __gm__ uint8_t *vTail = nullptr, __gm__ uint8_t *blockTableTail = nullptr)
     {
         if constexpr (PAGE_ATTENTION) {
             blockTableGm_.SetGlobalBuffer((__gm__ int32_t *)blockTable);
@@ -275,6 +290,37 @@ public:
         InitVScaleBuffer(constInfo_.bSize, constInfo_.s2Size / MXFP_DIVISOR_SIZE, constInfo_.n2Size,
                          constInfo_.blockSize / MXFP_DIVISOR_SIZE, constInfo_.dSizeV * MXFP_MULTI_BASE_SIZE,
                          valueScaleGm_, dequantScaleValue);
+        if constexpr (HAS_V_TAIL) {
+            InitVTailBuffer(vTail, blockTableTail);
+        }
+    }
+
+    __aicore__ inline void InitVTailBuffer(__gm__ uint8_t *vTail, __gm__ uint8_t *blockTableTail)
+    {
+        // 一期checker已限制v_tail仅PA_BNBD可达; TND分支的寻址前缀(Σtail)与主kv parser(ΣkvLen)不一致,
+        // PA_BBND/PA_NZ的offsetCalculator参数序未适配, 以下分支为二期预留(当前不可达, 勿直接启用)
+        if constexpr (PAGE_ATTENTION) {
+            blockTableTailGm_.SetGlobalBuffer((__gm__ int32_t *)blockTableTail);
+            // 尾块cache独立, s2容量按边界64对齐, 寻址用尾blockTable
+            vTailGm_.gmTensor.SetGlobalBuffer((__gm__ bfloat16_t *)vTail);
+            if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
+                vTailGm_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
+                                               blockTableTailGm_, constInfo_.tailMaxBlockNum,
+                                               constInfo_.valueStrides.bnStride, constInfo_.valueStrides.n2Stride);
+            } else {
+                // 一期其余PA布局按BNBD语义处理, 二期按需扩展
+                vTailGm_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
+                                               blockTableTailGm_, constInfo_.tailMaxBlockNum,
+                                               constInfo_.valueStrides.bnStride, constInfo_.valueStrides.n2Stride);
+            }
+        } else if constexpr (KV_NEEDS_WZH) {
+            vTailGm_.gmTensor.SetGlobalBuffer((__gm__ bfloat16_t *)vTail);
+            vTailGm_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.dSizeV, *this->kvSeqParserPtr_);
+        } else {
+            vTailGm_.gmTensor.SetGlobalBuffer((__gm__ bfloat16_t *)vTail);
+            vTailGm_.offsetCalculator.Init(constInfo_.bSize, constInfo_.n2Size, constInfo_.s2Size, constInfo_.dSizeV);
+            vTailGm_.offsetCalculator.Init(*this->kvSeqParserPtr_);
+        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -758,12 +804,22 @@ public:
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
         uint64_t l1ScaleOffset = baseK / 32 * runInfo.actMSizeAlign32;
-        uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
+        // 定义A: 主体段 = 总长 - 尾块长度(64对齐)。尾块仅存在于覆盖序列末尾[actS2Size-tail, actS2Size)的task,
+        // 判定依据: actSingleLoopS2Size < s2BaseSize 当且仅当该块为序列最后一块(中间核的区间末块保持满块值),
+        // 不能用isLastS2Loop(其语义是本核区间的最后一块, S2SplitCore多核切分时会误判)
+        uint32_t tailLen = 0;
+        if constexpr (HAS_V_TAIL) {
+            if (runInfo.s2Idx + runInfo.actSingleLoopS2Size >= runInfo.actS2Size) {
+                tailLen = runInfo.kvTailLen;
+            }
+        }
+        uint32_t kMainSize = runInfo.actSingleLoopS2Size - tailLen;
+        uint32_t kLoops = (kMainSize + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t kIdx = 0; kIdx < kLoops; kIdx++) {
             Buffer<BufferType::L1> mm2B = l1KVBuffers_.Get();
             if (kIdx == kLoops - 1) {
-                realK = runInfo.actSingleLoopS2Size - kIdx * baseK;
+                realK = kMainSize - kIdx * baseK;
             }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
@@ -794,12 +850,88 @@ public:
                 mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor[kIdx * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
+        if constexpr (HAS_V_TAIL) {
+            ComputeBmm2VTailNd(mm2A, mm2ResL0C, runInfo, kLoops == 0);
+        }
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
         outputBuf.WaitCrossCore();
         FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo); // 数据搬出
         mm2ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
+    }
+
+    __aicore__ inline void ComputeBmm2VTailNd(MM2_ABUF_T &mm2A, Buffer<BufferType::L0C> &mm2ResL0C, RunInfoX &runInfo,
+                                              bool isGlobalFirstK)
+    {
+        // 仅覆盖序列末尾的task执行尾片(判定依据同IterateBmm2主体段)
+        if (runInfo.kvTailLen == 0 || runInfo.s2Idx + runInfo.actSingleLoopS2Size < runInfo.actS2Size) {
+            return;
+        }
+        // P尾区(bf16)在L1P的字节偏移: P主区(fp8,1B) + PScale区(e8m0,1B)之后; 转为bf16元素单位需/2
+        constexpr uint64_t pTailOffset =
+            (static_cast<uint64_t>(mBaseSize) * s2BaseSize + mBaseSize * s2BaseSize / 32) / sizeof(bfloat16_t);
+        Buffer<BufferType::L1> mm2BTail = l1KVBuffers_.Get(); // 复用主V轮转slot(零新增L1)
+        mm2BTail.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<bfloat16_t> vTailTensor = mm2BTail.GetTensor<bfloat16_t>();
+        if constexpr (!isDAligned) {
+            // d=72档: N方向(dSizeV→dVBaseSize)补齐区清零, 参照主体片的InitValueL1BufferNAxis, bf16同为2字节
+            InitConstValueParams<half> nAxisParams;
+            nAxisParams.repeatTimes = dVBaseSize / 32U;
+            nAxisParams.blockNum = MXFP8_V_TAIL_BOUNDARY;
+            nAxisParams.dstGap = 0;
+            nAxisParams.initValue = 0;
+            InitConstValue(vTailTensor.template ReinterpretCast<half>(), nAxisParams);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
+        // 尾块补零到64对齐(补零列P为0, 乘积不污染累加), nd2nz padding to k 64 align, (k,n)->(n1,k1,k0,n0)
+        InitVTailPadZero(vTailTensor, runInfo.kvTailLen, (uint32_t)constInfo_.dSizeV);
+        CopyVTailSlice(vTailTensor, runInfo);
+        mm2BTail.Set<HardEvent::MTE2_MTE1>();
+        mm2BTail.Wait<HardEvent::MTE2_MTE1>();
+
+        MMParam tailParam = MakeMMParam((uint32_t)mBaseSize, dVBaseSize, MXFP_DIVISOR_SIZE, false, false,
+                                        isGlobalFirstK, isGlobalFirstK);
+        if constexpr (!USE_DN) {
+            tailParam.realM = (uint32_t)runInfo.actMSize;
+        }
+        MatmulFull<bfloat16_t, bfloat16_t, T, 128, dVBaseSize, MXFP_DIVISOR_SIZE, ABLayout::MK, ABLayout::KN, L0AType,
+                   L0BType>(mm2A.GetTensor<bfloat16_t>()[pTailOffset], vTailTensor, mmL0ABuffers_, mmL0BBuffers_,
+                            mm2ResL0C.GetTensor<T>(), tailParam);
+        mm2BTail.Set<HardEvent::MTE1_MTE2>();
+    }
+
+    // 尾块V(bf16)装载: 独立cache, s2坐标从0计, 仅装载[kvTailLen]行, 其余保持补零
+    __aicore__ inline void CopyVTailSlice(const LocalTensor<bfloat16_t> &dstTensor, RunInfoX &runInfo)
+    {
+        uint32_t dstStride = MXFP8_V_TAIL_BOUNDARY; // 已按64补零, 行距64
+        FaL1Tensor<bfloat16_t, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                          .n2Idx = runInfo.n2Idx,
+                          .s2Idx = 0,
+                          .dIdx = 0,
+                          .s2DealSize = runInfo.kvTailLen,
+                          .dDealSize = (uint32_t)constInfo_.dSizeV};
+        copyVTailGmToL1_(l1Tensor, vTailGm_, gmCoord);
+    }
+
+    // bf16尾块的k向补零(到64对齐), 逻辑同InitValueL1BufferNoTrans, 元素为2字节
+    __aicore__ inline void InitVTailPadZero(const LocalTensor<bfloat16_t> &valueL1, const uint32_t realK,
+                                            const uint32_t curN)
+    {
+        InitConstValueParams<half> initConstValueParams;
+        uint64_t offset = 0;
+        uint32_t curPadK = (realK + 63) >> 6 << 6;
+        uint32_t movK = realK;
+        if (curPadK == movK) {
+            return;
+        }
+        offset = movK * 16U;
+        initConstValueParams.repeatTimes = AttentionCommon::Align(curN, 16U) / 32U;
+        initConstValueParams.blockNum = curPadK - movK;
+        initConstValueParams.dstGap = movK;
+        initConstValueParams.initValue = 0;
+        InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
     }
 
     template <typename DST_TENSOR_T>
@@ -849,12 +981,20 @@ public:
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
         uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE;
-        uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
+        // 定义A: 尾块仅存在于覆盖序列末尾的task(判定依据同ND路径, 不能用isLastS2Loop)
+        uint32_t tailLen = 0;
+        if constexpr (HAS_V_TAIL) {
+            if (runInfo.s2Idx + runInfo.actSingleLoopS2Size >= runInfo.actS2Size) {
+                tailLen = runInfo.kvTailLen;
+            }
+        }
+        uint32_t kMainSize = runInfo.actSingleLoopS2Size - tailLen;
+        uint32_t kLoops = (kMainSize + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
             Buffer<BufferType::L1> mm2B = l1KVBuffers_.Get();
             if (k == kLoops - 1) {
-                realK = runInfo.actSingleLoopS2Size - k * baseK;
+                realK = kMainSize - k * baseK;
             }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
@@ -881,6 +1021,9 @@ public:
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor, mmL0ABuffers_, mmL0BBuffers_,
                 mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
+        }
+        if constexpr (HAS_V_TAIL) {
+            ComputeBmm2VTailNd(mm2A, mm2ResL0C, runInfo, kLoops == 0);
         }
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
@@ -944,10 +1087,11 @@ public:
 }; // QuantFlashAttnBlockCubeMxfp8
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false>
+           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+           DTemplateType dTemplateType = DTemplateType::Aligned128,
+           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
+           bool hasVTail = false>
 class QuantFlashAttnBlockCubeMxfp8Dummy {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -957,6 +1101,7 @@ public:
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool USE_DN = useDn;
+    static constexpr bool HAS_V_TAIL = hasVTail;
 
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
