@@ -93,12 +93,15 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context)
     blockDims = std::min<uint32_t>((totalLength + MIN_BLOCK_LENGTH - 1UL) / MIN_BLOCK_LENGTH, coreNum);
 
     DecodeUpdateTilingData tilingData;
-    tilingData.set_formerNum(static_cast<uint32_t>(totalLength % blockDims));
-    tilingData.set_tailNum(static_cast<uint32_t>(blockDims - tilingData.get_formerNum()));
-    tilingData.set_tailLength(static_cast<uint32_t>(totalLength / blockDims));
-    tilingData.set_formerLength(static_cast<uint32_t>(tilingData.get_formerNum() == 0 ?
-                                                          0 :
-                                                          tilingData.get_tailLength() + 1));
+    if (blockDims > 0) {
+        tilingData.set_formerNum(static_cast<uint32_t>(totalLength % blockDims));
+        tilingData.set_tailNum(static_cast<uint32_t>(blockDims - tilingData.get_formerNum()));
+        tilingData.set_tailLength(static_cast<uint32_t>(totalLength / blockDims));
+        tilingData.set_formerLength(static_cast<uint32_t>(tilingData.get_formerNum() == 0 ?
+                                                            0 :
+                                                            tilingData.get_tailLength() + 1));
+    }
+    
     tilingData.set_hDim(static_cast<uint32_t>(hd));
     tilingData.set_sp(static_cast<uint32_t>(sp));
     tilingData.set_updateType(static_cast<uint32_t>(updateType));
