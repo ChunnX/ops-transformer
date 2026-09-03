@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，**先通信后计算**。
+- 接口功能：完成路由专家 AlltoAllv、Permute、GroupedMatMul 融合并实现与共享专家 MatMul 并行融合，**先通信后计算**。
 
 - 计算公式：
     - 路由专家：
@@ -47,7 +47,7 @@
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
   <!-- npu="950" id7 -->
-  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
+  - <term>Ascend 950DT</term>：支持 AI_CPU 和 CCU。
 
   <!-- end id7 -->
 
@@ -86,7 +86,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
     aclrtStream    stream)
 ```
 
-## aclnnAlltoAllvGroupedMatMulGetWorkspaceSize
+## aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize
 
 - **参数说明**
 
@@ -115,7 +115,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
     <tr>
         <td>gmmX(aclTensor*)</td>
         <td>输入</td>
-        <td>该输入进行AlltoAllv通信与Permute操作后结果作为GroupedMatMul计算的左矩阵。</td>
+        <td>该输入进行 AlltoAllv 通信与 Permute 操作后结果作为 GroupedMatMul 计算的左矩阵。</td>
         <td>支持2维，shape为(BSK, H1)。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
@@ -125,7 +125,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
     <tr>
         <td>gmmWeight(aclTensor*)</td>
         <td>输入</td>
-        <td>GroupedMatMul计算的右矩阵。</td>
+        <td>GroupedMatMul 计算的右矩阵。</td>
         <td>支持3维，shape为(e, H1, N1)。</td>
         <td>与gmmX保持一致</td>
         <td>ND</td>
@@ -384,7 +384,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
   <!-- end id8 -->
   <!-- npu="950" id9 -->
-  - <term>Ascend 950DT</term>：支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
+  - <term>Ascend 950DT</term>：支持 CCU 通信和 AICPU 通信，CCU 仅支持单机UB域内互联，AI_CPU 可支持跨机 UB 域内互联。
 
   <!-- end id9 -->
 
@@ -414,7 +414,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 
 说明：
 
-- 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+- 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy等，请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 - 本示例代码以8卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
 
 <!-- npu="950" id11 -->
@@ -498,7 +498,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
         char hcomName[128] = {0};
         ret = HcclGetCommName(args.hcclComm, hcomName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret: %d\n", ret); return -1);
 
         std::vector<int64_t> gmmXShape = {BS * K, H};
         std::vector<int64_t> gmmWShape = {e, H, N1};
