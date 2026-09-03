@@ -270,40 +270,190 @@ cann_ops_transformer.quant_flash_attn_grad(
 
 ### 特性参数组
 
-|      特性参数组      |     参数字段名称     |    字段分组    |  字段类型  |
-| :-------------------: | :-------------------: | :-------------: | :--------: |
-|      公共参数组      |         q         |      INPUT      |   Tensor   |
-|                      |          k          |      INPUT      | Tensor |
-|                      |         v         |      INPUT      | Tensor |
-|                      |         dout         |      INPUT      | Tensor |
-|                      |         attn_out         |      INPUT      | Tensor |
-|                      |         metadata        |      INPUT(OPTIONAL)      | Tensor |
-|                      |      softmax_scale      | ATTR(OPTIONAL) |   float   |
-|                      |      layout_q      | ATTR(OPTIONAL) |   string   |
-|                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
-|                      |     dq     |     OUTPUT     |   Tensor   |
-|                      |     dk     |     OUTPUT     |   Tensor   |
-|                      |     dv     |     OUTPUT     |   Tensor   |
-|      全量化参数组      |       quant_mode       | ATTR |   int   |
-|                      |       q_descale       | INPUT |   Tensor   |
-|                      |       k_descale       | INPUT |   Tensor   |
-|                      |       v_descale       | INPUT |   Tensor   |
-|                      |       do_descale       | INPUT |   Tensor   |
-|                      |       p_scale       | INPUT |   Tensor   |
-|                      |       ds_scale       | INPUT |   Tensor   |
-|                      |       softmax_lse       | INPUT |   Tensor   |
-|      Mask参数组      |       mask_mode       | ATTR(OPTIONAL) |   int   |
-|                      |       win_left       | ATTR(OPTIONAL) |   int   |
-|                      |      win_right      | ATTR(OPTIONAL) |   int   |
-|                      |      attn_mask      | INPUT(OPTIONAL) |   Tensor   |
-| SeqLens参数组  |   cu_seqlens_q   | INPUT(OPTIONAL) |  Tensor  |
-|                      |  cu_seqlens_kv  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  seqused_q  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  seqused_kv  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  max_seqlen_q  | ATTR(OPTIONAL) |  int  |
-|                      |  max_seqlen_kv  | ATTR(OPTIONAL) |  int  |
-|  Sinks参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
-|   DSink输出参数组   |    dsink    |     OUTPUT     |    Tensor    |
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 200px">
+        <col style="width: 200px">
+        <col style="width: 250px">
+        <col style="width: 150px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>特性参数组</th>
+            <th>参数字段名称</th>
+            <th>字段分组</th>
+            <th>字段类型</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td rowspan="12">公共参数组</td>
+            <td>q</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>k</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>v</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>dout</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>attn_out</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>metadata</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>softmax_scale</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>float</td>
+        </tr>
+        <tr>
+            <td>layout_q</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>string</td>
+        </tr>
+        <tr>
+            <td>layout_kv</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>string</td>
+        </tr>
+        <tr>
+            <td>dq</td>
+            <td>OUTPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>dk</td>
+            <td>OUTPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>dv</td>
+            <td>OUTPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td rowspan="8">全量化参数组</td>
+            <td>quant_mode</td>
+            <td>ATTR</td>
+            <td>int</td>
+        </tr>
+        <tr>
+            <td>q_descale</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>k_descale</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>v_descale</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>do_descale</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>p_scale</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>ds_scale</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>softmax_lse</td>
+            <td>INPUT</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td rowspan="4">Mask参数组</td>
+            <td>mask_mode</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>int</td>
+        </tr>
+        <tr>
+            <td>win_left</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>int</td>
+        </tr>
+        <tr>
+            <td>win_right</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>int</td>
+        </tr>
+        <tr>
+            <td>attn_mask</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td rowspan="6">SeqLens参数组</td>
+            <td>cu_seqlens_q</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_kv</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>seqused_q</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>seqused_kv</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>max_seqlen_q</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>int</td>
+        </tr>
+        <tr>
+            <td>max_seqlen_kv</td>
+            <td>ATTR(OPTIONAL)</td>
+            <td>int</td>
+        </tr>
+        <tr>
+            <td>Sinks参数组</td>
+            <td>sinks</td>
+            <td>INPUT(OPTIONAL)</td>
+            <td>Tensor</td>
+        </tr>
+        <tr>
+            <td>DSink输出参数组</td>
+            <td>dsink</td>
+            <td>OUTPUT</td>
+            <td>Tensor</td>
+        </tr>
+    </tbody>
+</table>
 
 ### 基准信息说明
 
