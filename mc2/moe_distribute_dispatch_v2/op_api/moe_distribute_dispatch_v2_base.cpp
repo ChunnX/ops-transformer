@@ -86,7 +86,7 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
 aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
                                 const char *groupEp, const char *groupTp, int64_t quantMode, aclTensor *expandX,
                                 aclTensor *dynamicScales, aclTensor *assistInfoForCombine, aclTensor *expertTokensNums,
-                                aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
+                                aclTensor *epRecvCounts)
 {
     CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
                                    expertTokensNums, epRecvCounts),
