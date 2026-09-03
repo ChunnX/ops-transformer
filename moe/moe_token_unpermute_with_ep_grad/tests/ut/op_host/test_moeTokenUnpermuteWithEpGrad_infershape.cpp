@@ -182,6 +182,44 @@ TEST_F(MoeTokenUnpermuteWithEpGradInferShape, MoeTokenUnpermuteWithEpGrad_infers
     RunInferShapeAndCheckOutputs(context, {30, 64}, {10, 3});
 }
 
+TEST_F(MoeTokenUnpermuteWithEpGradInferShape, MoeTokenUnpermuteWithEpGrad_infershape_range_local_case_0)
+{
+    gert::StorageShape permuted_tokens_shape = {{20, 64}, {20, 64}};
+    gert::StorageShape unpermuted_output_d_shape = {{10, 64}, {10, 64}};
+    gert::StorageShape sorted_indices_shape = {
+        {
+            30,
+        },
+        {
+            30,
+        }};
+    gert::StorageShape probs_shape = {{10, 3}, {10, 3}};
+    // output
+    gert::StorageShape permuted_tokens_grad_shape = {{30, 64}, {30, 64}};
+    gert::StorageShape probs_grad_shape = {{10, 3}, {10, 3}};
+
+    auto holder =
+        gert::InferShapeContextFaker()
+            .SetOpType("MoeTokenUnpermuteWithEpGrad")
+            .NodeIoNum(4, 2)
+            .OutputShapes({&permuted_tokens_grad_shape, &probs_grad_shape})
+            .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .InputTensors({(gert::Tensor *)&unpermuted_output_d_shape})
+            .InputTensors({(gert::Tensor *)&sorted_indices_shape})
+            .InputTensors({(gert::Tensor *)&permuted_tokens_shape})
+            .InputTensors({(gert::Tensor *)&probs_shape})
+            .Attr("padded_mode", bool(false))
+            .Build();
+
+    gert::InferShapeContext* context = holder.GetContext();
+    RunInferShapeAndCheckOutputs(context, {20, 64}, {10, 3});
+}
+
 TEST_F(MoeTokenUnpermuteWithEpGradInferShape, MoeTokenUnpermuteWithEpGrad_inferdtype_bf16_case_0)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
