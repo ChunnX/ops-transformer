@@ -198,9 +198,9 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
         maskBufferOptional, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
-        dispatchQuantOutDtype, combineQuantMode, commAlgData, numMaxTokensPerRank, activationValue.data(),
-        activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType,
-        sharedExpertQuantOutDtype, yOut, expertTokenNumsOut, workspaceSize, executor);
+        dispatchQuantOutDtype, sharedExpertQuantOutDtype, combineQuantMode, commAlgData, numMaxTokensPerRank,
+        activationValue.data(), activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
+        topkWeightsType, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
