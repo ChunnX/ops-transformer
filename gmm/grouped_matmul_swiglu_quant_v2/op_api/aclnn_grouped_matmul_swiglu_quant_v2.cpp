@@ -202,8 +202,7 @@ static aclnnStatus ProcessSingleWeightNz(const aclTensorList *weight)
     auto w = (*weight)[0];
     auto storgeShape = w->GetStorageShape();
     auto viewShape = w->GetViewShape();
-    aclTensor *weightNZ =
-        const_cast<aclTensor *>(w); // NOLINT: SetStorageFormat/SetViewFormat are non-const but do not alter tensor data
+    aclTensor *weightNZ = const_cast<aclTensor *>(w);
     std::ostringstream gotShape;
     gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
     std::string gotShapeStr = gotShape.str();
@@ -230,8 +229,7 @@ static aclnnStatus ProcessMultiWeightNz(const aclTensorList *weight)
         CHECK_RET(w != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         auto storgeShape = w->GetStorageShape();
         auto viewShape = w->GetViewShape();
-        aclTensor *weightNZ = const_cast<aclTensor *>(
-            w); // NOLINT: SetStorageFormat/SetViewFormat are non-const but do not alter tensor data
+        aclTensor *weightNZ = const_cast<aclTensor *>(w);
         std::ostringstream gotShape;
         gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
         std::string gotShapeStr = gotShape.str();

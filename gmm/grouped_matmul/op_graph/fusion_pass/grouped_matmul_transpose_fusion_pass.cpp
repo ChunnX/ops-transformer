@@ -313,8 +313,8 @@ bool GetTransposeAxesForScale(bool isMxScale, bool isMxPertokenScale, std::size_
         if (dimNum < kPermScale.size()) {
             return false;
         }
-        firstTransposeAxis = dimNum - 3;  // 倒数索引，定位N轴
-        secondTransposeAxis = dimNum - 2; // 倒数索引，定位K/gs
+        firstTransposeAxis = dimNum - 3;  // -3：倒数索引，定位N轴
+        secondTransposeAxis = dimNum - 2; // -2：倒数索引，定位K/gs
     } else if (isMxPertokenScale) {
         firstTransposeAxis = 0;
         secondTransposeAxis = 1;

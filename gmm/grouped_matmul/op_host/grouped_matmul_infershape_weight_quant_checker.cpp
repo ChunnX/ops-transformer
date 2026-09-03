@@ -648,10 +648,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorList(const g
 ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorListAtIndex(const gert::InferShapeContext *context,
                                                                                 size_t gmm_index,
                                                                                 const std::string &tensorType,
-                                                                                const GMMAttrs &gmmAttrs,
                                                                                 size_t tensorIdx) const
 {
-    (void)gmmAttrs; // 保留传参以保持接口一致性，当前逻辑暂未使用
     auto tensorShape = context->GetDynamicInputShape(gmm_index, tensorIdx);
     if (IsNonEmpty(tensorShape)) {
         size_t tensorDimNum = tensorShape->GetDimNum();
@@ -889,16 +887,15 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeValidSplitM(const ger
                 OP_LOGE(context->GetNodeName(), "CheckShapeForXAndWeight failed."), return ge::GRAPH_FAILED);
     if (isMultiTensorWeight_) {
         for (size_t i = 0; i < numWeight_; i++) {
-            OP_CHECK_IF(
-                CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_BIAS, "bias", gmmAttrs, i) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "CheckShapeForBias at index [%zu] failed.", i),
-                return ge::GRAPH_FAILED);
-            OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_ANTIQUANT_SCALE, "antiquantScale",
-                                                       gmmAttrs, i) != ge::GRAPH_SUCCESS,
+            OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_BIAS, "bias", i) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(context->GetNodeName(), "CheckShapeForBias at index [%zu] failed.", i),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_ANTIQUANT_SCALE, "antiquantScale", i) !=
+                            ge::GRAPH_SUCCESS,
                         OP_LOGE(context->GetNodeName(), "CheckShapeForAntiquantScale at index [%zu] failed.", i),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_ANTIQUANT_OFFSET, "antiquantOffset",
-                                                       gmmAttrs, i) != ge::GRAPH_SUCCESS,
+            OP_CHECK_IF(CheckShapeForTensorListAtIndex(context, GMM_INDEX_IN_ANTIQUANT_OFFSET, "antiquantOffset", i) !=
+                            ge::GRAPH_SUCCESS,
                         OP_LOGE(context->GetNodeName(), "CheckShapeForAntiquantOffset failed."),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(CheckGroupSize(context, gmmAttrs, i) != ge::GRAPH_SUCCESS,

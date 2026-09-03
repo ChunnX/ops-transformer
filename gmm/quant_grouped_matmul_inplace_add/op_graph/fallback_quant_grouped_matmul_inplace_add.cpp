@@ -46,6 +46,7 @@ static bool BuildViewShapeAndStrides(const gert::Tensor *geTensor, std::vector<i
                         "The dim num of viewshape should be greater than or equal to 2, but the actual is %zu.",
                         viewShape.size()),
                 return false);
+    // -2：从倒数第二维开始倒序计算stride，最后一维stride已为1
     for (int64_t i = viewShape.size() - 2; i >= 0; i--) {
         strides[i] = viewShape[i + 1] * strides[i + 1];
     }

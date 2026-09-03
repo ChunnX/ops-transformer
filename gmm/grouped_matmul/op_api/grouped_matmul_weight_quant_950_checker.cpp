@@ -1012,9 +1012,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4NZScaleShape()
                                               "The dim0 of scale must be equal to g");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (unlikely(
-            scaleShape.GetDim(1) !=
-            weightShape.GetDim(2))) { // 校验 S8S4 NZ 格式下 scale tensor 的 N 维度是否和 weight tensor 的 N 维度一致
+    if (unlikely(scaleShape.GetDim(1) !=
+                 weightShape.GetDim(2))) { // 校验 S8S4 NZ 格式下 scale 第2维与 weight 第3维（N 维度）一致
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "scale", std::to_string(scaleShape.GetDim(1)),
                                               "The dim1 of scale must be equal to n");
         return ACLNN_ERR_PARAM_INVALID;
