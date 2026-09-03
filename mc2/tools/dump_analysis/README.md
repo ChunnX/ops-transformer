@@ -192,7 +192,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 
 更完整的命令示例、Workspace Segment 说明和矩阵查看方法见 [MC2 Dump 解析脚本使用说明](./MC2_DUMP_USAGE.md)。
 
-新增的 `parse_mc2_dump.py` 是统一入口。脚本会根据算子名递归查找 dump 根目录中的文件，并自动分发解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表以及 URMA 通信上下文和 peermem。正常使用时不需要逐个文件执行不同命令。
+新增的 `parse_mc2_dump.py` 是统一入口。脚本会根据算子名递归查找 dump 根目录中的文件，并自动分发解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表、URMA 通信上下文/peermem，以及原始 `exception_info.*`。正常使用时不需要逐个文件执行不同命令。
 
 ### 支持的算子和通路
 
@@ -235,9 +235,10 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | `tiling_data_` | 算子 tiling 参数、量化模式、WorkspaceLayout 和各段偏移/长度 |
 | `args_info_` | kernel 参数地址；CCU 算子同时考虑隐藏的通信上下文参数 |
 | `workspace_segN_typeM_` | workspace 段编号、类型和大小；`type12` 会进一步解析 RuntimeInfo |
-| `xn_addr_info_`、`cke_addr_info_` | 按小端 `uint64` 解析地址，每行输出 64 个地址 |
+| `xn_addr_info_`、`cke_addr_info_` | 按小端 `uint64` 解析地址，导出 shape 为 `(行数, 64)` 的 NPY |
 | `comm_context_` | AIV + URMA 的通信上下文 |
 | `peermem_window_`、`peermem_segN_typeM_` | URMA peermem 布局、段类型、大小和数据预览 |
+| `exception_info.*` | 调用 CANN `msaicerr.py` 解包，并将 input/output/workspace 张量导出为 NPY |
 
 结果会同时打印到终端，并写入：
 
@@ -245,7 +246,50 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 <dump根目录>/mc2_dump_analysis/<标准算子名>/analysis.txt
 ```
 
-XN/CKE 地址表还会在同一结果目录下生成与原 dump 文件同名的 `.txt` 文件。解析进程返回码为 `0` 表示所有匹配文件解析成功，非 `0` 表示至少一个文件解析失败。
+XN/CKE 地址表会在同一结果目录下生成与原 dump 文件同名的 `.npy` 文件，数组 dtype 为 `uint64`，shape 为 `(行数, 64)`。解析进程返回码为 `0` 表示所有匹配文件解析成功，非 `0` 表示至少一个文件解析失败。
+
+原始异常文件会输出到：
+
+```text
+mc2_dump_analysis/<标准算子名>/exception/<exception_info文件名>/
+├── msaicerr/    # msaicerr.py 解包结果
+└── npy/         # input/output/workspace 的 NPY 和 manifest.json
+```
+
+`*.o`、`*_host.o` 和算子 `*.json` 是 `msaicerr.py` 解包异常文件时使用的配套文件，不单独生成解析报告。NPY 的真实逻辑 shape 需要结合用例和 TilingData；当异常文件没有携带 dtype 时，脚本使用 `uint8` 无损保存原始位模式，并在 `manifest.json` 中标记为 `raw_bytes`，不会猜成 BF16/FP16。
+
+统一脚本已经内置 `msaicerr.py` 的 `-d` 分支调用逻辑，会直接调用 CANN 的 `DumpDataParser`，然后直接导出 NPY，不需要再手工执行两条 Python 命令。正常情况下只需：
+
+```bash
+python3 parse_mc2_dump.py mmrs /path/to/data-dump
+```
+
+脚本会按以下顺序查找 CANN 解析模块：当前 Python 环境、`--msaicerr` 参数、`MSAICERR_PATH`、`ASCEND_TOOLKIT_HOME`、`TOOL_PATH`、常用 CANN 安装路径。如果 CANN 没装在常用路径，可设置一次环境变量：
+
+```bash
+export MSAICERR_PATH=/home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
+python3 parse_mc2_dump.py mmrs /path/to/data-dump
+```
+
+也可以临时指定：
+
+```bash
+python3 parse_mc2_dump.py mmrs /path/to/data-dump \
+  --msaicerr /home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
+```
+
+如果已经手工执行完 `msaicerr.py`，仍可单独做 NPY 导出：
+
+```bash
+python3 parse_mc2_exception_report.py <exception解析输出路径> \
+  --operator MatmulReduceScatterV2 --export-npy <npy输出路径>
+```
+
+查看 NPY 内容：
+
+```bash
+python3 -c "import numpy as np; a=np.load('xxx.npy'); print(a.shape, a.dtype); print(a[:10])"
+```
 
 `segN` 中的 `N` 只是该次 tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和 `analysis.txt` 里的 WorkspaceLayout 为准。当前 workspace 类型定义如下：
 
@@ -320,6 +364,7 @@ URMA 算子的后端脚本还支持 `--comm-ctx` 和 `--peermem`。建议日常�
 ### 常见问题
 
 - 提示“没有找到受支持 dump 文件”：确认传入的是 `data-dump` 根目录，并确认文件名中包含正确的算子名。统一入口按文件名关联同一次算子 dump，不会把其他算子的同名前缀文件混进来。
+- 提示“未找到 CANN ms_interface”：先加载 CANN 环境；也可以使用 `--msaicerr` 指定脚本，或设置 `MSAICERR_PATH`。运行环境还必须配置 CANN 所需的 `ASCEND_OPP_PATH`。
 - RuntimeInfo 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；RuntimeInfo 字段仍会解析，但无法可靠区分 C 核和 V 核。
 - workspace 文件大小和 shape 不一致：先检查 WorkspaceLayout 中该段的 `size` 是否等于 dump 文件大小，再检查量化类型、对齐/padding 和通信 rank 维度。
 - `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 RuntimeInfo 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。脚本仍会列出每个预期 C/V 核的原始 commit/wait，并标记为 `NOT_WRITTEN`；如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
