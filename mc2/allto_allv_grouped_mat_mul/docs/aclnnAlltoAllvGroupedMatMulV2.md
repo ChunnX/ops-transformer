@@ -47,7 +47,7 @@
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
   <!-- npu="950" id7 -->
-  - <term>Ascend 950DT</term>：支持 AI_CPU 和 CCU。
+  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 
   <!-- end id7 -->
 
