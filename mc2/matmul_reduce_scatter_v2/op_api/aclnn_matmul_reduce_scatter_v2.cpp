@@ -215,9 +215,9 @@ static aclnnStatus CheckAndSetCommMode(const char *commMode, CommType &commModeE
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "[aclnnMatmulReduceScatterV2GetWorkspaceSize] commMode must not be nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
-    if (strncmp(commMode, "ai_cpu", AICPU_STRLEN + 1) == 0) {
+    if (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0) {
         commModeEnum = CommType::AI_CPU;
-    } else if (strncmp(commMode, "ccu", CCU_STRLEN + 1) == 0 || std::strcmp(commMode, GRAPH_CCU_MODE) == 0) {
+    } else if (strncmp(commMode, "ccu", CCU_STRLEN) == 0) {
         commModeEnum = CommType::CCU;
     } else {
         OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode,
@@ -402,6 +402,12 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor *x1, const a
     CommType commModeEnum = CommType::INVALID;
     auto retCommmode = CheckAndSetCommMode(commMode, commModeEnum);
     CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
+    if (std::strcmp(commMode, "ai_cpu") != 0 && std::strcmp(commMode, "ccu") != 0 &&
+        std::strcmp(commMode, GRAPH_CCU_MODE) != 0) {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode,
+                                  "\"ccu\" or \"ai_cpu\"");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (commModeEnum >= CommType::INVALID) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnmatmulReduceScatterV2GetWorkSpaceSize", "commModeEnum", "invalid",
                                               "Does not match any available case, please check the input commMode.");
