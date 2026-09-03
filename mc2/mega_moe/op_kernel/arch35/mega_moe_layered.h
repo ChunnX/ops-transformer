@@ -2875,7 +2875,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
         if (subBlockIdx_ == 1U) {
             PrepareDispatch(firstWaveExpertCount);
             // 首个宏 Wave 就绪后即可启动计算，不再等待全部专家的二级 Dispatch。
-            ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
+            //ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
         }
     }
 
