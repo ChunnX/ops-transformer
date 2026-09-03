@@ -33,6 +33,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME AllGatherMatmulV2
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -I${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
         )
     endif()
 else() # 回黄host

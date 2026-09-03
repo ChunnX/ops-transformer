@@ -23,6 +23,8 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "../../../op_kernel/all_gather_matmul_tiling_data.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
 
 namespace optiling {
 
@@ -61,6 +63,9 @@ protected:
     ge::graphStatus DoAdaptSlidWindowTiling();
     ge::graphStatus SetMc2Hcomm();
     void SetTilingKeyParams();
+    ge::graphStatus DoApaceMatmulTiling();
+    void SetHcommTilingInfo();
+    void AlignApaceCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
     ge::graphStatus CheckScaleShapeValid(const char *scaleName, uint64_t firstDim, uint64_t secondDim,
@@ -83,6 +88,8 @@ private:
     uint64_t scale1kSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMmMode_{mc2tiling::Mc2QuantMode::INVALID_MODE};
     bool isFp4_ = false;
+    bool isMxScene_ = false;
+    Apace::hcommAllGatherMatmulTilingData hcommTilingData_{};
 };
 
 class AllGatherQuantBmmHelper : public Mc2AdaptiveSlidingWindowTiling {
