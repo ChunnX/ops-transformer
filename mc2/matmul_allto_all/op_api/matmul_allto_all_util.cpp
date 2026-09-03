@@ -227,8 +227,7 @@ aclnnStatus CheckX2Valid(const char *opName, const aclTensor *x2)
 }
 
 // 检查commMode参数是否合法，并获取commMode对应枚举值
-aclnnStatus CheckAndHandleCommMode(const char *opName, const char *group, const char *commModeStr,
-                                   uint8_t &commModeEnum)
+aclnnStatus CheckAndHandleCommMode(const char *opName, const char *, const char *commModeStr, uint8_t &commModeEnum)
 {
     (void)group;
     const size_t maxLength = 7UL;
