@@ -8,7 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-from typing import List, Optional
+from enum import IntEnum
+from typing import List, Optional, Union
 
 import torch
 import torch_npu  # noqa: F401
@@ -18,6 +19,55 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 GBSA_METADATA_SIZE = 1024
 GBSA_METADATA_OP_NAME = "generic_block_sparse_attention_metadata"
+
+
+class MaskMode(IntEnum):
+    """mask_mode 枚举：对外 str/int/IntEnum 映射为算子侧 int。取值与 aclnn maskType 一致。"""
+
+    NO_MASK = 0
+    CAUSAL = 1
+    WINDOW = 2
+
+
+class QuantMode(IntEnum):
+    """quant_mode 枚举：对外 str/int/IntEnum 映射为算子侧 int。取值与 aclnn quantType 一致。"""
+
+    NO_QUANT = 0
+    FP8_E4M3_STATIC_PER_GROUP = 1
+    FP8_E4M3_DYNAMIC_MX = 2
+    FP4_E2M1_DYNAMIC_OCP = 3
+    FP4_E2M1_DYNAMIC_CX = 4
+    FP8_E4M3_STATIC_CAST_P = 5
+
+
+def _resolve_mask_mode(mask_mode: Union[str, int, "MaskMode", None]) -> int:
+    """对外 str/int/IntEnum/None mask_mode 统一为传给算子侧的 int；None 视为默认 CAUSAL。"""
+    if mask_mode is None:
+        return int(MaskMode.CAUSAL)
+    if isinstance(mask_mode, str):
+        try:
+            return int(MaskMode[mask_mode.strip().upper()])
+        except KeyError as exc:
+            valid = ", ".join(m.name.lower() for m in MaskMode)
+            raise ValueError(
+                f"mask_mode should be one of [{valid}], but got {mask_mode!r}"
+            ) from exc
+    return int(MaskMode(mask_mode))
+
+
+def _resolve_quant_mode(quant_mode: Union[str, int, "QuantMode", None]) -> int:
+    """对外 str/int/IntEnum/None quant_mode 统一为传给算子侧的 int；None 视为默认 NO_QUANT。"""
+    if quant_mode is None:
+        return int(QuantMode.NO_QUANT)
+    if isinstance(quant_mode, str):
+        try:
+            return int(QuantMode[quant_mode.strip().upper()])
+        except KeyError as exc:
+            valid = ", ".join(m.name.lower() for m in QuantMode)
+            raise ValueError(
+                f"quant_mode should be one of [{valid}], but got {quant_mode!r}"
+            ) from exc
+    return int(QuantMode(quant_mode))
 
 
 class GenericBlockSparseAttentionOpBuilder(OpBuilder):
@@ -32,11 +82,11 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             (
                 "generic_block_sparse_attention_metadata("
                 "Tensor sparse_block_idx, Tensor sparse_block_count, "
-                "int max_q_seq_len, int max_kv_seq_len, int num_q_heads, int num_kv_heads, int head_dim, "
-                "int[] block_shape, *, Tensor? cu_seq_lengths_q=None, Tensor? cu_seq_lengths_kv=None, "
+                "int max_seqlen_q, int max_seqlen_kv, int num_heads_q, int num_heads_kv, int head_dim, "
+                "int[] block_shape, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
                 "Tensor? seqused_q=None, Tensor? seqused_kv=None, int is_packed_gqa=1, "
-                'str layout_q="TND", str layout_kv="PAGED_BBND", '
-                "int mask_type=1, int quant_type=0, int softmax_precision=1, "
+                'str layout_q="TND", str layout_kv="PA_BBND", '
+                "int mask_mode=1, int quant_mode=0, int softmax_precision=1, "
                 "int win_left=-1, int win_right=-1) -> Tensor"
             ),
             (
@@ -45,22 +95,22 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
                 "Tensor sparse_block_idx, Tensor sparse_block_count, "
                 "int[] block_shape, *, "
                 "Tensor? metadata=None, "
-                "Tensor? atten_mask=None, "
+                "Tensor? attn_mask=None, "
                 "Tensor? q_dequant_scale=None, "
                 "Tensor? k_dequant_scale=None, "
                 "Tensor? v_dequant_scale=None, "
                 "Tensor? p_quant_scale=None, "
-                "Tensor? cu_seq_lengths_q=None, "
-                "Tensor? cu_seq_lengths_kv=None, "
+                "Tensor? cu_seqlens_q=None, "
+                "Tensor? cu_seqlens_kv=None, "
                 "Tensor? seqused_q=None, "
                 "Tensor? seqused_kv=None, "
                 "Tensor? block_table=None, "
                 "int is_packed_gqa=1, "
                 'str layout_q="TND", '
-                'str layout_kv="PAGED_BBND", '
-                "float scale_value=0.0, "
-                "int mask_type=1, "
-                "int quant_type=0, "
+                'str layout_kv="PA_BBND", '
+                "float softmax_scale=0.0, "
+                "int mask_mode=1, "
+                "int quant_mode=0, "
                 "float dst_type_max=0.0, "
                 "int softmax_precision=1, "
                 "int win_left=-1, "
@@ -78,22 +128,22 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
         def generic_block_sparse_attention_metadata_meta(
             sparse_block_idx,
             sparse_block_count,
-            max_q_seq_len,
-            max_kv_seq_len,
-            num_q_heads,
-            num_kv_heads,
+            max_seqlen_q,
+            max_seqlen_kv,
+            num_heads_q,
+            num_heads_kv,
             head_dim,
             block_shape,
             *,
-            cu_seq_lengths_q=None,
-            cu_seq_lengths_kv=None,
+            cu_seqlens_q=None,
+            cu_seqlens_kv=None,
             seqused_q=None,
             seqused_kv=None,
             is_packed_gqa=1,
             layout_q="TND",
-            layout_kv="PAGED_BBND",
-            mask_type=1,
-            quant_type=0,
+            layout_kv="PA_BBND",
+            mask_mode=1,
+            quant_mode=0,
             softmax_precision=1,
             win_left=-1,
             win_right=-1,
@@ -112,22 +162,22 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             block_shape: List[int],
             *,
             metadata: Optional[torch.Tensor] = None,
-            atten_mask: Optional[torch.Tensor] = None,
+            attn_mask: Optional[torch.Tensor] = None,
             q_dequant_scale: Optional[torch.Tensor] = None,
             k_dequant_scale: Optional[torch.Tensor] = None,
             v_dequant_scale: Optional[torch.Tensor] = None,
             p_quant_scale: Optional[torch.Tensor] = None,
-            cu_seq_lengths_q: Optional[torch.Tensor] = None,
-            cu_seq_lengths_kv: Optional[torch.Tensor] = None,
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
             block_table: Optional[torch.Tensor] = None,
             is_packed_gqa: int = 1,
             layout_q: str = "TND",
-            layout_kv: str = "PAGED_BBND",
-            scale_value: float = 0.0,
-            mask_type: int = 1,
-            quant_type: int = 0,
+            layout_kv: str = "PA_BBND",
+            softmax_scale: float = 0.0,
+            mask_mode: int = 1,
+            quant_mode: int = 0,
             dst_type_max: float = 0.0,
             softmax_precision: int = 1,
             win_left: int = -1,
@@ -170,45 +220,47 @@ generic_block_sparse_attention_op_builder._ensure_initialized()
 def generic_block_sparse_attention_metadata(
     sparse_block_idx,
     sparse_block_count,
-    max_q_seq_len,
-    max_kv_seq_len,
-    num_q_heads,
-    num_kv_heads,
+    max_seqlen_q,
+    max_seqlen_kv,
+    num_heads_q,
+    num_heads_kv,
     head_dim,
     block_shape,
     *,
-    cu_seq_lengths_q=None,
-    cu_seq_lengths_kv=None,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
     is_packed_gqa=1,
     layout_q="TND",
-    layout_kv="PAGED_BBND",
-    mask_type=1,
-    quant_type=0,
+    layout_kv="PA_BBND",
+    mask_mode: Union[MaskMode, int] = MaskMode.CAUSAL,
+    quant_mode: Union[QuantMode, int] = QuantMode.NO_QUANT,
     softmax_precision=1,
     win_left=-1,
     win_right=-1,
 ):
+    mask_mode = _resolve_mask_mode(mask_mode)
+    quant_mode = _resolve_quant_mode(quant_mode)
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
-        cu_seq_lengths_q,
-        cu_seq_lengths_kv,
+        cu_seqlens_q,
+        cu_seqlens_kv,
         seqused_q,
         seqused_kv,
-        max_q_seq_len,
-        max_kv_seq_len,
-        num_q_heads,
-        num_kv_heads,
+        max_seqlen_q,
+        max_seqlen_kv,
+        num_heads_q,
+        num_heads_kv,
         head_dim,
         block_shape,
         is_packed_gqa,
         layout_q,
         layout_kv,
-        mask_type,
-        quant_type,
+        mask_mode,
+        quant_mode,
         softmax_precision,
         win_left,
         win_right,
@@ -221,22 +273,22 @@ def generic_block_sparse_attention_metadata(
 def generic_block_sparse_attention_metadata_fallback(
     sparse_block_idx,
     sparse_block_count,
-    max_q_seq_len,
-    max_kv_seq_len,
-    num_q_heads,
-    num_kv_heads,
+    max_seqlen_q,
+    max_seqlen_kv,
+    num_heads_q,
+    num_heads_kv,
     head_dim,
     block_shape,
     *,
-    cu_seq_lengths_q=None,
-    cu_seq_lengths_kv=None,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
     is_packed_gqa=1,
     layout_q="TND",
-    layout_kv="PAGED_BBND",
-    mask_type=1,
-    quant_type=0,
+    layout_kv="PA_BBND",
+    mask_mode: Union[MaskMode, int] = MaskMode.CAUSAL,
+    quant_mode: Union[QuantMode, int] = QuantMode.NO_QUANT,
     softmax_precision=1,
     win_left=-1,
     win_right=-1,
@@ -244,21 +296,21 @@ def generic_block_sparse_attention_metadata_fallback(
     return generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
-        max_q_seq_len,
-        max_kv_seq_len,
-        num_q_heads,
-        num_kv_heads,
+        max_seqlen_q,
+        max_seqlen_kv,
+        num_heads_q,
+        num_heads_kv,
         head_dim,
         block_shape,
-        cu_seq_lengths_q=cu_seq_lengths_q,
-        cu_seq_lengths_kv=cu_seq_lengths_kv,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
         seqused_q=seqused_q,
         seqused_kv=seqused_kv,
         is_packed_gqa=is_packed_gqa,
         layout_q=layout_q,
         layout_kv=layout_kv,
-        mask_type=mask_type,
-        quant_type=quant_type,
+        mask_mode=mask_mode,
+        quant_mode=quant_mode,
         softmax_precision=softmax_precision,
         win_left=win_left,
         win_right=win_right,
@@ -278,22 +330,22 @@ def generic_block_sparse_attention(
     block_shape: List[int],
     *,
     metadata: Optional[torch.Tensor] = None,
-    atten_mask: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = None,
     q_dequant_scale: Optional[torch.Tensor] = None,
     k_dequant_scale: Optional[torch.Tensor] = None,
     v_dequant_scale: Optional[torch.Tensor] = None,
     p_quant_scale: Optional[torch.Tensor] = None,
-    cu_seq_lengths_q: Optional[torch.Tensor] = None,
-    cu_seq_lengths_kv: Optional[torch.Tensor] = None,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
     is_packed_gqa: int = 1,
     layout_q: str = "TND",
-    layout_kv: str = "PAGED_BBND",
-    scale_value: float = 0.0,
-    mask_type: int = 1,
-    quant_type: int = 0,
+    layout_kv: str = "PA_BBND",
+    softmax_scale: float = 0.0,
+    mask_mode: Union[MaskMode, int] = MaskMode.CAUSAL,
+    quant_mode: Union[QuantMode, int] = QuantMode.NO_QUANT,
     dst_type_max: float = 0.0,
     softmax_precision: int = 1,
     win_left: int = -1,
@@ -304,6 +356,9 @@ def generic_block_sparse_attention(
     if query.dtype == torch.float8_e4m3fn and attention_out_dtype is None:
         attention_out_dtype = torch.bfloat16
 
+    mask_mode = _resolve_mask_mode(mask_mode)
+    quant_mode = _resolve_quant_mode(quant_mode)
+
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention(
         query,
@@ -313,22 +368,22 @@ def generic_block_sparse_attention(
         sparse_block_count,
         block_shape,
         metadata,
-        atten_mask,
+        attn_mask,
         q_dequant_scale,
         k_dequant_scale,
         v_dequant_scale,
         p_quant_scale,
-        cu_seq_lengths_q,
-        cu_seq_lengths_kv,
+        cu_seqlens_q,
+        cu_seqlens_kv,
         seqused_q,
         seqused_kv,
         block_table,
         is_packed_gqa,
         layout_q,
         layout_kv,
-        scale_value,
-        mask_type,
-        quant_type,
+        softmax_scale,
+        mask_mode,
+        quant_mode,
         dst_type_max,
         softmax_precision,
         win_left,
@@ -344,6 +399,11 @@ generic_block_sparse_attention = (
 generic_block_sparse_attention_metadata = (
     torch.ops.cann_ops_transformer.generic_block_sparse_attention_metadata
 )
+
+generic_block_sparse_attention.MaskMode = MaskMode
+generic_block_sparse_attention.QuantMode = QuantMode
+generic_block_sparse_attention_metadata.MaskMode = MaskMode
+generic_block_sparse_attention_metadata.QuantMode = QuantMode
 
 if not hasattr(torch_npu, "npu_generic_block_sparse_attention_metadata"):
     torch_npu.npu_generic_block_sparse_attention_metadata = (
