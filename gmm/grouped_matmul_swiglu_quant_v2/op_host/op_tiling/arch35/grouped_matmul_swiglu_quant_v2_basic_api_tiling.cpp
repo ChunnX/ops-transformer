@@ -265,7 +265,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::CheckTensorApiScaleShapes() co
     const int64_t weightScaleK = inputParams_.transB ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
     return weightScaleShape.GetDim(0) == static_cast<int64_t>(inputParams_.groupNum) &&
            weightScaleN == static_cast<int64_t>(inputParams_.nSize) && weightScaleK == kBlocks &&
-           weightScaleShape.GetDim(3) == SHAPE_DIM_TWO; // 4 维 weightScale 的最后一维索引，该维固定为 2
+           weightScaleShape.GetDim(3) == SHAPE_DIM_TWO; // 3：weightScale 最后一维索引（4维），该维固定为 2
 }
 
 bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
