@@ -259,7 +259,6 @@ macro(add_modules_sources_with_soc)
   # deduplicate
  	list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
 
-  # InferDataType交付件放在op_graph目录(*_graph_infer*.cpp)，与op_host的infershape一起编入infer_obj
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
   file(GLOB GRAPH_INFER_SRCS ${SOURCE_DIR}/../op_graph/*_graph_infer*.cpp)
   list(APPEND OPINFER_SRCS ${GRAPH_INFER_SRCS})
