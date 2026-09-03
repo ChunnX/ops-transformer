@@ -63,6 +63,16 @@ CUTLASS_DEVICE void dispatch_num_block_tokens(const uint32_t& num_block_tokens, 
     }
 }
 
+namespace {
+// Non-volatile shared load: unlike ptx::ld_shared (asm volatile), allows the
+// compiler to reorder/pipeline independent loads (real ILP under unroll).
+CUTLASS_DEVICE inline uint32_t ld_sh(const uint32_t* p) {
+    uint32_t v;
+    asm("ld.shared.u32 %0, [%1];" : "=r"(v) : "l"(__cvta_generic_to_shared(p)));
+    return v;
+}
+}
+
 // =============================================================================
 // Warp-level 8-bit radix-select TopK (reads from local buffer, not GMEM)
 // logits: local buffer, indexed [0 .. k_end-k_start)
@@ -108,7 +118,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     // Explicit shared-space element loader (avoids generic loads)
     const uint32_t* logits_u = reinterpret_cast<const uint32_t*>(logits);
     auto load_u32 = [&](uint32_t i) -> uint32_t {
-        if constexpr (kCached) return ptx::ld_shared(logits_u + i);
+        if constexpr (kCached) return ld_sh(logits_u + i);
         else return __float_as_uint(__ldcg(reinterpret_cast<const float*>(logits_u) + i));
     };
 
@@ -131,7 +141,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
         __syncwarp();
 
         // Build histogram with SMEM atomicAdd
-        #pragma unroll 8
+        #pragma unroll 4
         for (uint32_t i = lane_idx; i < k_len; i += 32) {
             uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
             if ((u & prefix_mask) == prefix_val) {
@@ -201,7 +211,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     // Count definite + collect boundary simultaneously
     uint32_t my_def = 0;
     uint32_t my_collected = 0;
-    #pragma unroll 8
+    #pragma unroll 4
     for (uint32_t i = lane_idx; i < k_len; i += 32) {
         uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
         if (u > kth_full) {
@@ -223,7 +233,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
 
     // Write definite
     uint32_t def_pos = def_exclusive;
-    #pragma unroll 8
+    #pragma unroll 4
     for (uint32_t i = lane_idx; i < k_len; i += 32) {
         uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
         if (u > kth_full) {
@@ -453,14 +463,14 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     // ====== Phase 1: MMA Issue Warp ======
     } else if (warp_idx == kSpecWarpStart + 2) {
         cutlass::arch::warpgroup_reg_dealloc<kNumSpecializedRegisters>();
-        DG_TRAP_ONLY_DEVICE_ASSERT(ptx::ld_shared(&smem.tmem_ptr_in_smem) == 0);
+        DG_TRAP_ONLY_DEVICE_ASSERT(ld_sh(&smem.tmem_ptr_in_smem) == 0);
 
         auto utccp_required_smem_warp_transpose = [&](const uint32_t* smem_ptr) {
             DG_STATIC_ASSERT(kNumUTCCPAlignedElems == 128, "Invalid aligned elements");
             uint32_t values[4];
             #pragma unroll
             for (uint32_t i = 0; i < 4; ++ i)
-                values[i] = ptx::ld_shared(smem_ptr + i * 32 + lane_idx);
+                values[i] = ld_sh(smem_ptr + i * 32 + lane_idx);
             __syncwarp();
             ptx::st_shared(smem_ptr + lane_idx * 4, values[0], values[1], values[2], values[3]);
         };
@@ -616,13 +626,13 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         const auto packed_row = reinterpret_cast<const uint32_t*>(smem_weights_row);
                         #pragma unroll
                         for (uint32_t j = 0; j < kNumHeads / 2; ++ j) {
-                            const auto packed = ptx::ld_shared(packed_row + j);
+                            const auto packed = ld_sh(packed_row + j);
                             weights[i][j] = ptx::exchange(*reinterpret_cast<const nv_bfloat162*>(&packed), 0);
                         }
                     } else {
                         #pragma unroll
                         for (uint32_t j = 0; j < kNumHeads; ++ j)
-                            weights[i][j] = ptx::ld_shared(smem_weights_row + j);
+                            weights[i][j] = ld_sh(smem_weights_row + j);
                     }
                 }
 
@@ -635,7 +645,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         CUTE_TIE_DECL(kv_pipeline.advance(), kv_stage_idx_local, kv_phase);
                         kv_stage_idx = kv_stage_idx_local;
                         smem.full_kv_barriers[kv_stage_idx].wait(kv_phase);
-                        scale_kv = static_cast<reduce_dtype_t>(ptx::ld_shared(smem.smem_sf_kv[kv_stage_idx] + math_thread_idx));
+                        scale_kv = static_cast<reduce_dtype_t>(ld_sh(smem.smem_sf_kv[kv_stage_idx] + math_thread_idx));
                     }
 
                     CUTE_TIE_DECL(tmem_pipeline.advance(kNumMathWarpGroups), tmem_stage_idx, tmem_phase);
@@ -851,7 +861,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         if (all_seg_cached) {
                             const uint32_t cache_pos = static_cast<uint32_t>(c) - k_start - w * segL;
                             merge_vals[j] = __uint_as_float(
-                                ptx::ld_shared(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
+                                ld_sh(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
                         } else {
                             merge_vals[j] = __ldcg(logits_row + (static_cast<uint32_t>(c) - k_start));
                         }
@@ -884,7 +894,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         #pragma unroll 4
                         for (uint32_t i = lane_idx; i < kSlice; i += 32) {
                             uint32_t u = to_sortable3(__uint_as_float(
-                                ptx::ld_shared(reinterpret_cast<const uint32_t*>(mv3) + warp_idx * kSlice + i)));
+                                ld_sh(reinterpret_cast<const uint32_t*>(mv3) + warp_idx * kSlice + i)));
                             if ((u & pmask) == pval) {
                                 uint32_t b = (u >> shift) & 0xFF;
                                 atomicAdd(&wh[b], 1u);
@@ -960,7 +970,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
                 };
                 auto load_val = [&](uint32_t i) -> uint32_t {
-                    return ptx::ld_shared(reinterpret_cast<const uint32_t*>(mv) + warp_idx * kSlice + i);
+                    return ld_sh(reinterpret_cast<const uint32_t*>(mv) + warp_idx * kSlice + i);
                 };
 
                 // per-warp count definite + stage boundary
