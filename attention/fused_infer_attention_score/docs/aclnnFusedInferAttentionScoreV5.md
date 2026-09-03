@@ -1730,14 +1730,14 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - key/value的数据类型为INT8时，inputLayout不支持TND
     - Q_S = 1时：
       - inputLayout不支持BNSD_BSND
-      - 当key/value的数据类型为INT8, keyAntiquantMode = 0且valueAntiquantMode = 1时，query和output的数据类型仅支持FLOAT16（PagedAttention的NZ排布且最后一维D0维等于32场景除外，该场景query和output仅支持BFLOAT16）
+      - 当key/value的数据类型为INT8, keyAntiquantMode = 0且valueAntiquantMode = 1时，query和output的数据类型仅支持FLOAT16（kv cache排布为NZ且最后一维D0维等于32的场景除外，该场景query和output仅支持BFLOAT16）
     - Q_S > 1时：
       - key/value的数据类型为INT8时，keyAntiquantMode不支持2，3，4，5
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，query和output的数据类型仅支持BFLOAT16
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，Q_S长度不能大于16
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持tensor list
       - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持左padding
-      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持page attention（PagedAttention的NZ排布且最后一维D0维等于32场景除外，该场景PagedAttention必须开启）
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持page attention（kv cache排布为NZ且最后一维D0维等于32的场景除外，该场景PagedAttention必须开启）
       - key/value的数据类型不支持INT4、INT32
     - page attention场景下，入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
       - tensor shape应满足以下条件：
@@ -1745,7 +1745,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - per-token叠加per-head模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
         - per-token-group模式，shape的倒数第二维应大于等于maxBlockNumPerBatch * blockSize
     - 不支持合并rope
-    - PagedAttention的NZ排布且最后一维D0维等于32场景（kv cache排布为[blockNum, KV_N, D/32, blockSize, 32]，K_D=V_D=128）：
+    - kv cache排布为NZ且最后一维D0维等于32的场景（kv cache排布为[blockNum, KV_N, D/32, blockSize, 32]，K_D=V_D=128）：
       - query：BFLOAT16，Q_S支持[1,16]，Q_D=128
       - key/value：INT8
       - inputLayout仅支持BSH、BSND、BNSD
