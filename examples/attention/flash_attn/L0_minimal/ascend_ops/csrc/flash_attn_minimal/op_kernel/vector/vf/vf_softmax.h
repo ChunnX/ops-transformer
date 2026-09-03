@@ -77,16 +77,16 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T * maxUb, __ubuf__
     LoadAlign(vreg_max, tmpMaxUb);
     LoadAlign(vreg_in_max, inMaxUb);
     ExpSub(vreg_exp_max, vreg_in_max, vreg_max, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)maxUb, vreg_max, preg_all);
 
     LoadAlign(vreg_in_exp_sum, inExpSumUb);
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb);
     Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
     Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)expSumUb, vreg_exp_sum_update, preg_all);
 }
 
