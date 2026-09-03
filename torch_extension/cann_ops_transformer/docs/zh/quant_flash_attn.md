@@ -461,7 +461,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>tensor_type支持float8_e8m0、float32</li>
-                        <li>shape dim：MxFP8场景支持4、5；FP8全量化场景支持2；HIF8场景支持1</li>
+                        <li>shape dim：MxFP8场景支持4、5；FP8场景支持2；HIF8场景支持1</li>
                     </ul>
                 </td>
                 <td rowspan="3">必须存在</td>
@@ -477,7 +477,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>tensor_type支持float8_e8m0、float32</li>
-                        <li>shape dim：MxFP8场景支持4、5、6；FP8全量化场景支持3；HIF8场景支持1</li>
+                        <li>shape dim：MxFP8场景支持4、5、6；FP8场景支持3；HIF8场景支持1</li>
                     </ul>
                 </td>
             </tr>
@@ -486,7 +486,7 @@ cann_ops_transformer.quant_flash_attn(
                 <td>
                     <ul>
                         <li>tensor_type支持float8_e8m0、float32</li>
-                        <li>shape dim：MxFP8场景支持4、5、6；FP8全量化场景支持1；HIF8场景支持1</li>
+                        <li>shape dim：MxFP8场景支持4、5、6；FP8场景支持1；HIF8场景支持1</li>
                     </ul>
                 </td>
             </tr>
