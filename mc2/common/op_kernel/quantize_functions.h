@@ -359,15 +359,18 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T);
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch();
-    uint32_t totalCountInUB2 = totalCountInUB * DIGIT_TWO;
     uint16_t loopNum = CeilDiv(totalCountInUB, 2 * vlForHalfNumber);
+    uint32_t evenInputCount = CeilDiv(totalCountInUB, static_cast<uint32_t>(DIGIT_TWO));
+    uint32_t oddInputCount = totalCountInUB / DIGIT_TWO;
+    uint32_t outputCount = totalCountInUB;
     __VEC_SCOPE__
     {
-        Reg::MaskReg dataMask1;
-        Reg::MaskReg dataMask2;
-        Reg::MaskReg dataMask3;
-        Reg::MaskReg dataMask4;
-        Reg::MaskReg maskAll = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg evenInputMask;
+        Reg::MaskReg oddInputMask;
+        Reg::MaskReg outputMask;
+        Reg::MaskReg maskAllB8 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg maskAllB16 = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg maskAllB32 = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         Reg::RegTensor<uint16_t> halfScaleForMul;
         Reg::RegTensor<float> floatScaleForMul;
         Reg::RegTensor<T> vdExp0;
@@ -378,22 +381,31 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
         Reg::RegTensor<float> vdExp1FP32Zero;
         Reg::RegTensor<float> vdExp1FP32One;
         Reg::RegTensor<U> vdExp0FP8Zero;
-        Reg::RegTensor<U> vdExp0FP8One;
-        Reg::RegTensor<U> vdExp1FP8Zero;
+        Reg::RegTensor<U> vdExp0FP8Two;
         Reg::RegTensor<U> vdExp1FP8One;
+        Reg::RegTensor<U> vdExp1FP8Three;
         // 放到索引位置0
         static constexpr Reg::CastTrait castTraitZero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                               Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         // 放到索引位置1
         static constexpr Reg::CastTrait castTraitOne = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                              Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-        static constexpr Reg::CastTrait castTrait32to8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
-                                                               Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+        static constexpr Reg::CastTrait castTrait32to8Zero = {
+            Reg::RegLayout::ZERO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
+        static constexpr Reg::CastTrait castTrait32to8One = {
+            Reg::RegLayout::ONE, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
+        static constexpr Reg::CastTrait castTrait32to8Two = {
+            Reg::RegLayout::TWO, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
+        static constexpr Reg::CastTrait castTrait32to8Three = {
+            Reg::RegLayout::THREE, Reg::SatMode::SAT, Reg::MaskMergeMode::ZEROING,
+            RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < loopNum; i++) {
-            dataMask1 = Reg::UpdateMask<T>(totalCountInUB);
-            dataMask2 = Reg::UpdateMask<T>(totalCountInUB);
-            dataMask3 = Reg::UpdateMask<T>(totalCountInUB2);
-            dataMask4 = Reg::UpdateMask<T>(totalCountInUB2);
+            evenInputMask = Reg::UpdateMask<T>(evenInputCount);
+            oddInputMask = Reg::UpdateMask<T>(oddInputCount);
+            outputMask = Reg::UpdateMask<uint8_t>(outputCount);
             Reg::DataCopy<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, vlForHalfNumber * DIGIT_TWO);
             // 这里DIST_E2B_B16是将每个16bit元素广播到一个DataBlock(32B)中
@@ -402,49 +414,46 @@ __aicore__ inline void ComputeFp8Data(__ubuf__ T *srcAddr, __ubuf__ uint16_t *ha
             // 因为前面scale计算用的BF16类型，所以对于fp16需要先cast到float再计算
             if constexpr (Std::IsSame<T, half>::value) {
                 // 取偶数索引的元素Cast到vdExp0FP32Zero
-                Reg::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, dataMask1);
+                Reg::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, evenInputMask);
                 // 取奇数索引的元素Cast到vdExp0FP32One
-                Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, dataMask1);
+                Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, evenInputMask);
                 // 由于前面搬入是一个广播操作，所以直接取偶数索引元素即可
                 Reg::Cast<float, bfloat16_t, castTraitZero>(
-                    floatScaleForMul, (Reg::RegTensor<bfloat16_t> &)halfScaleForMul, maskAll);
-                Reg::Mul(vdExp0FP32Zero, vdExp0FP32Zero, floatScaleForMul, dataMask3);
-                Reg::Mul(vdExp0FP32One, vdExp0FP32One, floatScaleForMul, dataMask4);
-                Reg::Interleave(vdExp0FP32Zero, vdExp0FP32One, vdExp0FP32Zero, vdExp0FP32One);
-                Reg::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, dataMask1);
-                Reg::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, dataMask1);
-                Reg::Mul(vdExp1FP32Zero, vdExp1FP32Zero, floatScaleForMul, dataMask3);
-                Reg::Mul(vdExp1FP32One, vdExp1FP32One, floatScaleForMul, dataMask4);
-                Reg::Interleave(vdExp1FP32Zero, vdExp1FP32One, vdExp1FP32Zero, vdExp1FP32One);
-                Reg::Interleave(vdExp0FP32Zero, vdExp1FP32Zero, vdExp0FP32Zero, vdExp1FP32Zero);
-                Reg::Interleave(vdExp0FP32One, vdExp1FP32One, vdExp0FP32One, vdExp1FP32One);
-                Reg::Cast<U, float, castTrait32to8>(vdExp0FP8Zero, vdExp0FP32Zero, dataMask3);
-                Reg::Cast<U, float, castTrait32to8>(vdExp0FP8One, vdExp1FP32Zero, dataMask3);
-                Reg::Cast<U, float, castTrait32to8>(vdExp1FP8Zero, vdExp0FP32One, dataMask4);
-                Reg::Cast<U, float, castTrait32to8>(vdExp1FP8One, vdExp1FP32One, dataMask4);
+                    floatScaleForMul, (Reg::RegTensor<bfloat16_t> &)halfScaleForMul, maskAllB16);
+                Reg::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, oddInputMask);
+                Reg::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, oddInputMask);
+                Reg::Mul(vdExp0FP32Zero, vdExp0FP32Zero, floatScaleForMul, maskAllB32);
+                Reg::Mul(vdExp0FP32One, vdExp0FP32One, floatScaleForMul, maskAllB32);
+                Reg::Mul(vdExp1FP32Zero, vdExp1FP32Zero, floatScaleForMul, maskAllB32);
+                Reg::Mul(vdExp1FP32One, vdExp1FP32One, floatScaleForMul, maskAllB32);
             } else {
-                Reg::Mul(vdExp0, vdExp0, (Reg::RegTensor<T> &)halfScaleForMul, dataMask1);
-                Reg::Mul(vdExp1, vdExp1, (Reg::RegTensor<T> &)halfScaleForMul, dataMask1);
-                Reg::Interleave(vdExp0, vdExp1, vdExp0, vdExp1);
-                Reg::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, dataMask1);
-                Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, dataMask1);
-                Reg::Interleave(vdExp0FP32Zero, vdExp0FP32One, vdExp0FP32Zero, vdExp0FP32One);
-                Reg::Cast<U, float, castTrait32to8>(vdExp0FP8Zero, vdExp0FP32Zero, dataMask3);
-                Reg::Cast<U, float, castTrait32to8>(vdExp0FP8One, vdExp0FP32One, dataMask3);
-                Reg::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, dataMask2);
-                Reg::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, dataMask2);
-                Reg::Interleave(vdExp1FP32Zero, vdExp1FP32One, vdExp1FP32Zero, vdExp1FP32One);
-                Reg::Cast<U, float, castTrait32to8>(vdExp1FP8Zero, vdExp1FP32Zero, dataMask4);
-                Reg::Cast<U, float, castTrait32to8>(vdExp1FP8One, vdExp1FP32One, dataMask4);
+                Reg::Mul(vdExp0, vdExp0, (Reg::RegTensor<T> &)halfScaleForMul, evenInputMask);
+                Reg::Mul(vdExp1, vdExp1, (Reg::RegTensor<T> &)halfScaleForMul, oddInputMask);
+                Reg::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, evenInputMask);
+                Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, evenInputMask);
+                Reg::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, oddInputMask);
+                Reg::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, oddInputMask);
             }
-            Reg::DataCopy<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (Reg::RegTensor<int8_t> &)vdExp0FP8Zero, OUT_ELE_NUM_ONE_BLK, dataMask3);
-            Reg::DataCopy<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (Reg::RegTensor<int8_t> &)vdExp0FP8One, OUT_ELE_NUM_ONE_BLK, dataMask3);
-            Reg::DataCopy<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (Reg::RegTensor<int8_t> &)vdExp1FP8Zero, OUT_ELE_NUM_ONE_BLK, dataMask4);
-            Reg::DataCopy<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (Reg::RegTensor<int8_t> &)vdExp1FP8One, OUT_ELE_NUM_ONE_BLK, dataMask4);
+
+            Reg::Cast<U, float, castTrait32to8Zero>(vdExp0FP8Zero, vdExp0FP32Zero, maskAllB32);
+            Reg::Cast<U, float, castTrait32to8Two>(vdExp0FP8Two, vdExp0FP32One, maskAllB32);
+            Reg::Cast<U, float, castTrait32to8One>(vdExp1FP8One, vdExp1FP32Zero, maskAllB32);
+            Reg::Cast<U, float, castTrait32to8Three>(vdExp1FP8Three, vdExp1FP32One, maskAllB32);
+
+            Reg::Add((Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (Reg::RegTensor<uint8_t> &)vdExp0FP8Two, outputMask);
+            Reg::Add((Reg::RegTensor<uint8_t> &)vdExp1FP8One,
+                          (Reg::RegTensor<uint8_t> &)vdExp1FP8One,
+                          (Reg::RegTensor<uint8_t> &)vdExp1FP8Three, outputMask);
+            Reg::Add((Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                          (Reg::RegTensor<uint8_t> &)vdExp1FP8One, outputMask);
+
+            // Add采用ZEROING模式将尾块无效字节清零，整VL写回以保持Align256 padding确定。
+            Reg::DataCopy<int8_t, Reg::PostLiteral::POST_MODE_UPDATE,
+                               Reg::StoreDist::DIST_NORM_B8>(
+                outLocalAddr, (Reg::RegTensor<int8_t> &)vdExp0FP8Zero, vlForHalfNumber * DIGIT_TWO, maskAllB8);
         }
     }
 }
