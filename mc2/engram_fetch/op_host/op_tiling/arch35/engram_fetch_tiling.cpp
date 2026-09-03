@@ -47,7 +47,6 @@ constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
-constexpr int64_t HIDDEN_BYTES_ALIGN = 32;
 constexpr int64_t UB_ALIGN = 32;
 constexpr int64_t FLAG_SCRATCH_SIZE = 32;
 constexpr int64_t WORKSPACE_ALIGN_2MB = 2 * 1024 * 1024;
@@ -311,13 +310,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context)
     auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
     OP_TILING_CHECK(*hiddenSizePtr <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "hidden_size", std::to_string(*hiddenSizePtr).c_str(), "> 0"),
-                    return ge::GRAPH_FAILED);
-    int64_t bytesPerElem = ge::GetSizeByDataType(fetchedDesc->GetDataType());
-    OP_TILING_CHECK((*hiddenSizePtr * bytesPerElem) % HIDDEN_BYTES_ALIGN != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "hidden_size", std::to_string(*hiddenSizePtr).c_str(),
-                                              (std::string("hidden_size * dtype_size must be ") +
-                                               std::to_string(HIDDEN_BYTES_ALIGN) + "-byte aligned")
-                                                  .c_str()),
                     return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "hidden_size is %ld", *hiddenSizePtr);
 

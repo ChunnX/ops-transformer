@@ -594,7 +594,7 @@ static EngramFetchTestParam g_testCases[] = {
      "",
      {16777216}},
 
-    {"fail_hidden_size_not_32bytes_aligned",
+    {"infer_success_hidden_size_unaligned",
      {4 * 512},
      ge::DT_INT32,
      ge::FORMAT_ND,
@@ -617,10 +617,10 @@ static EngramFetchTestParam g_testCases[] = {
      0,
      0,
      "3510",
-     ge::GRAPH_FAILED,
+     ge::GRAPH_SUCCESS,
      0UL,
      "",
-     {}},
+     {16777216}},
 
     {"fail_num_entries_negative",
      {4 * 512},
