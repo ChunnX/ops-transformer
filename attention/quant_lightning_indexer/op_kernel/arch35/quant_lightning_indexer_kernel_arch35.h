@@ -119,6 +119,9 @@ protected:
     QLICommon::ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
     QLICommon::SplitCoreInfo splitCoreInfo{};
+    bool enableS1Base8FastPath = false;
+    bool enableDirectIndicesFastPath = false;
+    bool useDirectIndicesFastPath = false;
 
     // ================================Init functions==================================
     __aicore__ inline void InitBuffers();
@@ -133,6 +136,8 @@ protected:
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QLICommon::RunInfo runInfo,
                                             uint32_t qScaleLoop, uint32_t kScaleLoop);
     __aicore__ inline void ProcessInvalid();
+    __aicore__ inline bool CanUseDirectIndicesFastPath() const;
+    __aicore__ inline bool AllBatchesSupportDirectIndicesFastPath();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
@@ -172,9 +177,13 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::InitTilingData(const Q
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-    constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
+    // Host tiling owns the complete Base8 predicate and uses the same flag for
+    // workspace sizing, so the kernel must not reconstruct that predicate.
+    enableS1Base8FastPath = tilingData->enableS1Base8FastPath != 0;
+    enableDirectIndicesFastPath = tilingData->enableDirectIndicesFastPath != 0;
+    constInfo.s1BaseSize = enableS1Base8FastPath ? 8U : S1_BASE_SIZE;
+    constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
     constInfo.s2BaseSize = S2_BASE_SIZE;
-    constInfo.s1BaseSize = S1_BASE_SIZE;
 
     if (constInfo.tSize <= 64) {
         constInfo.mBaseSize /= 2;
@@ -615,16 +624,50 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessInvalid()
 }
 
 template <typename QLIT>
+__aicore__ inline bool QuantLightningIndexerKernel<QLIT>::CanUseDirectIndicesFastPath() const
+{
+    return useDirectIndicesFastPath && tempLoopInfo.actS2SizeOrig <= constInfo.sparseCount &&
+           tempLoopInfo.validS2Len <= constInfo.sparseCount;
+}
+
+template <typename QLIT>
+__aicore__ inline bool QuantLightningIndexerKernel<QLIT>::AllBatchesSupportDirectIndicesFastPath()
+{
+    if (!enableDirectIndicesFastPath) {
+        return false;
+    }
+    for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
+        uint32_t actualK = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2,
+                                           actualSeqLengthsGm, constInfo.kSeqSize);
+        if (actualK > constInfo.sparseCount) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <typename QLIT>
 __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessMain()
 {
     if (!splitCoreInfo.isCoreEnable) {
         return;
     }
 
+    // The direct branch is all-or-none for one invocation. Every enabled AIC
+    // and AIV independently reads the same immutable actual-length array.
+    useDirectIndicesFastPath = AllBatchesSupportDirectIndicesFastPath();
+    if ASCEND_IS_AIC {
+        if (useDirectIndicesFastPath) {
+            return;
+        }
+    }
+
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1);
+        if (!useDirectIndicesFastPath) {
+            CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0);
+            CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1);
+        }
     } else {
         matmulService.AllocEventID();
     }
@@ -640,6 +683,21 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessMain()
         }
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+            if (CanUseDirectIndicesFastPath()) {
+                // One S1 group can be split along S2. Only its S2=0 owner is
+                // allowed to write the final index rows.
+                if ASCEND_IS_AIV {
+                    if (splitCoreInfo.s2Start == 0) {
+                        QLICommon::RunInfo directRunInfo;
+                        CalcRunInfo(gloop, splitCoreInfo.s2Start, directRunInfo, qScaleLoop, 0);
+                        vectorService.ProcessDirectIndices(directRunInfo);
+                    }
+                }
+                gloop += tempLoopInfo.s2LoopEnd - splitCoreInfo.s2Start + 1;
+                ++qScaleLoop;
+                splitCoreInfo.s2Start = 0;
+                continue;
+            }
             uint32_t kScaleLoop = 0;
             for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
                 if ((s2LoopIdx - splitCoreInfo.s2Start) % 16 == 0) {

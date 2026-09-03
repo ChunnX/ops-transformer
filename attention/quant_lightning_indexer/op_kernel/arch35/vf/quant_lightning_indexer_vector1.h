@@ -645,8 +645,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
                                                   const int gSize, // G 64
                                                   const int batch)
 {
-    // 暂只支持这两种情况, 后续改成循环
-    if (batch != 2 && batch != 1) {
+    if (batch != 4 && batch != 2 && batch != 1) {
         return;
     }
     auto weight = (__ubuf__ W_T *)weight_.GetPhyAddr();
@@ -656,7 +655,15 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
     auto qk = (__ubuf__ QK_T *)qk_.GetPhyAddr();
     auto out = (__ubuf__ SCORE_T *)out_.GetPhyAddr();
 
-    if (batch == 2) {
+    if (batch == 4) {
+        MulWeightAndReduceSum2(out, out + outStride, outStride, qk, qk + qkStride, qkVLStride, qkStride,
+                               weight, weight + weightStride, weightStride, weightFloat, kScale, kScaleStride,
+                               qScale, qScale + qScaleStride, qScaleStride, gSize);
+        MulWeightAndReduceSum2(out + 2 * outStride, out + 3 * outStride, outStride, qk + 2 * qkStride,
+                               qk + 3 * qkStride, qkVLStride, qkStride, weight + 2 * weightStride,
+                               weight + 3 * weightStride, weightStride, weightFloat, kScale, kScaleStride,
+                               qScale + 2 * qScaleStride, qScale + 3 * qScaleStride, qScaleStride, gSize);
+    } else if (batch == 2) {
         auto weight1 = weight + weightStride;
         auto qScale1 = qScale + qScaleStride;
         auto qk1 = qk + qkStride;

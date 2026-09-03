@@ -43,6 +43,7 @@ public:
     __aicore__ inline QLIVector(){};
     __aicore__ inline void ProcessVec1(const QLICommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const QLICommon::RunInfo &info);
+    __aicore__ inline void ProcessDirectIndices(const QLICommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct QLICommon::ConstInfo &constInfo,
                                       const QLITilingData *__restrict tilingData);
@@ -270,6 +271,59 @@ __aicore__ inline void QLIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offs
     dataCopyOutParams.srcStride = 0;
     dataCopyOutParams.dstStride = 0;
     AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
+}
+
+template <typename QLIT>
+__aicore__ inline void QLIVector<QLIT>::ProcessDirectIndices(const QLICommon::RunInfo &info)
+{
+    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+    int64_t curS1ProcNum =
+        curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+    int64_t laneRowOffset = (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
+    int64_t curAivS1Idx = curS1Idx + laneRowOffset;
+    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
+
+    AscendC::DataCopyParams copyOutParams;
+    copyOutParams.blockCount = 1;
+    copyOutParams.blockLen = topkCount_ * sizeof(uint32_t);
+    copyOutParams.srcStride = 0;
+    copyOutParams.dstStride = 0;
+
+    int32_t firstValidS2Len = static_cast<int32_t>(info.actS2SizeOrig);
+    if (constInfo_.attenMaskFlag) {
+        firstValidS2Len = static_cast<int32_t>(info.actS2SizeOrig) - static_cast<int32_t>(info.actS1Size) +
+                          static_cast<int32_t>(curAivS1Idx) + 1;
+    }
+    for (uint32_t i = 0; i < curAivS1ProcNum; ++i) {
+        int32_t rowOffset = constInfo_.attenMaskFlag ? static_cast<int32_t>(i) : 0;
+        int32_t validS2Len = Min(Max(firstValidS2Len + rowOffset, static_cast<int32_t>(0)),
+                                 static_cast<int32_t>(topkCount_));
+
+        WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+        if (validS2Len > 0) {
+            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 0, validS2Len);
+        }
+        if (validS2Len < static_cast<int32_t>(topkCount_)) {
+            uint64_t mask[1];
+            mask[0] = ~0ULL << (validS2Len % 8);
+            PipeBarrier<PIPE_V>();
+            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8],
+                      constInfo_.INVALID_IDX, mask, 1, 1, 0);
+        }
+        int32_t tailStart = validS2Len / 8 * 8 + 64;
+        if (tailStart < static_cast<int32_t>(topkCount_)) {
+            PipeBarrier<PIPE_V>();
+            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[tailStart], constInfo_.INVALID_IDX,
+                      static_cast<uint32_t>(static_cast<int32_t>(topkCount_) - tailStart));
+        }
+
+        SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        uint64_t outputOffset = info.indiceOutOffset +
+                                (curS1Idx + static_cast<uint64_t>(laneRowOffset) + i) * topkCount_;
+        AscendC::DataCopyPad(indiceOutGm[outputOffset], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    }
 }
 
 template <typename QLIT>

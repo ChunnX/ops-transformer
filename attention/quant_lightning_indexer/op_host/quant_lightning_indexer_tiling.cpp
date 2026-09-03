@@ -1201,8 +1201,43 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 }
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
+static bool QliSupportsS1Base8Dtype(const QLITilingInfo *tilingInfo)
+{
+    const ge::DataType queryType = tilingInfo->inputQType;
+    const ge::DataType keyType = tilingInfo->inputKType;
+    const ge::DataType weightsType = tilingInfo->opParamInfo.weights.desc->GetDataType();
+    const ge::DataType queryScaleType = tilingInfo->opParamInfo.query_dequant_scale.desc->GetDataType();
+    const ge::DataType keyScaleType = tilingInfo->opParamInfo.key_dequant_scale.desc->GetDataType();
+
+    const bool fp8Bf16 = queryType == ge::DT_FLOAT8_E4M3FN && keyType == ge::DT_FLOAT8_E4M3FN &&
+                         weightsType == ge::DT_BF16 && queryScaleType == ge::DT_FLOAT &&
+                         keyScaleType == ge::DT_FLOAT;
+    const bool fp8Fp16 = queryType == ge::DT_FLOAT8_E4M3FN && keyType == ge::DT_FLOAT8_E4M3FN &&
+                         weightsType == ge::DT_FLOAT16 && queryScaleType == ge::DT_FLOAT16 &&
+                         keyScaleType == ge::DT_FLOAT16;
+    const bool hif8Bf16 = queryType == ge::DT_HIFLOAT8 && keyType == ge::DT_HIFLOAT8 &&
+                          weightsType == ge::DT_BF16 && queryScaleType == ge::DT_FLOAT &&
+                          keyScaleType == ge::DT_FLOAT;
+    const bool int8Fp16 = queryType == ge::DT_INT8 && keyType == ge::DT_INT8 &&
+                          weightsType == ge::DT_FLOAT16 && queryScaleType == ge::DT_FLOAT16 &&
+                          keyScaleType == ge::DT_FLOAT16;
+    return fp8Bf16 || fp8Fp16 || hif8Bf16 || int8Fp16;
+}
+
+static bool QliSupportsDirectIndicesFastPath(const QLITilingInfo *tilingInfo)
+{
+    // Direct indices is an arch35 whole-invocation path. The kernel performs
+    // the dynamic all-batch actual-K check before allocating the normal CV
+    // event sequence; a mixed invocation falls back as a whole.
+    return tilingInfo->npuArch == NpuArch::DAV_3510 && tilingInfo->pageAttentionFlag &&
+           tilingInfo->inputQLayout == DataLayout::TND && tilingInfo->inputKLayout == DataLayout::PA_BSND &&
+           tilingInfo->bSize > 0 && tilingInfo->maxBlockNumPerBatch > 0 &&
+           (tilingInfo->sparseMode == 0 || tilingInfo->sparseMode == 3);
+}
+
 static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform, int64_t qliS2Size,
-                                     uint32_t qliAicNum, ge::DataType inputQType)
+                                     uint32_t qliAicNum, ge::DataType inputQType,
+                                     bool enableS1Base8FastPath)
 {
     constexpr uint32_t qliMm1ResElemSize = 4;
     constexpr uint32_t qliDoubleBuffer = 2;
@@ -1218,7 +1253,7 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
 
     uint64_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t qli3510S1Base = 4;
+        const uint32_t qli3510S1Base = enableS1Base8FastPath ? 8U : 4U;
         constexpr uint32_t qli3510S2Base = 128;
         uint32_t scoreElemSize = (inputQType == ge::DT_INT8) ? sizeof(uint32_t) : sizeof(uint16_t);
         qliWorkspaceSize += qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
@@ -1244,7 +1279,24 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum, tilingInfo->inputQType);
+    // CA validation shows that the INT8 template does not have stable gains
+    // below T=640. The fixed Base8 tile capacity is unchanged by larger T.
+    constexpr uint32_t s1Base8MinT = 640;
+    constexpr uint32_t s1Base8MaxBatch = 10;
+    const bool enableS1Base8FastPath = tilingInfo->npuArch == NpuArch::DAV_3510 &&
+                                       tilingInfo->pageAttentionFlag &&
+                                       tilingInfo->inputQLayout == DataLayout::TND &&
+                                       tilingInfo->inputKLayout == DataLayout::PA_BSND &&
+                                       QliSupportsS1Base8Dtype(tilingInfo) &&
+                                       tilingInfo->tSize >= s1Base8MinT && tilingInfo->bSize > 0 &&
+                                       tilingInfo->bSize <= s1Base8MaxBatch &&
+                                       tilingInfo->gSize > 0 && tilingInfo->gSize <= 32 &&
+                                       (tilingInfo->blockSize == 64 || tilingInfo->blockSize == 128) &&
+                                       tilingInfo->maxBlockNumPerBatch > 0 &&
+                                       (tilingInfo->sparseMode == 0 || tilingInfo->sparseMode == 3);
+    const bool enableDirectIndicesFastPath = QliSupportsDirectIndicesFastPath(tilingInfo);
+    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum,
+                                                  tilingInfo->inputQType, enableS1Base8FastPath);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
@@ -1260,6 +1312,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_blockSize(tilingInfo->blockSize);
     tilingData_.set_maxBlockNumPerBatch(tilingInfo->maxBlockNumPerBatch);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
+    tilingData_.set_enableS1Base8FastPath(static_cast<uint32_t>(enableS1Base8FastPath));
+    tilingData_.set_enableDirectIndicesFastPath(static_cast<uint32_t>(enableDirectIndicesFastPath));
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
