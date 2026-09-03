@@ -463,18 +463,17 @@ const aclTensor *CreateStrideAwareView(const aclTensor *tensor, const char *name
     return strideView;
 }
 
-// 对 view 维度连续的输入做零拷贝描述符归一化:
-// PTA/入图路径5传入的 aclTensor 的 storageShape 可能为扁平存储形状(如 1D), 宿侧校验(common_checker CheckDimNum)
-// 与 tiling(GetQueryN 等)按 GetStorageShape() 读取形状, 因此不能直接透传原始描述符;
-// 而无条件 l0op::Contiguous 会在图模式路径5中固化拷贝节点, 导致每个 step 全量搬运 KV cache, 造成性能劣化。
-// 故对连续输入改用 executor->CreateView 建立零拷贝 view 并将 storageShape 归一化为 viewShape, 失败时回退 Contiguous。
+// 对 view 维度连续的输入直接透传:
+// def.cpp 中 key/value 已恢复 .AutoContiguous(), 连续性/描述符归一化(storageShape 对齐 viewShape)由 l0 框架
+// 在算子绑定时完成, 与 cf59d0d7 之前的行为一致。此处不再调用 executor->CreateView / l0op::Contiguous:
+// 图模式路径5下每个 executor 记录的操作都会固化为图节点, 连续输入上多余的 view/contiguous 节点
+// 会引入每个 step 的额外开销(甚至全量搬运 KV cache), 是路径5性能劣化的残留根因。
+// 注意: 该透传依赖 def.cpp 的 AutoContiguous; 若 def.cpp 改回 IgnoreContiguous, 需恢复 CreateStrideAwareView 归一化。
 const aclTensor *NormalizeContiguousTensor(const aclTensor *tensor, const char *name, aclOpExecutor *executor)
 {
-    auto normalizedTensor = CreateStrideAwareView(tensor, name, executor);
-    if (normalizedTensor != nullptr) {
-        return normalizedTensor;
-    }
-    return l0op::Contiguous(tensor, executor);
+    (void)name;
+    (void)executor;
+    return tensor;
 }
 
 aclnnStatus MakeTensorListContiguous(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
@@ -558,19 +557,9 @@ aclnnStatus NormalizeDim0CacheTensorList(const aclTensorList *&tensorList, const
         const aclTensor *normalizedTensor = nullptr;
         std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
         if (IsContiguous(tensor)) {
-            // 连续输入零拷贝归一化: 无条件 l0op::Contiguous 会在图模式路径5中固化拷贝节点,
-            // 导致每个 step 全量搬运 KV cache(理由同 NormalizeContiguousTensor), 失败时回退拷贝路径。
-            normalizedTensor = CreateStrideAwareView(tensor, itemName.c_str(), executor);
-            if (normalizedTensor == nullptr) {
-                auto contiguousTensor = l0op::Contiguous(tensor, executor);
-                if (contiguousTensor == nullptr) {
-                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try normalize contiguous %s failed.", itemName.c_str());
-                    return ACLNN_ERR_INNER_NULLPTR;
-                }
-                normalizedTensor = completeStrideMetadata ?
-                                       CreateStrideAwareView(contiguousTensor, itemName.c_str(), executor) :
-                                       contiguousTensor;
-            }
+            // 连续输入直接透传(理由同 NormalizeContiguousTensor): 连续性归一化由 def.cpp 的
+            // AutoContiguous 在框架绑定时完成, 避免图模式路径5固化多余的 view/拷贝节点。
+            normalizedTensor = tensor;
         } else if (IsFirstAxisOnlyNonContiguous(tensor, itemName.c_str())) {
             normalizedTensor = CreateStrideAwareView(tensor, itemName.c_str(), executor);
         } else {
@@ -607,14 +596,9 @@ aclnnStatus NormalizeDim0CacheTensor(const aclTensor *&tensor, const char *name,
 
     const aclTensor *normalizedTensor = nullptr;
     if (IsContiguous(tensor)) {
-        // 连续输入零拷贝归一化(理由同 NormalizeContiguousTensor), 失败时回退拷贝路径。
-        normalizedTensor = CreateStrideAwareView(tensor, name, executor);
-        if (normalizedTensor == nullptr) {
-            auto contiguousTensor = l0op::Contiguous(tensor, executor);
-            if (contiguousTensor != nullptr) {
-                normalizedTensor = CreateStrideAwareView(contiguousTensor, name, executor);
-            }
-        }
+        // 连续输入直接透传(理由同 NormalizeContiguousTensor): 连续性归一化由 def.cpp 的
+        // AutoContiguous 在框架绑定时完成, 避免图模式路径5固化多余的 view/拷贝节点。
+        normalizedTensor = tensor;
     } else if (IsFirstAxisOnlyNonContiguous(tensor, name)) {
         normalizedTensor = CreateStrideAwareView(tensor, name, executor);
     } else {
