@@ -94,6 +94,7 @@ cann_ops_transformer.flash_attn_metadata(
     num_heads_kv,
     head_dim,
     *,
+    head_dim_v=None,
     cu_seqlens_q=None,
     cu_seqlens_kv=None,
     seqused_q=None,
@@ -144,7 +145,8 @@ cann_ops_transformer.flash_attn(
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | num_heads_q | int | 必选 | Query head数 | int32 | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - |
-| head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - |
+| head_dim | int | 必选 | Query/Key 每个注意力头的维度 | int32 | - | - |
+| head_dim_v | int | 可选 | Value 每个注意力头的维度。缺省 None（内部传 -1）表示等于 head_dim；QK 与 V 维度不同（如 QK 192 / V 128）时必须传入，且需与后续 flash_attn 调用中 value 张量末维一致 | int32 | - | - |
 | cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,)
 | cu_seqlens_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,)
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,)
