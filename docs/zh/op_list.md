@@ -1557,6 +1557,16 @@
     <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>BlockAttentionResiduals的反向算子</td>
+  </tr>
+  <tr>
     <td>mamba</td>
     <td><a href="../../mamba/causal_conv1d/README.md">causal_conv1d</a></td>
     <td>✓</td>
