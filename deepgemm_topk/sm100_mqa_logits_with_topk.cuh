@@ -66,7 +66,7 @@ CUTLASS_DEVICE void dispatch_num_block_tokens(const uint32_t& num_block_tokens, 
 namespace {
 // Non-volatile shared load: unlike ptx::ld_shared (asm volatile), allows the
 // compiler to reorder/pipeline independent loads (real ILP under unroll).
-CUTLASS_DEVICE uint32_t ld_sh(const uint32_t* p) {
+CUTLASS_DEVICE uint32_t ptx::ld_shared(const uint32_t* p) {
     uint32_t v;
     asm("ld.shared.u32 %0, [%1];" : "=r"(v) : "l"(__cvta_generic_to_shared(p)));
     return v;
@@ -118,7 +118,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     // Explicit shared-space element loader (avoids generic loads)
     const uint32_t* logits_u = reinterpret_cast<const uint32_t*>(logits);
     auto load_u32 = [&](uint32_t i) -> uint32_t {
-        if constexpr (kCached) return ld_sh(logits_u + i);
+        if constexpr (kCached) return ptx::ld_shared(logits_u + i);
         else return __float_as_uint(__ldcg(reinterpret_cast<const float*>(logits_u) + i));
     };
 
@@ -630,9 +630,16 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                             weights[i][j] = ptx::exchange(*reinterpret_cast<const nv_bfloat162*>(&packed), 0);
                         }
                     } else {
+                        // vectorized broadcast load: 4 floats per ld.shared.v4
                         #pragma unroll
-                        for (uint32_t j = 0; j < kNumHeads; ++ j)
-                            weights[i][j] = ptx::ld_shared(smem_weights_row + j);
+                        for (uint32_t j = 0; j < kNumHeads / 4; ++ j) {
+                            const float4 w4 = ptx::ld_shared(
+                                reinterpret_cast<const float4*>(smem_weights_row + j * 4));
+                            weights[i][j * 4 + 0] = w4.x;
+                            weights[i][j * 4 + 1] = w4.y;
+                            weights[i][j * 4 + 2] = w4.z;
+                            weights[i][j * 4 + 3] = w4.w;
+                        }
                     }
                 }
 
@@ -820,43 +827,15 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
 
             __threadfence();
 
-            // ==== calibration: empty 32-iteration plain shared scan ====
-            if (blockIdx.x == 0 && warp_idx == 0 && q_token == 0 && my_len > 0 && my_len <= kSegFloats) {
-                long long t0 = clock64();
-                uint32_t acc = 0;
-                #pragma unroll 4
-                for (uint32_t i = lane_idx; i < my_len; i += 32) {
-                    uint32_t u;
-                    asm("ld.shared.u32 %0, [%1];" : "=r"(u) : "l"(__cvta_generic_to_shared(
-                        reinterpret_cast<uint32_t*>(wcache) + i)));
-                    acc += u;
-                }
-                long long t1 = clock64();
-                if (acc == 0xDEADBEEF) printf("never");
-                if (lane_idx == 0) printf("[CAL] empty_scan_32iters=%lld\n", t1 - t0);
-                long long t2 = clock64();
-                #pragma unroll
-                for (int j = 0; j < 8; ++j) __syncwarp();
-                long long t3 = clock64();
-                if (lane_idx == 0) printf("[CAL] eight_syncwarps=%lld\n", t3 - t2);
-            }
-            __syncwarp();
-
             // ==== stage 1: per-warp segment local TopK ====
-            const long long dbg_s1a = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
             if (i_active && my_len > 0 && my_len <= kSegFloats) {
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < my_len; i += 32)
                     ptx::st_shared(reinterpret_cast<uint32_t*>(wcache) + i,
                                    __float_as_uint(__ldcg(logits_row + k_start + my_start + i)));
                 __syncwarp();
-                const long long dbg_s1b = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
                 warp_bucket_topk<kSparseCount, true>(wcache, k_start + my_start, my_len,
                                                      wcand, whist, wstage, nullptr, lane_idx);
-                const long long dbg_s1c = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
-                if (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0)
-                    printf("[S1] token=%u load=%lld local=%lld\n",
-                           q_token, dbg_s1b - dbg_s1a, dbg_s1c - dbg_s1b);
             } else if (i_active && my_len > 0) {
                 warp_bucket_topk<kSparseCount, false>(logits_row + k_start + my_start,
                                                       k_start + my_start, my_len,
@@ -883,7 +862,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         if (all_seg_cached) {
                             const uint32_t cache_pos = static_cast<uint32_t>(c) - k_start - w * segL;
                             merge_vals[j] = __uint_as_float(
-                                ld_sh(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
+                                ptx::ld_shared(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
                         } else {
                             merge_vals[j] = __ldcg(logits_row + (static_cast<uint32_t>(c) - k_start));
                         }
@@ -916,7 +895,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         #pragma unroll 4
                         for (uint32_t i = lane_idx; i < kSlice; i += 32) {
                             uint32_t u = to_sortable3(__uint_as_float(
-                                ld_sh(reinterpret_cast<const uint32_t*>(mv3) + warp_idx * kSlice + i)));
+                                ptx::ld_shared(reinterpret_cast<const uint32_t*>(mv3) + warp_idx * kSlice + i)));
                             if ((u & pmask) == pval) {
                                 uint32_t b = (u >> shift) & 0xFF;
                                 atomicAdd(&wh[b], 1u);
@@ -992,7 +971,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
                 };
                 auto load_val = [&](uint32_t i) -> uint32_t {
-                    return ld_sh(reinterpret_cast<const uint32_t*>(mv) + warp_idx * kSlice + i);
+                    return ptx::ld_shared(reinterpret_cast<const uint32_t*>(mv) + warp_idx * kSlice + i);
                 };
 
                 // per-warp count definite + stage boundary
