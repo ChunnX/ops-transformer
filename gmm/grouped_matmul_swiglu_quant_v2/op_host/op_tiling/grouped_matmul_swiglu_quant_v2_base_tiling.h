@@ -46,8 +46,8 @@ protected:
     int64_t CalMaxRowInUb(const uint64_t ubSize, const uint64_t n) const;
     int32_t FindBestSingleN(const uint32_t &aicNum, int64_t baseM, int64_t baseN) const;
     bool TryFullLoadA(int32_t baseM, int64_t baseN, int64_t baseK, uint64_t l1Size);
-    ge::graphStatus DynamicTilingSingleN(gert::TilingContext *context, const uint32_t &aicNum, int64_t baseM,
-                                         int64_t baseN, int64_t baseK);
+    ge::graphStatus DynamicTilingSingleN(const gert::TilingContext *context, const uint32_t &aicNum,
+                                         int64_t baseM, int64_t baseN, int64_t baseK);
 
 private:
     GMMSwigluQuantV2TilingData tilingData_;
