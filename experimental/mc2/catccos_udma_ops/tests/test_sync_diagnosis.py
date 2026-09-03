@@ -325,5 +325,51 @@ def test_entry_barrier_precedes_reusable_signal_reset():
     entry_condition = kernel.index("if (useEntryBarrier)")
     entry_barrier = kernel.index("aclshmemx_barrier_all_vec();", entry_condition)
     reset = kernel.index("syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET", entry_barrier)
+    ready_reset = kernel.index("readyWords + readyWordIdx, 0", reset)
     initialization_barrier = kernel.index("aclshmemx_barrier_all_vec();", reset)
-    assert entry_barrier < reset < initialization_barrier
+    assert entry_barrier < reset < ready_reset < initialization_barrier
+
+
+def test_ready_protocol_uses_reset_round_values_without_launch_epoch():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    host = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "all_to_allv_grouped_mat_mul_udma.cpp"
+    ).read_text(encoding="utf-8")
+    runtime_header = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "udma_runtime.h"
+    ).read_text(encoding="utf-8")
+    runtime_source = (
+        PROJECT_ROOT
+        / "csrc"
+        / "all_to_allv_grouped_mat_mul_udma"
+        / "ascend950"
+        / "udma_runtime.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "launchEpoch" not in kernel
+    assert "launchEpoch" not in host
+    assert "NextAllToAllVGroupedMatMulEpoch" not in runtime_header
+    assert "NextAllToAllVGroupedMatMulEpoch" not in runtime_source
+    assert "allToAllVGroupedMatMulEpoch_" not in runtime_header
+    assert "uint32_t readyGeneration = commIdx + 1U;" in kernel
+    assert (
+        "uint64_t readyGeneration =\n"
+        "                                        static_cast<uint64_t>(commIdx + 1);"
+    ) in kernel

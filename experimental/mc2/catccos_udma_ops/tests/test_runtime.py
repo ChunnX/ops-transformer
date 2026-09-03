@@ -52,8 +52,8 @@ def test_explicit_heap_rejects_insufficient_capacity(monkeypatch):
 
 
 def test_validation_heap_accepts_no_reuse_workspace_with_headroom(monkeypatch):
-    monkeypatch.setenv("UDMA_HEAP_SIZE", str(704 << 20))
-    assert common.validation_udma_heap_size() == 704 << 20
+    monkeypatch.setenv("UDMA_HEAP_SIZE", str(768 << 20))
+    assert common.validation_udma_heap_size() == 768 << 20
 
 
 def test_runtime_reserves_no_reuse_workspace():
@@ -79,4 +79,5 @@ def test_runtime_reserves_no_reuse_workspace():
     assert "UdmaWorkspaceLayout::kDataBytes" in runtime_source
     assert "UdmaWorkspaceLayout::kTotalBytes" in runtime_source
     assert "kDataBytes = 640UL * 1024 * 1024" in layout_source
+    assert "kControlBase = 700UL * 1024 * 1024" in layout_source
     assert "kControlBytes = 4096" in layout_source

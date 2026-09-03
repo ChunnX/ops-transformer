@@ -171,7 +171,6 @@ public:
         GM_ADDR syncMmadFinish;
         GM_ADDR syncCommFinish;
         GM_ADDR syncCommReady;
-        uint64_t launchEpoch;
         uint32_t completionMode;
         uint32_t exportCoreCount;
         uint32_t selfCopyCores;
@@ -189,7 +188,7 @@ public:
             GM_ADDR ptrC_, LayoutC const &layoutC_,
             LayoutTagA layoutTagA_, LayoutTagB layoutTagB_,
             GM_ADDR ptrSymmetric_, GM_ADDR syncMmadFinish_, GM_ADDR syncCommFinish_,
-            GM_ADDR syncCommReady_, uint64_t launchEpoch_, uint32_t completionMode_,
+            GM_ADDR syncCommReady_, uint32_t completionMode_,
             BlockCommParams const &allToAllVGmmParams_,
             GM_ADDR ptrAllToAllVOutput_ = nullptr,
             GM_ADDR ptrRouteMetadata_ = nullptr,
@@ -204,7 +203,7 @@ public:
             ptrC(reinterpret_cast<__gm__ ElementC *>(ptrC_)), layoutC(layoutC_),
             layoutTagA(layoutTagA_), layoutTagB(layoutTagB_),
             ptrSymmetric(ptrSymmetric_), syncMmadFinish(syncMmadFinish_), syncCommFinish(syncCommFinish_),
-            syncCommReady(syncCommReady_), launchEpoch(launchEpoch_), completionMode(completionMode_),
+            syncCommReady(syncCommReady_), completionMode(completionMode_),
             exportCoreCount(exportCoreCount_), selfCopyCores(selfCopyCores_),
             blockCommParams(allToAllVGmmParams_)
         {
@@ -234,7 +233,6 @@ public:
         uint32_t stageRows{0};
         uint32_t exportCoreCount{0};
         uint32_t selfCopyCores{0};
-        uint64_t launchEpoch{0};
         uint32_t completionMode{COMPLETION_MODE_LEGACY};
     };
 
@@ -280,7 +278,7 @@ public:
             args.ptrC, layoutC,
             tagA, tagB,
             gmSymmetric, syncMmadFinish, syncCommFinish,
-            syncCommReady, args.launchEpoch, args.completionMode,
+            syncCommReady, args.completionMode,
             blockCommParams,
             args.ptrAllToAllVOutput,
             args.ptrRouteMetadata,
@@ -484,11 +482,10 @@ public:
               aicoreIdx < rankSize + selfCopyCores - 1));
 
         // Resolve local state before the collective so the entry barrier is
-        // immediately followed by the first reset of reusable SHMEM gates.
+        // immediately followed by the reset of every reusable SHMEM gate.
         // Reaching this barrier closes the previous invocation on every PE;
-        // no previous sender can still depend on syncMmadFinish when a fast
-        // PE resets it below. Strong ready slots are not reset because their
-        // 64-bit launch generation distinguishes delayed notifications.
+        // all prior per-peer UDMA queues have been drained by quiet, so no
+        // delayed ready notification can arrive after the reset below.
         bool isRootCore = (AscendC::GetBlockIdx() == 0);
         auto rankIdx = params.problemShape.rankIdx();
         if (useEntryBarrier) {
@@ -499,6 +496,18 @@ public:
         if (isRootCore) {
             aclshmemx_signal_op(syncMmadFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
             aclshmemx_signal_op(syncCommFinish, 0, ACLSHMEM_SIGNAL_SET, rankIdx);
+            if (useGenerationReady) {
+                auto readyWords = reinterpret_cast<__gm__ int32_t *>(syncCommReady);
+                constexpr uint32_t READY_WORDS =
+                    WORKSPACE_STAGES * READY_SLOT_RANKS *
+                    sizeof(uint64_t) / sizeof(int32_t);
+                for (uint32_t readyWordIdx = 0;
+                     readyWordIdx < READY_WORDS; ++readyWordIdx) {
+                    aclshmemx_signal_op(
+                        readyWords + readyWordIdx, 0,
+                        ACLSHMEM_SIGNAL_SET, rankIdx);
+                }
+            }
         }
         aclshmemx_barrier_all_vec();
 
@@ -655,7 +664,6 @@ public:
                                     auto readyAddress = syncCommReady +
                                         stageIdx * READY_SLOT_RANKS + rankIdx;
                                     uint64_t readyGeneration =
-                                        (params.launchEpoch << 32) |
                                         static_cast<uint64_t>(commIdx + 1);
                                     blockRemoteCopy.PutRemoteContiguousWithSignal(
                                         gmCommSrc, layoutCommSrc,
@@ -724,9 +732,7 @@ public:
                                 reinterpret_cast<__gm__ int32_t *>(
                                     syncCommReady +
                                     stageIdx * READY_SLOT_RANKS + rankIdx);
-                            uint32_t readyGeneration =
-                                static_cast<uint32_t>(params.launchEpoch) *
-                                    0x9E3779B9U + commIdx + 1U;
+                            uint32_t readyGeneration = commIdx + 1U;
                             aclshmemx_signal_op(
                                 readyAddress,
                                 static_cast<int32_t>(readyGeneration),
@@ -778,9 +784,7 @@ public:
                 if (useGenerationReady) {
                     if (params.completionMode ==
                         COMPLETION_MODE_GENERATION_AFTER_QUIET) {
-                        uint32_t readyGeneration =
-                            static_cast<uint32_t>(params.launchEpoch) *
-                                0x9E3779B9U + commIdx + 1U;
+                        uint32_t readyGeneration = commIdx + 1U;
                         for (uint32_t srcRankIdx = 0;
                              srcRankIdx < rankSize; ++srcRankIdx) {
                             if (srcRankIdx == rankIdx ||
@@ -798,7 +802,6 @@ public:
                         }
                     } else {
                         uint64_t readyGeneration =
-                            (params.launchEpoch << 32) |
                             static_cast<uint64_t>(commIdx + 1);
                         for (uint32_t srcRankIdx = 0;
                              srcRankIdx < rankSize; ++srcRankIdx) {

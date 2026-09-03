@@ -258,7 +258,6 @@ void InitializeAndLaunch(
     uint8_t *workspace,
     uint8_t *allToAllVOutput,
     uint8_t *routeMetadata,
-    uint64_t launchEpoch,
     uint32_t completionMode,
     uint32_t blockDim,
     aclrtStream stream,
@@ -297,7 +296,6 @@ void InitializeAndLaunch(
         tiling.stageRows,
         tiling.exportCoreCount,
         tiling.selfCopyCores,
-        launchEpoch,
         completionMode,
     };
 
@@ -429,10 +427,6 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     }
     const CompletionMode completionMode =
         GetCompletionMode(allToAllVOutputOptional.has_value());
-    const bool usesReadyGeneration =
-        completionMode == CompletionMode::kGenerationAfterQuiet ||
-        completionMode == CompletionMode::kStrongReady ||
-        completionMode == CompletionMode::kStrongReadyCacheSafe;
     const bool usesStrongReady =
         completionMode == CompletionMode::kStrongReady ||
         completionMode == CompletionMode::kStrongReadyCacheSafe;
@@ -454,8 +448,6 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             maximumPeerSliceBytes, " bytes, maximum ",
             kMaxUdmaWriteNotifyBytes);
     }
-    const uint64_t launchEpoch =
-        usesReadyGeneration ? runtime.NextAllToAllVGroupedMatMulEpoch() : 0;
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
 
@@ -493,7 +485,6 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             routeMetadataOptional.has_value()
                 ? reinterpret_cast<uint8_t *>(routeMetadataOptional.value().data_ptr())
                 : nullptr,
-            launchEpoch,
             static_cast<uint32_t>(completionMode),
             blockDim, stream, fftsAddress);
     };

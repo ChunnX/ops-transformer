@@ -17,8 +17,9 @@ namespace OpsTransformer::CatccosUdma {
 // a slower rank is still consuming in the previous one.
 struct UdmaWorkspaceLayout {
     static constexpr uint64_t kDataBytes = 640UL * 1024 * 1024;
+    static constexpr uint64_t kControlBase = 700UL * 1024 * 1024;
     static constexpr uint64_t kControlBytes = 4096;
-    static constexpr uint64_t kTotalBytes = kDataBytes + kControlBytes;
+    static constexpr uint64_t kTotalBytes = kControlBase + kControlBytes;
 
     static constexpr uint64_t kControlAlignment = 64;
     static constexpr uint32_t kMaxRankSize = 8;
@@ -26,7 +27,7 @@ struct UdmaWorkspaceLayout {
         kMaxRankSize * sizeof(int32_t);
 
     // grouped_mat_mul_all_to_allv owns the first half of the control plane.
-    static constexpr uint64_t kGmmA2avControlOffset = kDataBytes;
+    static constexpr uint64_t kGmmA2avControlOffset = kControlBase;
     static constexpr uint64_t kGmmA2avControlBytes = 2048;
     static constexpr uint64_t kGmmA2avSyncMmadOffset =
         kGmmA2avControlOffset;
@@ -50,6 +51,9 @@ struct UdmaWorkspaceLayout {
 };
 
 static_assert(
+    UdmaWorkspaceLayout::kDataBytes <= UdmaWorkspaceLayout::kControlBase,
+    "UDMA controls overlap the symmetric data plane");
+static_assert(
     UdmaWorkspaceLayout::kGmmA2avSyncCommOffset +
             UdmaWorkspaceLayout::kRankSignalBytes <=
         UdmaWorkspaceLayout::kGmmA2avControlOffset +
@@ -68,6 +72,9 @@ static_assert(
     "UDMA controls exceed the symmetric workspace");
 static_assert(
     UdmaWorkspaceLayout::kGmmA2avControlOffset %
+                UdmaWorkspaceLayout::kControlAlignment ==
+            0 &&
+        UdmaWorkspaceLayout::kControlBase %
                 UdmaWorkspaceLayout::kControlAlignment ==
             0 &&
         UdmaWorkspaceLayout::kA2avGmmControlOffset %

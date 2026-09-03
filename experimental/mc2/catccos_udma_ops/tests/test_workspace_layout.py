@@ -21,13 +21,16 @@ def test_workspace_has_disjoint_data_and_per_operator_control_planes():
     source = _read("udma_workspace_layout.hpp")
 
     assert "kDataBytes = 640UL * 1024 * 1024" in source
+    assert "kControlBase = 700UL * 1024 * 1024" in source
     assert "kControlBytes = 4096" in source
-    assert "kGmmA2avControlOffset = kDataBytes" in source
+    assert "kTotalBytes = kControlBase + kControlBytes" in source
+    assert "kGmmA2avControlOffset = kControlBase" in source
     assert "kGmmA2avControlBytes = 2048" in source
     assert "kA2avGmmControlOffset =" in source
     assert "kGmmA2avControlOffset + kGmmA2avControlBytes" in source
     assert "kA2avGmmControlBytes = 2048" in source
     assert "kControlAlignment = 64" in source
+    assert "kDataBytes <= UdmaWorkspaceLayout::kControlBase" in source
 
 
 def test_alltoallv_grouped_matmul_uses_only_its_control_slice():
