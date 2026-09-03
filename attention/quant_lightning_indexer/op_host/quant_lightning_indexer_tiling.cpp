@@ -115,10 +115,10 @@ ge::graphStatus QLIInfoParser::CheckTensorShapes() const
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key_dequant_scale",
                                                          "The shape of key_dequant_scale is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
-                    "The shape of sparse_indices is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opParamInfo_.attenOut.shape == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices", "The shape of sparse_indices is nullptr"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -141,10 +141,10 @@ ge::graphStatus QLIInfoParser::CheckTensorDescriptions() const
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key_dequant_scale",
                                                          "The desc of key_dequant_scale is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
-                    "The desc of sparse_indices is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opParamInfo_.attenOut.desc == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices", "The desc of sparse_indices is nullptr"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -213,9 +213,7 @@ ge::graphStatus QLIInfoParser::GetOpName()
 ge::graphStatus QLIInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr,
-                OP_LOGE(opName_, "GetPlatformInfo is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr"), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -227,13 +225,10 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    OP_CHECK_IF(
-        context_->GetWorkspaceSizes(1) == nullptr,
-        OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-                OP_LOGE(opName_, "RawTilingData got from GE context is nullptr"),
+    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
+                OP_LOGE(opName_, "RawTilingData got from GE context is nullptr"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -272,9 +267,7 @@ void QLIInfoParser::GetOutputParaInfo()
 ge::graphStatus QLIInfoParser::GetAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr,
-                OP_LOGE(opName_, "attrs got from GE is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(opName_, "attrs got from GE is nullptr"), return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
@@ -528,11 +521,10 @@ ge::graphStatus QLIInfoParser::GetQueryKeyAndOutLayout()
 ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::PA_BSND) {
-        OP_CHECK_IF(
-            opParamInfo_.blockTable.tensor == nullptr,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                opName_, "block_table", "Layout_key only supports PA_BSND, block_table must not be null"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        opName_, "block_table", "Layout_key only supports PA_BSND, block_table must not be null"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         opName_, "actual_seq_lengths_key",
@@ -552,11 +544,11 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
     }
 
     if (kLayout_ == DataLayout::TND) {
-        OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        opName_, "actual_seq_lengths_key",
-                        "When layout_key is TND, actual_seq_lengths_key must not be null"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            opParamInfo_.actualSeqLengthsK.tensor == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                                                     "When layout_key is TND, actual_seq_lengths_key must not be null"),
+            return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsK.desc->GetDataType() != ge::DT_INT32,
@@ -671,9 +663,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckN2Size()
     }
     OP_LOGI(context_->GetNodeName(), "N2 is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "key", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
-                    "The head num of key must be 1"),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+                                                      ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                                                      "The head num of key must be 1"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -697,12 +689,11 @@ ge::graphStatus QLIInfoParser::GetGSize()
                         "The head num of query divided by the head num of key must equal 64, 32, 24, 16 or 8"),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(
-            gSize_ > G_SIZE_LIMIT,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
-                "The head num of query divided by the head num of key must <= " + std::to_string(G_SIZE_LIMIT)),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        "The head num of query divided by the head num of key must <= " + std::to_string(G_SIZE_LIMIT)),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -751,7 +742,10 @@ static ge::graphStatus QliGetHeadDim(const TilingRequiredParaInfo &qliQuery, Dat
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QLIInfoParser::GetHeadDim() { return QliGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_); }
+ge::graphStatus QLIInfoParser::GetHeadDim()
+{
+    return QliGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_);
+}
 
 ge::graphStatus QLIInfoParser::GetS1Size()
 {
@@ -782,11 +776,11 @@ ge::graphStatus QLIInfoParser::GetS2SizeForPageAttention()
     }
 
     int32_t blockCount_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetShape().GetDim(0));
-    OP_CHECK_IF((blockCount_ == 0),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
-                                                      ToStringRaw(opParamInfo_.key.shape->GetShape()).c_str(),
-                                                      "The block_count of key cannot be 0"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (blockCount_ == 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetShape()).c_str(),
+                                              "The block_count of key cannot be 0"),
+        return ge::GRAPH_FAILED);
 
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
@@ -890,28 +884,27 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
     } else {
         // -----------------------check BatchSize-------------------
         // bSize_ 来源于query
-        OP_CHECK_IF(
-            (kLayout_ == DataLayout::PA_BSND) &&
-                ((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
-                 (opParamInfo_.blockTable.tensor != nullptr &&
-                  opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
-                 (opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
-                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                opName_, "query, weights, actual_seq_lengths_key, block_table and sparse_indices",
-                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
-                    Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
-                    Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + ", " +
-                    Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()) + " and " +
-                    Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
-                "BSND case query, weights, actual_seq_lengths_key, block_table, sparse_indices dim 0 are " +
-                    std::to_string(bSize_) + ", " +
-                    std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
-                    std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
-                    std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)) + ", " +
-                    std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
-                    " respectively, they must be same"),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((kLayout_ == DataLayout::PA_BSND) &&
+                        ((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
+                         (opParamInfo_.blockTable.tensor != nullptr &&
+                          opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
+                         (opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
+                         (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        opName_, "query, weights, actual_seq_lengths_key, block_table and sparse_indices",
+                        Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                            Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
+                            Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + ", " +
+                            Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()) + " and " +
+                            Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+                        "BSND case query, weights, actual_seq_lengths_key, block_table, sparse_indices dim 0 are " +
+                            std::to_string(bSize_) + ", " +
+                            std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
+                            std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
+                            std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)) + ", " +
+                            std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
+                            " respectively, they must be same"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (kLayout_ != DataLayout::PA_BSND) && ((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                                                   (opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
@@ -923,9 +916,8 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                     Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
                     Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and " +
                     Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
-                "BSND case query, weights, actual_seq_lengths_key, sparse_indices dim 0 are " +
-                    std::to_string(bSize_) + ", " +
-                    std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
+                "BSND case query, weights, actual_seq_lengths_key, sparse_indices dim 0 are " + std::to_string(bSize_) +
+                    ", " + std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
                     std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
                     std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
                     " respectively, they must be same"),
@@ -1107,12 +1099,11 @@ ge::graphStatus QLIInfoParser::CheckContiguous()
             }
         }
     }
-    OP_CHECK_IF(
-        keyNonContiguous || scaleNonContiguous,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            opName_, "key and key_dequant_scale",
-            "Key and key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyNonContiguous || scaleNonContiguous,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    opName_, "key and key_dequant_scale",
+                    "Key and key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1201,8 +1192,39 @@ static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseCo
 }
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
+static bool QliSupportsS1Base8Dtype(const QLITilingInfo *tilingInfo)
+{
+    const ge::DataType queryType = tilingInfo->inputQType;
+    const ge::DataType keyType = tilingInfo->inputKType;
+    const ge::DataType weightsType = tilingInfo->opParamInfo.weights.desc->GetDataType();
+    const ge::DataType queryScaleType = tilingInfo->opParamInfo.query_dequant_scale.desc->GetDataType();
+    const ge::DataType keyScaleType = tilingInfo->opParamInfo.key_dequant_scale.desc->GetDataType();
+
+    const bool fp8Bf16 = queryType == ge::DT_FLOAT8_E4M3FN && keyType == ge::DT_FLOAT8_E4M3FN &&
+                         weightsType == ge::DT_BF16 && queryScaleType == ge::DT_FLOAT && keyScaleType == ge::DT_FLOAT;
+    const bool fp8Fp16 = queryType == ge::DT_FLOAT8_E4M3FN && keyType == ge::DT_FLOAT8_E4M3FN &&
+                         weightsType == ge::DT_FLOAT16 && queryScaleType == ge::DT_FLOAT16 &&
+                         keyScaleType == ge::DT_FLOAT16;
+    const bool hif8Bf16 = queryType == ge::DT_HIFLOAT8 && keyType == ge::DT_HIFLOAT8 && weightsType == ge::DT_BF16 &&
+                          queryScaleType == ge::DT_FLOAT && keyScaleType == ge::DT_FLOAT;
+    const bool int8Fp16 = queryType == ge::DT_INT8 && keyType == ge::DT_INT8 && weightsType == ge::DT_FLOAT16 &&
+                          queryScaleType == ge::DT_FLOAT16 && keyScaleType == ge::DT_FLOAT16;
+    return fp8Bf16 || fp8Fp16 || hif8Bf16 || int8Fp16;
+}
+
+static bool QliSupportsDirectIndicesFastPath(const QLITilingInfo *tilingInfo)
+{
+    // Direct indices is an arch35 whole-invocation path. The kernel performs
+    // the dynamic all-batch actual-K check before allocating the normal CV
+    // event sequence; a mixed invocation falls back as a whole.
+    return tilingInfo->npuArch == NpuArch::DAV_3510 && tilingInfo->pageAttentionFlag &&
+           tilingInfo->inputQLayout == DataLayout::TND && tilingInfo->inputKLayout == DataLayout::PA_BSND &&
+           tilingInfo->bSize > 0 && tilingInfo->maxBlockNumPerBatch > 0 &&
+           (tilingInfo->sparseMode == 0 || tilingInfo->sparseMode == 3);
+}
+
 static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &qliPlatform, int64_t qliS2Size,
-                                     uint32_t qliAicNum, ge::DataType inputQType)
+                                     uint32_t qliAicNum, ge::DataType inputQType, bool enableS1Base8FastPath)
 {
     constexpr uint32_t qliMm1ResElemSize = 4;
     constexpr uint32_t qliDoubleBuffer = 2;
@@ -1218,7 +1240,7 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
 
     uint64_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t qli3510S1Base = 4;
+        const uint32_t qli3510S1Base = enableS1Base8FastPath ? 8U : 4U;
         constexpr uint32_t qli3510S2Base = 128;
         uint32_t scoreElemSize = (inputQType == ge::DT_INT8) ? sizeof(uint32_t) : sizeof(uint16_t);
         qliWorkspaceSize += qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
@@ -1244,7 +1266,20 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------
-    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum, tilingInfo->inputQType);
+    // CA validation shows that the INT8 template does not have stable gains
+    // below T=640. The fixed Base8 tile capacity is unchanged by larger T.
+    constexpr uint32_t s1Base8MinT = 640;
+    constexpr uint32_t s1Base8MaxBatch = 10;
+    const bool enableS1Base8FastPath =
+        tilingInfo->npuArch == NpuArch::DAV_3510 && tilingInfo->pageAttentionFlag &&
+        tilingInfo->inputQLayout == DataLayout::TND && tilingInfo->inputKLayout == DataLayout::PA_BSND &&
+        QliSupportsS1Base8Dtype(tilingInfo) && tilingInfo->tSize >= s1Base8MinT && tilingInfo->bSize > 0 &&
+        tilingInfo->bSize <= s1Base8MaxBatch && tilingInfo->gSize > 0 && tilingInfo->gSize <= 32 &&
+        (tilingInfo->blockSize == 64 || tilingInfo->blockSize == 128) && tilingInfo->maxBlockNumPerBatch > 0 &&
+        (tilingInfo->sparseMode == 0 || tilingInfo->sparseMode == 3);
+    const bool enableDirectIndicesFastPath = QliSupportsDirectIndicesFastPath(tilingInfo);
+    uint64_t workspaceSize = QliCalcWorkspaceSize(ascendcPlatform, tilingInfo->s2Size, aicNum, tilingInfo->inputQType,
+                                                  enableS1Base8FastPath);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
@@ -1260,6 +1295,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_blockSize(tilingInfo->blockSize);
     tilingData_.set_maxBlockNumPerBatch(tilingInfo->maxBlockNumPerBatch);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
+    tilingData_.set_enableS1Base8FastPath(static_cast<uint32_t>(enableS1Base8FastPath));
+    tilingData_.set_enableDirectIndicesFastPath(static_cast<uint32_t>(enableDirectIndicesFastPath));
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
@@ -1283,10 +1320,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
 // --------------------------Tiling函数定义---------------------------
 ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext *context)
 {
-    OP_CHECK_IF(
-        context == nullptr,
-        OP_LOGE("QuantLightningIndexer", "Tilingcontext is null"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexer", "Tilingcontext is null"), return ge::GRAPH_FAILED);
     QLITilingInfo QLIInfo;
     QLIInfoParser QLIInfoParser(context);
     if (QLIInfoParser.ParseAndCheck(QLIInfo) != ge::GRAPH_SUCCESS) {
