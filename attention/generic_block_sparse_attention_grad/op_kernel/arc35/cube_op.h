@@ -79,7 +79,7 @@ public:
         this->q_head_num_ = tilingData->qHeadNum;
         this->kv_head_num_ = tilingData->kvHeadNum;
         this->head_dim_ = tilingData->headDim;
-        this->head_dim_align_ = RoundUp(head_dim_, 16);
+        this->head_dim_align_ = RoundUp(head_dim_, static_cast<int32_t>(C0_SIZE));
         this->base_m_ = static_cast<int32_t>(tilingData->baseM);
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
@@ -299,11 +299,11 @@ private:
 
         WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
-        madParams.m = mProcess == 1 ? 2 : mProcess;
+        madParams.m = mProcess == 1 ? 2 : mProcess; // 2 is the m for the madParams
         madParams.n = nProcess;
         madParams.k = head_dim_;
         madParams.cmatrixInitVal = true;
-        madParams.unitFlag = 3;
+        madParams.unitFlag = 3; // 3 is the unit flag for the madParams
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
@@ -315,8 +315,8 @@ private:
         fixpipeParams.srcStride = static_cast<uint16_t>(mProcessAlign);
         fixpipeParams.dstStride = static_cast<uint32_t>(nProcessAlign);
         // Design: always dualDst — AIV0 gets mAlign/2, AIV1 gets m-mAlign/2 (Softmax/Grad).
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.unitFlag = 3;
+        fixpipeParams.dualDstCtl = 1; // 1 is the dualDstCtl for the fixpipe
+        fixpipeParams.unitFlag = 3;   // 3 is the unit flag for the fixpipe
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
         SET_FLAG(FIX, M, evnet_id);
@@ -351,11 +351,11 @@ private:
 
         WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
-        madParams.m = mProcess == 1 ? 2 : mProcess;
+        madParams.m = mProcess == 1 ? 2 : mProcess; // 2 is the m for the madParams
         madParams.n = nProcess;
         madParams.k = head_dim_;
         madParams.cmatrixInitVal = true;
-        madParams.unitFlag = 3;
+        madParams.unitFlag = 3; // 3 is the unit flag for the madParams
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
@@ -368,7 +368,7 @@ private:
         fixpipeParams.dstStride = static_cast<uint32_t>(nProcessAlign);
         // Design: always dualDst — AIV0 gets mAlign/2, AIV1 gets m-mAlign/2 (Softmax/Grad).
         fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.unitFlag = 3;
+        fixpipeParams.unitFlag = 3; // 3 is the unit flag for the fixpipe
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
         SET_FLAG(FIX, M, evnet_id);
@@ -443,11 +443,11 @@ private:
 
         WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
-        madParams.m = mProcess == 1 ? 2 : mProcess;
+        madParams.m = mProcess == 1 ? 2 : mProcess; // 2 is the m for the madParams
         madParams.n = head_dim_;
         madParams.k = nProcess;
         madParams.cmatrixInitVal = true;
-        madParams.unitFlag = 3;
+        madParams.unitFlag = 3; // 3 is the unit flag for the madParams
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
@@ -457,7 +457,7 @@ private:
         fixpipeParamsV220.nSize = head_dim_;
         fixpipeParamsV220.srcStride = mProcessAlign;
         fixpipeParamsV220.dstStride = q_stride_;
-        fixpipeParamsV220.unitFlag = 3;
+        fixpipeParamsV220.unitFlag = 3; // 3 is the unit flag for the fixpipe
         MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         SET_FLAG(FIX, M, evnet_id);
     }
@@ -487,11 +487,11 @@ private:
 
         WAIT_FLAG(FIX, M, evnet_id);
         MmadParams madParams;
-        madParams.m = mProcess == 1 ? 2 : mProcess;
+        madParams.m = mProcess == 1 ? 2 : mProcess; // 2 is the m for the madParams
         madParams.n = head_dim_;
         madParams.k = nProcess;
         madParams.cmatrixInitVal = true;
-        madParams.unitFlag = 3;
+        madParams.unitFlag = 3; // 3 is the unit flag for the madParams
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
@@ -502,7 +502,7 @@ private:
         fixToSel.nSize = static_cast<uint16_t>(head_dim_);
         fixToSel.srcStride = static_cast<uint16_t>(mProcessAlign);
         fixToSel.dstStride = static_cast<uint32_t>(head_dim_);
-        fixToSel.unitFlag = 3;
+        fixToSel.unitFlag = 3; // 3 is the unit flag for the fixpipe
         const int64_t slotOff = static_cast<int64_t>(ping_pong_idx) * dq_sel_slot_elems_;
         AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(dq_sel_workspace_[slotOff], l0_c_tensor, fixToSel);
         SET_FLAG(FIX, M, evnet_id);
@@ -533,16 +533,16 @@ private:
     {
         /*
          * L1 NZ layout from AIV CopyQAndDoutToL1 / load_data_gm_2_l1:
-         * [K1, M_align, C0], M_align = s1LenAlign (multiple of 16).
-         * srcStride / mStep are in 16-row fractal units.
+         * [K1, M_align, C0], M_align = s1LenAlign (multiple of C0_SIZE).
+         * srcStride / mStep are in C0_SIZE-row fractal units.
          */
         AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.mStartPosition = 0;
         loadData2dParams.kStartPosition = 0;
-        loadData2dParams.mStep = mSizeAlign / 16;
-        loadData2dParams.kStep = kSizeAlign / 16;
-        loadData2dParams.srcStride = mSizeAlign / 16;
-        loadData2dParams.dstStride = mSizeAlign / 16;
+        loadData2dParams.mStep = mSizeAlign / static_cast<int32_t>(C0_SIZE);
+        loadData2dParams.kStep = kSizeAlign / static_cast<int32_t>(C0_SIZE);
+        loadData2dParams.srcStride = mSizeAlign / static_cast<int32_t>(C0_SIZE);
+        loadData2dParams.dstStride = mSizeAlign / static_cast<int32_t>(C0_SIZE);
         loadData2dParams.ifTranspose = false;
 
         AscendC::LoadData(dstL0Tensor, srcL1Tensor, loadData2dParams);
@@ -558,14 +558,15 @@ private:
         AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.kStartPosition = 0;
         loadData2dParams.mStep = 1;
-        loadData2dParams.kStep = kSizeAlign / 16;
-        loadData2dParams.srcStride = mSizeAlign / 16;
+        loadData2dParams.kStep = kSizeAlign / static_cast<int32_t>(C0_SIZE);
+        loadData2dParams.srcStride = mSizeAlign / static_cast<int32_t>(C0_SIZE);
         loadData2dParams.dstStride = 1;
         loadData2dParams.ifTranspose = true;
 
-        for (int32_t i = 0; i < mSizeAlign / 16; i++) {
+        for (int32_t i = 0; i < mSizeAlign / static_cast<int32_t>(C0_SIZE); i++) {
             loadData2dParams.mStartPosition = i;
-            AscendC::LoadData(dstL0Tensor[i * kSizeAlign * 16], srcL1Tensor, loadData2dParams);
+            AscendC::LoadData(dstL0Tensor[i * kSizeAlign * static_cast<int32_t>(C0_SIZE)], srcL1Tensor,
+                              loadData2dParams);
         }
     }
 

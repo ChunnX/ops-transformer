@@ -89,6 +89,7 @@ private:
     LocalTensor<uint8_t> sftg_tmp_tensor;
     static constexpr uint32_t BLOCK_SIZE = 32;
     static constexpr uint32_t C0_SIZE = 16;
+    static constexpr uint32_t SHAPE_RANK_2D = 2; // ND matrix rank for SoftmaxGradFront SetShapeInfo
     static constexpr uint32_t BLOCK_FP32 = BLOCK_SIZE / sizeof(float);
     static constexpr uint32_t BLOCK_INPUT = BLOCK_SIZE / sizeof(INPUT_TYPE);
     constexpr static uint32_t PRE_TILE_LEN = 60 * 1024;  // pre一次处理元素的个数
@@ -117,7 +118,7 @@ public:
                                 GM_ADDR workspace, const TILING_CLASS *tilingData, TBuf<TPosition::VECCALC> &ub_buffer,
                                 uint32_t ub_offset)
     {
-        this->v_core_num_ = tilingData->cubeCoreNum * 2;
+        this->v_core_num_ = tilingData->cubeCoreNum * 2; // 2 is the v_core_num_
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
         this->kv_seq_len_ = tilingData->kvSeqLen;
@@ -126,10 +127,10 @@ public:
         this->kv_head_num_ = tilingData->kvHeadNum;
         this->head_dim_ = tilingData->headDim;
         this->softmax_scale_ = tilingData->softmaxScale;
-        this->head_dim_align_ = RoundUp(head_dim_, 16);
+        this->head_dim_align_ = RoundUp(head_dim_, static_cast<int32_t>(C0_SIZE));
         this->base_m = tilingData->baseM;
         this->base_n = tilingData->baseN;
-        this->vec_base_m = tilingData->baseM / 2;
+        this->vec_base_m = tilingData->baseM / 2; // 2 is the vec_base_m
         this->vec_base_n = tilingData->baseN;
         this->act_seq_q_len = actualQseqlen;
         this->rsvd_block_idx_ = rsvdBlockIdx;
@@ -240,9 +241,11 @@ public:
         ub_offset += SFTG_TILE_LEN * sizeof(float);
         attention_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(float);
-        sftg_front_ping_ = ub_buffer.GetWithOffset<float>(process_s1_size * 8, ub_offset);
+        sftg_front_ping_ = ub_buffer.GetWithOffset<float>(process_s1_size * 8,
+                                                          ub_offset); // 8 is the block size for the sftg_front_tensor
         ub_offset += process_s1_size * 8 * sizeof(float);
-        sftg_front_pong_ = ub_buffer.GetWithOffset<float>(process_s1_size * 8, ub_offset);
+        sftg_front_pong_ = ub_buffer.GetWithOffset<float>(process_s1_size * 8,
+                                                          ub_offset); // 8 is the block size for the sftg_front_tensor
         ub_offset += process_s1_size * 8 * sizeof(float);
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
@@ -265,14 +268,17 @@ public:
 
                 if constexpr (INPUT_LAYOUT == BSND) {
                     in_gm_offset = b_idx * current_q_seqlen * q_head_num_ * head_dim_ + n1_idx * head_dim_;
-                    out_gm_offset = b_idx * q_head_num_ * current_q_seqlen * 8 + n1_idx * current_q_seqlen * 8;
+                    out_gm_offset =
+                        b_idx * q_head_num_ * current_q_seqlen * BLOCK_FP32 + n1_idx * current_q_seqlen * BLOCK_FP32;
                 } else if constexpr (INPUT_LAYOUT == BNSD) {
                     in_gm_offset =
                         b_idx * q_head_num_ * current_q_seqlen * head_dim_ + n1_idx * current_q_seqlen * head_dim_;
-                    out_gm_offset = b_idx * q_head_num_ * current_q_seqlen * 8 + n1_idx * current_q_seqlen * 8;
+                    out_gm_offset =
+                        b_idx * q_head_num_ * current_q_seqlen * BLOCK_FP32 + n1_idx * current_q_seqlen * BLOCK_FP32;
                 } else if constexpr (INPUT_LAYOUT == TND) {
                     in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
-                    out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * current_q_seqlen * 8;
+                    out_gm_offset =
+                        last_seq_total_len * q_head_num_ * BLOCK_FP32 + n1_idx * current_q_seqlen * BLOCK_FP32;
                 }
                 TEventID event_id = sftg_ping_pong_idx ? event_ping_ : event_pong_;
                 ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size);
@@ -351,7 +357,7 @@ public:
                 } else {
                     lseOff = static_cast<int64_t>(runTimeInfo.bIdx) * q_head_num_ * runTimeInfo.cur_q_seq_len +
                              runTimeInfo.n1Idx * runTimeInfo.cur_q_seq_len + qTok;
-                    sftgOff = lseOff * 8;
+                    sftgOff = lseOff * 8; // 8 is the block size for the sftg_front_tensor
                 }
                 SET_FLAG(S, MTE2, EVENT_ID1);
                 WAIT_FLAG(S, MTE2, EVENT_ID1);
@@ -733,13 +739,16 @@ private:
             Cast(attention_out_tensor, attention_tensor, RoundMode::CAST_NONE, process_size * head_dim_);
             PipeBarrier<PIPE_V>();
 
-            uint32_t intput_shape_arry[2] = {static_cast<uint32_t>(process_size), static_cast<uint32_t>(head_dim_)};
-            uint32_t out_shape_arry[2] = {static_cast<uint32_t>(process_size), static_cast<uint32_t>(8)};
+            uint32_t intput_shape_arry[SHAPE_RANK_2D] = {static_cast<uint32_t>(process_size),
+                                                         static_cast<uint32_t>(head_dim_)};
+            uint32_t out_shape_arry[SHAPE_RANK_2D] = {
+                static_cast<uint32_t>(process_size),
+                static_cast<uint32_t>(BLOCK_FP32)}; // 8 is the block size for the sftg_front_tensor
 
-            dy_out_tensor.SetShapeInfo(ShapeInfo(2, intput_shape_arry, AscendC::DataFormat::ND));
-            attention_out_tensor.SetShapeInfo(ShapeInfo(2, intput_shape_arry, AscendC::DataFormat::ND));
-            sftg_front_tensor.SetShapeInfo(ShapeInfo(2, out_shape_arry, AscendC::DataFormat::ND));
-            bool isBasicBlock = process_size % 8 == 0;
+            dy_out_tensor.SetShapeInfo(ShapeInfo(SHAPE_RANK_2D, intput_shape_arry, AscendC::DataFormat::ND));
+            attention_out_tensor.SetShapeInfo(ShapeInfo(SHAPE_RANK_2D, intput_shape_arry, AscendC::DataFormat::ND));
+            sftg_front_tensor.SetShapeInfo(ShapeInfo(SHAPE_RANK_2D, out_shape_arry, AscendC::DataFormat::ND));
+            bool isBasicBlock = process_size % 8 == 0; // 8 is the block size for the sftg_front_tensor
             if (likely(isBasicBlock)) {
                 SoftmaxGradFront<float, true>(sftg_front_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
                                               tilingData->softmaxGradFrontTilingData);
@@ -923,7 +932,7 @@ private:
             info.align_tail = max_process_size;
             info.pad_tail = 0;
         } else {
-            info.align_tail = tail / 16 * 16;
+            info.align_tail = tail / C0_SIZE * C0_SIZE;
             info.pad_tail = tail - info.align_tail;
         }
     }

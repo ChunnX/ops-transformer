@@ -35,7 +35,17 @@ inline bool IsTensorExist(const aclTensor *tensor)
 }
 
 static constexpr int64_t GSAG_MAX_HEAD_NUM = 128;
+static constexpr int64_t GSAG_SUPPORTED_HEAD_DIM = 128;
+static constexpr int64_t GSAG_BLOCK_SHAPE_Y_MIN = 128;
+static constexpr int64_t GSAG_BLOCK_SHAPE_Y_ALIGN = 64;
 static constexpr int64_t GSAG_SUPPORTED_MASK_TYPE = 1;
+// rsvd_block_idx: [B, N2, J, maxS1]; rsvd_block_count: [B, N2, J]
+static constexpr size_t RSVD_BLOCK_IDX_DIM_NUM = 4;
+static constexpr size_t RSVD_BLOCK_COUNT_DIM_NUM = 3;
+static constexpr size_t DIM_B = 0;
+static constexpr size_t DIM_N2 = 1;
+static constexpr size_t DIM_J = 2;
+static constexpr size_t DIM_MAX_S1 = 3;
 
 aclnnStatus CheckSingleParam(int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t numQHeads, int64_t numKvHeads,
                              int64_t headDim, int64_t blockShapeX, int64_t blockShapeY, int64_t isPackedGQA,
@@ -72,7 +82,7 @@ aclnnStatus CheckSingleParam(int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t nu
         OP_LOGE_FOR_INVALID_VALUE(GSAG_ACLNN_OP_NAME, "mask_type", std::to_string(maskType), "1");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (headDim != 128) {
+    if (headDim != GSAG_SUPPORTED_HEAD_DIM) {
         OP_LOGE_FOR_INVALID_VALUE(GSAG_ACLNN_OP_NAME, "head_dim", std::to_string(headDim), "128");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -80,7 +90,7 @@ aclnnStatus CheckSingleParam(int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t nu
         OP_LOGE_FOR_INVALID_VALUE(GSAG_ACLNN_OP_NAME, "block_shape[0]", std::to_string(blockShapeX), "1");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (blockShapeY < 128 || blockShapeY % 64 != 0) {
+    if (blockShapeY < GSAG_BLOCK_SHAPE_Y_MIN || blockShapeY % GSAG_BLOCK_SHAPE_Y_ALIGN != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GSAG_ACLNN_OP_NAME, "block_shape[1]", std::to_string(blockShapeY),
                                               "block_shape[1] must be >= 128 and aligned to 64");
         return ACLNN_ERR_PARAM_INVALID;
@@ -161,12 +171,12 @@ aclnnStatus CheckConsistency(const aclTensor *rsvdBlockIdx, const aclTensor *rsv
                              int64_t isPackedGQA, const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    if (rsvdBlockIdx->GetViewShape().GetDimNum() != 4) {
+    if (rsvdBlockIdx->GetViewShape().GetDimNum() != RSVD_BLOCK_IDX_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(GSAG_ACLNN_OP_NAME, "rsvd_block_idx",
                                      std::to_string(rsvdBlockIdx->GetViewShape().GetDimNum()), "4");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (rsvdBlockCount->GetViewShape().GetDimNum() != 3) {
+    if (rsvdBlockCount->GetViewShape().GetDimNum() != RSVD_BLOCK_COUNT_DIM_NUM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(GSAG_ACLNN_OP_NAME, "rsvd_block_count",
                                      std::to_string(rsvdBlockCount->GetViewShape().GetDimNum()), "3");
         return ACLNN_ERR_PARAM_INVALID;
@@ -174,16 +184,16 @@ aclnnStatus CheckConsistency(const aclTensor *rsvdBlockIdx, const aclTensor *rsv
 
     const auto &idxShape = rsvdBlockIdx->GetViewShape();
     const auto &cntShape = rsvdBlockCount->GetViewShape();
-    int64_t batchSize = idxShape.GetDim(0);
-    int64_t n2 = idxShape.GetDim(1);
-    int64_t j = idxShape.GetDim(2);
-    int64_t maxS1 = idxShape.GetDim(3);
+    int64_t batchSize = idxShape.GetDim(DIM_B);
+    int64_t n2 = idxShape.GetDim(DIM_N2);
+    int64_t j = idxShape.GetDim(DIM_J);
+    int64_t maxS1 = idxShape.GetDim(DIM_MAX_S1);
 
-    if (cntShape.GetDim(0) != batchSize || cntShape.GetDim(1) != n2 || cntShape.GetDim(2) != j) {
+    if (cntShape.GetDim(DIM_B) != batchSize || cntShape.GetDim(DIM_N2) != n2 || cntShape.GetDim(DIM_J) != j) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             GSAG_ACLNN_OP_NAME, "rsvd_block_count",
-            std::to_string(cntShape.GetDim(0)) + ", " + std::to_string(cntShape.GetDim(1)) + ", " +
-                std::to_string(cntShape.GetDim(2)),
+            std::to_string(cntShape.GetDim(DIM_B)) + ", " + std::to_string(cntShape.GetDim(DIM_N2)) + ", " +
+                std::to_string(cntShape.GetDim(DIM_J)),
             "rsvd_block_count shape must be [B, N2, J] and consistent with rsvd_block_idx");
         return ACLNN_ERR_PARAM_INVALID;
     }

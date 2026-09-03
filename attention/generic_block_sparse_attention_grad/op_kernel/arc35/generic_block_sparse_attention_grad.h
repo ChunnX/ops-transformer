@@ -109,7 +109,7 @@ private:
         const int32_t mAlign = static_cast<int32_t>(curr.s1LenAlign);
         const int32_t aivHalfIdx = static_cast<int32_t>(GetSubBlockIdx());
         if (loopTaskId > 0) {
-            CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_GATHER_ARM);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE_2, PIPE_MTE3>(FLAG_C_GATHER_ARM);
         }
         CopyQAndDoutToL1(curr, currIdx);
         // Always signal — including AIV with 0 real rows (zero-filled pad half).
@@ -133,13 +133,13 @@ private:
         LocalTensor<INPUT_TYPE> dsL1Last = lastIdx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
 
         vecOp.SendVecSftPreProcess(last, lastIdx);
-        CrossCoreWaitFlag<2, PIPE_V>(lastIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE_2, PIPE_V>(lastIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG);
         PipeBarrier<PIPE_ALL>();
         vecOp.SendVecSoftmax(pL1Last, mm1Last, last);
-        CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
-        CrossCoreWaitFlag<2, PIPE_V>(lastIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE_2, PIPE_MTE3>(FLAG_V1_C3);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE_2, PIPE_V>(lastIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG);
         vecOp.SendVecSoftmaxGrad(dsL1Last, mm1Last, mm2Last, last);
-        CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE_2, PIPE_MTE3>(FLAG_V2_C45);
     }
 
     __aicore__ inline void ScatterLastVec(VecOp<GSAG_TYPE> &vecOp, uint32_t lastIdx, TBuf<TPosition::VECCALC> &ubBuffer)
@@ -170,7 +170,7 @@ private:
             const int32_t m = static_cast<int32_t>(curr.s1Len);
             const int32_t mAlign = static_cast<int32_t>(curr.s1LenAlign);
             if (loopTaskId > 0) {
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C_GATHER_ARM);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE_2, PIPE_FIX>(FLAG_C_GATHER_ARM);
             }
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag);
             if (GatherNeedAiv1(m, mAlign)) {
@@ -178,9 +178,9 @@ private:
             }
         }
         cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, curr, currIdx);
-        CrossCoreSetFlag<2, PIPE_FIX>(currIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE_2, PIPE_FIX>(currIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG);
         cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, curr, currIdx);
-        CrossCoreSetFlag<2, PIPE_FIX>(currIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE_2, PIPE_FIX>(currIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG);
         (void)query;
         (void)key;
         (void)value;
@@ -197,8 +197,8 @@ private:
         p_l1_tensor_ = lastIdx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
         ds_l1_tensor_ = lastIdx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
 
-        CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-        CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE_2, PIPE_MTE1>(FLAG_V1_C3);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE_2, PIPE_MTE1>(FLAG_V2_C45);
         cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, last, lastIdx);
         cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, last, lastIdx);
         cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, last, lastIdx);
@@ -405,13 +405,15 @@ public:
         const int32_t copyRows = shardAlign;
         DataCopyParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(head_dim_ / C0_SIZE);
-        copyParams.blockLen = static_cast<uint16_t>(copyRows * static_cast<int32_t>(C0_SIZE) *
-                                                    static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
+        copyParams.blockLen =
+            static_cast<uint16_t>(copyRows * static_cast<int32_t>(C0_SIZE) * static_cast<int32_t>(sizeof(INPUT_TYPE)) /
+                                  static_cast<int32_t>(BLOCK_SIZE));
         copyParams.srcStride =
             static_cast<uint16_t>((static_cast<int32_t>(vfM) + 1 - copyRows) * static_cast<int32_t>(C0_SIZE) *
-                                  static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
-        copyParams.dstStride = static_cast<uint16_t>((totalAlign - copyRows) * static_cast<int32_t>(C0_SIZE) *
-                                                     static_cast<int32_t>(sizeof(INPUT_TYPE)) / 32);
+                                  static_cast<int32_t>(sizeof(INPUT_TYPE)) / static_cast<int32_t>(BLOCK_SIZE));
+        copyParams.dstStride =
+            static_cast<uint16_t>((totalAlign - copyRows) * static_cast<int32_t>(C0_SIZE) *
+                                  static_cast<int32_t>(sizeof(INPUT_TYPE)) / static_cast<int32_t>(BLOCK_SIZE));
 
         LocalTensor<INPUT_TYPE> qL1 = pingPongIdx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
         LocalTensor<INPUT_TYPE> doutL1 = pingPongIdx == 0 ? dout_l1_tensor_ping_ : dout_l1_tensor_pong_;
@@ -451,7 +453,7 @@ public:
 
         // Preload(N)[Gather+MM12] then NotFirst(N-1)[Softmax+MM345]; epilogue for last task.
         while (true) {
-            ping_pong_idx = taskId % 2;
+            ping_pong_idx = taskId % 2; // 2 is the ping_pong_idx
             last_ping_pong_idx = 1 - ping_pong_idx;
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
 
@@ -473,7 +475,7 @@ public:
             }
         }
         cubeOp.Destroy();
-        AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
+        AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE_2, PIPE_FIX>(FLAG_CUBE_POST);
     }
 
     __aicore__ inline void VectorProcess(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dout, GM_ADDR attention_out,
@@ -497,7 +499,7 @@ public:
         vecOp.SetFlag();
         // Preload(N)=Gather(curr) then NotFirst(N-1)=Softmax(last); Scatter after MM345(last).
         while (true) {
-            ping_pong_idx = taskId % 2;
+            ping_pong_idx = taskId % 2; // 2 is the ping_pong_idx
             last_ping_pong_idx = 1 - ping_pong_idx;
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
 

@@ -32,6 +32,9 @@ static constexpr uint32_t DK = 13;
 static constexpr uint32_t DV = 14;
 
 static constexpr uint32_t C0_SIZE = 16;
+static constexpr uint32_t BLOCK_SIZE = 32; // Ascend DataCopy block unit (bytes)
+// MIX 1:2 AIV split: each half must be a full C0 fractal → mAlign multiple of 2 * C0_SIZE.
+static constexpr int32_t AIV_M_SPLIT_ALIGN = static_cast<int32_t>(C0_SIZE * 2);
 static constexpr uint32_t FLAG_CUBE_POST = 4; // end-of-main only: Cube → Vec before SendVecPost
 // Cube → Vec: Cube finished prior MM345 and is about to Wait gather (taskId>0).
 static constexpr uint32_t FLAG_C_GATHER_ARM = 5;
@@ -48,6 +51,8 @@ static constexpr uint32_t FLAG_C2_V2_PONG = 14;
 // Softmax(last) → MM345(last) (single producer per round).
 static constexpr uint32_t FLAG_V1_C3 = 2;
 static constexpr uint32_t FLAG_V2_C45 = 3;
+// Cube↔Vec without AIV0/AIV1 subblock flag split.
+static constexpr uint32_t CROSS_CORE_SYNC_MODE_2 = 2;
 // FAG arch35: mode=4 + flag / flag+16 for AIV0/AIV1 subblock isolation.
 static constexpr uint32_t CROSS_CORE_SYNC_MODE = 4;
 static constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 16;
@@ -115,10 +120,10 @@ inline __aicore__ T RoundUp(const T val, const T align)
     return (val + align - 1) / align * align;
 }
 
-// MIX 1:2: dualDst + AIV1 NZ L1 only when each half is a 16-row fractal.
+// MIX 1:2: dualDst + AIV1 NZ L1 only when each half is a C0_SIZE-row fractal.
 __aicore__ inline bool GsagAivMSplit(int32_t mAlign)
 {
-    return (mAlign >= 32) && ((mAlign % 32) == 0);
+    return (mAlign >= AIV_M_SPLIT_ALIGN) && ((mAlign % AIV_M_SPLIT_ALIGN) == 0);
 }
 
 __aicore__ inline int64_t GetSeqLen(int32_t i, __gm__ uint8_t *seqLen)

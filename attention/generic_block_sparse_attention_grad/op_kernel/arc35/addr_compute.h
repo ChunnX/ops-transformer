@@ -171,9 +171,9 @@ private:
         info.cur_kv_seq_len = static_cast<int32_t>(curActS2_);
         info.s1Len = m;
         info.s2Len = curKvBlockLen_;
-        // RoundUp(m, 16) for NZ fractal / Fixpipe mSize.
-        info.s1LenAlign = RoundUp(static_cast<int64_t>(m), static_cast<int64_t>(16));
-        info.s2LenAlign = RoundUp(static_cast<int64_t>(curKvBlockLen_), static_cast<int64_t>(16));
+        // RoundUp(m, C0_SIZE) for NZ fractal / Fixpipe mSize.
+        info.s1LenAlign = RoundUp(static_cast<int64_t>(m), static_cast<int64_t>(C0_SIZE));
+        info.s2LenAlign = RoundUp(static_cast<int64_t>(curKvBlockLen_), static_cast<int64_t>(C0_SIZE));
         info.sparseIdxOffset = curIdxBase_ + s1Offset_;
         info.sparseCount = m;
         info.use_sparse_gather = 1;
