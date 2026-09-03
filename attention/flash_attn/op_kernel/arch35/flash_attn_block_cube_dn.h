@@ -315,9 +315,9 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
             if (unlikely(constInfo_.dSize != dBaseSize)) {
-                // D 非 64/128/256(如 72): ND2Nz 只写 ceil(d/16) 组分形, LoadData 按对齐后 d 的组数寻址,
-                // 分形外的 pad 区与 n1 组错位区均需显式清零(整 Q 槽)
-                InitValueL1BufferNAxis(qL1Tensor, mBaseSize, dBaseSize);
+                // D 非 64/128/256(如 72): Nd2Nz 只写 ceil(72/16)=5 组分形, loadK=80 时 LoadData 同样读 5 组,
+                // 寻址一致无错位; 仅需清零第 5 组内 72~80 的 8 列硬件补齐区(值未定义)
+                InitValueL1BufferNAxis(qL1Tensor, mBaseSize, (((constInfo_.dSize + 15) >> 4) << 4));
                 AscendC::PipeBarrier<PIPE_MTE2>();
             }
             CopyQuerySlice(qL1Tensor, 0, constInfo_.dSize, runInfo);
@@ -328,9 +328,9 @@ public:
         LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         if (unlikely(constInfo_.dSize != dBaseSize)) {
-            // K 侧同 Q: 清零整 KV 槽(LoadData2D 按对齐组数寻址, 会读到槽内越界区)
-            constexpr uint32_t kvSlotRows = L1_KV_BUF_BYTES / (dBaseSize * sizeof(KV_T));
-            InitValueL1BufferNAxis(kL1Tensor, kvSlotRows, dBaseSize);
+            // K 侧同 Q: loadK=80 时读 5 组与写入一致, 仅清 rows × 80(覆盖 72~80 补齐列)
+            uint32_t kRows = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4; // 与 CopyKeySlice 的 rowCount 一致
+            InitValueL1BufferNAxis(kL1Tensor, kRows, (((constInfo_.dSize + 15) >> 4) << 4));
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
         CopyKeySlice(kL1Tensor, 0, constInfo_.dSize, runInfo);
@@ -339,10 +339,10 @@ public:
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-            // K 轴取 pad 后宽度(D=72 → 128), L1 pad 区已清零, Mmad 结果数学等价
-            uint32_t kSize = (constInfo_.dSize != dBaseSize) ? constInfo_.dBasicBlock : constInfo_.dSize;
-            MMParam param =
-                MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize, kSize, false, true);
+            // Mmad K=72 精确累加, LoadData 按 loadK=80(5组分形)寻址, 与 Nd2Nz 写入组数一致
+            uint32_t ldK = (constInfo_.dSize != dBaseSize) ? (((constInfo_.dSize + 15) >> 4) << 4) : 0;
+            MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
+                                        constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
             if constexpr (dBaseSize > 128) {
                 MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
                                                                                     mmL0BPolicy_, l0CSubTensor, param);
@@ -410,9 +410,9 @@ public:
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         if (unlikely(constInfo_.dSizeV != dVBaseSize)) {
-            // V 侧同 K: 清零整 KV 槽(bmm2 B 侧 LoadData3D 按对齐组数寻址)
-            constexpr uint32_t kvSlotRowsV = L1_KV_BUF_BYTES / (dVBaseSize * sizeof(KV_T));
-            InitValueL1BufferNAxis(vL1Tensor, kvSlotRowsV, dVBaseSize);
+            // V 侧同 K: loadN=80 时读 5 组与写入一致, 仅清 rows × 80(覆盖 72~80 补齐列)
+            uint32_t kRows = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U); // 与 CopyValueSlice 一致
+            InitValueL1BufferNAxis(vL1Tensor, kRows, (((constInfo_.dSizeV + 15) >> 4) << 4));
             AscendC::PipeBarrier<PIPE_MTE2>();
         }
         CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
@@ -420,15 +420,29 @@ public:
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
             uint32_t nLoops = (constInfo_.dSizeV + 128 - 1) / 128;
-            // 尾块 N 取 pad 后宽度(D=72 → 128): P × V_pad = 0, 保证 vec2 按 dTemplateAlign64=128 宽读不脏
+            // Mmad N=72 精确计算; LoadData 按 loadN=80(5组)寻址与 Nd2Nz 写入一致;
+            // Fixpipe nSize=真实72列 + dstStride=128(UB行距) → vec2 128宽读, 尾列脏但 D 轴逐元素隔离无害
             uint32_t lastTileN =
-                (constInfo_.dSizeV != dVBaseSize) ? constInfo_.dBasicBlock : (constInfo_.dSizeV - (nLoops - 1) * 128);
+                (constInfo_.dSizeV != dVBaseSize) ? constInfo_.dSizeV : (constInfo_.dSizeV - (nLoops - 1) * 128);
+            uint32_t ldN = (constInfo_.dSizeV != dVBaseSize) ? (((constInfo_.dSizeV + 15) >> 4) << 4) :
+                                                               (constInfo_.dSizeV - (nLoops - 1) * 128);
             for (uint32_t n = 0; n < nLoops; n++) {
                 uint32_t tileN = (n == nLoops - 1) ? lastTileN : 128;
+                uint32_t tileLdN = (n == nLoops - 1) ? ldN : 128;
                 Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-                MMParam param = {(uint32_t)mBaseSize, tileN, (uint32_t)runInfo.actSingleLoopS2Size, true, false};
+                MMParam param = {(uint32_t)mBaseSize,
+                                 tileN,
+                                 (uint32_t)runInfo.actSingleLoopS2Size,
+                                 true,
+                                 false,
+                                 true,
+                                 true,
+                                 0,
+                                 0,
+                                 0,
+                                 tileLdN};
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
                 uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
