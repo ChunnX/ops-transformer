@@ -19,27 +19,6 @@
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/arch35/util_regbase.h"
-
-
-
-#ifndef FA_BASE_MATMUL_MATMUL_BASE_DEFINED
-#define FA_BASE_MATMUL_MATMUL_BASE_DEFINED
-template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
-          typename L0AType, typename L0BType>
-__aicore__ inline void MatmulBase(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
-                                  L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, struct MMParam &param)
-{
-    if ((param.singleK + baseK - 1) / baseK > 1) {
-        MatmulK<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
-    } else if ((param.singleN + baseN - 1) / baseN > 1) {
-        MatmulN<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
-    } else {
-        MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor,
-                                                         param);
-    }
-}
-#endif
-
 namespace SfagBaseApi {
 
 TEMPLATES_DEF
@@ -270,9 +249,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
                          true,                                       // isRightTranspose
                          true,
                          k == 0};
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, CUBE_BASEK, ABLayout::MK, ABLayout::KN>(
-            dyL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK],
-            vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+if ((param.singleK + CUBE_BASEK - 1) / CUBE_BASEK > 1) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, CUBE_BASEK, ABLayout::MK, ABLayout::KN>(dyL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if ((param.singleN + CUBE_BASEN - 1) / CUBE_BASEN > 1) {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, CUBE_BASEK, ABLayout::MK, ABLayout::KN>(dyL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, CUBE_BASEK, ABLayout::MK, ABLayout::KN>(dyL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], vL1Buffer.template GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm1L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
         vL1Buffer.template Set<HardEvent::MTE1_MTE2>(); // 反向同步
     }
     mm1L0CBuffer.Set<HardEvent::M_FIX>();
@@ -371,10 +354,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             true,
             k == 0 // isOutKFisrt
         };
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN,
-                   L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
-            qL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK],
-            kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+if ((param.singleK + L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE) - 1) / L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE) > 1) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(qL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if ((param.singleN + CUBE_BASEN - 1) / CUBE_BASEN > 1) {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(qL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, L0_SINGLE_BUFFER_SIZE / CUBE_BASEN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(qL1Buffer.GetTensor<INPUT_TYPE>()[AlignTo16(constInfo.commonConstInfo.gSize) * k * CUBE_BASEK], kL1Buffer.GetTensor<INPUT_TYPE>(), l0aBuf, l0bBuf, mm2L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
 
         kL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
     }
@@ -453,9 +439,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(
                          false,                                      // isRightTranspose
                          true,
                          true};
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK,
-                   ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf,
-                                 mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+if ((param.singleK + DQ_L0_SPLIT_K - 1) / DQ_L0_SPLIT_K > 1) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if ((param.singleN + CUBE_BASEN - 1) / CUBE_BASEN > 1) {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
 
         kL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
         mm3L0CBuffer.Set<HardEvent::M_FIX>();
@@ -546,9 +536,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(
                          true,
                          true};
         WaitFlag<HardEvent::FIX_M>(eventIDFIXToM);
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK,
-                   ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf,
-                                 dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+if ((param.singleK + DKV_L0_SPLIT_K - 1) / DKV_L0_SPLIT_K > 1) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if ((param.singleN + CUBE_BASEN - 1) / CUBE_BASEN > 1) {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
 
         if (!leftReuse) {
             qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
@@ -641,9 +635,13 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyNormal(
                          false,                                      // isRightTranspose
                          true,
                          true};
-        MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK,
-                   ABLayout::KN>(pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor[dyL1Offset], l0aBuf, l0bBuf,
-                                 dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+if ((param.singleK + DKV_L0_SPLIT_K - 1) / DKV_L0_SPLIT_K > 1) {
+            MatmulK<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor[dyL1Offset], l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else if ((param.singleN + CUBE_BASEN - 1) / CUBE_BASEN > 1) {
+            MatmulN<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor[dyL1Offset], l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        } else {
+            MatmulFull<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor[dyL1Offset], l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
+        }
 
         if (!leftReuse) {
             dYL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
