@@ -328,7 +328,6 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
 
     OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
                     return ge::GRAPH_FAILED);
-    // 先判空再strcmp，避免commAlg未配置(空指针)时解引用崩溃
     isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0);
 
     if (config.isMc2Context) {

@@ -1243,9 +1243,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     const char *nodeName = context->GetNodeName();
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
     OP_LOGD(nodeName, "Set 'commAlg' as '%s'", commAlgPtr);
-    // 检查 commAlg 参数合法性校验
     bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
-    // 先判空再strcmp，避免commAlg未配置(空指针)时解引用崩溃
     bool isFullmeshV1 = (!isNullOrEmpty) && (std::strcmp(commAlgPtr, "fullmesh_v1") == 0);
     bool isFullmeshV2 = (!isNullOrEmpty) && (std::strcmp(commAlgPtr, "fullmesh_v2") == 0);
     bool isMte = isFullmeshV1 || isFullmeshV2;

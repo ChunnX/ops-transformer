@@ -158,12 +158,8 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }
-    // combine数据区 token首地址对齐512
-     uint64_t h = static_cast<uint64_t>(winSizeData.h);
-    // combine数据区：
-    // Ascend950(A5)平台combine已改为data as flag布局，win区每512B分块仅480B有效数据(其余32B为flag)，
-    // 每token窗口占用为480Align512(2H)，与kernel侧hSizeAlignCombine/blockCntPerToken_*SPLIT_BLOCK_SIZE保持一致；
-    // 其他平台combine数据区token首地址512对齐，每token窗口占用为Align512(2H)
+    uint64_t h = static_cast<uint64_t>(winSizeData.h);
+    // A5 combine中win区梅512B分块仅480B有效
     uint64_t tokenNeedSizeCombine = 0;
     if (mc2tiling::GetSocVersion(context) == "Ascend950") {
         tokenNeedSizeCombine =
