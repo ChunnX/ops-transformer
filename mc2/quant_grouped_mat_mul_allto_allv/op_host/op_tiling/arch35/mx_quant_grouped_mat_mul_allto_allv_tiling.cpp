@@ -317,7 +317,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
 
     OP_TILING_CHECK(localParams_.mmWeightQuantMode != QUANT_MX,
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "mmWeightQuantMode",
-                                              std::to_string(localParams_.mmWeightQuantMode), std::to_string(QUANT_MX)),
+                                              std::to_string(localParams_.mmWeightQuantMode),
+                                              std::to_string(QUANT_MX)),
                     return ge::GRAPH_FAILED);
     ge::graphStatus status = MxCheckShapeDimensions(mmXScaleStorageShape, DIM_THREE, "mmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);

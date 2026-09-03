@@ -18,27 +18,9 @@
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
-#if defined(CONST_TILING)
-#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
-    const outerType *outerPtr##var = (const outerType *)(tiling);                                                      \
-    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var);                                                  \
-    const int32_t *(var) = (const int32_t)((const uint8_t *)&(innerPtr##var->innerMember))
-#else
-#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
-    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember);                                                \
-    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember);                                                \
-    __gm__ int32_t *(var) = (__gm__ int32_t *)((__gm__ uint8_t *)(tiling) + outerOffset##var + innerOffset##var)
-#endif
-
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
-
-#if defined(CONST_TILING)
-#define TILING_TYPE const int32_t
-#else
-#define TILING_TYPE __gm__ int32_t
-#endif
 
 template <typename X_T, const bool IS_OPT_MM, const bool IS_GMM_WEIGHT_TRANS, const bool IS_OPT_WEIGHT_TRANS>
 struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
