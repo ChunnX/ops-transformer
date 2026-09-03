@@ -200,7 +200,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                 firstDispatchRange.end = nextDispatchRange.end;
             }
             // count-table 准备刚完成，UB prefix 仍有效；首 WAVE 无需从 GM 备份重复恢复。
-            DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+            DispatchTokenRange<typename MoeQuantConfig::QuantStorageType, typename MoeQuantConfig::QuantScaleType,
+                               GMM1_TILE_M, TopkWeightsPrefetch>(
                 tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                 g_winRankAddr_, tokenDispatchScratch_, firstDispatchRange);
             // 首 WAVE 的全部数据和 ready flag 发布完成后，再提交 Dispatch 进度。
@@ -237,7 +238,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                         ReloadDispatchCumsumRange(commonConfig_, tokenDispatchScratch_,
                                                   nextExpertDispatchRange.begin.expertIdx,
                                                   nextExpertDispatchRange.begin.expertIdx);
-                        DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                        DispatchTokenRange<typename MoeQuantConfig::QuantStorageType,
+                                           typename MoeQuantConfig::QuantScaleType, GMM1_TILE_M, TopkWeightsPrefetch>(
                             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
                             params_, g_winRankAddr_, tokenDispatchScratch_, nextExpertDispatchRange);
                     }
